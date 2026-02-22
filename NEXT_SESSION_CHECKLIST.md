@@ -10,4 +10,10 @@
 4. Confirm mobile workflow split for Samsung S25:
    - Primary remote to laptop via secure tunnel
    - Optional on-device fallback model
-5. Finalize Phase 0 implementation plan and start repo scaffolding for the actual agent.
+5. Run bootstrap and verify local scaffold:
+   - `.\scripts\bootstrap.ps1`
+   - `.venv\Scripts\jarvis-engine.exe status`
+6. Implement first three production controls:
+   - Ollama provider adapter
+   - Capability gate enforcement in execution path
+   - Encrypted backup and restore automation

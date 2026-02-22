@@ -1,0 +1,13 @@
+.planning/archive/
+.planning/tmp/
+.planning/*.bak
+.planning/*.tmp
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+dist/
+build/
+backups/

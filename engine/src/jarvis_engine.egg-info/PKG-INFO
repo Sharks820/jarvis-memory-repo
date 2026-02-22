@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: jarvis-engine
+Version: 0.1.0
+Summary: Local-first Jarvis engine scaffold
+Requires-Python: >=3.10
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"

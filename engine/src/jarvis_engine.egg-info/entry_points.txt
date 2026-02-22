@@ -1,0 +1,2 @@
+[console_scripts]
+jarvis-engine = jarvis_engine.main:main

@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Jarvis Voice Command",
+  "type": "object",
+  "required": ["text", "source", "ts_utc"],
+  "properties": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Raw voice-to-text command"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["samsung_s25_voice", "mobile_text", "desktop_text"]
+    },
+    "intent_hint": {
+      "type": "string",
+      "enum": [
+        "ops_sync",
+        "ops_brief",
+        "automation_run",
+        "generate_code",
+        "generate_image",
+        "generate_video",
+        "generate_model3d"
+      ]
+    },
+    "approve_privileged": {
+      "type": "boolean",
+      "default": false
+    },
+    "execute": {
+      "type": "boolean",
+      "default": false
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "normal", "high", "urgent"],
+      "default": "normal"
+    },
+    "ts_utc": {
+      "type": "string",
+      "description": "UTC ISO timestamp"
+    }
+  }
+}

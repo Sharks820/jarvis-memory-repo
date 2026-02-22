@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import sys
+import threading
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
+
+
+@dataclass
+class TestServer:
+    root: Path
+    auth_token: str
+    signing_key: str
+    host: str
+    port: int
+    server: MobileIngestServer
+    thread: threading.Thread
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+
+def signed_headers(
+    raw_body: bytes,
+    auth_token: str,
+    signing_key: str,
+    *,
+    timestamp: float | None = None,
+    nonce: str | None = None,
+) -> dict[str, str]:
+    ts = time.time() if timestamp is None else timestamp
+    nonce_value = uuid.uuid4().hex if nonce is None else nonce
+    signing_material = f"{ts}\n{nonce_value}\n".encode("utf-8") + raw_body
+    sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()
+    return {
+        "Authorization": f"Bearer {auth_token}",
+        "X-Jarvis-Signature": sig,
+        "X-Jarvis-Timestamp": str(ts),
+        "X-Jarvis-Nonce": nonce_value,
+        "Content-Type": "application/json",
+    }
+
+
+def http_request(
+    method: str,
+    url: str,
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, bytes]:
+    req = Request(url=url, method=method, data=body, headers=headers or {})
+    try:
+        with urlopen(req, timeout=8) as resp:
+            return resp.getcode(), resp.read()
+    except HTTPError as exc:
+        return exc.code, exc.read()
+
+
+@pytest.fixture()
+def mobile_server(tmp_path: Path) -> TestServer:
+    root = tmp_path / "repo"
+    root.mkdir(parents=True, exist_ok=True)
+    auth_token = "test-auth-token"
+    signing_key = "test-signing-key"
+    store = MemoryStore(root)
+    pipeline = IngestionPipeline(store)
+    server = MobileIngestServer(
+        ("127.0.0.1", 0),
+        MobileIngestHandler,
+        auth_token=auth_token,
+        signing_key=signing_key,
+        pipeline=pipeline,
+    )
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        yield TestServer(
+            root=root,
+            auth_token=auth_token,
+            signing_key=signing_key,
+            host=host,
+            port=port,
+            server=server,
+            thread=thread,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

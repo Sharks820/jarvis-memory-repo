@@ -1,0 +1,23 @@
+{
+  "date": "2026-02-22",
+  "tasks": [
+    {"title": "Finalize model router patch", "priority": "high"},
+    {"title": "Refactor backup script", "priority": "normal"}
+  ],
+  "calendar_events": [
+    {"title": "Client architecture call", "time": "15:00", "prep_needed": "yes"},
+    {"title": "Workout", "time": "19:00", "prep_needed": "no"}
+  ],
+  "emails": [
+    {"subject": "Production incident update", "read": false, "importance": "high"},
+    {"subject": "Newsletter", "read": false, "importance": "low"}
+  ],
+  "bills": [
+    {"name": "Electric utility", "amount": 167.42, "status": "due"},
+    {"name": "Internet", "amount": 79.99, "status": "paid"}
+  ],
+  "subscriptions": [
+    {"name": "Design SaaS", "monthly_cost": 39.99, "usage_score": 0.2},
+    {"name": "Cloud storage", "monthly_cost": 9.99, "usage_score": 0.9}
+  ]
+}
