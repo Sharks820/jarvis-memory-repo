@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-22)
 ## Current Position
 
 Phase: 1 of 9 (Memory Revolution and Architecture)
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Ready to execute
-Last activity: 2026-02-23 -- Completed 01-01-PLAN.md (Command Bus architecture)
+Last activity: 2026-02-23 -- Completed 01-02-PLAN.md (SQLite Memory Engine)
 
-Progress: [█░░░░░░░░░] 5%
+Progress: [██░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: ~45min
-- Total execution time: 0.75 hours
+- Total plans completed: 2
+- Average duration: ~35min
+- Total execution time: 1.17 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 1/3 | 45min | 45min |
+| 01 | 2/3 | 70min | 35min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (45min)
-- Trend: First plan
+- Last 5 plans: 01-01 (45min), 01-02 (25min)
+- Trend: Accelerating
 
 *Updated after each plan completion*
 
@@ -51,6 +51,10 @@ Recent decisions affecting current work:
 - [01-01]: cmd_serve_mobile kept inline for monkeypatch compatibility with existing tests
 - [01-01]: All command dataclasses are frozen; result dataclasses are mutable
 - [01-01]: Handlers use lazy imports inside handle() to avoid circular dependencies
+- [01-02]: Graceful degradation when sqlite-vec unavailable -- FTS5-only search fallback
+- [01-02]: Contentless FTS5 (content='', contentless_delete=1) for simpler standalone search
+- [01-02]: RRF k=60 with 168-hour recency decay half-life for hybrid search
+- [01-02]: Content-hash dedup is per-chunk, not per-document
 
 ### Pending Todos
 
@@ -64,5 +68,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 01-01-PLAN.md, ready for 01-02-PLAN.md
+Stopped at: Completed 01-02-PLAN.md, ready for 01-03-PLAN.md
 Resume file: None

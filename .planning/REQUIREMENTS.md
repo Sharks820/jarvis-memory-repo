@@ -9,11 +9,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Memory System (MEM)
 
-- [ ] **MEM-01**: All memory records stored in SQLite with FTS5 full-text search index
-- [ ] **MEM-02**: All memory records have embedding vectors stored via sqlite-vec for semantic search
-- [ ] **MEM-03**: Hybrid search (FTS5 keyword + embedding cosine + recency decay) returns relevant results for any natural language query
+- [x] **MEM-01**: All memory records stored in SQLite with FTS5 full-text search index
+- [x] **MEM-02**: All memory records have embedding vectors stored via sqlite-vec for semantic search
+- [x] **MEM-03**: Hybrid search (FTS5 keyword + embedding cosine + recency decay) returns relevant results for any natural language query
 - [ ] **MEM-04**: Memory records are classified into branches (ops, coding, health, finance, security, learning, family, communications, gaming) using semantic classification instead of keyword matching
-- [ ] **MEM-05**: Three-tier memory hierarchy (hot/warm/cold) with automatic promotion and demotion based on access patterns, recency, and confidence
+- [x] **MEM-05**: Three-tier memory hierarchy (hot/warm/cold) with automatic promotion and demotion based on access patterns, recency, and confidence
 - [ ] **MEM-06**: Ingestion pipeline chunks long content, extracts entities, generates embeddings, and classifies branch before storage
 - [ ] **MEM-07**: Content-hash deduplication (SHA-256) prevents duplicate records (preserve existing behavior)
 - [ ] **MEM-08**: Migration script imports all existing JSONL/JSON memory data into SQLite without data loss
@@ -75,7 +75,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ARCH-02**: All interfaces (CLI, mobile API, daemon) produce Command objects dispatched through the same bus
 - [x] **ARCH-03**: Service layer mediates between interfaces and core storage -- interfaces never access storage directly
 - [x] **ARCH-04**: Lazy-loaded embedding model (loads on first use, not at import time)
-- [ ] **ARCH-05**: SQLite WAL mode with write serialization for concurrent access from daemon + API + CLI
+- [x] **ARCH-05**: SQLite WAL mode with write serialization for concurrent access from daemon + API + CLI
 - [x] **ARCH-06**: All 125+ existing tests continue to pass after each migration step
 
 ### Self-Improvement (GROW)
@@ -122,13 +122,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ARCH-02 | Phase 1 | Complete |
 | ARCH-03 | Phase 1 | Complete |
 | ARCH-04 | Phase 1 | Complete |
-| ARCH-05 | Phase 1 | Pending |
+| ARCH-05 | Phase 1 | Complete |
 | ARCH-06 | Phase 1 | Complete |
-| MEM-01 | Phase 1 | Pending |
-| MEM-02 | Phase 1 | Pending |
-| MEM-03 | Phase 1 | Pending |
+| MEM-01 | Phase 1 | Complete |
+| MEM-02 | Phase 1 | Complete |
+| MEM-03 | Phase 1 | Complete |
 | MEM-04 | Phase 1 | Pending |
-| MEM-05 | Phase 1 | Pending |
+| MEM-05 | Phase 1 | Complete |
 | MEM-06 | Phase 1 | Pending |
 | MEM-07 | Phase 1 | Pending |
 | MEM-08 | Phase 1 | Pending |
