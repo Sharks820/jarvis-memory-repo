@@ -241,7 +241,7 @@ class WeatherHandler:
         self._root = root
 
     def handle(self, cmd: WeatherCommand) -> WeatherResult:
-        target = cmd.location.strip() or os.getenv("JARVIS_DEFAULT_LOCATION", "").strip() or "New York, NY"
+        target = (cmd.location.strip() or os.getenv("JARVIS_DEFAULT_LOCATION", "").strip() or "New York, NY")[:200]
         encoded_location = quote(target, safe="")
         url = f"https://wttr.in/{encoded_location}?format=j1"
         try:

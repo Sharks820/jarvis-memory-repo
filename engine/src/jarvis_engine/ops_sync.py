@@ -14,6 +14,8 @@ from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
 from jarvis_engine.connectors import (
     build_connector_prompts,
     evaluate_connector_statuses,
@@ -70,10 +72,7 @@ def build_live_snapshot(root: Path, output_path: Path) -> SyncSummary:
         "connector_statuses": serialize_statuses(connector_statuses),
         "connector_prompts": connector_prompts,
     }
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = output_path.with_suffix(output_path.suffix + ".tmp")
-    tmp.write_text(json.dumps(snapshot, ensure_ascii=True, indent=2), encoding="utf-8")
-    os.replace(tmp, output_path)
+    _atomic_write_json(output_path, snapshot, secure=False)
     connectors_ready = sum(1 for status in connector_statuses if status.ready)
     return SyncSummary(
         snapshot_path=str(output_path),

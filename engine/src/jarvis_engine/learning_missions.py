@@ -23,6 +23,8 @@ MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
 _PAGE_CACHE: dict[tuple[str, int], tuple[float, str]] = {}
 _PAGE_CACHE_LOCK = threading.Lock()
 _PAGE_CACHE_TTL_SECONDS = 900.0
+_PAGE_CACHE_MAX_BYTES = 50_000_000  # 50 MB soft cap
+_page_cache_bytes = 0
 from jarvis_engine.web_research import STOPWORDS
 
 
@@ -96,6 +98,7 @@ def _mission_queries(topic: str, sources: list[str]) -> list[str]:
 
 
 def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
+    global _page_cache_bytes
     key = (url.strip(), max(1, int(max_bytes)))
     now = time.time()
     with _PAGE_CACHE_LOCK:
@@ -104,14 +107,17 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             ts, value = cached
             if now - ts <= _PAGE_CACHE_TTL_SECONDS:
                 return value
+            _page_cache_bytes -= len(value)
             _PAGE_CACHE.pop(key, None)
     value = _fetch_page_text(url, max_bytes=max_bytes)
     with _PAGE_CACHE_LOCK:
         _PAGE_CACHE[key] = (now, value)
-        if len(_PAGE_CACHE) > 1200:
+        _page_cache_bytes += len(value)
+        if len(_PAGE_CACHE) > 1200 or _page_cache_bytes > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:200]
-            for stale_key, _stale_value in stale:
+            for stale_key, (_stale_ts, stale_val) in stale:
+                _page_cache_bytes -= len(stale_val)
                 _PAGE_CACHE.pop(stale_key, None)
     return value
 
@@ -144,13 +150,16 @@ def _keywords(text: str) -> set[str]:
 
 
 def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]:
+    # Precompute keywords for all candidates to avoid redundant O(n) _keywords() calls
+    candidate_keys = [_keywords(c.get("statement", "")) for c in candidates]
+
     verified: list[dict[str, Any]] = []
     for idx, item in enumerate(candidates):
         statement = item.get("statement", "").strip()
         if not statement:
             continue
         base_domain = item.get("domain", "")
-        base_keys = _keywords(statement)
+        base_keys = candidate_keys[idx]
         support_urls = {item.get("url", "")}
         support_domains = {base_domain}
         for jdx, other in enumerate(candidates):
@@ -158,8 +167,7 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
                 continue
             if other.get("domain", "") == base_domain:
                 continue
-            other_stmt = other.get("statement", "")
-            overlap = len(base_keys.intersection(_keywords(other_stmt)))
+            overlap = len(base_keys.intersection(candidate_keys[jdx]))
             if overlap >= 4:
                 support_urls.add(other.get("url", ""))
                 support_domains.add(other.get("domain", ""))
@@ -226,7 +234,7 @@ def run_learning_mission(
         for future in as_completed(future_map):
             url, domain = future_map[future]
             try:
-                text = future.result()
+                text = future.result(timeout=30)
             except Exception as exc:
                 logger.warning("Failed to fetch %s: %s", url, exc)
                 text = ""

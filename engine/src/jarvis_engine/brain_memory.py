@@ -13,6 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import safe_float as _safe_float
+
 logger = logging.getLogger(__name__)
 
 _brain_io_lock = threading.Lock()
@@ -46,11 +49,7 @@ class BrainRecord:
     content_hash: str
 
 
-def _to_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+_to_float = _safe_float
 
 
 def _brain_dir(root: Path) -> Path:
@@ -102,16 +101,21 @@ def _load_records(root: Path, limit: int = 1500) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError as exc:
-            logger.warning("Skipping corrupted record line: %s", exc)
-            continue
-        if isinstance(parsed, dict):
-            rows.append(parsed)
+    try:
+        with path.open(encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    parsed = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    logger.warning("Skipping corrupted record line: %s", exc)
+                    continue
+                if isinstance(parsed, dict):
+                    rows.append(parsed)
+    except OSError as exc:
+        logger.warning("Failed to read records: %s", exc)
+        return []
     return rows[-limit:]
 
 
@@ -131,16 +135,8 @@ def _load_index(root: Path) -> dict[str, Any]:
 
 
 def _save_index(root: Path, payload: dict[str, Any]) -> None:
-    path = _index_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload["updated_utc"] = datetime.now(UTC).isoformat()
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(_index_path(root), payload)
 
 
 def _load_facts(root: Path) -> dict[str, Any]:
@@ -159,16 +155,8 @@ def _load_facts(root: Path) -> dict[str, Any]:
 
 
 def _save_facts(root: Path, payload: dict[str, Any]) -> None:
-    path = _facts_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload["updated_utc"] = datetime.now(UTC).isoformat()
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(_facts_path(root), payload)
 
 
 def _extract_fact_candidates(text: str, branch: str) -> list[dict[str, Any]]:

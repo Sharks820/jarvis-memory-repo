@@ -91,9 +91,10 @@ def migrate_brain_records(
         else:
             logger.warning("Invalid checkpoint offset %r, starting from 0", saved_offset)
 
-    # Read all lines
+    # Count lines and prepare for streaming read
     try:
-        raw_text = jsonl_path.read_text(encoding="utf-8", errors="replace")
+        with jsonl_path.open(encoding="utf-8", errors="replace") as f:
+            lines = [line for line in f if line.strip()]
     except OSError as exc:
         return {
             "status": "error",
@@ -104,7 +105,6 @@ def migrate_brain_records(
             "error_details": [f"Failed to read file: {exc}"],
         }
 
-    lines = [line for line in raw_text.splitlines() if line.strip()]
     source_count = len(lines)
 
     inserted = 0
@@ -335,11 +335,11 @@ def migrate_events(
         return {"status": "ok", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 0}
 
     try:
-        raw_text = events_path.read_text(encoding="utf-8", errors="replace")
+        with events_path.open(encoding="utf-8", errors="replace") as f:
+            lines = [line for line in f if line.strip()]
     except OSError as exc:
         return {"status": "error", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 1, "error_details": [str(exc)]}
 
-    lines = [line for line in raw_text.splitlines() if line.strip()]
     source_count = len(lines)
 
     inserted = 0

@@ -85,8 +85,8 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
 
 
 def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
-    path = _widget_cfg_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
     payload = {
         "base_url": cfg.base_url,
         "token": cfg.token,
@@ -94,13 +94,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         "device_id": cfg.device_id,
         "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    tmp.replace(path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(_widget_cfg_path(root), payload)
 
 
 def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -> dict[str, str]:

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine.brain_memory import brain_regression_report
 from jarvis_engine.growth_tracker import read_history, summarize_history
 
@@ -38,11 +39,7 @@ MILESTONES: list[dict[str, Any]] = [
 ]
 
 
-def _to_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+_to_float = _safe_float
 
 
 def _safe_parse_ts(value: str) -> datetime | None:
@@ -129,15 +126,7 @@ def _load_achievements(root: Path) -> dict[str, Any]:
 
 
 def _save_achievements(root: Path, payload: dict[str, Any]) -> None:
-    path = _achievements_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(_achievements_path(root), payload)
 
 
 def _average_run_interval_days(rows: list[dict[str, Any]], window: int = 10) -> float:
