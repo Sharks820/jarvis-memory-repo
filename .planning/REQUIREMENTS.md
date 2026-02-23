@@ -71,12 +71,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Architecture (ARCH)
 
-- [ ] **ARCH-01**: Monolithic main.py decomposed into Command Bus pattern with thin interfaces, typed commands, and separate handlers
-- [ ] **ARCH-02**: All interfaces (CLI, mobile API, daemon) produce Command objects dispatched through the same bus
-- [ ] **ARCH-03**: Service layer mediates between interfaces and core storage -- interfaces never access storage directly
-- [ ] **ARCH-04**: Lazy-loaded embedding model (loads on first use, not at import time)
+- [x] **ARCH-01**: Monolithic main.py decomposed into Command Bus pattern with thin interfaces, typed commands, and separate handlers
+- [x] **ARCH-02**: All interfaces (CLI, mobile API, daemon) produce Command objects dispatched through the same bus
+- [x] **ARCH-03**: Service layer mediates between interfaces and core storage -- interfaces never access storage directly
+- [x] **ARCH-04**: Lazy-loaded embedding model (loads on first use, not at import time)
 - [ ] **ARCH-05**: SQLite WAL mode with write serialization for concurrent access from daemon + API + CLI
-- [ ] **ARCH-06**: All 125+ existing tests continue to pass after each migration step
+- [x] **ARCH-06**: All 125+ existing tests continue to pass after each migration step
 
 ### Self-Improvement (GROW)
 
@@ -118,12 +118,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01 | Phase 1 | Pending |
-| ARCH-02 | Phase 1 | Pending |
-| ARCH-03 | Phase 1 | Pending |
-| ARCH-04 | Phase 1 | Pending |
+| ARCH-01 | Phase 1 | Complete |
+| ARCH-02 | Phase 1 | Complete |
+| ARCH-03 | Phase 1 | Complete |
+| ARCH-04 | Phase 1 | Complete |
 | ARCH-05 | Phase 1 | Pending |
-| ARCH-06 | Phase 1 | Pending |
+| ARCH-06 | Phase 1 | Complete |
 | MEM-01 | Phase 1 | Pending |
 | MEM-02 | Phase 1 | Pending |
 | MEM-03 | Phase 1 | Pending |

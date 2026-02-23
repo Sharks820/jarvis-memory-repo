@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-22)
 ## Current Position
 
 Phase: 1 of 9 (Memory Revolution and Architecture)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-02-22 -- Roadmap created with 9 phases covering 49 v1 requirements
+Plan: 2 of 3 in current phase
+Status: Ready to execute
+Last activity: 2026-02-23 -- Completed 01-01-PLAN.md (Command Bus architecture)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 5%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: ~45min
+- Total execution time: 0.75 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01 | 1/3 | 45min | 45min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 01-01 (45min)
+- Trend: First plan
 
 *Updated after each plan completion*
 
@@ -46,6 +46,11 @@ Recent decisions affecting current work:
 - [Roadmap]: Using nomic-embed-text-v1.5 for embeddings (768-dim, 8192 token context) per stack research -- NOT all-MiniLM-L6-v2
 - [Roadmap]: Changelog-based sync (Phase 8) instead of CRDTs -- simpler for two-device single-owner setup
 - [Roadmap]: Knowledge graph uses NetworkX with SQLite persistence (not a separate graph DB)
+- [01-01]: Fresh bus per _get_bus() call instead of singleton to respect test monkeypatching of repo_root
+- [01-01]: Complex cmd_* functions use _impl callback pattern for handler delegation (avoids recursion)
+- [01-01]: cmd_serve_mobile kept inline for monkeypatch compatibility with existing tests
+- [01-01]: All command dataclasses are frozen; result dataclasses are mutable
+- [01-01]: Handlers use lazy imports inside handle() to avoid circular dependencies
 
 ### Pending Todos
 
@@ -58,6 +63,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-22
-Stopped at: Roadmap created, ready to plan Phase 1
+Last session: 2026-02-23
+Stopped at: Completed 01-01-PLAN.md, ready for 01-02-PLAN.md
 Resume file: None
