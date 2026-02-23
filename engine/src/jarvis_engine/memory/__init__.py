@@ -7,11 +7,17 @@ from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 from jarvis_engine.memory.search import hybrid_search
 from jarvis_engine.memory.tiers import Tier, TierManager
 
+# Re-export knowledge graph types for convenience
+from jarvis_engine.knowledge import KnowledgeGraph, FactExtractor, FactTriple
+
 __all__ = [
     "BranchClassifier",
     "BRANCH_DESCRIPTIONS",
     "EmbeddingService",
     "EnrichedIngestPipeline",
+    "FactExtractor",
+    "FactTriple",
+    "KnowledgeGraph",
     "MemoryEngine",
     "Tier",
     "TierManager",

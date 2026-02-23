@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.memory_commands import (
@@ -145,13 +148,18 @@ def create_app(root: Path) -> CommandBus:
             from jarvis_engine.memory.embeddings import EmbeddingService
             from jarvis_engine.memory.engine import MemoryEngine
             from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+            from jarvis_engine.knowledge.graph import KnowledgeGraph
 
             embed_service = EmbeddingService()
             engine = MemoryEngine(db_path, embed_service=embed_service)
             classifier = BranchClassifier(embed_service)
-            pipeline = EnrichedIngestPipeline(engine, embed_service, classifier)
-        except Exception:
+            kg = KnowledgeGraph(engine)
+            pipeline = EnrichedIngestPipeline(
+                engine, embed_service, classifier, knowledge_graph=kg
+            )
+        except Exception as exc:
             # Graceful degradation: if SQLite engine fails, fall back to adapter shims
+            logger.warning("Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc)
             engine = None
             embed_service = None
             pipeline = None
