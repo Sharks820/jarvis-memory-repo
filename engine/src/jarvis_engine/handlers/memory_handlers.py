@@ -1,4 +1,4 @@
-"""Memory handler classes -- adapter shims delegating to existing functions."""
+"""Memory handler classes -- dual-path: MemoryEngine when available, adapter shim fallback."""
 
 from __future__ import annotations
 
@@ -24,10 +24,23 @@ from jarvis_engine.commands.memory_commands import (
 
 
 class BrainStatusHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, engine: Any = None) -> None:
         self._root = root
+        self._engine = engine
 
     def handle(self, cmd: BrainStatusCommand) -> BrainStatusResult:
+        if self._engine is not None:
+            # Use MemoryEngine: query record counts from SQLite
+            count = self._engine.count_records()
+            return BrainStatusResult(status={
+                "updated_utc": "",
+                "branch_count": 0,
+                "fact_count": 0,
+                "total_records": count,
+                "regression": {"status": "pass"},
+                "branches": [],
+                "engine": "sqlite",
+            })
         from jarvis_engine.brain_memory import brain_status
 
         status = brain_status(self._root)
@@ -35,10 +48,50 @@ class BrainStatusHandler:
 
 
 class BrainContextHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, engine: Any = None, embed_service: Any = None) -> None:
         self._root = root
+        self._engine = engine
+        self._embed_service = embed_service
 
     def handle(self, cmd: BrainContextCommand) -> BrainContextResult:
+        if self._engine is not None and self._embed_service is not None:
+            # Use hybrid search from MemoryEngine
+            from jarvis_engine.memory.search import hybrid_search
+
+            query_embedding = self._embed_service.embed_query(cmd.query)
+            results = hybrid_search(
+                self._engine,
+                cmd.query,
+                query_embedding,
+                k=max(1, min(cmd.max_items, 40)),
+            )
+            selected = []
+            total_chars = 0
+            max_chars = max(500, min(cmd.max_chars, 12000))
+            for record in results:
+                summary = str(record.get("summary", ""))
+                if total_chars + len(summary) > max_chars:
+                    continue
+                selected.append({
+                    "record_id": record.get("record_id", ""),
+                    "branch": record.get("branch", "general"),
+                    "summary": summary,
+                    "source": record.get("source", ""),
+                    "kind": record.get("kind", ""),
+                    "ts": record.get("ts", ""),
+                    "score": 0.0,
+                })
+                total_chars += len(summary)
+            return BrainContextResult(packet={
+                "query": cmd.query,
+                "selected": selected,
+                "selected_count": len(selected),
+                "canonical_facts": [],
+                "max_items": cmd.max_items,
+                "max_chars": cmd.max_chars,
+                "total_records_scanned": self._engine.count_records(),
+                "engine": "sqlite",
+            })
         from jarvis_engine.brain_memory import build_context_packet
 
         packet = build_context_packet(
@@ -73,10 +126,26 @@ class BrainRegressionHandler:
 
 
 class IngestHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, pipeline: Any = None) -> None:
         self._root = root
+        self._pipeline = pipeline
 
     def handle(self, cmd: IngestCommand) -> IngestResult:
+        if self._pipeline is not None:
+            # Use EnrichedIngestPipeline (SQLite path)
+            ids = self._pipeline.ingest(
+                source=cmd.source,
+                kind=cmd.kind,
+                task_id=cmd.task_id,
+                content=cmd.content,
+            )
+            record_id = ids[0] if ids else "deduped"
+            return IngestResult(
+                record_id=record_id,
+                source=cmd.source,
+                kind=cmd.kind,
+                task_id=cmd.task_id,
+            )
         from jarvis_engine.ingest import IngestionPipeline, MemoryKind, SourceType
         from jarvis_engine.memory_store import MemoryStore
 

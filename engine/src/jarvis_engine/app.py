@@ -26,6 +26,7 @@ from jarvis_engine.commands.system_commands import (
     DesktopWidgetCommand,
     GamingModeCommand,
     LogCommand,
+    MigrateMemoryCommand,
     MobileDesktopSyncCommand,
     OpenWebCommand,
     SelfHealCommand,
@@ -84,6 +85,7 @@ from jarvis_engine.handlers.system_handlers import (
     DesktopWidgetHandler,
     GamingModeHandler,
     LogHandler,
+    MigrateMemoryHandler,
     MobileDesktopSyncHandler,
     OpenWebHandler,
     SelfHealHandler,
@@ -123,15 +125,43 @@ from jarvis_engine.handlers.security_handlers import (
 
 
 def create_app(root: Path) -> CommandBus:
-    """Build and wire the full Command Bus.  This is the DI composition root."""
+    """Build and wire the full Command Bus.  This is the DI composition root.
+
+    If a SQLite memory database exists at .planning/brain/jarvis_memory.db,
+    memory handlers use MemoryEngine for queries and ingestion. Otherwise,
+    they fall back to the adapter shim path (JSONL-based).
+    """
     bus = CommandBus()
 
-    # -- Memory --
-    bus.register(BrainStatusCommand, BrainStatusHandler(root).handle)
-    bus.register(BrainContextCommand, BrainContextHandler(root).handle)
+    # -- Check for SQLite memory engine --
+    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+    engine = None
+    embed_service = None
+    pipeline = None
+
+    if db_path.exists():
+        try:
+            from jarvis_engine.memory.classify import BranchClassifier
+            from jarvis_engine.memory.embeddings import EmbeddingService
+            from jarvis_engine.memory.engine import MemoryEngine
+            from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+
+            embed_service = EmbeddingService()
+            engine = MemoryEngine(db_path, embed_service=embed_service)
+            classifier = BranchClassifier(embed_service)
+            pipeline = EnrichedIngestPipeline(engine, embed_service, classifier)
+        except Exception:
+            # Graceful degradation: if SQLite engine fails, fall back to adapter shims
+            engine = None
+            embed_service = None
+            pipeline = None
+
+    # -- Memory (dual-path: MemoryEngine or adapter shim) --
+    bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine).handle)
+    bus.register(BrainContextCommand, BrainContextHandler(root, engine=engine, embed_service=embed_service).handle)
     bus.register(BrainCompactCommand, BrainCompactHandler(root).handle)
     bus.register(BrainRegressionCommand, BrainRegressionHandler(root).handle)
-    bus.register(IngestCommand, IngestHandler(root).handle)
+    bus.register(IngestCommand, IngestHandler(root, pipeline=pipeline).handle)
     bus.register(MemorySnapshotCommand, MemorySnapshotHandler(root).handle)
     bus.register(MemoryMaintenanceCommand, MemoryMaintenanceHandler(root).handle)
 
@@ -153,6 +183,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(GamingModeCommand, GamingModeHandler(root).handle)
     bus.register(OpenWebCommand, OpenWebHandler(root).handle)
     bus.register(WeatherCommand, WeatherHandler(root).handle)
+    bus.register(MigrateMemoryCommand, MigrateMemoryHandler(root).handle)
 
     # -- Task --
     bus.register(RunTaskCommand, RunTaskHandler(root).handle)

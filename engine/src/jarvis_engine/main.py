@@ -92,6 +92,7 @@ from jarvis_engine.commands.system_commands import (
     DesktopWidgetCommand,
     GamingModeCommand,
     LogCommand,
+    MigrateMemoryCommand,
     MobileDesktopSyncCommand,
     OpenWebCommand,
     SelfHealCommand,
@@ -1119,6 +1120,22 @@ def cmd_weather(location: str) -> int:
     print(f"humidity={result.current.get('humidity', '')}")
     if result.description:
         print(f"conditions={result.description}")
+    return 0
+
+
+def cmd_migrate_memory() -> int:
+    """Migrate JSONL/JSON memory data into SQLite (one-time command)."""
+    result = _get_bus().dispatch(MigrateMemoryCommand())
+    if result.return_code != 0:
+        print("error: memory migration failed")
+        return result.return_code
+    summary = result.summary
+    totals = summary.get("totals", {})
+    print("memory_migration_complete")
+    print(f"total_inserted={totals.get('inserted', 0)}")
+    print(f"total_skipped={totals.get('skipped', 0)}")
+    print(f"total_errors={totals.get('errors', 0)}")
+    print(f"db_path={summary.get('db_path', '')}")
     return 0
 
 
@@ -2182,6 +2199,8 @@ def main() -> int:
     p_persona.add_argument("--mode", default="")
     p_persona.add_argument("--style", default="")
 
+    sub.add_parser("migrate-memory", help="Migrate JSONL/JSON memory data into SQLite (one-time).")
+
     sub.add_parser("desktop-widget", help="Launch desktop-native Jarvis widget window.")
 
     p_run_task = sub.add_parser("run-task", help="Run multimodal Jarvis task.")
@@ -2496,6 +2515,8 @@ def main() -> int:
             mode=args.mode,
             style=args.style,
         )
+    if args.command == "migrate-memory":
+        return cmd_migrate_memory()
     if args.command == "desktop-widget":
         return cmd_desktop_widget()
     if args.command == "run-task":

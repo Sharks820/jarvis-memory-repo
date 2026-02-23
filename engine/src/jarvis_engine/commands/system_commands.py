@@ -143,3 +143,14 @@ class WeatherResult:
     location: str = ""
     current: dict[str, Any] = field(default_factory=dict)
     description: str = ""
+
+
+@dataclass(frozen=True)
+class MigrateMemoryCommand:
+    pass
+
+
+@dataclass
+class MigrateMemoryResult:
+    summary: dict[str, Any] = field(default_factory=dict)
+    return_code: int = 0

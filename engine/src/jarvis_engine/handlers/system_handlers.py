@@ -20,6 +20,8 @@ from jarvis_engine.commands.system_commands import (
     GamingModeResult,
     LogCommand,
     LogResult,
+    MigrateMemoryCommand,
+    MigrateMemoryResult,
     MobileDesktopSyncCommand,
     MobileDesktopSyncResult,
     OpenWebCommand,
@@ -252,3 +254,18 @@ class WeatherHandler:
             desc = str(desc_raw[0].get("value", "")).strip()
 
         return WeatherResult(return_code=0, location=target, current=current, description=desc)
+
+
+class MigrateMemoryHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MigrateMemoryCommand) -> MigrateMemoryResult:
+        from jarvis_engine.memory.embeddings import EmbeddingService
+        from jarvis_engine.memory.migration import run_full_migration
+
+        embed_service = EmbeddingService()
+        db_path = self._root / ".planning" / "brain" / "jarvis_memory.db"
+        summary = run_full_migration(self._root, db_path, embed_service)
+        rc = 0 if summary.get("status") == "ok" else 2
+        return MigrateMemoryResult(summary=summary, return_code=rc)
