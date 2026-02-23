@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+logger = logging.getLogger(__name__)
+
 from jarvis_engine.commands.task_commands import (
+    QueryCommand,
+    QueryResult,
     RouteCommand,
     RouteResult,
     RunTaskCommand,
@@ -52,8 +57,8 @@ class RunTaskHandler:
                     f"prompt={cmd.prompt[:400]}"
                 ),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
         return RunTaskResult(
             allowed=result.allowed,
             provider=result.provider,
@@ -67,10 +72,20 @@ class RunTaskHandler:
 
 
 class RouteHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, classifier: object | None = None) -> None:
         self._root = root
+        self._classifier = classifier
 
     def handle(self, cmd: RouteCommand) -> RouteResult:
+        # New path: query-based routing via IntentClassifier
+        if cmd.query and self._classifier is not None:
+            route_name, model_name, confidence = self._classifier.classify(cmd.query)
+            return RouteResult(
+                provider=model_name,
+                reason=f"Intent: {route_name} (confidence={confidence:.2f})",
+            )
+
+        # Legacy path: risk/complexity routing via ModelRouter
         from jarvis_engine.config import load_config
         from jarvis_engine.router import ModelRouter
 
@@ -133,6 +148,58 @@ class WebResearchHandler:
                             f"Findings:\n" + "\n".join(lines)
                         ),
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Auto-ingest failed for web research: %s", exc)
         return WebResearchResult(return_code=0, report=report, auto_ingest_record_id=auto_id)
+
+
+class QueryHandler:
+    """Handle QueryCommand by dispatching through ModelGateway with optional auto-routing."""
+
+    def __init__(self, gateway: object, classifier: object | None = None) -> None:
+        self._gateway = gateway
+        self._classifier = classifier
+
+    def handle(self, cmd: QueryCommand) -> QueryResult:
+        from jarvis_engine.gateway.models import ModelGateway, GatewayResponse
+
+        gateway: ModelGateway = self._gateway  # type: ignore[assignment]
+
+        # Determine model
+        route_reason = ""
+        if cmd.model is not None:
+            model = cmd.model
+            route_reason = f"Explicit model: {model}"
+        elif self._classifier is not None:
+            route_name, model, confidence = self._classifier.classify(cmd.query)
+            route_reason = f"Intent: {route_name} (confidence={confidence:.2f})"
+        else:
+            model = "claude-sonnet-4-5-20250929"
+            route_reason = "Default: no classifier available"
+
+        # Build messages
+        messages: list[dict[str, str]] = []
+        if cmd.system_prompt:
+            messages.append({"role": "system", "content": cmd.system_prompt})
+        messages.append({"role": "user", "content": cmd.query})
+
+        # Call gateway
+        resp: GatewayResponse = gateway.complete(
+            messages=messages,
+            model=model,
+            max_tokens=cmd.max_tokens,
+            route_reason=route_reason,
+        )
+
+        return QueryResult(
+            text=resp.text,
+            model=resp.model,
+            provider=resp.provider,
+            route_reason=route_reason,
+            input_tokens=resp.input_tokens,
+            output_tokens=resp.output_tokens,
+            cost_usd=resp.cost_usd,
+            fallback_used=resp.fallback_used,
+            fallback_reason=resp.fallback_reason,
+            return_code=0,
+        )

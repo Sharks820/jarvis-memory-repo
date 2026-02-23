@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ from jarvis_engine.commands.system_commands import (
     WeatherCommand,
 )
 from jarvis_engine.commands.task_commands import (
+    QueryCommand,
     RouteCommand,
     RunTaskCommand,
     WebResearchCommand,
@@ -104,6 +106,7 @@ from jarvis_engine.handlers.system_handlers import (
     WeatherHandler,
 )
 from jarvis_engine.handlers.task_handlers import (
+    QueryHandler,
     RouteHandler,
     RunTaskHandler,
     WebResearchHandler,
@@ -179,6 +182,30 @@ def create_app(root: Path) -> CommandBus:
             embed_service = None
             pipeline = None
 
+    # -- Intelligence Gateway --
+    gateway = None
+    intent_classifier = None
+    cost_tracker = None
+
+    try:
+        from jarvis_engine.gateway.costs import CostTracker
+        from jarvis_engine.gateway.models import ModelGateway
+        from jarvis_engine.gateway.classifier import IntentClassifier
+
+        if db_path.exists():
+            cost_tracker = CostTracker(db_path)
+        gateway = ModelGateway(
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            cost_tracker=cost_tracker,
+        )
+        if embed_service is not None:
+            intent_classifier = IntentClassifier(embed_service)
+    except Exception as exc:
+        logger.warning("Failed to initialize Intelligence Gateway, continuing without: %s", exc)
+        gateway = None
+        intent_classifier = None
+        cost_tracker = None
+
     # -- Memory (dual-path: MemoryEngine or adapter shim) --
     bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine).handle)
     bus.register(BrainContextCommand, BrainContextHandler(root, engine=engine, embed_service=embed_service).handle)
@@ -210,7 +237,16 @@ def create_app(root: Path) -> CommandBus:
 
     # -- Task --
     bus.register(RunTaskCommand, RunTaskHandler(root).handle)
-    bus.register(RouteCommand, RouteHandler(root).handle)
+    bus.register(RouteCommand, RouteHandler(root, classifier=intent_classifier).handle)
+    if gateway is not None:
+        bus.register(QueryCommand, QueryHandler(gateway, classifier=intent_classifier).handle)
+    else:
+        from jarvis_engine.commands.task_commands import QueryResult
+
+        def _gateway_unavailable_handler(cmd: QueryCommand) -> QueryResult:
+            return QueryResult(text="Gateway not initialized", return_code=2)
+
+        bus.register(QueryCommand, _gateway_unavailable_handler)
     bus.register(WebResearchCommand, WebResearchHandler(root).handle)
 
     # -- Ops --

@@ -34,12 +34,35 @@ class RunTaskResult:
 class RouteCommand:
     risk: str = "low"
     complexity: str = "normal"
+    query: str = ""
 
 
 @dataclass
 class RouteResult:
     provider: str = ""
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class QueryCommand:
+    query: str
+    model: str | None = None
+    max_tokens: int = 1024
+    system_prompt: str = ""
+
+
+@dataclass
+class QueryResult:
+    text: str = ""
+    model: str = ""
+    provider: str = ""
+    route_reason: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    fallback_used: bool = False
+    fallback_reason: str = ""
+    return_code: int = 0
 
 
 @dataclass(frozen=True)
