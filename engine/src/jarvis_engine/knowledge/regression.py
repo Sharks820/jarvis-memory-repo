@@ -12,8 +12,6 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
 
@@ -45,6 +43,8 @@ class RegressionChecker:
             graph_hash = _EMPTY_GRAPH_HASH
         else:
             try:
+                import networkx as nx
+
                 graph_hash = nx.weisfeiler_lehman_graph_hash(
                     G,
                     node_attr="label",

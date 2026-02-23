@@ -159,19 +159,11 @@ class TestWidgetSecurity:
 
     def test_signed_headers_include_all_required(self) -> None:
         """Security: Signed headers should include all security fields."""
-        cfg = desktop_widget.WidgetConfig(
-            base_url="http://localhost:8787",
-            token="my-token",
-            signing_key="my-signing-key",
-            device_id="my-device",
-            master_password="my-password",
-        )
-        
         body = b'{"test": "data"}'
         headers = desktop_widget._signed_headers(
-            cfg.token, cfg.signing_key, body, cfg.device_id, cfg.master_password
+            "my-token", "my-signing-key", body, "my-device"
         )
-        
+
         # All required headers present
         assert "Authorization" in headers
         assert headers["Authorization"].startswith("Bearer ")
@@ -179,13 +171,14 @@ class TestWidgetSecurity:
         assert "X-Jarvis-Nonce" in headers
         assert "X-Jarvis-Signature" in headers
         assert "X-Jarvis-Device-Id" in headers
-        assert "X-Jarvis-Master-Password" in headers
-        
+
+        # master_password must NOT be sent in headers (security fix)
+        assert "X-Jarvis-Master-Password" not in headers
+
         # Values are correct
         assert headers["Authorization"] == "Bearer my-token"
         assert headers["X-Jarvis-Device-Id"] == "my-device"
-        assert headers["X-Jarvis-Master-Password"] == "my-password"
-        
+
         # Signature is valid hex
         import re
         assert re.match(r'^[a-f0-9]{64}$', headers["X-Jarvis-Signature"])
