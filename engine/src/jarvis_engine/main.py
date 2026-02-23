@@ -1,12 +1,28 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
 import json
 import os
+import re
+import subprocess
+import time
 import webbrowser
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
+from urllib.parse import quote
+from urllib.request import urlopen
 
 from jarvis_engine.automation import AutomationExecutor, load_actions
+from jarvis_engine.brain_memory import (
+    brain_compact,
+    brain_regression_report,
+    brain_status,
+    build_context_packet,
+    ingest_brain_record,
+)
 from jarvis_engine.config import load_config, repo_root
 from jarvis_engine.connectors import (
     build_connector_prompts,
@@ -21,50 +37,389 @@ from jarvis_engine.growth_tracker import (
     run_eval,
     summarize_history,
 )
-from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+from jarvis_engine.ingest import IngestionPipeline, MemoryKind, SourceType
+from jarvis_engine.learning_missions import create_learning_mission, load_missions, run_learning_mission
 from jarvis_engine.life_ops import build_daily_brief, export_actions_json, load_snapshot, suggest_actions
 from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.memory_snapshots import create_signed_snapshot, run_memory_maintenance, verify_signed_snapshot
 from jarvis_engine.mobile_api import run_mobile_server
 from jarvis_engine.ops_sync import build_live_snapshot
+from jarvis_engine.owner_guard import (
+    clear_master_password,
+    read_owner_guard,
+    revoke_mobile_device,
+    set_master_password,
+    trust_mobile_device,
+    verify_master_password,
+    write_owner_guard,
+)
+from jarvis_engine.phone_guard import (
+    append_phone_actions,
+    build_phone_action,
+    build_spam_block_actions,
+    detect_spam_candidates,
+    load_call_log,
+    write_spam_report,
+)
+from jarvis_engine.persona import compose_persona_reply, load_persona_config, save_persona_config
+from jarvis_engine.resilience import run_mobile_desktop_sync, run_self_heal
 from jarvis_engine.router import ModelRouter
+from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
 from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest
-from jarvis_engine.voice import list_windows_voices, speak_text
-from jarvis_engine.voice_auth import enroll_voiceprint, verify_voiceprint
+from jarvis_engine.voice import list_edge_voices, list_windows_voices, speak_text
+from jarvis_engine.web_research import run_web_research
+
+from jarvis_engine.command_bus import CommandBus
+from jarvis_engine.commands.memory_commands import (
+    BrainCompactCommand,
+    BrainContextCommand,
+    BrainRegressionCommand,
+    BrainStatusCommand,
+    IngestCommand,
+    MemoryMaintenanceCommand,
+    MemorySnapshotCommand,
+)
+from jarvis_engine.commands.voice_commands import (
+    VoiceEnrollCommand,
+    VoiceListCommand,
+    VoiceRunCommand,
+    VoiceSayCommand,
+    VoiceVerifyCommand,
+)
+from jarvis_engine.commands.system_commands import (
+    DaemonRunCommand,
+    DesktopWidgetCommand,
+    GamingModeCommand,
+    LogCommand,
+    MobileDesktopSyncCommand,
+    OpenWebCommand,
+    SelfHealCommand,
+    ServeMobileCommand,
+    StatusCommand,
+    WeatherCommand,
+)
+from jarvis_engine.commands.task_commands import (
+    RouteCommand,
+    RunTaskCommand,
+    WebResearchCommand,
+)
+from jarvis_engine.commands.ops_commands import (
+    AutomationRunCommand,
+    GrowthAuditCommand,
+    GrowthEvalCommand,
+    GrowthReportCommand,
+    IntelligenceDashboardCommand,
+    MissionCreateCommand,
+    MissionRunCommand,
+    MissionStatusCommand,
+    OpsAutopilotCommand,
+    OpsBriefCommand,
+    OpsExportActionsCommand,
+    OpsSyncCommand,
+)
+from jarvis_engine.commands.security_commands import (
+    ConnectBootstrapCommand,
+    ConnectGrantCommand,
+    ConnectStatusCommand,
+    OwnerGuardCommand,
+    PersonaConfigCommand,
+    PhoneActionCommand,
+    PhoneSpamGuardCommand,
+    RuntimeControlCommand,
+)
+
+PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
+URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
+
+# ---------------------------------------------------------------------------
+# Command Bus factory -- respects monkeypatched repo_root() in tests
+# ---------------------------------------------------------------------------
+
+def _get_bus() -> CommandBus:
+    """Create a Command Bus wired to the current repo_root().
+
+    A fresh bus is created on each call so that test monkeypatching of
+    ``repo_root`` is always respected.  Handler instantiation is cheap
+    (no I/O, no model loading) so this has negligible overhead.
+    """
+    from jarvis_engine.app import create_app
+
+    return create_app(repo_root())
+
+
+def _auto_ingest_dedupe_path() -> Path:
+    return repo_root() / ".planning" / "runtime" / "auto_ingest_dedupe.json"
+
+
+def _sanitize_memory_content(content: str) -> str:
+    cleaned = re.sub(r"(?i)(master\s*password\s*[:=]\s*)(\S+)", r"\1[redacted]", content)
+    cleaned = re.sub(r"(?i)(token\s*[:=]\s*)(\S+)", r"\1[redacted]", cleaned)
+    return cleaned.strip()[:2000]
+
+
+def _load_auto_ingest_hashes(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw, dict):
+        return []
+    values = raw.get("hashes", [])
+    if not isinstance(values, list):
+        return []
+    return [str(item).strip() for item in values if str(item).strip()]
+
+
+def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
+    payload = {"hashes": hashes[-400:], "updated_utc": datetime.now(UTC).isoformat()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> str:
+    if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
+        return ""
+    safe_content = _sanitize_memory_content(content)
+    if not safe_content:
+        return ""
+    dedupe_path = _auto_ingest_dedupe_path()
+    dedupe_material = f"{source}|{kind}|{task_id[:64]}|{safe_content.lower()}".encode("utf-8")
+    dedupe_hash = hashlib.sha256(dedupe_material).hexdigest()
+    seen = _load_auto_ingest_hashes(dedupe_path)
+    if dedupe_hash in seen:
+        return ""
+
+    store = MemoryStore(repo_root())
+    pipeline = IngestionPipeline(store)
+    rec = pipeline.ingest(
+        source=cast(SourceType, source),
+        kind=cast(MemoryKind, kind),
+        task_id=task_id[:128],
+        content=safe_content,
+    )
+    try:
+        ingest_brain_record(
+            repo_root(),
+            source=source,
+            kind=kind,
+            task_id=task_id[:128],
+            content=safe_content,
+            tags=[source, kind],
+            confidence=0.74 if source == "task_outcome" else 0.68,
+        )
+    except ValueError:
+        pass
+    seen.append(dedupe_hash)
+    _store_auto_ingest_hashes(dedupe_path, seen)
+    return rec.record_id
+
+
+def _windows_idle_seconds() -> float | None:
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+        last_input = LASTINPUTINFO()
+        last_input.cbSize = ctypes.sizeof(LASTINPUTINFO)
+        if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(last_input)) == 0:  # type: ignore[attr-defined]
+            return None
+        tick_now = ctypes.windll.kernel32.GetTickCount() & 0xFFFFFFFF  # type: ignore[attr-defined]
+        idle_ms = (tick_now - last_input.dwTime) & 0xFFFFFFFF
+        return max(0.0, idle_ms / 1000.0)
+    except Exception:
+        return None
+
+
+def _load_voice_auth_impl():
+    try:
+        from jarvis_engine.voice_auth import enroll_voiceprint, verify_voiceprint
+    except ModuleNotFoundError as exc:
+        return None, None, str(exc)
+    return enroll_voiceprint, verify_voiceprint, ""
+
+
+def _gaming_mode_state_path() -> Path:
+    return repo_root() / ".planning" / "runtime" / "gaming_mode.json"
+
+
+def _gaming_processes_path() -> Path:
+    return repo_root() / ".planning" / "gaming_processes.json"
+
+
+DEFAULT_GAMING_PROCESSES = (
+    "FortniteClient-Win64-Shipping.exe",
+    "VALORANT-Win64-Shipping.exe",
+    "r5apex.exe",
+    "cs2.exe",
+    "Overwatch.exe",
+    "RocketLeague.exe",
+    "GTA5.exe",
+    "eldenring.exe",
+)
+
+
+def _read_gaming_mode_state() -> dict[str, object]:
+    path = _gaming_mode_state_path()
+    default: dict[str, object] = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
+    if not path.exists():
+        return default
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default
+    if not isinstance(raw, dict):
+        return default
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "auto_detect": bool(raw.get("auto_detect", False)),
+        "updated_utc": str(raw.get("updated_utc", "")),
+        "reason": str(raw.get("reason", "")),
+    }
+
+
+def _write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
+    path = _gaming_mode_state_path()
+    payload = {
+        "enabled": bool(state.get("enabled", False)),
+        "auto_detect": bool(state.get("auto_detect", False)),
+        "updated_utc": str(state.get("updated_utc", "")) or datetime.now(UTC).isoformat(),
+        "reason": str(state.get("reason", "")).strip()[:200],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    os.replace(tmp_path, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return payload
+
+
+def _load_gaming_processes() -> list[str]:
+    env_override = os.getenv("JARVIS_GAMING_PROCESSES", "").strip()
+    if env_override:
+        return [item.strip() for item in env_override.split(",") if item.strip()]
+
+    path = _gaming_processes_path()
+    if not path.exists():
+        return list(DEFAULT_GAMING_PROCESSES)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return list(DEFAULT_GAMING_PROCESSES)
+
+    if isinstance(raw, dict):
+        values = raw.get("processes", [])
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        values = []
+
+    if not isinstance(values, list):
+        return list(DEFAULT_GAMING_PROCESSES)
+    processes = [str(item).strip() for item in values if str(item).strip()]
+    return processes or list(DEFAULT_GAMING_PROCESSES)
+
+
+def _detect_active_game_process() -> tuple[bool, str]:
+    if os.name != "nt":
+        return False, ""
+    patterns = [name.lower() for name in _load_gaming_processes()]
+    if not patterns:
+        return False, ""
+    try:
+        result = subprocess.run(
+            ["tasklist", "/fo", "csv", "/nh"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            timeout=6,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False, ""
+    if result.returncode != 0:
+        return False, ""
+
+    running: list[str] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith("info:"):
+            continue
+        try:
+            row = next(csv.reader([line]))
+        except (csv.Error, StopIteration):
+            continue
+        if not row:
+            continue
+        running.append(row[0].strip().lower())
+
+    for proc_name in running:
+        for pattern in patterns:
+            if proc_name == pattern or pattern in proc_name:
+                return True, proc_name
+    return False, ""
+
+
+def cmd_gaming_mode(enable: bool | None, reason: str, auto_detect: str) -> int:
+    result = _get_bus().dispatch(GamingModeCommand(enable=enable, reason=reason, auto_detect=auto_detect))
+    state = result.state
+    print("gaming_mode")
+    print(f"enabled={bool(state.get('enabled', False))}")
+    print(f"auto_detect={bool(state.get('auto_detect', False))}")
+    print(f"auto_detect_active={result.detected}")
+    if result.detected_process:
+        print(f"detected_process={result.detected_process}")
+    print(f"effective_enabled={result.effective_enabled}")
+    print(f"updated_utc={state.get('updated_utc', '')}")
+    if state.get("reason", ""):
+        print(f"reason={state.get('reason', '')}")
+    print("effect=daemon_autopilot_paused_when_enabled")
+    print(f"process_config={_gaming_processes_path()}")
+    return 0
 
 
 def cmd_status() -> int:
-    config = load_config()
-    store = MemoryStore(repo_root())
-    events = list(store.tail(5))
-
+    result = _get_bus().dispatch(StatusCommand())
     print("Jarvis Engine Status")
-    print(f"profile={config.profile}")
-    print(f"primary_runtime={config.primary_runtime}")
-    print(f"secondary_runtime={config.secondary_runtime}")
-    print(f"security_strictness={config.security_strictness}")
-    print(f"operation_mode={config.operation_mode}")
-    print(f"cloud_burst_enabled={config.cloud_burst_enabled}")
+    print(f"profile={result.profile}")
+    print(f"primary_runtime={result.primary_runtime}")
+    print(f"secondary_runtime={result.secondary_runtime}")
+    print(f"security_strictness={result.security_strictness}")
+    print(f"operation_mode={result.operation_mode}")
+    print(f"cloud_burst_enabled={result.cloud_burst_enabled}")
     print("recent_events:")
-    if not events:
+    if not result.events:
         print("- none")
     else:
-        for event in events:
+        for event in result.events:
             print(f"- [{event.ts}] {event.event_type}: {event.message}")
     return 0
 
 
 def cmd_log(event_type: str, message: str) -> int:
-    store = MemoryStore(repo_root())
-    event = store.append(event_type=event_type, message=message)
-    print(f"logged: [{event.ts}] {event.event_type}: {event.message}")
+    result = _get_bus().dispatch(LogCommand(event_type=event_type, message=message))
+    print(f"logged: [{result.ts}] {result.event_type}: {result.message}")
     return 0
 
 
 def cmd_ingest(source: str, kind: str, task_id: str, content: str) -> int:
-    store = MemoryStore(repo_root())
-    pipeline = IngestionPipeline(store)
-    record = pipeline.ingest(source=source, kind=kind, task_id=task_id, content=content)
-    print(f"ingested: id={record.record_id} source={record.source} kind={record.kind} task_id={record.task_id}")
+    result = _get_bus().dispatch(IngestCommand(source=source, kind=kind, task_id=task_id, content=content))
+    print(f"ingested: id={result.record_id} source={result.source} kind={result.kind} task_id={result.task_id}")
     return 0
 
 
@@ -78,6 +433,8 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
         print("error: missing signing key. pass --signing-key or set JARVIS_MOBILE_SIGNING_KEY")
         return 2
 
+    # NOTE: run_mobile_server is called directly here (not via bus) so that
+    # tests can monkeypatch main_mod.run_mobile_server.
     try:
         run_mobile_server(
             host=host,
@@ -88,6 +445,9 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
         )
     except KeyboardInterrupt:
         print("\nmobile_api_stopped=true")
+    except RuntimeError as exc:
+        print(f"error: {exc}")
+        return 3
     except OSError as exc:
         print(f"error: could not bind mobile API on {host}:{port}: {exc}")
         return 3
@@ -95,11 +455,9 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
 
 
 def cmd_route(risk: str, complexity: str) -> int:
-    config = load_config()
-    router = ModelRouter(cloud_burst_enabled=config.cloud_burst_enabled)
-    decision = router.route(risk=risk, complexity=complexity)
-    print(f"provider={decision.provider}")
-    print(f"reason={decision.reason}")
+    result = _get_bus().dispatch(RouteCommand(risk=risk, complexity=complexity))
+    print(f"provider={result.provider}")
+    print(f"reason={result.reason}")
     return 0
 
 
@@ -114,37 +472,32 @@ def cmd_growth_eval(
     accept_thinking: bool,
     timeout_s: int,
 ) -> int:
-    tasks = load_golden_tasks(tasks_path)
-    run = run_eval(
-        endpoint=endpoint,
-        model=model,
-        tasks=tasks,
-        num_predict=num_predict,
-        temperature=temperature,
-        think=think,
-        accept_thinking=accept_thinking,
-        timeout_s=timeout_s,
-    )
-    append_history(history_path, run)
+    result = _get_bus().dispatch(GrowthEvalCommand(
+        model=model, endpoint=endpoint, tasks_path=tasks_path,
+        history_path=history_path, num_predict=num_predict,
+        temperature=temperature, think=think,
+        accept_thinking=accept_thinking, timeout_s=timeout_s,
+    ))
+    run = result.run
     print("growth_eval_completed=true")
     print(f"model={run.model}")
     print(f"score_pct={run.score_pct}")
     print(f"avg_tps={run.avg_tps}")
     print(f"avg_latency_s={run.avg_latency_s}")
-    for result in run.results:
+    for task_result in run.results:
         print(
             "task="
-            f"{result.task_id} "
-            f"coverage_pct={round(result.coverage * 100, 2)} "
-            f"matched={result.matched}/{result.total} "
-            f"response_sha256={result.response_sha256}"
+            f"{task_result.task_id} "
+            f"coverage_pct={round(task_result.coverage * 100, 2)} "
+            f"matched={task_result.matched}/{task_result.total} "
+            f"response_sha256={task_result.response_sha256}"
         )
     return 0
 
 
 def cmd_growth_report(history_path: Path, last: int) -> int:
-    rows = read_history(history_path)
-    summary = summarize_history(rows, last=last)
+    result = _get_bus().dispatch(GrowthReportCommand(history_path=history_path, last=last))
+    summary = result.summary
     print("growth_report")
     print(f"runs={summary['runs']}")
     print(f"latest_model={summary['latest_model']}")
@@ -156,8 +509,8 @@ def cmd_growth_report(history_path: Path, last: int) -> int:
 
 
 def cmd_growth_audit(history_path: Path, run_index: int) -> int:
-    rows = read_history(history_path)
-    run = audit_run(rows, run_index=run_index)
+    result = _get_bus().dispatch(GrowthAuditCommand(history_path=history_path, run_index=run_index))
+    run = result.run
     print("growth_audit")
     print(f"model={run['model']}")
     print(f"ts={run['ts']}")
@@ -165,17 +518,225 @@ def cmd_growth_audit(history_path: Path, run_index: int) -> int:
     print(f"tasks={run['tasks']}")
     print(f"prev_run_sha256={run['prev_run_sha256']}")
     print(f"run_sha256={run['run_sha256']}")
-    for result in run["results"]:
-        matched_tokens = ",".join(result.get("matched_tokens", []))
-        required_tokens = ",".join(result.get("required_tokens", []))
-        print(f"task={result.get('task_id', '')}")
+    for audit_result in run["results"]:
+        matched_tokens = ",".join(audit_result.get("matched_tokens", []))
+        required_tokens = ",".join(audit_result.get("required_tokens", []))
+        print(f"task={audit_result.get('task_id', '')}")
         print(f"required_tokens={required_tokens}")
         print(f"matched_tokens={matched_tokens}")
-        print(f"prompt_sha256={result.get('prompt_sha256', '')}")
-        print(f"response_sha256={result.get('response_sha256', '')}")
-        print(f"response_source={result.get('response_source', '')}")
-        print(f"response={result.get('response', '')}")
+        print(f"prompt_sha256={audit_result.get('prompt_sha256', '')}")
+        print(f"response_sha256={audit_result.get('response_sha256', '')}")
+        print(f"response_source={audit_result.get('response_source', '')}")
+        print(f"response={audit_result.get('response', '')}")
     return 0
+
+
+def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) -> int:
+    result = _get_bus().dispatch(IntelligenceDashboardCommand(last_runs=last_runs, output_path=output_path, as_json=as_json))
+    dashboard = result.dashboard
+    if as_json:
+        text = json.dumps(dashboard, ensure_ascii=True, indent=2)
+        print(text)
+        if output_path.strip():
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text, encoding="utf-8")
+            print(f"dashboard_saved={out}")
+        return 0
+
+    jarvis = dashboard.get("jarvis", {})
+    methodology = dashboard.get("methodology", {})
+    etas = dashboard.get("etas", [])
+    achievements = dashboard.get("achievements", {})
+    ranking = dashboard.get("ranking", [])
+
+    print("intelligence_dashboard")
+    print(f"generated_utc={dashboard.get('generated_utc', '')}")
+    print(f"jarvis_score_pct={jarvis.get('score_pct', 0.0)}")
+    print(f"jarvis_delta_vs_prev_pct={jarvis.get('delta_vs_prev_pct', 0.0)}")
+    print(f"jarvis_window_avg_pct={jarvis.get('window_avg_pct', 0.0)}")
+    print(f"latest_model={jarvis.get('latest_model', '')}")
+    print(f"history_runs={methodology.get('history_runs', 0)}")
+    print(f"slope_score_pct_per_run={methodology.get('slope_score_pct_per_run', 0.0)}")
+    print(f"avg_days_per_run={methodology.get('avg_days_per_run', 0.0)}")
+    for idx, item in enumerate(ranking, start=1):
+        print(f"rank_{idx}={item.get('name','')}:{item.get('score_pct', 0.0)}")
+    for row in etas:
+        eta = row.get("eta", {})
+        print(
+            "eta "
+            f"target={row.get('target_name','')} "
+            f"target_score_pct={row.get('target_score_pct', 0.0)} "
+            f"status={eta.get('status','')} "
+            f"runs={eta.get('runs', '')} "
+            f"days={eta.get('days', '')}"
+        )
+    new_unlocks = achievements.get("new", [])
+    if isinstance(new_unlocks, list):
+        for item in new_unlocks:
+            if not isinstance(item, dict):
+                continue
+            print(f"achievement_unlocked={item.get('label', '')}")
+
+    if output_path.strip():
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(dashboard, ensure_ascii=True, indent=2), encoding="utf-8")
+        print(f"dashboard_saved={out}")
+    return 0
+
+
+def cmd_brain_status(as_json: bool) -> int:
+    result = _get_bus().dispatch(BrainStatusCommand(as_json=as_json))
+    status = result.status
+    if as_json:
+        print(json.dumps(status, ensure_ascii=True, indent=2))
+        return 0
+    print("brain_status")
+    print(f"updated_utc={status.get('updated_utc', '')}")
+    print(f"branch_count={status.get('branch_count', 0)}")
+    branches = status.get("branches", [])
+    if isinstance(branches, list):
+        for row in branches[:12]:
+            if not isinstance(row, dict):
+                continue
+            print(
+                f"branch={row.get('branch','')} count={row.get('count', 0)} "
+                f"last_ts={row.get('last_ts','')} summary={row.get('last_summary','')}"
+            )
+    return 0
+
+
+def cmd_brain_context(query: str, max_items: int, max_chars: int, as_json: bool) -> int:
+    if not query.strip():
+        print("error: query is required")
+        return 2
+    result = _get_bus().dispatch(BrainContextCommand(query=query, max_items=max_items, max_chars=max_chars, as_json=as_json))
+    packet = result.packet
+    if as_json:
+        print(json.dumps(packet, ensure_ascii=True, indent=2))
+        return 0
+    print("brain_context")
+    print(f"query={packet.get('query', '')}")
+    print(f"selected_count={packet.get('selected_count', 0)}")
+    selected = packet.get("selected", [])
+    if isinstance(selected, list):
+        for idx, row in enumerate(selected, start=1):
+            if not isinstance(row, dict):
+                continue
+            print(
+                f"context_{idx}=branch:{row.get('branch','')} "
+                f"source:{row.get('source','')} "
+                f"kind:{row.get('kind','')} "
+                f"summary:{row.get('summary','')}"
+            )
+    facts = packet.get("canonical_facts", [])
+    if isinstance(facts, list):
+        for idx, item in enumerate(facts, start=1):
+            if not isinstance(item, dict):
+                continue
+            print(
+                f"fact_{idx}=key:{item.get('key','')} "
+                f"value:{item.get('value','')} "
+                f"confidence:{item.get('confidence', 0.0)}"
+            )
+    return 0
+
+
+def cmd_brain_compact(keep_recent: int, as_json: bool) -> int:
+    bus_result = _get_bus().dispatch(BrainCompactCommand(keep_recent=keep_recent, as_json=as_json))
+    result = bus_result.result
+    if as_json:
+        print(json.dumps(result, ensure_ascii=True, indent=2))
+        return 0
+    print("brain_compact")
+    for key, value in result.items():
+        print(f"{key}={value}")
+    return 0
+
+
+def cmd_brain_regression(as_json: bool) -> int:
+    result = _get_bus().dispatch(BrainRegressionCommand(as_json=as_json))
+    report = result.report
+    if as_json:
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+        return 0
+    print("brain_regression_report")
+    for key, value in report.items():
+        print(f"{key}={value}")
+    return 0
+
+
+def cmd_memory_snapshot(create: bool, verify_path: str | None, note: str) -> int:
+    result = _get_bus().dispatch(MemorySnapshotCommand(create=create, verify_path=verify_path, note=note))
+    if result.created:
+        print("memory_snapshot_created=true")
+        print(f"snapshot_path={result.snapshot_path}")
+        print(f"metadata_path={result.metadata_path}")
+        print(f"signature_path={result.signature_path}")
+        print(f"sha256={result.sha256}")
+        print(f"file_count={result.file_count}")
+        return 0
+    if result.verified:
+        print("memory_snapshot_verification")
+        print(f"ok={result.ok}")
+        print(f"reason={result.reason}")
+        print(f"expected_sha256={result.expected_sha256}")
+        print(f"actual_sha256={result.actual_sha256}")
+        return 0 if result.ok else 2
+    print("error: choose --create or --verify-path")
+    return 2
+
+
+def cmd_memory_maintenance(keep_recent: int, snapshot_note: str) -> int:
+    result = _get_bus().dispatch(MemoryMaintenanceCommand(keep_recent=keep_recent, snapshot_note=snapshot_note))
+    report = result.report
+    print("memory_maintenance")
+    print(f"status={report.get('status', 'unknown')}")
+    print(f"report_path={report.get('report_path', '')}")
+    compact = report.get("compact", {})
+    if isinstance(compact, dict):
+        print(f"compacted={compact.get('compacted', False)}")
+        print(f"total_records={compact.get('total_records', 0)}")
+        print(f"kept_records={compact.get('kept_records', 0)}")
+    regression = report.get("regression", {})
+    if isinstance(regression, dict):
+        print(f"regression_status={regression.get('status', '')}")
+        print(f"duplicate_ratio={regression.get('duplicate_ratio', 0.0)}")
+        print(f"unresolved_conflicts={regression.get('unresolved_conflicts', 0)}")
+    snapshot = report.get("snapshot", {})
+    if isinstance(snapshot, dict):
+        print(f"snapshot_path={snapshot.get('path', '')}")
+    return 0
+
+
+def cmd_persona_config(
+    *,
+    enable: bool,
+    disable: bool,
+    humor_level: int | None,
+    mode: str,
+    style: str,
+) -> int:
+    result = _get_bus().dispatch(PersonaConfigCommand(
+        enable=enable, disable=disable, humor_level=humor_level, mode=mode, style=style,
+    ))
+    cfg = result.config
+
+    print("persona_config")
+    print(f"enabled={cfg.enabled}")
+    print(f"mode={cfg.mode}")
+    print(f"style={cfg.style}")
+    print(f"humor_level={cfg.humor_level}")
+    print(f"updated_utc={cfg.updated_utc}")
+    return 0
+
+
+def cmd_desktop_widget() -> int:
+    result = _get_bus().dispatch(DesktopWidgetCommand())
+    if result.return_code != 0:
+        print("error: desktop widget unavailable")
+    return result.return_code
 
 
 def cmd_run_task(
@@ -188,21 +749,12 @@ def cmd_run_task(
     quality_profile: str,
     output_path: str | None,
 ) -> int:
-    root = repo_root()
-    store = MemoryStore(root)
-    orchestrator = TaskOrchestrator(store, root)
-    result = orchestrator.run(
-        TaskRequest(
-            task_type=task_type,  # type: ignore[arg-type]
-            prompt=prompt,
-            execute=execute,
-            has_explicit_approval=approve_privileged,
-            model=model,
-            endpoint=endpoint,
-            quality_profile=quality_profile,
-            output_path=output_path,
-        )
-    )
+    result = _get_bus().dispatch(RunTaskCommand(
+        task_type=task_type, prompt=prompt, execute=execute,
+        approve_privileged=approve_privileged, model=model,
+        endpoint=endpoint, quality_profile=quality_profile,
+        output_path=output_path,
+    ))
     print(f"allowed={result.allowed}")
     print(f"provider={result.provider}")
     print(f"plan={result.plan}")
@@ -213,38 +765,39 @@ def cmd_run_task(
         print("output_text_begin")
         print(result.output_text)
         print("output_text_end")
-    return 0 if result.allowed else 2
+    if result.auto_ingest_record_id:
+        print(f"auto_ingest_record_id={result.auto_ingest_record_id}")
+    return result.return_code
 
 
 def cmd_ops_brief(snapshot_path: Path, output_path: Path | None) -> int:
-    snapshot = load_snapshot(snapshot_path)
-    brief = build_daily_brief(snapshot)
-    print(brief)
-    if output_path:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(brief, encoding="utf-8")
-        print(f"brief_saved={output_path}")
+    result = _get_bus().dispatch(OpsBriefCommand(snapshot_path=snapshot_path, output_path=output_path))
+    print(result.brief)
+    if result.saved_path:
+        print(f"brief_saved={result.saved_path}")
     return 0
 
 
 def cmd_ops_export_actions(snapshot_path: Path, actions_path: Path) -> int:
-    snapshot = load_snapshot(snapshot_path)
-    actions = suggest_actions(snapshot)
-    export_actions_json(actions, actions_path)
-    print(f"actions_exported={actions_path}")
-    print(f"action_count={len(actions)}")
+    result = _get_bus().dispatch(OpsExportActionsCommand(snapshot_path=snapshot_path, actions_path=actions_path))
+    print(f"actions_exported={result.actions_path}")
+    print(f"action_count={result.action_count}")
     return 0
 
 
 def cmd_ops_sync(output_path: Path) -> int:
-    root = repo_root()
-    summary = build_live_snapshot(root, output_path)
+    result = _get_bus().dispatch(OpsSyncCommand(output_path=output_path))
+    summary = result.summary
     print(f"snapshot_path={summary.snapshot_path}")
     print(f"tasks={summary.tasks}")
     print(f"calendar_events={summary.calendar_events}")
     print(f"emails={summary.emails}")
     print(f"bills={summary.bills}")
     print(f"subscriptions={summary.subscriptions}")
+    print(f"medications={summary.medications}")
+    print(f"school_items={summary.school_items}")
+    print(f"family_items={summary.family_items}")
+    print(f"projects={summary.projects}")
     print(f"connectors_ready={summary.connectors_ready}")
     print(f"connectors_pending={summary.connectors_pending}")
     print(f"connector_prompts={summary.connector_prompts}")
@@ -266,16 +819,53 @@ def cmd_ops_sync(output_path: Path) -> int:
     return 0
 
 
-def cmd_automation_run(actions_path: Path, approve_privileged: bool, execute: bool) -> int:
-    store = MemoryStore(repo_root())
-    executor = AutomationExecutor(store)
-    actions = load_actions(actions_path)
-    outcomes = executor.run(
-        actions,
-        has_explicit_approval=approve_privileged,
+def _cmd_ops_autopilot_impl(
+    snapshot_path: Path,
+    actions_path: Path,
+    *,
+    execute: bool,
+    approve_privileged: bool,
+    auto_open_connectors: bool,
+) -> int:
+    """Implementation body for ops-autopilot (called by handler via callback)."""
+    cmd_connect_bootstrap(auto_open=auto_open_connectors)
+    sync_rc = cmd_ops_sync(snapshot_path)
+    if sync_rc != 0:
+        return sync_rc
+    brief_rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
+    if brief_rc != 0:
+        return brief_rc
+    export_rc = cmd_ops_export_actions(snapshot_path=snapshot_path, actions_path=actions_path)
+    if export_rc != 0:
+        return export_rc
+    return cmd_automation_run(
+        actions_path=actions_path,
+        approve_privileged=approve_privileged,
         execute=execute,
     )
-    for out in outcomes:
+
+
+def cmd_ops_autopilot(
+    snapshot_path: Path,
+    actions_path: Path,
+    *,
+    execute: bool,
+    approve_privileged: bool,
+    auto_open_connectors: bool,
+) -> int:
+    result = _get_bus().dispatch(OpsAutopilotCommand(
+        snapshot_path=snapshot_path, actions_path=actions_path,
+        execute=execute, approve_privileged=approve_privileged,
+        auto_open_connectors=auto_open_connectors,
+    ))
+    return result.return_code
+
+
+def cmd_automation_run(actions_path: Path, approve_privileged: bool, execute: bool) -> int:
+    result = _get_bus().dispatch(AutomationRunCommand(
+        actions_path=actions_path, approve_privileged=approve_privileged, execute=execute,
+    ))
+    for out in result.outcomes:
         print(
             f"title={out.title} allowed={out.allowed} executed={out.executed} "
             f"return_code={out.return_code} reason={out.reason}"
@@ -285,21 +875,154 @@ def cmd_automation_run(actions_path: Path, approve_privileged: bool, execute: bo
     return 0
 
 
+def cmd_mission_create(topic: str, objective: str, sources: list[str]) -> int:
+    result = _get_bus().dispatch(MissionCreateCommand(topic=topic, objective=objective, sources=sources))
+    if result.return_code != 0:
+        print("error: mission creation failed")
+        return result.return_code
+    mission = result.mission
+    print("learning_mission_created=true")
+    print(f"mission_id={mission.get('mission_id', '')}")
+    print(f"topic={mission.get('topic', '')}")
+    print(f"sources={','.join(str(s) for s in mission.get('sources', []))}")
+    return 0
+
+
+def cmd_mission_status(last: int) -> int:
+    result = _get_bus().dispatch(MissionStatusCommand(last=last))
+    if not result.missions:
+        print("learning_missions=none")
+        return 0
+    print(f"learning_mission_count={result.total_count}")
+    for mission in result.missions:
+        print(
+            f"mission_id={mission.get('mission_id','')} "
+            f"status={mission.get('status','')} "
+            f"topic={mission.get('topic','')} "
+            f"verified_findings={mission.get('verified_findings', 0)} "
+            f"updated_utc={mission.get('updated_utc','')}"
+        )
+    return 0
+
+
+def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_ingest: bool) -> int:
+    result = _get_bus().dispatch(MissionRunCommand(
+        mission_id=mission_id, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
+    ))
+    if result.return_code != 0:
+        print("error: mission run failed")
+        return result.return_code
+
+    report = result.report
+    print("learning_mission_completed=true")
+    print(f"mission_id={report.get('mission_id', '')}")
+    print(f"candidate_count={report.get('candidate_count', 0)}")
+    print(f"verified_count={report.get('verified_count', 0)}")
+    verified = report.get("verified_findings", [])
+    if isinstance(verified, list):
+        for idx, finding in enumerate(verified[:10], start=1):
+            statement = str(finding.get("statement", "")) if isinstance(finding, dict) else ""
+            sources = ",".join(finding.get("source_domains", [])) if isinstance(finding, dict) else ""
+            print(f"verified_{idx}={statement}")
+            print(f"verified_{idx}_sources={sources}")
+
+    if result.ingested_record_id:
+        print(f"mission_ingested_record_id={result.ingested_record_id}")
+    return 0
+
+
+def _run_next_pending_mission(*, max_results: int = 6, max_pages: int = 10) -> int:
+    missions = load_missions(repo_root())
+    for mission in missions:
+        if str(mission.get("status", "")).lower() != "pending":
+            continue
+        mission_id = str(mission.get("mission_id", "")).strip()
+        if not mission_id:
+            continue
+        print(f"mission_autorun_id={mission_id}")
+        return cmd_mission_run(
+            mission_id=mission_id,
+            max_results=max_results,
+            max_pages=max_pages,
+            auto_ingest=True,
+        )
+    return 0
+
+
+def cmd_runtime_control(
+    *,
+    pause: bool,
+    resume: bool,
+    safe_on: bool,
+    safe_off: bool,
+    reset: bool,
+    reason: str,
+) -> int:
+    result = _get_bus().dispatch(RuntimeControlCommand(
+        pause=pause, resume=resume, safe_on=safe_on, safe_off=safe_off, reset=reset, reason=reason,
+    ))
+    state = result.state
+    print("runtime_control")
+    print(f"daemon_paused={bool(state.get('daemon_paused', False))}")
+    print(f"safe_mode={bool(state.get('safe_mode', False))}")
+    print(f"updated_utc={state.get('updated_utc', '')}")
+    if state.get("reason", ""):
+        print(f"reason={state.get('reason', '')}")
+    print("effect=daemon_paused_skips_autopilot,safe_mode_forces_non_executing_cycles")
+    return 0
+
+
+def cmd_owner_guard(
+    *,
+    enable: bool,
+    disable: bool,
+    owner_user: str,
+    trust_device: str,
+    revoke_device: str,
+    set_master_password_value: str,
+    clear_master_password_value: bool,
+) -> int:
+    result = _get_bus().dispatch(OwnerGuardCommand(
+        enable=enable, disable=disable, owner_user=owner_user,
+        trust_device=trust_device, revoke_device=revoke_device,
+        set_master_password_value=set_master_password_value,
+        clear_master_password_value=clear_master_password_value,
+    ))
+    if result.return_code != 0:
+        if enable and not owner_user.strip():
+            print("error: --owner-user is required with --enable")
+        else:
+            print("error: owner guard operation failed")
+        return result.return_code
+    state = result.state
+
+    print("owner_guard")
+    print(f"enabled={bool(state.get('enabled', False))}")
+    print(f"owner_user_id={state.get('owner_user_id', '')}")
+    trusted = state.get("trusted_mobile_devices", [])
+    if isinstance(trusted, list):
+        print(f"trusted_mobile_devices={','.join(str(x) for x in trusted)}")
+        print(f"trusted_mobile_device_count={len(trusted)}")
+    has_master_password = bool(state.get("master_password_hash", ""))
+    print(f"master_password_set={has_master_password}")
+    print(f"updated_utc={state.get('updated_utc', '')}")
+    print("effect=voice_run_restricted_to_owner_and_mobile_api_restricted_to_trusted_devices_when_enabled")
+    return 0
+
+
 def cmd_connect_status() -> int:
-    statuses = evaluate_connector_statuses(repo_root())
-    prompts = build_connector_prompts(statuses)
-    ready = sum(1 for s in statuses if s.ready)
+    result = _get_bus().dispatch(ConnectStatusCommand())
     print("connector_status")
-    print(f"ready={ready}")
-    print(f"pending={len(statuses) - ready}")
-    for status in statuses:
+    print(f"ready={result.ready}")
+    print(f"pending={result.pending}")
+    for status in result.statuses:
         print(
             f"id={status.connector_id} ready={status.ready} "
             f"permission={status.permission_granted} configured={status.configured} message={status.message}"
         )
-    if prompts:
+    if result.prompts:
         print("connector_prompts_begin")
-        for prompt in prompts:
+        for prompt in result.prompts:
             print(
                 f"id={prompt.get('connector_id','')} "
                 f"voice={prompt.get('option_voice','')} "
@@ -310,48 +1033,491 @@ def cmd_connect_status() -> int:
 
 
 def cmd_connect_grant(connector_id: str, scopes: list[str]) -> int:
-    try:
-        granted = grant_connector_permission(repo_root(), connector_id=connector_id, scopes=scopes)
-    except ValueError as exc:
-        print(f"error: {exc}")
-        return 2
+    result = _get_bus().dispatch(ConnectGrantCommand(connector_id=connector_id, scopes=scopes))
+    if result.return_code != 0:
+        print("error: connector grant failed")
+        return result.return_code
     print(f"connector_id={connector_id}")
     print("granted=true")
-    print(f"scopes={','.join(granted.get('scopes', []))}")
-    print(f"granted_utc={granted.get('granted_utc', '')}")
+    print(f"scopes={','.join(result.granted.get('scopes', []))}")
+    print(f"granted_utc={result.granted.get('granted_utc', '')}")
     return 0
 
 
 def cmd_connect_bootstrap(auto_open: bool) -> int:
-    statuses = evaluate_connector_statuses(repo_root())
-    prompts = build_connector_prompts(statuses)
-    if not prompts:
+    result = _get_bus().dispatch(ConnectBootstrapCommand(auto_open=auto_open))
+    if result.ready:
         print("connectors_ready=true")
         return 0
     print("connectors_ready=false")
-    for prompt in prompts:
+    for prompt in result.prompts:
         print(
             "connector_prompt "
             f"id={prompt.get('connector_id','')} "
             f"voice=\"{prompt.get('option_voice','')}\" "
             f"tap={prompt.get('option_tap_url','')}"
         )
-        if auto_open:
-            url = prompt.get("option_tap_url", "").strip()
-            if url:
-                webbrowser.open(url)
     return 0
+
+
+def cmd_phone_action(action: str, number: str, message: str, queue_path: Path, queue_action: bool = True) -> int:
+    result = _get_bus().dispatch(PhoneActionCommand(
+        action=action, number=number, message=message, queue_path=queue_path, queue_action=queue_action,
+    ))
+    if result.return_code != 0:
+        print("error: phone action failed")
+        return result.return_code
+    record = result.record
+    print(f"phone_action_queued={queue_action}")
+    print(f"action={record.action}")
+    print(f"number={record.number}")
+    if record.message:
+        print(f"message={record.message}")
+    print(f"queue_path={queue_path}")
+    return 0
+
+
+def cmd_phone_spam_guard(
+    call_log_path: Path,
+    report_path: Path,
+    queue_path: Path,
+    threshold: float,
+    *,
+    queue_actions: bool = True,
+) -> int:
+    result = _get_bus().dispatch(PhoneSpamGuardCommand(
+        call_log_path=call_log_path, report_path=report_path, queue_path=queue_path,
+        threshold=threshold, queue_actions=queue_actions,
+    ))
+    if result.return_code != 0:
+        if not call_log_path.exists():
+            print(f"error: call log not found: {call_log_path}")
+        else:
+            print("error: invalid call log JSON.")
+        return result.return_code
+
+    print(f"spam_candidates={result.candidates_count}")
+    print(f"queued_actions={result.queued_actions_count}")
+    print(f"report_path={report_path}")
+    print(f"queue_path={queue_path}")
+    print("option_voice=Jarvis, block likely spam calls now")
+    print("option_tap=https://www.samsung.com/us/support/answer/ANS10003465/")
+    return 0
+
+
+def cmd_weather(location: str) -> int:
+    result = _get_bus().dispatch(WeatherCommand(location=location))
+    if result.return_code != 0:
+        print("error: weather lookup failed")
+        return result.return_code
+
+    print("weather_report")
+    print(f"location={result.location}")
+    print(f"temperature_f={result.current.get('temp_F', '')}")
+    print(f"temperature_c={result.current.get('temp_C', '')}")
+    print(f"feels_like_f={result.current.get('FeelsLikeF', '')}")
+    print(f"humidity={result.current.get('humidity', '')}")
+    if result.description:
+        print(f"conditions={result.description}")
+    return 0
+
+
+def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_ingest: bool) -> int:
+    cleaned = query.strip()
+    if not cleaned:
+        print("error: query is required for web research.")
+        return 2
+    result = _get_bus().dispatch(WebResearchCommand(
+        query=query, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
+    ))
+    if result.return_code != 0:
+        print("error: web research failed")
+        return result.return_code
+
+    report = result.report
+    print("web_research")
+    print(f"query={report.get('query', '')}")
+    print(f"scanned_url_count={report.get('scanned_url_count', 0)}")
+    findings = report.get("findings", [])
+    if isinstance(findings, list):
+        for idx, row in enumerate(findings[:6], start=1):
+            if not isinstance(row, dict):
+                continue
+            print(f"source_{idx}={row.get('domain', '')} {row.get('url', '')}")
+            snippet = str(row.get("snippet", "")).strip()
+            if snippet:
+                print(f"finding_{idx}={snippet[:260]}")
+
+    if result.auto_ingest_record_id:
+        print(f"auto_ingest_record_id={result.auto_ingest_record_id}")
+    return 0
+
+
+def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
+    bus_result = _get_bus().dispatch(MobileDesktopSyncCommand(auto_ingest=auto_ingest, as_json=as_json))
+    report = bus_result.report
+    if as_json:
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+    else:
+        print("mobile_desktop_sync")
+        print(f"sync_ok={report.get('sync_ok', False)}")
+        print(f"report_path={report.get('report_path', '')}")
+        checks = report.get("checks", [])
+        if isinstance(checks, list):
+            for row in checks:
+                if not isinstance(row, dict):
+                    continue
+                print(f"check_{row.get('name','')}={row.get('ok', False)}")
+    if auto_ingest:
+        rec_id = _auto_ingest_memory(
+            source="task_outcome",
+            kind="episodic",
+            task_id=f"sync-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+            content=(
+                f"Mobile/Desktop sync executed. "
+                f"sync_ok={report.get('sync_ok', False)}; "
+                f"trusted_mobile_devices={report.get('owner_guard', {}).get('trusted_mobile_device_count', 0)}"
+            ),
+        )
+        if rec_id:
+            print(f"auto_ingest_record_id={rec_id}")
+    return bus_result.return_code
+
+
+def cmd_self_heal(*, force_maintenance: bool, keep_recent: int, snapshot_note: str, as_json: bool) -> int:
+    bus_result = _get_bus().dispatch(SelfHealCommand(
+        force_maintenance=force_maintenance, keep_recent=keep_recent,
+        snapshot_note=snapshot_note, as_json=as_json,
+    ))
+    report = bus_result.report
+    if as_json:
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+    else:
+        print("self_heal")
+        print(f"status={report.get('status', 'unknown')}")
+        print(f"report_path={report.get('report_path', '')}")
+        actions = report.get("actions", [])
+        if isinstance(actions, list):
+            for action in actions:
+                print(f"action={action}")
+        regression = report.get("regression", {})
+        if isinstance(regression, dict):
+            print(f"regression_status={regression.get('status', '')}")
+            print(f"duplicate_ratio={regression.get('duplicate_ratio', 0.0)}")
+            print(f"unresolved_conflicts={regression.get('unresolved_conflicts', 0)}")
+    return bus_result.return_code
+
+
+def _extract_first_phone_number(text: str) -> str:
+    if len(text) > 256:
+        text = text[:256]
+    match = PHONE_NUMBER_RE.search(text)
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
+def _extract_weather_location(text: str) -> str:
+    match = re.search(r"(?:weather|forecast)(?:\s+(?:in|for))?\s+(.+)", text, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    location = match.group(1).strip()
+    location = location.rstrip("?.!,;:")
+    return location[:120]
+
+
+def _extract_web_query(text: str) -> str:
+    lowered = text.lower().strip()
+    patterns = [
+        r"(?:search(?:\s+the)?\s+(?:web|internet|online)\s+for)\s+(.+)",
+        r"(?:research)\s+(.+)",
+        r"(?:look\s*up|lookup)\s+(.+)",
+        r"(?:find(?:\s+on\s+the\s+web)?)\s+(.+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lowered, flags=re.IGNORECASE)
+        if not match:
+            continue
+        value = match.group(1).strip().rstrip("?.!,;:")
+        if value:
+            return value[:260]
+    cleaned = lowered
+    for prefix in ("jarvis,", "jarvis"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+    return cleaned[:260]
+
+
+def _extract_first_url(text: str) -> str:
+    if len(text) > 1200:
+        text = text[:1200]
+    match = URL_RE.search(text)
+    if not match:
+        return ""
+    raw = match.group(1).strip().rstrip(").,!?;:")
+    if raw.lower().startswith("www."):
+        raw = f"https://{raw}"
+    return raw[:500]
+
+
+def _is_read_only_voice_request(lowered: str, *, execute: bool, approve_privileged: bool) -> bool:
+    if execute or approve_privileged:
+        return False
+    mutation_markers = [
+        "pause jarvis",
+        "pause daemon",
+        "pause autopilot",
+        "go idle",
+        "stand down",
+        "resume jarvis",
+        "resume daemon",
+        "resume autopilot",
+        "safe mode on",
+        "enable safe mode",
+        "safe mode off",
+        "disable safe mode",
+        "auto gaming mode",
+        "gaming mode on",
+        "gaming mode off",
+        "self heal",
+        "self-heal",
+        "repair yourself",
+        "diagnose yourself",
+        "sync mobile",
+        "sync desktop",
+        "cross-device sync",
+        "sync devices",
+        "send text",
+        "send message",
+        "ignore call",
+        "decline call",
+        "reject call",
+        "place call",
+        "make call",
+        "dial ",
+        "block likely spam",
+        "automation run",
+        "open website",
+        "open webpage",
+        "open page",
+        "open url",
+        "browse to",
+        "go to ",
+        "generate code",
+        "generate image",
+        "generate video",
+        "generate 3d",
+    ]
+    if any(marker in lowered for marker in mutation_markers):
+        return False
+    if any(
+        key in lowered
+        for key in [
+            "runtime status",
+            "control status",
+            "safe mode status",
+            "gaming mode status",
+            "gaming mode state",
+            "weather",
+            "forecast",
+            "search web",
+            "search the web",
+            "search internet",
+            "search online",
+            "look up",
+            "lookup",
+            "research ",
+            "brief",
+        ]
+    ):
+        return True
+    # For non-execution voice prompts that do not match state-changing markers,
+    # treat as read-only to avoid unnecessary owner-guard blocks on regular Q&A.
+    return True
+
+
+def cmd_open_web(url: str) -> int:
+    result = _get_bus().dispatch(OpenWebCommand(url=url))
+    if result.return_code != 0:
+        print("error=No URL provided or invalid URL.")
+        return result.return_code
+    print(f"opened_url={result.opened_url}")
+    return 0
+
+
+def _cmd_daemon_run_impl(
+    interval_s: int,
+    snapshot_path: Path,
+    actions_path: Path,
+    *,
+    execute: bool,
+    approve_privileged: bool,
+    auto_open_connectors: bool,
+    max_cycles: int,
+    idle_interval_s: int,
+    idle_after_s: int,
+    run_missions: bool,
+    sync_every_cycles: int = 5,
+    self_heal_every_cycles: int = 20,
+) -> int:
+    """Implementation body for daemon-run (called by handler via callback)."""
+    active_interval = max(30, interval_s)
+    idle_interval = max(30, idle_interval_s)
+    idle_after = max(60, idle_after_s)
+    max_consecutive_failures = 10
+    consecutive_failures = 0
+    cycles = 0
+    print("jarvis_daemon_started=true")
+    print(f"active_interval_s={active_interval}")
+    print(f"idle_interval_s={idle_interval}")
+    print(f"idle_after_s={idle_after}")
+    try:
+        while True:
+            cycles += 1
+            idle_seconds = _windows_idle_seconds()
+            is_active = True if idle_seconds is None else idle_seconds < idle_after
+            sleep_seconds = active_interval if is_active else idle_interval
+            gaming_state = _read_gaming_mode_state()
+            control_state = read_control_state(repo_root())
+            auto_detect = bool(gaming_state.get("auto_detect", False))
+            auto_detect_hit = False
+            detected_process = ""
+            if auto_detect:
+                auto_detect_hit, detected_process = _detect_active_game_process()
+            gaming_mode_enabled = bool(gaming_state.get("enabled", False)) or auto_detect_hit
+            daemon_paused = bool(control_state.get("daemon_paused", False))
+            safe_mode = bool(control_state.get("safe_mode", False))
+            print(f"cycle={cycles} ts={datetime.now(UTC).isoformat()}")
+            print(f"daemon_paused={daemon_paused}")
+            print(f"safe_mode={safe_mode}")
+            print(f"gaming_mode={gaming_mode_enabled}")
+            print(f"gaming_mode_auto_detect={auto_detect}")
+            if detected_process:
+                print(f"gaming_mode_detected_process={detected_process}")
+            if gaming_state.get("reason", ""):
+                print(f"gaming_mode_reason={gaming_state.get('reason', '')}")
+            if control_state.get("reason", ""):
+                print(f"runtime_control_reason={control_state.get('reason', '')}")
+            print(f"device_active={is_active}")
+            if idle_seconds is not None:
+                print(f"idle_seconds={round(idle_seconds, 1)}")
+            if daemon_paused:
+                print("cycle_skipped=runtime_control_daemon_paused")
+                if max_cycles > 0 and cycles >= max_cycles:
+                    break
+                sleep_seconds = max(idle_interval, 600)
+                print(f"sleep_s={sleep_seconds}")
+                time.sleep(sleep_seconds)
+                continue
+            if gaming_mode_enabled:
+                print("cycle_skipped=gaming_mode_enabled")
+                if max_cycles > 0 and cycles >= max_cycles:
+                    break
+                sleep_seconds = max(idle_interval, 600)
+                print(f"sleep_s={sleep_seconds}")
+                time.sleep(sleep_seconds)
+                continue
+            if run_missions:
+                try:
+                    mission_rc = _run_next_pending_mission()
+                except Exception as exc:  # noqa: BLE001
+                    mission_rc = 2
+                    print(f"mission_cycle_error={exc}")
+                print(f"mission_cycle_rc={mission_rc}")
+            if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
+                try:
+                    sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
+                except Exception as exc:  # noqa: BLE001
+                    sync_rc = 2
+                    print(f"sync_cycle_error={exc}")
+                print(f"sync_cycle_rc={sync_rc}")
+            if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
+                try:
+                    heal_rc = cmd_self_heal(
+                        force_maintenance=False,
+                        keep_recent=1800,
+                        snapshot_note="daemon-self-heal",
+                        as_json=False,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    heal_rc = 2
+                    print(f"self_heal_cycle_error={exc}")
+                print(f"self_heal_cycle_rc={heal_rc}")
+            exec_cycle = execute and not safe_mode
+            approve_cycle = approve_privileged and not safe_mode
+            if safe_mode and (execute or approve_privileged):
+                print("safe_mode_override=execute_and_privileged_flags_forced_false")
+            try:
+                rc = cmd_ops_autopilot(
+                    snapshot_path=snapshot_path,
+                    actions_path=actions_path,
+                    execute=exec_cycle,
+                    approve_privileged=approve_cycle,
+                    auto_open_connectors=auto_open_connectors,
+                )
+            except Exception as exc:  # noqa: BLE001
+                rc = 2
+                print(f"cycle_error={exc}")
+            print(f"cycle_rc={rc}")
+            if rc == 0:
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                print(f"consecutive_failures={consecutive_failures}")
+                if consecutive_failures >= max_consecutive_failures:
+                    print("daemon_circuit_breaker_open=true")
+                    return 3
+            if max_cycles > 0 and cycles >= max_cycles:
+                break
+            print(f"sleep_s={sleep_seconds}")
+            time.sleep(sleep_seconds)
+    except KeyboardInterrupt:
+        print("jarvis_daemon_stopped=true")
+    return 0
+
+
+def cmd_daemon_run(
+    interval_s: int,
+    snapshot_path: Path,
+    actions_path: Path,
+    *,
+    execute: bool,
+    approve_privileged: bool,
+    auto_open_connectors: bool,
+    max_cycles: int,
+    idle_interval_s: int,
+    idle_after_s: int,
+    run_missions: bool,
+    sync_every_cycles: int = 5,
+    self_heal_every_cycles: int = 20,
+) -> int:
+    result = _get_bus().dispatch(DaemonRunCommand(
+        interval_s=interval_s, snapshot_path=snapshot_path, actions_path=actions_path,
+        execute=execute, approve_privileged=approve_privileged,
+        auto_open_connectors=auto_open_connectors, max_cycles=max_cycles,
+        idle_interval_s=idle_interval_s, idle_after_s=idle_after_s,
+        run_missions=run_missions, sync_every_cycles=sync_every_cycles,
+        self_heal_every_cycles=self_heal_every_cycles,
+    ))
+    return result.return_code
 
 
 def cmd_voice_list() -> int:
-    voices = list_windows_voices()
-    if not voices:
-        print("voices=none")
-        return 1
-    print("voices:")
-    for name in voices:
-        print(f"- {name}")
-    return 0
+    result = _get_bus().dispatch(VoiceListCommand())
+    print("voices_windows:")
+    if result.windows_voices:
+        for name in result.windows_voices:
+            print(f"- {name}")
+    else:
+        print("- none")
+
+    print("voices_edge_en_gb:")
+    if result.edge_voices:
+        for name in result.edge_voices:
+            print(f"- {name}")
+    else:
+        print("- none")
+    return 0 if (result.windows_voices or result.edge_voices) else 1
 
 
 def cmd_voice_say(
@@ -361,13 +1527,10 @@ def cmd_voice_say(
     output_wav: str,
     rate: int,
 ) -> int:
-    result = speak_text(
-        text=text,
-        profile=profile,
-        custom_voice_pattern=voice_pattern,
-        output_wav=output_wav,
-        rate=rate,
-    )
+    result = _get_bus().dispatch(VoiceSayCommand(
+        text=text, profile=profile, voice_pattern=voice_pattern,
+        output_wav=output_wav, rate=rate,
+    ))
     print(f"voice={result.voice_name}")
     if result.output_wav:
         print(f"wav={result.output_wav}")
@@ -376,15 +1539,9 @@ def cmd_voice_say(
 
 
 def cmd_voice_enroll(user_id: str, wav_path: str, replace: bool) -> int:
-    try:
-        result = enroll_voiceprint(
-            repo_root(),
-            user_id=user_id,
-            wav_path=wav_path,
-            replace=replace,
-        )
-    except (ValueError, OSError) as exc:
-        print(f"error: {exc}")
+    result = _get_bus().dispatch(VoiceEnrollCommand(user_id=user_id, wav_path=wav_path, replace=replace))
+    if result.message.startswith("error:"):
+        print(result.message)
         return 2
     print(f"user_id={result.user_id}")
     print(f"profile_path={result.profile_path}")
@@ -394,15 +1551,9 @@ def cmd_voice_enroll(user_id: str, wav_path: str, replace: bool) -> int:
 
 
 def cmd_voice_verify(user_id: str, wav_path: str, threshold: float) -> int:
-    try:
-        result = verify_voiceprint(
-            repo_root(),
-            user_id=user_id,
-            wav_path=wav_path,
-            threshold=threshold,
-        )
-    except (ValueError, OSError) as exc:
-        print(f"error: {exc}")
+    result = _get_bus().dispatch(VoiceVerifyCommand(user_id=user_id, wav_path=wav_path, threshold=threshold))
+    if result.message.startswith("error:"):
+        print(result.message)
         return 2
     print(f"user_id={result.user_id}")
     print(f"score={result.score}")
@@ -412,7 +1563,7 @@ def cmd_voice_verify(user_id: str, wav_path: str, threshold: float) -> int:
     return 0 if result.matched else 2
 
 
-def cmd_voice_run(
+def _cmd_voice_run_impl(
     text: str,
     execute: bool,
     approve_privileged: bool,
@@ -422,10 +1573,80 @@ def cmd_voice_run(
     voice_user: str,
     voice_auth_wav: str,
     voice_threshold: float,
+    master_password: str,
 ) -> int:
+    """Implementation body for voice-run (called by handler via callback)."""
     lowered = text.lower().strip()
     intent = "unknown"
     rc = 1
+    phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
+    phone_report = repo_root() / ".planning" / "phone_spam_report.json"
+    phone_call_log = Path(os.getenv("JARVIS_CALL_LOG_JSON", str(repo_root() / ".planning" / "phone_call_log.json")))
+    owner_guard = read_owner_guard(repo_root())
+    master_password_ok = False
+    if master_password.strip():
+        master_password_ok = verify_master_password(repo_root(), master_password.strip())
+    read_only_request = _is_read_only_voice_request(
+        lowered,
+        execute=execute,
+        approve_privileged=approve_privileged,
+    )
+
+    def _require_state_mutation_voice_auth() -> bool:
+        if voice_auth_wav.strip() or master_password_ok:
+            return True
+        print("intent=voice_auth_required")
+        print("reason=state_mutating_voice_actions_require_voice_auth_wav")
+        if speak:
+            cmd_voice_say(
+                text="Voice authentication is required for state changing commands.",
+                profile="jarvis_like",
+                voice_pattern="",
+                output_wav="",
+                rate=-1,
+            )
+        return False
+
+    if bool(owner_guard.get("enabled", False)):
+        expected_owner = str(owner_guard.get("owner_user_id", "")).strip().lower()
+        incoming_owner = voice_user.strip().lower()
+        if expected_owner and incoming_owner != expected_owner and not master_password_ok:
+            print("intent=owner_guard_blocked")
+            print("reason=voice_user_not_owner")
+            if speak:
+                cmd_voice_say(
+                    text="Owner guard blocked this command.",
+                    profile="jarvis_like",
+                    voice_pattern="",
+                    output_wav="",
+                    rate=-1,
+                )
+            return 2
+        if not voice_auth_wav.strip() and not master_password_ok and not read_only_request:
+            print("intent=owner_guard_blocked")
+            print("reason=voice_auth_required_when_owner_guard_enabled")
+            if speak:
+                cmd_voice_say(
+                    text="Owner guard requires voice authentication for state-changing commands.",
+                    profile="jarvis_like",
+                    voice_pattern="",
+                    output_wav="",
+                    rate=-1,
+                )
+            return 2
+
+    if (execute or approve_privileged) and not voice_auth_wav.strip() and not master_password_ok:
+        print("intent=voice_auth_required")
+        print("reason=execute_or_privileged_voice_actions_require_voice_auth_wav")
+        if speak:
+            cmd_voice_say(
+                text="Voice authentication is required for executable commands.",
+                profile="jarvis_like",
+                voice_pattern="",
+                output_wav="",
+                rate=-1,
+            )
+        return 2
 
     if voice_auth_wav.strip():
         verify_rc = cmd_voice_verify(
@@ -448,6 +1669,219 @@ def cmd_voice_run(
     if ("connect" in lowered or "setup" in lowered) and any(k in lowered for k in ["email", "calendar", "all", "everything"]):
         intent = "connect_bootstrap"
         rc = cmd_connect_bootstrap(auto_open=execute)
+    elif any(
+        k in lowered
+        for k in ["pause jarvis", "pause daemon", "pause autopilot", "go idle", "stand down", "pause yourself"]
+    ):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "runtime_pause"
+        rc = cmd_runtime_control(
+            pause=True,
+            resume=False,
+            safe_on=False,
+            safe_off=False,
+            reset=False,
+            reason="voice_command",
+        )
+    elif any(
+        k in lowered
+        for k in ["resume jarvis", "resume daemon", "resume autopilot", "wake up", "start working again"]
+    ):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "runtime_resume"
+        rc = cmd_runtime_control(
+            pause=False,
+            resume=True,
+            safe_on=False,
+            safe_off=False,
+            reset=False,
+            reason="voice_command",
+        )
+    elif any(k in lowered for k in ["safe mode on", "enable safe mode"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "runtime_safe_on"
+        rc = cmd_runtime_control(
+            pause=False,
+            resume=False,
+            safe_on=True,
+            safe_off=False,
+            reset=False,
+            reason="voice_command",
+        )
+    elif any(k in lowered for k in ["safe mode off", "disable safe mode"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "runtime_safe_off"
+        rc = cmd_runtime_control(
+            pause=False,
+            resume=False,
+            safe_on=False,
+            safe_off=True,
+            reset=False,
+            reason="voice_command",
+        )
+    elif any(k in lowered for k in ["runtime status", "control status", "safe mode status"]):
+        intent = "runtime_status"
+        rc = cmd_runtime_control(
+            pause=False,
+            resume=False,
+            safe_on=False,
+            safe_off=False,
+            reset=False,
+            reason="",
+        )
+    elif "auto gaming mode" in lowered and any(k in lowered for k in ["on", "enable", "start"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "gaming_mode_auto_enable"
+        rc = cmd_gaming_mode(enable=None, reason="voice_command", auto_detect="on")
+    elif "auto gaming mode" in lowered and any(k in lowered for k in ["off", "disable", "stop"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "gaming_mode_auto_disable"
+        rc = cmd_gaming_mode(enable=None, reason="voice_command", auto_detect="off")
+    elif "gaming mode" in lowered and any(k in lowered for k in ["on", "enable", "start"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "gaming_mode_enable"
+        rc = cmd_gaming_mode(enable=True, reason="voice_command", auto_detect="")
+    elif "gaming mode" in lowered and any(k in lowered for k in ["off", "disable", "stop"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "gaming_mode_disable"
+        rc = cmd_gaming_mode(enable=False, reason="voice_command", auto_detect="")
+    elif "gaming mode" in lowered and any(k in lowered for k in ["status", "state"]):
+        intent = "gaming_mode_status"
+        rc = cmd_gaming_mode(enable=None, reason="", auto_detect="")
+    elif "weather" in lowered or "forecast" in lowered:
+        intent = "weather"
+        rc = cmd_weather(location=_extract_weather_location(text))
+    elif any(
+        key in lowered
+        for key in [
+            "search web",
+            "search the web",
+            "search internet",
+            "search online",
+            "look up",
+            "lookup",
+            "research ",
+            "find on the web",
+        ]
+    ):
+        intent = "web_research"
+        rc = cmd_web_research(
+            query=_extract_web_query(text),
+            max_results=8,
+            max_pages=6,
+            auto_ingest=True,
+        )
+    elif any(
+        key in lowered
+        for key in [
+            "open website",
+            "open webpage",
+            "open page",
+            "open url",
+            "browse to",
+            "go to ",
+        ]
+    ):
+        intent = "open_web"
+        if not execute:
+            print("reason=Set --execute to open browser URLs.")
+            return 2
+        url = _extract_first_url(text)
+        if not url:
+            print("reason=No valid URL found. Include full URL like https://example.com")
+            return 2
+        rc = cmd_open_web(url)
+    elif any(key in lowered for key in ["sync mobile", "sync desktop", "cross-device sync", "sync devices"]):
+        intent = "mobile_desktop_sync"
+        rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
+    elif any(key in lowered for key in ["self heal", "self-heal", "repair yourself", "diagnose yourself"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "self_heal"
+        rc = cmd_self_heal(
+            force_maintenance=False,
+            keep_recent=1800,
+            snapshot_note="voice-self-heal",
+            as_json=False,
+        )
+    elif any(
+        k in lowered
+        for k in [
+            "organize my day",
+            "run autopilot",
+            "daily autopilot",
+            "plan my day",
+            "plan today",
+            "organize today",
+            "help me prioritize",
+        ]
+    ):
+        intent = "ops_autopilot"
+        rc = cmd_ops_autopilot(
+            snapshot_path=snapshot_path,
+            actions_path=actions_path,
+            execute=execute,
+            approve_privileged=approve_privileged,
+            auto_open_connectors=execute,
+        )
+    elif (
+        ("block" in lowered and "spam" in lowered and "call" in lowered)
+        or ("stop" in lowered and "scam" in lowered and "call" in lowered)
+        or ("handle" in lowered and "spam" in lowered and "calls" in lowered)
+    ):
+        intent = "phone_spam_guard"
+        rc = cmd_phone_spam_guard(
+            call_log_path=phone_call_log,
+            report_path=phone_report,
+            queue_path=phone_queue,
+            threshold=0.65,
+            queue_actions=execute,
+        )
+    elif any(k in lowered for k in ["send text", "send message", "text ", "message "]):
+        number = _extract_first_phone_number(text)
+        sms_body = text.split(":", 1)[1].strip() if ":" in text else text
+        intent = "phone_send_sms"
+        if not execute:
+            print("reason=Set --execute to queue phone actions.")
+            return 2
+        rc = cmd_phone_action(
+            action="send_sms",
+            number=number,
+            message=sms_body,
+            queue_path=phone_queue,
+        )
+    elif any(k in lowered for k in ["ignore call", "decline call", "reject call"]):
+        number = _extract_first_phone_number(text)
+        intent = "phone_ignore_call"
+        if not execute:
+            print("reason=Set --execute to queue phone actions.")
+            return 2
+        rc = cmd_phone_action(
+            action="ignore_call",
+            number=number,
+            message="",
+            queue_path=phone_queue,
+        )
+    elif ("call " in lowered) or lowered.startswith("call"):
+        number = _extract_first_phone_number(text)
+        intent = "phone_place_call"
+        if not execute:
+            print("reason=Set --execute to queue phone actions.")
+            return 2
+        rc = cmd_phone_action(
+            action="place_call",
+            number=number,
+            message="",
+            queue_path=phone_queue,
+        )
     elif ("sync" in lowered) and any(k in lowered for k in ["calendar", "email", "inbox", "ops"]):
         intent = "ops_sync"
         live_snapshot = snapshot_path.with_name("ops_snapshot.live.json")
@@ -519,9 +1953,27 @@ def cmd_voice_run(
     else:
         print("intent=unknown")
         print("reason=No supported voice intent matched.")
+        try:
+            packet = build_context_packet(repo_root(), query=text, max_items=3, max_chars=600)
+            selected = packet.get("selected", [])
+            if isinstance(selected, list):
+                for row in selected:
+                    if not isinstance(row, dict):
+                        continue
+                    print(f"context_hint_branch={row.get('branch','')}")
+                    print(f"context_hint_summary={row.get('summary','')}")
+        except Exception:
+            pass
         if speak:
+            persona = load_persona_config(repo_root())
+            persona_line = compose_persona_reply(
+                persona,
+                intent="unknown_command",
+                success=False,
+                reason="no supported voice intent matched",
+            )
             cmd_voice_say(
-                text="I did not recognize that command. Please try a supported Jarvis action.",
+                text=persona_line,
                 profile="jarvis_like",
                 voice_pattern="",
                 output_wav="",
@@ -531,16 +1983,57 @@ def cmd_voice_run(
 
     print(f"intent={intent}")
     print(f"status_code={rc}")
+    try:
+        auto_id = _auto_ingest_memory(
+            source="user",
+            kind="episodic",
+            task_id=f"voice-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+            content=(
+                f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
+                f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
+            ),
+        )
+        if auto_id:
+            print(f"auto_ingest_record_id={auto_id}")
+    except Exception:
+        pass
     if speak:
-        completion = "completed successfully" if rc == 0 else "failed or requires approval"
+        persona = load_persona_config(repo_root())
+        persona_line = compose_persona_reply(
+            persona,
+            intent=intent,
+            success=(rc == 0),
+            reason="" if rc == 0 else "failed or requires approval",
+        )
         cmd_voice_say(
-            text=f"Command {intent} {completion}.",
+            text=persona_line,
             profile="jarvis_like",
             voice_pattern="",
             output_wav="",
             rate=-1,
         )
     return rc
+
+
+def cmd_voice_run(
+    text: str,
+    execute: bool,
+    approve_privileged: bool,
+    speak: bool,
+    snapshot_path: Path,
+    actions_path: Path,
+    voice_user: str,
+    voice_auth_wav: str,
+    voice_threshold: float,
+    master_password: str,
+) -> int:
+    result = _get_bus().dispatch(VoiceRunCommand(
+        text=text, execute=execute, approve_privileged=approve_privileged,
+        speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
+        voice_user=voice_user, voice_auth_wav=voice_auth_wav,
+        voice_threshold=voice_threshold, master_password=master_password,
+    ))
+    return result.return_code
 
 
 def main() -> int:
@@ -629,6 +2122,68 @@ def main() -> int:
         help="Python-style index. -1 means latest run.",
     )
 
+    p_intelligence = sub.add_parser(
+        "intelligence-dashboard",
+        help="Build intelligence ranking/ETA dashboard from local growth history.",
+    )
+    p_intelligence.add_argument("--last-runs", type=int, default=20)
+    p_intelligence.add_argument("--output-path", default=str(repo_root() / ".planning" / "intelligence_dashboard.json"))
+    p_intelligence.add_argument("--json", action="store_true", help="Print full JSON payload.")
+
+    p_brain_status = sub.add_parser("brain-status", help="Show high-level brain memory branch stats.")
+    p_brain_status.add_argument("--json", action="store_true")
+
+    p_brain_context = sub.add_parser(
+        "brain-context",
+        help="Build compact context packet from long-term brain memory.",
+    )
+    p_brain_context.add_argument("--query", required=True)
+    p_brain_context.add_argument("--max-items", type=int, default=10)
+    p_brain_context.add_argument("--max-chars", type=int, default=2400)
+    p_brain_context.add_argument("--json", action="store_true")
+
+    p_brain_compact = sub.add_parser("brain-compact", help="Compact old brain records into summary groups.")
+    p_brain_compact.add_argument("--keep-recent", type=int, default=1800)
+    p_brain_compact.add_argument("--json", action="store_true")
+
+    p_brain_regression = sub.add_parser("brain-regression", help="Run anti-regression health checks for brain memory.")
+    p_brain_regression.add_argument("--json", action="store_true")
+
+    p_snapshot = sub.add_parser("memory-snapshot", help="Create or verify signed memory snapshot.")
+    p_snapshot_group = p_snapshot.add_mutually_exclusive_group(required=True)
+    p_snapshot_group.add_argument("--create", action="store_true")
+    p_snapshot_group.add_argument("--verify-path")
+    p_snapshot.add_argument("--note", default="")
+
+    p_maintenance = sub.add_parser("memory-maintenance", help="Run compact + regression + signed snapshot maintenance.")
+    p_maintenance.add_argument("--keep-recent", type=int, default=1800)
+    p_maintenance.add_argument("--snapshot-note", default="nightly")
+
+    p_web_research = sub.add_parser("web-research", help="Search the public web and summarize findings with source links.")
+    p_web_research.add_argument("--query", required=True)
+    p_web_research.add_argument("--max-results", type=int, default=8)
+    p_web_research.add_argument("--max-pages", type=int, default=6)
+    p_web_research.add_argument("--no-ingest", action="store_true")
+
+    p_sync = sub.add_parser("mobile-desktop-sync", help="Run cross-device state checks and write sync report.")
+    p_sync.add_argument("--json", action="store_true")
+    p_sync.add_argument("--no-ingest", action="store_true")
+
+    p_self_heal = sub.add_parser("self-heal", help="Run Jarvis self-healing checks and safe repairs.")
+    p_self_heal.add_argument("--force-maintenance", action="store_true")
+    p_self_heal.add_argument("--keep-recent", type=int, default=1800)
+    p_self_heal.add_argument("--snapshot-note", default="self-heal")
+    p_self_heal.add_argument("--json", action="store_true")
+
+    p_persona = sub.add_parser("persona-config", help="Configure Jarvis personality response style.")
+    p_persona.add_argument("--enable", action="store_true")
+    p_persona.add_argument("--disable", action="store_true")
+    p_persona.add_argument("--humor-level", type=int)
+    p_persona.add_argument("--mode", default="")
+    p_persona.add_argument("--style", default="")
+
+    sub.add_parser("desktop-widget", help="Launch desktop-native Jarvis widget window.")
+
     p_run_task = sub.add_parser("run-task", help="Run multimodal Jarvis task.")
     p_run_task.add_argument("--type", required=True, choices=["image", "code", "video", "model3d"])
     p_run_task.add_argument("--prompt", required=True)
@@ -670,6 +2225,83 @@ def main() -> int:
         default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
     )
 
+    p_ops_autopilot = sub.add_parser("ops-autopilot", help="Run connector check, sync, brief, action export, and automation.")
+    p_ops_autopilot.add_argument(
+        "--snapshot-path",
+        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+    )
+    p_ops_autopilot.add_argument(
+        "--actions-path",
+        default=str(repo_root() / ".planning" / "actions.generated.json"),
+    )
+    p_ops_autopilot.add_argument("--execute", action="store_true")
+    p_ops_autopilot.add_argument("--approve-privileged", action="store_true")
+    p_ops_autopilot.add_argument("--auto-open-connectors", action="store_true")
+
+    p_daemon = sub.add_parser("daemon-run", help="Run Jarvis autopilot loop continuously.")
+    p_daemon.add_argument("--interval-s", type=int, default=180)
+    p_daemon.add_argument(
+        "--snapshot-path",
+        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+    )
+    p_daemon.add_argument(
+        "--actions-path",
+        default=str(repo_root() / ".planning" / "actions.generated.json"),
+    )
+    p_daemon.add_argument("--execute", action="store_true")
+    p_daemon.add_argument("--approve-privileged", action="store_true")
+    p_daemon.add_argument("--auto-open-connectors", action="store_true")
+    p_daemon.add_argument("--idle-interval-s", type=int, default=900)
+    p_daemon.add_argument("--idle-after-s", type=int, default=300)
+    p_daemon.add_argument("--max-cycles", type=int, default=0, help="For testing; 0 means run forever.")
+    p_daemon.add_argument("--skip-missions", action="store_true", help="Disable background learning mission execution.")
+    p_daemon.add_argument("--sync-every-cycles", type=int, default=5)
+    p_daemon.add_argument("--self-heal-every-cycles", type=int, default=20)
+
+    p_mission_create = sub.add_parser("mission-create", help="Create a learning mission.")
+    p_mission_create.add_argument("--topic", required=True)
+    p_mission_create.add_argument("--objective", default="")
+    p_mission_create.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        help="Learning source profile (repeatable), e.g. google, reddit, official_docs",
+    )
+
+    p_mission_status = sub.add_parser("mission-status", help="Show recent learning missions.")
+    p_mission_status.add_argument("--last", type=int, default=10)
+
+    p_mission_run = sub.add_parser("mission-run", help="Run one learning mission with source verification.")
+    p_mission_run.add_argument("--id", required=True, help="Mission id from mission-create.")
+    p_mission_run.add_argument("--max-results", type=int, default=8)
+    p_mission_run.add_argument("--max-pages", type=int, default=12)
+    p_mission_run.add_argument("--no-ingest", action="store_true", help="Do not ingest verified findings.")
+
+    p_runtime = sub.add_parser("runtime-control", help="Pause/resume daemon and toggle safe mode.")
+    p_runtime_group = p_runtime.add_mutually_exclusive_group()
+    p_runtime_group.add_argument("--pause", action="store_true")
+    p_runtime_group.add_argument("--resume", action="store_true")
+    p_runtime_group.add_argument("--reset", action="store_true")
+    p_runtime.add_argument("--safe-on", action="store_true")
+    p_runtime.add_argument("--safe-off", action="store_true")
+    p_runtime.add_argument("--reason", default="")
+
+    p_owner = sub.add_parser("owner-guard", help="Lock Jarvis to owner voice and trusted mobile devices.")
+    p_owner.add_argument("--enable", action="store_true")
+    p_owner.add_argument("--disable", action="store_true")
+    p_owner.add_argument("--owner-user", default="")
+    p_owner.add_argument("--trust-device", default="")
+    p_owner.add_argument("--revoke-device", default="")
+    p_owner.add_argument("--set-master-password", default="")
+    p_owner.add_argument("--clear-master-password", action="store_true")
+
+    p_gaming = sub.add_parser("gaming-mode", help="Enable/disable low-impact mode for gaming sessions.")
+    p_gaming_group = p_gaming.add_mutually_exclusive_group()
+    p_gaming_group.add_argument("--enable", action="store_true")
+    p_gaming_group.add_argument("--disable", action="store_true")
+    p_gaming.add_argument("--auto-detect", choices=["on", "off"], default="")
+    p_gaming.add_argument("--reason", default="")
+
     p_automation = sub.add_parser("automation-run", help="Run planned actions with capability gates.")
     p_automation.add_argument(
         "--actions-path",
@@ -694,6 +2326,30 @@ def main() -> int:
 
     p_connect_bootstrap = sub.add_parser("connect-bootstrap", help="Show connector prompts and optionally open setup links.")
     p_connect_bootstrap.add_argument("--auto-open", action="store_true", help="Open tap URLs in browser.")
+
+    p_phone_action = sub.add_parser("phone-action", help="Queue phone action (send SMS/place call/ignore/block).")
+    p_phone_action.add_argument("--action", required=True, choices=["send_sms", "place_call", "ignore_call", "block_number", "silence_unknown_callers"])
+    p_phone_action.add_argument("--number", default="")
+    p_phone_action.add_argument("--message", default="")
+    p_phone_action.add_argument(
+        "--queue-path",
+        default=str(repo_root() / ".planning" / "phone_actions.jsonl"),
+    )
+
+    p_phone_spam = sub.add_parser("phone-spam-guard", help="Analyze call logs and queue spam-block actions.")
+    p_phone_spam.add_argument(
+        "--call-log-path",
+        default=str(repo_root() / ".planning" / "phone_call_log.json"),
+    )
+    p_phone_spam.add_argument(
+        "--report-path",
+        default=str(repo_root() / ".planning" / "phone_spam_report.json"),
+    )
+    p_phone_spam.add_argument(
+        "--queue-path",
+        default=str(repo_root() / ".planning" / "phone_actions.jsonl"),
+    )
+    p_phone_spam.add_argument("--threshold", type=float, default=0.65)
 
     sub.add_parser("voice-list", help="List available local Windows voices.")
 
@@ -722,6 +2378,7 @@ def main() -> int:
     p_voice_run.add_argument("--voice-user", default="conner")
     p_voice_run.add_argument("--voice-auth-wav", default="", help="Optional WAV path for voice authentication.")
     p_voice_run.add_argument("--voice-threshold", type=float, default=0.82)
+    p_voice_run.add_argument("--master-password", default="", help="Optional owner master password fallback.")
     p_voice_run.add_argument(
         "--snapshot-path",
         default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
@@ -779,6 +2436,68 @@ def main() -> int:
             history_path=Path(args.history_path),
             run_index=args.run_index,
         )
+    if args.command == "intelligence-dashboard":
+        return cmd_intelligence_dashboard(
+            last_runs=args.last_runs,
+            output_path=args.output_path,
+            as_json=args.json,
+        )
+    if args.command == "brain-status":
+        return cmd_brain_status(as_json=args.json)
+    if args.command == "brain-context":
+        return cmd_brain_context(
+            query=args.query,
+            max_items=args.max_items,
+            max_chars=args.max_chars,
+            as_json=args.json,
+        )
+    if args.command == "brain-compact":
+        return cmd_brain_compact(
+            keep_recent=args.keep_recent,
+            as_json=args.json,
+        )
+    if args.command == "brain-regression":
+        return cmd_brain_regression(as_json=args.json)
+    if args.command == "memory-snapshot":
+        return cmd_memory_snapshot(
+            create=args.create,
+            verify_path=args.verify_path,
+            note=args.note,
+        )
+    if args.command == "memory-maintenance":
+        return cmd_memory_maintenance(
+            keep_recent=args.keep_recent,
+            snapshot_note=args.snapshot_note,
+        )
+    if args.command == "web-research":
+        return cmd_web_research(
+            query=args.query,
+            max_results=args.max_results,
+            max_pages=args.max_pages,
+            auto_ingest=not args.no_ingest,
+        )
+    if args.command == "mobile-desktop-sync":
+        return cmd_mobile_desktop_sync(
+            auto_ingest=not args.no_ingest,
+            as_json=args.json,
+        )
+    if args.command == "self-heal":
+        return cmd_self_heal(
+            force_maintenance=args.force_maintenance,
+            keep_recent=args.keep_recent,
+            snapshot_note=args.snapshot_note,
+            as_json=args.json,
+        )
+    if args.command == "persona-config":
+        return cmd_persona_config(
+            enable=args.enable,
+            disable=args.disable,
+            humor_level=args.humor_level,
+            mode=args.mode,
+            style=args.style,
+        )
+    if args.command == "desktop-widget":
+        return cmd_desktop_widget()
     if args.command == "run-task":
         return cmd_run_task(
             task_type=args.type,
@@ -805,6 +2524,70 @@ def main() -> int:
         return cmd_ops_sync(
             output_path=Path(args.output_path),
         )
+    if args.command == "ops-autopilot":
+        return cmd_ops_autopilot(
+            snapshot_path=Path(args.snapshot_path),
+            actions_path=Path(args.actions_path),
+            execute=args.execute,
+            approve_privileged=args.approve_privileged,
+            auto_open_connectors=args.auto_open_connectors,
+        )
+    if args.command == "daemon-run":
+        return cmd_daemon_run(
+            interval_s=args.interval_s,
+            snapshot_path=Path(args.snapshot_path),
+            actions_path=Path(args.actions_path),
+            execute=args.execute,
+            approve_privileged=args.approve_privileged,
+            auto_open_connectors=args.auto_open_connectors,
+            max_cycles=args.max_cycles,
+            idle_interval_s=args.idle_interval_s,
+            idle_after_s=args.idle_after_s,
+            run_missions=not args.skip_missions,
+            sync_every_cycles=args.sync_every_cycles,
+            self_heal_every_cycles=args.self_heal_every_cycles,
+        )
+    if args.command == "mission-create":
+        return cmd_mission_create(
+            topic=args.topic,
+            objective=args.objective,
+            sources=list(args.source),
+        )
+    if args.command == "mission-status":
+        return cmd_mission_status(last=args.last)
+    if args.command == "mission-run":
+        return cmd_mission_run(
+            mission_id=args.id,
+            max_results=args.max_results,
+            max_pages=args.max_pages,
+            auto_ingest=not args.no_ingest,
+        )
+    if args.command == "runtime-control":
+        return cmd_runtime_control(
+            pause=args.pause,
+            resume=args.resume,
+            safe_on=args.safe_on,
+            safe_off=args.safe_off,
+            reset=args.reset,
+            reason=args.reason,
+        )
+    if args.command == "owner-guard":
+        return cmd_owner_guard(
+            enable=args.enable,
+            disable=args.disable,
+            owner_user=args.owner_user,
+            trust_device=args.trust_device,
+            revoke_device=args.revoke_device,
+            set_master_password_value=args.set_master_password,
+            clear_master_password_value=args.clear_master_password,
+        )
+    if args.command == "gaming-mode":
+        enable_opt: bool | None = None
+        if args.enable:
+            enable_opt = True
+        elif args.disable:
+            enable_opt = False
+        return cmd_gaming_mode(enable=enable_opt, reason=args.reason, auto_detect=args.auto_detect)
     if args.command == "automation-run":
         return cmd_automation_run(
             actions_path=Path(args.actions_path),
@@ -820,6 +2603,20 @@ def main() -> int:
         )
     if args.command == "connect-bootstrap":
         return cmd_connect_bootstrap(auto_open=args.auto_open)
+    if args.command == "phone-action":
+        return cmd_phone_action(
+            action=args.action,
+            number=args.number,
+            message=args.message,
+            queue_path=Path(args.queue_path),
+        )
+    if args.command == "phone-spam-guard":
+        return cmd_phone_spam_guard(
+            call_log_path=Path(args.call_log_path),
+            report_path=Path(args.report_path),
+            queue_path=Path(args.queue_path),
+            threshold=args.threshold,
+        )
     if args.command == "voice-list":
         return cmd_voice_list()
     if args.command == "voice-say":
@@ -853,6 +2650,7 @@ def main() -> int:
             voice_user=args.voice_user,
             voice_auth_wav=args.voice_auth_wav,
             voice_threshold=args.voice_threshold,
+            master_password=args.master_password,
         )
     return 1
 
