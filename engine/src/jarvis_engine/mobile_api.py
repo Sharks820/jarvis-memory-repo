@@ -131,7 +131,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 finally:
                     main_mod.repo_root = original_repo_root  # type: ignore[assignment]
             except Exception as exc:
-                return {"ok": False, "error": f"Command execution failed: {exc}"}
+                logger.error("Voice command execution failed: %s", exc)
+                return {"ok": False, "error": "Command execution failed."}
             return {
                 "ok": rc == 0,
                 "command_exit_code": rc,
@@ -179,7 +180,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 timeout=240,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return {"ok": False, "error": f"Command execution failed: {exc}"}
+            logger.error("Voice subprocess failed: %s", exc)
+            return {"ok": False, "error": "Command execution failed."}
 
         stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
@@ -224,7 +226,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 timeout=max(30, timeout_s),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return {"ok": False, "error": f"Command execution failed: {exc}", "command_exit_code": 2}
+            logger.error("CLI subprocess failed: %s", exc)
+            return {"ok": False, "error": "Command execution failed.", "command_exit_code": 2}
         stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         return {
@@ -502,7 +505,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 self._write_json(HTTPStatus.OK, {"ok": True, "sync_status": status})
             except Exception as exc:
                 logger.error("sync/status failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync status query failed."})
             return
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
@@ -706,7 +709,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 })
             except Exception as exc:
                 logger.error("sync/pull failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync pull failed."})
             return
 
         if path == "/sync/push":
@@ -739,7 +742,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 })
             except Exception as exc:
                 logger.error("sync/push failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync push failed."})
             return
 
         if path == "/self-heal":

@@ -159,7 +159,8 @@ def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(tmp_path: Pa
     assert rc == 2
 
 
-def test_cmd_phone_spam_guard_can_run_without_queue(tmp_path: Path) -> None:
+def test_cmd_phone_spam_guard_can_run_without_queue(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     call_log_path = tmp_path / "calls.json"
     report_path = tmp_path / "report.json"
     queue_path = tmp_path / "queue.jsonl"
