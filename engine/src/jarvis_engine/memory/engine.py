@@ -457,10 +457,23 @@ class MemoryEngine:
 
     def close(self) -> None:
         """Close the database connection (idempotent)."""
-        if self._closed:
-            return
-        self._closed = True
+        with self._write_lock:
+            if self._closed:
+                return
+            self._closed = True
+            try:
+                self._db.close()
+            except Exception:
+                pass
+
+    def __enter__(self) -> "MemoryEngine":
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
         try:
-            self._db.close()
+            self.close()
         except Exception:
             pass

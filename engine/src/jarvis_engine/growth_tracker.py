@@ -284,7 +284,10 @@ def _generate(
         data=json.dumps(payload).encode("utf-8"),
     )
     with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
-        return json.loads(resp.read().decode("utf-8"))
+        data = json.loads(resp.read().decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Expected JSON object from Ollama")
+    return data
 
 
 def run_eval(
@@ -326,9 +329,9 @@ def run_eval(
             output = ""
             response_source = "empty"
         matched, total, coverage, matched_tokens = score_text(output, task.must_include)
-        eval_count = int(raw.get("eval_count", 0))
-        eval_duration_s = float(raw.get("eval_duration", 0)) / 1e9
-        total_duration_s = float(raw.get("total_duration", 0)) / 1e9
+        eval_count = int(raw.get("eval_count") or 0)
+        eval_duration_s = float(raw.get("eval_duration") or 0) / 1e9
+        total_duration_s = float(raw.get("total_duration") or 0) / 1e9
         prompt_sha256 = hashlib.sha256(task.prompt.encode("utf-8")).hexdigest()
         response_sha256 = hashlib.sha256(output.encode("utf-8")).hexdigest()
         results.append(

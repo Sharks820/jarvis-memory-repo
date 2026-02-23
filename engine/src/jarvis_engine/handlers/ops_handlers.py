@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _check_path_within_root(path: Path, root: Path, label: str) -> Path:
+def _check_path_within_root(path: Path, root: Path, label: str) -> None:
     """Resolve *path* and verify it stays within *root*."""
     resolved = path.resolve()
     try:
@@ -254,18 +255,21 @@ class GrowthEvalHandler:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError:
             return GrowthEvalResult()
-        tasks = load_golden_tasks(cmd.tasks_path)
-        run = run_eval(
-            endpoint=cmd.endpoint,
-            model=cmd.model,
-            tasks=tasks,
-            num_predict=cmd.num_predict,
-            temperature=cmd.temperature,
-            think=cmd.think,
-            accept_thinking=cmd.accept_thinking,
-            timeout_s=cmd.timeout_s,
-        )
-        append_history(cmd.history_path, run)
+        try:
+            tasks = load_golden_tasks(cmd.tasks_path)
+            run = run_eval(
+                endpoint=cmd.endpoint,
+                model=cmd.model,
+                tasks=tasks,
+                num_predict=cmd.num_predict,
+                temperature=cmd.temperature,
+                think=cmd.think,
+                accept_thinking=cmd.accept_thinking,
+                timeout_s=cmd.timeout_s,
+            )
+            append_history(cmd.history_path, run)
+        except (ValueError, RuntimeError, FileNotFoundError, json.JSONDecodeError):
+            return GrowthEvalResult()
         return GrowthEvalResult(run=run)
 
 
@@ -297,7 +301,10 @@ class GrowthAuditHandler:
         except ValueError:
             return GrowthAuditResult()
         rows = read_history(cmd.history_path)
-        run = audit_run(rows, run_index=cmd.run_index)
+        try:
+            run = audit_run(rows, run_index=cmd.run_index)
+        except (RuntimeError, IndexError):
+            return GrowthAuditResult()
         return GrowthAuditResult(run=run)
 
 

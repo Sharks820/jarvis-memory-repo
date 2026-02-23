@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -98,7 +99,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         approve_privileged = bool(payload.get("approve_privileged", False))
         speak = bool(payload.get("speak", False))
         voice_user = str(payload.get("voice_user", "conner")).strip() or "conner"
+        if not re.fullmatch(r"[a-zA-Z0-9._-]{1,64}", voice_user):
+            return {"ok": False, "error": "Invalid voice_user."}
         voice_auth_wav = str(payload.get("voice_auth_wav", "")).strip()
+        if voice_auth_wav:
+            try:
+                wav_resolved = Path(voice_auth_wav).resolve()
+                wav_resolved.relative_to(root.resolve())
+            except (ValueError, OSError):
+                return {"ok": False, "error": "voice_auth_wav path outside project root."}
         master_password = str(payload.get("master_password", "")).strip()
         voice_threshold_raw = payload.get("voice_threshold", 0.82)
         try:
@@ -755,6 +764,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             keep_recent_raw = payload.get("keep_recent", 1800)
             force_maintenance = bool(payload.get("force_maintenance", False))
             snapshot_note = str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160] or "mobile-self-heal"
+            snapshot_note = snapshot_note.lstrip("-") or "mobile-self-heal"
             try:
                 keep_recent = int(keep_recent_raw)
             except (TypeError, ValueError):
@@ -811,6 +821,7 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
 
             sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
             sync_db.execute("PRAGMA journal_mode=WAL")
+            sync_db.execute("PRAGMA busy_timeout=5000")
             sync_lock = _threading.Lock()
             install_changelog_triggers(sync_db, device_id="desktop")
             server._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")

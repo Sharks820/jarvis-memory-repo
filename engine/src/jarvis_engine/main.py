@@ -531,6 +531,9 @@ def cmd_growth_eval(
         accept_thinking=accept_thinking, timeout_s=timeout_s,
     ))
     run = result.run
+    if run is None:
+        print("error: growth eval failed")
+        return 2
     print("growth_eval_completed=true")
     print(f"model={run.model}")
     print(f"score_pct={run.score_pct}")
@@ -933,6 +936,9 @@ def cmd_ops_export_actions(snapshot_path: Path, actions_path: Path) -> int:
 def cmd_ops_sync(output_path: Path) -> int:
     result = _get_bus().dispatch(OpsSyncCommand(output_path=output_path))
     summary = result.summary
+    if summary is None:
+        print("error: ops sync failed")
+        return 2
     print(f"snapshot_path={summary.snapshot_path}")
     print(f"tasks={summary.tasks}")
     print(f"calendar_events={summary.calendar_events}")
@@ -2418,7 +2424,7 @@ def cmd_self_test(threshold: float) -> int:
     print(f"tasks_run={result.tasks_run}")
     print(f"regression_detected={result.regression_detected}")
     for task_score in result.per_task_scores:
-        print(f"  task={task_score['task_id']} score={task_score['score']:.4f}")
+        print(f"  task={task_score.get('task_id', '?')} score={task_score.get('score', 0.0):.4f}")
     print(f"message={result.message}")
     return 0
 
@@ -3186,6 +3192,7 @@ def main() -> int:
         return cmd_cost_reduction(days=args.days)
     if args.command == "self-test":
         return cmd_self_test(threshold=args.threshold)
+    print(f"error: unhandled command: {args.command}")
     return 1
 
 
