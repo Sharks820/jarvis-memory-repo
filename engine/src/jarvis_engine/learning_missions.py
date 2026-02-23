@@ -50,11 +50,9 @@ def load_missions(root: Path) -> list[dict[str, Any]]:
 
 
 def _save_missions(root: Path, missions: list[dict[str, Any]]) -> None:
-    path = _missions_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(missions, ensure_ascii=True, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
+    _atomic_write_json(_missions_path(root), missions, secure=False)
 
 
 def create_learning_mission(

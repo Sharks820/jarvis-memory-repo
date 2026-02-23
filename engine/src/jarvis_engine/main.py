@@ -213,15 +213,10 @@ def _load_auto_ingest_hashes(path: Path) -> list[str]:
 
 
 def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
+    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
     payload = {"hashes": hashes[-400:], "updated_utc": datetime.now(UTC).isoformat()}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(path, payload)
 
 
 _VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
@@ -343,6 +338,8 @@ def _read_gaming_mode_state() -> dict[str, object]:
 
 
 def _write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
+    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
     path = _gaming_mode_state_path()
     payload = {
         "enabled": bool(state.get("enabled", False)),
@@ -350,14 +347,7 @@ def _write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
         "updated_utc": str(state.get("updated_utc", "")) or datetime.now(UTC).isoformat(),
         "reason": str(state.get("reason", "")).strip()[:200],
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(path, payload)
     return payload
 
 

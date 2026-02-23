@@ -106,16 +106,16 @@ class AdversarialSelfTest:
                 "drop_pct": 0.0,
             }
 
-        lines = history_path.read_text(encoding="utf-8").splitlines()
         entries: list[dict] = []
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                entries.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                continue
+        with history_path.open(encoding="utf-8", errors="replace") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    entries.append(json.loads(stripped))
+                except json.JSONDecodeError:
+                    continue
 
         recent = entries[-window:]
         if len(recent) < 2:

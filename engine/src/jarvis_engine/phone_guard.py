@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._shared import safe_float as _safe_float
+
 
 @dataclass
 class SpamCandidate:
@@ -232,9 +234,6 @@ def write_spam_report(path: Path, candidates: list[SpamCandidate], actions: list
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-
-
-from jarvis_engine._shared import safe_float as _safe_float
 
 
 def _normalize_number(number: str) -> str:

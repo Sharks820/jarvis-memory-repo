@@ -397,13 +397,14 @@ def read_history(history_path: Path) -> list[dict[str, Any]]:
         if not history_path.exists():
             return []
         out: list[dict[str, Any]] = []
-        for line in history_path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+        with history_path.open(encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
         return out
 
 
