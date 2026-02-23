@@ -124,9 +124,15 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     if payload is not None:
         headers["Content-Type"] = "application/json"
     req = Request(url=f"{cfg.base_url.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
-    with urlopen(req, timeout=35) as resp:
-        raw = resp.read().decode("utf-8")
-    parsed = json.loads(raw)
+    try:
+        with urlopen(req, timeout=35) as resp:
+            raw = resp.read().decode("utf-8")
+    except (URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"HTTP request failed: {exc}") from exc
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid JSON response: {exc}") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError("Invalid response payload")
     return parsed
@@ -858,24 +864,6 @@ class JarvisDesktopWidget(tk.Tk):
                 self.launcher_canvas.itemconfig(self._launcher_ring_2_id, outline=ring)
             self.launcher_canvas.itemconfig(self._launcher_inner_id, fill=core)
         self.after(70, self._animate_launcher)
-
-
-def _health_loop(widget: Any) -> None:
-    # Test hook: run a single health-check iteration with retry behavior.
-    cfg = widget._current_cfg()
-    url = f"{cfg.base_url.rstrip('/')}/health"
-    ok = False
-    for _attempt in range(2):
-        try:
-            req = Request(url=url, method="GET")
-            with urlopen(req, timeout=5) as resp:
-                ok = resp.status == 200
-            if ok:
-                break
-        except Exception:
-            ok = False
-    widget.online = ok
-    widget.after(0, widget._refresh_status_view)
 
 
 def run_desktop_widget() -> None:

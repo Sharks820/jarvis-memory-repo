@@ -45,10 +45,24 @@ def test_run_shell_command_empty_rejected() -> None:
 
 
 def test_run_shell_command_timeout_returns_124() -> None:
-    rc, stdout, stderr = run_shell_command("ping 127.0.0.1 -n 6", timeout_s=1)
-    assert rc == 124
-    assert isinstance(stdout, str)
-    assert "timed out" in stderr.lower()
+    # Use a script file approach that works with shlex.split(posix=False) on Windows
+    import tempfile, os
+    script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+    try:
+        script.write("import time\ntime.sleep(30)\n")
+        script.close()
+        rc, stdout, stderr = run_shell_command(f"python {script.name}", timeout_s=1)
+        assert rc == 124
+        assert isinstance(stdout, str)
+        assert "timed out" in stderr.lower()
+    finally:
+        os.unlink(script.name)
+
+
+def test_run_shell_command_rejects_unlisted_command() -> None:
+    rc, stdout, stderr = run_shell_command("ping 127.0.0.1 -n 1")
+    assert rc == 2
+    assert "not in allowlist" in stderr
 
 
 def test_task_orchestrator_rejects_output_path_outside_repo(tmp_path) -> None:

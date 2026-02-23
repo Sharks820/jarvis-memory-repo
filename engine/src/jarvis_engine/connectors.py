@@ -214,7 +214,7 @@ def _any_env_set(keys: tuple[str, ...]) -> bool:
 
 def _all_env_set(keys: tuple[str, ...]) -> tuple[bool, list[str]]:
     if not keys:
-        return False, []
+        return True, []
     missing = [key for key in keys if not os.getenv(key, "").strip()]
     return len(missing) == 0, missing
 

@@ -79,7 +79,9 @@ def load_missions(root: Path) -> list[dict[str, Any]]:
 def _save_missions(root: Path, missions: list[dict[str, Any]]) -> None:
     path = _missions_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(missions, ensure_ascii=True, indent=2), encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(missions, ensure_ascii=True, indent=2), encoding="utf-8")
+    tmp.replace(path)
 
 
 def create_learning_mission(
@@ -92,7 +94,7 @@ def create_learning_mission(
     cleaned_topic = topic.strip()
     if not cleaned_topic:
         raise ValueError("topic is required")
-    mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
     mission = {
         "mission_id": mission_id,
         "topic": cleaned_topic[:200],
