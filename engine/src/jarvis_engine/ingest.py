@@ -29,7 +29,7 @@ class IngestionPipeline:
     def ingest(self, source: SourceType, kind: MemoryKind, task_id: str, content: str) -> IngestRecord:
         ts = datetime.now(UTC).isoformat()
         material = f"{source}|{kind}|{task_id}|{content}|{ts}".encode("utf-8")
-        record_id = hashlib.sha256(material).hexdigest()[:16]
+        record_id = hashlib.sha256(material).hexdigest()[:32]
         rec = IngestRecord(
             record_id=record_id,
             ts=ts,

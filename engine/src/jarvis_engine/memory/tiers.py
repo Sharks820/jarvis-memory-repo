@@ -60,8 +60,14 @@ class TierManager:
         if age_hours <= self.HOT_WINDOW_HOURS:
             return Tier.HOT
 
-        access_count = int(record.get("access_count", 0))
-        confidence = float(record.get("confidence", 0.0))
+        try:
+            access_count = int(record.get("access_count", 0))
+        except (ValueError, TypeError):
+            access_count = 0
+        try:
+            confidence = float(record.get("confidence", 0.0))
+        except (ValueError, TypeError):
+            confidence = 0.0
 
         # Frequently accessed or high-confidence records stay WARM
         if access_count > self.HIGH_ACCESS_THRESHOLD:

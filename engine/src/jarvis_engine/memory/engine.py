@@ -30,6 +30,7 @@ _EMBEDDING_DIM = 768
 
 # FTS5 special characters that must be escaped in user queries
 _FTS5_SPECIAL_RE = re.compile(r'["\*\(\)\{\}\[\]:^~]')
+_FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
 
 
 class MemoryEngine:
@@ -310,8 +311,10 @@ class MemoryEngine:
         Strips FTS5 special characters that could alter query semantics.
         """
         sanitized = _FTS5_SPECIAL_RE.sub(" ", query)
-        # Collapse whitespace and strip
-        return " ".join(sanitized.split()).strip()
+        # Remove FTS5 boolean operators to prevent query injection
+        tokens = sanitized.split()
+        tokens = [t for t in tokens if t.upper() not in _FTS5_KEYWORDS]
+        return " ".join(tokens).strip()
 
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:
         """FTS5 keyword search returning (record_id, rank) pairs.

@@ -93,7 +93,15 @@ class ImageAdapter(AdapterBase):
             "--force",
         ]
         timeout_s = 600 if quality_profile == "max_quality" else 300
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout_s)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            return AdapterResult(
+                ok=False,
+                provider=self.provider,
+                plan=self.plan(prompt),
+                reason=f"Image generation timed out after {timeout_s}s.",
+            )
         if proc.returncode != 0:
             return AdapterResult(
                 ok=False,
@@ -173,7 +181,15 @@ class VideoAdapter(AdapterBase):
             str(json_out),
         ]
         timeout_s = 2100 if quality_profile == "max_quality" else 1200
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout_s)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            return AdapterResult(
+                ok=False,
+                provider=self.provider,
+                plan=self.plan(prompt),
+                reason=f"Video generation timed out after {timeout_s}s.",
+            )
         if proc.returncode != 0:
             return AdapterResult(
                 ok=False,

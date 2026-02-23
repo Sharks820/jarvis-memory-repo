@@ -34,7 +34,7 @@ def test_ingest_valid_request_writes_event(mobile_server) -> None:
     assert resp["task_id"] == "mobile-001"
     assert resp["kind"] == "semantic"
     assert isinstance(resp["record_id"], str)
-    assert len(resp["record_id"]) == 16
+    assert len(resp["record_id"]) == 32
 
     events_path = mobile_server.root / ".planning" / "events.jsonl"
     lines = events_path.read_text(encoding="utf-8").splitlines()
