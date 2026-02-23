@@ -2,6 +2,7 @@
 
 from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.memory.search import hybrid_search
 from jarvis_engine.memory.tiers import Tier, TierManager
 
-__all__ = ["EmbeddingService", "MemoryEngine", "Tier", "TierManager"]
+__all__ = ["EmbeddingService", "MemoryEngine", "Tier", "TierManager", "hybrid_search"]
