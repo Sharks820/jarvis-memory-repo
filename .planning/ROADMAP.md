@@ -95,11 +95,11 @@ Plans:
   2. Harvested knowledge is deduplicated against existing facts and ingested through the standard memory pipeline (not a separate storage path)
   3. Contradictions between harvested knowledge and existing locked facts are quarantined for review rather than silently accepted
   4. Cost tracking shows per-source API spend and the user can set daily/monthly budget limits that halt harvesting when exceeded
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: MiniMax, Kimi, and Gemini API harvesters
-- [ ] 05-02: Claude Code and Codex session ingestors with dedup and budget controls
+- [ ] 05-01-PLAN.md -- MiniMax, Kimi, and Gemini API harvester providers with orchestrator and pipeline integration
+- [ ] 05-02-PLAN.md -- Claude Code and Codex session ingestors, budget controls, semantic dedup, and Command Bus wiring
 
 ### Phase 6: Voice and Personality
 **Goal**: Jarvis speaks with a distinctive British butler personality that adapts its tone to context, and can listen to voice commands with accuracy matching the Whisper app
@@ -174,7 +174,7 @@ Note: Phases 3, 6, and 8 depend only on Phase 1 and could theoretically run in p
 | 2. Knowledge Graph and Anti-Regression | 2/2 | Complete | 2026-02-22 |
 | 3. Intelligence Routing | 0/2 | Planned | - |
 | 4. Connectors and Daily Intelligence | 0/2 | Not started | - |
-| 5. Knowledge Harvesting | 0/2 | Not started | - |
+| 5. Knowledge Harvesting | 0/2 | Planned | - |
 | 6. Voice and Personality | 0/2 | Not started | - |
 | 7. Continuous Learning and Self-Improvement | 0/2 | Not started | - |
 | 8. Mobile-Desktop Sync | 0/2 | Not started | - |
