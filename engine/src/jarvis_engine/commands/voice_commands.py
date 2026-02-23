@@ -66,6 +66,21 @@ class VoiceVerifyResult:
 
 
 @dataclass(frozen=True)
+class VoiceListenCommand:
+    max_duration_seconds: float = 30.0
+    language: str = "en"
+    model_size: str = "small.en"
+
+
+@dataclass
+class VoiceListenResult:
+    text: str = ""
+    confidence: float = 0.0
+    duration_seconds: float = 0.0
+    message: str = ""
+
+
+@dataclass(frozen=True)
 class VoiceRunCommand:
     text: str
     execute: bool = False
@@ -84,3 +99,20 @@ class VoiceRunResult:
     return_code: int = 0
     intent: str = "unknown"
     extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PersonaComposeCommand:
+    """Request a personality-aware LLM response for a user query."""
+
+    query: str
+    branch: str = "general"
+    model: str = ""
+
+
+@dataclass
+class PersonaComposeResult:
+    text: str = ""
+    branch: str = ""
+    tone: str = ""
+    message: str = ""

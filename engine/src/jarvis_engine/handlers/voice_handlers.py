@@ -5,9 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from jarvis_engine.commands.voice_commands import (
+    PersonaComposeCommand,
+    PersonaComposeResult,
     VoiceEnrollCommand,
     VoiceEnrollResult,
     VoiceListCommand,
+    VoiceListenCommand,
+    VoiceListenResult,
     VoiceListResult,
     VoiceRunCommand,
     VoiceRunResult,
@@ -134,6 +138,85 @@ class VoiceRunHandler:
             master_password=cmd.master_password,
         )
         return VoiceRunResult(return_code=rc)
+
+
+class VoiceListenHandler:
+    """Capture microphone audio and transcribe via faster-whisper."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: VoiceListenCommand) -> VoiceListenResult:
+        try:
+            from jarvis_engine.stt import listen_and_transcribe
+        except ImportError as exc:
+            return VoiceListenResult(message=f"error: {exc}")
+
+        try:
+            result = listen_and_transcribe(
+                max_duration_seconds=cmd.max_duration_seconds,
+                language=cmd.language,
+                model_size=cmd.model_size,
+            )
+        except RuntimeError as exc:
+            return VoiceListenResult(message=f"error: {exc}")
+        except Exception as exc:
+            return VoiceListenResult(message=f"error: unexpected failure: {exc}")
+
+        return VoiceListenResult(
+            text=result.text,
+            confidence=result.confidence,
+            duration_seconds=result.duration_seconds,
+        )
+
+
+class PersonaComposeHandler:
+    """Compose a personality-aware LLM response via the Intelligence Gateway."""
+
+    def __init__(self, root: Path, gateway: object | None = None) -> None:
+        self._root = root
+        self._gateway = gateway
+
+    def handle(self, cmd: PersonaComposeCommand) -> PersonaComposeResult:
+        if self._gateway is None:
+            return PersonaComposeResult(message="error: gateway not available")
+
+        from jarvis_engine.persona import (
+            _resolve_tone,
+            compose_persona_system_prompt,
+            load_persona_config,
+        )
+        from jarvis_engine.gateway.models import ModelGateway, GatewayResponse
+
+        gateway: ModelGateway = self._gateway  # type: ignore[assignment]
+        cfg = load_persona_config(self._root)
+        tone = _resolve_tone(cmd.branch)
+        system_prompt = compose_persona_system_prompt(cfg, branch=cmd.branch)
+
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": cmd.query})
+
+        model = cmd.model or "claude-sonnet-4-5-20250929"
+        try:
+            resp: GatewayResponse = gateway.complete(
+                messages=messages,
+                model=model,
+                route_reason="persona_reply",
+            )
+        except Exception as exc:
+            return PersonaComposeResult(
+                branch=cmd.branch,
+                tone=tone,
+                message=f"error: {exc}",
+            )
+
+        return PersonaComposeResult(
+            text=resp.text,
+            branch=cmd.branch,
+            tone=tone,
+        )
 
 
 def _load_voice_auth_impl():  # type: ignore[no-untyped-def]

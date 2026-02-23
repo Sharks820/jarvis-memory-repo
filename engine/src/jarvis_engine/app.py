@@ -19,8 +19,10 @@ from jarvis_engine.commands.memory_commands import (
     MemorySnapshotCommand,
 )
 from jarvis_engine.commands.voice_commands import (
+    PersonaComposeCommand,
     VoiceEnrollCommand,
     VoiceListCommand,
+    VoiceListenCommand,
     VoiceRunCommand,
     VoiceSayCommand,
     VoiceVerifyCommand,
@@ -86,8 +88,10 @@ from jarvis_engine.handlers.memory_handlers import (
     MemorySnapshotHandler,
 )
 from jarvis_engine.handlers.voice_handlers import (
+    PersonaComposeHandler,
     VoiceEnrollHandler,
     VoiceListHandler,
+    VoiceListenHandler,
     VoiceRunHandler,
     VoiceSayHandler,
     VoiceVerifyHandler,
@@ -231,6 +235,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(VoiceEnrollCommand, VoiceEnrollHandler(root).handle)
     bus.register(VoiceVerifyCommand, VoiceVerifyHandler(root).handle)
     bus.register(VoiceRunCommand, VoiceRunHandler(root).handle)
+    bus.register(VoiceListenCommand, VoiceListenHandler(root).handle)
 
     # -- System --
     bus.register(StatusCommand, StatusHandler(root).handle)
@@ -250,13 +255,19 @@ def create_app(root: Path) -> CommandBus:
     bus.register(RouteCommand, RouteHandler(root, classifier=intent_classifier).handle)
     if gateway is not None:
         bus.register(QueryCommand, QueryHandler(gateway, classifier=intent_classifier).handle)
+        bus.register(PersonaComposeCommand, PersonaComposeHandler(root, gateway=gateway).handle)
     else:
         from jarvis_engine.commands.task_commands import QueryResult
+        from jarvis_engine.commands.voice_commands import PersonaComposeResult
 
         def _gateway_unavailable_handler(cmd: QueryCommand) -> QueryResult:
             return QueryResult(text="Gateway not initialized", return_code=2)
 
+        def _persona_gateway_unavailable(cmd: PersonaComposeCommand) -> PersonaComposeResult:
+            return PersonaComposeResult(message="error: gateway not available")
+
         bus.register(QueryCommand, _gateway_unavailable_handler)
+        bus.register(PersonaComposeCommand, _persona_gateway_unavailable)
     bus.register(WebResearchCommand, WebResearchHandler(root).handle)
 
     # -- Ops --
