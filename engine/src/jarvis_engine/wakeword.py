@@ -105,14 +105,8 @@ class WakeWordDetector:
                     if scores and scores[-1] > self._threshold:
                         logger.info("Wake word detected! (score=%.3f)", scores[-1])
 
-                        # Release mic before callback
-                        if mic_lock is not None:
-                            mic_lock.acquire()
-                        try:
-                            self._model.reset()
-                        finally:
-                            if mic_lock is not None:
-                                mic_lock.release()
+                        # Reset prediction buffer (no mic access needed)
+                        self._model.reset()
 
                         on_detected()
                         break

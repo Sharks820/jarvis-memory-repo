@@ -9,13 +9,7 @@ ALLOWED_COMMANDS = {
     "node",
     "npm",
     "pytest",
-    "echo",
-    "cat",
-    "ls",
-    "dir",
-    "cd",
-    "mkdir",
-    "type",
+    "jarvis",
 }
 
 

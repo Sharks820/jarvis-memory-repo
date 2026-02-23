@@ -90,7 +90,8 @@ class OpsExportActionsHandler:
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("OpsExportActions path check failed: %s", exc)
             return OpsExportActionsResult()
         snapshot = load_snapshot(cmd.snapshot_path)
         actions = suggest_actions(snapshot)
@@ -110,7 +111,8 @@ class OpsSyncHandler:
 
         try:
             _check_path_within_root(cmd.output_path, self._root, "output_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("OpsSyncHandler path check failed: %s", exc)
             return OpsSyncResult()
         summary = build_live_snapshot(self._root, cmd.output_path)
         return OpsSyncResult(summary=summary)
@@ -239,7 +241,7 @@ class MissionRunHandler:
                 )
                 ingested_id = rec.record_id
             except Exception as exc:
-                logger.debug("Auto-ingest failed for mission: %s", exc)
+                logger.warning("Auto-ingest failed for mission: %s", exc)
         return MissionRunResult(report=report, return_code=0, ingested_record_id=ingested_id)
 
 
@@ -257,6 +259,11 @@ class GrowthEvalHandler:
             return GrowthEvalResult()
         try:
             tasks = load_golden_tasks(cmd.tasks_path)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
+            logger.warning("Growth eval task loading failed: %s", exc)
+            return GrowthEvalResult()
+
+        try:
             run = run_eval(
                 endpoint=cmd.endpoint,
                 model=cmd.model,
@@ -268,7 +275,8 @@ class GrowthEvalHandler:
                 timeout_s=cmd.timeout_s,
             )
             append_history(cmd.history_path, run)
-        except (ValueError, RuntimeError, FileNotFoundError, json.JSONDecodeError):
+        except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
+            logger.warning("Growth eval execution failed: %s", exc)
             return GrowthEvalResult()
         return GrowthEvalResult(run=run)
 

@@ -49,7 +49,7 @@ class IntentClassifier:
     MODEL_MAP: dict[str, str] = {
         "complex": "claude-opus-4-5-20250929",
         "routine": "claude-sonnet-4-5-20250929",
-        "simple_private": "qwen3:14b",
+        # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 
     PRIVACY_KEYWORDS: set[str] = {
@@ -102,10 +102,14 @@ class IntentClassifier:
         for route_name, exemplars in self.ROUTES.items():
             embeddings = []
             for text in exemplars:
-                vec = self._embed.embed(text, prefix="search_query")
-                embeddings.append(np.array(vec))
-            centroid = np.mean(embeddings, axis=0)
-            centroids[route_name] = centroid
+                try:
+                    vec = self._embed.embed(text, prefix="search_query")
+                    embeddings.append(np.array(vec))
+                except Exception:
+                    pass
+            if embeddings:
+                centroid = np.mean(embeddings, axis=0)
+                centroids[route_name] = centroid
         return centroids
 
     def _check_privacy(self, query: str) -> bool:

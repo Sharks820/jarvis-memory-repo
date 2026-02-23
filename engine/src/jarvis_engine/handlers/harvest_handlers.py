@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -83,7 +84,25 @@ class IngestSessionHandler:
 
         # Discover sessions
         if cmd.session_path:
-            sessions = [Path(cmd.session_path)]
+            session_resolved = Path(cmd.session_path).resolve()
+            home = Path.home().resolve()
+            allowed_roots = [
+                home / ".claude",
+                home / ".codex",
+            ]
+            if os.name == "nt":
+                appdata = home / "AppData"
+                if appdata.exists():
+                    allowed_roots.append(appdata)
+            if not any(
+                str(session_resolved).startswith(str(root))
+                for root in allowed_roots
+            ):
+                return IngestSessionResult(
+                    source=cmd.source,
+                    return_code=2,
+                )
+            sessions = [session_resolved]
         elif cmd.source == "claude":
             sessions = ingestor.find_sessions(project_path=cmd.project_path)
         else:

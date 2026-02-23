@@ -726,7 +726,6 @@ class JarvisDesktopWidget(tk.Tk):
                     "execute": bool(self.execute_var.get()),
                     "approve_privileged": bool(self.priv_var.get()),
                     "speak": bool(self.speak_var.get()),
-                    "master_password": cfg.master_password,
                 }
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
                 intent = str(data.get("intent", "unknown"))

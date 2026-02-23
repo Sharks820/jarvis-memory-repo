@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -80,10 +81,14 @@ class AdversarialSelfTest:
         }
 
     def save_quiz_result(self, result: dict, history_path: Path) -> None:
-        """Append a quiz result to the JSONL history file."""
+        """Append a quiz result to the JSONL history file (atomic append)."""
         history_path.parent.mkdir(parents=True, exist_ok=True)
-        with history_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(result, ensure_ascii=True) + "\n")
+        line = json.dumps(result, ensure_ascii=True) + "\n"
+        fd = os.open(str(history_path), os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+        try:
+            os.write(fd, line.encode("utf-8"))
+        finally:
+            os.close(fd)
 
     def check_regression(self, history_path: Path, window: int = 5) -> dict:
         """Check for score regression against recent history.

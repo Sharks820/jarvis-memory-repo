@@ -42,7 +42,7 @@ class SyncPullHandler:
             outgoing = self._sync_engine.compute_outgoing(cmd.device_id)
         except Exception as exc:
             logger.error("SyncPull compute_outgoing failed: %s", exc)
-            return SyncPullResult(message=f"error: {exc}")
+            return SyncPullResult(message="error: sync pull failed")
 
         has_more = any(
             len(entries) >= 500
@@ -54,7 +54,7 @@ class SyncPullHandler:
             encoded = base64.b64encode(encrypted).decode("ascii")
         except Exception as exc:
             logger.error("SyncPull encryption failed: %s", exc)
-            return SyncPullResult(message=f"encryption error: {exc}")
+            return SyncPullResult(message="error: encryption failed")
 
         return SyncPullResult(
             encrypted_payload=encoded,
@@ -89,13 +89,13 @@ class SyncPushHandler:
             payload = self._transport.decrypt(raw_token)
         except Exception as exc:
             logger.error("SyncPush decryption failed: %s", exc)
-            return SyncPushResult(message=f"decryption error: {exc}")
+            return SyncPushResult(message="error: decryption failed")
 
         try:
             result = self._sync_engine.apply_incoming(payload, cmd.device_id)
         except Exception as exc:
             logger.error("SyncPush apply_incoming failed: %s", exc)
-            return SyncPushResult(message=f"apply error: {exc}")
+            return SyncPushResult(message="error: apply failed")
 
         errors = result.get("errors", [])
         msg = "ok" if not errors else f"ok with errors: {'; '.join(errors)}"
@@ -122,7 +122,7 @@ class SyncStatusHandler:
             status = self._sync_engine.sync_status()
         except Exception as exc:
             logger.error("SyncStatus failed: %s", exc)
-            return SyncStatusResult(message=f"error: {exc}")
+            return SyncStatusResult(message="error: sync status failed")
 
         return SyncStatusResult(
             changelog_size=status.get("changelog_size", 0),
