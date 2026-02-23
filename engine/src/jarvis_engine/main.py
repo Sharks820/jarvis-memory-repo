@@ -165,6 +165,7 @@ def _auto_ingest_dedupe_path() -> Path:
 
 
 def _sanitize_memory_content(content: str) -> str:
+    content = content[:100_000]  # Truncate before regex to prevent catastrophic backtracking
     # Redact master password, tokens, API keys, secrets, signing keys, bearer tokens
     cleaned = re.sub(
         r"(?i)((?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+",

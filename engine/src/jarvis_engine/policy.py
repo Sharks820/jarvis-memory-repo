@@ -1,18 +1,33 @@
 from __future__ import annotations
 
 
+ALLOWED_COMMANDS = {
+    "git",
+    "ollama",
+    "python",
+    "pip",
+    "node",
+    "npm",
+    "pytest",
+    "echo",
+    "cat",
+    "ls",
+    "dir",
+    "cd",
+    "mkdir",
+    "type",
+}
+
+
 class PolicyEngine:
     """Very small allowlist gate for high-level commands."""
 
     def __init__(self) -> None:
-        self._allowed_prefixes = {
-            "git status",
-            "git log",
-            "ollama list",
-            "ollama ps",
-        }
+        self._allowed_commands = ALLOWED_COMMANDS
 
     def is_allowed(self, command: str) -> bool:
-        normalized = " ".join(command.strip().split()).lower()
-        return any(normalized.startswith(prefix) for prefix in self._allowed_prefixes)
+        tokens = command.strip().split()
+        if not tokens:
+            return False
+        return tokens[0].lower() in self._allowed_commands
 
