@@ -193,6 +193,17 @@ class MemoryEngine:
             return None
         return dict(row)
 
+    def get_record_by_hash(self, content_hash: str) -> dict | None:
+        """Fetch a single record by content_hash."""
+        cur = self._db.execute(
+            "SELECT * FROM records WHERE content_hash = ?",
+            (content_hash,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:
         """FTS5 keyword search returning (record_id, rank) pairs.
 
