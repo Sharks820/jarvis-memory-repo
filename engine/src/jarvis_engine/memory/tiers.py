@@ -15,6 +15,9 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import safe_int as _safe_int
+
 if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
@@ -60,14 +63,8 @@ class TierManager:
         if age_hours <= self.HOT_WINDOW_HOURS:
             return Tier.HOT
 
-        try:
-            access_count = int(record.get("access_count", 0))
-        except (ValueError, TypeError):
-            access_count = 0
-        try:
-            confidence = float(record.get("confidence", 0.0))
-        except (ValueError, TypeError):
-            confidence = 0.0
+        access_count = _safe_int(record.get("access_count", 0))
+        confidence = _safe_float(record.get("confidence", 0.0))
 
         # Frequently accessed or high-confidence records stay WARM
         if access_count >= self.HIGH_ACCESS_THRESHOLD:

@@ -529,10 +529,17 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, A
 
     records_path = _records_path(root)
     tmp = records_path.with_suffix(records_path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        for row in recent_records:
-            f.write(json.dumps(row, ensure_ascii=True) + "\n")
-    os.replace(tmp, records_path)
+    try:
+        with tmp.open("w", encoding="utf-8") as f:
+            for row in recent_records:
+                f.write(json.dumps(row, ensure_ascii=True) + "\n")
+        os.replace(tmp, records_path)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
 
     branch_state: dict[str, dict[str, Any]] = {}
     hash_map: dict[str, str] = {}

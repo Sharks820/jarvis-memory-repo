@@ -48,16 +48,16 @@ def load_cost_history(history_path: Path, limit: int = 90) -> list[dict]:
     if not history_path.exists():
         return []
 
-    lines = history_path.read_text(encoding="utf-8").splitlines()
     entries: list[dict] = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            entries.append(json.loads(stripped))
-        except json.JSONDecodeError:
-            continue
+    with history_path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                entries.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                continue
 
     return entries[-limit:]
 

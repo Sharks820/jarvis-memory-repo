@@ -14,6 +14,8 @@ from jarvis_engine.runtime_control import read_control_state
 
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import safe_int as _safe_int
 
 
 def _tail_lines(path: Path, *, max_lines: int) -> list[str]:
@@ -159,14 +161,8 @@ def run_self_heal(
     regression = brain_regression_report(root)
     status = str(regression.get("status", "unknown")).strip().lower()
     regression_healthy = status in {"healthy", "pass"}
-    try:
-        unresolved_conflicts = int(regression.get("unresolved_conflicts", 0))
-    except (ValueError, TypeError):
-        unresolved_conflicts = 0
-    try:
-        duplicate_ratio = float(regression.get("duplicate_ratio", 0.0))
-    except (ValueError, TypeError):
-        duplicate_ratio = 0.0
+    unresolved_conflicts = _safe_int(regression.get("unresolved_conflicts", 0))
+    duplicate_ratio = _safe_float(regression.get("duplicate_ratio", 0.0))
 
     maintenance: dict[str, Any] = {"status": "skipped"}
     should_maintain = force_maintenance or (not regression_healthy) or unresolved_conflicts > 0 or duplicate_ratio > 0.25
