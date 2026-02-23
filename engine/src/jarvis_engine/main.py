@@ -84,6 +84,7 @@ from jarvis_engine.commands.memory_commands import (
 from jarvis_engine.commands.voice_commands import (
     VoiceEnrollCommand,
     VoiceListCommand,
+    VoiceListenCommand,
     VoiceRunCommand,
     VoiceSayCommand,
     VoiceVerifyCommand,
@@ -1745,6 +1746,46 @@ def cmd_voice_verify(user_id: str, wav_path: str, threshold: float) -> int:
     return 0 if result.matched else 2
 
 
+def cmd_voice_listen(
+    duration: float,
+    language: str,
+    model: str,
+    execute: bool,
+) -> int:
+    """Record from microphone, transcribe, optionally execute as voice command."""
+    result = _get_bus().dispatch(
+        VoiceListenCommand(
+            max_duration_seconds=duration,
+            language=language,
+            model_size=model,
+        )
+    )
+    if result.message.startswith("error:"):
+        print(result.message)
+        return 2
+    if not result.text:
+        print("(no speech detected)")
+        return 0
+    print(f"transcription={result.text}")
+    print(f"confidence={result.confidence}")
+    print(f"duration={result.duration_seconds}s")
+    if execute and result.text:
+        print("executing transcribed command...")
+        return cmd_voice_run(
+            text=result.text,
+            execute=True,
+            approve_privileged=False,
+            speak=False,
+            snapshot_path=Path(repo_root() / ".planning" / "ops_snapshot.live.json"),
+            actions_path=Path(repo_root() / ".planning" / "actions.generated.json"),
+            voice_user="conner",
+            voice_auth_wav="",
+            voice_threshold=0.82,
+            master_password="",
+        )
+    return 0
+
+
 def _cmd_voice_run_impl(
     text: str,
     execute: bool,
@@ -2593,6 +2634,12 @@ def main() -> int:
         default=str(repo_root() / ".planning" / "actions.generated.json"),
     )
 
+    p_voice_listen = sub.add_parser("voice-listen", help="Record from microphone and transcribe speech-to-text.")
+    p_voice_listen.add_argument("--duration", type=float, default=30.0, help="Max recording duration in seconds.")
+    p_voice_listen.add_argument("--language", default="en", help="Language code hint for transcription.")
+    p_voice_listen.add_argument("--model", default="small.en", help="Whisper model size (e.g. tiny.en, small.en, medium).")
+    p_voice_listen.add_argument("--execute", action="store_true", help="Execute transcribed text as a voice command.")
+
     # -- Harvesting --
     p_harvest = sub.add_parser("harvest", help="Harvest knowledge about a topic from external AI sources.")
     p_harvest.add_argument("--topic", required=True, help="Topic to harvest knowledge about.")
@@ -2900,6 +2947,13 @@ def main() -> int:
             voice_auth_wav=args.voice_auth_wav,
             voice_threshold=args.voice_threshold,
             master_password=args.master_password,
+        )
+    if args.command == "voice-listen":
+        return cmd_voice_listen(
+            duration=args.duration,
+            language=args.language,
+            model=args.model,
+            execute=args.execute,
         )
     if args.command == "harvest":
         return cmd_harvest(
