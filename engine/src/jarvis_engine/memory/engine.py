@@ -4,13 +4,16 @@ Provides ACID-transactional storage for memory records with:
 - Full-text keyword search via FTS5
 - Semantic similarity search via sqlite-vec KNN
 - WAL mode for concurrent access from daemon + API + CLI
-- Write-lock serialization via threading.Lock
+- Write-lock serialization via threading.Lock (reads are lock-free; WAL mode
+  allows concurrent readers alongside a single writer)
 - Graceful degradation when sqlite-vec is unavailable
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import sqlite3
 import struct
 import threading
@@ -25,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 _EMBEDDING_DIM = 768
 
+# FTS5 special characters that must be escaped in user queries
+_FTS5_SPECIAL_RE = re.compile(r'["\*\(\)\{\}\[\]:^~]')
+
 
 class MemoryEngine:
     """SQLite-backed memory engine with FTS5 and sqlite-vec support."""
@@ -38,6 +44,7 @@ class MemoryEngine:
         self._embed_service = embed_service
         self._vec_available = True
         self._write_lock = threading.Lock()
+        self._closed = False
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
@@ -81,6 +88,11 @@ class MemoryEngine:
             );
 
             CREATE UNIQUE INDEX IF NOT EXISTS idx_content_hash ON records(content_hash);
+            CREATE INDEX IF NOT EXISTS idx_records_source ON records(source);
+            CREATE INDEX IF NOT EXISTS idx_records_kind ON records(kind);
+            CREATE INDEX IF NOT EXISTS idx_records_branch ON records(branch);
+            CREATE INDEX IF NOT EXISTS idx_records_tier ON records(tier);
+            CREATE INDEX IF NOT EXISTS idx_records_ts ON records(ts);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_records
                 USING fts5(record_id, summary);
@@ -107,15 +119,88 @@ class MemoryEngine:
         if self._vec_available:
             try:
                 cur.execute(
-                    """
+                    f"""
                     CREATE VIRTUAL TABLE IF NOT EXISTS vec_records
-                        USING vec0(record_id TEXT PRIMARY KEY, embedding float[768])
+                        USING vec0(record_id TEXT PRIMARY KEY, embedding float[{_EMBEDDING_DIM}])
                     """
                 )
             except Exception as exc:
                 self._vec_available = False
                 logger.warning("Failed to create vec_records table: %s", exc)
 
+        self._db.commit()
+
+        # Initialize knowledge graph schema (Phase 2)
+        self._init_kg_schema()
+
+    def _init_kg_schema(self) -> None:
+        """Create knowledge graph tables if they don't exist (idempotent).
+
+        Tables: kg_nodes, kg_edges, kg_contradictions.
+        Bumps schema_version to 2 if not already present.
+        """
+        self._db.executescript("""
+            CREATE TABLE IF NOT EXISTS kg_nodes (
+                node_id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                node_type TEXT NOT NULL DEFAULT 'fact',
+                confidence REAL NOT NULL DEFAULT 0.5,
+                locked INTEGER NOT NULL DEFAULT 0,
+                locked_at TEXT DEFAULT NULL,
+                locked_by TEXT DEFAULT NULL,
+                sources TEXT NOT NULL DEFAULT '[]',
+                history TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kg_nodes_type ON kg_nodes(node_type);
+            CREATE INDEX IF NOT EXISTS idx_kg_nodes_locked ON kg_nodes(locked);
+
+            CREATE TABLE IF NOT EXISTS kg_edges (
+                edge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.5,
+                source_record TEXT DEFAULT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (source_id) REFERENCES kg_nodes(node_id),
+                FOREIGN KEY (target_id) REFERENCES kg_nodes(node_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_edges(source_id);
+            CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges(target_id);
+            CREATE INDEX IF NOT EXISTS idx_kg_edges_relation ON kg_edges(relation);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_edges_unique
+                ON kg_edges(source_id, target_id, relation);
+
+            CREATE TABLE IF NOT EXISTS kg_contradictions (
+                contradiction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_id TEXT NOT NULL,
+                existing_value TEXT NOT NULL,
+                incoming_value TEXT NOT NULL,
+                existing_confidence REAL NOT NULL,
+                incoming_confidence REAL NOT NULL,
+                incoming_source TEXT DEFAULT NULL,
+                record_id TEXT DEFAULT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                resolved_at TEXT DEFAULT NULL,
+                resolution TEXT DEFAULT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (node_id) REFERENCES kg_nodes(node_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_kg_contradictions_status
+                ON kg_contradictions(status);
+            CREATE INDEX IF NOT EXISTS idx_kg_contradictions_node
+                ON kg_contradictions(node_id);
+        """)
+
+        # Bump schema version to 2
+        self._db.execute(
+            "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"
+        )
         self._db.commit()
 
     def insert_record(
@@ -127,7 +212,17 @@ class MemoryEngine:
 
         Returns True if inserted, False if duplicate (content_hash collision).
         Uses INSERT OR IGNORE for dedup via UNIQUE constraint on content_hash.
+        All three inserts (records, FTS5, vec) happen in a single transaction.
         """
+        # Normalize tags to JSON string
+        raw_tags = record.get("tags", "[]")
+        if isinstance(raw_tags, list):
+            tags_str = json.dumps(raw_tags)
+        elif isinstance(raw_tags, str):
+            tags_str = raw_tags
+        else:
+            tags_str = "[]"
+
         with self._write_lock:
             cur = self._db.cursor()
             try:
@@ -146,7 +241,7 @@ class MemoryEngine:
                         record["kind"],
                         record.get("task_id", ""),
                         record.get("branch", "general"),
-                        record.get("tags", "[]") if isinstance(record.get("tags"), str) else str(record.get("tags", "[]")),
+                        tags_str,
                         record["summary"],
                         record["content_hash"],
                         record.get("confidence", 0.72),
@@ -157,11 +252,11 @@ class MemoryEngine:
                 )
 
                 if cur.rowcount == 0:
-                    # Duplicate content_hash -- INSERT OR IGNORE did nothing
-                    self._db.rollback()
+                    # Duplicate content_hash -- INSERT OR IGNORE did nothing.
+                    # No rollback needed: nothing was written.
                     return False
 
-                # Insert into FTS5 (contentless standalone)
+                # Insert into FTS5 (same transaction as records insert)
                 cur.execute(
                     "INSERT INTO fts_records(record_id, summary) VALUES (?, ?)",
                     (record["record_id"], record["summary"]),
@@ -169,6 +264,10 @@ class MemoryEngine:
 
                 # Insert into vec_records if embedding provided and vec available
                 if embedding is not None and self._vec_available:
+                    if len(embedding) != _EMBEDDING_DIM:
+                        raise ValueError(
+                            f"Embedding dimension mismatch: got {len(embedding)}, expected {_EMBEDDING_DIM}"
+                        )
                     blob = struct.pack(f"{len(embedding)}f", *embedding)
                     cur.execute(
                         "INSERT INTO vec_records(record_id, embedding) VALUES (?, ?)",
@@ -204,12 +303,24 @@ class MemoryEngine:
             return None
         return dict(row)
 
+    @staticmethod
+    def _sanitize_fts_query(query: str) -> str:
+        """Sanitize a user query for FTS5 MATCH to prevent injection.
+
+        Strips FTS5 special characters that could alter query semantics.
+        """
+        sanitized = _FTS5_SPECIAL_RE.sub(" ", query)
+        # Collapse whitespace and strip
+        return " ".join(sanitized.split()).strip()
+
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:
         """FTS5 keyword search returning (record_id, rank) pairs.
 
         Rank is negative (more negative = more relevant in FTS5).
+        The query is sanitized to prevent FTS5 syntax injection.
         """
-        if not query.strip():
+        safe_query = self._sanitize_fts_query(query)
+        if not safe_query:
             return []
         try:
             cur = self._db.execute(
@@ -220,11 +331,11 @@ class MemoryEngine:
                 ORDER BY rank
                 LIMIT ?
                 """,
-                (query, limit),
+                (safe_query, limit),
             )
             return [(row[0], row[1]) for row in cur.fetchall()]
         except Exception as exc:
-            logger.warning("FTS5 search failed: %s", exc)
+            logger.warning("FTS5 search failed for query %r: %s", safe_query, exc)
             return []
 
     def search_vec(
@@ -255,11 +366,14 @@ class MemoryEngine:
             logger.warning("Vec search failed: %s", exc)
             return []
 
-    def update_access(self, record_id: str) -> None:
-        """Increment access_count and set last_accessed to now."""
+    def update_access(self, record_id: str) -> bool:
+        """Increment access_count and set last_accessed to now.
+
+        Returns True if the record existed and was updated, False otherwise.
+        """
         now = datetime.now(UTC).isoformat()
         with self._write_lock:
-            self._db.execute(
+            cur = self._db.execute(
                 """
                 UPDATE records
                 SET access_count = access_count + 1,
@@ -267,6 +381,24 @@ class MemoryEngine:
                 WHERE record_id = ?
                 """,
                 (now, record_id),
+            )
+            self._db.commit()
+            return cur.rowcount > 0
+
+    def update_access_batch(self, record_ids: list[str]) -> None:
+        """Batch-increment access_count for multiple records in one transaction."""
+        if not record_ids:
+            return
+        now = datetime.now(UTC).isoformat()
+        with self._write_lock:
+            self._db.executemany(
+                """
+                UPDATE records
+                SET access_count = access_count + 1,
+                    last_accessed = ?
+                WHERE record_id = ?
+                """,
+                [(now, rid) for rid in record_ids],
             )
             self._db.commit()
 
@@ -279,6 +411,35 @@ class MemoryEngine:
             )
             self._db.commit()
 
+    def update_tiers_batch(self, updates: list[tuple[str, str]]) -> None:
+        """Batch-update tiers: [(record_id, new_tier), ...] in one transaction."""
+        if not updates:
+            return
+        with self._write_lock:
+            self._db.executemany(
+                "UPDATE records SET tier = ? WHERE record_id = ?",
+                [(tier, rid) for rid, tier in updates],
+            )
+            self._db.commit()
+
+    def get_records_batch(self, record_ids: list[str]) -> list[dict]:
+        """Fetch multiple records by ID in a single query."""
+        if not record_ids:
+            return []
+        placeholders = ",".join("?" for _ in record_ids)
+        cur = self._db.execute(
+            f"SELECT * FROM records WHERE record_id IN ({placeholders})",
+            record_ids,
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def get_all_records_for_tier_maintenance(self) -> list[dict]:
+        """Fetch all records with only the columns needed for tier classification."""
+        cur = self._db.execute(
+            "SELECT record_id, ts, access_count, confidence, tier FROM records"
+        )
+        return [dict(row) for row in cur.fetchall()]
+
     def get_all_record_ids(self) -> list[str]:
         """List all record IDs (for tier management)."""
         cur = self._db.execute("SELECT record_id FROM records")
@@ -290,5 +451,11 @@ class MemoryEngine:
         return cur.fetchone()[0]
 
     def close(self) -> None:
-        """Close the database connection."""
-        self._db.close()
+        """Close the database connection (idempotent)."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._db.close()
+        except Exception:
+            pass
