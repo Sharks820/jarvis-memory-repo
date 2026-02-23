@@ -140,6 +140,55 @@ class CostTracker:
             "total_cost_usd": total_cost,
         }
 
+    def local_vs_cloud_summary(self, days: int = 30) -> dict:
+        """Return local (ollama) vs cloud query ratio for the last N days.
+
+        Returns dict with:
+        - period_days: int
+        - local_count: int
+        - cloud_count: int
+        - total_count: int
+        - local_pct: float (rounded to 1 decimal)
+        - cloud_cost_usd: float
+        """
+        cur = self._db.execute(
+            """
+            SELECT
+                CASE WHEN provider = 'ollama' THEN 'local' ELSE 'cloud' END AS category,
+                COUNT(*) AS cnt,
+                SUM(cost_usd) AS total_cost
+            FROM query_costs
+            WHERE ts >= datetime('now', ?)
+            GROUP BY category
+            """,
+            (f"-{days} days",),
+        )
+
+        local_count = 0
+        cloud_count = 0
+        cloud_cost = 0.0
+        for row in cur.fetchall():
+            cat = row["category"]
+            cnt = row["cnt"] or 0
+            cost = row["total_cost"] or 0.0
+            if cat == "local":
+                local_count = cnt
+            else:
+                cloud_count = cnt
+                cloud_cost += cost
+
+        total = local_count + cloud_count
+        local_pct = round((local_count / total * 100) if total > 0 else 0.0, 1)
+
+        return {
+            "period_days": days,
+            "local_count": local_count,
+            "cloud_count": cloud_count,
+            "total_count": total,
+            "local_pct": local_pct,
+            "cloud_cost_usd": round(cloud_cost, 6),
+        }
+
     def close(self) -> None:
         """Close the database connection."""
         try:

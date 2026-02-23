@@ -1,0 +1,99 @@
+"""Cost reduction trend tracking via JSONL snapshots.
+
+Tracks local-vs-cloud query ratios over time to show progressive cost reduction
+as Jarvis's local knowledge base grows.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+
+def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
+    """Compute 7d and 30d local-vs-cloud summaries and append to JSONL history.
+
+    Returns a snapshot dict with date, local_pct, cloud_cost_usd, and total_queries
+    for both 7-day and 30-day windows.
+    """
+    summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
+    summary_30d = cost_tracker.local_vs_cloud_summary(days=30)
+
+    snapshot = {
+        "date": datetime.now(UTC).strftime("%Y-%m-%d"),
+        "7d_local_pct": summary_7d["local_pct"],
+        "30d_local_pct": summary_30d["local_pct"],
+        "7d_cloud_cost_usd": summary_7d["cloud_cost_usd"],
+        "30d_cloud_cost_usd": summary_30d["cloud_cost_usd"],
+        "7d_total_queries": summary_7d["total_count"],
+        "30d_total_queries": summary_30d["total_count"],
+    }
+
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(snapshot, ensure_ascii=True) + "\n")
+
+    return snapshot
+
+
+def load_cost_history(history_path: Path, limit: int = 90) -> list[dict]:
+    """Read the last N snapshot entries from the JSONL history file."""
+    if not history_path.exists():
+        return []
+
+    lines = history_path.read_text(encoding="utf-8").splitlines()
+    entries: list[dict] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entries.append(json.loads(stripped))
+        except json.JSONDecodeError:
+            continue
+
+    return entries[-limit:]
+
+
+def cost_reduction_trend(history: list[dict]) -> dict:
+    """Compute trend from cost history snapshots.
+
+    Compares first and last entry's 30d_local_pct to determine if cost reduction
+    is improving, stable, or declining.
+
+    Returns dict with: first_date, last_date, first_local_pct, last_local_pct,
+    change_pct, trend.
+    """
+    if not history:
+        return {
+            "first_date": "",
+            "last_date": "",
+            "first_local_pct": 0.0,
+            "last_local_pct": 0.0,
+            "change_pct": 0.0,
+            "trend": "stable",
+        }
+
+    first = history[0]
+    last = history[-1]
+    first_pct = float(first.get("30d_local_pct", 0.0))
+    last_pct = float(last.get("30d_local_pct", 0.0))
+    change = round(last_pct - first_pct, 1)
+
+    if change > 2.0:
+        trend = "improving"
+    elif change < -2.0:
+        trend = "declining"
+    else:
+        trend = "stable"
+
+    return {
+        "first_date": first.get("date", ""),
+        "last_date": last.get("date", ""),
+        "first_local_pct": first_pct,
+        "last_local_pct": last_pct,
+        "change_pct": change,
+        "trend": trend,
+    }

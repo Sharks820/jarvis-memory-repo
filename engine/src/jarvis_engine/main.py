@@ -149,7 +149,9 @@ from jarvis_engine.commands.learning_commands import (
     LearnInteractionCommand,
 )
 from jarvis_engine.commands.proactive_commands import (
+    CostReductionCommand,
     ProactiveCheckCommand,
+    SelfTestCommand,
     WakeWordStartCommand,
 )
 
@@ -2377,6 +2379,26 @@ def cmd_wake_word(threshold: float) -> int:
     return 0
 
 
+def cmd_cost_reduction(days: int) -> int:
+    result = _get_bus().dispatch(CostReductionCommand(days=days))
+    print(f"local_pct={result.local_pct}")
+    print(f"cloud_cost_usd={result.cloud_cost_usd}")
+    print(f"trend={result.trend}")
+    print(f"message={result.message}")
+    return 0
+
+
+def cmd_self_test(threshold: float) -> int:
+    result = _get_bus().dispatch(SelfTestCommand(score_threshold=threshold))
+    print(f"average_score={result.average_score:.4f}")
+    print(f"tasks_run={result.tasks_run}")
+    print(f"regression_detected={result.regression_detected}")
+    for task_score in result.per_task_scores:
+        print(f"  task={task_score['task_id']} score={task_score['score']:.4f}")
+    print(f"message={result.message}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Jarvis engine bootstrap CLI.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2795,6 +2817,12 @@ def main() -> int:
     p_wakeword = sub.add_parser("wake-word", help="Start wake word detection (blocking).")
     p_wakeword.add_argument("--threshold", type=float, default=0.5, help="Detection threshold.")
 
+    p_cost_red = sub.add_parser("cost-reduction", help="Show local vs cloud query ratio and trend.")
+    p_cost_red.add_argument("--days", type=int, default=30, help="Number of days to look back.")
+
+    p_selftest = sub.add_parser("self-test", help="Run adversarial memory quiz.")
+    p_selftest.add_argument("--threshold", type=float, default=0.5, help="Score threshold for alerts.")
+
     args = parser.parse_args()
     if args.command == "status":
         return cmd_status()
@@ -3130,6 +3158,10 @@ def main() -> int:
         return cmd_proactive_check(snapshot_path=args.snapshot_path)
     if args.command == "wake-word":
         return cmd_wake_word(threshold=args.threshold)
+    if args.command == "cost-reduction":
+        return cmd_cost_reduction(days=args.days)
+    if args.command == "self-test":
+        return cmd_self_test(threshold=args.threshold)
     return 1
 
 

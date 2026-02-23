@@ -157,11 +157,15 @@ from jarvis_engine.handlers.harvest_handlers import (
     IngestSessionHandler,
 )
 from jarvis_engine.commands.proactive_commands import (
+    CostReductionCommand,
     ProactiveCheckCommand,
+    SelfTestCommand,
     WakeWordStartCommand,
 )
 from jarvis_engine.handlers.proactive_handlers import (
+    CostReductionHandler,
     ProactiveCheckHandler,
+    SelfTestHandler,
     WakeWordStartHandler,
 )
 from jarvis_engine.commands.learning_commands import (
@@ -453,5 +457,15 @@ def create_app(root: Path) -> CommandBus:
         bus.register(ProactiveCheckCommand, ProactiveCheckHandler(root).handle)
 
     bus.register(WakeWordStartCommand, WakeWordStartHandler(root).handle)
+
+    # -- Cost Reduction & Self-Testing --
+    bus.register(
+        CostReductionCommand,
+        CostReductionHandler(root, cost_tracker=cost_tracker).handle,
+    )
+    bus.register(
+        SelfTestCommand,
+        SelfTestHandler(root, engine=engine, embed_service=embed_service).handle,
+    )
 
     return bus
