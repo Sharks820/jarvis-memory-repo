@@ -106,25 +106,27 @@ class CostTracker:
         - total_cost_usd: float
         """
         days = max(1, min(days, 3650))
-        cur = self._db.execute(
-            """
-            SELECT
-                model,
-                COUNT(*) as count,
-                SUM(input_tokens) as total_input_tokens,
-                SUM(output_tokens) as total_output_tokens,
-                SUM(cost_usd) as total_cost
-            FROM query_costs
-            WHERE ts >= datetime('now', ?)
-            GROUP BY model
-            ORDER BY total_cost DESC
-            """,
-            (f"-{days} days",),
-        )
+        with self._write_lock:
+            cur = self._db.execute(
+                """
+                SELECT
+                    model,
+                    COUNT(*) as count,
+                    SUM(input_tokens) as total_input_tokens,
+                    SUM(output_tokens) as total_output_tokens,
+                    SUM(cost_usd) as total_cost
+                FROM query_costs
+                WHERE ts >= datetime('now', ?)
+                GROUP BY model
+                ORDER BY total_cost DESC
+                """,
+                (f"-{days} days",),
+            )
+            rows = cur.fetchall()
 
         models = []
         total_cost = 0.0
-        for row in cur.fetchall():
+        for row in rows:
             row_cost = row["total_cost"] or 0.0
             models.append({
                 "model": row["model"],
@@ -153,23 +155,25 @@ class CostTracker:
         - cloud_cost_usd: float
         """
         days = max(1, min(days, 3650))
-        cur = self._db.execute(
-            """
-            SELECT
-                CASE WHEN provider = 'ollama' THEN 'local' ELSE 'cloud' END AS category,
-                COUNT(*) AS cnt,
-                SUM(cost_usd) AS total_cost
-            FROM query_costs
-            WHERE ts >= datetime('now', ?)
-            GROUP BY category
-            """,
-            (f"-{days} days",),
-        )
+        with self._write_lock:
+            cur = self._db.execute(
+                """
+                SELECT
+                    CASE WHEN provider = 'ollama' THEN 'local' ELSE 'cloud' END AS category,
+                    COUNT(*) AS cnt,
+                    SUM(cost_usd) AS total_cost
+                FROM query_costs
+                WHERE ts >= datetime('now', ?)
+                GROUP BY category
+                """,
+                (f"-{days} days",),
+            )
+            fetched = cur.fetchall()
 
         local_count = 0
         cloud_count = 0
         cloud_cost = 0.0
-        for row in cur.fetchall():
+        for row in fetched:
             cat = row["category"]
             cnt = row["cnt"] or 0
             cost = row["total_cost"] or 0.0

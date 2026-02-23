@@ -411,7 +411,10 @@ class TaskOrchestrator:
         return host in LOCAL_OLLAMA_HOSTS
 
     def _safe_output_path(self, raw_path: str) -> Path:
-        path = Path(raw_path).expanduser()
+        try:
+            path = Path(raw_path).expanduser()
+        except RuntimeError:
+            raise ValueError("Cannot expand user home directory in output path.")
         if path.is_absolute():
             resolved = path.resolve()
         else:

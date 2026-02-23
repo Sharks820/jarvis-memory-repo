@@ -156,6 +156,8 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
 def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) -> dict[str, Any]:
     if not base_url.strip():
         raise RuntimeError("Base URL is required for bootstrap.")
+    if not _is_safe_widget_base_url(base_url):
+        raise RuntimeError("Bootstrap URL must use HTTPS for non-localhost hosts.")
     if not master_password.strip():
         raise RuntimeError("Master password is required for bootstrap.")
     payload = {
@@ -822,6 +824,14 @@ class JarvisDesktopWidget(tk.Tk):
     def _health_loop(self) -> None:
         while not self.stop_event.is_set():
             cfg = self._current_cfg()
+            if not _is_safe_widget_base_url(cfg.base_url):
+                self.online = False
+                self.after(0, self._refresh_status_view)
+                for _ in range(16):
+                    if self.stop_event.is_set():
+                        return
+                    time.sleep(0.5)
+                continue
             url = f"{cfg.base_url.rstrip('/')}/health"
             ok = False
             for _attempt in range(2):

@@ -124,7 +124,12 @@ def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> l
         return _read_json_list(resolved)
     if not default_path.exists():
         default_path.parent.mkdir(parents=True, exist_ok=True)
-        default_path.write_text("[]\n", encoding="utf-8")
+        try:
+            fd = os.open(str(default_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+            os.write(fd, b"[]\n")
+            os.close(fd)
+        except FileExistsError:
+            pass
     return _read_json_list(default_path)
 
 
@@ -381,11 +386,6 @@ def _triage_email(sender: str, subject: str) -> str:
     if any(sender_email.startswith(m) or sender_email.split("@")[0] + "@" == m for m in high_sender_markers):
         return "high"
     return "normal"
-
-
-def _email_importance(subject: str) -> str:
-    """Legacy single-signal importance (kept for backward compatibility)."""
-    return _triage_email("", subject)
 
 
 def _is_safe_calendar_url(url: str) -> bool:
