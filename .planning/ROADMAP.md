@@ -38,7 +38,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md -- Command Bus architecture and main.py decomposition
-- [ ] 01-02-PLAN.md -- SQLite + FTS5 + sqlite-vec memory engine with hybrid search
+- [x] 01-02-PLAN.md -- SQLite + FTS5 + sqlite-vec memory engine with hybrid search
 - [ ] 01-03-PLAN.md -- Enriched ingestion pipeline and data migration
 
 ### Phase 2: Knowledge Graph and Anti-Regression
@@ -170,7 +170,7 @@ Note: Phases 3, 6, and 8 depend only on Phase 1 and could theoretically run in p
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Memory Revolution and Architecture | 1/3 | In progress | - |
+| 1. Memory Revolution and Architecture | 2/3 | In Progress | - |
 | 2. Knowledge Graph and Anti-Regression | 0/2 | Not started | - |
 | 3. Intelligence Routing | 0/2 | Not started | - |
 | 4. Connectors and Daily Intelligence | 0/2 | Not started | - |
