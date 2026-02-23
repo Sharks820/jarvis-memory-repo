@@ -54,7 +54,7 @@ CONNECTORS: tuple[ConnectorDefinition, ...] = (
         name="Tasks Source",
         setup_url="https://github.com/gsd-build/get-shit-done",
         required_permission=False,
-        required_any_env=("JARVIS_TASKS_JSON",),
+        required_any_env=("JARVIS_TASKS_JSON", "JARVIS_TASK_SOURCE", "JARVIS_TODOIST_TOKEN"),
         fallback_local_files=(".planning/tasks.json",),
     ),
     ConnectorDefinition(
@@ -182,7 +182,7 @@ def build_connector_prompts(statuses: list[ConnectorStatus]) -> list[dict[str, s
             {
                 "connector_id": status.connector_id,
                 "title": f"Complete setup: {status.name}",
-                "next_step": f"Open setup URL then run ops-sync again",
+                "next_step": "Open setup URL then run ops-sync again",
                 "setup_url": status.setup_url,
                 "reason": "Configuration missing",
                 "option_voice": f"Jarvis, connect {status.connector_id}",
