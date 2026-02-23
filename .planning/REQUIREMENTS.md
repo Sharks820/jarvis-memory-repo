@@ -29,11 +29,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Multi-Source Knowledge Harvesting (HARV)
 
-- [ ] **HARV-01**: Knowledge harvester can query MiniMax API to extract and distill knowledge on specified topics
-- [ ] **HARV-02**: Knowledge harvester can query Kimi API to extract and distill knowledge on specified topics
+- [x] **HARV-01**: Knowledge harvester can query MiniMax API to extract and distill knowledge on specified topics
+- [x] **HARV-02**: Knowledge harvester can query Kimi API to extract and distill knowledge on specified topics
 - [ ] **HARV-03**: Knowledge harvester can ingest learning outputs from Claude Code sessions
 - [ ] **HARV-04**: Knowledge harvester can ingest learning outputs from Codex sessions
-- [ ] **HARV-05**: Knowledge harvester can query Gemini API (free tier) to extract and distill knowledge on specified topics
+- [x] **HARV-05**: Knowledge harvester can query Gemini API (free tier) to extract and distill knowledge on specified topics
 - [ ] **HARV-06**: Harvested knowledge is deduplicated, validated against existing facts, and ingested through the standard memory pipeline
 - [ ] **HARV-07**: Cost tracking per API source with configurable budget limits per day/month
 
@@ -148,11 +148,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONN-03 | Phase 4 | Complete |
 | CONN-04 | Phase 4 | Complete |
 | CONN-05 | Phase 9 | Pending |
-| HARV-01 | Phase 5 | Pending |
-| HARV-02 | Phase 5 | Pending |
+| HARV-01 | Phase 5 | Complete |
+| HARV-02 | Phase 5 | Complete |
 | HARV-03 | Phase 5 | Pending |
 | HARV-04 | Phase 5 | Pending |
-| HARV-05 | Phase 5 | Pending |
+| HARV-05 | Phase 5 | Complete |
 | HARV-06 | Phase 5 | Pending |
 | HARV-07 | Phase 5 | Pending |
 | VOICE-01 | Phase 6 | Pending |

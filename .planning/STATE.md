@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 4 -- Connectors and Daily Intelligence (COMPLETE)
+**Current focus:** Phase 5 -- Knowledge Harvesting (IN PROGRESS)
 
 ## Current Position
 
-Phase: 4 of 9 (Connectors and Daily Intelligence)
-Plan: 2 of 2 in current phase (04-02 complete -- phase complete)
-Status: Phase 04 complete -- Email triage + narrative daily briefing with LLM synthesis
-Last activity: 2026-02-23 -- Completed email triage and narrative daily briefing
+Phase: 5 of 9 (Knowledge Harvesting)
+Plan: 1 of 2 in current phase (05-01 complete)
+Status: Harvesting provider abstraction and orchestrator complete -- MiniMax, Kimi, Gemini providers with pipeline ingestion
+Last activity: 2026-02-23 -- Completed knowledge harvesting providers and tests
 
-Progress: [█████▓░░░░] 50%
+Progress: [█████▓░░░░] 55%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: ~11min
-- Total execution time: 1.67 hours
+- Total plans completed: 10
+- Average duration: ~10min
+- Total execution time: 1.77 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [█████▓░░░░] 50%
 | 02 | 2/2 | 14min | 7min |
 | 03 | 2/2 | 10min | 5min |
 | 04 | 2/2 | 11min | 5.5min |
+| 05 | 1/2 | 6min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (8min), 03-01 (4min), 03-02 (6min), 04-01 (5min), 04-02 (6min)
-- Trend: Accelerating
+- Last 5 plans: 03-01 (4min), 03-02 (6min), 04-01 (5min), 04-02 (6min), 05-01 (6min)
+- Trend: Stable ~5-6min/plan
 
 *Updated after each plan completion*
 
@@ -92,6 +93,11 @@ Recent decisions affecting current work:
 - [04-02]: Data summary condensed to ~1500 tokens with truncation (10 events, 10 tasks, 10 emails, 8 meds, 8 bills)
 - [04-02]: LLM narrative via gateway.complete() with route_reason='daily_briefing_narrative' for cost tracking
 - [04-02]: OpsBriefHandler gateway parameter defaults to None for backward compatibility
+- [05-01]: HarvestResult dataclass in harvester.py, imported by providers.py to avoid circular dependency
+- [05-01]: Provider tests inject mock client via _client attribute instead of patching lazy module-level imports
+- [05-01]: Harvested content appends (confidence:0.50) marker to content text before pipeline ingestion
+- [05-01]: GeminiProvider does NOT inherit HarvesterProvider (different SDK -- google-genai vs OpenAI)
+- [05-01]: KimiNvidiaProvider overrides query() to pass extra_body with thinking disabled for instant mode
 
 ### Pending Todos
 
@@ -105,5 +111,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 04-02-PLAN.md (Email Triage & Narrative Daily Briefing) -- Phase 04 complete
+Stopped at: Completed 05-01-PLAN.md (Knowledge Harvesting Providers)
 Resume file: None
