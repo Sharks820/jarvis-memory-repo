@@ -120,10 +120,14 @@ def load_persona_config(root: Path) -> PersonaConfig:
         raw = {}
     if not isinstance(raw, dict):
         raw = {}
+    try:
+        humor_val = int(raw.get("humor_level", 2))
+    except (ValueError, TypeError):
+        humor_val = 2
     return PersonaConfig(
         mode=str(raw.get("mode", "jarvis_british")),
         enabled=bool(raw.get("enabled", True)),
-        humor_level=max(0, min(3, int(raw.get("humor_level", 2)))),
+        humor_level=max(0, min(3, humor_val)),
         style=str(raw.get("style", "historically_witty_secret_agent")),
         updated_utc=str(raw.get("updated_utc", "")),
     )
@@ -138,10 +142,17 @@ def save_persona_config(
     style: str | None = None,
 ) -> PersonaConfig:
     current = load_persona_config(root)
+    if humor_level is not None:
+        try:
+            humor_val = max(0, min(3, int(humor_level)))
+        except (ValueError, TypeError):
+            humor_val = current.humor_level
+    else:
+        humor_val = current.humor_level
     payload = {
         "mode": current.mode if mode is None else str(mode).strip()[:64] or current.mode,
         "enabled": current.enabled if enabled is None else bool(enabled),
-        "humor_level": current.humor_level if humor_level is None else max(0, min(3, int(humor_level))),
+        "humor_level": humor_val,
         "style": current.style if style is None else str(style).strip()[:80] or current.style,
         "updated_utc": datetime.now(UTC).isoformat(),
     }
@@ -165,14 +176,13 @@ def compose_persona_reply(
     reason: str = "",
 ) -> str:
     style_value = str(getattr(cfg, "style", "historically_witty_secret_agent"))
+    intent_label = intent.replace("_", " ").strip() or "that operation"
     if not cfg.enabled:
         if success:
-            return f"Command {intent} completed."
+            return f"Command {intent_label} completed."
         if reason:
-            return f"Command {intent} blocked: {reason}."
-        return f"Command {intent} failed."
-
-    intent_label = intent.replace("_", " ").strip() or "that operation"
+            return f"Command {intent_label} blocked: {reason}."
+        return f"Command {intent_label} failed."
     witty_suffixes = [
         "Right on schedule, as ever.",
         "Efficiently done, no fuss.",

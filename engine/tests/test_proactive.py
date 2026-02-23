@@ -309,8 +309,18 @@ class TestProactiveCheckHandler:
         from pathlib import Path
         mock_engine = MagicMock()
         handler = ProactiveCheckHandler(Path("."), proactive_engine=mock_engine)
-        result = handler.handle(ProactiveCheckCommand(snapshot_path="/nonexistent.json"))
+        result = handler.handle(ProactiveCheckCommand(snapshot_path="./nonexistent.json"))
         assert "not found" in result.message
+
+    def test_handler_snapshot_path_traversal(self):
+        from jarvis_engine.handlers.proactive_handlers import ProactiveCheckHandler
+        from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
+
+        from pathlib import Path
+        mock_engine = MagicMock()
+        handler = ProactiveCheckHandler(Path("."), proactive_engine=mock_engine)
+        result = handler.handle(ProactiveCheckCommand(snapshot_path="/etc/passwd"))
+        assert "outside" in result.message.lower()
 
 
 class TestWakeWordStartHandler:

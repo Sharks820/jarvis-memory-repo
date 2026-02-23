@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_DEVICE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 
 _TRACKED_TABLES: dict[str, dict[str, Any]] = {
     "records": {
@@ -260,6 +263,8 @@ def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop
 
     Safe to call multiple times -- uses CREATE TABLE/TRIGGER IF NOT EXISTS.
     """
+    if not _DEVICE_ID_RE.match(device_id):
+        raise ValueError(f"Invalid device_id: must be 1-64 alphanumeric/dash/underscore chars, got {device_id!r}")
     cur = db.cursor()
     cur.execute(_CHANGELOG_DDL)
     cur.execute(_CURSOR_DDL)

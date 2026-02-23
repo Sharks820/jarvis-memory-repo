@@ -529,9 +529,11 @@ def brain_compact(root: Path, *, keep_recent: int = 1800) -> dict[str, Any]:
             f.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
     records_path = _records_path(root)
-    with records_path.open("w", encoding="utf-8") as f:
+    tmp = records_path.with_suffix(records_path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         for row in recent_records:
             f.write(json.dumps(row, ensure_ascii=True) + "\n")
+    os.replace(tmp, records_path)
 
     branch_state: dict[str, dict[str, Any]] = {}
     hash_map: dict[str, str] = {}

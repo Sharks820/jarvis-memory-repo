@@ -70,7 +70,7 @@ class TierManager:
             confidence = 0.0
 
         # Frequently accessed or high-confidence records stay WARM
-        if access_count > self.HIGH_ACCESS_THRESHOLD:
+        if access_count >= self.HIGH_ACCESS_THRESHOLD:
             return Tier.WARM
         if confidence >= self.HIGH_CONFIDENCE_THRESHOLD:
             return Tier.WARM

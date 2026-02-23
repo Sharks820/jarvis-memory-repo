@@ -40,8 +40,16 @@ class ProactiveCheckHandler:
                 self._root / ".planning" / "ops_snapshot.live.json"
             )
 
+        resolved_path = Path(snapshot_path).resolve()
         try:
-            with open(snapshot_path, "r", encoding="utf-8") as f:
+            resolved_path.relative_to(self._root.resolve())
+        except ValueError:
+            return ProactiveCheckResult(
+                message="Snapshot path outside project root."
+            )
+
+        try:
+            with open(resolved_path, "r", encoding="utf-8") as f:
                 snapshot_data = json.load(f)
         except FileNotFoundError:
             return ProactiveCheckResult(
