@@ -337,7 +337,7 @@ def migrate_events(
     try:
         raw_text = events_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        return {"status": "error", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 1}
+        return {"status": "error", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 1, "error_details": [str(exc)]}
 
     lines = [line for line in raw_text.splitlines() if line.strip()]
     source_count = len(lines)
@@ -402,8 +402,9 @@ def migrate_events(
             errors += 1
             logger.warning("Failed to migrate event at line %d: %s", line_num + 1, exc)
 
+    status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")
     return {
-        "status": "ok",
+        "status": status,
         "source_count": source_count,
         "inserted": inserted,
         "skipped": skipped,

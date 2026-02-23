@@ -55,7 +55,7 @@ class BranchClassifier:
         self._centroids = {}
         for branch, description in BRANCH_DESCRIPTIONS.items():
             self._centroids[branch] = self._embed_service.embed(
-                description, prefix="classification"
+                description, prefix="search_document"
             )
 
     def classify(self, text_embedding: list[float], threshold: float = 0.3) -> str:
