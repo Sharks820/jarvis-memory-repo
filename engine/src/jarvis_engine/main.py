@@ -137,6 +137,11 @@ from jarvis_engine.commands.knowledge_commands import (
     KnowledgeRegressionCommand,
     KnowledgeStatusCommand,
 )
+from jarvis_engine.commands.harvest_commands import (
+    HarvestBudgetCommand,
+    HarvestTopicCommand,
+    IngestSessionCommand,
+)
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
@@ -1329,6 +1334,60 @@ def cmd_self_heal(*, force_maintenance: bool, keep_recent: int, snapshot_note: s
             print(f"duplicate_ratio={regression.get('duplicate_ratio', 0.0)}")
             print(f"unresolved_conflicts={regression.get('unresolved_conflicts', 0)}")
     return bus_result.return_code
+
+
+def cmd_harvest(topic: str, providers: str | None, max_tokens: int) -> int:
+    provider_list = None
+    if providers:
+        provider_list = [p.strip() for p in providers.split(",") if p.strip()]
+    result = _get_bus().dispatch(HarvestTopicCommand(
+        topic=topic,
+        providers=provider_list,
+        max_tokens=max_tokens,
+    ))
+    print(f"harvest_topic={result.topic}")
+    for entry in result.results:
+        status = entry.get("status", "unknown")
+        provider = entry.get("provider", "unknown")
+        records = entry.get("records_created", 0)
+        cost = entry.get("cost_usd", 0.0)
+        print(f"provider={provider} status={status} records={records} cost_usd={cost:.6f}")
+    return result.return_code
+
+
+def cmd_ingest_session(source: str, session_path: str | None, project_path: str | None) -> int:
+    result = _get_bus().dispatch(IngestSessionCommand(
+        source=source,
+        session_path=session_path,
+        project_path=project_path,
+    ))
+    print(f"ingest_session_source={result.source}")
+    print(f"sessions_processed={result.sessions_processed}")
+    print(f"records_created={result.records_created}")
+    return result.return_code
+
+
+def cmd_harvest_budget(action: str, provider: str | None, period: str | None,
+                       limit_usd: float | None, limit_requests: int | None) -> int:
+    result = _get_bus().dispatch(HarvestBudgetCommand(
+        action=action,
+        provider=provider,
+        period=period,
+        limit_usd=limit_usd,
+        limit_requests=limit_requests,
+    ))
+    summary = result.summary
+    if action == "set":
+        print(f"budget_set provider={summary.get('provider', '')} period={summary.get('period', '')} "
+              f"limit_usd={summary.get('limit_usd', 0.0)}")
+    else:
+        print(f"budget_period_days={summary.get('period_days', 30)}")
+        print(f"budget_total_cost_usd={summary.get('total_cost_usd', 0.0):.6f}")
+        for entry in summary.get("providers", []):
+            print(f"provider={entry.get('provider', '')} "
+                  f"cost_usd={entry.get('total_cost_usd', 0.0):.6f} "
+                  f"requests={entry.get('total_requests', 0)}")
+    return result.return_code
 
 
 def _extract_first_phone_number(text: str) -> str:
@@ -2534,6 +2593,24 @@ def main() -> int:
         default=str(repo_root() / ".planning" / "actions.generated.json"),
     )
 
+    # -- Harvesting --
+    p_harvest = sub.add_parser("harvest", help="Harvest knowledge about a topic from external AI sources.")
+    p_harvest.add_argument("--topic", required=True, help="Topic to harvest knowledge about.")
+    p_harvest.add_argument("--providers", default=None, help="Comma-separated list of providers (default: all available).")
+    p_harvest.add_argument("--max-tokens", type=int, default=2048, help="Max tokens per provider response.")
+
+    p_ingest_session = sub.add_parser("ingest-session", help="Ingest knowledge from Claude Code or Codex session files.")
+    p_ingest_session.add_argument("--source", required=True, choices=["claude", "codex"], help="Session source type.")
+    p_ingest_session.add_argument("--session-path", default=None, help="Specific session file path (optional).")
+    p_ingest_session.add_argument("--project-path", default=None, help="Claude Code project path to scope search (optional).")
+
+    p_harvest_budget = sub.add_parser("harvest-budget", help="View or set harvest budget limits.")
+    p_harvest_budget.add_argument("--action", default="status", choices=["status", "set"], help="Budget action.")
+    p_harvest_budget.add_argument("--provider", default=None, help="Provider name.")
+    p_harvest_budget.add_argument("--period", default=None, choices=["daily", "monthly"], help="Budget period.")
+    p_harvest_budget.add_argument("--limit-usd", type=float, default=None, help="USD limit.")
+    p_harvest_budget.add_argument("--limit-requests", type=int, default=None, help="Request count limit.")
+
     args = parser.parse_args()
     if args.command == "status":
         return cmd_status()
@@ -2823,6 +2900,26 @@ def main() -> int:
             voice_auth_wav=args.voice_auth_wav,
             voice_threshold=args.voice_threshold,
             master_password=args.master_password,
+        )
+    if args.command == "harvest":
+        return cmd_harvest(
+            topic=args.topic,
+            providers=args.providers,
+            max_tokens=args.max_tokens,
+        )
+    if args.command == "ingest-session":
+        return cmd_ingest_session(
+            source=args.source,
+            session_path=args.session_path,
+            project_path=args.project_path,
+        )
+    if args.command == "harvest-budget":
+        return cmd_harvest_budget(
+            action=args.action,
+            provider=args.provider,
+            period=args.period,
+            limit_usd=args.limit_usd,
+            limit_requests=args.limit_requests,
         )
     return 1
 

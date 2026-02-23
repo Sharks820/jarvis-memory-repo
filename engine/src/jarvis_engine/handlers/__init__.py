@@ -65,6 +65,11 @@ from jarvis_engine.handlers.knowledge_handlers import (
     KnowledgeRegressionHandler,
     KnowledgeStatusHandler,
 )
+from jarvis_engine.handlers.harvest_handlers import (
+    HarvestBudgetHandler,
+    HarvestHandler,
+    IngestSessionHandler,
+)
 
 __all__ = [
     # Memory
@@ -125,4 +130,8 @@ __all__ = [
     "FactLockHandler",
     "KnowledgeRegressionHandler",
     "KnowledgeStatusHandler",
+    # Harvesting
+    "HarvestBudgetHandler",
+    "HarvestHandler",
+    "IngestSessionHandler",
 ]

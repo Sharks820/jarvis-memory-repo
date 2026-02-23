@@ -65,6 +65,11 @@ from jarvis_engine.commands.knowledge_commands import (
     KnowledgeRegressionCommand,
     KnowledgeStatusCommand,
 )
+from jarvis_engine.commands.harvest_commands import (
+    HarvestBudgetCommand,
+    HarvestTopicCommand,
+    IngestSessionCommand,
+)
 
 __all__ = [
     # Memory
@@ -125,4 +130,8 @@ __all__ = [
     "FactLockCommand",
     "KnowledgeRegressionCommand",
     "KnowledgeStatusCommand",
+    # Harvesting
+    "HarvestBudgetCommand",
+    "HarvestTopicCommand",
+    "IngestSessionCommand",
 ]

@@ -142,6 +142,16 @@ from jarvis_engine.handlers.knowledge_handlers import (
     KnowledgeRegressionHandler,
     KnowledgeStatusHandler,
 )
+from jarvis_engine.commands.harvest_commands import (
+    HarvestBudgetCommand,
+    HarvestTopicCommand,
+    IngestSessionCommand,
+)
+from jarvis_engine.handlers.harvest_handlers import (
+    HarvestBudgetHandler,
+    HarvestHandler,
+    IngestSessionHandler,
+)
 
 
 def create_app(root: Path) -> CommandBus:
@@ -279,5 +289,39 @@ def create_app(root: Path) -> CommandBus:
     bus.register(ContradictionResolveCommand, ContradictionResolveHandler(root, kg=kg).handle)
     bus.register(FactLockCommand, FactLockHandler(root, kg=kg).handle)
     bus.register(KnowledgeRegressionCommand, KnowledgeRegressionHandler(root, kg=kg).handle)
+
+    # -- Harvesting --
+    try:
+        from jarvis_engine.harvesting.budget import BudgetManager
+        from jarvis_engine.harvesting.providers import (
+            GeminiProvider,
+            KimiNvidiaProvider,
+            KimiProvider,
+            MiniMaxProvider,
+        )
+        from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+
+        budget_manager = None
+        if db_path.exists():
+            budget_manager = BudgetManager(db_path)
+
+        all_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
+        available_providers = [p for p in all_providers if p.is_available]
+
+        harvester = KnowledgeHarvester(
+            providers=available_providers,
+            pipeline=pipeline,
+            cost_tracker=cost_tracker,
+            budget_manager=budget_manager,
+        )
+
+        bus.register(HarvestTopicCommand, HarvestHandler(harvester=harvester).handle)
+        bus.register(IngestSessionCommand, IngestSessionHandler(pipeline=pipeline).handle)
+        bus.register(HarvestBudgetCommand, HarvestBudgetHandler(budget_manager=budget_manager).handle)
+    except Exception as exc:
+        logger.warning("Failed to initialize Harvesting subsystem, continuing without: %s", exc)
+        bus.register(HarvestTopicCommand, HarvestHandler().handle)
+        bus.register(IngestSessionCommand, IngestSessionHandler().handle)
+        bus.register(HarvestBudgetCommand, HarvestBudgetHandler().handle)
 
     return bus
