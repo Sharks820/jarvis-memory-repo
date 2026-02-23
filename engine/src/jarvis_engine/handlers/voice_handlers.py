@@ -70,8 +70,8 @@ class VoiceEnrollHandler:
                 wav_path=cmd.wav_path,
                 replace=cmd.replace,
             )
-        except (ValueError, OSError) as exc:
-            return VoiceEnrollResult(message=f"error: {exc}")
+        except (ValueError, OSError):
+            return VoiceEnrollResult(message="error: voice enrollment failed.")
         return VoiceEnrollResult(
             user_id=result.user_id,
             profile_path=result.profile_path,
@@ -95,8 +95,8 @@ class VoiceVerifyHandler:
                 wav_path=cmd.wav_path,
                 threshold=cmd.threshold,
             )
-        except (ValueError, OSError) as exc:
-            return VoiceVerifyResult(message=f"error: {exc}")
+        except (ValueError, OSError):
+            return VoiceVerifyResult(message="error: voice verification failed.")
         return VoiceVerifyResult(
             user_id=result.user_id,
             score=result.score,
@@ -149,8 +149,8 @@ class VoiceListenHandler:
     def handle(self, cmd: VoiceListenCommand) -> VoiceListenResult:
         try:
             from jarvis_engine.stt import listen_and_transcribe
-        except ImportError as exc:
-            return VoiceListenResult(message=f"error: {exc}")
+        except ImportError:
+            return VoiceListenResult(message="error: STT module not available.")
 
         try:
             result = listen_and_transcribe(
@@ -158,10 +158,10 @@ class VoiceListenHandler:
                 language=cmd.language,
                 model_size=cmd.model_size,
             )
-        except RuntimeError as exc:
-            return VoiceListenResult(message=f"error: {exc}")
-        except Exception as exc:
-            return VoiceListenResult(message=f"error: unexpected failure: {exc}")
+        except RuntimeError:
+            return VoiceListenResult(message="error: voice listen failed.")
+        except Exception:
+            return VoiceListenResult(message="error: voice listen failed.")
 
         return VoiceListenResult(
             text=result.text,
@@ -205,11 +205,11 @@ class PersonaComposeHandler:
                 model=model,
                 route_reason="persona_reply",
             )
-        except Exception as exc:
+        except Exception:
             return PersonaComposeResult(
                 branch=cmd.branch,
                 tone=tone,
-                message=f"error: {exc}",
+                message="error: persona composition failed.",
             )
 
         return PersonaComposeResult(

@@ -212,12 +212,20 @@ def _is_safe_ollama_endpoint(endpoint: str) -> bool:
 
 def load_golden_tasks(path: Path) -> list[GoldenTask]:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("Golden tasks file must contain a JSON array.")
     tasks: list[GoldenTask] = []
     for item in raw:
+        if not isinstance(item, dict):
+            continue
+        task_id = str(item.get("id", "")).strip()
+        prompt = str(item.get("prompt", "")).strip()
+        if not task_id or not prompt:
+            continue
         tasks.append(
             GoldenTask(
-                task_id=str(item["id"]),
-                prompt=str(item["prompt"]),
+                task_id=task_id,
+                prompt=prompt,
                 must_include=[str(x).lower() for x in item.get("must_include", [])],
             )
         )

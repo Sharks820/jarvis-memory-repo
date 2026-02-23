@@ -71,7 +71,9 @@ def build_live_snapshot(root: Path, output_path: Path) -> SyncSummary:
         "connector_prompts": connector_prompts,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(snapshot, ensure_ascii=True, indent=2), encoding="utf-8")
+    tmp = output_path.with_suffix(output_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(snapshot, ensure_ascii=True, indent=2), encoding="utf-8")
+    os.replace(tmp, output_path)
     connectors_ready = sum(1 for status in connector_statuses if status.ready)
     return SyncSummary(
         snapshot_path=str(output_path),
@@ -395,7 +397,8 @@ def _is_safe_calendar_url(url: str) -> bool:
         return False
     try:
         ip = ip_address(host)
-        return not (ip.is_private or ip.is_loopback or ip.is_link_local)
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
     except ValueError:
         pass
     try:
@@ -408,6 +411,7 @@ def _is_safe_calendar_url(url: str) -> bool:
             ip = ip_address(raw_ip)
         except ValueError:
             return False
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return False
     return True

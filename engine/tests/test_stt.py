@@ -184,8 +184,7 @@ def test_voice_listen_handler_missing_deps() -> None:
         result = handler.handle(VoiceListenCommand())
 
     assert result.text == ""
-    assert "error:" in result.message
-    assert "faster-whisper" in result.message
+    assert result.message == "error: voice listen failed."
 
 
 # ---------------------------------------------------------------------------
