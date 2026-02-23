@@ -7,6 +7,15 @@ import re
 from pathlib import Path
 from typing import Any
 
+
+def _check_path_within_root(path: Path, root: Path, label: str) -> None:
+    """Resolve *path* and verify it stays within *root*."""
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        raise ValueError(f"{label} outside project root: {path}")
+
 from jarvis_engine.commands.security_commands import (
     ConnectBootstrapCommand,
     ConnectBootstrapResult,
@@ -33,6 +42,12 @@ class RuntimeControlHandler:
 
     def handle(self, cmd: RuntimeControlCommand) -> RuntimeControlResult:
         from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
+
+        # Reject conflicting flags
+        if cmd.pause and cmd.resume:
+            return RuntimeControlResult(state={"error": "Cannot pause and resume simultaneously."})
+        if cmd.safe_on and cmd.safe_off:
+            return RuntimeControlResult(state={"error": "Cannot enable and disable safe mode simultaneously."})
 
         if cmd.reset:
             state = reset_control_state(self._root)
@@ -170,6 +185,10 @@ class PhoneActionHandler:
         except ValueError:
             return PhoneActionResult(return_code=2)
         if cmd.queue_action:
+            try:
+                _check_path_within_root(cmd.queue_path, self._root, "queue_path")
+            except ValueError:
+                return PhoneActionResult(return_code=2)
             append_phone_actions(cmd.queue_path, [record])
         return PhoneActionResult(record=record, return_code=0)
 
@@ -187,6 +206,12 @@ class PhoneSpamGuardHandler:
             write_spam_report,
         )
 
+        try:
+            _check_path_within_root(cmd.call_log_path, self._root, "call_log_path")
+            _check_path_within_root(cmd.report_path, self._root, "report_path")
+            _check_path_within_root(cmd.queue_path, self._root, "queue_path")
+        except ValueError:
+            return PhoneSpamGuardResult(return_code=2)
         if not cmd.call_log_path.exists():
             return PhoneSpamGuardResult(return_code=2)
         try:

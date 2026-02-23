@@ -84,8 +84,17 @@ class WakeWordStartHandler:
 
     def __init__(self, root: Path) -> None:
         self._root = root
+        self._stop_event: threading.Event | None = None
+        self._thread: threading.Thread | None = None
 
     def handle(self, cmd: WakeWordStartCommand) -> WakeWordStartResult:
+        # Prevent duplicate threads
+        if self._thread is not None and self._thread.is_alive():
+            return WakeWordStartResult(
+                started=True,
+                message="Wake word detection already running.",
+            )
+
         try:
             from jarvis_engine.wakeword import WakeWordDetector
         except ImportError:
@@ -99,18 +108,25 @@ class WakeWordStartHandler:
         def _on_detected() -> None:
             logger.info("Wake word detected! Ready for voice command.")
 
-        stop_event = threading.Event()
-        thread = threading.Thread(
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(
             target=detector.start,
-            args=(_on_detected, stop_event),
+            args=(_on_detected, self._stop_event),
             daemon=True,
         )
-        thread.start()
+        self._thread.start()
 
         return WakeWordStartResult(
             started=True,
             message="Wake word detection started in background thread.",
         )
+
+    def stop(self) -> None:
+        """Stop the wake word detection thread if running."""
+        if self._stop_event is not None:
+            self._stop_event.set()
+        self._thread = None
+        self._stop_event = None
 
 
 class CostReductionHandler:

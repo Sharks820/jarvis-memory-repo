@@ -8,6 +8,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+def _check_path_within_root(path: Path, root: Path, label: str) -> Path:
+    """Resolve *path* and verify it stays within *root*."""
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        raise ValueError(f"{label} outside project root: {path}")
+
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
     AutomationRunResult,
@@ -44,6 +53,10 @@ class OpsBriefHandler:
     def handle(self, cmd: OpsBriefCommand) -> OpsBriefResult:
         from jarvis_engine.life_ops import build_daily_brief, build_narrative_brief, load_snapshot
 
+        try:
+            _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
+        except ValueError as exc:
+            return OpsBriefResult(brief=str(exc))
         snapshot = load_snapshot(cmd.snapshot_path)
         brief = ""
         if self._gateway is not None:
@@ -56,6 +69,10 @@ class OpsBriefHandler:
             brief = build_daily_brief(snapshot)
         saved = ""
         if cmd.output_path:
+            try:
+                _check_path_within_root(cmd.output_path, self._root, "output_path")
+            except ValueError as exc:
+                return OpsBriefResult(brief=str(exc))
             cmd.output_path.parent.mkdir(parents=True, exist_ok=True)
             cmd.output_path.write_text(brief, encoding="utf-8")
             saved = str(cmd.output_path)
@@ -69,6 +86,11 @@ class OpsExportActionsHandler:
     def handle(self, cmd: OpsExportActionsCommand) -> OpsExportActionsResult:
         from jarvis_engine.life_ops import export_actions_json, load_snapshot, suggest_actions
 
+        try:
+            _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
+            _check_path_within_root(cmd.actions_path, self._root, "actions_path")
+        except ValueError:
+            return OpsExportActionsResult()
         snapshot = load_snapshot(cmd.snapshot_path)
         actions = suggest_actions(snapshot)
         export_actions_json(actions, cmd.actions_path)
@@ -85,6 +107,10 @@ class OpsSyncHandler:
     def handle(self, cmd: OpsSyncCommand) -> OpsSyncResult:
         from jarvis_engine.ops_sync import build_live_snapshot
 
+        try:
+            _check_path_within_root(cmd.output_path, self._root, "output_path")
+        except ValueError:
+            return OpsSyncResult()
         summary = build_live_snapshot(self._root, cmd.output_path)
         return OpsSyncResult(summary=summary)
 
@@ -98,6 +124,11 @@ class OpsAutopilotHandler:
     def handle(self, cmd: OpsAutopilotCommand) -> OpsAutopilotResult:
         from jarvis_engine import main as _main_mod
 
+        try:
+            _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
+            _check_path_within_root(cmd.actions_path, self._root, "actions_path")
+        except ValueError:
+            return OpsAutopilotResult(return_code=2)
         rc = _main_mod._cmd_ops_autopilot_impl(
             snapshot_path=cmd.snapshot_path,
             actions_path=cmd.actions_path,
@@ -116,6 +147,10 @@ class AutomationRunHandler:
         from jarvis_engine.automation import AutomationExecutor, load_actions
         from jarvis_engine.memory_store import MemoryStore
 
+        try:
+            _check_path_within_root(cmd.actions_path, self._root, "actions_path")
+        except ValueError:
+            return AutomationRunResult()
         store = MemoryStore(self._root)
         executor = AutomationExecutor(store)
         actions = load_actions(cmd.actions_path)
@@ -214,6 +249,11 @@ class GrowthEvalHandler:
     def handle(self, cmd: GrowthEvalCommand) -> GrowthEvalResult:
         from jarvis_engine.growth_tracker import append_history, load_golden_tasks, run_eval
 
+        try:
+            _check_path_within_root(cmd.tasks_path, self._root, "tasks_path")
+            _check_path_within_root(cmd.history_path, self._root, "history_path")
+        except ValueError:
+            return GrowthEvalResult()
         tasks = load_golden_tasks(cmd.tasks_path)
         run = run_eval(
             endpoint=cmd.endpoint,
@@ -236,6 +276,10 @@ class GrowthReportHandler:
     def handle(self, cmd: GrowthReportCommand) -> GrowthReportResult:
         from jarvis_engine.growth_tracker import read_history, summarize_history
 
+        try:
+            _check_path_within_root(cmd.history_path, self._root, "history_path")
+        except ValueError:
+            return GrowthReportResult()
         rows = read_history(cmd.history_path)
         summary = summarize_history(rows, last=cmd.last)
         return GrowthReportResult(summary=summary)
@@ -248,6 +292,10 @@ class GrowthAuditHandler:
     def handle(self, cmd: GrowthAuditCommand) -> GrowthAuditResult:
         from jarvis_engine.growth_tracker import audit_run, read_history
 
+        try:
+            _check_path_within_root(cmd.history_path, self._root, "history_path")
+        except ValueError:
+            return GrowthAuditResult()
         rows = read_history(cmd.history_path)
         run = audit_run(rows, run_index=cmd.run_index)
         return GrowthAuditResult(run=run)
