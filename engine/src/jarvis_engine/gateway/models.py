@@ -210,10 +210,10 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason=f"Ollama error: {exc}",
             )
-        text = resp.message.content
+        text = resp.message.content if resp.message else ""
 
         return GatewayResponse(
-            text=text,
+            text=text or "",
             model=model,
             provider="ollama",
             input_tokens=0,
@@ -248,7 +248,7 @@ class ModelGateway:
         try:
             resp = self._ollama.chat(model=fallback_model, messages=messages)
             return GatewayResponse(
-                text=resp.message.content,
+                text=(resp.message.content if resp.message else "") or "",
                 model=fallback_model,
                 provider="ollama",
                 input_tokens=0,

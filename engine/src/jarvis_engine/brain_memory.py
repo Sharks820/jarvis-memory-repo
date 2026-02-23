@@ -100,7 +100,7 @@ def _load_records(root: Path, limit: int = 1500) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
         try:
@@ -337,7 +337,7 @@ def ingest_brain_record(
     unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
     ts = datetime.now(UTC).isoformat()
     material = f"{source}|{kind}|{task_id}|{content_hash}|{ts}".encode("utf-8")
-    record_id = hashlib.sha256(material).hexdigest()[:16]
+    record_id = hashlib.sha256(material).hexdigest()[:32]
 
     record = BrainRecord(
         record_id=record_id,

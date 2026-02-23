@@ -186,7 +186,10 @@ class KnowledgeGraph:
                 is_locked = bool(existing[0])
                 existing_label = existing[1]
                 existing_conf = existing[2]
-                existing_sources = json.loads(existing[3])
+                try:
+                    existing_sources = json.loads(existing[3])
+                except (json.JSONDecodeError, TypeError):
+                    existing_sources = []
 
                 if is_locked:
                     if label != existing_label:

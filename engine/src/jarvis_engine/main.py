@@ -9,12 +9,8 @@ import re
 import subprocess
 import threading
 import time
-import webbrowser
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
-from urllib.parse import quote
-from urllib.request import urlopen
 
 from jarvis_engine.automation import AutomationExecutor, load_actions
 from jarvis_engine.brain_memory import (
@@ -220,14 +216,20 @@ def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
         pass
 
 
+_VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
+_VALID_KINDS = {"episodic", "semantic", "procedural"}
+
 def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> str:
     if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
+        return ""
+    if source not in _VALID_SOURCES or kind not in _VALID_KINDS:
         return ""
     safe_content = _sanitize_memory_content(content)
     if not safe_content:
         return ""
+    safe_task_id = task_id[:128]
     dedupe_path = _auto_ingest_dedupe_path()
-    dedupe_material = f"{source}|{kind}|{task_id[:64]}|{safe_content.lower()}".encode("utf-8")
+    dedupe_material = f"{source}|{kind}|{safe_task_id}|{safe_content.lower()}".encode("utf-8")
     dedupe_hash = hashlib.sha256(dedupe_material).hexdigest()
     # Lock prevents race condition when daemon + CLI ingest concurrently.
     # We lock around check + mark to prevent double-ingest, then do the
@@ -244,9 +246,9 @@ def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> s
     store = MemoryStore(repo_root())
     pipeline = IngestionPipeline(store)
     rec = pipeline.ingest(
-        source=cast(SourceType, source),
-        kind=cast(MemoryKind, kind),
-        task_id=task_id[:128],
+        source=source,  # type: ignore[arg-type]
+        kind=kind,  # type: ignore[arg-type]
+        task_id=safe_task_id,
         content=safe_content,
     )
     try:
@@ -254,13 +256,14 @@ def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> s
             repo_root(),
             source=source,
             kind=kind,
-            task_id=task_id[:128],
+            task_id=safe_task_id,
             content=safe_content,
             tags=[source, kind],
             confidence=0.74 if source == "task_outcome" else 0.68,
         )
     except ValueError:
-        pass
+        import logging
+        logging.getLogger(__name__).warning("brain ingest failed for task_id=%s", safe_task_id[:32])
     return rec.record_id
 
 
@@ -538,28 +541,28 @@ def cmd_growth_eval(
 
 def cmd_growth_report(history_path: Path, last: int) -> int:
     result = _get_bus().dispatch(GrowthReportCommand(history_path=history_path, last=last))
-    summary = result.summary
+    summary = result.summary or {}
     print("growth_report")
-    print(f"runs={summary['runs']}")
-    print(f"latest_model={summary['latest_model']}")
-    print(f"latest_score_pct={summary['latest_score_pct']}")
-    print(f"delta_vs_prev_pct={summary['delta_vs_prev_pct']}")
-    print(f"window_avg_pct={summary['window_avg_pct']}")
-    print(f"latest_ts={summary['latest_ts']}")
+    print(f"runs={summary.get('runs', 0)}")
+    print(f"latest_model={summary.get('latest_model', '')}")
+    print(f"latest_score_pct={summary.get('latest_score_pct', 0.0)}")
+    print(f"delta_vs_prev_pct={summary.get('delta_vs_prev_pct', 0.0)}")
+    print(f"window_avg_pct={summary.get('window_avg_pct', 0.0)}")
+    print(f"latest_ts={summary.get('latest_ts', '')}")
     return 0
 
 
 def cmd_growth_audit(history_path: Path, run_index: int) -> int:
     result = _get_bus().dispatch(GrowthAuditCommand(history_path=history_path, run_index=run_index))
-    run = result.run
+    run = result.run or {}
     print("growth_audit")
-    print(f"model={run['model']}")
-    print(f"ts={run['ts']}")
-    print(f"score_pct={run['score_pct']}")
-    print(f"tasks={run['tasks']}")
-    print(f"prev_run_sha256={run['prev_run_sha256']}")
-    print(f"run_sha256={run['run_sha256']}")
-    for audit_result in run["results"]:
+    print(f"model={run.get('model', '')}")
+    print(f"ts={run.get('ts', '')}")
+    print(f"score_pct={run.get('score_pct', 0.0)}")
+    print(f"tasks={run.get('tasks', 0)}")
+    print(f"prev_run_sha256={run.get('prev_run_sha256', '')}")
+    print(f"run_sha256={run.get('run_sha256', '')}")
+    for audit_result in run.get("results", []):
         matched_tokens = ",".join(audit_result.get("matched_tokens", []))
         required_tokens = ",".join(audit_result.get("required_tokens", []))
         print(f"task={audit_result.get('task_id', '')}")
@@ -579,7 +582,12 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
         text = json.dumps(dashboard, ensure_ascii=True, indent=2)
         print(text)
         if output_path.strip():
-            out = Path(output_path)
+            out = Path(output_path).resolve()
+            try:
+                out.relative_to(repo_root().resolve())
+            except ValueError:
+                print("error: output path must be within project root.")
+                return 2
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text, encoding="utf-8")
             print(f"dashboard_saved={out}")
@@ -620,7 +628,12 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
             print(f"achievement_unlocked={item.get('label', '')}")
 
     if output_path.strip():
-        out = Path(output_path)
+        out = Path(output_path).resolve()
+        try:
+            out.relative_to(repo_root().resolve())
+        except ValueError:
+            print("error: output path must be within project root.")
+            return 2
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(dashboard, ensure_ascii=True, indent=2), encoding="utf-8")
         print(f"dashboard_saved={out}")
@@ -774,7 +787,7 @@ def cmd_knowledge_regression(snapshot_path: str, as_json: bool) -> int:
         snapshot_path=snapshot_path,
         as_json=as_json,
     ))
-    report = result.report
+    report = result.report or {}
     if as_json:
         print(json.dumps(report, ensure_ascii=True, indent=2, default=str))
         return 0
@@ -928,7 +941,7 @@ def cmd_ops_sync(output_path: Path) -> int:
     if summary.connector_prompts > 0:
         try:
             raw = json.loads(output_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError):
             raw = {}
         prompts = raw.get("connector_prompts", []) if isinstance(raw, dict) else []
         for item in prompts:
@@ -2356,10 +2369,14 @@ def cmd_proactive_check(snapshot_path: str) -> int:
     result = _get_bus().dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
     print(f"alerts_fired={result.alerts_fired}")
     if result.alerts_fired:
-        import json as _json
-        alerts = _json.loads(result.alerts)
+        try:
+            alerts = json.loads(result.alerts)
+        except (json.JSONDecodeError, TypeError):
+            alerts = []
         for a in alerts:
-            print(f"  [{a['rule_id']}] {a['message']}")
+            if not isinstance(a, dict):
+                continue
+            print(f"  [{a.get('rule_id', '?')}] {a.get('message', '')}")
     print(f"message={result.message}")
     return 0
 

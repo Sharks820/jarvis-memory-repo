@@ -181,8 +181,14 @@ def run_self_heal(
     regression = brain_regression_report(root)
     status = str(regression.get("status", "unknown")).strip().lower()
     regression_healthy = status in {"healthy", "pass"}
-    unresolved_conflicts = int(regression.get("unresolved_conflicts", 0))
-    duplicate_ratio = float(regression.get("duplicate_ratio", 0.0))
+    try:
+        unresolved_conflicts = int(regression.get("unresolved_conflicts", 0))
+    except (ValueError, TypeError):
+        unresolved_conflicts = 0
+    try:
+        duplicate_ratio = float(regression.get("duplicate_ratio", 0.0))
+    except (ValueError, TypeError):
+        duplicate_ratio = 0.0
 
     maintenance: dict[str, Any] = {"status": "skipped"}
     should_maintain = force_maintenance or (not regression_healthy) or unresolved_conflicts > 0 or duplicate_ratio > 0.25
