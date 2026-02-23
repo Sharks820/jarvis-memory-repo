@@ -14,8 +14,31 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
-from ollama import Client as OllamaClient, ResponseError
+try:
+    from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
+    _HAS_ANTHROPIC = True
+except ImportError:
+    _HAS_ANTHROPIC = False
+    Anthropic = None  # type: ignore[assignment,misc]
+
+    class APIConnectionError(Exception):  # type: ignore[no-redef]
+        pass
+
+    class APIStatusError(Exception):  # type: ignore[no-redef]
+        pass
+
+    class RateLimitError(Exception):  # type: ignore[no-redef]
+        pass
+
+try:
+    from ollama import Client as OllamaClient, ResponseError
+    _HAS_OLLAMA = True
+except ImportError:
+    _HAS_OLLAMA = False
+    OllamaClient = None  # type: ignore[assignment,misc]
+
+    class ResponseError(Exception):  # type: ignore[no-redef]
+        pass
 
 from jarvis_engine.gateway.pricing import calculate_cost
 
@@ -54,14 +77,23 @@ class ModelGateway:
         cost_tracker: "CostTracker | None" = None,
     ) -> None:
         if anthropic_api_key is not None:
-            self._anthropic: Anthropic | None = Anthropic(api_key=anthropic_api_key)
+            if _HAS_ANTHROPIC:
+                self._anthropic: Anthropic | None = Anthropic(api_key=anthropic_api_key)
+            else:
+                self._anthropic = None
+                logger.warning(
+                    "Anthropic API key provided but anthropic package is not installed"
+                )
         else:
             self._anthropic = None
             logger.warning(
                 "No Anthropic API key configured -- operating in local-only mode"
             )
 
-        self._ollama = OllamaClient(host=ollama_host)
+        if _HAS_OLLAMA:
+            self._ollama = OllamaClient(host=ollama_host)
+        else:
+            self._ollama = None
         self._cost_tracker = cost_tracker
 
     def _resolve_provider(self, model: str) -> str:
@@ -115,12 +147,23 @@ class ModelGateway:
         max_tokens: int,
     ) -> GatewayResponse:
         """Call Anthropic API via the SDK."""
+        if not _HAS_ANTHROPIC:
+            raise RuntimeError("anthropic package is not installed")
         assert self._anthropic is not None
         resp = self._anthropic.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=messages,
         )
+        if not resp.content:
+            return GatewayResponse(
+                text="",
+                model=model,
+                provider="anthropic",
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                cost_usd=calculate_cost(model, resp.usage.input_tokens, resp.usage.output_tokens),
+            )
         text = resp.content[0].text
         input_tokens = resp.usage.input_tokens
         output_tokens = resp.usage.output_tokens
@@ -142,6 +185,14 @@ class ModelGateway:
         max_tokens: int,
     ) -> GatewayResponse:
         """Call local Ollama server."""
+        if not _HAS_OLLAMA:
+            return GatewayResponse(
+                text="",
+                model=model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason="ollama package is not installed",
+            )
         resp = self._ollama.chat(model=model, messages=messages)
         text = resp.message.content
 
@@ -166,6 +217,17 @@ class ModelGateway:
         Returns a graceful error response if Ollama also fails.
         """
         fallback_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
+
+        if not _HAS_OLLAMA:
+            full_reason = f"{reason} -> Ollama also failed: ollama package is not installed"
+            logger.error("All providers failed: %s", full_reason)
+            return GatewayResponse(
+                text="",
+                model=fallback_model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason=full_reason,
+            )
 
         try:
             resp = self._ollama.chat(model=fallback_model, messages=messages)
@@ -195,6 +257,8 @@ class ModelGateway:
 
     def check_ollama(self) -> bool:
         """Check if local Ollama server is reachable."""
+        if not _HAS_OLLAMA or self._ollama is None:
+            return False
         try:
             self._ollama.list()
             return True

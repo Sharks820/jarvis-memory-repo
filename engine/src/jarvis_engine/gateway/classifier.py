@@ -46,7 +46,7 @@ class IntentClassifier:
     MODEL_MAP: dict[str, str] = {
         "complex": "claude-opus-4-5-20250929",
         "routine": "claude-sonnet-4-5-20250929",
-        "simple_private": os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b"),
+        "simple_private": "qwen3:14b",
     }
 
     PRIVACY_KEYWORDS: set[str] = {
@@ -136,7 +136,10 @@ class IntentClassifier:
             local_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
             return ("simple_private", local_model, best_sim)
 
-        model = self.MODEL_MAP.get(best_route, os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b"))
+        if best_route == "simple_private":
+            model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
+        else:
+            model = self.MODEL_MAP.get(best_route, os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b"))
         return (best_route, model, best_sim)
 
     @staticmethod

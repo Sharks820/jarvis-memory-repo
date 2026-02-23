@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 class CostTracker:
-    """SQLite-backed cost tracker for LLM query costs."""
+    """SQLite-backed cost tracker for LLM query costs.
+
+    NOTE: This class uses a single connection for both reads and writes,
+    protected by a threading lock.  External code that opens a second
+    connection to the same DB file (e.g. for read-only dashboards) must
+    also set ``PRAGMA busy_timeout=5000`` to avoid SQLITE_BUSY errors
+    under concurrent access (dual-connection pattern).
+    """
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
@@ -139,3 +146,16 @@ class CostTracker:
             self._db.close()
         except Exception:
             pass
+
+    def __del__(self) -> None:
+        """Best-effort close on garbage collection."""
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def __enter__(self) -> "CostTracker":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
