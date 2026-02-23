@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
@@ -34,14 +37,22 @@ from jarvis_engine.commands.ops_commands import (
 
 
 class OpsBriefHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, gateway: Any = None) -> None:
         self._root = root
+        self._gateway = gateway
 
     def handle(self, cmd: OpsBriefCommand) -> OpsBriefResult:
-        from jarvis_engine.life_ops import build_daily_brief, load_snapshot
+        from jarvis_engine.life_ops import build_daily_brief, build_narrative_brief, load_snapshot
 
         snapshot = load_snapshot(cmd.snapshot_path)
-        brief = build_daily_brief(snapshot)
+        brief = ""
+        if self._gateway is not None:
+            try:
+                brief = build_narrative_brief(snapshot, gateway=self._gateway)
+            except Exception:
+                brief = ""
+        if not brief:
+            brief = build_daily_brief(snapshot)
         saved = ""
         if cmd.output_path:
             cmd.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -190,8 +201,8 @@ class MissionRunHandler:
                     content=content[:18000],
                 )
                 ingested_id = rec.record_id
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Auto-ingest failed for mission: %s", exc)
         return MissionRunResult(report=report, return_code=0, ingested_record_id=ingested_id)
 
 

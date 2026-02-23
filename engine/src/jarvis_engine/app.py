@@ -250,7 +250,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(WebResearchCommand, WebResearchHandler(root).handle)
 
     # -- Ops --
-    bus.register(OpsBriefCommand, OpsBriefHandler(root).handle)
+    bus.register(OpsBriefCommand, OpsBriefHandler(root, gateway=gateway).handle)
     bus.register(OpsExportActionsCommand, OpsExportActionsHandler(root).handle)
     bus.register(OpsSyncCommand, OpsSyncHandler(root).handle)
     bus.register(OpsAutopilotCommand, OpsAutopilotHandler(root).handle)
