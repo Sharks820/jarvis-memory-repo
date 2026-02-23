@@ -40,7 +40,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Intelligence Routing (INTL)
 
 - [x] **INTL-01**: Model gateway provides unified interface to Ollama (local), Anthropic API (Claude Opus/Sonnet), and other cloud APIs
-- [ ] **INTL-02**: Intent classifier routes queries by complexity: Opus for complex reasoning/coding, Sonnet for routine summarization, local Ollama for simple/private tasks
+- [x] **INTL-02**: Intent classifier routes queries by complexity: Opus for complex reasoning/coding, Sonnet for routine summarization, local Ollama for simple/private tasks
 - [x] **INTL-03**: Fallback chain handles API failures gracefully (cloud unavailable -> local Ollama)
 - [x] **INTL-04**: Cost tracking per-query stored in SQLite for budget monitoring
 - [ ] **INTL-05**: Progressive cost reduction: as local knowledge grows, more queries can be answered locally without cloud API calls
@@ -139,7 +139,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | KNOW-05 | Phase 7 | Pending |
 | KNOW-06 | Phase 7 | Pending |
 | INTL-01 | Phase 3 | Complete |
-| INTL-02 | Phase 3 | Pending |
+| INTL-02 | Phase 3 | Complete |
 | INTL-03 | Phase 3 | Complete |
 | INTL-04 | Phase 3 | Complete |
 | INTL-05 | Phase 9 | Pending |

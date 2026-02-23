@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 3 -- Intelligence Routing
+**Current focus:** Phase 3 -- Intelligence Routing (COMPLETE)
 
 ## Current Position
 
-Phase: 3 of 9 (Intelligence Routing) -- EXECUTING
-Plan: 1 of 2 in current phase
-Status: Plan 03-01 (Model Gateway Foundation) complete -- ready for 03-02
-Last activity: 2026-02-23 -- Completed gateway package with ModelGateway, CostTracker, and pricing
+Phase: 3 of 9 (Intelligence Routing) -- COMPLETE
+Plan: 2 of 2 in current phase (all complete)
+Status: Phase 3 complete -- both plans (03-01 Gateway Foundation, 03-02 Intent Classification) done
+Last activity: 2026-02-23 -- Completed IntentClassifier, Command Bus wiring, and routing tests
 
-Progress: [████░░░░░░] 33%
+Progress: [████░░░░░░] 37%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: ~14min
-- Total execution time: 1.39 hours
+- Total plans completed: 7
+- Average duration: ~13min
+- Total execution time: 1.49 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [████░░░░░░] 33%
 |-------|-------|-------|----------|
 | 01 | 3/3 | 65min | 22min |
 | 02 | 2/2 | 14min | 7min |
-| 03 | 1/2 | 4min | 4min |
+| 03 | 2/2 | 10min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (10min), 02-01 (6min), 02-02 (8min), 03-01 (4min)
+- Last 5 plans: 02-01 (6min), 02-02 (8min), 03-01 (4min), 03-02 (6min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -76,6 +76,12 @@ Recent decisions affecting current work:
 - [03-01]: Fallback model configurable via JARVIS_LOCAL_MODEL env var, defaults to qwen3:14b
 - [03-01]: CostTracker uses WAL mode + threading.Lock (same pattern as MemoryEngine)
 - [03-01]: SDK imports (anthropic, ollama) in models.py not __init__.py for lazy loading
+- [03-02]: Privacy keywords always force local routing regardless of embedding similarity (privacy-safe default)
+- [03-02]: Low-confidence queries (below 0.35 cosine threshold) default to local Ollama, not cloud
+- [03-02]: IntentClassifier reads JARVIS_LOCAL_MODEL env var at classify() time for flexible local model
+- [03-02]: RouteHandler dual-path: query-based via IntentClassifier when query provided, legacy risk/complexity via ModelRouter otherwise
+- [03-02]: QueryHandler uses lazy imports for gateway.models to avoid import-time SDK dependency
+- [03-02]: Gateway wiring in create_app() wrapped in try/except for graceful degradation
 
 ### Pending Todos
 
@@ -89,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 03-01-PLAN.md (Model Gateway Foundation) -- ready for 03-02
+Stopped at: Completed 03-02-PLAN.md (Intent Classification & Command Bus Wiring) -- Phase 3 complete
 Resume file: None
