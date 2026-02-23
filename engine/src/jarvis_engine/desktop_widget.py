@@ -92,7 +92,6 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         "token": cfg.token,
         "signing_key": cfg.signing_key,
         "device_id": cfg.device_id,
-        "master_password": cfg.master_password,
         "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -104,7 +103,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         pass
 
 
-def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str, master_password: str) -> dict[str, str]:
+def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -> dict[str, str]:
     ts = str(time.time())
     nonce = uuid.uuid4().hex
     signing_material = ts.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
@@ -117,8 +116,6 @@ def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str, m
     }
     if device_id.strip():
         headers["X-Jarvis-Device-Id"] = device_id.strip()
-    if master_password.strip():
-        headers["X-Jarvis-Master-Password"] = master_password.strip()
     return headers
 
 
@@ -135,7 +132,7 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     if not _is_safe_widget_base_url(cfg.base_url):
         raise RuntimeError("Widget base_url must use HTTPS for non-localhost hosts.")
     body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id, cfg.master_password)
+    headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
     if payload is not None:
         headers["Content-Type"] = "application/json"
     req = Request(url=f"{cfg.base_url.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)

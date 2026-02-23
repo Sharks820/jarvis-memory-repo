@@ -17,9 +17,9 @@ import sqlite3
 import threading
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
 if TYPE_CHECKING:
+    import networkx as nx
+
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
@@ -127,12 +127,14 @@ class KnowledgeGraph:
     # NetworkX bridge
     # ------------------------------------------------------------------
 
-    def to_networkx(self) -> nx.DiGraph:
+    def to_networkx(self) -> "nx.DiGraph":
         """Reconstruct full NetworkX DiGraph from SQLite tables.
 
         Returns a fresh DiGraph every call -- never cached (see research
         guidance on stale graph pitfall).
         """
+        import networkx as nx
+
         G = nx.DiGraph()
 
         # Load nodes

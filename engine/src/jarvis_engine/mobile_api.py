@@ -553,13 +553,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if device_id and len(device_id) <= 128 and device_id.isascii():
                 trust_mobile_device(root, device_id)
                 trusted = True
-            host_header = self.headers.get("Host", "").strip()
-            if host_header:
-                base_url = f"http://{host_header}"
-            else:
-                host = str(getattr(self.server, "server_name", "127.0.0.1"))
-                port = int(getattr(self.server, "server_port", 8787))
-                base_url = f"http://{host}:{port}"
+            host = str(getattr(self.server, "server_name", "127.0.0.1"))
+            port = int(getattr(self.server, "server_port", 8787))
+            base_url = f"http://{host}:{port}"
             logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
             self._write_json(
                 HTTPStatus.OK,

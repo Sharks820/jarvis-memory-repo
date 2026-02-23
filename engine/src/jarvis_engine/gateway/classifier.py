@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import os
 import re
+from typing import TYPE_CHECKING
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 
 class IntentClassifier:
@@ -87,10 +89,15 @@ class IntentClassifier:
             embed_service: Must implement embed(text, prefix) and embed_query(query).
         """
         self._embed = embed_service
+        self._privacy_re = re.compile(
+            r"\b(?:" + "|".join(re.escape(kw) for kw in self.PRIVACY_KEYWORDS) + r")\b"
+        )
         self._centroids = self._precompute_routes()
 
-    def _precompute_routes(self) -> dict[str, np.ndarray]:
+    def _precompute_routes(self) -> "dict[str, np.ndarray]":
         """Compute centroid embeddings for each route's exemplars."""
+        import numpy as np
+
         centroids: dict[str, np.ndarray] = {}
         for route_name, exemplars in self.ROUTES.items():
             embeddings = []
@@ -103,13 +110,7 @@ class IntentClassifier:
 
     def _check_privacy(self, query: str) -> bool:
         """Return True if any privacy keyword appears in the query as a whole word."""
-        query_lower = query.lower()
-        for keyword in self.PRIVACY_KEYWORDS:
-            # Use word boundaries to prevent substring false positives
-            # (e.g. "bill" matching "billboard", "son" matching "reason")
-            if re.search(r"\b" + re.escape(keyword) + r"\b", query_lower):
-                return True
-        return False
+        return bool(self._privacy_re.search(query.lower()))
 
     def classify(self, query: str) -> tuple[str, str, float]:
         """Classify a query and return (route_name, model_name, confidence).
@@ -123,6 +124,8 @@ class IntentClassifier:
             return ("simple_private", local_model, 1.0)
 
         # Embed the query and find best route by cosine similarity
+        import numpy as np
+
         query_vec = np.array(self._embed.embed_query(query))
 
         best_route = "simple_private"
@@ -146,8 +149,10 @@ class IntentClassifier:
         return (best_route, model, best_sim)
 
     @staticmethod
-    def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    def _cosine_sim(a: "np.ndarray", b: "np.ndarray") -> float:
         """Compute cosine similarity between two vectors."""
+        import numpy as np
+
         dot = np.dot(a, b)
         norm_a = np.linalg.norm(a)
         norm_b = np.linalg.norm(b)
