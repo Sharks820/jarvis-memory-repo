@@ -175,7 +175,8 @@ def _win_hidden_subprocess_kwargs() -> dict[str, Any]:
 
 def _http_error_details(exc: HTTPError) -> str:
     try:
-        raw = exc.read().decode("utf-8", errors="replace").strip()
+        with exc:
+            raw = exc.read().decode("utf-8", errors="replace").strip()
     except Exception:
         raw = ""
     if raw:

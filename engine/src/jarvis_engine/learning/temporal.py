@@ -118,6 +118,10 @@ def _extract_date(label: str) -> str | None:
     match = _DATE_PATTERN.search(label)
     if match:
         return f"{match.group(1)}T00:00:00Z"
+    # Fallback: bare ISO date anywhere in the label
+    match = _ISO_DATE_PATTERN.search(label)
+    if match:
+        return f"{match.group(1)}T00:00:00Z"
     return None
 
 

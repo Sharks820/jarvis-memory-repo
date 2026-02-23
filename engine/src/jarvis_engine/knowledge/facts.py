@@ -40,7 +40,7 @@ class FactExtractor:
         # Health: "takes medication X", "prescribed X", "on X daily"
         (
             re.compile(
-                r"(?:takes?|prescribed?|on)\s+([\w][\w\s]{0,40}?)\s+(?:for|daily|twice|morning|evening)",
+                r"\b(?:takes?|prescribed?|on)\s+([\w][\w\s]{0,40}?)\s+(?:for|daily|twice|morning|evening)\b",
                 re.IGNORECASE,
             ),
             "health.medication",
@@ -50,7 +50,7 @@ class FactExtractor:
         # Schedule: "meeting at X", "appointment on X", "event with X"
         (
             re.compile(
-                r"(?:meeting|appointment|event)\s+(?:at|on|with)\s+(.+?)(?:\.|,|$)",
+                r"\b(?:meeting|appointment|event)\s+(?:at|on|with)\s+(.{1,80}?)(?:\.|,|$)",
                 re.IGNORECASE,
             ),
             "ops.schedule",

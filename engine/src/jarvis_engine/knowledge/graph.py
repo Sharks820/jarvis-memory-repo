@@ -198,6 +198,7 @@ class KnowledgeGraph:
                             confidence,
                             source=source_record,
                         )
+                        self._db.commit()
                         return False
                     return True  # Same value on locked node -- no-op
 

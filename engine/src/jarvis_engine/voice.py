@@ -131,7 +131,7 @@ def _list_edge_voices_cached() -> tuple[str, ...]:
         return ()
     voices: list[str] = []
     for line in proc.stdout.splitlines():
-        match = re.match(r"^\s*([a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+)\s+", line)
+        match = re.match(r"^\s*([a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+)", line)
         if match:
             voices.append(match.group(1))
     return tuple(voices)
