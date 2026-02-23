@@ -9,29 +9,29 @@ See: .planning/PROJECT.md (updated 2026-02-22)
 
 ## Current Position
 
-Phase: 2 of 9 (Knowledge Graph and Anti-Regression)
-Plan: 1 of 2 in current phase
-Status: Executing Phase 2 -- Plan 1 complete
-Last activity: 2026-02-23 -- Completed 02-01-PLAN.md (Knowledge Graph Foundation)
+Phase: 2 of 9 (Knowledge Graph and Anti-Regression) -- COMPLETE
+Plan: 2 of 2 in current phase (all plans complete)
+Status: Phase 2 complete -- ready for Phase 3
+Last activity: 2026-02-23 -- Completed 02-02-PLAN.md (Knowledge Anti-Regression)
 
-Progress: [██░░░░░░░░] 22%
+Progress: [███░░░░░░░] 28%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: ~18min
-- Total execution time: 1.18 hours
+- Total plans completed: 5
+- Average duration: ~16min
+- Total execution time: 1.32 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3/3 | 65min | 22min |
-| 02 | 1/2 | 6min | 6min |
+| 02 | 2/2 | 14min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (45min), 01-02 (10min), 01-03 (10min), 02-01 (6min)
+- Last 5 plans: 01-02 (10min), 01-03 (10min), 02-01 (6min), 02-02 (8min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -65,6 +65,11 @@ Recent decisions affecting current work:
 - [02-01]: Fact extraction is a side-effect of ingestion wrapped in try/except -- KG failures never block record storage
 - [02-01]: KnowledgeGraph uses MemoryEngine._write_lock for thread-safe writes; reads are lock-free via WAL
 - [02-01]: Edge dedup relies on SQLite UNIQUE constraint (source_id, target_id, relation) with INSERT OR IGNORE
+- [02-02]: Auto-lock triggers after add_fact outside write_lock (lock_fact acquires its own lock to avoid deadlock)
+- [02-02]: ContradictionManager stores resolution history in node's history JSON array, capped at 50 entries
+- [02-02]: accept_new resolution unlocks the node so new value needs re-confirmation to lock again
+- [02-02]: Empty graph WL hash uses deterministic SHA-256 of "empty_knowledge_graph"
+- [02-02]: Knowledge handlers accept kg=None for graceful degradation when SQLite DB unavailable
 
 ### Pending Todos
 
@@ -78,5 +83,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 02-01-PLAN.md -- Knowledge Graph Foundation
+Stopped at: Completed 02-02-PLAN.md -- Knowledge Anti-Regression (Phase 2 complete)
 Resume file: None
