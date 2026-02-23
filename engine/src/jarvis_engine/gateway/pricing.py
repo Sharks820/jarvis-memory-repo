@@ -8,10 +8,18 @@ from __future__ import annotations
 
 # Pricing per million tokens: (input_cost_usd, output_cost_usd)
 # Updated Feb 2026 Anthropic pricing
+# Longer prefixes must appear first so startswith() matches them before shorter ones
 PRICING: dict[str, tuple[float, float]] = {
+    # Claude 4.x naming convention
     "claude-opus": (15.0, 75.0),
     "claude-sonnet": (3.0, 15.0),
     "claude-haiku": (0.80, 4.0),
+    # Claude 3.x naming convention (e.g. claude-3-opus-20240229)
+    "claude-3-opus": (15.0, 75.0),
+    "claude-3.5-sonnet": (3.0, 15.0),
+    "claude-3-sonnet": (3.0, 15.0),
+    "claude-3.5-haiku": (0.80, 4.0),
+    "claude-3-haiku": (0.25, 1.25),
 }
 
 
