@@ -249,7 +249,11 @@ class GeminiProvider:
             contents=prompt,
         )
 
-        text = response.text or ""
+        # response.text can raise ValueError if response has no text parts
+        try:
+            text = response.text or ""
+        except (ValueError, AttributeError):
+            text = ""
 
         # Try to read usage metadata; fall back to character estimation
         input_tokens = 0

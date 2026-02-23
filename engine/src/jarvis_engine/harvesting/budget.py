@@ -80,6 +80,8 @@ class BudgetManager:
                 )
             self._db.commit()
 
+    _VALID_PERIODS = {"daily", "monthly"}
+
     def set_budget(
         self,
         provider: str,
@@ -88,6 +90,8 @@ class BudgetManager:
         limit_requests: int = 0,
     ) -> None:
         """Set or update budget limit for a provider/period combination."""
+        if period not in self._VALID_PERIODS:
+            raise ValueError(f"Invalid period {period!r}; must be one of {self._VALID_PERIODS}")
         with self._write_lock:
             self._db.execute(
                 "INSERT OR REPLACE INTO harvest_budgets "
@@ -101,7 +105,13 @@ class BudgetManager:
 
         Returns True if no budget is configured for the provider.
         Checks both USD cost limits and request count limits.
+        Uses write lock to serialize with record_spend and prevent TOCTOU races.
         """
+        with self._write_lock:
+            return self._can_spend_locked(provider)
+
+    def _can_spend_locked(self, provider: str) -> bool:
+        """Inner can_spend check; must be called with _write_lock held."""
         budgets = self._db.execute(
             "SELECT period, limit_usd, limit_requests FROM harvest_budgets WHERE provider = ?",
             (provider,),

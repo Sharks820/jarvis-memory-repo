@@ -149,7 +149,8 @@ class ModelGateway:
         """Call Anthropic API via the SDK."""
         if not _HAS_ANTHROPIC:
             raise RuntimeError("anthropic package is not installed")
-        assert self._anthropic is not None
+        if self._anthropic is None:
+            raise RuntimeError("Anthropic client is not initialized")
         resp = self._anthropic.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -164,7 +165,12 @@ class ModelGateway:
                 output_tokens=resp.usage.output_tokens,
                 cost_usd=calculate_cost(model, resp.usage.input_tokens, resp.usage.output_tokens),
             )
-        text = resp.content[0].text
+        # Extract text from first TextBlock (content may contain tool_use blocks)
+        text = ""
+        for block in resp.content:
+            if hasattr(block, "text"):
+                text = block.text
+                break
         input_tokens = resp.usage.input_tokens
         output_tokens = resp.usage.output_tokens
         cost = calculate_cost(model, input_tokens, output_tokens)
@@ -193,7 +199,17 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason="ollama package is not installed",
             )
-        resp = self._ollama.chat(model=model, messages=messages)
+        try:
+            resp = self._ollama.chat(model=model, messages=messages)
+        except (ConnectionError, ResponseError) as exc:
+            logger.warning("Ollama call failed: %s", exc)
+            return GatewayResponse(
+                text="",
+                model=model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason=f"Ollama error: {exc}",
+            )
         text = resp.message.content
 
         return GatewayResponse(

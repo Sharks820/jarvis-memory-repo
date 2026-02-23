@@ -248,10 +248,11 @@ class KnowledgeHarvester:
                     embedding = embed_service.embed(text, prefix="search_document")
                     # search_vec returns list[tuple[record_id, distance]]
                     # distance is L2 distance; lower = more similar
-                    # cosine > 0.92 threshold ~ distance < 0.08
+                    # For unit-normalized embeddings: cos_sim = 1 - (L2^2 / 2)
+                    # cosine > 0.92 ≈ L2 < sqrt(2 * (1 - 0.92)) ≈ 0.4
                     similar = engine.search_vec(embedding, limit=3)
                     for _record_id, distance in similar:
-                        similarity = 1.0 - distance
+                        similarity = 1.0 - (distance * distance) / 2.0
                         if similarity > _DEDUP_COSINE_THRESHOLD:
                             return True
             except Exception as exc:

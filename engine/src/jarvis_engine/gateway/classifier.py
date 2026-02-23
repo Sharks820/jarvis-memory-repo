@@ -12,6 +12,7 @@ Low-confidence queries default to local (privacy-safe).
 from __future__ import annotations
 
 import os
+import re
 
 import numpy as np
 
@@ -101,10 +102,12 @@ class IntentClassifier:
         return centroids
 
     def _check_privacy(self, query: str) -> bool:
-        """Return True if any privacy keyword appears in the query."""
+        """Return True if any privacy keyword appears in the query as a whole word."""
         query_lower = query.lower()
         for keyword in self.PRIVACY_KEYWORDS:
-            if keyword in query_lower:
+            # Use word boundaries to prevent substring false positives
+            # (e.g. "bill" matching "billboard", "son" matching "reason")
+            if re.search(r"\b" + re.escape(keyword) + r"\b", query_lower):
                 return True
         return False
 
