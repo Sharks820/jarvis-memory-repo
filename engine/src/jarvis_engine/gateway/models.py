@@ -211,13 +211,15 @@ class ModelGateway:
                 fallback_reason="Ollama error",
             )
         text = resp.message.content if resp.message else ""
+        input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
+        output_tokens = getattr(resp, "eval_count", 0) or 0
 
         return GatewayResponse(
             text=text or "",
             model=model,
             provider="ollama",
-            input_tokens=0,
-            output_tokens=0,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             cost_usd=0.0,
         )
 
@@ -247,12 +249,14 @@ class ModelGateway:
 
         try:
             resp = self._ollama.chat(model=fallback_model, messages=messages)
+            input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
+            output_tokens = getattr(resp, "eval_count", 0) or 0
             return GatewayResponse(
                 text=(resp.message.content if resp.message else "") or "",
                 model=fallback_model,
                 provider="ollama",
-                input_tokens=0,
-                output_tokens=0,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 cost_usd=0.0,
                 fallback_used=True,
                 fallback_reason=reason,

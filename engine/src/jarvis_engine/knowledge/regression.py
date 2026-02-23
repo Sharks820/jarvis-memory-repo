@@ -86,8 +86,14 @@ class RegressionChecker:
 
         discrepancies = []
 
-        prev_nodes = previous.get("node_count", 0)
-        curr_nodes = current.get("node_count", 0)
+        def _safe_int(val: object, default: int = 0) -> int:
+            try:
+                return int(val)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return default
+
+        prev_nodes = _safe_int(previous.get("node_count", 0))
+        curr_nodes = _safe_int(current.get("node_count", 0))
         if curr_nodes < prev_nodes:
             discrepancies.append({
                 "type": "node_loss",
@@ -98,8 +104,8 @@ class RegressionChecker:
                 "message": f"Node count decreased from {prev_nodes} to {curr_nodes} (lost {prev_nodes - curr_nodes})",
             })
 
-        prev_edges = previous.get("edge_count", 0)
-        curr_edges = current.get("edge_count", 0)
+        prev_edges = _safe_int(previous.get("edge_count", 0))
+        curr_edges = _safe_int(current.get("edge_count", 0))
         if curr_edges < prev_edges:
             discrepancies.append({
                 "type": "edge_loss",
@@ -110,8 +116,8 @@ class RegressionChecker:
                 "message": f"Edge count decreased from {prev_edges} to {curr_edges} (lost {prev_edges - curr_edges})",
             })
 
-        prev_locked = previous.get("locked_count", 0)
-        curr_locked = current.get("locked_count", 0)
+        prev_locked = _safe_int(previous.get("locked_count", 0))
+        curr_locked = _safe_int(current.get("locked_count", 0))
         if curr_locked < prev_locked:
             discrepancies.append({
                 "type": "locked_fact_loss",

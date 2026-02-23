@@ -175,7 +175,7 @@ class BudgetManager:
 
         Args:
             provider: Optional provider name to filter. None = all providers.
-            days: Number of days to look back.
+            days: Number of days to look back (clamped to >= 0).
 
         Returns:
             Dict with providers list and total spend.
