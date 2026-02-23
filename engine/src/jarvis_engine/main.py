@@ -180,10 +180,18 @@ def _auto_ingest_dedupe_path() -> Path:
 def _sanitize_memory_content(content: str) -> str:
     content = content[:100_000]  # Truncate before regex to prevent catastrophic backtracking
     # Redact master password, tokens, API keys, secrets, signing keys, bearer tokens
+    _CRED_KEYS = r'(?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key'
+    # JSON-style: "key": "value"
     cleaned = re.sub(
-        r"(?i)((?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+",
-        r"\1=[redacted]",
+        rf'(?i)"({_CRED_KEYS})"\s*:\s*"[^"]*"',
+        r'"\1": "[redacted]"',
         content,
+    )
+    # Unquoted style: key=value or key: value
+    cleaned = re.sub(
+        rf"(?i)({_CRED_KEYS})\s*[:=]\s*\S+",
+        r"\1=[redacted]",
+        cleaned,
     )
     cleaned = re.sub(r"(?i)(bearer)\s+\S+", r"\1 [redacted]", cleaned)
     return cleaned.strip()[:2000]
@@ -2388,9 +2396,8 @@ def cmd_wake_word(threshold: float) -> int:
     if result.started:
         # Block until interrupted
         try:
-            import time as _time
             while True:
-                _time.sleep(1)
+                time.sleep(1)
         except KeyboardInterrupt:
             print("Wake word detection stopped.")
     return 0

@@ -315,6 +315,12 @@ def _speak_text_edge_streamed(
         if item is None:
             break
         _play_audio_file(item)
+    # Clean up streamed chunk files
+    try:
+        for f in out_dir.glob("chunk_*.mp3"):
+            f.unlink(missing_ok=True)
+    except OSError:
+        pass
     if err:
         raise RuntimeError(str(err[0]))
 

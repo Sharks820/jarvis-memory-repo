@@ -105,6 +105,7 @@ class CostTracker:
         - models: list of dicts with model, count, input_tokens, output_tokens, cost_usd
         - total_cost_usd: float
         """
+        days = max(1, min(days, 3650))
         cur = self._db.execute(
             """
             SELECT
@@ -151,6 +152,7 @@ class CostTracker:
         - local_pct: float (rounded to 1 decimal)
         - cloud_cost_usd: float
         """
+        days = max(1, min(days, 3650))
         cur = self._db.execute(
             """
             SELECT
