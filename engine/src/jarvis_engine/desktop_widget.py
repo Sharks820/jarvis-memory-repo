@@ -98,6 +98,10 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
     tmp.replace(path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str, master_password: str) -> dict[str, str]:
@@ -118,7 +122,18 @@ def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str, m
     return headers
 
 
+def _is_safe_widget_base_url(url: str) -> bool:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").strip().lower()
+    if parsed.scheme == "https":
+        return True
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not _is_safe_widget_base_url(cfg.base_url):
+        raise RuntimeError("Widget base_url must use HTTPS for non-localhost hosts.")
     body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id, cfg.master_password)
     if payload is not None:

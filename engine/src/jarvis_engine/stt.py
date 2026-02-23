@@ -47,11 +47,11 @@ class SpeechToText:
             return
         try:
             from faster_whisper import WhisperModel  # type: ignore[import-untyped]
-        except ImportError:
+        except ImportError as exc:
             raise RuntimeError(
                 "faster-whisper is not installed. "
                 "Install with: pip install faster-whisper"
-            )
+            ) from exc
         logger.info(
             "Loading Whisper model %s on %s (%s)...",
             self.model_size,
@@ -120,11 +120,11 @@ def record_from_microphone(
     """
     try:
         import sounddevice as sd  # type: ignore[import-untyped]
-    except ImportError:
+    except ImportError as exc:
         raise RuntimeError(
             "sounddevice is not installed. "
             "Install with: pip install sounddevice"
-        )
+        ) from exc
     try:
         logger.info(
             "Recording from microphone for up to %.1f seconds at %d Hz...",

@@ -120,8 +120,8 @@ class ModelGateway:
             try:
                 response = self._call_anthropic(messages, model, max_tokens)
             except (APIConnectionError, APIStatusError, RateLimitError) as exc:
-                reason = f"{type(exc).__name__}: {exc}"
-                logger.warning("Anthropic API error, falling back to Ollama: %s", reason)
+                reason = f"{type(exc).__name__}"
+                logger.warning("Anthropic API error, falling back to Ollama: %s", exc)
                 response = self._fallback_to_ollama(messages, max_tokens, reason)
         else:
             response = self._call_ollama(messages, model, max_tokens)
@@ -208,7 +208,7 @@ class ModelGateway:
                 model=model,
                 provider="none",
                 fallback_used=True,
-                fallback_reason=f"Ollama error: {exc}",
+                fallback_reason="Ollama error",
             )
         text = resp.message.content if resp.message else ""
 
@@ -258,8 +258,8 @@ class ModelGateway:
                 fallback_reason=reason,
             )
         except (ConnectionError, ResponseError) as exc:
-            full_reason = f"{reason} -> Ollama also failed: {exc}"
-            logger.error("All providers failed: %s", full_reason)
+            full_reason = f"{reason} -> Ollama also failed"
+            logger.error("All providers failed: %s -> %s", reason, exc)
             return GatewayResponse(
                 text="",
                 model=fallback_model,
