@@ -148,6 +148,10 @@ from jarvis_engine.commands.learning_commands import (
     FlagExpiredFactsCommand,
     LearnInteractionCommand,
 )
+from jarvis_engine.commands.proactive_commands import (
+    ProactiveCheckCommand,
+    WakeWordStartCommand,
+)
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
@@ -2346,6 +2350,33 @@ def cmd_voice_run(
     return result.return_code
 
 
+def cmd_proactive_check(snapshot_path: str) -> int:
+    result = _get_bus().dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
+    print(f"alerts_fired={result.alerts_fired}")
+    if result.alerts_fired:
+        import json as _json
+        alerts = _json.loads(result.alerts)
+        for a in alerts:
+            print(f"  [{a['rule_id']}] {a['message']}")
+    print(f"message={result.message}")
+    return 0
+
+
+def cmd_wake_word(threshold: float) -> int:
+    result = _get_bus().dispatch(WakeWordStartCommand(threshold=threshold))
+    print(f"started={result.started}")
+    print(f"message={result.message}")
+    if result.started:
+        # Block until interrupted
+        try:
+            import time as _time
+            while True:
+                _time.sleep(1)
+        except KeyboardInterrupt:
+            print("Wake word detection stopped.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Jarvis engine bootstrap CLI.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2758,6 +2789,12 @@ def main() -> int:
 
     sub.add_parser("memory-eval", help="Run memory-recall golden task evaluation.")
 
+    p_proactive = sub.add_parser("proactive-check", help="Manually trigger proactive evaluation.")
+    p_proactive.add_argument("--snapshot-path", default="", help="Path to ops snapshot JSON.")
+
+    p_wakeword = sub.add_parser("wake-word", help="Start wake word detection (blocking).")
+    p_wakeword.add_argument("--threshold", type=float, default=0.5, help="Detection threshold.")
+
     args = parser.parse_args()
     if args.command == "status":
         return cmd_status()
@@ -3089,6 +3126,10 @@ def main() -> int:
         return cmd_flag_expired()
     if args.command == "memory-eval":
         return cmd_memory_eval()
+    if args.command == "proactive-check":
+        return cmd_proactive_check(snapshot_path=args.snapshot_path)
+    if args.command == "wake-word":
+        return cmd_wake_word(threshold=args.threshold)
     return 1
 
 

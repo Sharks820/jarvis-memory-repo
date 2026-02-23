@@ -156,6 +156,14 @@ from jarvis_engine.handlers.harvest_handlers import (
     HarvestHandler,
     IngestSessionHandler,
 )
+from jarvis_engine.commands.proactive_commands import (
+    ProactiveCheckCommand,
+    WakeWordStartCommand,
+)
+from jarvis_engine.handlers.proactive_handlers import (
+    ProactiveCheckHandler,
+    WakeWordStartHandler,
+)
 from jarvis_engine.commands.learning_commands import (
     CrossBranchQueryCommand,
     FlagExpiredFactsCommand,
@@ -425,5 +433,25 @@ def create_app(root: Path) -> CommandBus:
         bus.register(HarvestTopicCommand, HarvestHandler().handle)
         bus.register(IngestSessionCommand, IngestSessionHandler().handle)
         bus.register(HarvestBudgetCommand, HarvestBudgetHandler().handle)
+
+    # -- Proactive Intelligence --
+    try:
+        from jarvis_engine.proactive import (
+            DEFAULT_TRIGGER_RULES,
+            Notifier,
+            ProactiveEngine,
+        )
+
+        notifier = Notifier()
+        proactive_engine = ProactiveEngine(rules=DEFAULT_TRIGGER_RULES, notifier=notifier)
+        bus.register(
+            ProactiveCheckCommand,
+            ProactiveCheckHandler(root, proactive_engine=proactive_engine).handle,
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize Proactive subsystem, continuing without: %s", exc)
+        bus.register(ProactiveCheckCommand, ProactiveCheckHandler(root).handle)
+
+    bus.register(WakeWordStartCommand, WakeWordStartHandler(root).handle)
 
     return bus
