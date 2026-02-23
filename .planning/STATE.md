@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 2 -- Knowledge Graph and Anti-Regression
+**Current focus:** Phase 3 -- Intelligence Routing
 
 ## Current Position
 
-Phase: 2 of 9 (Knowledge Graph and Anti-Regression) -- COMPLETE
-Plan: 2 of 2 in current phase (all plans complete)
-Status: Phase 2 complete -- ready for Phase 3
-Last activity: 2026-02-23 -- Completed 02-02-PLAN.md (Knowledge Anti-Regression)
+Phase: 3 of 9 (Intelligence Routing) -- EXECUTING
+Plan: 1 of 2 in current phase
+Status: Plan 03-01 (Model Gateway Foundation) complete -- ready for 03-02
+Last activity: 2026-02-23 -- Completed gateway package with ModelGateway, CostTracker, and pricing
 
-Progress: [███░░░░░░░] 28%
+Progress: [████░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: ~16min
-- Total execution time: 1.32 hours
+- Total plans completed: 6
+- Average duration: ~14min
+- Total execution time: 1.39 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [███░░░░░░░] 28%
 |-------|-------|-------|----------|
 | 01 | 3/3 | 65min | 22min |
 | 02 | 2/2 | 14min | 7min |
+| 03 | 1/2 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (10min), 01-03 (10min), 02-01 (6min), 02-02 (8min)
+- Last 5 plans: 01-03 (10min), 02-01 (6min), 02-02 (8min), 03-01 (4min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -70,6 +71,11 @@ Recent decisions affecting current work:
 - [02-02]: accept_new resolution unlocks the node so new value needs re-confirmation to lock again
 - [02-02]: Empty graph WL hash uses deterministic SHA-256 of "empty_knowledge_graph"
 - [02-02]: Knowledge handlers accept kg=None for graceful degradation when SQLite DB unavailable
+- [03-01]: GatewayResponse is non-frozen dataclass for mutability during fallback flow
+- [03-01]: Provider resolution uses model prefix startswith() matching (claude-* -> Anthropic, else Ollama)
+- [03-01]: Fallback model configurable via JARVIS_LOCAL_MODEL env var, defaults to qwen3:14b
+- [03-01]: CostTracker uses WAL mode + threading.Lock (same pattern as MemoryEngine)
+- [03-01]: SDK imports (anthropic, ollama) in models.py not __init__.py for lazy loading
 
 ### Pending Todos
 
@@ -83,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 02-02-PLAN.md -- Knowledge Anti-Regression (Phase 2 complete)
+Stopped at: Completed 03-01-PLAN.md (Model Gateway Foundation) -- ready for 03-02
 Resume file: None
