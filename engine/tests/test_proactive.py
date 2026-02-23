@@ -39,7 +39,8 @@ class TestTriggerRuleDefaults:
 
 class TestCheckMedicationReminders:
     def test_medication_due_within_30_min(self):
-        now = datetime.now(timezone.utc)
+        # Use local time since medication due_times are local HH:MM
+        now = datetime.now()
         due_time = (now + timedelta(minutes=15)).strftime("%H:%M")
         snapshot = {
             "medications": [
@@ -51,7 +52,7 @@ class TestCheckMedicationReminders:
         assert "Vitamin D" in alerts[0]
 
     def test_medication_not_due(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         due_time = (now + timedelta(hours=3)).strftime("%H:%M")
         snapshot = {
             "medications": [

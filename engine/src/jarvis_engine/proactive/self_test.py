@@ -64,8 +64,9 @@ class AdversarialSelfTest:
         if below and self._notifier is not None:
             try:
                 self._notifier.send(
-                    f"Memory quiz alert: average score {avg_score:.2f} "
-                    f"below threshold {self._score_threshold:.2f}"
+                    "Memory Quality Alert",
+                    f"Average score {avg_score:.2f} "
+                    f"below threshold {self._score_threshold:.2f}",
                 )
             except Exception as exc:
                 logger.warning("Failed to send self-test alert: %s", exc)

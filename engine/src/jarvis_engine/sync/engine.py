@@ -210,13 +210,22 @@ class SyncEngine:
         new_values = entry.get("new_values", {})
         fields_changed = [f for f in entry.get("fields_changed", []) if f]
 
+        # Validate all field/column names against the known schema to prevent
+        # SQL injection via crafted sync payloads.
+        allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
+        allowed_fields.add(pk)
+
         if operation == "INSERT":
             if not new_values:
                 return
-            cols = [pk] + list(new_values.keys())
+            # Filter to only allowed columns
+            safe_values = {k: v for k, v in new_values.items() if k in allowed_fields}
+            if not safe_values:
+                return
+            cols = [pk] + [k for k in safe_values if k != pk]
             placeholders = ", ".join(["?"] * len(cols))
             col_names = ", ".join(cols)
-            values = [row_id] + list(new_values.values())
+            values = [row_id] + [safe_values[k] for k in cols if k != pk]
             self._db.execute(
                 "INSERT OR IGNORE INTO " + table_name
                 + " (" + col_names + ") VALUES (" + placeholders + ")",
@@ -229,6 +238,8 @@ class SyncEngine:
             set_parts = []
             values = []
             for field in fields_changed:
+                if field not in allowed_fields:
+                    continue  # Skip unknown fields
                 if field in new_values:
                     set_parts.append(field + " = ?")
                     values.append(new_values[field])
