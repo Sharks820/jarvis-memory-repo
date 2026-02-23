@@ -143,6 +143,11 @@ from jarvis_engine.commands.harvest_commands import (
     HarvestTopicCommand,
     IngestSessionCommand,
 )
+from jarvis_engine.commands.learning_commands import (
+    CrossBranchQueryCommand,
+    FlagExpiredFactsCommand,
+    LearnInteractionCommand,
+)
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
@@ -1389,6 +1394,88 @@ def cmd_harvest_budget(action: str, provider: str | None, period: str | None,
                   f"cost_usd={entry.get('total_cost_usd', 0.0):.6f} "
                   f"requests={entry.get('total_requests', 0)}")
     return result.return_code
+
+
+# ---------------------------------------------------------------------------
+# Learning CLI commands
+# ---------------------------------------------------------------------------
+
+def cmd_learn(user_message: str, assistant_response: str) -> int:
+    result = _get_bus().dispatch(LearnInteractionCommand(
+        user_message=user_message,
+        assistant_response=assistant_response,
+    ))
+    print(f"records_created={result.records_created}")
+    print(f"message={result.message}")
+    return 0
+
+
+def cmd_cross_branch_query(query: str, k: int) -> int:
+    result = _get_bus().dispatch(CrossBranchQueryCommand(
+        query=query,
+        k=k,
+    ))
+    print(f"direct_results={len(result.direct_results)}")
+    for dr in result.direct_results:
+        print(f"  record_id={dr.get('record_id', '')} distance={dr.get('distance', 0.0):.4f}")
+    print(f"cross_branch_connections={len(result.cross_branch_connections)}")
+    for cb in result.cross_branch_connections:
+        print(f"  {cb.get('source_branch', '?')}->{cb.get('target_branch', '?')} relation={cb.get('relation', '')}")
+    print(f"branches_involved={result.branches_involved}")
+    return 0
+
+
+def cmd_flag_expired() -> int:
+    result = _get_bus().dispatch(FlagExpiredFactsCommand())
+    print(f"expired_count={result.expired_count}")
+    print(f"message={result.message}")
+    return 0
+
+
+def cmd_memory_eval() -> int:
+    from jarvis_engine.growth_tracker import (
+        DEFAULT_MEMORY_TASKS,
+        run_memory_eval,
+    )
+
+    from jarvis_engine.app import create_app
+    from jarvis_engine.config import repo_root as _repo_root
+
+    root = _repo_root()
+    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+
+    engine = None
+    embed_service = None
+    if db_path.exists():
+        try:
+            from jarvis_engine.memory.embeddings import EmbeddingService
+            from jarvis_engine.memory.engine import MemoryEngine
+
+            embed_service = EmbeddingService()
+            engine = MemoryEngine(db_path, embed_service=embed_service)
+        except Exception as exc:
+            print(f"error=failed to init memory engine: {exc}")
+            return 1
+
+    try:
+        results = run_memory_eval(DEFAULT_MEMORY_TASKS, engine, embed_service)
+    except RuntimeError as exc:
+        print(f"error={exc}")
+        return 1
+
+    for r in results:
+        print(
+            f"task={r.task_id} score={r.overall_score:.2f} "
+            f"results={r.results_found} branch_cov={r.branch_coverage:.2f} "
+            f"kw_cov={r.keyword_coverage:.2f}"
+        )
+
+    if results:
+        avg = sum(r.overall_score for r in results) / len(results)
+        print(f"average_score={avg:.4f}")
+    else:
+        print("average_score=0.0000")
+    return 0
 
 
 def _extract_first_phone_number(text: str) -> str:
@@ -2658,6 +2745,19 @@ def main() -> int:
     p_harvest_budget.add_argument("--limit-usd", type=float, default=None, help="USD limit.")
     p_harvest_budget.add_argument("--limit-requests", type=int, default=None, help="Request count limit.")
 
+    # -- Learning --
+    p_learn = sub.add_parser("learn", help="Manually trigger learning from text input.")
+    p_learn.add_argument("--user-message", required=True, help="User message text.")
+    p_learn.add_argument("--assistant-response", required=True, help="Assistant response text.")
+
+    p_cbq = sub.add_parser("cross-branch-query", help="Query across knowledge branches.")
+    p_cbq.add_argument("query", help="Natural language query.")
+    p_cbq.add_argument("--k", type=int, default=10, help="Max results to return.")
+
+    sub.add_parser("flag-expired", help="Flag expired knowledge graph facts.")
+
+    sub.add_parser("memory-eval", help="Run memory-recall golden task evaluation.")
+
     args = parser.parse_args()
     if args.command == "status":
         return cmd_status()
@@ -2975,6 +3075,20 @@ def main() -> int:
             limit_usd=args.limit_usd,
             limit_requests=args.limit_requests,
         )
+    if args.command == "learn":
+        return cmd_learn(
+            user_message=args.user_message,
+            assistant_response=args.assistant_response,
+        )
+    if args.command == "cross-branch-query":
+        return cmd_cross_branch_query(
+            query=args.query,
+            k=args.k,
+        )
+    if args.command == "flag-expired":
+        return cmd_flag_expired()
+    if args.command == "memory-eval":
+        return cmd_memory_eval()
     return 1
 
 

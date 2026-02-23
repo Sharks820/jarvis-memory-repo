@@ -2,14 +2,153 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Memory-recall golden task dataclasses
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class MemoryRecallTask:
+    """A golden task that tests memory recall by querying the memory engine."""
+
+    task_id: str = ""
+    query: str = ""
+    must_find_branches: list[str] = field(default_factory=list)
+    min_results: int = 1
+    must_include_in_results: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MemoryRecallResult:
+    """Evaluation result for a single memory-recall golden task."""
+
+    task_id: str = ""
+    query: str = ""
+    results_found: int = 0
+    branches_found: list[str] = field(default_factory=list)
+    branch_coverage: float = 0.0
+    keyword_coverage: float = 0.0
+    overall_score: float = 0.0
+
+
+DEFAULT_MEMORY_TASKS = [
+    MemoryRecallTask("health_recall", "What medications does the owner take?", ["health"], 1, ["medication"]),
+    MemoryRecallTask("gaming_recall", "What games does the owner play?", ["gaming"], 1, ["game"]),
+    MemoryRecallTask("ops_recall", "What are the owner's upcoming tasks?", ["ops"], 1, ["task"]),
+    MemoryRecallTask("family_recall", "Tell me about the owner's family", ["family"], 1, ["family"]),
+    MemoryRecallTask("coding_recall", "What programming projects is the owner working on?", ["coding"], 1, ["code"]),
+]
+
+
+def evaluate_memory_recall(
+    task: MemoryRecallTask,
+    engine: Any,
+    embed_service: Any,
+) -> MemoryRecallResult:
+    """Evaluate a single memory-recall golden task.
+
+    Scoring:
+        has_results  -> 0.3 weight
+        branch_coverage -> 0.3 weight
+        keyword_coverage -> 0.4 weight
+    """
+    embedding = embed_service.embed(task.query, prefix="search_query")
+    vec_results = engine.search_vec(embedding, limit=10)
+
+    if not vec_results:
+        return MemoryRecallResult(
+            task_id=task.task_id,
+            query=task.query,
+        )
+
+    # Fetch full records to inspect branch + content
+    record_ids = [rid for rid, _dist in vec_results]
+    records = engine.get_records_batch(record_ids)
+
+    # Detect branches
+    branches_found: list[str] = []
+    seen_branches: set[str] = set()
+    for rec in records:
+        branch = rec.get("branch", "general")
+        if branch not in seen_branches:
+            seen_branches.add(branch)
+            branches_found.append(branch)
+
+    # Branch coverage
+    if task.must_find_branches:
+        matched_branches = sum(
+            1 for b in task.must_find_branches if b in seen_branches
+        )
+        branch_cov = matched_branches / len(task.must_find_branches)
+    else:
+        branch_cov = 1.0
+
+    # Keyword coverage -- search in combined summary text
+    combined_text = " ".join(
+        rec.get("summary", "").lower() for rec in records
+    )
+    if task.must_include_in_results:
+        matched_kw = sum(
+            1 for kw in task.must_include_in_results if kw.lower() in combined_text
+        )
+        keyword_cov = matched_kw / len(task.must_include_in_results)
+    else:
+        keyword_cov = 1.0
+
+    has_results_score = 0.3 if len(vec_results) >= task.min_results else 0.0
+    branch_score = 0.3 * branch_cov
+    keyword_score = 0.4 * keyword_cov
+    overall = has_results_score + branch_score + keyword_score
+
+    return MemoryRecallResult(
+        task_id=task.task_id,
+        query=task.query,
+        results_found=len(vec_results),
+        branches_found=branches_found,
+        branch_coverage=round(branch_cov, 4),
+        keyword_coverage=round(keyword_cov, 4),
+        overall_score=round(overall, 4),
+    )
+
+
+def run_memory_eval(
+    tasks: list[MemoryRecallTask],
+    engine: Any,
+    embed_service: Any,
+) -> list[MemoryRecallResult]:
+    """Evaluate all memory-recall golden tasks and return results.
+
+    Raises RuntimeError if engine or embed_service is None.
+    """
+    if engine is None:
+        raise RuntimeError("engine is required for memory evaluation")
+    if embed_service is None:
+        raise RuntimeError("embed_service is required for memory evaluation")
+
+    results: list[MemoryRecallResult] = []
+    for task in tasks:
+        try:
+            result = evaluate_memory_recall(task, engine, embed_service)
+        except Exception as exc:
+            _logger.warning("Memory recall task %s failed: %s", task.task_id, exc)
+            result = MemoryRecallResult(task_id=task.task_id, query=task.query)
+        results.append(result)
+    return results
 
 
 @dataclass
@@ -54,6 +193,23 @@ class EvalRun:
 _history_lock = threading.RLock()
 
 
+def _is_safe_ollama_endpoint(endpoint: str) -> bool:
+    parsed = urlparse(endpoint)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return False
+    allow_nonlocal = os.getenv("JARVIS_ALLOW_NONLOCAL_OLLAMA_ENDPOINT", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if allow_nonlocal:
+        return True
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 def load_golden_tasks(path: Path) -> list[GoldenTask]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     tasks: list[GoldenTask] = []
@@ -92,6 +248,9 @@ def _generate(
     think: bool | None,
     timeout_s: int,
 ) -> dict[str, Any]:
+    if not _is_safe_ollama_endpoint(endpoint):
+        raise ValueError(f"Unsafe Ollama endpoint: {endpoint}")
+
     effective_prompt = prompt
     if think is False:
         effective_prompt = "/nothink\n" + prompt
@@ -116,7 +275,7 @@ def _generate(
         headers={"Content-Type": "application/json"},
         data=json.dumps(payload).encode("utf-8"),
     )
-    with urlopen(req, timeout=timeout_s) as resp:
+    with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -144,7 +303,7 @@ def run_eval(
                 think=think,
                 timeout_s=timeout_s,
             )
-        except URLError as exc:
+        except (URLError, ValueError) as exc:
             raise RuntimeError(f"Failed to reach Ollama at {endpoint}: {exc}") from exc
 
         response_text = str(raw.get("response", ""))
