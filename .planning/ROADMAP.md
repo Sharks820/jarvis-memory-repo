@@ -80,11 +80,11 @@ Plans:
   2. Daily briefing includes a summary of recent emails triaged by importance, pulled from a real IMAP inbox
   3. Daily briefing includes actual pending tasks from an integrated task source
   4. The combined daily briefing weaves together calendar, email, tasks, medications, and relevant memory context into a coherent narrative the owner can act on
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Calendar and task connector integration
-- [ ] 04-02: Email connector and unified daily briefing
+- [ ] 04-01-PLAN.md -- Calendar connector (icalendar + recurring-ical-events ICS parsing) and task source abstraction (JSON, Todoist)
+- [ ] 04-02-PLAN.md -- Enhanced IMAP email triage and LLM-powered narrative daily briefing via ModelGateway
 
 ### Phase 5: Knowledge Harvesting
 **Goal**: Jarvis can actively learn from multiple AI sources -- asking MiniMax, Kimi, Claude, Codex, and Gemini about topics and distilling their knowledge into its own permanent memory
