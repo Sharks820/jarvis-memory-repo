@@ -156,6 +156,16 @@ from jarvis_engine.handlers.harvest_handlers import (
     HarvestHandler,
     IngestSessionHandler,
 )
+from jarvis_engine.commands.learning_commands import (
+    CrossBranchQueryCommand,
+    FlagExpiredFactsCommand,
+    LearnInteractionCommand,
+)
+from jarvis_engine.handlers.learning_handlers import (
+    CrossBranchQueryHandler,
+    FlagExpiredFactsHandler,
+    LearnInteractionHandler,
+)
 
 
 def create_app(root: Path) -> CommandBus:
@@ -300,6 +310,41 @@ def create_app(root: Path) -> CommandBus:
     bus.register(ContradictionResolveCommand, ContradictionResolveHandler(root, kg=kg).handle)
     bus.register(FactLockCommand, FactLockHandler(root, kg=kg).handle)
     bus.register(KnowledgeRegressionCommand, KnowledgeRegressionHandler(root, kg=kg).handle)
+
+    # -- Learning --
+    try:
+        from jarvis_engine.learning.engine import ConversationLearningEngine
+
+        learning_engine = ConversationLearningEngine(pipeline=pipeline, kg=kg)
+
+        bus.register(
+            LearnInteractionCommand,
+            LearnInteractionHandler(root, learning_engine=learning_engine).handle,
+        )
+        bus.register(
+            CrossBranchQueryCommand,
+            CrossBranchQueryHandler(
+                root, engine=engine, kg=kg, embed_service=embed_service
+            ).handle,
+        )
+        bus.register(
+            FlagExpiredFactsCommand,
+            FlagExpiredFactsHandler(root, kg=kg).handle,
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize Learning subsystem, continuing without: %s", exc)
+        bus.register(
+            LearnInteractionCommand,
+            LearnInteractionHandler(root).handle,
+        )
+        bus.register(
+            CrossBranchQueryCommand,
+            CrossBranchQueryHandler(root).handle,
+        )
+        bus.register(
+            FlagExpiredFactsCommand,
+            FlagExpiredFactsHandler(root).handle,
+        )
 
     # -- Harvesting --
     try:
