@@ -32,6 +32,11 @@ class KnowledgeGraph:
         self._write_lock = engine._write_lock
         self._ensure_schema()
 
+        # Initialize lock manager for auto-lock after fact updates
+        from jarvis_engine.knowledge.locks import FactLockManager
+
+        self._lock_manager = FactLockManager(self._db, self._write_lock)
+
     # ------------------------------------------------------------------
     # Schema
     # ------------------------------------------------------------------
@@ -210,7 +215,14 @@ class KnowledgeGraph:
                 )
 
             self._db.commit()
-            return True
+
+        # Auto-lock check (outside write_lock -- lock_fact acquires its own)
+        try:
+            self._lock_manager.check_and_auto_lock(node_id)
+        except Exception as exc:
+            logger.debug("Auto-lock check failed for %s: %s", node_id, exc)
+
+        return True
 
     def add_edge(
         self,
