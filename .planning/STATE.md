@@ -9,28 +9,28 @@ See: .planning/PROJECT.md (updated 2026-02-22)
 
 ## Current Position
 
-Phase: 1 of 9 (Memory Revolution and Architecture)
-Plan: 3 of 3 in current phase
-Status: Ready to execute
-Last activity: 2026-02-23 -- Completed 01-02-PLAN.md (SQLite Memory Engine)
+Phase: 1 of 9 (Memory Revolution and Architecture) -- COMPLETE
+Plan: 3 of 3 in current phase -- ALL DONE
+Status: Phase 1 complete, ready for Phase 2
+Last activity: 2026-02-23 -- Completed 01-03-PLAN.md (Enriched Ingestion Pipeline and Migration)
 
-Progress: [██░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: ~35min
-- Total execution time: 1.17 hours
+- Total plans completed: 3
+- Average duration: ~22min
+- Total execution time: 1.08 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 2/3 | 70min | 35min |
+| 01 | 3/3 | 65min | 22min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (45min), 01-02 (25min)
+- Last 5 plans: 01-01 (45min), 01-02 (10min), 01-03 (10min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -52,9 +52,14 @@ Recent decisions affecting current work:
 - [01-01]: All command dataclasses are frozen; result dataclasses are mutable
 - [01-01]: Handlers use lazy imports inside handle() to avoid circular dependencies
 - [01-02]: Graceful degradation when sqlite-vec unavailable -- FTS5-only search fallback
-- [01-02]: Contentless FTS5 (content='', contentless_delete=1) for simpler standalone search
+- [01-02]: FTS5 regular mode (not contentless) because contentless returns NULL for stored columns on SELECT
 - [01-02]: RRF k=60 with 168-hour recency decay half-life for hybrid search
 - [01-02]: Content-hash dedup is per-chunk, not per-document
+- [01-03]: Per-chunk content_hash (SHA-256 of chunk text, not whole document) for UNIQUE constraint correctness
+- [01-03]: 32 hex char record IDs to avoid collisions (Codex: 16 is too short)
+- [01-03]: Dual-path handler strategy: MemoryEngine when SQLite DB exists, adapter shim fallback
+- [01-03]: Resumable migration via checkpoint file every 50 records
+- [01-03]: Credential redaction patterns in pipeline sanitize step
 
 ### Pending Todos
 
@@ -68,5 +73,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 01-02-PLAN.md, ready for 01-03-PLAN.md
+Stopped at: Completed 01-03-PLAN.md -- Phase 01 complete, ready for Phase 02
 Resume file: None

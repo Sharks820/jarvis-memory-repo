@@ -12,11 +12,11 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **MEM-01**: All memory records stored in SQLite with FTS5 full-text search index
 - [x] **MEM-02**: All memory records have embedding vectors stored via sqlite-vec for semantic search
 - [x] **MEM-03**: Hybrid search (FTS5 keyword + embedding cosine + recency decay) returns relevant results for any natural language query
-- [ ] **MEM-04**: Memory records are classified into branches (ops, coding, health, finance, security, learning, family, communications, gaming) using semantic classification instead of keyword matching
+- [x] **MEM-04**: Memory records are classified into branches (ops, coding, health, finance, security, learning, family, communications, gaming) using semantic classification instead of keyword matching
 - [x] **MEM-05**: Three-tier memory hierarchy (hot/warm/cold) with automatic promotion and demotion based on access patterns, recency, and confidence
-- [ ] **MEM-06**: Ingestion pipeline chunks long content, extracts entities, generates embeddings, and classifies branch before storage
-- [ ] **MEM-07**: Content-hash deduplication (SHA-256) prevents duplicate records (preserve existing behavior)
-- [ ] **MEM-08**: Migration script imports all existing JSONL/JSON memory data into SQLite without data loss
+- [x] **MEM-06**: Ingestion pipeline chunks long content, extracts entities, generates embeddings, and classifies branch before storage
+- [x] **MEM-07**: Content-hash deduplication (SHA-256) prevents duplicate records (preserve existing behavior)
+- [x] **MEM-08**: Migration script imports all existing JSONL/JSON memory data into SQLite without data loss
 
 ### Anti-Regression & Knowledge (KNOW)
 
@@ -127,11 +127,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MEM-01 | Phase 1 | Complete |
 | MEM-02 | Phase 1 | Complete |
 | MEM-03 | Phase 1 | Complete |
-| MEM-04 | Phase 1 | Pending |
+| MEM-04 | Phase 1 | Complete |
 | MEM-05 | Phase 1 | Complete |
-| MEM-06 | Phase 1 | Pending |
-| MEM-07 | Phase 1 | Pending |
-| MEM-08 | Phase 1 | Pending |
+| MEM-06 | Phase 1 | Complete |
+| MEM-07 | Phase 1 | Complete |
+| MEM-08 | Phase 1 | Complete |
 | KNOW-01 | Phase 2 | Pending |
 | KNOW-02 | Phase 2 | Pending |
 | KNOW-03 | Phase 2 | Pending |
