@@ -95,6 +95,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not text or len(text) > 2000:
             return {"ok": False, "error": "Invalid text command."}
 
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+
         execute = bool(payload.get("execute", False))
         approve_privileged = bool(payload.get("approve_privileged", False))
         speak = bool(payload.get("speak", False))
@@ -115,8 +117,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             voice_threshold = 0.82
         voice_threshold = min(0.99, max(0.1, voice_threshold))
-
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         engine_dir = root / "engine"
         if not engine_dir.exists():
             try:

@@ -28,12 +28,12 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
 
     snapshot = {
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
-        "7d_local_pct": summary_7d["local_pct"],
-        "30d_local_pct": summary_30d["local_pct"],
-        "7d_cloud_cost_usd": summary_7d["cloud_cost_usd"],
-        "30d_cloud_cost_usd": summary_30d["cloud_cost_usd"],
-        "7d_total_queries": summary_7d["total_count"],
-        "30d_total_queries": summary_30d["total_count"],
+        "7d_local_pct": summary_7d.get("local_pct", 0.0),
+        "30d_local_pct": summary_30d.get("local_pct", 0.0),
+        "7d_cloud_cost_usd": summary_7d.get("cloud_cost_usd", 0.0),
+        "30d_cloud_cost_usd": summary_30d.get("cloud_cost_usd", 0.0),
+        "7d_total_queries": summary_7d.get("total_count", 0),
+        "30d_total_queries": summary_30d.get("total_count", 0),
     }
 
     history_path.parent.mkdir(parents=True, exist_ok=True)

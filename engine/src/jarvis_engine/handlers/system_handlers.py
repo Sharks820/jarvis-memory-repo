@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import webbrowser
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Any
 from urllib.parse import quote
 from urllib.request import urlopen
@@ -165,7 +168,7 @@ class DesktopWidgetHandler:
     def handle(self, cmd: DesktopWidgetCommand) -> DesktopWidgetResult:
         try:
             from jarvis_engine.desktop_widget import run_desktop_widget
-        except Exception:
+        except ImportError:
             return DesktopWidgetResult(return_code=2)
         run_desktop_widget()
         return DesktopWidgetResult(return_code=0)
@@ -213,6 +216,8 @@ class OpenWebHandler:
         self._root = root
 
     def handle(self, cmd: OpenWebCommand) -> OpenWebResult:
+        from urllib.parse import urlparse
+
         candidate = cmd.url.strip()
         if not candidate:
             return OpenWebResult(return_code=2)
@@ -220,7 +225,12 @@ class OpenWebHandler:
             return OpenWebResult(return_code=2)
         if not re.match(r"^https?://", candidate, flags=re.IGNORECASE):
             candidate = f"https://{candidate.lstrip('/')}"
-        if not re.match(r"^https?://", candidate, flags=re.IGNORECASE):
+        parsed = urlparse(candidate)
+        if parsed.scheme not in ("http", "https"):
+            return OpenWebResult(return_code=2)
+        if not parsed.hostname:
+            return OpenWebResult(return_code=2)
+        if parsed.username or parsed.password:
             return OpenWebResult(return_code=2)
         webbrowser.open(candidate)
         return OpenWebResult(return_code=0, opened_url=candidate)
@@ -237,7 +247,8 @@ class WeatherHandler:
         try:
             with urlopen(url, timeout=12) as resp:  # nosec B310
                 raw = json.loads(resp.read().decode("utf-8"))
-        except Exception:
+        except (OSError, ValueError, TimeoutError) as exc:
+            logger.debug("Weather fetch failed for %s: %s", target, type(exc).__name__)
             return WeatherResult(return_code=2, location=target)
 
         current: dict[str, Any] = {}

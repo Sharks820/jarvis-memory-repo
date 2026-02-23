@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from jarvis_engine.commands.voice_commands import (
     PersonaComposeCommand,
@@ -158,9 +161,8 @@ class VoiceListenHandler:
                 language=cmd.language,
                 model_size=cmd.model_size,
             )
-        except RuntimeError:
-            return VoiceListenResult(message="error: voice listen failed.")
-        except Exception:
+        except Exception as exc:
+            logger.debug("Voice listen failed: %s", exc)
             return VoiceListenResult(message="error: voice listen failed.")
 
         return VoiceListenResult(
@@ -205,7 +207,8 @@ class PersonaComposeHandler:
                 model=model,
                 route_reason="persona_reply",
             )
-        except Exception:
+        except (ConnectionError, OSError, RuntimeError) as exc:
+            logger.debug("Persona compose failed: %s", exc)
             return PersonaComposeResult(
                 branch=cmd.branch,
                 tone=tone,

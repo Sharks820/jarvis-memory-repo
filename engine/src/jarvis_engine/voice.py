@@ -196,7 +196,8 @@ def _speak_text_edge(
     if output_wav:
         out_path = str(Path(output_wav).resolve())
     else:
-        out_path = str(Path(tempfile.gettempdir()) / "jarvis_voice_edge.mp3")
+        fd, out_path = tempfile.mkstemp(suffix=".mp3", prefix="jarvis_voice_")
+        os.close(fd)
     try:
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -273,8 +274,8 @@ def _speak_text_edge_streamed(
         )
 
     rate_pct = int(max(-50, min(50, rate * 5)))
-    out_dir = Path(tempfile.gettempdir()) / "jarvis_edge_stream"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(tempfile.mkdtemp(prefix="jarvis_edge_stream_"))
+    # mkdtemp creates the directory with restricted permissions
     q: "queue.Queue[str | None]" = queue.Queue(maxsize=6)
     err: list[Exception] = []
 

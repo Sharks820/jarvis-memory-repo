@@ -31,8 +31,12 @@ class ActionOutcome:
 
 def load_actions(path: Path) -> list[PlannedAction]:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError(f"Expected JSON array in {path}, got {type(raw).__name__}")
     out: list[PlannedAction] = []
     for item in raw:
+        if not isinstance(item, dict):
+            continue
         out.append(
             PlannedAction(
                 title=str(item.get("title", "")),

@@ -198,7 +198,8 @@ class CostTracker:
     def close(self) -> None:
         """Close the database connection."""
         try:
-            self._db.close()
+            with self._write_lock:
+                self._db.close()
         except Exception:
             pass
 
