@@ -85,10 +85,15 @@ def hybrid_search(
     if not scores:
         return []
 
-    # 4. Recency boost
+    # 4. Batch-fetch all candidate records (eliminates N+1 queries)
+    candidate_ids = list(scores.keys())
+    records_list = engine.get_records_batch(candidate_ids)
+    records_by_id = {r["record_id"]: r for r in records_list}
+
+    # 5. Recency boost
     scored_records: list[tuple[float, dict]] = []
     for rid, score in scores.items():
-        record = engine.get_record(rid)
+        record = records_by_id.get(rid)
         if record is None:
             continue
         ts = str(record.get("ts", ""))
@@ -96,14 +101,13 @@ def hybrid_search(
         boosted_score = score * (1.0 + recency_weight * recency)
         scored_records.append((boosted_score, record))
 
-    # 5. Sort by combined score descending, take top-k
+    # 6. Sort by combined score descending, take top-k
     scored_records.sort(key=lambda pair: pair[0], reverse=True)
     results = [record for _score, record in scored_records[:k]]
 
-    # 6. Update access counts for returned records
-    for record in results:
-        rid = record.get("record_id", "")
-        if rid:
-            engine.update_access(rid)
+    # 7. Batch-update access counts for returned records
+    result_ids = [r["record_id"] for r in results if r.get("record_id")]
+    if result_ids:
+        engine.update_access_batch(result_ids)
 
     return results

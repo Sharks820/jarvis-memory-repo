@@ -1,0 +1,17 @@
+[
+  {
+    "mission_id": "m-20260222101501",
+    "topic": "Unity 6.3 game systems",
+    "objective": "Research verified best practices",
+    "sources": [
+      "google",
+      "reddit",
+      "official_docs"
+    ],
+    "status": "completed",
+    "created_utc": "2026-02-22T10:15:01.482658+00:00",
+    "updated_utc": "2026-02-22T10:15:06.417745+00:00",
+    "last_report_path": "C:\\Users\\Conner\\jarvis-memory-repo\\.planning\\missions\\m-20260222101501.report.json",
+    "verified_findings": 0
+  }
+]

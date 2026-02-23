@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, asdict
 from datetime import datetime, UTC
 from typing import Literal
@@ -37,6 +38,15 @@ class IngestionPipeline:
             task_id=task_id,
             content=content,
         )
-        self.store.append(event_type=f"ingest:{source}:{kind}", message=str(asdict(rec)))
+        log_record = asdict(rec)
+        log_record["content"] = self._redacted_content(content)
+        self.store.append(
+            event_type=f"ingest:{source}:{kind}",
+            message=json.dumps(log_record, ensure_ascii=True),
+        )
         return rec
 
+    def _redacted_content(self, content: str) -> str:
+        preview = content[:96]
+        suffix = "" if len(content) <= 96 else "...(truncated)"
+        return preview + suffix

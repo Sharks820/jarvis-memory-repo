@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import base64
 import os
+import queue
+import re
+import shutil
 import subprocess
+import sys
+import tempfile
+import threading
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -15,6 +22,23 @@ class VoiceSpeakResult:
     message: str
 
 
+def _win_hidden_subprocess_kwargs() -> dict[str, Any]:
+    if os.name != "nt":
+        return {}
+    kwargs: dict[str, Any] = {}
+    creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if creationflags:
+        kwargs["creationflags"] = creationflags
+    try:
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
+        startupinfo.wShowWindow = 0
+        kwargs["startupinfo"] = startupinfo
+    except Exception:
+        pass
+    return kwargs
+
+
 def _run_ps(script: str, timeout_s: int = 30) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["powershell", "-NoProfile", "-Command", script],
@@ -22,6 +46,7 @@ def _run_ps(script: str, timeout_s: int = 30) -> subprocess.CompletedProcess[str
         text=True,
         check=False,
         timeout=timeout_s,
+        **_win_hidden_subprocess_kwargs(),
     )
 
 
@@ -38,6 +63,7 @@ def _run_ps_encoded(
         check=False,
         env=env,
         timeout=timeout_s,
+        **_win_hidden_subprocess_kwargs(),
     )
 
 
@@ -63,14 +89,240 @@ def list_windows_voices(refresh: bool = False) -> list[str]:
 def _preferred_voice_patterns(profile: str) -> list[str]:
     if profile == "jarvis_like":
         return [
+            "en-GB-ThomasNeural",
+            "en-GB-RyanNeural",
+            "en-GB-EthanNeural",
             "en-GB",
             "British",
+            "Thomas",
+            "Ryan",
+            "Ethan",
+            "Hazel",
             "George",
             "David",
             "James",
             "Male",
         ]
     return ["en-US", "Male"]
+
+
+def _edge_tts_executable() -> str:
+    local = Path(sys.executable).with_name("edge-tts.exe")
+    if local.exists():
+        return str(local)
+    found = shutil.which("edge-tts")
+    return found or ""
+
+
+@lru_cache(maxsize=1)
+def _list_edge_voices_cached() -> tuple[str, ...]:
+    exe = _edge_tts_executable()
+    if not exe:
+        return ()
+    proc = subprocess.run(
+        [exe, "--list-voices"],
+        capture_output=True,
+        text=True,
+        timeout=35,
+        check=False,
+        **_win_hidden_subprocess_kwargs(),
+    )
+    if proc.returncode != 0:
+        return ()
+    voices: list[str] = []
+    for line in proc.stdout.splitlines():
+        match = re.match(r"^\s*([a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+)\s+", line)
+        if match:
+            voices.append(match.group(1))
+    return tuple(voices)
+
+
+def list_edge_voices(refresh: bool = False) -> list[str]:
+    if refresh:
+        _list_edge_voices_cached.cache_clear()
+    return list(_list_edge_voices_cached())
+
+
+def _choose_edge_voice(*, profile: str, custom_pattern: str = "") -> str:
+    voices = list_edge_voices(refresh=False)
+    if not voices:
+        voices = list_edge_voices(refresh=True)
+    if not voices:
+        return ""
+    return choose_voice(voices, profile=profile, custom_pattern=custom_pattern)
+
+
+def _play_audio_file(path: str) -> None:
+    env = os.environ.copy()
+    env["JARVIS_VOICE_MEDIA"] = str(path)
+    script = (
+        "$p=$env:JARVIS_VOICE_MEDIA; "
+        "if (-not (Test-Path $p)) { exit 0 }; "
+        "$ext=[System.IO.Path]::GetExtension($p).ToLowerInvariant(); "
+        "if ($ext -eq '.wav') { "
+        "  Add-Type -AssemblyName System; "
+        "  $sp=New-Object System.Media.SoundPlayer $p; "
+        "  $sp.PlaySync(); "
+        "} else { "
+        "  Add-Type -AssemblyName presentationCore; "
+        "  $player=New-Object System.Windows.Media.MediaPlayer; "
+        "  $player.Open([Uri]$p); "
+        "  $player.Play(); "
+        "  Start-Sleep -Milliseconds 150; "
+        "  while (-not $player.NaturalDuration.HasTimeSpan) { Start-Sleep -Milliseconds 120 }; "
+        "  Start-Sleep -Milliseconds ([int]$player.NaturalDuration.TimeSpan.TotalMilliseconds + 150); "
+        "  $player.Close(); "
+        "}"
+    )
+    _run_ps_encoded(script, env=env, timeout_s=180)
+
+
+def _speak_text_edge(
+    text: str,
+    *,
+    profile: str,
+    custom_voice_pattern: str,
+    output_wav: str,
+    rate: int,
+) -> VoiceSpeakResult:
+    exe = _edge_tts_executable()
+    if not exe:
+        raise RuntimeError("edge-tts executable not found.")
+
+    voice = _choose_edge_voice(profile=profile, custom_pattern=custom_voice_pattern)
+    if not voice:
+        raise RuntimeError("No edge-tts voices found.")
+
+    if output_wav:
+        out_path = str(Path(output_wav).resolve())
+    else:
+        out_path = str(Path(tempfile.gettempdir()) / "jarvis_voice_edge.mp3")
+    try:
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"Unable to prepare voice output path: {exc}") from exc
+
+    rate_pct = int(max(-50, min(50, rate * 5)))
+    cmd = [
+        exe,
+        "--text",
+        text,
+        "--voice",
+        voice,
+        f"--rate={rate_pct:+d}%",
+        "--write-media",
+        out_path,
+    ]
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+        **_win_hidden_subprocess_kwargs(),
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
+
+    if not output_wav:
+        _play_audio_file(out_path)
+
+    return VoiceSpeakResult(
+        voice_name=voice,
+        output_wav=out_path,
+        message="Edge neural voice output completed.",
+    )
+
+
+def _chunk_text_for_streaming(text: str, *, sentences_per_chunk: int = 3) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", stripped) if part.strip()]
+    if len(sentences) <= sentences_per_chunk:
+        return [stripped]
+    chunks: list[str] = []
+    for idx in range(0, len(sentences), sentences_per_chunk):
+        chunks.append(" ".join(sentences[idx : idx + sentences_per_chunk]).strip())
+    return [chunk for chunk in chunks if chunk]
+
+
+def _speak_text_edge_streamed(
+    text: str,
+    *,
+    profile: str,
+    custom_voice_pattern: str,
+    rate: int,
+) -> VoiceSpeakResult:
+    exe = _edge_tts_executable()
+    if not exe:
+        raise RuntimeError("edge-tts executable not found.")
+
+    voice = _choose_edge_voice(profile=profile, custom_pattern=custom_voice_pattern)
+    if not voice:
+        raise RuntimeError("No edge-tts voices found.")
+
+    chunks = _chunk_text_for_streaming(text, sentences_per_chunk=3)
+    if len(chunks) <= 1:
+        return _speak_text_edge(
+            text,
+            profile=profile,
+            custom_voice_pattern=custom_voice_pattern,
+            output_wav="",
+            rate=rate,
+        )
+
+    rate_pct = int(max(-50, min(50, rate * 5)))
+    out_dir = Path(tempfile.gettempdir()) / "jarvis_edge_stream"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    q: "queue.Queue[str | None]" = queue.Queue(maxsize=6)
+    err: list[Exception] = []
+
+    def producer() -> None:
+        try:
+            for idx, chunk in enumerate(chunks):
+                media_path = out_dir / f"chunk_{idx:03}.mp3"
+                cmd = [
+                    exe,
+                    "--text",
+                    chunk,
+                    "--voice",
+                    voice,
+                    f"--rate={rate_pct:+d}%",
+                    "--write-media",
+                    str(media_path),
+                ]
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    check=False,
+                    **_win_hidden_subprocess_kwargs(),
+                )
+                if proc.returncode != 0:
+                    raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
+                q.put(str(media_path))
+        except Exception as exc:  # noqa: BLE001
+            err.append(exc)
+        finally:
+            q.put(None)
+
+    worker = threading.Thread(target=producer, daemon=True)
+    worker.start()
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        _play_audio_file(item)
+    if err:
+        raise RuntimeError(str(err[0]))
+
+    return VoiceSpeakResult(
+        voice_name=voice,
+        output_wav="",
+        message=f"Edge neural streaming voice output completed (chunks={len(chunks)}).",
+    )
 
 
 def choose_voice(voices: list[str], profile: str, custom_pattern: str = "") -> str:
@@ -96,10 +348,33 @@ def speak_text(
     output_wav: str = "",
     rate: int = 0,
 ) -> VoiceSpeakResult:
+    env_pattern = os.getenv("JARVIS_VOICE_PATTERN", "").strip()
+    effective_pattern = custom_voice_pattern.strip() or env_pattern
+    engine_pref = os.getenv("JARVIS_TTS_ENGINE", "auto").strip().lower()
+    if engine_pref in {"edge", "edge_tts", "auto"}:
+        try:
+            if (not output_wav) and len(text.strip()) > 180:
+                return _speak_text_edge_streamed(
+                    text,
+                    profile=profile,
+                    custom_voice_pattern=effective_pattern,
+                    rate=rate,
+                )
+            return _speak_text_edge(
+                text,
+                profile=profile,
+                custom_voice_pattern=effective_pattern,
+                output_wav=output_wav,
+                rate=rate,
+            )
+        except Exception:
+            if engine_pref in {"edge", "edge_tts"}:
+                raise
+
     voices = list_windows_voices(refresh=False)
     if not voices:
         voices = list_windows_voices(refresh=True)
-    voice = choose_voice(voices, profile=profile, custom_pattern=custom_voice_pattern)
+    voice = choose_voice(voices, profile=profile, custom_pattern=effective_pattern)
     if not voice:
         raise RuntimeError("No Windows voices found.")
 

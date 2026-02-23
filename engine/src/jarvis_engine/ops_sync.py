@@ -169,12 +169,12 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
         from icalendar import Calendar
         import recurring_ical_events
     except ImportError:
-        return _parse_ics_fallback(text)
+        return _parse_ics_fallback(text, target_date)
 
     try:
         cal = Calendar.from_ical(text)
     except Exception:
-        return _parse_ics_fallback(text)
+        return _parse_ics_fallback(text, target_date)
 
     if target_date is None:
         target_date = date.today()
@@ -184,7 +184,7 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
     try:
         expanded = recurring_ical_events.of(cal).between(start, end)
     except Exception:
-        return _parse_ics_fallback(text)
+        return _parse_ics_fallback(text, target_date)
 
     events: list[dict] = []
     for event in expanded:
@@ -209,23 +209,38 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
     return sorted(events, key=lambda e: e["time"])
 
 
-def _parse_ics_fallback(text: str) -> list[dict]:
+def _parse_ics_fallback(text: str, target_date: date | None = None) -> list[dict]:
     """Simple line-by-line ICS parser (fallback when icalendar is not installed)."""
     # Unfold RFC 5545 line folding (CRLF + space/tab continuation)
     text = text.replace("\r\n ", "").replace("\r\n\t", "").replace("\n ", "").replace("\n\t", "")
     lines = [line.strip() for line in text.splitlines()]
     events: list[dict] = []
     current: dict[str, str] | None = None
+    target_str = target_date.strftime("%Y%m%d") if target_date is not None else None
     for line in lines:
         if line == "BEGIN:VEVENT":
             current = {}
             continue
         if line == "END:VEVENT":
             if current is not None:
+                raw_dt = current.get("DTSTART", "")
+                # Filter by target_date if provided
+                if target_str is not None:
+                    dt_date_part = raw_dt[:8] if len(raw_dt) >= 8 else ""
+                    if dt_date_part and dt_date_part != target_str:
+                        current = None
+                        continue
+                # Format time from raw DTSTART
+                if "T" in raw_dt and len(raw_dt) >= 15:
+                    time_str = f"{raw_dt[9:11]}:{raw_dt[11:13]}"
+                else:
+                    time_str = "all-day"
                 events.append(
                     {
                         "title": current.get("SUMMARY", "Untitled event"),
-                        "time": current.get("DTSTART", ""),
+                        "time": time_str,
+                        "location": current.get("LOCATION", ""),
+                        "description": current.get("DESCRIPTION", "")[:200],
                         "prep_needed": "yes",
                     }
                 )
@@ -238,7 +253,7 @@ def _parse_ics_fallback(text: str) -> list[dict]:
         key, value = line.split(":", 1)
         key = key.split(";", 1)[0]
         current[key] = value
-    return events
+    return sorted(events, key=lambda e: e["time"])
 
 
 def load_task_items(repo_root: Path) -> list[dict]:

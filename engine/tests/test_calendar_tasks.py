@@ -19,6 +19,14 @@ from jarvis_engine.ops_sync import (
 )
 
 
+def _has_icalendar() -> bool:
+    try:
+        import icalendar  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Helpers: ICS test data builders
 # ---------------------------------------------------------------------------
@@ -115,6 +123,10 @@ class TestParseIcsAlldayEvent:
 
 
 class TestParseIcsRecurringEvent:
+    @pytest.mark.skipif(
+        not _has_icalendar(),
+        reason="icalendar not installed -- fallback parser cannot expand RRULE",
+    )
     def test_recurring_event_within_range(self) -> None:
         text = _recurring_event_ics(
             summary="Daily Scrum",
@@ -300,5 +312,5 @@ class TestParseIcsFallback:
         events = _parse_ics_fallback(text)
         assert len(events) == 1
         assert events[0]["title"] == "Fallback Event"
-        assert events[0]["time"] == "20260301T090000Z"
+        assert events[0]["time"] == "09:00"
         assert events[0]["prep_needed"] == "yes"

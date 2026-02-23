@@ -1,0 +1,81 @@
+diff --git a/scripts/start-jarvis-services.ps1 b/scripts/start-jarvis-services.ps1
+--- a/scripts/start-jarvis-services.ps1
++++ b/scripts/start-jarvis-services.ps1
+@@ -27,6 +27,17 @@ New-Item -ItemType Directory -Path $securityDir -Force | Out-Null
+ New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+ 
+ if (-not (Test-Path $configPath)) {
++    # Create with restricted permissions from the start
++    $null = New-Item -ItemType File -Path $configPath -Force
++    $acl = Get-Acl $configPath
++    $acl.SetAccessRuleProtection($true, $false)
++    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
++    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
++        $currentUser, "Read,Write", "Allow"
++    )
++    $acl.SetAccessRule($rule)
++    Set-Acl $configPath $acl
++    
+     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+     $b1 = New-Object byte[] 48
+     $b2 = New-Object byte[] 64
+@@ -36,7 +47,7 @@ if (-not (Test-Path $configPath)) {
+         token = [Convert]::ToBase64String($b1)
+         signing_key = [Convert]::ToBase64String($b2)
+         created_utc = (Get-Date).ToUniversalTime().ToString("o")
+     }
+-    $payload | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
++    $payload | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8 -Force
+ }
+ 
+ $config = Get-Content $configPath -Raw | ConvertFrom-Json
+@@ -51,6 +62,16 @@ if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($signi
+ $repoRootNorm = $repoRoot.ToLowerInvariant()
+ $pythonNorm = $python.ToLowerInvariant()
+ 
++# Helper function for safe process termination with identity verification
++function Stop-JarvisProcessSafely {
++    param([int]$TargetPid, [string]$RepoRootNorm, [string]$PythonNorm)
++    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $TargetPid" -ErrorAction SilentlyContinue
++    if ($null -eq $proc) { return }
++    $cmd = [string]$proc.CommandLine
++    $cmdNorm = $cmd.ToLowerInvariant()
++    # Verify it's a python process running jarvis_engine before killing
++    if ($proc.Name -eq "python.exe" -and $cmd -match "jarvis_engine\.main") {
++        if (($cmdNorm -notlike "*$repoRootNorm*") -or ($cmdNorm -notlike "*$pythonNorm*")) {
++            Stop-Process -Id $TargetPid -Force -ErrorAction SilentlyContinue
++        }
++    }
++}
++
+ $daemonTargets = @(Get-CimInstance Win32_Process | Where-Object {
+     $_.Name -eq "python.exe" -and $_.CommandLine -match "jarvis_engine\.main\s+daemon-run"
+ })
+ foreach ($proc in $daemonTargets) {
+     $cmd = [string]$proc.CommandLine
+     $cmdNorm = $cmd.ToLowerInvariant()
+     if (($cmdNorm -notlike "*$repoRootNorm*") -or ($cmdNorm -notlike "*$pythonNorm*")) {
+-        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
++        Stop-JarvisProcessSafely -TargetPid $proc.ProcessId -RepoRootNorm $repoRootNorm -PythonNorm $pythonNorm
+     }
+ }
+ 
+@@ -68,7 +89,7 @@ $mobileTargets = @(Get-CimInstance Win32_Process | Where-Object {
+ foreach ($proc in $mobileTargets) {
+     $cmd = [string]$proc.CommandLine
+     $cmdNorm = $cmd.ToLowerInvariant()
+     if (($cmdNorm -notlike "*$repoRootNorm*") -or ($cmdNorm -notlike "*$pythonNorm*")) {
+-        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
++        Stop-JarvisProcessSafely -TargetPid $proc.ProcessId -RepoRootNorm $repoRootNorm -PythonNorm $pythonNorm
+     }
+ }
+ 
+@@ -83,7 +104,7 @@ foreach ($entry in $listeners) {
+     $cmdNorm = $cmd.ToLowerInvariant()
+     if ($proc.Name -eq "python.exe" -and $cmd -match "jarvis_engine\.main\s+serve-mobile") {
+         if (($cmdNorm -notlike "*$repoRootNorm*") -or ($cmdNorm -notlike "*$pythonNorm*")) {
+-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
++            Stop-JarvisProcessSafely -TargetPid $pid -RepoRootNorm $repoRootNorm -PythonNorm $pythonNorm
+         }
+     }
+ }

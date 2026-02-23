@@ -1,0 +1,15 @@
+- Use Rive/state-machine vector animation for responsive low-overhead UI motion.
+- Keep glow/pulse effects on compositor layers to avoid main-thread layout work.
+- Dynamically lower animation FPS when unfocused or on battery saver.
+- Inject active app context for no-click command disambiguation.
+- Watch clipboard semantically and pre-warm task adapters.
+- Show ghost follow-up suggestions from recent command patterns for one-tap execution.
+- Maintain short audio ring buffer so wake events preserve pre-roll speech context.
+- Gate wake-word engine with VAD to reduce idle CPU.
+- Add echo cancellation to prevent self-trigger during TTS playback.
+- Run nightly eval gate for memory integrity before promoting new memory/state.
+- Deduplicate/compact semantic memory to reduce drift and conflict.
+- Roll back automatically to last verified snapshot on integrity anomalies.
+- Move signing keys to credential manager/TPM-backed store.
+- Sandbox automation execution with strict workspace path limits.
+- Require signed trusted-origin checks before write/execute actions.

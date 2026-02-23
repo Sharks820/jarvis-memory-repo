@@ -1,0 +1,83 @@
+diff --git a/engine/src/jarvis_engine/mobile_api.py b/engine/src/jarvis_engine/mobile_api.py
+--- a/engine/src/jarvis_engine/mobile_api.py
++++ b/engine/src/jarvis_engine/mobile_api.py
+@@ -374,15 +374,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
+     def _cleanup_nonces(self, now: float, *, force: bool = False) -> None:
+         interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
+         next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
+         if not force and now < next_cleanup:
+             return
+-        nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
+         cutoff = now - REPLAY_WINDOW_SECONDS
+-        stale = [key for key, seen_ts in nonce_seen.items() if seen_ts < cutoff]
+-        for key in stale:
+-            nonce_seen.pop(key, None)
++        with self.server.nonce_lock:  # type: ignore[attr-defined]
++            nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
++            original_len = len(nonce_seen)
++            # Atomic rebuild: keep only valid nonces
++            valid_nonces = {k: v for k, v in nonce_seen.items() if v >= cutoff}
++            nonce_seen.clear()
++            nonce_seen.update(valid_nonces)
+         self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
+ 
+     def _validate_auth(self, body: bytes) -> bool:
++        MAX_AUTH_BODY_SIZE = 1_048_576  # 1MB limit
++        if len(body) > MAX_AUTH_BODY_SIZE:
++            self._unauthorized("Request body too large.")
++            return False
+         auth = self.headers.get("Authorization", "")
+         expected_auth = f"Bearer {self.server.auth_token}"  # type: ignore[attr-defined]
+         if not hmac.compare_digest(auth, expected_auth):
+@@ -88,7 +93,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
+     def _run_voice_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+         text = str(payload.get("text", "")).strip()
+         if not text or len(text) > 2000:
+             return {"ok": False, "error": "Invalid text command."}
+ 
+-        execute = bool(payload.get("execute", False))
+-        approve_privileged = bool(payload.get("approve_privileged", False))
+-        speak = bool(payload.get("speak", False))
++        def _parse_bool(value: Any) -> bool:
++            if isinstance(value, bool):
++                return value
++            if isinstance(value, str):
++                return value.strip().lower() in ("true", "1", "yes", "on")
++            return bool(value)
++
++        execute = _parse_bool(payload.get("execute", False))
++        approve_privileged = _parse_bool(payload.get("approve_privileged", False))
++        speak = _parse_bool(payload.get("speak", False))
+
+diff --git a/engine/src/jarvis_engine/voice.py b/engine/src/jarvis_engine/voice.py
+--- a/engine/src/jarvis_engine/voice.py
++++ b/engine/src/jarvis_engine/voice.py
+@@ -67,7 +67,6 @@ def _preferred_voice_patterns(profile: str) -> list[str]:
+     if profile == "jarvis_like":
+         return [
+             "en-GB-RyanNeural",
+             "en-GB-ThomasNeural",
+             "en-GB",
+-            "en-GB",
+             "British",
+             "Hazel",
+             "George",
+@@ -99,11 +98,11 @@ def _list_edge_voices_cached() -> tuple[str, ...]:
+     if not exe:
+         return ()
+     proc = subprocess.run([exe, "--list-voices"], capture_output=True, text=True, timeout=35, check=False)
+     if proc.returncode != 0:
+         return ()
+-    voices: list[str] = []
+-    for line in proc.stdout.splitlines():
+-        match = re.match(r"^\s*([a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+)\s+", line)
+-        if match:
+-            voices.append(match.group(1))
+-    return tuple(voices)
++    # Use walrus operator for efficient parsing, fix regex backtracking
++    voices = tuple(
++        match.group(1)
++        for line in proc.stdout.splitlines()
++        if (match := re.match(r"^\s*([a-z]{2}-[A-Z]{2}-[A-Za-z0-9]+)", line))
++    )
++    return voices

@@ -1,0 +1,70 @@
+{
+  "status": "ok",
+  "generated_utc": "2026-02-23T08:54:10.363686+00:00",
+  "actions": [],
+  "regression": {
+    "status": "pass",
+    "total_records": 9,
+    "unique_hashes": 9,
+    "duplicate_ratio": 0.0,
+    "branch_entropy": 1.8366,
+    "branch_count": 4,
+    "unresolved_conflicts": 0,
+    "conflict_total": 0,
+    "generated_utc": "2026-02-23T08:54:10.379334+00:00"
+  },
+  "maintenance": {
+    "status": "skipped"
+  },
+  "sync": {
+    "sync_ok": true,
+    "generated_utc": "2026-02-23T08:54:10.363686+00:00",
+    "security": {
+      "path": "C:\\Users\\Conner\\jarvis-memory-repo\\.planning\\security\\mobile_api.json",
+      "exists": true,
+      "token_present": true,
+      "signing_key_present": true,
+      "repaired": false
+    },
+    "owner_guard": {
+      "enabled": true,
+      "owner_user_id": "conner",
+      "trusted_mobile_device_count": 1,
+      "has_master_password": true
+    },
+    "runtime_control": {
+      "daemon_paused": false,
+      "safe_mode": false,
+      "updated_utc": ""
+    },
+    "memory": {
+      "total_records": 0,
+      "canonical_fact_count": 0
+    },
+    "checks": [
+      {
+        "name": "mobile_security_config",
+        "ok": true
+      },
+      {
+        "name": "widget_config_exists",
+        "ok": true
+      },
+      {
+        "name": "owner_guard_device_ready",
+        "ok": true
+      }
+    ],
+    "report_path": "C:\\Users\\Conner\\jarvis-memory-repo\\.planning\\runtime\\mobile_desktop_sync.json"
+  },
+  "log_scan": {
+    "log_files_scanned": 6,
+    "issues": {
+      "http_400": 0,
+      "traceback": 0,
+      "timeout": 0,
+      "auth_failed": 0
+    },
+    "samples": []
+  }
+}

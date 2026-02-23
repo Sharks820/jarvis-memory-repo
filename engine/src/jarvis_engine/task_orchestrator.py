@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, VideoAdapter
@@ -16,6 +17,7 @@ from jarvis_engine.memory_store import MemoryStore
 
 TaskType = Literal["image", "code", "video", "model3d"]
 DEFAULT_FALLBACK_MODELS = ["qwen3:14b", "qwen3:latest", "deepseek-r1:8b"]
+LOCAL_OLLAMA_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 @dataclass
@@ -44,6 +46,7 @@ class TaskOrchestrator:
     def __init__(self, store: MemoryStore, root: Path) -> None:
         self._gate = CapabilityGate()
         self._store = store
+        self._root = root.resolve()
         self._adapters = {
             "image": ImageAdapter(root),
             "video": VideoAdapter(root),
@@ -167,9 +170,18 @@ class TaskOrchestrator:
 
         path = request.output_path or ""
         if path and output:
-            p = Path(path)
+            try:
+                p = self._safe_output_path(path)
+            except ValueError as exc:
+                return TaskResult(
+                    allowed=False,
+                    provider="ollama",
+                    plan=plan,
+                    reason=str(exc),
+                )
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(output, encoding="utf-8")
+            path = str(p)
 
         return TaskResult(
             allowed=True,
@@ -199,7 +211,19 @@ class TaskOrchestrator:
                 reason="Set --execute to run adapter.",
             )
 
-        result = adapter.execute(request.prompt, request.output_path, request.quality_profile)
+        safe_output_path: str | None = request.output_path
+        if request.output_path:
+            try:
+                safe_output_path = str(self._safe_output_path(request.output_path))
+            except ValueError as exc:
+                return TaskResult(
+                    allowed=False,
+                    provider=adapter.provider,
+                    plan=plan,
+                    reason=str(exc),
+                )
+
+        result = adapter.execute(request.prompt, safe_output_path, request.quality_profile)
         return TaskResult(
             allowed=result.ok,
             provider=result.provider,
@@ -338,6 +362,9 @@ class TaskOrchestrator:
         options: dict[str, Any],
         timeout_s: int,
     ) -> tuple[dict[str, Any] | None, str]:
+        if not self._is_safe_ollama_endpoint(endpoint):
+            return None, f"Unsafe Ollama endpoint: {endpoint}"
+
         payload = {
             "model": model,
             "prompt": prompt,
@@ -351,7 +378,7 @@ class TaskOrchestrator:
             data=json.dumps(payload).encode("utf-8"),
         )
         try:
-            with urlopen(req, timeout=timeout_s) as resp:
+            with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
                 data = json.loads(resp.read().decode("utf-8"))
                 if not isinstance(data, dict):
                     return None, "Invalid Ollama payload type."
@@ -365,6 +392,34 @@ class TaskOrchestrator:
             return None, f"Timed out after {timeout_s}s."
         except json.JSONDecodeError:
             return None, "Invalid JSON response from Ollama."
+
+    def _is_safe_ollama_endpoint(self, endpoint: str) -> bool:
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        host = (parsed.hostname or "").strip().lower()
+        if not host:
+            return False
+        allow_nonlocal = os.getenv("JARVIS_ALLOW_NONLOCAL_OLLAMA_ENDPOINT", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if allow_nonlocal:
+            return True
+        return host in LOCAL_OLLAMA_HOSTS
+
+    def _safe_output_path(self, raw_path: str) -> Path:
+        path = Path(raw_path).expanduser()
+        if path.is_absolute():
+            resolved = path.resolve()
+        else:
+            resolved = (self._root / path).resolve()
+        try:
+            resolved.relative_to(self._root)
+        except ValueError:
+            raise ValueError("Security policy: output path must remain inside the repository root.")
+        return resolved
 
     def _log(self, request: TaskRequest, result: TaskResult) -> None:
         message = (

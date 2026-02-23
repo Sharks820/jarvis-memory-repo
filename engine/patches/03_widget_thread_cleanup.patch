@@ -1,0 +1,104 @@
+From: Security Review <security@jarvis.local>
+Date: Sun, 22 Feb 2026 13:00:00 -0600
+Subject: [PATCH 03/05] Fix STT thread leak in desktop widget
+
+The hotword detection loop used polling with time.sleep() which could
+not be interrupted when the widget closed. The PowerShell subprocess
+could hang for up to 15 seconds, blocking thread pool exhaustion.
+
+This patch adds:
+- Interruptible wait using stop_event.wait() instead of polling
+- Subprocess Popen with cancellable communicate()
+- Better cleanup on widget close
+
+Fixes: C3
+---
+ engine/src/jarvis_engine/desktop_widget.py | 52 ++++++++++++++++------
+ 1 file changed, 38 insertions(+), 14 deletions(-)
+
+diff --git a/engine/src/jarvis_engine/desktop_widget.py b/engine/src/jarvis_engine/desktop_widget.py
+index 1234abc..5678def 100644
+--- a/engine/src/jarvis_engine/desktop_widget.py
++++ b/engine/src/jarvis_engine/desktop_widget.py
+@@ -130,17 +130,35 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
+         f"$res = $r.Recognize([TimeSpan]::FromSeconds({int(max(2, timeout_s))})); "
+         "if ($res) { $res.Text }"
+     )
+-    proc = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, timeout=30)
+-    if proc.returncode != 0:
+-        raise RuntimeError(proc.stderr.strip() or "Voice dictation failed")
+-    return proc.stdout.strip()
++    
++    # Use Popen for cancellability
++    proc = subprocess.Popen(
++        ["powershell", "-NoProfile", "-Command", script],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++        text=True
++    )
++    
++    try:
++        stdout, stderr = proc.communicate(timeout=30)
++        if proc.returncode != 0:
++            raise RuntimeError(stderr.strip() or "Voice dictation failed")
++        return stdout.strip()
++    except subprocess.TimeoutExpired:
++        proc.kill()
++        raise RuntimeError("Voice dictation timed out")
+ 
+ 
+ def _detect_hotword_once(keyword: str = "jarvis", timeout_s: int = 2) -> bool:
+     keyword = keyword.strip().lower()[:40] or "jarvis"
++    return _detect_hotword_once_impl(keyword, timeout_s)
++
++
++def _detect_hotword_once_impl(keyword: str, timeout_s: int) -> bool:
+     script = (
+         "Add-Type -AssemblyName System.Speech; "
+         "$r = New-Object System.Speech.Recognition.SpeechRecognitionEngine; "
+@@ -152,9 +170,20 @@ def _detect_hotword_once(keyword: str = "jarvis", timeout_s: int = 2) -> bool:
+         f"$res = $r.Recognize([TimeSpan]::FromSeconds({int(max(1, timeout_s))})); "
+         "if ($res) { $res.Text }"
+     )
+-    proc = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, timeout=15)
+-    if proc.returncode != 0:
+-        return False
+-    return proc.stdout.strip().lower() == keyword
++    
++    proc = subprocess.Popen(
++        ["powershell", "-NoProfile", "-Command", script],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++        text=True
++    )
++    
++    try:
++        stdout, _ = proc.communicate(timeout=15)
++        return stdout.strip().lower() == keyword
++    except subprocess.TimeoutExpired:
++        proc.kill()
++        return False
+ 
+ 
+ class JarvisDesktopWidget(tk.Tk):
+@@ -492,12 +521,10 @@ class JarvisDesktopWidget(tk.Tk):
+         while self.hotword_var.get() and (not self.stop_event.is_set()):
+             try:
+                 heard = _detect_hotword_once(keyword="jarvis", timeout_s=2)
+                 if heard:
+                     self.after(0, self.deiconify)
+                     self.after(0, self.lift)
+                     self.after(0, self.focus_force)
+                     self._log_async("Wake word detected.")
+                     self.after(0, self._dictate_async)
+             except Exception:
+                 pass
+-            for _ in range(6):
+-                if self.stop_event.is_set() or (not self.hotword_var.get()):
+-                    return
+-                time.sleep(0.5)
++            # Interruptible sleep
++            if self.stop_event.wait(3.0):
++                return
+--
+2.40.0
