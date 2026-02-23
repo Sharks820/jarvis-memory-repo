@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 4 -- Connectors and Daily Intelligence (IN PROGRESS)
+**Current focus:** Phase 4 -- Connectors and Daily Intelligence (COMPLETE)
 
 ## Current Position
 
 Phase: 4 of 9 (Connectors and Daily Intelligence)
-Plan: 1 of 2 in current phase (04-01 complete)
-Status: Plan 04-01 (Calendar & Task Connector Upgrade) complete -- ICS parsing with icalendar, task source abstraction
-Last activity: 2026-02-23 -- Completed calendar connector upgrade and task source abstraction
+Plan: 2 of 2 in current phase (04-02 complete -- phase complete)
+Status: Phase 04 complete -- Email triage + narrative daily briefing with LLM synthesis
+Last activity: 2026-02-23 -- Completed email triage and narrative daily briefing
 
-Progress: [████▓░░░░░] 42%
+Progress: [█████▓░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: ~12min
-- Total execution time: 1.57 hours
+- Total plans completed: 9
+- Average duration: ~11min
+- Total execution time: 1.67 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Progress: [████▓░░░░░] 42%
 | 01 | 3/3 | 65min | 22min |
 | 02 | 2/2 | 14min | 7min |
 | 03 | 2/2 | 10min | 5min |
-| 04 | 1/2 | 5min | 5min |
+| 04 | 2/2 | 11min | 5.5min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (8min), 03-01 (4min), 03-02 (6min), 04-01 (5min)
+- Last 5 plans: 02-02 (8min), 03-01 (4min), 03-02 (6min), 04-01 (5min), 04-02 (6min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -87,6 +87,11 @@ Recent decisions affecting current work:
 - [04-01]: UTC-based date range for recurring event expansion (midnight-to-midnight UTC)
 - [04-01]: Task source selection via JARVIS_TASK_SOURCE env var with default json, todoist, and google_tasks options
 - [04-01]: Google Tasks returns empty list with TODO comment -- requires OAuth2, deferred to future phase
+- [04-02]: Multi-signal triage checks subject keywords first, then sender patterns -- any match returns high
+- [04-02]: Keep _email_importance() as backward-compatible wrapper delegating to _triage_email()
+- [04-02]: Data summary condensed to ~1500 tokens with truncation (10 events, 10 tasks, 10 emails, 8 meds, 8 bills)
+- [04-02]: LLM narrative via gateway.complete() with route_reason='daily_briefing_narrative' for cost tracking
+- [04-02]: OpsBriefHandler gateway parameter defaults to None for backward compatibility
 
 ### Pending Todos
 
@@ -100,5 +105,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 04-01-PLAN.md (Calendar & Task Connector Upgrade)
+Stopped at: Completed 04-02-PLAN.md (Email Triage & Narrative Daily Briefing) -- Phase 04 complete
 Resume file: None
