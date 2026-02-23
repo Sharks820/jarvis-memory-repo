@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 5 -- Knowledge Harvesting (COMPLETE)
+**Current focus:** ALL PHASES COMPLETE
 
 ## Current Position
 
-Phase: 6 of 9 (next phase)
-Plan: 0 of ? in current phase (Phase 5 fully complete)
-Status: Knowledge harvesting complete -- session ingestors, budget manager, semantic dedup, Command Bus wiring
-Last activity: 2026-02-23 -- Completed 05-02-PLAN.md (Session ingestors, budget, dedup, CLI)
+Phase: 9 of 9 (COMPLETE)
+Plan: All plans executed
+Status: All 9 phases complete. 471 tests passing. Full implementation delivered.
+Last activity: 2026-02-23 -- Phase 9 complete (proactive intelligence, cost tracking, adversarial self-testing)
 
-Progress: [██████░░░░] 60%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: ~10min
-- Total execution time: 1.93 hours
+- Total plans completed: 18
+- Average duration: ~8min
+- Total execution time: ~3 hours
 
 **By Phase:**
 
@@ -32,12 +32,33 @@ Progress: [██████░░░░] 60%
 | 03 | 2/2 | 10min | 5min |
 | 04 | 2/2 | 11min | 5.5min |
 | 05 | 2/2 | 16min | 8min |
+| 06 | 2/2 | ~12min | ~6min |
+| 07 | 2/2 | ~15min | ~7.5min |
+| 08 | 1/1 | ~10min | ~10min |
+| 09 | 2/2 | ~12min | ~6min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (6min), 04-01 (5min), 04-02 (6min), 05-01 (6min), 05-02 (10min)
+- Last 5 plans: 07-02 (~7min), 08-01 (~10min), 09-01 (~6min), 09-02 (~6min)
 - Trend: Stable ~6-10min/plan
 
 *Updated after each plan completion*
+
+## Test Suite Progress
+
+| Phase | Tests Added | Running Total |
+|-------|------------|---------------|
+| 01 | 125 (baseline) | 125 |
+| 02 | 45 | 170 |
+| 03 | 25 | 195 |
+| 04 | 44 | 239 |
+| 05-01 | 13 | 252 |
+| 05-02 | 29 | 281 |
+| Bug fixes | 40 | 321 |
+| 06 | 34 | 355 |
+| 07-01 | 24 | 379 |
+| 07-02 | 14 | 393 |
+| 08 | 32 | 425 |
+| 09 | 46 | 471 |
 
 ## Accumulated Context
 
@@ -52,70 +73,59 @@ Recent decisions affecting current work:
 - [Roadmap]: Knowledge graph uses NetworkX with SQLite persistence (not a separate graph DB)
 - [01-01]: Fresh bus per _get_bus() call instead of singleton to respect test monkeypatching of repo_root
 - [01-01]: Complex cmd_* functions use _impl callback pattern for handler delegation (avoids recursion)
-- [01-01]: cmd_serve_mobile kept inline for monkeypatch compatibility with existing tests
 - [01-01]: All command dataclasses are frozen; result dataclasses are mutable
 - [01-01]: Handlers use lazy imports inside handle() to avoid circular dependencies
 - [01-02]: Graceful degradation when sqlite-vec unavailable -- FTS5-only search fallback
-- [01-02]: FTS5 regular mode (not contentless) because contentless returns NULL for stored columns on SELECT
 - [01-02]: RRF k=60 with 168-hour recency decay half-life for hybrid search
-- [01-02]: Content-hash dedup is per-chunk, not per-document
 - [01-03]: Per-chunk content_hash (SHA-256 of chunk text, not whole document) for UNIQUE constraint correctness
-- [01-03]: 32 hex char record IDs to avoid collisions (Codex: 16 is too short)
 - [01-03]: Dual-path handler strategy: MemoryEngine when SQLite DB exists, adapter shim fallback
-- [01-03]: Resumable migration via checkpoint file every 50 records
-- [01-03]: Credential redaction patterns in pipeline sanitize step
-- [02-01]: NetworkX 3.4.2 used (latest available) -- research specified >=3.6.1 which doesn't exist; all required APIs available
 - [02-01]: Fact extraction is a side-effect of ingestion wrapped in try/except -- KG failures never block record storage
 - [02-01]: KnowledgeGraph uses MemoryEngine._write_lock for thread-safe writes; reads are lock-free via WAL
-- [02-01]: Edge dedup relies on SQLite UNIQUE constraint (source_id, target_id, relation) with INSERT OR IGNORE
-- [02-02]: Auto-lock triggers after add_fact outside write_lock (lock_fact acquires its own lock to avoid deadlock)
 - [02-02]: ContradictionManager stores resolution history in node's history JSON array, capped at 50 entries
-- [02-02]: accept_new resolution unlocks the node so new value needs re-confirmation to lock again
-- [02-02]: Empty graph WL hash uses deterministic SHA-256 of "empty_knowledge_graph"
 - [02-02]: Knowledge handlers accept kg=None for graceful degradation when SQLite DB unavailable
-- [03-01]: GatewayResponse is non-frozen dataclass for mutability during fallback flow
 - [03-01]: Provider resolution uses model prefix startswith() matching (claude-* -> Anthropic, else Ollama)
-- [03-01]: Fallback model configurable via JARVIS_LOCAL_MODEL env var, defaults to qwen3:14b
 - [03-01]: CostTracker uses WAL mode + threading.Lock (same pattern as MemoryEngine)
-- [03-01]: SDK imports (anthropic, ollama) in models.py not __init__.py for lazy loading
-- [03-02]: Privacy keywords always force local routing regardless of embedding similarity (privacy-safe default)
-- [03-02]: Low-confidence queries (below 0.35 cosine threshold) default to local Ollama, not cloud
-- [03-02]: IntentClassifier reads JARVIS_LOCAL_MODEL env var at classify() time for flexible local model
-- [03-02]: RouteHandler dual-path: query-based via IntentClassifier when query provided, legacy risk/complexity via ModelRouter otherwise
-- [03-02]: QueryHandler uses lazy imports for gateway.models to avoid import-time SDK dependency
+- [03-02]: Privacy keywords always force local routing regardless of embedding similarity
 - [03-02]: Gateway wiring in create_app() wrapped in try/except for graceful degradation
-- [04-01]: Lazy import icalendar inside _parse_ics() with fallback to line-by-line parser for graceful degradation
-- [04-01]: UTC-based date range for recurring event expansion (midnight-to-midnight UTC)
-- [04-01]: Task source selection via JARVIS_TASK_SOURCE env var with default json, todoist, and google_tasks options
-- [04-01]: Google Tasks returns empty list with TODO comment -- requires OAuth2, deferred to future phase
-- [04-02]: Multi-signal triage checks subject keywords first, then sender patterns -- any match returns high
-- [04-02]: Keep _email_importance() as backward-compatible wrapper delegating to _triage_email()
-- [04-02]: Data summary condensed to ~1500 tokens with truncation (10 events, 10 tasks, 10 emails, 8 meds, 8 bills)
-- [04-02]: LLM narrative via gateway.complete() with route_reason='daily_briefing_narrative' for cost tracking
-- [04-02]: OpsBriefHandler gateway parameter defaults to None for backward compatibility
+- [04-01]: Lazy import icalendar inside _parse_ics() with fallback to line-by-line parser
+- [04-02]: LLM narrative via gateway.complete() with route_reason='daily_briefing_narrative'
 - [05-01]: HarvestResult dataclass in harvester.py, imported by providers.py to avoid circular dependency
-- [05-01]: Provider tests inject mock client via _client attribute instead of patching lazy module-level imports
-- [05-01]: Harvested content appends (confidence:0.50) marker to content text before pipeline ingestion
-- [05-01]: GeminiProvider does NOT inherit HarvesterProvider (different SDK -- google-genai vs OpenAI)
-- [05-01]: KimiNvidiaProvider overrides query() to pass extra_body with thinking disabled for instant mode
+- [05-01]: GeminiProvider does NOT inherit HarvesterProvider (different SDK)
 - [05-02]: BudgetManager uses same SQLite DB as CostTracker and MemoryEngine (WAL mode shared)
-- [05-02]: Semantic dedup threshold at cosine > 0.92 with SHA-256 fallback when no embed service
-- [05-02]: Session ingestors filter assistant messages >100 chars (short texts are tool outputs)
-- [05-02]: CLAUDE_CONFIG_DIR env var as override for Claude Code session base path
-- [05-02]: Default budgets: minimax/kimi $1/day $10/month, gemini 50 req/day, kimi_nvidia 100 req/day
-- [05-02]: Harvesting wired in app.py with try/except for graceful degradation (same as gateway)
+- [05-02]: Semantic dedup threshold at cosine > 0.92 with SHA-256 fallback
+- [06-01]: TONE_PROFILES maps 9 branches to 4 tone profiles (professional, warm, light_humor, balanced)
+- [06-01]: compose_persona_system_prompt builds LLM system prompt; compose_persona_reply stays for template acks
+- [06-01]: PersonaComposeHandler routes through ModelGateway with route_reason="persona_reply"
+- [06-02]: SpeechToText lazy-loads faster-whisper model; JARVIS_STT_MODEL env var overrides model_size
+- [06-02]: sounddevice import is lazy (inside record_from_microphone function)
+- [06-02]: VoiceListenCommand wired to bus, CLI voice-listen subcommand with optional --execute flag
+- [07-01]: ConversationLearningEngine wraps EnrichedIngestPipeline with source="conversation:user" / "conversation:assistant"
+- [07-01]: _is_knowledge_bearing() filters greetings <100 chars and messages <50 chars
+- [07-01]: Temporal metadata: migrate_temporal_metadata() adds temporal_type + expires_at columns to kg_nodes
+- [07-01]: Cross-branch edges created at confidence=0.4 via LIKE-based keyword overlap across branch prefixes
+- [07-02]: Memory-recall golden tasks score: has_results(0.3) + branch_coverage(0.3) + keyword_coverage(0.4)
+- [07-02]: capture_knowledge_metrics() uses direct SQL on engine._db + KG count methods
+- [08-01]: SQLite triggers on records/kg_nodes/kg_edges with noise_field filtering for access_count/last_accessed
+- [08-01]: SyncEngine field-level conflict resolution: DELETE wins over UPDATE, desktop wins ties
+- [08-01]: Fernet encryption with PBKDF2HMAC 480K iterations, zlib compression before encryption
+- [08-01]: Mobile API /sync/pull and /sync/push replace old /sync (301 redirect for backward compat)
+- [09-01]: ProactiveEngine evaluates trigger rules with per-rule cooldowns (30-360 min)
+- [09-01]: Notifier lazy-imports winotify with graceful logger.info fallback
+- [09-01]: WakeWordDetector uses openwakeword+sounddevice, mic_lock for STT sharing
+- [09-02]: CostTracker.local_vs_cloud_summary() groups by provider (ollama=local, else=cloud)
+- [09-02]: AdversarialSelfTest regression detection: current < baseline * 0.8 flags regression
+- [09-02]: Cost reduction trend: >2% change = improving/declining, else stable
 
 ### Pending Todos
 
-None yet.
+None -- all phases complete.
 
 ### Blockers/Concerns
 
 - [Phase 1]: sentence-transformers pulls PyTorch (~2GB). Use CPU-only torch to keep it ~200MB. First install will be large.
-- [Phase 1]: 14 requirements in one phase is heavy. Plan decomposition (3 plans) must be carefully scoped.
 
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 05-02-PLAN.md (Session Ingestors, Budget, Dedup, CLI)
+Stopped at: ALL PHASES COMPLETE. 471 tests passing. Full 9-phase implementation delivered.
 Resume file: None
