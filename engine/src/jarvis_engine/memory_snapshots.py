@@ -3,12 +3,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -148,8 +151,8 @@ def create_signed_snapshot(
                 metadata["kg_metrics"] = _checker.capture_metrics()
             finally:
                 _kg_engine.close()
-    except Exception:
-        pass  # Graceful: snapshots work without knowledge graph
+    except Exception as exc:
+        logger.warning("KG metrics capture failed: %s", exc)
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
     signature_path.write_text(signature, encoding="utf-8")
 
@@ -284,8 +287,8 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                         kg_regression = _checker.compare(prev_kg_metrics, current_kg_metrics)
                     finally:
                         _kg_engine.close()
-    except Exception:
-        pass  # Graceful: maintenance works without KG regression
+    except Exception as exc:
+        logger.warning("KG regression comparison failed: %s", exc)
 
     report = {
         "ts": datetime.now(UTC).isoformat(),
