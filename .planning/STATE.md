@@ -1,28 +1,63 @@
-# STATE
+# Project State
 
-## Last Updated
-2026-02-22
+## Project Reference
 
-## Current Status
-- Codex-native repo scaffold created.
-- GSD dependency removed from immediate workflow.
-- Engine bootstrap files prepared for direct implementation.
-- Omni-access, learning, and resilience architecture documented.
-- Mobile ingestion API hardened with replay protection and signature verification.
-- Capability growth tracker added with auditable run hashes and strict scoring mode.
-- Automated tests added for auth, malformed input handling, replay defense, and concurrent writes.
+See: .planning/PROJECT.md (updated 2026-02-22)
 
-## Active Phase
-Phase 0-1 bridge: Secure Skeleton + Intelligence baseline
+**Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
+**Current focus:** Phase 1 -- Memory Revolution and Architecture
 
-## Immediate Next Tasks
-1. Execute Track 1 from `docs/THREE_TRACK_EXECUTION_PLAN.md` (real multimodal adapter execution).
-2. Execute Track 2 from `docs/THREE_TRACK_EXECUTION_PLAN.md` (live calendar/email operations).
-3. Execute Track 3 from `docs/THREE_TRACK_EXECUTION_PLAN.md` (Samsung Galaxy S25 voice-first flow).
-4. Keep strict regression and security gates active for every promotion.
+## Current Position
 
-## Decisions
-1. Primary runtime launches on desktop PC.
-2. Weaker laptop is secondary node until it passes performance triggers.
-3. Learning loop uses memory distillation + controlled adapters only.
-4. Capability gains must be proven by auditable eval history, not subjective output quality.
+Phase: 1 of 9 (Memory Revolution and Architecture)
+Plan: 0 of 3 in current phase
+Status: Ready to plan
+Last activity: 2026-02-22 -- Roadmap created with 9 phases covering 49 v1 requirements
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: -
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+**Recent Trend:**
+- Last 5 plans: -
+- Trend: -
+
+*Updated after each plan completion*
+
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- [Roadmap]: Phase 1 combines architecture decomposition (Command Bus) with memory revolution (SQLite + FTS5 + sqlite-vec) because they are tightly coupled -- the architecture creates the module structure into which the memory engine is built
+- [Roadmap]: Using nomic-embed-text-v1.5 for embeddings (768-dim, 8192 token context) per stack research -- NOT all-MiniLM-L6-v2
+- [Roadmap]: Changelog-based sync (Phase 8) instead of CRDTs -- simpler for two-device single-owner setup
+- [Roadmap]: Knowledge graph uses NetworkX with SQLite persistence (not a separate graph DB)
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- [Phase 1]: sentence-transformers pulls PyTorch (~2GB). Use CPU-only torch to keep it ~200MB. First install will be large.
+- [Phase 1]: 14 requirements in one phase is heavy. Plan decomposition (3 plans) must be carefully scoped.
+
+## Session Continuity
+
+Last session: 2026-02-22
+Stopped at: Roadmap created, ready to plan Phase 1
+Resume file: None

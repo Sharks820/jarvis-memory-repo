@@ -26,15 +26,18 @@ Jarvis learns from everything it ingests, never forgets, never regresses, and be
 
 ### Active
 
-- [ ] Revolutionary brain memory system with SQLite + embeddings + semantic search
-- [ ] Anti-regression locks that permanently protect learned knowledge
+- [ ] Revolutionary neural-branch memory system (SQLite + embeddings + semantic search + branch filing)
+- [ ] Anti-regression knowledge locks — learned facts are immutable unless explicitly overridden
+- [ ] Multi-source knowledge harvester — pull knowledge from MiniMax, Kimi, Claude, Codex, Gemini and distill into local memory
 - [ ] Continuous learning engine that extracts and retains knowledge from every interaction
-- [ ] Multi-model intelligence routing (Opus for reasoning, best-in-class for each task type)
+- [ ] Multi-model intelligence routing (Opus for reasoning/coding, best free models for routine tasks)
+- [ ] Progressive cost reduction — start cheap, distill cloud knowledge into local models over time
 - [ ] Bidirectional mobile-desktop learning sync with conflict resolution
 - [ ] J.A.R.V.I.S.-quality personality with contextual humor and natural conversation
 - [ ] Real connector integrations (calendar, email, tasks, bills — not stubs)
 - [ ] Self-improving capability growth with auditable verification
 - [ ] Streaming voice with natural cadence and personality-aware responses
+- [ ] Whisper-grade speech-to-text for voice commands (local faster-whisper or cloud Whisper API)
 - [ ] Knowledge graph with fact interconnection and contradiction detection
 
 ### Out of Scope
@@ -59,8 +62,9 @@ Jarvis learns from everything it ingests, never forgets, never regresses, and be
 - **Platform**: Windows 11 primary. Must work without Docker or Linux dependencies.
 - **Dependencies**: Minimize external services. SQLite over Postgres. Local embeddings preferred.
 - **Python**: >=3.10, existing setuptools build system.
-- **Budget**: Use cloud APIs strategically (Opus for complex reasoning, cheaper models for simple tasks).
+- **Budget**: Start inexpensive — use free/cheap APIs (MiniMax, Kimi, Gemini free tier) for bulk learning, Opus only for complex reasoning. Ultimate goal: free local bot with premium-grade intelligence.
 - **Regression**: No change may cause previously-learned knowledge to be lost or degraded.
+- **Knowledge sources**: MiniMax, Kimi, Claude Code, Codex, Gemini — harvest and distill knowledge from all available AI sources into local memory.
 
 ## Key Decisions
 
@@ -69,10 +73,13 @@ Jarvis learns from everything it ingests, never forgets, never regresses, and be
 | SQLite + FTS5 for memory storage | No external DB server needed, great Python support, full-text search built-in | — Pending |
 | Local embeddings (sentence-transformers) for semantic search | Privacy-first, no API calls for retrieval, fast inference | — Pending |
 | Claude Opus for complex reasoning, Sonnet for routine tasks | Best-in-class reasoning when it matters, cost-efficient for simple work | — Pending |
-| Edge-TTS for voice (keep existing) | Already working well, high-quality British neural voices | Validated |
+| Edge-TTS for voice output (keep existing) | Already working well, high-quality British neural voices | Validated |
+| Whisper/faster-whisper for speech-to-text | Best-in-class STT accuracy, runs locally, matches Whisper app quality | — Pending |
 | Branch-based filing upgraded to semantic classification | Preserves existing mental model, adds intelligence to filing | — Pending |
 | Bidirectional sync via encrypted diff-based protocol | Efficient bandwidth, conflict resolution, works on mobile data | — Pending |
 | Desktop PC primary, S25 Ultra mobile secondary | Two-device setup, sync between them | — Pending |
+| Multi-source knowledge harvesting (MiniMax, Kimi, Claude, Codex, Gemini) | Extract knowledge from multiple AI sources, distill locally | — Pending |
+| Progressive cost reduction via knowledge distillation | Start with cloud APIs, gradually build local intelligence to reduce costs to zero | — Pending |
 
 ---
 *Last updated: 2026-02-22 after GSD initialization*

@@ -1,4 +1,4 @@
-# Requirements: Jarvis — Limitless Personal AI Assistant
+# Requirements: Jarvis -- Limitless Personal AI Assistant
 
 **Defined:** 2026-02-22
 **Core Value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
@@ -73,7 +73,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **ARCH-01**: Monolithic main.py decomposed into Command Bus pattern with thin interfaces, typed commands, and separate handlers
 - [ ] **ARCH-02**: All interfaces (CLI, mobile API, daemon) produce Command objects dispatched through the same bus
-- [ ] **ARCH-03**: Service layer mediates between interfaces and core storage — interfaces never access storage directly
+- [ ] **ARCH-03**: Service layer mediates between interfaces and core storage -- interfaces never access storage directly
 - [ ] **ARCH-04**: Lazy-loaded embedding model (loads on first use, not at import time)
 - [ ] **ARCH-05**: SQLite WAL mode with write serialization for concurrent access from daemon + API + CLI
 - [ ] **ARCH-06**: All 125+ existing tests continue to pass after each migration step
@@ -118,11 +118,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| ARCH-01 | Phase 1 | Pending |
+| ARCH-02 | Phase 1 | Pending |
+| ARCH-03 | Phase 1 | Pending |
+| ARCH-04 | Phase 1 | Pending |
+| ARCH-05 | Phase 1 | Pending |
+| ARCH-06 | Phase 1 | Pending |
 | MEM-01 | Phase 1 | Pending |
 | MEM-02 | Phase 1 | Pending |
 | MEM-03 | Phase 1 | Pending |
 | MEM-04 | Phase 1 | Pending |
-| MEM-05 | Phase 2 | Pending |
+| MEM-05 | Phase 1 | Pending |
 | MEM-06 | Phase 1 | Pending |
 | MEM-07 | Phase 1 | Pending |
 | MEM-08 | Phase 1 | Pending |
@@ -130,45 +136,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 | KNOW-02 | Phase 2 | Pending |
 | KNOW-03 | Phase 2 | Pending |
 | KNOW-04 | Phase 2 | Pending |
-| KNOW-05 | Phase 3 | Pending |
-| KNOW-06 | Phase 3 | Pending |
-| HARV-01 | Phase 4 | Pending |
-| HARV-02 | Phase 4 | Pending |
-| HARV-03 | Phase 4 | Pending |
-| HARV-04 | Phase 4 | Pending |
-| HARV-05 | Phase 4 | Pending |
-| HARV-06 | Phase 4 | Pending |
-| HARV-07 | Phase 4 | Pending |
+| KNOW-05 | Phase 7 | Pending |
+| KNOW-06 | Phase 7 | Pending |
 | INTL-01 | Phase 3 | Pending |
 | INTL-02 | Phase 3 | Pending |
 | INTL-03 | Phase 3 | Pending |
 | INTL-04 | Phase 3 | Pending |
-| INTL-05 | Phase 5 | Pending |
-| VOICE-01 | Phase 5 | Pending |
-| VOICE-02 | Phase 5 | Pending |
-| VOICE-03 | Phase 5 | Pending |
-| VOICE-04 | Phase 5 | Pending |
-| VOICE-05 | Phase 6 | Pending |
-| SYNC-01 | Phase 6 | Pending |
-| SYNC-02 | Phase 6 | Pending |
-| SYNC-03 | Phase 6 | Pending |
-| SYNC-04 | Phase 6 | Pending |
-| SYNC-05 | Phase 6 | Pending |
-| CONN-01 | Phase 3 | Pending |
-| CONN-02 | Phase 5 | Pending |
-| CONN-03 | Phase 5 | Pending |
-| CONN-04 | Phase 3 | Pending |
-| CONN-05 | Phase 5 | Pending |
-| ARCH-01 | Phase 1 | Pending |
-| ARCH-02 | Phase 1 | Pending |
-| ARCH-03 | Phase 1 | Pending |
-| ARCH-04 | Phase 1 | Pending |
-| ARCH-05 | Phase 1 | Pending |
-| ARCH-06 | Phase 1 | Pending |
-| GROW-01 | Phase 4 | Pending |
-| GROW-02 | Phase 4 | Pending |
-| GROW-03 | Phase 6 | Pending |
-| GROW-04 | Phase 5 | Pending |
+| INTL-05 | Phase 9 | Pending |
+| CONN-01 | Phase 4 | Pending |
+| CONN-02 | Phase 4 | Pending |
+| CONN-03 | Phase 4 | Pending |
+| CONN-04 | Phase 4 | Pending |
+| CONN-05 | Phase 9 | Pending |
+| HARV-01 | Phase 5 | Pending |
+| HARV-02 | Phase 5 | Pending |
+| HARV-03 | Phase 5 | Pending |
+| HARV-04 | Phase 5 | Pending |
+| HARV-05 | Phase 5 | Pending |
+| HARV-06 | Phase 5 | Pending |
+| HARV-07 | Phase 5 | Pending |
+| VOICE-01 | Phase 6 | Pending |
+| VOICE-02 | Phase 6 | Pending |
+| VOICE-03 | Phase 6 | Pending |
+| VOICE-04 | Phase 6 | Pending |
+| VOICE-05 | Phase 9 | Pending |
+| GROW-01 | Phase 7 | Pending |
+| GROW-02 | Phase 7 | Pending |
+| GROW-03 | Phase 9 | Pending |
+| GROW-04 | Phase 9 | Pending |
+| SYNC-01 | Phase 8 | Pending |
+| SYNC-02 | Phase 8 | Pending |
+| SYNC-03 | Phase 8 | Pending |
+| SYNC-04 | Phase 8 | Pending |
+| SYNC-05 | Phase 8 | Pending |
 
 **Coverage:**
 - v1 requirements: 49 total
@@ -177,4 +177,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-22*
-*Last updated: 2026-02-22 after GSD initialization*
+*Last updated: 2026-02-22 after roadmap creation*
