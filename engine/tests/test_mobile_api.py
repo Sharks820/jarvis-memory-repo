@@ -6,6 +6,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from conftest import http_request, signed_headers
+from jarvis_engine import mobile_api
+from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
 
 
 def test_health_endpoint(mobile_server) -> None:
@@ -181,3 +183,253 @@ def test_concurrent_ingest_writes_are_jsonl_safe(mobile_server) -> None:
     for line in lines:
         parsed = json.loads(line)
         assert parsed["event_type"].startswith("ingest:user:")
+
+
+def test_settings_requires_auth(mobile_server) -> None:
+    code, _ = http_request("GET", f"{mobile_server.base_url}/settings")
+    assert code == 401
+
+
+def test_settings_get_and_update_controls(mobile_server) -> None:
+    get_headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    get_code, get_body = http_request("GET", f"{mobile_server.base_url}/settings", headers=get_headers)
+    assert get_code == 200
+    get_payload = json.loads(get_body.decode("utf-8"))
+    assert get_payload["ok"] is True
+    assert get_payload["settings"]["runtime_control"]["daemon_paused"] is False
+    assert get_payload["settings"]["gaming_mode"]["enabled"] is False
+
+    update_payload = {
+        "daemon_paused": True,
+        "safe_mode": True,
+        "gaming_enabled": True,
+        "gaming_auto_detect": True,
+        "reason": "mobile test",
+    }
+    raw = json.dumps(update_payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/settings", raw, headers)
+    assert code == 200
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["ok"] is True
+    assert payload["settings"]["runtime_control"]["daemon_paused"] is True
+    assert payload["settings"]["runtime_control"]["safe_mode"] is True
+    assert payload["settings"]["gaming_mode"]["enabled"] is True
+    assert payload["settings"]["gaming_mode"]["auto_detect"] is True
+
+
+def test_settings_reset(mobile_server) -> None:
+    update_payload = {
+        "daemon_paused": True,
+        "safe_mode": True,
+        "gaming_enabled": True,
+        "gaming_auto_detect": True,
+        "reason": "before reset",
+    }
+    update_raw = json.dumps(update_payload).encode("utf-8")
+    update_headers = signed_headers(update_raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, _ = http_request("POST", f"{mobile_server.base_url}/settings", update_raw, update_headers)
+    assert code == 200
+
+    reset_payload = {"reset": True, "reason": "reset"}
+    reset_raw = json.dumps(reset_payload).encode("utf-8")
+    reset_headers = signed_headers(reset_raw, mobile_server.auth_token, mobile_server.signing_key)
+    reset_code, reset_body = http_request("POST", f"{mobile_server.base_url}/settings", reset_raw, reset_headers)
+    assert reset_code == 200
+    payload = json.loads(reset_body.decode("utf-8"))
+    assert payload["settings"]["runtime_control"]["daemon_paused"] is False
+    assert payload["settings"]["runtime_control"]["safe_mode"] is False
+    assert payload["settings"]["gaming_mode"]["enabled"] is False
+    assert payload["settings"]["gaming_mode"]["auto_detect"] is False
+
+
+def test_settings_rejects_invalid_reset_type(mobile_server) -> None:
+    payload = {"reset": "yes"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, _ = http_request("POST", f"{mobile_server.base_url}/settings", raw, headers)
+    assert code == 400
+
+
+def test_quick_panel_endpoint_serves_html(mobile_server) -> None:
+    quick_path = mobile_server.root / "mobile" / "quick_access.html"
+    quick_path.parent.mkdir(parents=True, exist_ok=True)
+    quick_path.write_text("<html><body>quick</body></html>", encoding="utf-8")
+    code, body = http_request("GET", f"{mobile_server.base_url}/quick")
+    assert code == 200
+    assert b"quick" in body
+
+
+def test_dashboard_endpoint_requires_auth(mobile_server) -> None:
+    code, _ = http_request("GET", f"{mobile_server.base_url}/dashboard")
+    assert code == 401
+
+
+def test_dashboard_endpoint_returns_payload(mobile_server) -> None:
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/dashboard", headers=headers)
+    assert code == 200
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["ok"] is True
+    assert "dashboard" in payload
+    assert "ranking" in payload["dashboard"]
+
+
+def test_command_endpoint_executes_voice_route(mobile_server) -> None:
+    payload = {
+        "text": "Jarvis, runtime status",
+        "execute": False,
+        "approve_privileged": False,
+        "speak": False,
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+    assert code == 200
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["ok"] is True
+    assert int(parsed["command_exit_code"]) == 0
+
+
+def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> None:
+    payload = {
+        "text": "Jarvis, this intent does not exist",
+        "execute": False,
+        "approve_privileged": False,
+        "speak": False,
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+    assert code == 200
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["ok"] is False
+    assert int(parsed["command_exit_code"]) != 0
+
+
+def test_owner_guard_requires_trusted_device_header(mobile_server) -> None:
+    write_owner_guard(mobile_server.root, enabled=True, owner_user_id="conner")
+
+    payload = {
+        "source": "user",
+        "kind": "semantic",
+        "task_id": "owner-guard-mobile",
+        "content": "locked ingress test",
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+    assert code == 401
+
+
+def test_owner_guard_allows_trusted_device_header(mobile_server) -> None:
+    write_owner_guard(mobile_server.root, enabled=True, owner_user_id="conner")
+    trust_mobile_device(mobile_server.root, "galaxy_s25_primary")
+
+    payload = {
+        "source": "user",
+        "kind": "semantic",
+        "task_id": "owner-guard-mobile-2",
+        "content": "allowed ingress test",
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    headers["X-Jarvis-Device-Id"] = "galaxy_s25_primary"
+    code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+    assert code == 201
+
+
+def test_owner_guard_bootstrap_trust_with_master_password(mobile_server) -> None:
+    write_owner_guard(mobile_server.root, enabled=True, owner_user_id="conner")
+    set_master_password(mobile_server.root, "VeryStrongPassword123!")
+
+    payload = {
+        "source": "user",
+        "kind": "semantic",
+        "task_id": "owner-guard-bootstrap-1",
+        "content": "bootstrap device trust",
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    headers["X-Jarvis-Device-Id"] = "galaxy_s25_primary"
+    headers["X-Jarvis-Master-Password"] = "VeryStrongPassword123!"
+    code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+    assert code == 201
+
+    payload2 = {
+        "source": "user",
+        "kind": "semantic",
+        "task_id": "owner-guard-bootstrap-2",
+        "content": "trusted device follow up",
+    }
+    raw2 = json.dumps(payload2).encode("utf-8")
+    headers2 = signed_headers(raw2, mobile_server.auth_token, mobile_server.signing_key)
+    headers2["X-Jarvis-Device-Id"] = "galaxy_s25_primary"
+    code2, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw2, headers2)
+    assert code2 == 201
+
+
+def test_bootstrap_endpoint_returns_session_and_trusts_device(mobile_server) -> None:
+    set_master_password(mobile_server.root, "VeryStrongPassword123!")
+    payload = {
+        "master_password": "VeryStrongPassword123!",
+        "device_id": "galaxy_s25_primary",
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Host": f"{mobile_server.host}:{mobile_server.port}"}
+    code, body = http_request("POST", f"{mobile_server.base_url}/bootstrap", raw, headers)
+    assert code == 200
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["ok"] is True
+    assert parsed["session"]["token"] == mobile_server.auth_token
+    assert parsed["session"]["signing_key"] == mobile_server.signing_key
+    assert parsed["session"]["device_id"] == "galaxy_s25_primary"
+    assert parsed["session"]["trusted_device"] is True
+
+
+def test_bootstrap_endpoint_rejects_invalid_master_password(mobile_server) -> None:
+    set_master_password(mobile_server.root, "VeryStrongPassword123!")
+    payload = {
+        "master_password": "wrong",
+        "device_id": "galaxy_s25_primary",
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    code, _ = http_request("POST", f"{mobile_server.base_url}/bootstrap", raw, headers)
+    assert code == 401
+
+
+def test_sync_endpoint_redirects_to_new_endpoints(mobile_server, monkeypatch) -> None:
+    """Old /sync endpoint returns 301 redirect to new /sync/pull and /sync/push endpoints."""
+    payload = {"auto_ingest": True}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync", raw, headers)
+    assert code == 301
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["ok"] is False
+    assert "/sync/pull" in parsed["endpoints"]
+    assert "/sync/push" in parsed["endpoints"]
+
+
+def test_self_heal_endpoint_calls_main_cli(mobile_server, monkeypatch) -> None:
+    called: list[tuple[list[str], int]] = []
+
+    def fake_run_main_cli(self, args, timeout_s=240):  # noqa: ANN001, ANN202
+        called.append((list(args), int(timeout_s)))
+        return {"ok": True, "command_exit_code": 0, "stdout_tail": ["heal ok"], "stderr_tail": []}
+
+    monkeypatch.setattr(mobile_api.MobileIngestHandler, "_run_main_cli", fake_run_main_cli)
+    payload = {"keep_recent": 2300, "force_maintenance": True, "snapshot_note": "api-test"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/self-heal", raw, headers)
+    assert code == 200
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["ok"] is True
+    assert called == [
+        (
+            ["self-heal", "--keep-recent", "2300", "--snapshot-note", "api-test", "--force-maintenance"],
+            240,
+        )
+    ]

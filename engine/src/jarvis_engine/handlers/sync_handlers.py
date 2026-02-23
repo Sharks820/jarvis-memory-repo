@@ -1,0 +1,131 @@
+"""Handler classes for sync commands."""
+
+from __future__ import annotations
+
+import base64
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+from jarvis_engine.commands.sync_commands import (
+    SyncPullCommand,
+    SyncPullResult,
+    SyncPushCommand,
+    SyncPushResult,
+    SyncStatusCommand,
+    SyncStatusResult,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class SyncPullHandler:
+    """Compute outgoing changes, encrypt, and return."""
+
+    def __init__(
+        self, root: Path, sync_engine: Any = None, transport: Any = None,
+    ) -> None:
+        self._root = root
+        self._sync_engine = sync_engine
+        self._transport = transport
+
+    def handle(self, cmd: SyncPullCommand) -> SyncPullResult:
+        if self._sync_engine is None:
+            return SyncPullResult(message="Sync engine not available.")
+        if self._transport is None:
+            return SyncPullResult(message="Sync transport not available.")
+        if not cmd.device_id:
+            return SyncPullResult(message="device_id is required.")
+
+        try:
+            outgoing = self._sync_engine.compute_outgoing(cmd.device_id)
+        except Exception as exc:
+            logger.error("SyncPull compute_outgoing failed: %s", exc)
+            return SyncPullResult(message=f"error: {exc}")
+
+        has_more = any(
+            len(entries) >= 500
+            for entries in outgoing.get("changes", {}).values()
+        )
+
+        try:
+            encrypted = self._transport.encrypt(outgoing)
+            encoded = base64.b64encode(encrypted).decode("ascii")
+        except Exception as exc:
+            logger.error("SyncPull encryption failed: %s", exc)
+            return SyncPullResult(message=f"encryption error: {exc}")
+
+        return SyncPullResult(
+            encrypted_payload=encoded,
+            new_cursors=json.dumps(outgoing.get("cursors", {})),
+            has_more=has_more,
+            message="ok",
+        )
+
+
+class SyncPushHandler:
+    """Decrypt incoming payload and apply changes."""
+
+    def __init__(
+        self, root: Path, sync_engine: Any = None, transport: Any = None,
+    ) -> None:
+        self._root = root
+        self._sync_engine = sync_engine
+        self._transport = transport
+
+    def handle(self, cmd: SyncPushCommand) -> SyncPushResult:
+        if self._sync_engine is None:
+            return SyncPushResult(message="Sync engine not available.")
+        if self._transport is None:
+            return SyncPushResult(message="Sync transport not available.")
+        if not cmd.device_id:
+            return SyncPushResult(message="device_id is required.")
+        if not cmd.encrypted_payload:
+            return SyncPushResult(message="encrypted_payload is required.")
+
+        try:
+            raw_token = base64.b64decode(cmd.encrypted_payload)
+            payload = self._transport.decrypt(raw_token)
+        except Exception as exc:
+            logger.error("SyncPush decryption failed: %s", exc)
+            return SyncPushResult(message=f"decryption error: {exc}")
+
+        try:
+            result = self._sync_engine.apply_incoming(payload, cmd.device_id)
+        except Exception as exc:
+            logger.error("SyncPush apply_incoming failed: %s", exc)
+            return SyncPushResult(message=f"apply error: {exc}")
+
+        errors = result.get("errors", [])
+        msg = "ok" if not errors else f"ok with errors: {'; '.join(errors)}"
+
+        return SyncPushResult(
+            applied=result.get("applied", 0),
+            conflicts_resolved=result.get("conflicts_resolved", 0),
+            message=msg,
+        )
+
+
+class SyncStatusHandler:
+    """Return sync status."""
+
+    def __init__(self, root: Path, sync_engine: Any = None) -> None:
+        self._root = root
+        self._sync_engine = sync_engine
+
+    def handle(self, cmd: SyncStatusCommand) -> SyncStatusResult:
+        if self._sync_engine is None:
+            return SyncStatusResult(message="Sync engine not available.")
+
+        try:
+            status = self._sync_engine.sync_status()
+        except Exception as exc:
+            logger.error("SyncStatus failed: %s", exc)
+            return SyncStatusResult(message=f"error: {exc}")
+
+        return SyncStatusResult(
+            changelog_size=status.get("changelog_size", 0),
+            cursors=json.dumps(status.get("cursors", [])),
+            message="ok",
+        )

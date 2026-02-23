@@ -166,6 +166,16 @@ from jarvis_engine.handlers.learning_handlers import (
     FlagExpiredFactsHandler,
     LearnInteractionHandler,
 )
+from jarvis_engine.commands.sync_commands import (
+    SyncPullCommand,
+    SyncPushCommand,
+    SyncStatusCommand,
+)
+from jarvis_engine.handlers.sync_handlers import (
+    SyncPullHandler,
+    SyncPushHandler,
+    SyncStatusHandler,
+)
 
 
 def create_app(root: Path) -> CommandBus:
@@ -345,6 +355,42 @@ def create_app(root: Path) -> CommandBus:
             FlagExpiredFactsCommand,
             FlagExpiredFactsHandler(root).handle,
         )
+
+    # -- Sync --
+    try:
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+        from jarvis_engine.sync.transport import SyncTransport
+
+        sync_engine = None
+        sync_transport = None
+
+        if engine is not None:
+            install_changelog_triggers(engine._db, device_id="desktop")
+            sync_engine = SyncEngine(engine._db, engine._write_lock, device_id="desktop")
+
+            signing_key = os.environ.get("JARVIS_SIGNING_KEY", "")
+            if signing_key:
+                salt_path = root / ".planning" / "brain" / "sync_salt.bin"
+                sync_transport = SyncTransport(signing_key, salt_path)
+
+        bus.register(
+            SyncPullCommand,
+            SyncPullHandler(root, sync_engine=sync_engine, transport=sync_transport).handle,
+        )
+        bus.register(
+            SyncPushCommand,
+            SyncPushHandler(root, sync_engine=sync_engine, transport=sync_transport).handle,
+        )
+        bus.register(
+            SyncStatusCommand,
+            SyncStatusHandler(root, sync_engine=sync_engine).handle,
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize Sync subsystem, continuing without: %s", exc)
+        bus.register(SyncPullCommand, SyncPullHandler(root).handle)
+        bus.register(SyncPushCommand, SyncPushHandler(root).handle)
+        bus.register(SyncStatusCommand, SyncStatusHandler(root).handle)
 
     # -- Harvesting --
     try:

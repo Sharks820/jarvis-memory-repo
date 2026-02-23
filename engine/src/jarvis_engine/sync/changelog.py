@@ -1,0 +1,365 @@
+"""Changelog table and triggers for incremental sync.
+
+Tracks INSERT/UPDATE/DELETE on records, kg_nodes, kg_edges via SQLite triggers.
+Each changelog entry has a monotonically increasing __version per table for
+cursor-based diff computation.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+import threading
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+_TRACKED_TABLES: dict[str, dict[str, Any]] = {
+    "records": {
+        "pk": "record_id",
+        "fields": [
+            "ts", "source", "kind", "task_id", "branch", "tags",
+            "summary", "content_hash", "confidence", "tier",
+            "access_count", "last_accessed", "created_at",
+        ],
+        # Fields that should NOT trigger an UPDATE changelog entry on their own
+        # (reduce noise from access_count bumps), but are still logged if other
+        # fields change in the same UPDATE.
+        "noise_fields": ["access_count", "last_accessed"],
+    },
+    "kg_nodes": {
+        "pk": "node_id",
+        "fields": [
+            "label", "node_type", "confidence", "locked",
+            "locked_at", "locked_by", "sources", "history",
+            "created_at", "updated_at",
+        ],
+        "noise_fields": [],
+    },
+    "kg_edges": {
+        "pk": "edge_id",
+        "fields": [
+            "source_id", "target_id", "relation", "confidence",
+            "source_record", "created_at",
+        ],
+        "noise_fields": [],
+    },
+}
+
+# ---------------------------------------------------------------------------
+# DDL
+# ---------------------------------------------------------------------------
+
+_CHANGELOG_DDL = """\
+CREATE TABLE IF NOT EXISTS _sync_changelog (
+    changelog_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name   TEXT    NOT NULL,
+    row_id       TEXT    NOT NULL,
+    operation    TEXT    NOT NULL,
+    fields_changed TEXT  NOT NULL DEFAULT '[]',
+    old_values   TEXT    NOT NULL DEFAULT '{}',
+    new_values   TEXT    NOT NULL DEFAULT '{}',
+    device_id    TEXT    NOT NULL DEFAULT 'desktop',
+    ts           TEXT    NOT NULL DEFAULT (datetime('now')),
+    __version    INTEGER NOT NULL
+);
+"""
+
+_CURSOR_DDL = """\
+CREATE TABLE IF NOT EXISTS _sync_cursor (
+    device_id      TEXT NOT NULL,
+    table_name     TEXT NOT NULL,
+    last_version   INTEGER NOT NULL DEFAULT 0,
+    last_sync_ts   TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (device_id, table_name)
+);
+"""
+
+_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_changelog_version ON _sync_changelog (table_name, __version);",
+    "CREATE INDEX IF NOT EXISTS idx_changelog_device ON _sync_changelog (device_id);",
+]
+
+# ---------------------------------------------------------------------------
+# Trigger SQL generation
+# ---------------------------------------------------------------------------
+
+
+def _build_insert_trigger(table: str, pk: str, fields: list[str], device_id: str) -> str:
+    """Generate AFTER INSERT trigger SQL for *table*."""
+    fields_json = json.dumps(fields)
+    new_values_expr = (
+        "'{' || "
+        + " || ',' || ".join(
+            "'\"" + f + "\":' || json_quote(NEW." + f + ")"
+            for f in fields
+        )
+        + " || '}'"
+    )
+    version_expr = "(SELECT COALESCE(MAX(__version), 0) + 1 FROM _sync_changelog WHERE table_name = '" + table + "')"
+    return (
+        "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_insert "
+        "AFTER INSERT ON " + table + " "
+        "BEGIN "
+        "INSERT INTO _sync_changelog "
+        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
+        "VALUES ("
+        "'" + table + "', "
+        "CAST(NEW." + pk + " AS TEXT), "
+        "'INSERT', "
+        "'" + fields_json + "', "
+        "'{}', "
+        + new_values_expr + ", "
+        "'" + device_id + "', "
+        + version_expr
+        + "); END;"
+    )
+
+
+def _clean_json_sql(expr: str) -> str:
+    """Wrap a SQL expression to clean up empty-CASE comma artifacts.
+
+    The CASE-based JSON building produces strings like ``[,,"x",,,"y",]``.
+    This wraps with nested REPLACE calls to collapse multiple commas and
+    remove leading/trailing commas adjacent to brackets/braces.
+
+    REPLACE is not recursive so we need multiple shrink passes.
+    """
+    return (
+        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+        + expr
+        + ", ',,,,,,,,', ',')"   # 8->1
+        + ", ',,,,', ',')"       # 4->1
+        + ", ',,', ',')"         # 2->1 (pass 1)
+        + ", ',,', ',')"         # 2->1 (pass 2 -- catches residuals)
+        + ", ',,', ',')"         # 2->1 (pass 3 -- final safety)
+        + ", '[,', '[')"         # leading comma after [
+        + ", ',]', ']')"         # trailing comma before ]
+    )
+
+
+def _clean_json_obj_sql(expr: str) -> str:
+    """Like _clean_json_sql but for ``{...}`` object expressions."""
+    return (
+        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+        + expr
+        + ", ',,,,,,,,', ',')"
+        + ", ',,,,', ',')"
+        + ", ',,', ',')"
+        + ", ',,', ',')"
+        + ", ',,', ',')"
+        + ", '{,', '{')"
+        + ", ',}', '}')"
+    )
+
+
+def _build_update_trigger(
+    table: str, pk: str, fields: list[str], noise_fields: list[str], device_id: str,
+) -> str:
+    """Generate AFTER UPDATE trigger SQL for *table*."""
+    # WHEN clause: fire only if at least one non-noise field actually changed
+    significant_fields = [f for f in fields if f not in noise_fields]
+    if significant_fields:
+        when_parts = ["OLD." + f + " IS NOT NEW." + f for f in significant_fields]
+        when_clause = "WHEN " + " OR ".join(when_parts) + " "
+    else:
+        when_clause = ""
+
+    # Build a JSON array of changed field names using CASE expressions
+    raw_fields_changed = (
+        "'[' || "
+        + " || ',' || ".join(
+            "CASE WHEN OLD." + f + " IS NOT NEW." + f
+            + " THEN '\"" + f + "\"' ELSE '' END"
+            for f in fields
+        )
+        + " || ']'"
+    )
+    fields_changed_expr = _clean_json_sql(raw_fields_changed)
+
+    raw_old_values = (
+        "'{' || "
+        + " || ',' || ".join(
+            "CASE WHEN OLD." + f + " IS NOT NEW." + f
+            + " THEN '\"" + f + "\":' || json_quote(OLD." + f + ") ELSE '' END"
+            for f in fields
+        )
+        + " || '}'"
+    )
+    old_values_expr = _clean_json_obj_sql(raw_old_values)
+
+    raw_new_values = (
+        "'{' || "
+        + " || ',' || ".join(
+            "CASE WHEN OLD." + f + " IS NOT NEW." + f
+            + " THEN '\"" + f + "\":' || json_quote(NEW." + f + ") ELSE '' END"
+            for f in fields
+        )
+        + " || '}'"
+    )
+    new_values_expr = _clean_json_obj_sql(raw_new_values)
+    version_expr = "(SELECT COALESCE(MAX(__version), 0) + 1 FROM _sync_changelog WHERE table_name = '" + table + "')"
+    return (
+        "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_update "
+        "AFTER UPDATE ON " + table + " "
+        + when_clause
+        + "BEGIN "
+        "INSERT INTO _sync_changelog "
+        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
+        "VALUES ("
+        "'" + table + "', "
+        "CAST(NEW." + pk + " AS TEXT), "
+        "'UPDATE', "
+        + fields_changed_expr + ", "
+        + old_values_expr + ", "
+        + new_values_expr + ", "
+        "'" + device_id + "', "
+        + version_expr
+        + "); END;"
+    )
+
+
+def _build_delete_trigger(table: str, pk: str, fields: list[str], device_id: str) -> str:
+    """Generate AFTER DELETE trigger SQL for *table*."""
+    old_values_expr = (
+        "'{' || "
+        + " || ',' || ".join(
+            "'\"" + f + "\":' || json_quote(OLD." + f + ")"
+            for f in fields
+        )
+        + " || '}'"
+    )
+    version_expr = "(SELECT COALESCE(MAX(__version), 0) + 1 FROM _sync_changelog WHERE table_name = '" + table + "')"
+    return (
+        "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_delete "
+        "AFTER DELETE ON " + table + " "
+        "BEGIN "
+        "INSERT INTO _sync_changelog "
+        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
+        "VALUES ("
+        "'" + table + "', "
+        "CAST(OLD." + pk + " AS TEXT), "
+        "'DELETE', "
+        "'[]', "
+        + old_values_expr + ", "
+        "'{}', "
+        "'" + device_id + "', "
+        + version_expr
+        + "); END;"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop") -> None:
+    """Idempotently create changelog/cursor tables and per-table triggers.
+
+    Safe to call multiple times -- uses CREATE TABLE/TRIGGER IF NOT EXISTS.
+    """
+    cur = db.cursor()
+    cur.execute(_CHANGELOG_DDL)
+    cur.execute(_CURSOR_DDL)
+    for idx_sql in _INDEXES:
+        cur.execute(idx_sql)
+
+    for table, spec in _TRACKED_TABLES.items():
+        pk = spec["pk"]
+        fields = spec["fields"]
+        noise_fields = spec.get("noise_fields", [])
+
+        cur.execute(_build_insert_trigger(table, pk, fields, device_id))
+        cur.execute(_build_update_trigger(table, pk, fields, noise_fields, device_id))
+        cur.execute(_build_delete_trigger(table, pk, fields, device_id))
+
+    db.commit()
+    logger.info("Sync changelog triggers installed (device_id=%s)", device_id)
+
+
+def compute_diff(
+    db: sqlite3.Connection,
+    table_name: str,
+    since_version: int,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    """Return changelog entries for *table_name* with __version > *since_version*."""
+    cur = db.execute(
+        "SELECT changelog_id, table_name, row_id, operation, "
+        "fields_changed, old_values, new_values, device_id, ts, __version "
+        "FROM _sync_changelog "
+        "WHERE table_name = ? AND __version > ? "
+        "ORDER BY __version ASC LIMIT ?",
+        (table_name, since_version, limit),
+    )
+    rows = cur.fetchall()
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        results.append({
+            "changelog_id": row[0],
+            "table_name": row[1],
+            "row_id": row[2],
+            "operation": row[3],
+            "fields_changed": json.loads(row[4]) if row[4] else [],
+            "old_values": json.loads(row[5]) if row[5] else {},
+            "new_values": json.loads(row[6]) if row[6] else {},
+            "device_id": row[7],
+            "ts": row[8],
+            "__version": row[9],
+        })
+    return results
+
+
+def get_sync_cursor(db: sqlite3.Connection, device_id: str, table_name: str) -> int:
+    """Return the last synced version for *device_id*/*table_name*, or 0."""
+    cur = db.execute(
+        "SELECT last_version FROM _sync_cursor WHERE device_id = ? AND table_name = ?",
+        (device_id, table_name),
+    )
+    row = cur.fetchone()
+    return int(row[0]) if row else 0
+
+
+def update_sync_cursor(
+    db: sqlite3.Connection,
+    device_id: str,
+    table_name: str,
+    version: int,
+    write_lock: threading.Lock,
+) -> None:
+    """Upsert the sync cursor for *device_id*/*table_name*."""
+    with write_lock:
+        db.execute(
+            "INSERT INTO _sync_cursor (device_id, table_name, last_version, last_sync_ts) "
+            "VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(device_id, table_name) DO UPDATE SET "
+            "last_version = excluded.last_version, last_sync_ts = excluded.last_sync_ts",
+            (device_id, table_name, version),
+        )
+        db.commit()
+
+
+def compact_changelog(
+    db: sqlite3.Connection,
+    write_lock: threading.Lock,
+    retention_days: int = 7,
+) -> int:
+    """Delete changelog entries older than *retention_days* that all devices have synced past.
+
+    Returns the number of entries deleted.
+    """
+    with write_lock:
+        cur = db.execute(
+            "DELETE FROM _sync_changelog "
+            "WHERE ts < datetime('now', ? || ' days') "
+            "AND __version <= ("
+            "  SELECT COALESCE(MIN(last_version), 0) "
+            "  FROM _sync_cursor "
+            "  WHERE _sync_cursor.table_name = _sync_changelog.table_name"
+            ")",
+            (str(-retention_days),),
+        )
+        db.commit()
+        return cur.rowcount

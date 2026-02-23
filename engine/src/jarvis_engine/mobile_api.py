@@ -47,6 +47,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.signing_key = signing_key
         self.pipeline = pipeline
         self.repo_root = repo_root
+        self._sync_engine: Any = None
+        self._sync_transport: Any = None
         # TODO: persist nonces to disk for replay protection across restarts
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
@@ -484,6 +486,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 {"ok": True, "dashboard": build_intelligence_dashboard(root)},
             )
             return
+        if path == "/sync/status":
+            if not self._validate_auth(b""):
+                return
+            sync_engine = getattr(self.server, "_sync_engine", None)
+            if sync_engine is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
+                return
+            try:
+                status = sync_engine.sync_status()
+                self._write_json(HTTPStatus.OK, {"ok": True, "sync_status": status})
+            except Exception as exc:
+                logger.error("sync/status failed: %s", exc)
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+            return
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
 
@@ -653,13 +669,74 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/sync":
+            # Backward compatibility: redirect to new endpoints
+            self._write_json(
+                HTTPStatus.MOVED_PERMANENTLY,
+                {"ok": False, "error": "Use /sync/pull or /sync/push", "endpoints": ["/sync/pull", "/sync/push", "/sync/status"]},
+            )
+            return
+
+        if path == "/sync/pull":
             payload, _ = self._read_json_body(max_content_length=10_000)
             if payload is None:
                 return
-            _ = bool(payload.get("auto_ingest", False))
-            args = ["mobile-desktop-sync"]
-            result = self._run_main_cli(args, timeout_s=120)
-            self._write_json(HTTPStatus.OK, result)
+            device_id = str(payload.get("device_id", "")).strip()
+            if not device_id:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "device_id is required."})
+                return
+            sync_engine = getattr(self.server, "_sync_engine", None)
+            sync_transport = getattr(self.server, "_sync_transport", None)
+            if sync_engine is None or sync_transport is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
+                return
+            try:
+                import base64 as _b64
+                outgoing = sync_engine.compute_outgoing(device_id)
+                encrypted = sync_transport.encrypt(outgoing)
+                encoded = _b64.b64encode(encrypted).decode("ascii")
+                has_more = any(len(v) >= 500 for v in outgoing.get("changes", {}).values())
+                self._write_json(HTTPStatus.OK, {
+                    "ok": True,
+                    "encrypted_payload": encoded,
+                    "new_cursors": outgoing.get("cursors", {}),
+                    "has_more": has_more,
+                })
+            except Exception as exc:
+                logger.error("sync/pull failed: %s", exc)
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+            return
+
+        if path == "/sync/push":
+            payload, _ = self._read_json_body(max_content_length=2_000_000)
+            if payload is None:
+                return
+            device_id = str(payload.get("device_id", "")).strip()
+            encrypted_payload = str(payload.get("encrypted_payload", "")).strip()
+            if not device_id:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "device_id is required."})
+                return
+            if not encrypted_payload:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "encrypted_payload is required."})
+                return
+            sync_engine = getattr(self.server, "_sync_engine", None)
+            sync_transport = getattr(self.server, "_sync_transport", None)
+            if sync_engine is None or sync_transport is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
+                return
+            try:
+                import base64 as _b64
+                raw_token = _b64.b64decode(encrypted_payload)
+                changes = sync_transport.decrypt(raw_token)
+                result = sync_engine.apply_incoming(changes, device_id)
+                self._write_json(HTTPStatus.OK, {
+                    "ok": True,
+                    "applied": result.get("applied", 0),
+                    "conflicts_resolved": result.get("conflicts_resolved", 0),
+                    "errors": result.get("errors", []),
+                })
+            except Exception as exc:
+                logger.error("sync/push failed: %s", exc)
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
             return
 
         if path == "/self-heal":
@@ -711,8 +788,35 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
         pipeline=pipeline,
         repo_root=repo_root,
     )
+
+    # Initialize sync engine and transport if memory DB exists
+    db_path = repo_root / ".planning" / "brain" / "jarvis_memory.db"
+    if db_path.exists():
+        try:
+            from jarvis_engine.sync.changelog import install_changelog_triggers
+            from jarvis_engine.sync.engine import SyncEngine
+            from jarvis_engine.sync.transport import SyncTransport
+
+            import sqlite3 as _sqlite3
+            import threading as _threading
+
+            sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
+            sync_db.execute("PRAGMA journal_mode=WAL")
+            sync_lock = _threading.Lock()
+            install_changelog_triggers(sync_db, device_id="desktop")
+            server._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+
+            if signing_key:
+                salt_path = repo_root / ".planning" / "brain" / "sync_salt.bin"
+                server._sync_transport = SyncTransport(signing_key, salt_path)
+                logger.info("Sync engine and transport initialized for mobile API")
+            else:
+                logger.warning("No signing key; sync transport not initialized")
+        except Exception as exc:
+            logger.warning("Failed to initialize sync for mobile API: %s", exc)
+
     print(f"mobile_api_listening=http://{host}:{port}")
     if host not in {"127.0.0.1", "localhost", "::1"}:
         print("warning=mobile_api_non_loopback_without_tls")
-    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync, POST /self-heal")
+    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     server.serve_forever()
