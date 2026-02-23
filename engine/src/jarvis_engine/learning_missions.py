@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-import html
 import json
 import logging
 import re
-import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
-from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+from urllib.parse import urlparse
+
+from jarvis_engine.web_fetch import (
+    fetch_page_text as _fetch_page_text,
+    is_safe_public_url as _is_safe_public_url,
+    search_duckduckgo as _search_duckduckgo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,38 +23,7 @@ MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
 _PAGE_CACHE: dict[tuple[str, int], tuple[float, str]] = {}
 _PAGE_CACHE_LOCK = threading.Lock()
 _PAGE_CACHE_TTL_SECONDS = 900.0
-STOPWORDS = {
-    "about",
-    "after",
-    "also",
-    "because",
-    "between",
-    "could",
-    "does",
-    "from",
-    "have",
-    "into",
-    "just",
-    "more",
-    "other",
-    "over",
-    "some",
-    "than",
-    "that",
-    "them",
-    "then",
-    "there",
-    "these",
-    "they",
-    "this",
-    "with",
-    "your",
-    "what",
-    "when",
-    "where",
-    "which",
-    "while",
-}
+from jarvis_engine.web_research import STOPWORDS
 
 
 def _missions_path(root: Path) -> Path:
@@ -124,108 +95,6 @@ def _mission_queries(topic: str, sources: list[str]) -> list[str]:
     return list(dict.fromkeys(q.strip() for q in queries if q.strip()))
 
 
-def _search_duckduckgo(query: str, *, limit: int) -> list[str]:
-    search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
-    req = Request(
-        search_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-    )
-    try:
-        resp = urlopen(req, timeout=12)  # nosec B310
-        payload = resp.read(400_000)
-    except OSError:
-        return []
-    finally:
-        try:
-            if "resp" in locals():
-                resp.close()  # type: ignore[attr-defined]
-        except Exception:
-            pass
-    text = payload.decode("utf-8", errors="replace")
-    urls: list[str] = []
-    for match in re.findall(r'href="(https?://[^"]+)"', text):
-        candidate = html.unescape(match).strip()
-        parsed = urlparse(candidate)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            continue
-        if not _is_safe_public_url(candidate):
-            continue
-        if "duckduckgo.com" in parsed.netloc.lower():
-            continue
-        urls.append(candidate)
-    # Preserve order while deduplicating.
-    unique = list(dict.fromkeys(urls))
-    return unique[: max(1, limit)]
-
-
-def _resolve_and_check_ip(url: str) -> bool:
-    """Re-resolve hostname immediately before fetch to prevent DNS rebinding."""
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").strip().lower()
-    if not host:
-        return False
-    default_port = 443 if parsed.scheme == "https" else 80
-    try:
-        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        return False
-    for item in resolved:
-        raw_ip = item[4][0]
-        try:
-            ip = ip_address(raw_ip)
-        except ValueError:
-            return False
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            return False
-    return True
-
-
-class _SafeRedirectHandler(HTTPRedirectHandler):
-    """Block redirects to non-public IPs to prevent redirect-based SSRF."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-        if not _is_safe_public_url(newurl):
-            return None
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-# TODO: deduplicate with web_research.py
-def _fetch_page_text(url: str, *, max_bytes: int) -> str:
-    if not _is_safe_public_url(url):
-        return ""
-    # Second DNS check immediately before fetch to prevent TOCTOU / DNS rebinding
-    if not _resolve_and_check_ip(url):
-        return ""
-    req = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-    )
-    try:
-        opener = build_opener(_SafeRedirectHandler)
-        resp = opener.open(req, timeout=12)  # nosec B310
-        data = resp.read(max_bytes)
-    except (OSError, ValueError):
-        return ""
-    finally:
-        try:
-            if "resp" in locals():
-                resp.close()  # type: ignore[attr-defined]
-        except Exception:
-            pass
-    text = data.decode("utf-8", errors="replace")
-    text = re.sub(r"(?is)<script.*?>.*?</script>", " ", text)
-    text = re.sub(r"(?is)<style.*?>.*?</style>", " ", text)
-    text = re.sub(r"(?s)<[^>]+>", " ", text)
-    text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
 def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
     key = (url.strip(), max(1, int(max_bytes)))
     now = time.time()
@@ -250,37 +119,6 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
 def _topic_keywords(topic: str) -> set[str]:
     words = re.findall(r"[a-zA-Z0-9]{4,}", topic.lower())
     return {w for w in words if w not in STOPWORDS}
-
-
-# TODO: deduplicate with web_research.py
-def _is_safe_public_url(url: str) -> bool:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        return False
-    host = (parsed.hostname or "").strip().lower()
-    if not host or host in {"localhost"}:
-        return False
-    try:
-        ip = ip_address(host)
-        return not (ip.is_private or ip.is_loopback or ip.is_link_local
-                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
-    except ValueError:
-        pass
-    default_port = 443 if parsed.scheme == "https" else 80
-    try:
-        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        return False
-    for item in resolved:
-        raw_ip = item[4][0]
-        try:
-            ip = ip_address(raw_ip)
-        except ValueError:
-            return False
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            return False
-    return True
 
 
 def _extract_candidates(text: str, *, topic: str, max_candidates: int) -> list[str]:

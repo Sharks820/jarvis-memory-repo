@@ -8,13 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-def _check_path_within_root(path: Path, root: Path, label: str) -> None:
-    """Resolve *path* and verify it stays within *root*."""
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError:
-        raise ValueError(f"{label} outside project root: {path}")
+from jarvis_engine._shared import check_path_within_root as _check_path_within_root
 
 from jarvis_engine.commands.security_commands import (
     ConnectBootstrapCommand,

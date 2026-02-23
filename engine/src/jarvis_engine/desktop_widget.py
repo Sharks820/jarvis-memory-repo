@@ -176,21 +176,7 @@ def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) ->
     return parsed
 
 
-def _win_hidden_subprocess_kwargs() -> dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    kwargs: dict[str, Any] = {}
-    creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    if creationflags:
-        kwargs["creationflags"] = creationflags
-    try:
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
-        startupinfo.wShowWindow = 0
-        kwargs["startupinfo"] = startupinfo
-    except Exception:
-        pass
-    return kwargs
+from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs
 
 
 def _http_error_details(exc: HTTPError) -> str:

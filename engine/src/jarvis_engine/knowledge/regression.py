@@ -12,6 +12,8 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from jarvis_engine._shared import safe_int as _safe_int
+
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
 
@@ -85,12 +87,6 @@ class RegressionChecker:
             }
 
         discrepancies = []
-
-        def _safe_int(val: object, default: int = 0) -> int:
-            try:
-                return int(val)  # type: ignore[arg-type]
-            except (TypeError, ValueError):
-                return default
 
         prev_nodes = _safe_int(previous.get("node_count", 0))
         curr_nodes = _safe_int(current.get("node_count", 0))

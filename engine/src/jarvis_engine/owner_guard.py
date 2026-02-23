@@ -4,7 +4,6 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,26 +20,12 @@ DEFAULT_OWNER_GUARD = {
 }
 
 
-def _safe_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import safe_int as _safe_int
 
 
 def owner_guard_path(root: Path) -> Path:
     return root / ".planning" / "security" / "owner_guard.json"
-
-
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
 
 
 def read_owner_guard(root: Path) -> dict[str, Any]:
