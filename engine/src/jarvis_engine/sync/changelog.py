@@ -355,6 +355,8 @@ def compact_changelog(
 
     Returns the number of entries deleted.
     """
+    if retention_days < 0:
+        retention_days = 0
     with write_lock:
         cur = db.execute(
             "DELETE FROM _sync_changelog "

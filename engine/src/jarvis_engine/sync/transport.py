@@ -10,6 +10,7 @@ import base64
 import json
 import logging
 import os
+import threading
 import zlib
 from pathlib import Path
 from typing import Any
@@ -104,12 +105,15 @@ class SyncTransport:
         self._signing_key = signing_key
         self._salt_path = salt_path
         self._fernet_key: bytes | None = None
+        self._key_lock = threading.Lock()
 
     def _ensure_key(self) -> bytes:
-        """Lazily derive the Fernet key on first use."""
+        """Lazily derive the Fernet key on first use (double-checked locking)."""
         if self._fernet_key is None:
-            salt = get_or_create_salt(self._salt_path)
-            self._fernet_key = derive_sync_key(self._signing_key, salt)
+            with self._key_lock:
+                if self._fernet_key is None:
+                    salt = get_or_create_salt(self._salt_path)
+                    self._fernet_key = derive_sync_key(self._signing_key, salt)
         return self._fernet_key
 
     def encrypt(self, payload: dict[str, Any]) -> bytes:
