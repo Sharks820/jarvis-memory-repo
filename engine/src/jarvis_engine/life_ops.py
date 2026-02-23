@@ -24,11 +24,7 @@ class OpsSnapshot:
     projects: list[dict]
 
 
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+from jarvis_engine._shared import safe_float as _safe_float
 
 
 def _safe_bool(value: Any) -> bool:

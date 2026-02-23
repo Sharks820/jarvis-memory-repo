@@ -17,7 +17,6 @@ from jarvis_engine.memory_store import MemoryStore
 
 TaskType = Literal["image", "code", "video", "model3d"]
 DEFAULT_FALLBACK_MODELS = ["qwen3:14b", "qwen3:latest", "deepseek-r1:8b"]
-LOCAL_OLLAMA_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 @dataclass
@@ -324,8 +323,9 @@ class TaskOrchestrator:
         return "python" in lowered or "pytest" in lowered
 
     def _python_syntax_issue(self, code: str) -> str:
+        import ast
         try:
-            compile(code, "<jarvis_generated>", "exec")
+            ast.parse(code, filename="<jarvis_generated>")
             return ""
         except SyntaxError as exc:
             return f"{exc.msg} (line {exc.lineno})"
@@ -394,21 +394,10 @@ class TaskOrchestrator:
         except json.JSONDecodeError:
             return None, "Invalid JSON response from Ollama."
 
-    def _is_safe_ollama_endpoint(self, endpoint: str) -> bool:
-        parsed = urlparse(endpoint)
-        if parsed.scheme not in {"http", "https"}:
-            return False
-        host = (parsed.hostname or "").strip().lower()
-        if not host:
-            return False
-        allow_nonlocal = os.getenv("JARVIS_ALLOW_NONLOCAL_OLLAMA_ENDPOINT", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-        }
-        if allow_nonlocal:
-            return True
-        return host in LOCAL_OLLAMA_HOSTS
+    @staticmethod
+    def _is_safe_ollama_endpoint(endpoint: str) -> bool:
+        from jarvis_engine.growth_tracker import _is_safe_ollama_endpoint
+        return _is_safe_ollama_endpoint(endpoint)
 
     def _safe_output_path(self, raw_path: str) -> Path:
         try:

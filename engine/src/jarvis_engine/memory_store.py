@@ -39,16 +39,30 @@ class MemoryStore:
         if limit <= 0 or not self._events_path.exists():
             return []
 
-        recent: collections.deque[str] = collections.deque(maxlen=limit)
-        with self._events_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    recent.append(line)
+        # Reverse-seek from end of file to avoid loading entire JSONL
+        lines: list[str] = []
+        try:
+            with self._events_path.open("rb") as f:
+                f.seek(0, 2)  # Seek to end
+                file_size = f.tell()
+                if file_size == 0:
+                    return []
+                # Read in chunks from end; 8KB per line is generous
+                chunk_size = min(file_size, max(8192 * limit, 65536))
+                f.seek(max(0, file_size - chunk_size))
+                tail_bytes = f.read()
+            for raw_line in tail_bytes.decode("utf-8", errors="replace").splitlines():
+                stripped = raw_line.strip()
+                if stripped:
+                    lines.append(stripped)
+            lines = lines[-limit:]
+        except OSError:
+            return []
 
         events: list[MemoryEvent] = []
-        for line in recent:
+        for line in lines:
             try:
                 events.append(MemoryEvent(**json.loads(line)))
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 continue
         return events

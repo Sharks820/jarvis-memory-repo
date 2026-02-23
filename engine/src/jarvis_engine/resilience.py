@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import secrets
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,28 +13,7 @@ from jarvis_engine.owner_guard import read_owner_guard
 from jarvis_engine.runtime_control import read_control_state
 
 
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    raw = json.dumps(payload, ensure_ascii=True, indent=2)
-    last_error: Exception | None = None
-    for attempt in range(6):
-        tmp = path.with_suffix(f"{path.suffix}.tmp.{attempt}")
-        try:
-            tmp.write_text(raw, encoding="utf-8")
-            tmp.replace(path)
-            return
-        except PermissionError as exc:
-            last_error = exc
-            time.sleep(0.06 * (attempt + 1))
-            continue
-        finally:
-            try:
-                if tmp.exists():
-                    tmp.unlink()
-            except OSError:
-                pass
-    if last_error is not None:
-        raise last_error
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
 
 def _tail_lines(path: Path, *, max_lines: int) -> list[str]:

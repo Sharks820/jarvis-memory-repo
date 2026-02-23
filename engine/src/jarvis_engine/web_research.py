@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import html
 import re
-import socket
 from datetime import UTC, datetime
-from ipaddress import ip_address
 from typing import Any
-from urllib.parse import quote_plus, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
+from urllib.parse import urlparse
+
+from jarvis_engine.web_fetch import (
+    fetch_page_text as _fetch_page_text,
+    is_safe_public_url as _is_safe_public_url,
+    search_duckduckgo as _search_duckduckgo,
+)
 
 STOPWORDS = {
     "about",
@@ -48,123 +50,7 @@ def _query_keywords(query: str) -> set[str]:
     return {word for word in words if word not in STOPWORDS}
 
 
-# TODO: deduplicate with learning_missions.py
-def _is_safe_public_url(url: str) -> bool:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        return False
-    host = (parsed.hostname or "").strip().lower()
-    if not host or host == "localhost":
-        return False
-    try:
-        ip = ip_address(host)
-        return not (ip.is_private or ip.is_loopback or ip.is_link_local
-                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
-    except ValueError:
-        pass
-    default_port = 443 if parsed.scheme == "https" else 80
-    try:
-        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        return False
-    for item in resolved:
-        raw_ip = item[4][0]
-        try:
-            ip = ip_address(raw_ip)
-        except ValueError:
-            return False
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            return False
-    return True
-
-
-def _search_duckduckgo(query: str, *, limit: int) -> list[str]:
-    search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
-    req = Request(
-        search_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-    )
-    try:
-        with urlopen(req, timeout=12) as resp:  # nosec B310
-            payload = resp.read(400_000)
-    except OSError:
-        return []
-    text = payload.decode("utf-8", errors="replace")
-    urls: list[str] = []
-    for match in re.findall(r'href="(https?://[^"]+)"', text):
-        candidate = html.unescape(match).strip()
-        parsed = urlparse(candidate)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            continue
-        if "duckduckgo.com" in parsed.netloc.lower():
-            continue
-        if not _is_safe_public_url(candidate):
-            continue
-        urls.append(candidate)
-    return list(dict.fromkeys(urls))[: max(1, limit)]
-
-
-def _resolve_and_check_ip(url: str) -> bool:
-    """Re-resolve hostname immediately before fetch to prevent DNS rebinding."""
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").strip().lower()
-    if not host:
-        return False
-    default_port = 443 if parsed.scheme == "https" else 80
-    try:
-        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        return False
-    for item in resolved:
-        raw_ip = item[4][0]
-        try:
-            ip = ip_address(raw_ip)
-        except ValueError:
-            return False
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            return False
-    return True
-
-
-class _SafeRedirectHandler(HTTPRedirectHandler):
-    """Block redirects to non-public IPs to prevent redirect-based SSRF."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-        if not _is_safe_public_url(newurl):
-            return None  # Block redirect to unsafe URL
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-# TODO: deduplicate with learning_missions.py
-def _fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
-    if not _is_safe_public_url(url):
-        return ""
-    # Second DNS check immediately before fetch to prevent TOCTOU / DNS rebinding
-    if not _resolve_and_check_ip(url):
-        return ""
-    req = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-    )
-    try:
-        opener = build_opener(_SafeRedirectHandler)
-        with opener.open(req, timeout=12) as resp:  # nosec B310
-            payload = resp.read(max_bytes)
-    except (OSError, ValueError):
-        return ""
-    text = payload.decode("utf-8", errors="replace")
-    text = re.sub(r"(?is)<script.*?>.*?</script>", " ", text)
-    text = re.sub(r"(?is)<style.*?>.*?</style>", " ", text)
-    text = re.sub(r"(?s)<[^>]+>", " ", text)
-    text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+# _is_safe_public_url, _search_duckduckgo, _fetch_page_text imported from web_fetch
 
 
 def _extract_snippet(text: str, *, query: str, max_sentences: int = 2) -> str:

@@ -234,11 +234,7 @@ def write_spam_report(path: Path, candidates: list[SpamCandidate], actions: list
     path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
 
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+from jarvis_engine._shared import safe_float as _safe_float
 
 
 def _normalize_number(number: str) -> str:

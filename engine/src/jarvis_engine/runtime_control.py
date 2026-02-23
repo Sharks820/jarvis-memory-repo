@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,19 +13,11 @@ DEFAULT_CONTROL_STATE = {
 }
 
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
+
 def control_state_path(root: Path) -> Path:
     return root / ".planning" / "runtime" / "control.json"
-
-
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
 
 
 def read_control_state(root: Path) -> dict[str, Any]:

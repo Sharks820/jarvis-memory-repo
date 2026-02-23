@@ -203,19 +203,25 @@ class TestMissionSecurity:
 
     def test_mission_fetch_respects_max_bytes(self, monkeypatch) -> None:
         """Mission page fetch should respect max_bytes limit."""
-        from jarvis_engine import learning_missions
-        
+        from jarvis_engine import web_fetch
+
         large_content = b"X" * 1000000  # 1MB
-        
+
         def mock_urlopen(*args, **kwargs):
             class MockResp:
+                def __enter__(self):
+                    return self
+                def __exit__(self, *a):
+                    pass
                 def read(self, max_bytes):
                     return large_content[:max_bytes]
             return MockResp()
-        
-        monkeypatch.setattr(learning_missions, "urlopen", mock_urlopen)
-        
-        result = learning_missions._fetch_page_text("https://example.com", max_bytes=50000)
+
+        monkeypatch.setattr(web_fetch, "is_safe_public_url", lambda url: True)
+        monkeypatch.setattr(web_fetch, "resolve_and_check_ip", lambda url: True)
+        monkeypatch.setattr(web_fetch, "build_opener", lambda *a: type("O", (), {"open": mock_urlopen})())
+
+        result = web_fetch.fetch_page_text("https://example.com", max_bytes=50000)
         
         # Result should be within limit (plus some HTML processing overhead)
         assert len(result.encode()) <= 60000
