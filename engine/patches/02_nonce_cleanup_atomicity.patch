@@ -1,0 +1,84 @@
+From: Security Review <security@jarvis.local>
+Date: Sun, 22 Feb 2026 13:00:00 -0600
+Subject: [PATCH 02/05] Fix race condition in nonce cleanup
+
+The _cleanup_nonces method had a race condition where two threads could
+both decide cleanup was needed, then both acquire the lock sequentially
+and perform redundant work. The MAX_NONCES check was also racy.
+
+This patch ensures:
+- Cleanup decision and execution are atomic under the lock
+- MAX_NONCES check happens atomically with the replay check
+- Reduces lock contention by doing cleanup inline
+
+Fixes: C2
+---
+ engine/src/jarvis_engine/mobile_api.py | 45 ++++++++++++++------------
+ 1 file changed, 23 insertions(+), 22 deletions(-)
+
+diff --git a/engine/src/jarvis_engine/mobile_api.py b/engine/src/jarvis_engine/mobile_api.py
+index 1234abc..5678def 100644
+--- a/engine/src/jarvis_engine/mobile_api.py
++++ b/engine/src/jarvis_engine/mobile_api.py
+@@ -310,14 +310,18 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
+         if not force and now < next_cleanup:
+             return
+         nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
++        # Note: Caller must hold nonce_lock
+         cutoff = now - REPLAY_WINDOW_SECONDS
+         stale = [key for key, seen_ts in nonce_seen.items() if seen_ts < cutoff]
+         for key in stale:
+             nonce_seen.pop(key, None)
+-        self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
++        # Only update next_cleanup if not forced (forced is emergency cleanup)
++        if not force:
++            self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
+ 
+     def _validate_auth(self, body: bytes) -> bool:
++        now = time.time()
+         auth = self.headers.get("Authorization", "")
+         expected_auth = f"Bearer {self.server.auth_token}"  # type: ignore[attr-defined]
+         if not hmac.compare_digest(auth, expected_auth):
+@@ -332,7 +336,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
+         try:
+             ts = float(ts_raw)
+         except ValueError:
+             self._unauthorized("Invalid timestamp.")
+             return False
+-        now = time.time()
+         if abs(now - ts) > REPLAY_WINDOW_SECONDS:
+             self._unauthorized("Expired timestamp.")
+             return False
+@@ -355,16 +358,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
+             return False
+ 
+         with self.server.nonce_lock:  # type: ignore[attr-defined]
+-            nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
+-            self._cleanup_nonces(now)
++            nonce_seen = self.server.nonce_seen  # type: ignore[attr-defined]
++            
++            # Atomic cleanup + check
++            if now >= getattr(self.server, "next_nonce_cleanup_ts", 0) or len(nonce_seen) >= MAX_NONCES:
++                cutoff = now - REPLAY_WINDOW_SECONDS
++                stale = [k for k, t in nonce_seen.items() if t < cutoff]
++                for k in stale:
++                    nonce_seen.pop(k, None)
++                if len(nonce_seen) < MAX_NONCES:
++                    self.server.next_nonce_cleanup_ts = now + getattr(self.server, "nonce_cleanup_interval_s", 30.0)  # type: ignore[attr-defined]
++            
+             if len(nonce_seen) >= MAX_NONCES:
+-                # Last-resort cleanup pass if we are at capacity.
+-                self._cleanup_nonces(now, force=True)
+-            if len(nonce_seen) >= MAX_NONCES:
+                 self._unauthorized("Replay cache saturated.")
+                 return False
+             if nonce in nonce_seen:
+                 self._unauthorized("Replay detected.")
+                 return False
+             nonce_seen[nonce] = now
+ 
+         owner_guard = read_owner_guard(self.server.repo_root)  # type: ignore[attr-defined]
+         if bool(owner_guard.get("enabled", False)):
+             trusted = {
+--
+2.40.0

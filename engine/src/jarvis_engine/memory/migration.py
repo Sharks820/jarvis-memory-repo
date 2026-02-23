@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CHECKPOINT_BATCH_SIZE = 50
+_MAX_ERROR_DETAILS = 200
 
 
 def _load_checkpoint(checkpoint_path: Path) -> dict | None:
@@ -83,8 +84,12 @@ def migrate_brain_records(
     checkpoint = _load_checkpoint(checkpoint_path)
     start_offset = 0
     if checkpoint and checkpoint.get("file") == jsonl_path.name:
-        start_offset = checkpoint.get("line_offset", 0)
-        logger.info("Resuming migration from line %d", start_offset)
+        saved_offset = checkpoint.get("line_offset", 0)
+        if isinstance(saved_offset, int) and saved_offset >= 0:
+            start_offset = saved_offset
+            logger.info("Resuming migration from line %d", start_offset)
+        else:
+            logger.warning("Invalid checkpoint offset %r, starting from 0", saved_offset)
 
     # Read all lines
     try:
@@ -119,12 +124,14 @@ def migrate_brain_records(
             record_data = json.loads(line)
         except json.JSONDecodeError as exc:
             errors += 1
-            error_details.append(f"Line {line_num + 1}: malformed JSON: {exc}")
+            if len(error_details) < _MAX_ERROR_DETAILS:
+                error_details.append(f"Line {line_num + 1}: malformed JSON: {exc}")
             continue
 
         if not isinstance(record_data, dict):
             errors += 1
-            error_details.append(f"Line {line_num + 1}: not a dict")
+            if len(error_details) < _MAX_ERROR_DETAILS:
+                error_details.append(f"Line {line_num + 1}: not a dict")
             continue
 
         try:
@@ -133,7 +140,8 @@ def migrate_brain_records(
                 summary = str(record_data.get("content", ""))[:280]
             if not summary.strip():
                 errors += 1
-                error_details.append(f"Line {line_num + 1}: empty summary/content")
+                if len(error_details) < _MAX_ERROR_DETAILS:
+                    error_details.append(f"Line {line_num + 1}: empty summary/content")
                 continue
 
             # Generate embedding
@@ -164,7 +172,7 @@ def migrate_brain_records(
 
             tags = record_data.get("tags", [])
             if isinstance(tags, list):
-                tags = str(tags)
+                tags = json.dumps(tags)
             elif not isinstance(tags, str):
                 tags = "[]"
 
@@ -192,7 +200,8 @@ def migrate_brain_records(
 
         except Exception as exc:
             errors += 1
-            error_details.append(f"Line {line_num + 1}: {type(exc).__name__}: {exc}")
+            if len(error_details) < _MAX_ERROR_DETAILS:
+                error_details.append(f"Line {line_num + 1}: {type(exc).__name__}: {exc}")
 
         # Save checkpoint every batch
         if (line_num - start_offset + 1) % _CHECKPOINT_BATCH_SIZE == 0:
@@ -220,11 +229,15 @@ def migrate_brain_records(
         logger.error(msg)
         error_details.append(msg)
 
-    # Clean up checkpoint on success
-    _delete_checkpoint(checkpoint_path)
+    # Only delete checkpoint on success (no errors)
+    if errors == 0:
+        _delete_checkpoint(checkpoint_path)
+
+    # Derive status from error count
+    status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")
 
     return {
-        "status": "ok",
+        "status": status,
         "source_count": source_count,
         "inserted": inserted,
         "skipped": skipped,
@@ -262,33 +275,41 @@ def migrate_facts(
     inserted = 0
     errors = 0
 
-    for key, value in facts_data.items():
+    with engine._write_lock:
         try:
-            if not isinstance(value, dict):
-                value = {"value": str(value), "confidence": 0.5, "updated_utc": datetime.now(UTC).isoformat()}
+            for key, value in facts_data.items():
+                try:
+                    if not isinstance(value, dict):
+                        value = {"value": str(value), "confidence": 0.5, "updated_utc": datetime.now(UTC).isoformat()}
 
-            engine._db.execute(
-                """
-                INSERT OR REPLACE INTO facts (key, value, confidence, locked, updated_utc, sources, history)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(key),
-                    str(value.get("value", "")),
-                    float(value.get("confidence", 0.0)),
-                    int(value.get("locked", 0)),
-                    str(value.get("updated_utc", datetime.now(UTC).isoformat())),
-                    json.dumps(value.get("sources", [])),
-                    json.dumps(value.get("history", [])),
-                ),
-            )
+                    engine._db.execute(
+                        """
+                        INSERT OR REPLACE INTO facts (key, value, confidence, locked, updated_utc, sources, history)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(key),
+                            str(value.get("value", "")),
+                            float(value.get("confidence", 0.0)),
+                            int(value.get("locked", 0)),
+                            str(value.get("updated_utc", datetime.now(UTC).isoformat())),
+                            json.dumps(value.get("sources", [])),
+                            json.dumps(value.get("history", [])),
+                        ),
+                    )
+                    inserted += 1
+                except Exception as exc:
+                    errors += 1
+                    logger.warning("Failed to migrate fact '%s': %s", key, exc)
+
+            # Single commit for all facts (batch)
             engine._db.commit()
-            inserted += 1
-        except Exception as exc:
-            errors += 1
-            logger.warning("Failed to migrate fact '%s': %s", key, exc)
+        except Exception:
+            engine._db.rollback()
+            raise
 
-    return {"status": "ok", "source_count": source_count, "inserted": inserted, "errors": errors}
+    status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")
+    return {"status": status, "source_count": source_count, "inserted": inserted, "errors": errors}
 
 
 def migrate_events(
@@ -418,17 +439,23 @@ def run_full_migration(
     facts_path = root / ".planning" / "brain" / "facts.json"
     events_path = root / ".planning" / "events.jsonl"
 
-    print(f"Migrating brain records from {brain_path}...")
+    logger.info("Migrating brain records from %s...", brain_path)
     brain_result = migrate_brain_records(brain_path, engine, embed_service, classifier)
-    print(f"  Brain records: {brain_result['inserted']} inserted, {brain_result['skipped']} skipped, {brain_result['errors']} errors")
+    logger.info(
+        "  Brain records: %d inserted, %d skipped, %d errors",
+        brain_result["inserted"], brain_result["skipped"], brain_result["errors"],
+    )
 
-    print(f"Migrating facts from {facts_path}...")
+    logger.info("Migrating facts from %s...", facts_path)
     facts_result = migrate_facts(facts_path, engine)
-    print(f"  Facts: {facts_result['inserted']} inserted, {facts_result['errors']} errors")
+    logger.info("  Facts: %d inserted, %d errors", facts_result["inserted"], facts_result["errors"])
 
-    print(f"Migrating events from {events_path}...")
+    logger.info("Migrating events from %s...", events_path)
     events_result = migrate_events(events_path, engine, embed_service, classifier)
-    print(f"  Events: {events_result['inserted']} inserted, {events_result['skipped']} skipped, {events_result['errors']} errors")
+    logger.info(
+        "  Events: %d inserted, %d skipped, %d errors",
+        events_result["inserted"], events_result["skipped"], events_result["errors"],
+    )
 
     total_inserted = brain_result["inserted"] + facts_result["inserted"] + events_result["inserted"]
     total_skipped = brain_result.get("skipped", 0) + events_result.get("skipped", 0)
@@ -436,8 +463,11 @@ def run_full_migration(
 
     engine.close()
 
+    # Derive overall status from sub-migration results
+    status = "ok" if total_errors == 0 else ("partial" if total_inserted > 0 else "error")
+
     return {
-        "status": "ok",
+        "status": status,
         "brain": brain_result,
         "facts": facts_result,
         "events": events_result,

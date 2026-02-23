@@ -19,5 +19,20 @@
   "subscriptions": [
     {"name": "Design SaaS", "monthly_cost": 39.99, "usage_score": 0.2},
     {"name": "Cloud storage", "monthly_cost": 9.99, "usage_score": 0.9}
+  ],
+  "medications": [
+    {"name": "Prescription A", "dose": "10mg", "due_time": "08:00", "status": "due"},
+    {"name": "Prescription B", "dose": "5mg", "due_today": false, "status": "normal"}
+  ],
+  "school_items": [
+    {"title": "Finish assignment for class", "priority": "high", "due_date": "2026-02-22"}
+  ],
+  "family_items": [
+    {"title": "School pickup", "priority": "high", "due_today": true},
+    {"title": "Family dinner prep", "priority": "normal"}
+  ],
+  "projects": [
+    {"title": "Ship feature PR", "priority": "high", "due_date": "2026-02-22"},
+    {"title": "Design review prep", "priority": "normal"}
   ]
 }

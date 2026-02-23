@@ -156,6 +156,7 @@ class TestModelGateway:
         assert resp.fallback_used is False
         mock_client.messages.create.assert_called_once()
 
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_ollama_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
@@ -176,6 +177,7 @@ class TestModelGateway:
         assert resp.fallback_used is False
         mock_ollama.chat.assert_called_once()
 
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_fallback_on_api_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
@@ -200,6 +202,7 @@ class TestModelGateway:
         assert resp.text == "fallback answer"
         assert "APIConnectionError" in resp.fallback_reason
 
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_local_only_mode(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:

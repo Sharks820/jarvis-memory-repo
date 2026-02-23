@@ -1,0 +1,116 @@
+I will start by exploring the codebase, focusing on the high-priority areas: `mobile_api.py`, `voice_auth.py`, `runtime_control.py`, and the daemon loop in `main.py`.
+
+I'll start by examining the authentication and authorization logic in `mobile_api.py` and `voice_auth.py` to identify potential security vulnerabilities.
+
+I've identified some potential issues in `mobile_api.py`, including a minor DOS risk during body reading and the lack of authentication for `/health`. I'll now examine `voice_auth.py` to see if there are similar or additional security concerns.
+
+`voice_auth.py` uses basic embedding extraction, making it vulnerable to replay or synthesis attacks. The `enroll_voiceprint` function's averaging of embeddings without verification further weakens profiles. I'll now examine `runtime_control.py` to see if it has similar security or logic flaws.
+
+`runtime_control.py` is straightforward but vulnerable to race conditions or file corruption due to its non-atomic JSON writes. I'll now examine the daemon loop in `main.py` for similar issues.
+
+The daemon loop in `main.py` reads configuration files every cycle and uses `time.sleep` for intervals, with a potentially long 10-minute sleep when paused. `cmd_voice_run` relies on fragile `if/elif` text mapping for intents, posing a security risk from overlapping commands, and lacks rate limiting for phone actions. I'll now examine `growth_tracker.py` to assess learning integrity and identify any further issues.
+
+The growth tracker's SHA256 chain and `RLock` provide good integrity and thread safety, though the history reading process is inefficient for large files. `score_text`'s reliance on word boundaries might struggle with certain characters, and the Ollama endpoint lacks authentication. I'll now examine `phone_guard.py` to assess the Samsung spam call defense logic.
+
+The spam guard's scoring heuristics and `_normalize_number` logic appear solid, though `build_spam_block_actions` could accidentally silence legitimate callers. `_normalize_number` is slightly restrictive with 7-digit numbers, but generally correct. I'll now examine `memory_store.py` to check for learning integrity and potential data corruption risks.
+
+`MemoryStore`'s `tail(limit)` method is a performance bottleneck, as it reads the entire `events.jsonl` file into memory. I'll now examine `automation.py` to identify functional risks, as it's a critical component.
+
+`AutomationExecutor` uses `CapabilityGate` and `PolicyEngine` to authorize actions before executing them with `run_shell_command` and a 90-second timeout. `load_actions` handles JSON file input, and I'll now examine `policy.py` and `capability.py` for further details.
+
+The `PolicyEngine`'s strict allowlist only permits `git status`, `git log`, `ollama list`, and `ollama ps`, which significantly limits `automation_run`. I'll now examine `life_ops.py` and `suggest_actions` to see how `actions.generated.json` is created and what commands are actually being generated.
+
+`export_actions_json` generates actions with empty commands, causing `AutomationExecutor` to effectively do nothing, which renders the autopilot a "no-op." I'll now examine `capability.py` to further investigate functional and security risks, particularly around how `safe_mode` and `daemon_paused` are handled.
+
+I've identified several performance, security, and functional risks, including inefficient history reading, unauthenticated health endpoints, spoofable voice embeddings, and non-atomic file writes. Most critically, the autopilot is currently a "no-op" due to empty command generation. I'll now perform a targeted search to pinpoint the exact locations of these issues for the final adversarial review.
+
+I've pinpointed several critical issues: inefficient file reading in `MemoryStore` and `growth_tracker`, pre-authentication body reading in `mobile_api`, spoofable voice embeddings, and non-functional autopilot commands. Additionally, I've identified fragile intent mapping in `main.py`, frequent `tasklist` calls, non-atomic writes in `runtime_control`, and an unauthenticated `/health` endpoint. I'll now examine the `engine/tests/` directory to identify any gaps in test coverage.
+
+I'll now examine `test_mobile_api.py` and `test_voice_auth.py` to assess how well these security-critical areas are currently tested.
+
+`mobile_api` tests are robust, covering several security scenarios, though they miss the "read body before auth" design flaw and large-body attacks. I'll now examine `test_voice_auth.py` to see how voice authentication is being tested.
+
+The voice auth embedding logic's reliance on simple frequency and statistics makes it highly spoofable, a significant security risk. While `mobile_api` has robust tests, it lacks TLS, meaning sensitive keys are sent in plain text over WiFi—a High risk. Furthermore, `life_ops.py` generates autopilot actions with empty commands, effectively breaking its functionality. I'll now check for an existing `ADVERSARIAL_SECURITY_REVIEW.md` before finalizing my report.
+
+I'll now examine the current content of `ADVERSARIAL_SECURITY_REVIEW.md`.
+
+`ADVERSARIAL_SECURITY_REVIEW.md` is thorough and correctly identifies lingering issues like the unhardened `_gaming_state_path`. However, its claim that any signature works for `GET /settings` seems dubious, as `hmac.compare_digest` should still require a valid 32-byte hash. I'll now investigate `engine/src/jarvis_engine/adapters.py` to verify the reported shell injection vulnerability in adapter script paths.
+
+`ImageAdapter` and `VideoAdapter` use `subprocess.run` with a list, which defaults to `shell=False`, making the reported shell injection vulnerability unlikely unless an attacker can control the script path. However, the path traversal vulnerability `C1` is confirmed as `_gaming_state_path` remains unhardened. My review also identifies several other critical and high risks, including insecure key transmission due to a lack of TLS, fragile intent mapping in `voice_run`, and a non-functional autopilot that generates empty commands. Consequently, the project fails the security gate, and I'll now finalize the adversarial review with the top five must-fix items.
+
+### Launch-Blocking Adversarial Review: Jarvis Engine
+
+**Final Gate: ❌ FAIL**
+
+---
+
+### Critical Severity Findings
+
+#### C1: Path Traversal / Symlink Attack in `mobile_api.py`
+*   **File:Line:** `engine/src/jarvis_engine/mobile_api.py:97` (`_gaming_state_path`) and `engine/src/jarvis_engine/mobile_api.py:126` (`_write_gaming_state`)
+*   **Break Scenario:** The server constructs file paths by joining the repo root with fixed strings but does not validate the final resolved path. An attacker with local access (or who exploits another vulnerability to create a file) can create a symlink at `.planning/runtime/gaming_mode.json` pointing to a sensitive system file (e.g., `C:\Windows\System32\drivers\etc\hosts`). Sending a `POST /settings` request via the mobile API will then overwrite that file with JSON data, leading to system corruption or privilege escalation.
+*   **Concrete Fix:** Use `.resolve()` on the path and verify it starts with the resolved `repo_root`.
+    ```python
+    def _gaming_state_path(self) -> Path:
+        root = self.server.repo_root.resolve()
+        target = (root / ".planning" / "runtime" / "gaming_mode.json").resolve()
+        if not str(target).startswith(str(root)):
+            raise PermissionError("Path traversal attempt blocked.")
+        return target
+    ```
+
+#### C2: Non-Functional Autopilot (Logic Break)
+*   **File:Line:** `engine/src/jarvis_engine/life_ops.py:134` (`export_actions_json`)
+*   **Break Scenario:** The autopilot planner generates action records with an empty `"command": ""` field. The `AutomationExecutor` skips any action with an empty command string. Consequently, while Jarvis correctly identifies "Urgent tasks" or "Due bills," it never actually performs any work during its autopilot cycles, rendering the core value proposition of the daemon loop broken.
+*   **Concrete Fix:** Implement a basic command generator or template system in `life_ops.py` to populate the `command` field with actionable CLI calls (e.g., `jarvis-engine log ...` or specific connector scripts).
+
+---
+
+### High Severity Findings
+
+#### H1: Cleartext Transmission of Sensitive Credentials
+*   **File:Line:** `engine/src/jarvis_engine/mobile_api.py:311` (`run_mobile_server`)
+*   **Break Scenario:** The `ThreadingHTTPServer` used for the mobile API does not support TLS. All requests, including those containing the `Authorization` Bearer token and the `X-Jarvis-Signature` (derived from the signing key), are transmitted in plain text over the network. On a typical WiFi network used by a mobile device, these can be intercepted by a packet sniffer, allowing an attacker to hijack the Jarvis engine and control the user's system.
+*   **Concrete Fix:** Wrap the server socket with `ssl.wrap_socket` or recommend a reverse proxy (like Nginx) with TLS termination. At minimum, the documentation must scream about this risk.
+
+#### H2: Fragile Voice Intent Mapping
+*   **File:Line:** `engine/src/jarvis_engine/main.py:656-780` (`cmd_voice_run`)
+*   **Break Scenario:** The system maps voice-to-text strings to intents using simple `any(k in lowered for k in [...])` checks. This is highly susceptible to "negative" injection. For example, the command "Jarvis, do NOT pause the daemon" contains "pause daemon," which triggers the `runtime_pause` intent, achieving the exact opposite of the user's request.
+*   **Concrete Fix:** Use a more robust NLP approach or at least check for negation keywords and ensure that keywords match specific command structures rather than simple substrings.
+
+#### H3: Spoofable Voice Authentication
+*   **File:Line:** `engine/src/jarvis_engine/voice_auth.py:111-137` (`_extract_embedding`)
+*   **Break Scenario:** The voice embedding logic relies on extremely basic statistics (FFT mean/std, Zero Crossing Rate, RMS). This does not capture deep biometric features and is trivial to spoof with a basic recording or a low-quality synthesized voice. Since voice verification is used to gate "privileged" commands in `voice-run`, an attacker can easily bypass security by playing back a recorded tone or a person's voice.
+*   **Concrete Fix:** Integrate a proper biometric embedding model (e.g., Wav2Vec2 or ECAPA-TDNN) for voiceprint extraction.
+
+---
+
+### Medium Severity Findings
+
+#### M1: Non-Atomic State Writes
+*   **File:Line:** `engine/src/jarvis_engine/runtime_control.py:47` and `mobile_api.py:133`
+*   **Break Scenario:** State files are written using `Path.write_text()`. If the process crashes or the system loses power during the write operation, the JSON file can be left partially written or corrupted. On the next start, `json.loads()` will fail, potentially causing a crash or a reset to default "unsafe" states.
+*   **Concrete Fix:** Write to a temporary file in the same directory and use `os.replace()` for an atomic update.
+
+#### M2: Memory/Performance Exhaustion in MemoryStore
+*   **File:Line:** `engine/src/jarvis_engine/memory_store.py:32` (`tail`)
+*   **Break Scenario:** The `tail` method reads the *entire* `events.jsonl` file into memory just to return the last few lines. As the system runs for weeks and the log grows to megabytes or gigabytes, this operation will become increasingly slow and memory-intensive, eventually leading to OOM (Out Of Memory) crashes.
+*   **Concrete Fix:** Use `f.seek()` to read from the end of the file in chunks until the required number of lines is found.
+
+---
+
+### Low Severity Findings
+
+#### L1: Unauthenticated Health Endpoint Leaks Metadata
+*   **File:Line:** `engine/src/jarvis_engine/mobile_api.py:169`
+*   **Break Scenario:** `/health` is exposed without authentication. While it only returns `{"ok": True}`, it allows an attacker to fingerprint the Jarvis service and confirm its presence on the network before attempting more targeted attacks.
+
+---
+
+### Top 5 Must-Fix Items (Launch Blockers)
+
+1.  **Hardened Path Validation:** Fix **C1** in `mobile_api.py` to prevent arbitrary file overwrites via symlinks.
+2.  **Autopilot Functionality:** Fix **FB1** in `life_ops.py` to ensure the autopilot generates valid commands for identified actions.
+3.  **Secure Transmission:** Implement TLS for the mobile API or provide a clear, automated setup for a secure proxy.
+4.  **Robust Intent Mapping:** Replace simple `in` string checks in `cmd_voice_run` with logic that handles negation and command structure.
+5.  **Atomic Persistence:** Implement atomic file writes for all `.json` and `.jsonl` state files to prevent data corruption.

@@ -59,6 +59,8 @@ class BrainContextHandler:
             from jarvis_engine.memory.search import hybrid_search
 
             query_embedding = self._embed_service.embed_query(cmd.query)
+            if not query_embedding:
+                return BrainContextResult(packet={"query": cmd.query, "selected": [], "error": "embedding failed"})
             results = hybrid_search(
                 self._engine,
                 cmd.query,
@@ -71,7 +73,7 @@ class BrainContextHandler:
             for record in results:
                 summary = str(record.get("summary", ""))
                 if total_chars + len(summary) > max_chars:
-                    continue
+                    break  # Stop collecting once budget exceeded (not skip)
                 selected.append({
                     "record_id": record.get("record_id", ""),
                     "branch": record.get("branch", "general"),
@@ -110,7 +112,7 @@ class BrainCompactHandler:
     def handle(self, cmd: BrainCompactCommand) -> BrainCompactResult:
         from jarvis_engine.brain_memory import brain_compact
 
-        result = brain_compact(self._root, keep_recent=max(200, min(cmd.keep_recent, 20000)))
+        result = brain_compact(self._root, keep_recent=max(200, min(cmd.keep_recent, 50000)))
         return BrainCompactResult(result=result)
 
 

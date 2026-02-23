@@ -11,3 +11,10 @@ __pycache__/
 dist/
 build/
 backups/
+tmp/
+nul
+=0.1.6
+.planning/security/
+.planning/brain/
+.planning/logs/
+.planning/runtime/*.tmp

@@ -77,25 +77,22 @@ class TierManager:
         return Tier.WARM
 
     def run_tier_maintenance(self, engine: "MemoryEngine") -> dict:
-        """Iterate all records, classify, and update tier if changed.
+        """Classify all records and batch-update changed tiers.
 
-        Returns a summary of changes made.
+        Uses a single bulk query to fetch all records, classifies in-memory,
+        and batch-updates only the changed tiers in one transaction.
         """
-        record_ids = engine.get_all_record_ids()
-        changes = {"total": len(record_ids), "promoted": 0, "demoted": 0, "unchanged": 0}
+        records = engine.get_all_records_for_tier_maintenance()
+        changes = {"total": len(records), "promoted": 0, "demoted": 0, "unchanged": 0}
+        tier_order = {"cold": 0, "warm": 1, "hot": 2}
+        updates: list[tuple[str, str]] = []
 
-        for rid in record_ids:
-            record = engine.get_record(rid)
-            if record is None:
-                continue
-
+        for record in records:
             new_tier = self.classify(record)
             current_tier_str = str(record.get("tier", "warm"))
 
             if current_tier_str != new_tier.value:
-                engine.update_tier(rid, new_tier.value)
-                # Promotion = moving to a "hotter" tier
-                tier_order = {"cold": 0, "warm": 1, "hot": 2}
+                updates.append((record["record_id"], new_tier.value))
                 old_order = tier_order.get(current_tier_str, 1)
                 new_order = tier_order.get(new_tier.value, 1)
                 if new_order > old_order:
@@ -104,6 +101,10 @@ class TierManager:
                     changes["demoted"] += 1
             else:
                 changes["unchanged"] += 1
+
+        # Single batch update for all tier changes
+        if updates:
+            engine.update_tiers_batch(updates)
 
         logger.info(
             "Tier maintenance complete: %d records, %d promoted, %d demoted",

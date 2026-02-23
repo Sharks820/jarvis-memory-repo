@@ -153,7 +153,7 @@ class TestMigrateBrainRecords:
             f.write(json.dumps(records[2]) + "\n")
 
         result = migrate_brain_records(jsonl_path, engine, embed_service, classifier)
-        assert result["status"] == "ok"
+        assert result["status"] == "partial"  # Has both insertions and errors
         assert result["source_count"] == 5  # 5 non-empty lines
         assert result["inserted"] == 3
         assert result["errors"] == 2

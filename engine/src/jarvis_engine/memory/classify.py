@@ -27,7 +27,12 @@ BRANCH_DESCRIPTIONS: dict[str, str] = {
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
+    """Compute cosine similarity between two vectors.
+
+    Raises ValueError if vectors have different dimensions.
+    """
+    if len(a) != len(b):
+        raise ValueError(f"Vector dimension mismatch: {len(a)} vs {len(b)}")
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
@@ -64,7 +69,8 @@ class BranchClassifier:
             Branch name with highest similarity, or "general" if below threshold.
         """
         self._ensure_centroids()
-        assert self._centroids is not None
+        if self._centroids is None:
+            raise RuntimeError("Branch centroids failed to initialize")
 
         best_branch = "general"
         best_similarity = -1.0

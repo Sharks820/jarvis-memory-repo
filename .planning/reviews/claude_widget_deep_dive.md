@@ -1,0 +1,15 @@
+- Use compositor-only animation properties (`transform`, `opacity`) and avoid layout-affecting transitions.
+- Use CSS/Web Animations API plus `prefers-reduced-motion` fallback to lower idle CPU.
+- Recycle animation elements and keep a fixed-size canvas for pulse/particle effects to reduce GC churn.
+- Add intent-confidence thresholds for auto-run read-only actions and countdown cancel for risky actions.
+- Inject active-window and recent-turn context so user prompts can stay natural and short.
+- Precompute likely next actions and warm relevant data for near-instant follow-up execution.
+- Run wake-word detection on a dedicated audio thread/worklet and keep UI thread isolated.
+- Use a two-stage wake-word pipeline (tiny detector first, full STT second) to reduce power draw.
+- Calibrate ambient noise floor periodically to reduce false positives and missed triggers.
+- Store memory snapshots as content-addressed graph/checkpoints and validate hash chain on load.
+- Add property-based tests for memory invariants under random mutation sequences.
+- Use write-ahead logging for memory updates and replay on crash for consistency.
+- Encrypt memory at rest and wrap keys with platform credential stores.
+- Sandbox tool execution and block network/filesystem escape by default.
+- Enforce allowlist action manifests so unapproved generated actions are rejected.

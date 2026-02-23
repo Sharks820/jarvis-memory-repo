@@ -1,0 +1,155 @@
+{
+  "date": "2026-02-23",
+  "tasks": [],
+  "calendar_events": [],
+  "emails": [],
+  "bills": [],
+  "subscriptions": [],
+  "medications": [],
+  "school_items": [],
+  "family_items": [],
+  "projects": [],
+  "connector_statuses": [
+    {
+      "connector_id": "calendar",
+      "name": "Calendar (Google/ICS)",
+      "setup_url": "https://calendar.google.com/calendar/u/0/r/settings/export",
+      "required_permission": true,
+      "permission_granted": false,
+      "configured": false,
+      "ready": false,
+      "missing_env": [],
+      "missing_files": [],
+      "message": "Permission required before setup."
+    },
+    {
+      "connector_id": "email",
+      "name": "Email (IMAP or JSON feed)",
+      "setup_url": "https://support.google.com/accounts/answer/185833",
+      "required_permission": true,
+      "permission_granted": false,
+      "configured": false,
+      "ready": false,
+      "missing_env": [
+        "JARVIS_IMAP_HOST",
+        "JARVIS_IMAP_USER",
+        "JARVIS_IMAP_PASS"
+      ],
+      "missing_files": [],
+      "message": "Permission required before setup."
+    },
+    {
+      "connector_id": "tasks",
+      "name": "Tasks Source",
+      "setup_url": "https://github.com/gsd-build/get-shit-done",
+      "required_permission": false,
+      "permission_granted": true,
+      "configured": false,
+      "ready": false,
+      "missing_env": [],
+      "missing_files": [
+        ".planning/tasks.json"
+      ],
+      "message": "Setup required."
+    },
+    {
+      "connector_id": "bills",
+      "name": "Bills Source",
+      "setup_url": "https://support.google.com/googlepay",
+      "required_permission": false,
+      "permission_granted": true,
+      "configured": false,
+      "ready": false,
+      "missing_env": [],
+      "missing_files": [
+        ".planning/bills.json"
+      ],
+      "message": "Setup required."
+    },
+    {
+      "connector_id": "subscriptions",
+      "name": "Subscriptions Source",
+      "setup_url": "https://play.google.com/store/account/subscriptions",
+      "required_permission": false,
+      "permission_granted": true,
+      "configured": false,
+      "ready": false,
+      "missing_env": [],
+      "missing_files": [
+        ".planning/subscriptions.json"
+      ],
+      "message": "Setup required."
+    },
+    {
+      "connector_id": "mobile_ingest",
+      "name": "Samsung/Phone Ingest Bridge",
+      "setup_url": "https://github.com/termux/termux-app",
+      "required_permission": true,
+      "permission_granted": false,
+      "configured": false,
+      "ready": false,
+      "missing_env": [
+        "JARVIS_MOBILE_TOKEN",
+        "JARVIS_MOBILE_SIGNING_KEY"
+      ],
+      "missing_files": [],
+      "message": "Permission required before setup."
+    }
+  ],
+  "connector_prompts": [
+    {
+      "connector_id": "calendar",
+      "title": "Grant permission: Calendar (Google/ICS)",
+      "next_step": "python -m jarvis_engine.main connect-grant --id calendar",
+      "setup_url": "https://calendar.google.com/calendar/u/0/r/settings/export",
+      "reason": "Permission missing",
+      "option_voice": "Jarvis, grant connector calendar",
+      "option_tap_url": "https://calendar.google.com/calendar/u/0/r/settings/export"
+    },
+    {
+      "connector_id": "email",
+      "title": "Grant permission: Email (IMAP or JSON feed)",
+      "next_step": "python -m jarvis_engine.main connect-grant --id email",
+      "setup_url": "https://support.google.com/accounts/answer/185833",
+      "reason": "Permission missing",
+      "option_voice": "Jarvis, grant connector email",
+      "option_tap_url": "https://support.google.com/accounts/answer/185833"
+    },
+    {
+      "connector_id": "tasks",
+      "title": "Complete setup: Tasks Source",
+      "next_step": "Open setup URL then run ops-sync again",
+      "setup_url": "https://github.com/gsd-build/get-shit-done",
+      "reason": "Configuration missing",
+      "option_voice": "Jarvis, connect tasks",
+      "option_tap_url": "https://github.com/gsd-build/get-shit-done"
+    },
+    {
+      "connector_id": "bills",
+      "title": "Complete setup: Bills Source",
+      "next_step": "Open setup URL then run ops-sync again",
+      "setup_url": "https://support.google.com/googlepay",
+      "reason": "Configuration missing",
+      "option_voice": "Jarvis, connect bills",
+      "option_tap_url": "https://support.google.com/googlepay"
+    },
+    {
+      "connector_id": "subscriptions",
+      "title": "Complete setup: Subscriptions Source",
+      "next_step": "Open setup URL then run ops-sync again",
+      "setup_url": "https://play.google.com/store/account/subscriptions",
+      "reason": "Configuration missing",
+      "option_voice": "Jarvis, connect subscriptions",
+      "option_tap_url": "https://play.google.com/store/account/subscriptions"
+    },
+    {
+      "connector_id": "mobile_ingest",
+      "title": "Grant permission: Samsung/Phone Ingest Bridge",
+      "next_step": "python -m jarvis_engine.main connect-grant --id mobile_ingest",
+      "setup_url": "https://github.com/termux/termux-app",
+      "reason": "Permission missing",
+      "option_voice": "Jarvis, grant connector mobile_ingest",
+      "option_tap_url": "https://github.com/termux/termux-app"
+    }
+  ]
+}

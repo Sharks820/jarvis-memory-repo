@@ -1,0 +1,12 @@
+{
+  "processes": [
+    "FortniteClient-Win64-Shipping.exe",
+    "VALORANT-Win64-Shipping.exe",
+    "r5apex.exe",
+    "cs2.exe",
+    "Overwatch.exe",
+    "RocketLeague.exe",
+    "GTA5.exe",
+    "eldenring.exe"
+  ]
+}

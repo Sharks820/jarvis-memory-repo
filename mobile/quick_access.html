@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Jarvis Quick Panel</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --line: #334155;
+      --txt: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #14b8a6;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Segoe UI, system-ui, sans-serif;
+      background: radial-gradient(1200px 700px at 80% -20%, #1f2937 0%, #0b1220 45%, #070d1a 100%);
+      color: var(--txt);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    #fab {
+      position: fixed;
+      right: 16px;
+      bottom: 18px;
+      width: 58px;
+      height: 58px;
+      border-radius: 999px;
+      border: 1px solid #2dd4bf66;
+      background: linear-gradient(160deg, #0f766e, #0f172a);
+      color: #ccfbf1;
+      font-weight: 700;
+      cursor: pointer;
+      z-index: 9999;
+    }
+    #panel {
+      position: fixed;
+      right: 16px;
+      bottom: 86px;
+      width: min(380px, calc(100vw - 20px));
+      max-height: calc(100vh - 110px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in oklab, var(--panel) 94%, black 6%);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 30px 70px rgba(0,0,0,.45);
+      padding: 12px;
+      display: none;
+      z-index: 9999;
+    }
+    #panel.open { display: block; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row + .row { margin-top: 8px; }
+    .title { font-weight: 700; letter-spacing: .2px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    input, textarea, button, select {
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #0b1220;
+      color: var(--txt);
+      padding: 8px;
+      font: inherit;
+    }
+    input, textarea, select { width: 100%; }
+    textarea { min-height: 78px; resize: vertical; }
+    button {
+      cursor: pointer;
+      background: linear-gradient(165deg, #134e4a, #0b1220);
+      border-color: #1f766f;
+      color: #d1fae5;
+      font-weight: 600;
+    }
+    button.ghost { background: #0b1220; border-color: var(--line); color: var(--txt); }
+    button.warn { border-color: #8b1d1d; background: #2a1111; color: #fecaca; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+    .out {
+      margin-top: 10px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0a1020;
+      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.35;
+      max-height: 240px;
+      overflow: auto;
+    }
+    details { border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+    summary { cursor: pointer; color: var(--muted); }
+    .rank { display: flex; justify-content: space-between; border-bottom: 1px dashed #22314b; padding: 4px 0; font-size: 12px; }
+    @media (max-width: 640px) {
+      #panel { right: 10px; left: 10px; width: auto; bottom: 84px; }
+      #fab { right: 12px; bottom: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <button id="fab" title="Toggle Jarvis panel">J</button>
+  <section id="panel" aria-label="Jarvis Quick Panel">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <div class="title">Jarvis Unlimited</div>
+        <div class="muted">Ctrl+Space toggle, Ctrl+Enter send</div>
+      </div>
+      <button id="btnClose" class="ghost">Close</button>
+    </div>
+
+    <details>
+      <summary>Secure Session</summary>
+      <div class="row"><input id="baseUrl" placeholder="Base URL (ex: http://127.0.0.1:8787)" /></div>
+      <div class="row"><input id="token" placeholder="Bearer token" /></div>
+      <div class="row"><input id="signingKey" placeholder="Signing key" /></div>
+      <div class="row"><input id="deviceId" placeholder="Device ID (optional)" /></div>
+      <div class="row"><input id="masterPassword" type="password" placeholder="Master password (optional bootstrap)" /></div>
+      <div class="row"><button id="btnSaveCreds" class="ghost">Save on Device</button><span class="muted" id="credState"></span></div>
+    </details>
+
+    <div class="row" style="margin-top:10px">
+      <textarea id="commandText" placeholder="Type or dictate command. Example: Jarvis, runtime status"></textarea>
+    </div>
+    <div class="row">
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input id="execute" type="checkbox" /> Execute</label>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input id="approve" type="checkbox" /> Privileged</label>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input id="speak" type="checkbox" /> Speak</label>
+    </div>
+    <div class="row">
+      <button id="btnDictate" class="ghost">Voice Dictate</button>
+      <button id="btnSend">Send Command</button>
+    </div>
+
+    <div class="grid3" style="margin-top:8px">
+      <button id="btnPause" class="warn">Pause</button>
+      <button id="btnResume">Resume</button>
+      <button id="btnSafe">Safe On</button>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button id="btnSettings" class="ghost">Refresh Settings</button>
+      <button id="btnDash" class="ghost">Refresh Dashboard</button>
+    </div>
+
+    <div id="dashboard" class="out" style="display:none"></div>
+    <div id="out" class="out">Ready.</div>
+  </section>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const panel = $("panel");
+    const out = $("out");
+    const dashboard = $("dashboard");
+
+    function write(msg) {
+      const stamp = new Date().toLocaleTimeString();
+      out.textContent = `[${stamp}] ${msg}\n` + out.textContent.slice(0, 7000);
+    }
+
+    function toggle(open) {
+      const next = typeof open === "boolean" ? open : !panel.classList.contains("open");
+      panel.classList.toggle("open", next);
+      if (next) $("commandText").focus();
+    }
+
+    async function sha256Hex(text) {
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest("SHA-256", enc.encode(text));
+      const arr = Array.from(new Uint8Array(buf));
+      return arr.map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function hmacSha256Hex(key, message) {
+      const enc = new TextEncoder();
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(key),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+      const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
+      return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function nonce() {
+      const arr = new Uint8Array(16);
+      crypto.getRandomValues(arr);
+      return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function creds() {
+      return {
+        baseUrl: $("baseUrl").value.trim().replace(/\/$/, ""),
+        token: $("token").value.trim(),
+        signingKey: $("signingKey").value.trim(),
+        deviceId: $("deviceId").value.trim(),
+        masterPassword: $("masterPassword").value,
+      };
+    }
+
+    function setCredState(msg) {
+      $("credState").textContent = msg;
+      setTimeout(() => { $("credState").textContent = ""; }, 2200);
+    }
+
+    function saveCreds() {
+      localStorage.setItem("jarvis.quick.base", $("baseUrl").value.trim());
+      localStorage.setItem("jarvis.quick.token", $("token").value.trim());
+      localStorage.setItem("jarvis.quick.key", $("signingKey").value.trim());
+      localStorage.setItem("jarvis.quick.device", $("deviceId").value.trim());
+      setCredState("Saved");
+    }
+
+    function loadCreds() {
+      $("baseUrl").value = localStorage.getItem("jarvis.quick.base") || window.location.origin;
+      $("token").value = localStorage.getItem("jarvis.quick.token") || "";
+      $("signingKey").value = localStorage.getItem("jarvis.quick.key") || "";
+      $("deviceId").value = localStorage.getItem("jarvis.quick.device") || "";
+    }
+
+    async function signedFetch(path, method, bodyObj) {
+      const c = creds();
+      if (!c.baseUrl || !c.token || !c.signingKey) throw new Error("Missing base URL/token/signing key.");
+      const body = bodyObj ? JSON.stringify(bodyObj) : "";
+      const ts = `${Date.now() / 1000}`;
+      const n = nonce();
+      const signingMaterial = `${ts}\n${n}\n${body}`;
+      const sig = await hmacSha256Hex(c.signingKey, signingMaterial);
+      const headers = {
+        "Authorization": `Bearer ${c.token}`,
+        "X-Jarvis-Timestamp": ts,
+        "X-Jarvis-Nonce": n,
+        "X-Jarvis-Signature": sig,
+      };
+      if (c.deviceId) headers["X-Jarvis-Device-Id"] = c.deviceId;
+      if (c.masterPassword) headers["X-Jarvis-Master-Password"] = c.masterPassword;
+      if (bodyObj) headers["Content-Type"] = "application/json";
+
+      const res = await fetch(`${c.baseUrl}${path}`, {
+        method,
+        headers,
+        body: bodyObj ? body : undefined,
+      });
+      const text = await res.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch { data = { ok: false, raw: text }; }
+      if (!res.ok) throw new Error(JSON.stringify(data));
+      return data;
+    }
+
+    async function sendCommand(text) {
+      const payload = {
+        text,
+        execute: $("execute").checked,
+        approve_privileged: $("approve").checked,
+        speak: $("speak").checked,
+      };
+      const data = await signedFetch("/command", "POST", payload);
+      const intent = data.intent || "unknown";
+      write(`intent=${intent} ok=${data.ok} exit=${data.command_exit_code}`);
+      if (Array.isArray(data.stdout_tail) && data.stdout_tail.length) {
+        write(data.stdout_tail.join("\n"));
+      }
+    }
+
+    async function updateSettings() {
+      const data = await signedFetch("/settings", "GET");
+      write(`settings loaded: paused=${data.settings?.runtime_control?.daemon_paused} safe=${data.settings?.runtime_control?.safe_mode} gaming=${data.settings?.gaming_mode?.enabled}`);
+    }
+
+    async function updateDashboard() {
+      const data = await signedFetch("/dashboard", "GET");
+      const d = data.dashboard || {};
+      const ranking = Array.isArray(d.ranking) ? d.ranking : [];
+      const etas = Array.isArray(d.etas) ? d.etas : [];
+      const lines = [];
+      lines.push(`Score: ${d.jarvis?.score_pct ?? 0}% | Delta: ${d.jarvis?.delta_vs_prev_pct ?? 0}%`);
+      lines.push("Ranking:");
+      ranking.slice(0, 8).forEach((r, i) => lines.push(`${i + 1}. ${r.name} - ${r.score_pct}%`));
+      lines.push("ETA:");
+      etas.forEach((e) => {
+        const eta = e.eta || {};
+        lines.push(`${e.target_name}: ${eta.status} | runs=${eta.runs ?? "n/a"} | days=${eta.days ?? "n/a"}`);
+      });
+      dashboard.style.display = "block";
+      dashboard.textContent = lines.join("\n");
+      write("dashboard refreshed");
+    }
+
+    function bindDictation() {
+      const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!Speech) {
+        write("Voice dictation not available in this browser.");
+        return;
+      }
+      const rec = new Speech();
+      rec.lang = "en-US";
+      rec.maxAlternatives = 1;
+      rec.interimResults = false;
+      rec.onresult = (evt) => {
+        const t = evt.results?.[0]?.[0]?.transcript || "";
+        $("commandText").value = t;
+        write(`dictation: ${t}`);
+      };
+      rec.onerror = (evt) => write(`dictation error: ${evt.error || "unknown"}`);
+      rec.start();
+    }
+
+    async function quickRuntime(commandText) {
+      $("commandText").value = commandText;
+      await sendCommand(commandText);
+    }
+
+    $("fab").onclick = () => toggle();
+    $("btnClose").onclick = () => toggle(false);
+    $("btnSaveCreds").onclick = saveCreds;
+    $("btnDictate").onclick = bindDictation;
+    $("btnSend").onclick = async () => {
+      const t = $("commandText").value.trim();
+      if (!t) return;
+      try { await sendCommand(t); } catch (err) { write(`send failed: ${err.message || err}`); }
+    };
+    $("btnPause").onclick = async () => { try { await quickRuntime("Jarvis, pause daemon"); } catch (e) { write(e.message || e); } };
+    $("btnResume").onclick = async () => { try { await quickRuntime("Jarvis, resume daemon"); } catch (e) { write(e.message || e); } };
+    $("btnSafe").onclick = async () => { try { await quickRuntime("Jarvis, enable safe mode"); } catch (e) { write(e.message || e); } };
+    $("btnSettings").onclick = async () => { try { await updateSettings(); } catch (e) { write(`settings failed: ${e.message || e}`); } };
+    $("btnDash").onclick = async () => { try { await updateDashboard(); } catch (e) { write(`dashboard failed: ${e.message || e}`); } };
+
+    document.addEventListener("keydown", async (evt) => {
+      if (evt.ctrlKey && evt.code === "Space") { evt.preventDefault(); toggle(); return; }
+      if (evt.ctrlKey && evt.key === "Enter") {
+        evt.preventDefault();
+        const t = $("commandText").value.trim();
+        if (!t) return;
+        try { await sendCommand(t); } catch (err) { write(`send failed: ${err.message || err}`); }
+      }
+    });
+
+    loadCreds();
+    write("Quick panel ready.");
+  </script>
+</body>
+</html>

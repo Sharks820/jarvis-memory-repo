@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import sys
-
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest, run_shell_command
 
@@ -51,3 +49,20 @@ def test_run_shell_command_timeout_returns_124() -> None:
     assert rc == 124
     assert isinstance(stdout, str)
     assert "timed out" in stderr.lower()
+
+
+def test_task_orchestrator_rejects_output_path_outside_repo(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    orch = TaskOrchestrator(store, tmp_path)
+    req = TaskRequest(
+        task_type="image",
+        prompt="Generate image",
+        execute=True,
+        has_explicit_approval=False,
+        model="qwen3-coder:30b",
+        endpoint="http://127.0.0.1:11434",
+        output_path=str((tmp_path.parent / "outside.png").resolve()),
+    )
+    result = orch.run(req)
+    assert result.allowed is False
+    assert "output path" in result.reason.lower()

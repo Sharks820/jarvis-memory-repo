@@ -1,0 +1,90 @@
+{
+  "generated_utc": "2026-02-22T10:58:20.664157+00:00",
+  "methodology": {
+    "metric": "golden_task_score_pct",
+    "note": "Proxy targets are configurable local benchmarks, not vendor-internal model scores.",
+    "history_runs": 4,
+    "slope_score_pct_per_run": 0.0,
+    "avg_days_per_run": 0.05
+  },
+  "jarvis": {
+    "score_pct": 0.0,
+    "delta_vs_prev_pct": -38.89,
+    "window_avg_pct": 9.72,
+    "latest_model": "qwen3:latest",
+    "latest_ts": "2026-02-22T08:33:58.013226+00:00"
+  },
+  "ranking": [
+    {
+      "id": "codex_5_3_proxy",
+      "name": "Codex 5.3 (Proxy)",
+      "score_pct": 94.0,
+      "kind": "proxy_target"
+    },
+    {
+      "id": "claude_opus_4_6_proxy",
+      "name": "Claude Opus 4.6 (Proxy)",
+      "score_pct": 92.0,
+      "kind": "proxy_target"
+    },
+    {
+      "id": "gemini_proxy",
+      "name": "Gemini Reasoning (Proxy)",
+      "score_pct": 88.0,
+      "kind": "proxy_target"
+    },
+    {
+      "id": "jarvis_unlimited",
+      "name": "Jarvis Unlimited",
+      "score_pct": 0.0,
+      "kind": "live"
+    }
+  ],
+  "etas": [
+    {
+      "target_id": "gemini_proxy",
+      "target_name": "Gemini Reasoning (Proxy)",
+      "target_score_pct": 88.0,
+      "eta": {
+        "runs": null,
+        "days": null,
+        "status": "insufficient_positive_trend"
+      }
+    },
+    {
+      "target_id": "claude_opus_4_6_proxy",
+      "target_name": "Claude Opus 4.6 (Proxy)",
+      "target_score_pct": 92.0,
+      "eta": {
+        "runs": null,
+        "days": null,
+        "status": "insufficient_positive_trend"
+      }
+    },
+    {
+      "target_id": "codex_5_3_proxy",
+      "target_name": "Codex 5.3 (Proxy)",
+      "target_score_pct": 94.0,
+      "eta": {
+        "runs": null,
+        "days": null,
+        "status": "insufficient_positive_trend"
+      }
+    }
+  ],
+  "memory_regression": {
+    "status": "pass",
+    "total_records": 0,
+    "unique_hashes": 0,
+    "duplicate_ratio": 0.0,
+    "branch_entropy": 0.0,
+    "branch_count": 0,
+    "unresolved_conflicts": 0,
+    "conflict_total": 0,
+    "generated_utc": "2026-02-22T10:58:20.664157+00:00"
+  },
+  "achievements": {
+    "new": [],
+    "all": []
+  }
+}

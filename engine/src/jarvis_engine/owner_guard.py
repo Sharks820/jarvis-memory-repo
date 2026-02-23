@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+DEFAULT_OWNER_GUARD = {
+    "enabled": False,
+    "owner_user_id": "",
+    "trusted_mobile_devices": [],
+    "master_password_hash": "",  # nosec B105
+    "master_password_salt_b64": "",  # nosec B105
+    "master_password_iterations": 200000,  # nosec B105
+    "updated_utc": "",
+}
+
+
+def owner_guard_path(root: Path) -> Path:
+    return root / ".planning" / "security" / "owner_guard.json"
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    os.replace(tmp_path, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def read_owner_guard(root: Path) -> dict[str, Any]:
+    path = owner_guard_path(root)
+    if not path.exists():
+        return dict(DEFAULT_OWNER_GUARD)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return dict(DEFAULT_OWNER_GUARD)
+    if not isinstance(raw, dict):
+        return dict(DEFAULT_OWNER_GUARD)
+    devices = raw.get("trusted_mobile_devices", [])
+    if not isinstance(devices, list):
+        devices = []
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "owner_user_id": str(raw.get("owner_user_id", "")).strip()[:64],
+        "trusted_mobile_devices": [str(d).strip()[:128] for d in devices if str(d).strip()],
+        "master_password_hash": str(raw.get("master_password_hash", "")).strip(),
+        "master_password_salt_b64": str(raw.get("master_password_salt_b64", "")).strip(),
+        "master_password_iterations": int(raw.get("master_password_iterations", 200000)),
+        "updated_utc": str(raw.get("updated_utc", "")),
+    }
+
+
+def write_owner_guard(
+    root: Path,
+    *,
+    enabled: bool | None = None,
+    owner_user_id: str | None = None,
+    trusted_mobile_devices: list[str] | None = None,
+) -> dict[str, Any]:
+    state = read_owner_guard(root)
+    if enabled is not None:
+        state["enabled"] = enabled
+    if owner_user_id is not None:
+        state["owner_user_id"] = owner_user_id.strip()[:64]
+    if trusted_mobile_devices is not None:
+        state["trusted_mobile_devices"] = [
+            str(d).strip()[:128] for d in trusted_mobile_devices if str(d).strip()
+        ]
+    state["updated_utc"] = datetime.now(UTC).isoformat()
+    _atomic_write_json(owner_guard_path(root), state)
+    return state
+
+
+def _hash_master_password(password: str, *, salt: bytes, iterations: int) -> str:
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return digest.hex()
+
+
+def set_master_password(root: Path, password: str, *, iterations: int = 200000) -> dict[str, Any]:
+    cleaned = password.strip()
+    if len(cleaned) < 10:
+        raise ValueError("master password must be at least 10 characters")
+    salt = secrets.token_bytes(16)
+    state = read_owner_guard(root)
+    state["master_password_salt_b64"] = base64.b64encode(salt).decode("ascii")
+    state["master_password_iterations"] = int(max(100000, iterations))
+    state["master_password_hash"] = _hash_master_password(
+        cleaned,
+        salt=salt,
+        iterations=int(state["master_password_iterations"]),
+    )
+    state["updated_utc"] = datetime.now(UTC).isoformat()
+    _atomic_write_json(owner_guard_path(root), state)
+    return state
+
+
+def clear_master_password(root: Path) -> dict[str, Any]:
+    state = read_owner_guard(root)
+    state["master_password_hash"] = ""  # nosec B105
+    state["master_password_salt_b64"] = ""  # nosec B105
+    state["master_password_iterations"] = 200000
+    _atomic_write_json(owner_guard_path(root), state)
+    return state
+
+
+def verify_master_password(root: Path, password: str) -> bool:
+    state = read_owner_guard(root)
+    expected = str(state.get("master_password_hash", "")).strip()
+    salt_b64 = str(state.get("master_password_salt_b64", "")).strip()
+    iterations = int(state.get("master_password_iterations", 200000))
+    if not expected or not salt_b64:
+        return False
+    try:
+        salt = base64.b64decode(salt_b64.encode("ascii"), validate=True)
+    except ValueError:
+        return False
+    actual = _hash_master_password(password.strip(), salt=salt, iterations=max(100000, iterations))
+    return hmac.compare_digest(actual, expected)
+
+
+def trust_mobile_device(root: Path, device_id: str) -> dict[str, Any]:
+    state = read_owner_guard(root)
+    cleaned = device_id.strip()[:128]
+    if not cleaned:
+        raise ValueError("device_id is required")
+    trusted = {str(d).strip()[:128] for d in state.get("trusted_mobile_devices", []) if str(d).strip()}
+    trusted.add(cleaned)
+    return write_owner_guard(root, trusted_mobile_devices=sorted(trusted))
+
+
+def revoke_mobile_device(root: Path, device_id: str) -> dict[str, Any]:
+    state = read_owner_guard(root)
+    cleaned = device_id.strip()[:128]
+    trusted = [d for d in state.get("trusted_mobile_devices", []) if d != cleaned]
+    return write_owner_guard(root, trusted_mobile_devices=trusted)

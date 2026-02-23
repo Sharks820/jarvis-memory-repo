@@ -1,0 +1,12 @@
+- Immutable Event Log: append-only store of interactions and memory mutations with hashes.
+- Versioned Context Snapshots: periodic checkpoints enabling rollback to known-good states.
+- Differential Integrity Checks: hash comparisons between current and previous memory states.
+- Semantic Fingerprinting: compact semantic signatures for key facts to catch conceptual drift.
+- Read-Only Reference Corpus: immutable base knowledge with runtime overlay layers.
+- Self-Auditing Queries: background consistency checks against source events.
+- Capability Sandboxing: stricter controls for deletion and bulk memory updates.
+- Temporal Consistency Enforcement: monotonic timestamps and causal ordering.
+- Entropy Monitoring: detect sudden topic/retention shifts as corruption signals.
+- Deterministic Replay: reconstruct prior states from event log + snapshots.
+- Multi-Modal Redundancy: critical facts stored as structured + textual + semantic forms.
+- Graceful Degradation Boundaries: enforce maximum memory delta per validation cycle.
