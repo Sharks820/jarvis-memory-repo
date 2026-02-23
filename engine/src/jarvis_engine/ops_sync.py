@@ -293,9 +293,9 @@ def load_email_items(limit: int = 20) -> list[dict]:
 
     items: list[dict] = []
     try:
-        with imaplib.IMAP4_SSL(host) as client:
+        with imaplib.IMAP4_SSL(host, timeout=30) as client:
             client.login(user, password)
-            client.select("INBOX")
+            client.select("INBOX", readonly=True)
             typ, data = client.search(None, "UNSEEN")
             if typ != "OK":
                 return []
@@ -307,10 +307,14 @@ def load_email_items(limit: int = 20) -> list[dict]:
                 raw_bytes = msg_data[0][1]
                 msg = message_from_bytes(raw_bytes)
                 subject = _decode_email_header(msg.get("Subject", "No subject"))
-                importance = _email_importance(subject)
+                sender = _decode_email_header(msg.get("From", ""))
+                date_str = msg.get("Date", "")
+                importance = _triage_email(sender, subject)
                 items.append(
                     {
                         "subject": subject,
+                        "from": sender,
+                        "date": date_str,
                         "read": False,
                         "importance": importance,
                     }
@@ -335,10 +339,25 @@ def _decode_email_header(value: str) -> str:
     return "".join(parts).strip()
 
 
+def _triage_email(sender: str, subject: str) -> str:
+    """Multi-signal email importance triage using sender and subject keywords."""
+    lowered_subject = subject.lower()
+    lowered_sender = sender.lower()
+    high_subject_markers = [
+        "urgent", "action required", "payment due", "invoice",
+        "security", "incident", "deadline", "expiring", "overdue",
+    ]
+    high_sender_markers = ["noreply@", "alert@", "billing@", "security@"]
+    if any(m in lowered_subject for m in high_subject_markers):
+        return "high"
+    if any(m in lowered_sender for m in high_sender_markers):
+        return "high"
+    return "normal"
+
+
 def _email_importance(subject: str) -> str:
-    lowered = subject.lower()
-    high_markers = ["urgent", "action required", "payment due", "invoice", "security", "incident"]
-    return "high" if any(m in lowered for m in high_markers) else "normal"
+    """Legacy single-signal importance (kept for backward compatibility)."""
+    return _triage_email("", subject)
 
 
 def _is_safe_calendar_url(url: str) -> bool:
