@@ -1,12 +1,24 @@
 {
-  "profile": "balanced",
-  "primary_runtime": "desktop_pc",
-  "secondary_runtime": "weaker_laptop",
-  "security_strictness": "balanced",
-  "operation_mode": "teacher_assisted",
-  "cloud_burst_enabled": true,
-  "access_channels": ["desktop", "mobile"],
-  "regression_gate_enabled": true,
-  "capability_mode": "tiered_authorization",
+  "mode": "yolo",
+  "depth": "comprehensive",
+  "parallelization": true,
+  "commit_docs": true,
+  "model_profile": "quality",
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "auto_advance": false
+  },
+  "project": {
+    "profile": "balanced",
+    "primary_runtime": "desktop_pc",
+    "secondary_runtime": "weaker_laptop",
+    "security_strictness": "balanced",
+    "cloud_burst_enabled": true,
+    "access_channels": ["desktop", "mobile"],
+    "regression_gate_enabled": true,
+    "capability_mode": "tiered_authorization"
+  },
   "last_updated": "2026-02-22"
 }
