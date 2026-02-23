@@ -34,12 +34,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. CLI commands, mobile API endpoints, and daemon loop all dispatch through the same Command Bus -- no business logic lives in interface code
   4. Memory records are automatically classified into the correct branch (ops, coding, health, etc.) using embedding similarity rather than keyword rules
   5. All 125+ existing tests pass without modification to test assertions (adapter shims are acceptable)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Command Bus architecture and main.py decomposition
-- [ ] 01-02: SQLite + FTS5 + sqlite-vec memory engine with hybrid search
-- [ ] 01-03: Enriched ingestion pipeline and data migration
+- [ ] 01-01-PLAN.md -- Command Bus architecture and main.py decomposition
+- [ ] 01-02-PLAN.md -- SQLite + FTS5 + sqlite-vec memory engine with hybrid search
+- [ ] 01-03-PLAN.md -- Enriched ingestion pipeline and data migration
 
 ### Phase 2: Knowledge Graph and Anti-Regression
 **Goal**: Jarvis builds a web of interconnected facts from everything it ingests, protects confirmed knowledge with immutable locks, and can prove nothing has been lost between sessions
@@ -170,7 +170,7 @@ Note: Phases 3, 6, and 8 depend only on Phase 1 and could theoretically run in p
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Memory Revolution and Architecture | 0/3 | Not started | - |
+| 1. Memory Revolution and Architecture | 0/3 | Planning complete | - |
 | 2. Knowledge Graph and Anti-Regression | 0/2 | Not started | - |
 | 3. Intelligence Routing | 0/2 | Not started | - |
 | 4. Connectors and Daily Intelligence | 0/2 | Not started | - |
