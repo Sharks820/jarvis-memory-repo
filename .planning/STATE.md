@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 3 -- Intelligence Routing (COMPLETE)
+**Current focus:** Phase 4 -- Connectors and Daily Intelligence (IN PROGRESS)
 
 ## Current Position
 
-Phase: 3 of 9 (Intelligence Routing) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 3 complete -- both plans (03-01 Gateway Foundation, 03-02 Intent Classification) done
-Last activity: 2026-02-23 -- Completed IntentClassifier, Command Bus wiring, and routing tests
+Phase: 4 of 9 (Connectors and Daily Intelligence)
+Plan: 1 of 2 in current phase (04-01 complete)
+Status: Plan 04-01 (Calendar & Task Connector Upgrade) complete -- ICS parsing with icalendar, task source abstraction
+Last activity: 2026-02-23 -- Completed calendar connector upgrade and task source abstraction
 
-Progress: [████░░░░░░] 37%
+Progress: [████▓░░░░░] 42%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: ~13min
-- Total execution time: 1.49 hours
+- Total plans completed: 8
+- Average duration: ~12min
+- Total execution time: 1.57 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [████░░░░░░] 37%
 | 01 | 3/3 | 65min | 22min |
 | 02 | 2/2 | 14min | 7min |
 | 03 | 2/2 | 10min | 5min |
+| 04 | 1/2 | 5min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (6min), 02-02 (8min), 03-01 (4min), 03-02 (6min)
+- Last 5 plans: 02-02 (8min), 03-01 (4min), 03-02 (6min), 04-01 (5min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -82,6 +83,10 @@ Recent decisions affecting current work:
 - [03-02]: RouteHandler dual-path: query-based via IntentClassifier when query provided, legacy risk/complexity via ModelRouter otherwise
 - [03-02]: QueryHandler uses lazy imports for gateway.models to avoid import-time SDK dependency
 - [03-02]: Gateway wiring in create_app() wrapped in try/except for graceful degradation
+- [04-01]: Lazy import icalendar inside _parse_ics() with fallback to line-by-line parser for graceful degradation
+- [04-01]: UTC-based date range for recurring event expansion (midnight-to-midnight UTC)
+- [04-01]: Task source selection via JARVIS_TASK_SOURCE env var with default json, todoist, and google_tasks options
+- [04-01]: Google Tasks returns empty list with TODO comment -- requires OAuth2, deferred to future phase
 
 ### Pending Todos
 
@@ -95,5 +100,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 03-02-PLAN.md (Intent Classification & Command Bus Wiring) -- Phase 3 complete
+Stopped at: Completed 04-01-PLAN.md (Calendar & Task Connector Upgrade)
 Resume file: None

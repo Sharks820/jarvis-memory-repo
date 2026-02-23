@@ -63,9 +63,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Connectors (CONN)
 
-- [ ] **CONN-01**: Calendar connector reads real events from Google Calendar or ICS feed
+- [x] **CONN-01**: Calendar connector reads real events from Google Calendar or ICS feed
 - [ ] **CONN-02**: Email connector reads and triages messages via IMAP (read-only initially)
-- [ ] **CONN-03**: Task connector integrates with actual task source (not just local file)
+- [x] **CONN-03**: Task connector integrates with actual task source (not just local file)
 - [ ] **CONN-04**: Daily briefing combines real calendar events, email summaries, tasks, medications, and memory context into genuinely useful morning brief
 - [ ] **CONN-05**: Proactive assistance system surfaces relevant info without being asked (bill due alerts, medication reminders, meeting prep)
 
@@ -143,9 +143,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INTL-03 | Phase 3 | Complete |
 | INTL-04 | Phase 3 | Complete |
 | INTL-05 | Phase 9 | Pending |
-| CONN-01 | Phase 4 | Pending |
+| CONN-01 | Phase 4 | Complete |
 | CONN-02 | Phase 4 | Pending |
-| CONN-03 | Phase 4 | Pending |
+| CONN-03 | Phase 4 | Complete |
 | CONN-04 | Phase 4 | Pending |
 | CONN-05 | Phase 9 | Pending |
 | HARV-01 | Phase 5 | Pending |
