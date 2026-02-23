@@ -1,7 +1,7 @@
 """SQLite + FTS5 + sqlite-vec memory engine.
 
 Provides ACID-transactional storage for memory records with:
-- Full-text keyword search via FTS5 (contentless standalone)
+- Full-text keyword search via FTS5
 - Semantic similarity search via sqlite-vec KNN
 - WAL mode for concurrent access from daemon + API + CLI
 - Write-lock serialization via threading.Lock
@@ -83,7 +83,7 @@ class MemoryEngine:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_content_hash ON records(content_hash);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_records
-                USING fts5(record_id, summary, content='', contentless_delete=1);
+                USING fts5(record_id, summary);
 
             CREATE TABLE IF NOT EXISTS facts (
                 key TEXT PRIMARY KEY,
