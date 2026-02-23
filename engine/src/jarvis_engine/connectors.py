@@ -118,7 +118,10 @@ def grant_connector_permission(repo_root: Path, connector_id: str, scopes: list[
 def save_connector_permissions(repo_root: Path, payload: dict[str, Any]) -> None:
     path = _permissions_path(repo_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    # Atomic write: write to temp file then rename to prevent corruption on crash
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    os.replace(str(tmp), str(path))
 
 
 def evaluate_connector_statuses(repo_root: Path) -> list[ConnectorStatus]:

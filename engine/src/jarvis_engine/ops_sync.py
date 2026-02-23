@@ -135,7 +135,10 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
     ics_file = os.getenv("JARVIS_CALENDAR_ICS_FILE", "").strip()
     allow_remote_url = os.getenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "").strip().lower() in {"1", "true", "yes"}
     if ics_file:
-        p = Path(ics_file)
+        p = Path(ics_file).expanduser()
+        # Block symlinks and UNC paths to prevent path traversal
+        if str(p).startswith("\\\\") or p.is_symlink():
+            return []
         if p.exists():
             return _parse_ics(p.read_text(encoding="utf-8", errors="replace"), target_date=target_date)
     if ics_url:
@@ -208,6 +211,8 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
 def _parse_ics_fallback(text: str) -> list[dict]:
     """Simple line-by-line ICS parser (fallback when icalendar is not installed)."""
+    # Unfold RFC 5545 line folding (CRLF + space/tab continuation)
+    text = text.replace("\r\n ", "").replace("\r\n\t", "").replace("\n ", "").replace("\n\t", "")
     lines = [line.strip() for line in text.splitlines()]
     events: list[dict] = []
     current: dict[str, str] | None = None
@@ -276,7 +281,9 @@ def _load_todoist_tasks() -> list[dict]:
             }
             for t in tasks
         ]
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Todoist API call failed: %s", exc)
         return []
 
 
@@ -297,7 +304,7 @@ def load_email_items(limit: int = 20) -> list[dict]:
             client.login(user, password)
             client.select("INBOX", readonly=True)
             typ, data = client.search(None, "UNSEEN")
-            if typ != "OK":
+            if typ != "OK" or not data or not data[0]:
                 return []
             ids = data[0].split()[-limit:]
             for msg_id in ids:
@@ -347,10 +354,14 @@ def _triage_email(sender: str, subject: str) -> str:
         "urgent", "action required", "payment due", "invoice",
         "security", "incident", "deadline", "expiring", "overdue",
     ]
-    high_sender_markers = ["noreply@", "alert@", "billing@", "security@"]
+    high_sender_markers = ["noreply@", "alert@", "billing@", "security@", "no-reply@"]
     if any(m in lowered_subject for m in high_subject_markers):
         return "high"
-    if any(m in lowered_sender for m in high_sender_markers):
+    # Extract email address portion for sender matching to avoid substring false positives
+    sender_email = lowered_sender
+    if "<" in sender_email:
+        sender_email = sender_email.split("<")[-1].rstrip(">")
+    if any(sender_email.startswith(m) or sender_email.split("@")[0] + "@" == m for m in high_sender_markers):
         return "high"
     return "normal"
 

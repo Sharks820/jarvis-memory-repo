@@ -49,7 +49,8 @@ class OpsBriefHandler:
         if self._gateway is not None:
             try:
                 brief = build_narrative_brief(snapshot, gateway=self._gateway)
-            except Exception:
+            except Exception as exc:
+                logger.warning("Narrative brief generation failed in handler: %s", exc)
                 brief = ""
         if not brief:
             brief = build_daily_brief(snapshot)
