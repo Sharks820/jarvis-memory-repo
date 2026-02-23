@@ -66,6 +66,13 @@ from jarvis_engine.commands.security_commands import (
     PhoneSpamGuardCommand,
     RuntimeControlCommand,
 )
+from jarvis_engine.commands.knowledge_commands import (
+    ContradictionListCommand,
+    ContradictionResolveCommand,
+    FactLockCommand,
+    KnowledgeRegressionCommand,
+    KnowledgeStatusCommand,
+)
 
 from jarvis_engine.handlers.memory_handlers import (
     BrainCompactHandler,
@@ -125,6 +132,13 @@ from jarvis_engine.handlers.security_handlers import (
     PhoneSpamGuardHandler,
     RuntimeControlHandler,
 )
+from jarvis_engine.handlers.knowledge_handlers import (
+    ContradictionListHandler,
+    ContradictionResolveHandler,
+    FactLockHandler,
+    KnowledgeRegressionHandler,
+    KnowledgeStatusHandler,
+)
 
 
 def create_app(root: Path) -> CommandBus:
@@ -141,6 +155,7 @@ def create_app(root: Path) -> CommandBus:
     engine = None
     embed_service = None
     pipeline = None
+    kg = None
 
     if db_path.exists():
         try:
@@ -221,5 +236,12 @@ def create_app(root: Path) -> CommandBus:
     bus.register(PhoneActionCommand, PhoneActionHandler(root).handle)
     bus.register(PhoneSpamGuardCommand, PhoneSpamGuardHandler(root).handle)
     bus.register(PersonaConfigCommand, PersonaConfigHandler(root).handle)
+
+    # -- Knowledge --
+    bus.register(KnowledgeStatusCommand, KnowledgeStatusHandler(root, kg=kg).handle)
+    bus.register(ContradictionListCommand, ContradictionListHandler(root, kg=kg).handle)
+    bus.register(ContradictionResolveCommand, ContradictionResolveHandler(root, kg=kg).handle)
+    bus.register(FactLockCommand, FactLockHandler(root, kg=kg).handle)
+    bus.register(KnowledgeRegressionCommand, KnowledgeRegressionHandler(root, kg=kg).handle)
 
     return bus

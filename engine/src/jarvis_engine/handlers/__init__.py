@@ -58,6 +58,13 @@ from jarvis_engine.handlers.security_handlers import (
     PhoneSpamGuardHandler,
     RuntimeControlHandler,
 )
+from jarvis_engine.handlers.knowledge_handlers import (
+    ContradictionListHandler,
+    ContradictionResolveHandler,
+    FactLockHandler,
+    KnowledgeRegressionHandler,
+    KnowledgeStatusHandler,
+)
 
 __all__ = [
     # Memory
@@ -112,4 +119,10 @@ __all__ = [
     "PhoneActionHandler",
     "PhoneSpamGuardHandler",
     "RuntimeControlHandler",
+    # Knowledge
+    "ContradictionListHandler",
+    "ContradictionResolveHandler",
+    "FactLockHandler",
+    "KnowledgeRegressionHandler",
+    "KnowledgeStatusHandler",
 ]

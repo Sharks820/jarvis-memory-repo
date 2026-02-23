@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 import webbrowser
 from datetime import UTC, datetime
@@ -129,6 +130,13 @@ from jarvis_engine.commands.security_commands import (
     PhoneSpamGuardCommand,
     RuntimeControlCommand,
 )
+from jarvis_engine.commands.knowledge_commands import (
+    ContradictionListCommand,
+    ContradictionResolveCommand,
+    FactLockCommand,
+    KnowledgeRegressionCommand,
+    KnowledgeStatusCommand,
+)
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
@@ -149,13 +157,21 @@ def _get_bus() -> CommandBus:
     return create_app(repo_root())
 
 
+_auto_ingest_lock = threading.Lock()
+
+
 def _auto_ingest_dedupe_path() -> Path:
     return repo_root() / ".planning" / "runtime" / "auto_ingest_dedupe.json"
 
 
 def _sanitize_memory_content(content: str) -> str:
-    cleaned = re.sub(r"(?i)(master\s*password\s*[:=]\s*)(\S+)", r"\1[redacted]", content)
-    cleaned = re.sub(r"(?i)(token\s*[:=]\s*)(\S+)", r"\1[redacted]", cleaned)
+    # Redact master password, tokens, API keys, secrets, signing keys, bearer tokens
+    cleaned = re.sub(
+        r"(?i)((?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+",
+        r"\1=[redacted]",
+        content,
+    )
+    cleaned = re.sub(r"(?i)(bearer)\s+\S+", r"\1 [redacted]", cleaned)
     return cleaned.strip()[:2000]
 
 
@@ -195,9 +211,17 @@ def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> s
     dedupe_path = _auto_ingest_dedupe_path()
     dedupe_material = f"{source}|{kind}|{task_id[:64]}|{safe_content.lower()}".encode("utf-8")
     dedupe_hash = hashlib.sha256(dedupe_material).hexdigest()
-    seen = _load_auto_ingest_hashes(dedupe_path)
-    if dedupe_hash in seen:
-        return ""
+    # Lock prevents race condition when daemon + CLI ingest concurrently.
+    # We lock around check + mark to prevent double-ingest, then do the
+    # actual ingestion outside the lock (it involves I/O).
+    with _auto_ingest_lock:
+        seen = _load_auto_ingest_hashes(dedupe_path)
+        seen_set = set(seen)
+        if dedupe_hash in seen_set:
+            return ""
+        # Mark as seen immediately to prevent concurrent duplicates
+        seen.append(dedupe_hash)
+        _store_auto_ingest_hashes(dedupe_path, seen)
 
     store = MemoryStore(repo_root())
     pipeline = IngestionPipeline(store)
@@ -219,8 +243,6 @@ def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> s
         )
     except ValueError:
         pass
-    seen.append(dedupe_hash)
-    _store_auto_ingest_hashes(dedupe_path, seen)
     return rec.record_id
 
 
@@ -665,6 +687,89 @@ def cmd_brain_regression(as_json: bool) -> int:
     print("brain_regression_report")
     for key, value in report.items():
         print(f"{key}={value}")
+    return 0
+
+
+def cmd_knowledge_status(as_json: bool) -> int:
+    result = _get_bus().dispatch(KnowledgeStatusCommand(as_json=as_json))
+    if as_json:
+        print(json.dumps({
+            "node_count": result.node_count,
+            "edge_count": result.edge_count,
+            "locked_count": result.locked_count,
+            "pending_contradictions": result.pending_contradictions,
+            "graph_hash": result.graph_hash,
+        }, ensure_ascii=True, indent=2))
+        return 0
+    print("knowledge_status")
+    print(f"node_count={result.node_count}")
+    print(f"edge_count={result.edge_count}")
+    print(f"locked_count={result.locked_count}")
+    print(f"pending_contradictions={result.pending_contradictions}")
+    print(f"graph_hash={result.graph_hash}")
+    return 0
+
+
+def cmd_contradiction_list(status: str, limit: int, as_json: bool) -> int:
+    result = _get_bus().dispatch(ContradictionListCommand(status=status, limit=limit))
+    if as_json:
+        print(json.dumps({"contradictions": result.contradictions}, ensure_ascii=True, indent=2, default=str))
+        return 0
+    if not result.contradictions:
+        print("No contradictions found.")
+        return 0
+    for c in result.contradictions:
+        print(f"id={c.get('contradiction_id')} node={c.get('node_id')} "
+              f"existing={c.get('existing_value')!r} incoming={c.get('incoming_value')!r} "
+              f"status={c.get('status')} created={c.get('created_at')}")
+    return 0
+
+
+def cmd_contradiction_resolve(contradiction_id: int, resolution: str, merge_value: str) -> int:
+    result = _get_bus().dispatch(ContradictionResolveCommand(
+        contradiction_id=contradiction_id,
+        resolution=resolution,
+        merge_value=merge_value,
+    ))
+    if result.success:
+        print(f"resolved=true node_id={result.node_id} resolution={result.resolution}")
+        print(result.message)
+    else:
+        print(f"resolved=false")
+        print(result.message)
+        return 1
+    return 0
+
+
+def cmd_fact_lock(node_id: str, action: str) -> int:
+    result = _get_bus().dispatch(FactLockCommand(node_id=node_id, action=action))
+    if result.success:
+        print(f"success=true node_id={result.node_id} locked={result.locked}")
+    else:
+        print(f"success=false node_id={result.node_id}")
+        return 1
+    return 0
+
+
+def cmd_knowledge_regression(snapshot_path: str, as_json: bool) -> int:
+    result = _get_bus().dispatch(KnowledgeRegressionCommand(
+        snapshot_path=snapshot_path,
+        as_json=as_json,
+    ))
+    report = result.report
+    if as_json:
+        print(json.dumps(report, ensure_ascii=True, indent=2, default=str))
+        return 0
+    status = report.get("status", "unknown")
+    print(f"knowledge_regression status={status}")
+    if report.get("message"):
+        print(report["message"])
+    for d in report.get("discrepancies", []):
+        print(f"  [{d.get('severity')}] {d.get('type')}: {d.get('message')}")
+    current = report.get("current", {})
+    if current:
+        print(f"  current: nodes={current.get('node_count', 0)} edges={current.get('edge_count', 0)} "
+              f"locked={current.get('locked_count', 0)} hash={current.get('graph_hash', '')}")
     return 0
 
 
@@ -2166,6 +2271,27 @@ def main() -> int:
     p_brain_regression = sub.add_parser("brain-regression", help="Run anti-regression health checks for brain memory.")
     p_brain_regression.add_argument("--json", action="store_true")
 
+    p_kg_status = sub.add_parser("knowledge-status", help="Show knowledge graph node/edge/locked/contradiction counts.")
+    p_kg_status.add_argument("--json", action="store_true")
+
+    p_clist = sub.add_parser("contradiction-list", help="List knowledge graph contradictions.")
+    p_clist.add_argument("--status", default="pending", help="Filter by status (pending, resolved, or empty for all).")
+    p_clist.add_argument("--limit", type=int, default=20)
+    p_clist.add_argument("--json", action="store_true")
+
+    p_cresolve = sub.add_parser("contradiction-resolve", help="Resolve a knowledge graph contradiction.")
+    p_cresolve.add_argument("contradiction_id", type=int, help="Contradiction ID to resolve.")
+    p_cresolve.add_argument("--resolution", required=True, choices=["accept_new", "keep_old", "merge"])
+    p_cresolve.add_argument("--merge-value", default="", help="Merged value (required for merge resolution).")
+
+    p_flock = sub.add_parser("fact-lock", help="Lock or unlock a knowledge graph fact node.")
+    p_flock.add_argument("node_id", help="Node ID to lock or unlock.")
+    p_flock.add_argument("--action", default="lock", choices=["lock", "unlock"])
+
+    p_kg_regression = sub.add_parser("knowledge-regression", help="Run knowledge graph regression check.")
+    p_kg_regression.add_argument("--snapshot", default="", help="Path to previous snapshot metadata JSON.")
+    p_kg_regression.add_argument("--json", action="store_true")
+
     p_snapshot = sub.add_parser("memory-snapshot", help="Create or verify signed memory snapshot.")
     p_snapshot_group = p_snapshot.add_mutually_exclusive_group(required=True)
     p_snapshot_group.add_argument("--create", action="store_true")
@@ -2477,6 +2603,30 @@ def main() -> int:
         )
     if args.command == "brain-regression":
         return cmd_brain_regression(as_json=args.json)
+    if args.command == "knowledge-status":
+        return cmd_knowledge_status(as_json=args.json)
+    if args.command == "contradiction-list":
+        return cmd_contradiction_list(
+            status=args.status,
+            limit=args.limit,
+            as_json=args.json,
+        )
+    if args.command == "contradiction-resolve":
+        return cmd_contradiction_resolve(
+            contradiction_id=args.contradiction_id,
+            resolution=args.resolution,
+            merge_value=args.merge_value,
+        )
+    if args.command == "fact-lock":
+        return cmd_fact_lock(
+            node_id=args.node_id,
+            action=args.action,
+        )
+    if args.command == "knowledge-regression":
+        return cmd_knowledge_regression(
+            snapshot_path=args.snapshot,
+            as_json=args.json,
+        )
     if args.command == "memory-snapshot":
         return cmd_memory_snapshot(
             create=args.create,

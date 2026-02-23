@@ -58,6 +58,13 @@ from jarvis_engine.commands.security_commands import (
     PhoneSpamGuardCommand,
     RuntimeControlCommand,
 )
+from jarvis_engine.commands.knowledge_commands import (
+    ContradictionListCommand,
+    ContradictionResolveCommand,
+    FactLockCommand,
+    KnowledgeRegressionCommand,
+    KnowledgeStatusCommand,
+)
 
 __all__ = [
     # Memory
@@ -112,4 +119,10 @@ __all__ = [
     "PhoneActionCommand",
     "PhoneSpamGuardCommand",
     "RuntimeControlCommand",
+    # Knowledge
+    "ContradictionListCommand",
+    "ContradictionResolveCommand",
+    "FactLockCommand",
+    "KnowledgeRegressionCommand",
+    "KnowledgeStatusCommand",
 ]
