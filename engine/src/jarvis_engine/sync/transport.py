@@ -42,17 +42,31 @@ def get_or_create_salt(salt_path: Path) -> bytes:
 
     New salt is 16 random bytes via ``os.urandom``.
     File permissions are set to 0o600 (owner-only).
+    Uses atomic write-then-rename to avoid TOCTOU race on creation.
     """
     if salt_path.exists():
         return salt_path.read_bytes()
 
     salt = os.urandom(16)
     salt_path.parent.mkdir(parents=True, exist_ok=True)
-    salt_path.write_bytes(salt)
+    # Atomic: write to temp file then rename to avoid race condition
+    tmp = salt_path.with_suffix(".tmp")
+    tmp.write_bytes(salt)
     try:
-        os.chmod(str(salt_path), 0o600)
+        os.chmod(str(tmp), 0o600)
     except OSError:
         pass  # Windows may not support chmod
+    try:
+        os.replace(str(tmp), str(salt_path))
+    except OSError:
+        # If replace fails (e.g. another process won the race), read the winner
+        if salt_path.exists():
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return salt_path.read_bytes()
+        raise
     logger.info("Created new sync salt at %s", salt_path)
     return salt
 
@@ -68,13 +82,17 @@ def encrypt_sync_payload(payload: dict[str, Any], fernet_key: bytes) -> bytes:
     return f.encrypt(compressed)
 
 
-def decrypt_sync_payload(token: bytes, fernet_key: bytes) -> dict[str, Any]:
+def decrypt_sync_payload(
+    token: bytes, fernet_key: bytes, ttl: int = 3600,
+) -> dict[str, Any]:
     """Decrypt and decompress a sync payload.
 
-    Pipeline: Fernet.decrypt -> zlib.decompress -> json.loads.
+    Pipeline: Fernet.decrypt(ttl) -> zlib.decompress -> json.loads.
+    The *ttl* parameter (seconds) rejects tokens older than the given window
+    to prevent replay of captured encrypted payloads. Default: 1 hour.
     """
     f = Fernet(fernet_key)
-    compressed = f.decrypt(token)
+    compressed = f.decrypt(token, ttl=ttl)
     raw = zlib.decompress(compressed)
     return json.loads(raw)
 
@@ -98,6 +116,6 @@ class SyncTransport:
         """Encrypt a sync payload dict."""
         return encrypt_sync_payload(payload, self._ensure_key())
 
-    def decrypt(self, token: bytes) -> dict[str, Any]:
+    def decrypt(self, token: bytes, ttl: int = 3600) -> dict[str, Any]:
         """Decrypt a sync payload token."""
-        return decrypt_sync_payload(token, self._ensure_key())
+        return decrypt_sync_payload(token, self._ensure_key(), ttl=ttl)

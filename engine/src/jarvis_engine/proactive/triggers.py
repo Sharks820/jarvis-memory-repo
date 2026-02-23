@@ -31,14 +31,15 @@ def check_medication_reminders(snapshot_data: dict) -> list[str]:
     """Check medications list for items with due_time within 30 minutes of now."""
     alerts: list[str] = []
     medications = snapshot_data.get("medications", [])
-    now = datetime.now(timezone.utc)
+    # Use local time since medication due_times are in local HH:MM format
+    now = datetime.now()
 
     for med in medications:
         due_time_str = med.get("due_time", "")
         if not due_time_str:
             continue
         try:
-            # Parse HH:MM format, use today's date
+            # Parse HH:MM format, use today's date in local time
             parts = due_time_str.split(":")
             due_hour, due_min = int(parts[0]), int(parts[1])
             due_dt = now.replace(hour=due_hour, minute=due_min, second=0, microsecond=0)

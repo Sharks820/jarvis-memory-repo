@@ -18,8 +18,13 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
     Returns a snapshot dict with date, local_pct, cloud_cost_usd, and total_queries
     for both 7-day and 30-day windows.
     """
-    summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
-    summary_30d = cost_tracker.local_vs_cloud_summary(days=30)
+    try:
+        summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
+        summary_30d = cost_tracker.local_vs_cloud_summary(days=30)
+    except Exception:
+        # Return empty snapshot on cost tracker failure rather than crashing
+        summary_7d = {"local_pct": 0.0, "cloud_cost_usd": 0.0, "total_count": 0}
+        summary_30d = {"local_pct": 0.0, "cloud_cost_usd": 0.0, "total_count": 0}
 
     snapshot = {
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),

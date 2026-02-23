@@ -513,13 +513,16 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             payload, _ = self._read_json_body_noauth(max_content_length=6_000)
             if payload is None:
                 return
+            # Bootstrap returns credentials so restrict to localhost first.
+            # The only exception is if JARVIS_ALLOW_REMOTE_BOOTSTRAP is set.
+            client_ip = str(self.client_address[0]).strip()
             allow_remote_bootstrap = os.getenv("JARVIS_ALLOW_REMOTE_BOOTSTRAP", "").strip().lower() in {
                 "1",
                 "true",
                 "yes",
             }
-            if (not self._client_is_private_or_loopback()) and (not allow_remote_bootstrap):
-                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Remote bootstrap is disabled."})
+            if client_ip not in ("127.0.0.1", "::1") and not allow_remote_bootstrap:
+                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
                 return
             master_password = str(payload.get("master_password", "")).strip()
             if not master_password:
@@ -545,10 +548,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 host = str(getattr(self.server, "server_name", "127.0.0.1"))
                 port = int(getattr(self.server, "server_port", 8787))
                 base_url = f"http://{host}:{port}"
-            client_ip = self.client_address[0]
-            if client_ip not in ("127.0.0.1", "::1"):
-                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
-                return
             logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
             self._write_json(
                 HTTPStatus.OK,
@@ -685,8 +684,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             device_id = str(payload.get("device_id", "")).strip()
-            if not device_id:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "device_id is required."})
+            if not device_id or len(device_id) > 128 or not device_id.isascii():
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
                 return
             sync_engine = getattr(self.server, "_sync_engine", None)
             sync_transport = getattr(self.server, "_sync_transport", None)
@@ -716,8 +715,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return
             device_id = str(payload.get("device_id", "")).strip()
             encrypted_payload = str(payload.get("encrypted_payload", "")).strip()
-            if not device_id:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "device_id is required."})
+            if not device_id or len(device_id) > 128 or not device_id.isascii():
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
                 return
             if not encrypted_payload:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "encrypted_payload is required."})

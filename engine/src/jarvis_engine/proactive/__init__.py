@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,7 @@ class ProactiveEngine:
         self._rules = rules
         self._notifier = notifier
         self._last_fired: dict[str, datetime] = {}
+        self._lock = threading.Lock()
 
     def evaluate(self, snapshot_data: dict) -> list[TriggerAlert]:
         """Check each rule, respect cooldowns, fire notifications, return alerts."""
@@ -41,12 +43,13 @@ class ProactiveEngine:
         alerts: list[TriggerAlert] = []
 
         for rule in self._rules:
-            # Check cooldown
-            last = self._last_fired.get(rule.rule_id)
-            if last is not None:
-                elapsed = (now - last).total_seconds() / 60.0
-                if elapsed < rule.cooldown_minutes:
-                    continue
+            # Check cooldown (thread-safe)
+            with self._lock:
+                last = self._last_fired.get(rule.rule_id)
+                if last is not None:
+                    elapsed = (now - last).total_seconds() / 60.0
+                    if elapsed < rule.cooldown_minutes:
+                        continue
 
             # Run the check function
             try:
@@ -69,10 +72,12 @@ class ProactiveEngine:
                 alerts.append(alert)
 
             self._notifier.send_batch(alerts[-len(messages):])
-            self._last_fired[rule.rule_id] = now
+            with self._lock:
+                self._last_fired[rule.rule_id] = now
 
         return alerts
 
     def reset_cooldowns(self) -> None:
         """Clear all cooldown state."""
-        self._last_fired.clear()
+        with self._lock:
+            self._last_fired.clear()
