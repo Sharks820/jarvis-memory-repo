@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Knowledge Graph and Anti-Regression** - Build fact extraction with NetworkX backed by SQLite, implement fact locks that prevent knowledge loss, contradiction quarantine, and regression verification
 - [ ] **Phase 3: Intelligence Routing** - Unified model gateway for Ollama + Anthropic, intent-based complexity routing, fallback chains, and per-query cost tracking
 - [ ] **Phase 4: Connectors and Daily Intelligence** - Real calendar, email, and task integrations replacing stubs, combined into a genuinely useful daily briefing
-- [ ] **Phase 5: Knowledge Harvesting** - Multi-source knowledge extraction from MiniMax, Kimi, Claude Code, Codex, and Gemini with deduplication, validation, and budget controls
+- [x] **Phase 5: Knowledge Harvesting** - Multi-source knowledge extraction from MiniMax, Kimi, Claude Code, Codex, and Gemini with deduplication, validation, and budget controls
 - [ ] **Phase 6: Voice and Personality** - Persona layer with British butler character and contextual tone adaptation, plus Whisper-grade speech-to-text for voice commands
 - [ ] **Phase 7: Continuous Learning and Self-Improvement** - Knowledge extraction from every interaction, cross-branch fact reasoning, temporal metadata on facts, and golden task evaluation
 - [ ] **Phase 8: Mobile-Desktop Sync** - Changelog-based bidirectional sync between desktop PC and Samsung Galaxy S25 Ultra with field-level conflict resolution and encrypted transport
@@ -98,8 +98,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- MiniMax, Kimi, and Gemini API harvester providers with orchestrator and pipeline integration
-- [ ] 05-02-PLAN.md -- Claude Code and Codex session ingestors, budget controls, semantic dedup, and Command Bus wiring
+- [x] 05-01-PLAN.md -- MiniMax, Kimi, and Gemini API harvester providers with orchestrator and pipeline integration
+- [x] 05-02-PLAN.md -- Claude Code and Codex session ingestors, budget controls, semantic dedup, and Command Bus wiring
 
 ### Phase 6: Voice and Personality
 **Goal**: Jarvis speaks with a distinctive British butler personality that adapts its tone to context, and can listen to voice commands with accuracy matching the Whisper app

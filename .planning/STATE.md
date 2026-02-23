@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 5 -- Knowledge Harvesting (IN PROGRESS)
+**Current focus:** Phase 5 -- Knowledge Harvesting (COMPLETE)
 
 ## Current Position
 
-Phase: 5 of 9 (Knowledge Harvesting)
-Plan: 1 of 2 in current phase (05-01 complete)
-Status: Harvesting provider abstraction and orchestrator complete -- MiniMax, Kimi, Gemini providers with pipeline ingestion
-Last activity: 2026-02-23 -- Completed knowledge harvesting providers and tests
+Phase: 6 of 9 (next phase)
+Plan: 0 of ? in current phase (Phase 5 fully complete)
+Status: Knowledge harvesting complete -- session ingestors, budget manager, semantic dedup, Command Bus wiring
+Last activity: 2026-02-23 -- Completed 05-02-PLAN.md (Session ingestors, budget, dedup, CLI)
 
-Progress: [█████▓░░░░] 55%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: ~10min
-- Total execution time: 1.77 hours
+- Total execution time: 1.93 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [█████▓░░░░] 55%
 | 02 | 2/2 | 14min | 7min |
 | 03 | 2/2 | 10min | 5min |
 | 04 | 2/2 | 11min | 5.5min |
-| 05 | 1/2 | 6min | 6min |
+| 05 | 2/2 | 16min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (4min), 03-02 (6min), 04-01 (5min), 04-02 (6min), 05-01 (6min)
-- Trend: Stable ~5-6min/plan
+- Last 5 plans: 03-02 (6min), 04-01 (5min), 04-02 (6min), 05-01 (6min), 05-02 (10min)
+- Trend: Stable ~6-10min/plan
 
 *Updated after each plan completion*
 
@@ -98,6 +98,12 @@ Recent decisions affecting current work:
 - [05-01]: Harvested content appends (confidence:0.50) marker to content text before pipeline ingestion
 - [05-01]: GeminiProvider does NOT inherit HarvesterProvider (different SDK -- google-genai vs OpenAI)
 - [05-01]: KimiNvidiaProvider overrides query() to pass extra_body with thinking disabled for instant mode
+- [05-02]: BudgetManager uses same SQLite DB as CostTracker and MemoryEngine (WAL mode shared)
+- [05-02]: Semantic dedup threshold at cosine > 0.92 with SHA-256 fallback when no embed service
+- [05-02]: Session ingestors filter assistant messages >100 chars (short texts are tool outputs)
+- [05-02]: CLAUDE_CONFIG_DIR env var as override for Claude Code session base path
+- [05-02]: Default budgets: minimax/kimi $1/day $10/month, gemini 50 req/day, kimi_nvidia 100 req/day
+- [05-02]: Harvesting wired in app.py with try/except for graceful degradation (same as gateway)
 
 ### Pending Todos
 
@@ -111,5 +117,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 05-01-PLAN.md (Knowledge Harvesting Providers)
+Stopped at: Completed 05-02-PLAN.md (Session Ingestors, Budget, Dedup, CLI)
 Resume file: None
