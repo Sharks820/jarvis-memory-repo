@@ -40,7 +40,14 @@ class ClaudeCodeIngestor:
         try:
             base = self.SESSION_BASE
             if project_path:
-                base = base / project_path
+                candidate = (base / project_path).resolve()
+                # Prevent path traversal outside SESSION_BASE
+                try:
+                    candidate.relative_to(base.resolve())
+                except ValueError:
+                    logger.warning("Path traversal blocked: %s", project_path)
+                    return []
+                base = candidate
             if not base.exists():
                 return []
             files = list(base.rglob("*.jsonl"))

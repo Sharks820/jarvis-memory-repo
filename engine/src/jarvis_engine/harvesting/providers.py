@@ -49,7 +49,13 @@ class HarvesterProvider:
     def _get_client(self):
         """Lazy-create OpenAI client on first use."""
         if self._client is None:
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError:
+                raise RuntimeError(
+                    f"Provider {self.name} requires 'openai' package. "
+                    "Install with: pip install openai>=1.0.0"
+                )
 
             self._client = OpenAI(api_key=self._api_key, base_url=self.base_url)
         return self._client
@@ -76,6 +82,13 @@ class HarvesterProvider:
             ],
             max_tokens=max_tokens,
         )
+
+        if not response.choices:
+            return HarvestResult(
+                provider=self.name,
+                text="",
+                model=self.model,
+            )
 
         choice = response.choices[0]
         text = choice.message.content or ""
@@ -160,6 +173,13 @@ class KimiNvidiaProvider(HarvesterProvider):
             extra_body={"thinking": {"type": "disabled"}},
         )
 
+        if not response.choices:
+            return HarvestResult(
+                provider=self.name,
+                text="",
+                model=self.model,
+            )
+
         choice = response.choices[0]
         text = choice.message.content or ""
         usage = response.usage
@@ -198,7 +218,13 @@ class GeminiProvider:
     def _get_client(self):
         """Lazy-create google-genai Client on first use."""
         if self._client is None:
-            from google import genai
+            try:
+                from google import genai
+            except ImportError:
+                raise RuntimeError(
+                    "GeminiProvider requires 'google-genai' package. "
+                    "Install with: pip install google-genai>=1.0.0"
+                )
 
             self._client = genai.Client(api_key=self._api_key)
         return self._client

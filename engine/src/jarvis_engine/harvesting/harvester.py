@@ -246,11 +246,13 @@ class KnowledgeHarvester:
                 engine = getattr(self._pipeline, "_engine", None)
                 if embed_service is not None and engine is not None:
                     embedding = embed_service.embed(text, prefix="search_document")
-                    # Search for similar existing content
-                    similar = engine.search_by_vector(embedding, limit=3)
-                    for record in similar:
-                        score = record.get("score", 0.0)
-                        if score > _DEDUP_COSINE_THRESHOLD:
+                    # search_vec returns list[tuple[record_id, distance]]
+                    # distance is L2 distance; lower = more similar
+                    # cosine > 0.92 threshold ~ distance < 0.08
+                    similar = engine.search_vec(embedding, limit=3)
+                    for _record_id, distance in similar:
+                        similarity = 1.0 - distance
+                        if similarity > _DEDUP_COSINE_THRESHOLD:
                             return True
             except Exception as exc:
                 logger.debug(
