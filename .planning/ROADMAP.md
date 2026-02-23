@@ -50,11 +50,11 @@ Plans:
   2. A fact confirmed by the owner or verified by multiple sources becomes locked and cannot be silently overwritten -- attempting to contradict it results in a quarantined "pending contradiction" for owner review
   3. Running a regression report compares knowledge counts and fact integrity against a previous signed snapshot and reports any discrepancies
   4. Owner can review and resolve quarantined contradictions via a CLI command (accept new fact, keep old fact, or merge)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: NetworkX knowledge graph with SQLite persistence and fact extraction
-- [ ] 02-02: Fact locks, contradiction quarantine, and regression verification
+- [ ] 02-01-PLAN.md -- NetworkX knowledge graph with SQLite persistence and fact extraction pipeline integration
+- [ ] 02-02-PLAN.md -- Fact locks, contradiction quarantine, regression verification, and CLI commands
 
 ### Phase 3: Intelligence Routing
 **Goal**: Jarvis routes queries to the right model for the job -- Opus for complex reasoning, Sonnet for routine summarization, local Ollama for simple or private tasks -- with transparent cost tracking
