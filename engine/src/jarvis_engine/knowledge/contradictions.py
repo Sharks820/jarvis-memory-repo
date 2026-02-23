@@ -138,13 +138,13 @@ class ContradictionManager:
                     history = []
 
             if resolution == "accept_new":
-                # Replace value, unlock node (needs re-confirmation to lock again)
+                # Replace value, unlock node, reset confidence to incoming
                 self._db.execute(
                     """UPDATE kg_nodes
                        SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
-                           updated_at = datetime('now')
+                           confidence = ?, updated_at = datetime('now')
                        WHERE node_id = ?""",
-                    (incoming_value, node_id),
+                    (incoming_value, contradiction["incoming_confidence"], node_id),
                 )
                 history.append({
                     "action": "accept_new",

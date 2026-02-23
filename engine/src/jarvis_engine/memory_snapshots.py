@@ -106,6 +106,12 @@ def create_signed_snapshot(
             for path in target.rglob("*"):
                 if not path.is_file():
                     continue
+                # Skip the snapshots directory to avoid recursive self-inclusion
+                try:
+                    path.resolve().relative_to(snapshot_dir.resolve())
+                    continue
+                except ValueError:
+                    pass
                 rel = _safe_rel(path, root_resolved)
                 zf.write(path, arcname=rel)
                 archived_files.append(rel)
@@ -136,10 +142,12 @@ def create_signed_snapshot(
         db_path = root_resolved / ".planning" / "brain" / "jarvis_memory.db"
         if db_path.exists():
             _kg_engine = MemoryEngine(db_path)
-            _kg = KnowledgeGraph(_kg_engine)
-            _checker = RegressionChecker(_kg)
-            metadata["kg_metrics"] = _checker.capture_metrics()
-            _kg_engine.close()
+            try:
+                _kg = KnowledgeGraph(_kg_engine)
+                _checker = RegressionChecker(_kg)
+                metadata["kg_metrics"] = _checker.capture_metrics()
+            finally:
+                _kg_engine.close()
     except Exception:
         pass  # Graceful: snapshots work without knowledge graph
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
@@ -244,10 +252,12 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
     try:
         snapshot_dir = _snapshot_dir(root)
         if snapshot_dir.exists():
-            # Find most recent snapshot metadata with kg_metrics
+            # Find most recent snapshot metadata with kg_metrics (skip the one we just created)
             prev_kg_metrics = None
             meta_files = sorted(snapshot_dir.glob("brain-snapshot-*.json"), reverse=True)
             for meta_file in meta_files:
+                if meta_file.resolve() == snapshot.metadata_path.resolve():
+                    continue  # Skip the snapshot we just created
                 try:
                     meta = json.loads(meta_file.read_text(encoding="utf-8"))
                     if "kg_metrics" in meta:
@@ -268,10 +278,12 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                 db_path = root / ".planning" / "brain" / "jarvis_memory.db"
                 if db_path.exists():
                     _kg_engine = MemoryEngine(db_path)
-                    _kg = KnowledgeGraph(_kg_engine)
-                    _checker = RegressionChecker(_kg)
-                    kg_regression = _checker.compare(prev_kg_metrics, current_kg_metrics)
-                    _kg_engine.close()
+                    try:
+                        _kg = KnowledgeGraph(_kg_engine)
+                        _checker = RegressionChecker(_kg)
+                        kg_regression = _checker.compare(prev_kg_metrics, current_kg_metrics)
+                    finally:
+                        _kg_engine.close()
     except Exception:
         pass  # Graceful: maintenance works without KG regression
 

@@ -36,9 +36,9 @@ class KnowledgeStatusHandler:
 
         metrics = RegressionChecker(self._kg).capture_metrics()
         return KnowledgeStatusResult(
-            node_count=self._kg.count_nodes(),
-            edge_count=self._kg.count_edges(),
-            locked_count=self._kg.count_locked(),
+            node_count=metrics.get("node_count", 0),
+            edge_count=metrics.get("edge_count", 0),
+            locked_count=metrics.get("locked_count", 0),
             pending_contradictions=self._kg.count_pending_contradictions(),
             graph_hash=metrics.get("graph_hash", ""),
         )
@@ -55,10 +55,10 @@ class ContradictionListHandler:
 
         from jarvis_engine.knowledge.contradictions import ContradictionManager
 
-        mgr = ContradictionManager(self._kg._db, self._kg._write_lock)
+        mgr = ContradictionManager(self._kg.db, self._kg.write_lock)
         contradictions = mgr.list_all(
             status=cmd.status if cmd.status else None,
-            limit=cmd.limit,
+            limit=min(cmd.limit, 500),
         )
         return ContradictionListResult(contradictions=contradictions)
 
@@ -77,7 +77,7 @@ class ContradictionResolveHandler:
 
         from jarvis_engine.knowledge.contradictions import ContradictionManager
 
-        mgr = ContradictionManager(self._kg._db, self._kg._write_lock)
+        mgr = ContradictionManager(self._kg.db, self._kg.write_lock)
         result = mgr.resolve(
             contradiction_id=cmd.contradiction_id,
             resolution=cmd.resolution,
@@ -101,30 +101,35 @@ class FactLockHandler:
             return FactLockResult(
                 success=False,
                 node_id=cmd.node_id,
+                message="Knowledge graph not available.",
+            )
+
+        if cmd.action not in ("lock", "unlock"):
+            return FactLockResult(
+                success=False,
+                node_id=cmd.node_id,
+                message=f"Invalid action: {cmd.action!r}. Must be 'lock' or 'unlock'.",
             )
 
         from jarvis_engine.knowledge.locks import FactLockManager
 
-        mgr = FactLockManager(self._kg._db, self._kg._write_lock)
+        lock_mgr = FactLockManager(self._kg.db, self._kg.write_lock)
         if cmd.action == "lock":
-            success = mgr.owner_confirm_lock(cmd.node_id)
+            success = lock_mgr.owner_confirm_lock(cmd.node_id)
             return FactLockResult(
                 success=success,
                 node_id=cmd.node_id,
                 locked=success,
+                message="Fact locked." if success else "Fact already locked or not found.",
             )
-        elif cmd.action == "unlock":
-            success = mgr.unlock_fact(cmd.node_id)
+        else:
+            success = lock_mgr.unlock_fact(cmd.node_id)
             return FactLockResult(
                 success=success,
                 node_id=cmd.node_id,
                 locked=not success,
+                message="Fact unlocked." if success else "Fact already unlocked or not found.",
             )
-        return FactLockResult(
-            success=False,
-            node_id=cmd.node_id,
-            locked=False,
-        )
 
 
 class KnowledgeRegressionHandler:
@@ -144,11 +149,27 @@ class KnowledgeRegressionHandler:
         current = checker.capture_metrics()
 
         if cmd.snapshot_path and cmd.snapshot_path.strip():
+            snap_path = Path(cmd.snapshot_path).resolve()
+
+            # Path traversal protection: must be within project root
+            try:
+                snap_path.relative_to(self._root.resolve())
+            except ValueError:
+                return KnowledgeRegressionResult(
+                    report={
+                        "status": "error",
+                        "message": "Snapshot path must be within the project root.",
+                        "current": current,
+                    },
+                )
+
+            # Auto-detect .zip and switch to companion .json metadata
+            if snap_path.suffix == ".zip":
+                snap_path = snap_path.with_suffix(".json")
+
             # Load previous metrics from snapshot metadata
             try:
-                meta = json.loads(
-                    Path(cmd.snapshot_path).read_text(encoding="utf-8")
-                )
+                meta = json.loads(snap_path.read_text(encoding="utf-8"))
                 prev_metrics = meta.get("kg_metrics")
             except (json.JSONDecodeError, OSError) as exc:
                 return KnowledgeRegressionResult(

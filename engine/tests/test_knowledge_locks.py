@@ -9,9 +9,7 @@ Tests cover:
 
 from __future__ import annotations
 
-import hashlib
 import json
-import math
 from pathlib import Path
 
 import pytest
@@ -21,25 +19,6 @@ from jarvis_engine.knowledge.locks import FactLockManager
 from jarvis_engine.knowledge.contradictions import ContradictionManager
 from jarvis_engine.knowledge.regression import RegressionChecker
 from jarvis_engine.memory.engine import MemoryEngine
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-class MockEmbeddingService:
-    """Deterministic embedding service for testing."""
-
-    def __init__(self, dim: int = 768) -> None:
-        self._dim = dim
-
-    def embed(self, text: str, prefix: str = "search_document") -> list[float]:
-        seed = int(hashlib.md5(text.encode()).hexdigest()[:8], 16) / 1e8
-        return [math.sin(seed + i * 0.1) for i in range(self._dim)]
-
-    def embed_query(self, query: str) -> list[float]:
-        return self.embed(query, prefix="search_query")
 
 
 # ---------------------------------------------------------------------------
@@ -398,3 +377,67 @@ class TestRegressionChecker:
         critical = [d for d in result["discrepancies"] if d["severity"] == "critical"]
         assert len(critical) == 1
         assert critical[0]["type"] == "locked_fact_loss"
+
+
+# ---------------------------------------------------------------------------
+# Handler kg=None Degradation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestHandlerDegradation:
+    """Verify all knowledge handlers return safe defaults when kg=None."""
+
+    def test_knowledge_status_handler_no_kg(self, tmp_path: Path) -> None:
+        from jarvis_engine.handlers.knowledge_handlers import KnowledgeStatusHandler
+        from jarvis_engine.commands.knowledge_commands import KnowledgeStatusCommand
+
+        handler = KnowledgeStatusHandler(tmp_path, kg=None)
+        result = handler.handle(KnowledgeStatusCommand())
+        assert result.node_count == 0
+        assert result.graph_hash == ""
+
+    def test_contradiction_list_handler_no_kg(self, tmp_path: Path) -> None:
+        from jarvis_engine.handlers.knowledge_handlers import ContradictionListHandler
+        from jarvis_engine.commands.knowledge_commands import ContradictionListCommand
+
+        handler = ContradictionListHandler(tmp_path, kg=None)
+        result = handler.handle(ContradictionListCommand())
+        assert result.contradictions == []
+
+    def test_contradiction_resolve_handler_no_kg(self, tmp_path: Path) -> None:
+        from jarvis_engine.handlers.knowledge_handlers import ContradictionResolveHandler
+        from jarvis_engine.commands.knowledge_commands import ContradictionResolveCommand
+
+        handler = ContradictionResolveHandler(tmp_path, kg=None)
+        result = handler.handle(ContradictionResolveCommand(contradiction_id=1, resolution="keep_old"))
+        assert result.success is False
+        assert "not available" in result.message
+
+    def test_fact_lock_handler_no_kg(self, tmp_path: Path) -> None:
+        from jarvis_engine.handlers.knowledge_handlers import FactLockHandler
+        from jarvis_engine.commands.knowledge_commands import FactLockCommand
+
+        handler = FactLockHandler(tmp_path, kg=None)
+        result = handler.handle(FactLockCommand(node_id="test", action="lock"))
+        assert result.success is False
+        assert "not available" in result.message
+
+    def test_fact_lock_handler_invalid_action(
+        self, kg: KnowledgeGraph, tmp_path: Path
+    ) -> None:
+        from jarvis_engine.handlers.knowledge_handlers import FactLockHandler
+        from jarvis_engine.commands.knowledge_commands import FactLockCommand
+
+        handler = FactLockHandler(tmp_path, kg=kg)
+        result = handler.handle(FactLockCommand(node_id="test", action="invalid"))
+        assert result.success is False
+        assert "Invalid action" in result.message
+
+    def test_knowledge_regression_handler_no_kg(self, tmp_path: Path) -> None:
+        from jarvis_engine.handlers.knowledge_handlers import KnowledgeRegressionHandler
+        from jarvis_engine.commands.knowledge_commands import KnowledgeRegressionCommand
+
+        handler = KnowledgeRegressionHandler(tmp_path, kg=None)
+        result = handler.handle(KnowledgeRegressionCommand())
+        assert result.report["status"] == "error"
+        assert "not available" in result.report["message"]

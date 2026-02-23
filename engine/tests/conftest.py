@@ -1,8 +1,9 @@
 from __future__ import annotations
+# ruff: noqa: E402
 
 import hashlib
 import hmac
-import json
+import math
 import sys
 import threading
 import time
@@ -22,6 +23,20 @@ if str(SRC) not in sys.path:
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
+
+
+class MockEmbeddingService:
+    """Deterministic embedding service for testing (shared across test modules)."""
+
+    def __init__(self, dim: int = 768) -> None:
+        self._dim = dim
+
+    def embed(self, text: str, prefix: str = "search_document") -> list[float]:
+        seed = int(hashlib.md5(text.encode()).hexdigest()[:8], 16) / 1e8
+        return [math.sin(seed + i * 0.1) for i in range(self._dim)]
+
+    def embed_query(self, query: str) -> list[float]:
+        return self.embed(query, prefix="search_query")
 
 
 @dataclass
@@ -88,6 +103,7 @@ def mobile_server(tmp_path: Path) -> TestServer:
         auth_token=auth_token,
         signing_key=signing_key,
         pipeline=pipeline,
+        repo_root=root,
     )
     host, port = server.server_address
     thread = threading.Thread(target=server.serve_forever, daemon=True)

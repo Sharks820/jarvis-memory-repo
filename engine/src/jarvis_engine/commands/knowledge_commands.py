@@ -21,7 +21,7 @@ class KnowledgeStatusResult:
 
 @dataclass(frozen=True)
 class ContradictionListCommand:
-    status: str = "pending"
+    status: str = ""  # Empty = all; "pending" or "resolved" to filter
     limit: int = 20
 
 
@@ -56,6 +56,7 @@ class FactLockResult:
     success: bool = False
     node_id: str = ""
     locked: bool = False
+    message: str = ""
 
 
 @dataclass(frozen=True)

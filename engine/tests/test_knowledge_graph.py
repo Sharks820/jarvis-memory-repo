@@ -10,13 +10,12 @@ Tests cover:
 
 from __future__ import annotations
 
-import hashlib
 import json
-import math
 from pathlib import Path
 
 import pytest
 
+from conftest import MockEmbeddingService
 from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.knowledge.facts import FactExtractor, FactTriple, _normalize
 from jarvis_engine.memory.engine import MemoryEngine
@@ -26,20 +25,6 @@ from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-class MockEmbeddingService:
-    """Deterministic embedding service for testing."""
-
-    def __init__(self, dim: int = 768) -> None:
-        self._dim = dim
-
-    def embed(self, text: str, prefix: str = "search_document") -> list[float]:
-        seed = int(hashlib.md5(text.encode()).hexdigest()[:8], 16) / 1e8
-        return [math.sin(seed + i * 0.1) for i in range(self._dim)]
-
-    def embed_query(self, query: str) -> list[float]:
-        return self.embed(query, prefix="search_query")
 
 
 class MockClassifier:

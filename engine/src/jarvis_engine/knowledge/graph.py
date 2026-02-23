@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
+import threading
 from typing import TYPE_CHECKING
 
 import networkx as nx
@@ -36,6 +38,20 @@ class KnowledgeGraph:
         from jarvis_engine.knowledge.locks import FactLockManager
 
         self._lock_manager = FactLockManager(self._db, self._write_lock)
+
+    # ------------------------------------------------------------------
+    # Public accessors (for handlers -- avoids direct access to private attrs)
+    # ------------------------------------------------------------------
+
+    @property
+    def db(self) -> "sqlite3.Connection":
+        """Public accessor for the SQLite connection."""
+        return self._db
+
+    @property
+    def write_lock(self) -> "threading.Lock":
+        """Public accessor for the shared write lock."""
+        return self._write_lock
 
     # ------------------------------------------------------------------
     # Schema
@@ -180,8 +196,7 @@ class KnowledgeGraph:
                             label,
                             existing_conf,
                             confidence,
-                            source_record,
-                            source_record,
+                            source=source_record,
                         )
                         return False
                     return True  # Same value on locked node -- no-op
@@ -257,10 +272,12 @@ class KnowledgeGraph:
         incoming_value: str,
         existing_confidence: float,
         incoming_confidence: float,
-        source: str,
-        record_id: str,
+        source: str = "",
     ) -> None:
-        """Quarantine a contradiction for owner review."""
+        """Quarantine a contradiction for owner review.
+
+        Called inside the write_lock context -- does NOT commit (caller commits).
+        """
         self._db.execute(
             """INSERT INTO kg_contradictions
                (node_id, existing_value, incoming_value,
@@ -274,10 +291,9 @@ class KnowledgeGraph:
                 existing_confidence,
                 incoming_confidence,
                 source,
-                record_id,
+                source,
             ),
         )
-        self._db.commit()
         logger.warning(
             "Contradiction quarantined for node %s: existing=%r incoming=%r",
             node_id,

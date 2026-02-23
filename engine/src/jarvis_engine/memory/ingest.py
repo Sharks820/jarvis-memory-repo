@@ -45,6 +45,7 @@ class EnrichedIngestPipeline:
         self._embed_service = embed_service
         self._classifier = classifier
         self._kg = knowledge_graph
+        self._fact_extractor = None  # Lazy-initialized on first use
 
     def ingest(
         self,
@@ -161,10 +162,22 @@ class EnrichedIngestPipeline:
 
         Lazily imports FactExtractor to avoid circular imports.
         """
-        from jarvis_engine.knowledge.facts import FactExtractor
+        if self._fact_extractor is None:
+            from jarvis_engine.knowledge.facts import FactExtractor
+            self._fact_extractor = FactExtractor()
 
-        extractor = FactExtractor()
-        triples = extractor.extract(content, source, branch)
+        triples = self._fact_extractor.extract(content, source, branch)
+        if not triples:
+            return
+
+        # Ensure provenance node exists before creating edges (avoids FK violation)
+        provenance_id = f"ingest:{record_id}"
+        self._kg.add_fact(
+            node_id=provenance_id,
+            label=f"Record {record_id}",
+            confidence=1.0,
+            node_type="provenance",
+        )
 
         for triple in triples:
             self._kg.add_fact(
@@ -175,7 +188,7 @@ class EnrichedIngestPipeline:
                 node_type=triple.predicate,
             )
             self._kg.add_edge(
-                source_id=f"ingest:{record_id}",
+                source_id=provenance_id,
                 target_id=triple.subject,
                 relation="extracted_from",
                 confidence=triple.confidence,

@@ -40,7 +40,7 @@ class FactExtractor:
         # Health: "takes medication X", "prescribed X", "on X daily"
         (
             re.compile(
-                r"(?:takes?|prescribed?|on)\s+([\w\s]+?)\s+(?:for|daily|twice|morning|evening)",
+                r"(?:takes?|prescribed?|on)\s+([\w][\w\s]{0,40}?)\s+(?:for|daily|twice|morning|evening)",
                 re.IGNORECASE,
             ),
             "health.medication",
