@@ -37,7 +37,7 @@ def _ensure_mobile_security_config(root: Path) -> dict[str, Any]:
             loaded = json.loads(path.read_text(encoding="utf-8-sig"))
             if isinstance(loaded, dict):
                 raw = loaded
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError):
             raw = {}
     token = str(raw.get("token", "")).strip()
     signing_key = str(raw.get("signing_key", "")).strip()

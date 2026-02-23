@@ -140,7 +140,7 @@ def _profile_path(repo_root: Path, user_id: str) -> Path:
 def _read_profile(path: Path) -> dict:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {}
     return raw if isinstance(raw, dict) else {}
 

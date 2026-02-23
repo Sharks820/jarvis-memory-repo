@@ -339,7 +339,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError):
             return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
         if not isinstance(raw, dict):
             return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}

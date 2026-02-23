@@ -26,7 +26,7 @@ def read_control_state(root: Path) -> dict[str, Any]:
         return dict(DEFAULT_CONTROL_STATE)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return dict(DEFAULT_CONTROL_STATE)
     if not isinstance(raw, dict):
         return dict(DEFAULT_CONTROL_STATE)

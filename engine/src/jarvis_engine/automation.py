@@ -30,7 +30,10 @@ class ActionOutcome:
 
 
 def load_actions(path: Path) -> list[PlannedAction]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Failed to load actions from {path}: {exc}") from exc
     if not isinstance(raw, list):
         raise ValueError(f"Expected JSON array in {path}, got {type(raw).__name__}")
     out: list[PlannedAction] = []

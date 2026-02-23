@@ -53,7 +53,7 @@ def _load_mobile_api_cfg(root: Path) -> dict[str, str]:
         return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {}
     if not isinstance(raw, dict):
         return {}
@@ -72,7 +72,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
             loaded = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 raw = loaded
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError):
             raw = {}
 
     return WidgetConfig(
@@ -653,13 +653,12 @@ class JarvisDesktopWidget(tk.Tk):
             cfg = self._current_cfg()
             try:
                 self._log_async("Running sync checks...")
-                sync_data = _http_json(cfg, "/sync", method="POST", payload={"auto_ingest": True})
+                sync_data = _http_json(cfg, "/sync/status", method="GET")
                 sync_ok = bool(sync_data.get("ok", False))
-                sync_exit = int(sync_data.get("command_exit_code", -1))
-                self._log_async(f"sync ok={sync_ok} exit={sync_exit}")
-                sync_lines = sync_data.get("stdout_tail", [])
-                if isinstance(sync_lines, list) and sync_lines:
-                    self._log_async(" | ".join(str(x) for x in sync_lines[-4:]))
+                self._log_async(f"sync ok={sync_ok}")
+                last_sync = sync_data.get("last_sync_utc", "")
+                if last_sync:
+                    self._log_async(f"last sync: {last_sync}")
 
                 self._log_async("Running self-heal...")
                 heal_data = _http_json(

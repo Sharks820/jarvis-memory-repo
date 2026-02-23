@@ -42,7 +42,7 @@ def load_missions(root: Path) -> list[dict[str, Any]]:
         return []
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return []
     if not isinstance(raw, list):
         return []

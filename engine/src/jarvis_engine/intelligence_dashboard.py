@@ -75,7 +75,7 @@ def _load_targets(root: Path) -> list[dict[str, Any]]:
         return list(DEFAULT_TARGETS)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return list(DEFAULT_TARGETS)
 
     values: list[dict[str, Any]] = []
@@ -103,7 +103,7 @@ def _load_achievements(root: Path) -> dict[str, Any]:
         return {"unlocked": []}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {"unlocked": []}
     if not isinstance(raw, dict):
         return {"unlocked": []}

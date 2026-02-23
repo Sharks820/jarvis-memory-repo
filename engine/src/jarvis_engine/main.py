@@ -202,7 +202,7 @@ def _load_auto_ingest_hashes(path: Path) -> list[str]:
         return []
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return []
     if not isinstance(raw, dict):
         return []
@@ -325,7 +325,7 @@ def _read_gaming_mode_state() -> dict[str, object]:
         return default
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return default
     if not isinstance(raw, dict):
         return default
@@ -361,7 +361,7 @@ def _load_gaming_processes() -> list[str]:
         return list(DEFAULT_GAMING_PROCESSES)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return list(DEFAULT_GAMING_PROCESSES)
 
     if isinstance(raw, dict):

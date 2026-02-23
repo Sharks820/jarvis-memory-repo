@@ -96,7 +96,7 @@ def _read_json_list(path: Path) -> list[dict]:
         return []
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return []
     if isinstance(raw, list):
         return [x for x in raw if isinstance(x, dict)]
