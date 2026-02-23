@@ -108,7 +108,7 @@ def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> l
         configured_path = Path(configured).expanduser()
         raw_path = str(configured_path)
         # Never allow UNC/network paths from env-configurable feeds.
-        if raw_path.startswith("\\\\"):
+        if raw_path.startswith("\\\\") or raw_path.startswith("//"):
             return []
         resolved = configured_path.resolve()
         if resolved.is_dir():

@@ -274,7 +274,10 @@ class TaskOrchestrator:
             "repeat_penalty": 1.02,
         }
 
+    _MAX_PROMPT_CHARS = 24000
+
     def _compose_code_prompt(self, prompt: str, quality_profile: str) -> str:
+        truncated = prompt[: self._MAX_PROMPT_CHARS]
         if quality_profile == "max_quality":
             return (
                 "You are a principal software engineer. Produce production-grade code.\n"
@@ -283,9 +286,9 @@ class TaskOrchestrator:
                 "- Include robust input validation and error handling.\n"
                 "- Keep code maintainable and performant.\n"
                 "- Prefer deterministic behavior where possible.\n\n"
-                f"Task:\n{prompt}"
+                f"Task:\n{truncated}"
             )
-        return prompt
+        return truncated
 
     def _critique_prompt(self, draft_code: str) -> str:
         return (
@@ -329,9 +332,7 @@ class TaskOrchestrator:
 
     def _extract_output(self, raw: dict[str, Any]) -> str:
         response = str(raw.get("response", "")).strip()
-        if response:
-            return response
-        return str(raw.get("thinking", "")).strip()
+        return response
 
     def _single_pass_generate(
         self,
@@ -429,6 +430,9 @@ class TaskOrchestrator:
         self._store.append(event_type="task_orchestrator", message=message)
 
 
+_SHELL_COMMAND_ALLOWLIST = {"python", "python3", "git", "pip", "pip3", "npm", "node", "pytest", "jarvis"}
+
+
 def run_shell_command(command: str, timeout_s: int = 60) -> tuple[int, str, str]:
     try:
         args = shlex.split(command, posix=False)
@@ -436,6 +440,9 @@ def run_shell_command(command: str, timeout_s: int = 60) -> tuple[int, str, str]
         return 2, "", f"Invalid command syntax: {exc}"
     if not args:
         return 2, "", "Empty command."
+    executable = Path(args[0]).stem.lower()
+    if executable not in _SHELL_COMMAND_ALLOWLIST:
+        return 2, "", f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST)}"
     try:
         proc = subprocess.run(
             args,

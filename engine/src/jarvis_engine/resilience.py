@@ -121,7 +121,7 @@ def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
         },
         "memory": {
             "total_records": int(memory_stats.get("total_records", 0)),
-            "canonical_fact_count": int(memory_stats.get("canonical_fact_count", 0)),
+            "fact_count": int(memory_stats.get("fact_count", 0)),
         },
         "checks": checks,
     }
@@ -144,7 +144,7 @@ def _scan_recent_logs(root: Path, *, max_lines: int = 200) -> dict[str, Any]:
     for path in files:
         for line in _tail_lines(path, max_lines=max_lines):
             lowered = line.lower()
-            if "400" in lowered and "http" in lowered:
+            if re.search(r"\bhttp[_ ]?400\b", lowered):
                 issues["http_400"] += 1
             if "traceback" in lowered:
                 issues["traceback"] += 1

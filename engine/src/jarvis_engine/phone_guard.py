@@ -29,7 +29,12 @@ class PhoneAction:
 
 
 def load_call_log(path: Path) -> list[dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
