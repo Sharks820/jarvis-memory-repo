@@ -20,7 +20,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Anti-Regression & Knowledge (KNOW)
 
-- [ ] **KNOW-01**: Facts extracted from ingested content are stored in a knowledge graph (NetworkX backed by SQLite)
+- [x] **KNOW-01**: Facts extracted from ingested content are stored in a knowledge graph (NetworkX backed by SQLite)
 - [ ] **KNOW-02**: Facts that reach locked status (high confidence, multiple sources, owner-confirmed) cannot be overwritten by lower-confidence information
 - [ ] **KNOW-03**: Incoming facts that contradict locked facts are quarantined as "pending contradiction" for owner review
 - [ ] **KNOW-04**: Regression report compares knowledge counts and fact integrity between signed snapshots to prove nothing was lost
@@ -132,7 +132,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MEM-06 | Phase 1 | Complete |
 | MEM-07 | Phase 1 | Complete |
 | MEM-08 | Phase 1 | Complete |
-| KNOW-01 | Phase 2 | Pending |
+| KNOW-01 | Phase 2 | Complete |
 | KNOW-02 | Phase 2 | Pending |
 | KNOW-03 | Phase 2 | Pending |
 | KNOW-04 | Phase 2 | Pending |

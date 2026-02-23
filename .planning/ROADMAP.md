@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md -- Command Bus architecture and main.py decomposition
 - [x] 01-02-PLAN.md -- SQLite + FTS5 + sqlite-vec memory engine with hybrid search
-- [ ] 01-03-PLAN.md -- Enriched ingestion pipeline and data migration
+- [x] 01-03-PLAN.md -- Enriched ingestion pipeline and data migration
 
 ### Phase 2: Knowledge Graph and Anti-Regression
 **Goal**: Jarvis builds a web of interconnected facts from everything it ingests, protects confirmed knowledge with immutable locks, and can prove nothing has been lost between sessions
@@ -53,7 +53,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- NetworkX knowledge graph with SQLite persistence and fact extraction pipeline integration
+- [x] 02-01-PLAN.md -- NetworkX knowledge graph with SQLite persistence and fact extraction pipeline integration
 - [ ] 02-02-PLAN.md -- Fact locks, contradiction quarantine, regression verification, and CLI commands
 
 ### Phase 3: Intelligence Routing

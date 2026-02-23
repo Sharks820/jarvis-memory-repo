@@ -5,32 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** Phase 1 -- Memory Revolution and Architecture
+**Current focus:** Phase 2 -- Knowledge Graph and Anti-Regression
 
 ## Current Position
 
-Phase: 1 of 9 (Memory Revolution and Architecture) -- COMPLETE
-Plan: 3 of 3 in current phase -- ALL DONE
-Status: Phase 1 complete, ready for Phase 2
-Last activity: 2026-02-23 -- Completed 01-03-PLAN.md (Enriched Ingestion Pipeline and Migration)
+Phase: 2 of 9 (Knowledge Graph and Anti-Regression)
+Plan: 1 of 2 in current phase
+Status: Executing Phase 2 -- Plan 1 complete
+Last activity: 2026-02-23 -- Completed 02-01-PLAN.md (Knowledge Graph Foundation)
 
-Progress: [██░░░░░░░░] 11%
+Progress: [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: ~22min
-- Total execution time: 1.08 hours
+- Total plans completed: 4
+- Average duration: ~18min
+- Total execution time: 1.18 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3/3 | 65min | 22min |
+| 02 | 1/2 | 6min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (45min), 01-02 (10min), 01-03 (10min)
+- Last 5 plans: 01-01 (45min), 01-02 (10min), 01-03 (10min), 02-01 (6min)
 - Trend: Accelerating
 
 *Updated after each plan completion*
@@ -60,6 +61,10 @@ Recent decisions affecting current work:
 - [01-03]: Dual-path handler strategy: MemoryEngine when SQLite DB exists, adapter shim fallback
 - [01-03]: Resumable migration via checkpoint file every 50 records
 - [01-03]: Credential redaction patterns in pipeline sanitize step
+- [02-01]: NetworkX 3.4.2 used (latest available) -- research specified >=3.6.1 which doesn't exist; all required APIs available
+- [02-01]: Fact extraction is a side-effect of ingestion wrapped in try/except -- KG failures never block record storage
+- [02-01]: KnowledgeGraph uses MemoryEngine._write_lock for thread-safe writes; reads are lock-free via WAL
+- [02-01]: Edge dedup relies on SQLite UNIQUE constraint (source_id, target_id, relation) with INSERT OR IGNORE
 
 ### Pending Todos
 
@@ -73,5 +78,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 01-03-PLAN.md -- Phase 01 complete, ready for Phase 02
+Stopped at: Completed 02-01-PLAN.md -- Knowledge Graph Foundation
 Resume file: None
