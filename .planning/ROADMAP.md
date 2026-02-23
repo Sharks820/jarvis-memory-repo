@@ -12,8 +12,8 @@ Jarvis is a brownfield project with 29 existing Python source files and 125 pass
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Memory Revolution and Architecture** - Decompose monolithic main.py via Command Bus, migrate to SQLite + FTS5 + sqlite-vec with semantic search, enriched ingestion pipeline, and zero-loss data migration
-- [ ] **Phase 2: Knowledge Graph and Anti-Regression** - Build fact extraction with NetworkX backed by SQLite, implement fact locks that prevent knowledge loss, contradiction quarantine, and regression verification
+- [x] **Phase 1: Memory Revolution and Architecture** - Decompose monolithic main.py via Command Bus, migrate to SQLite + FTS5 + sqlite-vec with semantic search, enriched ingestion pipeline, and zero-loss data migration
+- [x] **Phase 2: Knowledge Graph and Anti-Regression** - Build fact extraction with NetworkX backed by SQLite, implement fact locks that prevent knowledge loss, contradiction quarantine, and regression verification
 - [ ] **Phase 3: Intelligence Routing** - Unified model gateway for Ollama + Anthropic, intent-based complexity routing, fallback chains, and per-query cost tracking
 - [ ] **Phase 4: Connectors and Daily Intelligence** - Real calendar, email, and task integrations replacing stubs, combined into a genuinely useful daily briefing
 - [ ] **Phase 5: Knowledge Harvesting** - Multi-source knowledge extraction from MiniMax, Kimi, Claude Code, Codex, and Gemini with deduplication, validation, and budget controls
@@ -54,7 +54,7 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md -- NetworkX knowledge graph with SQLite persistence and fact extraction pipeline integration
-- [ ] 02-02-PLAN.md -- Fact locks, contradiction quarantine, regression verification, and CLI commands
+- [x] 02-02-PLAN.md -- Fact locks, contradiction quarantine, regression verification, and CLI commands
 
 ### Phase 3: Intelligence Routing
 **Goal**: Jarvis routes queries to the right model for the job -- Opus for complex reasoning, Sonnet for routine summarization, local Ollama for simple or private tasks -- with transparent cost tracking
@@ -65,11 +65,11 @@ Plans:
   2. If the Anthropic API is unavailable, queries gracefully fall back to local Ollama with a notification to the user rather than an error
   3. Per-query cost is logged in SQLite and the user can view a cost summary showing spend by model and time period
   4. Simple private queries (e.g., "what's on my calendar") never leave the machine -- they are handled by local Ollama
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Model gateway with unified interface and fallback chains
-- [ ] 03-02: Intent classifier and cost tracking
+- [ ] 03-01-PLAN.md -- ModelGateway with Anthropic + Ollama providers, fallback chains, CostTracker, and pricing
+- [ ] 03-02-PLAN.md -- IntentClassifier with embedding-based routing, RouteCommand evolution, and Command Bus wiring
 
 ### Phase 4: Connectors and Daily Intelligence
 **Goal**: Jarvis knows the owner's real schedule, real emails, and real tasks -- and combines them into a morning briefing that is genuinely useful for planning the day
@@ -170,9 +170,9 @@ Note: Phases 3, 6, and 8 depend only on Phase 1 and could theoretically run in p
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Memory Revolution and Architecture | 2/3 | In Progress | - |
-| 2. Knowledge Graph and Anti-Regression | 0/2 | Not started | - |
-| 3. Intelligence Routing | 0/2 | Not started | - |
+| 1. Memory Revolution and Architecture | 3/3 | Complete | 2026-02-22 |
+| 2. Knowledge Graph and Anti-Regression | 2/2 | Complete | 2026-02-22 |
+| 3. Intelligence Routing | 0/2 | Planned | - |
 | 4. Connectors and Daily Intelligence | 0/2 | Not started | - |
 | 5. Knowledge Harvesting | 0/2 | Not started | - |
 | 6. Voice and Personality | 0/2 | Not started | - |
