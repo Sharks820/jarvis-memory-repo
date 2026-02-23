@@ -117,7 +117,7 @@ def load_persona_config(root: Path) -> PersonaConfig:
         )
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         raw = {}
     if not isinstance(raw, dict):
         raw = {}

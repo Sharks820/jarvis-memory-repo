@@ -287,13 +287,13 @@ class TestWidgetUI:
         assert "Master password" in widget._log.call_args[0][0]
 
     def test_diagnose_repair_calls_sync_and_self_heal(self, monkeypatch) -> None:
-        """UI: Diagnose+Repair should call /sync then /self-heal."""
+        """UI: Diagnose+Repair should call /sync/status then /self-heal."""
         call_paths: list[str] = []
 
         def fake_http_json(cfg, path, method="GET", payload=None):
             call_paths.append(path)
-            if path == "/sync":
-                return {"ok": True, "command_exit_code": 0, "stdout_tail": ["sync ok"]}
+            if path == "/sync/status":
+                return {"ok": True, "last_sync_utc": "2026-01-01T00:00:00"}
             if path == "/self-heal":
                 return {"ok": True, "command_exit_code": 0, "stdout_tail": ["heal ok"]}
             raise AssertionError(f"Unexpected path: {path}")
@@ -313,7 +313,7 @@ class TestWidgetUI:
 
         desktop_widget.JarvisDesktopWidget._diagnose_repair_async(widget)
 
-        assert call_paths == ["/sync", "/self-heal"]
+        assert call_paths == ["/sync/status", "/self-heal"]
 
     def test_launcher_release_opens_panel_when_not_dragging(self) -> None:
         """UI: Launcher click release should open panel."""

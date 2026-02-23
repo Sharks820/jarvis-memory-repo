@@ -89,7 +89,7 @@ def load_connector_permissions(repo_root: Path) -> dict[str, Any]:
         return {"connectors": {}}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {"connectors": {}}
     if not isinstance(raw, dict):
         return {"connectors": {}}

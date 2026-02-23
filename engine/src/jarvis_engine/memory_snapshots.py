@@ -197,7 +197,7 @@ def verify_signed_snapshot(root: Path, snapshot_path: Path) -> SnapshotVerificat
 
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return SnapshotVerification(
             ok=False,
             reason="metadata_invalid_json",

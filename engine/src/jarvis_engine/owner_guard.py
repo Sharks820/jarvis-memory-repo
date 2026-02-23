@@ -34,7 +34,7 @@ def read_owner_guard(root: Path) -> dict[str, Any]:
         return dict(DEFAULT_OWNER_GUARD)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return dict(DEFAULT_OWNER_GUARD)
     if not isinstance(raw, dict):
         return dict(DEFAULT_OWNER_GUARD)

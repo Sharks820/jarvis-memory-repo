@@ -125,7 +125,7 @@ def _load_index(root: Path) -> dict[str, Any]:
         return {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
     if not isinstance(raw, dict):
         return {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
@@ -145,7 +145,7 @@ def _load_facts(root: Path) -> dict[str, Any]:
         return {"facts": {}, "conflicts": []}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return {"facts": {}, "conflicts": []}
     if not isinstance(raw, dict):
         return {"facts": {}, "conflicts": []}

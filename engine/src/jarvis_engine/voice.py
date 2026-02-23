@@ -212,7 +212,13 @@ def _speak_text_edge(
         raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
 
     if not output_wav:
-        _play_audio_file(out_path)
+        try:
+            _play_audio_file(out_path)
+        finally:
+            try:
+                Path(out_path).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     return VoiceSpeakResult(
         voice_name=voice,
@@ -302,10 +308,11 @@ def _speak_text_edge_streamed(
         if item is None:
             break
         _play_audio_file(item)
-    # Clean up streamed chunk files
+    # Clean up streamed chunk files and temp directory
     try:
         for f in out_dir.glob("chunk_*.mp3"):
             f.unlink(missing_ok=True)
+        out_dir.rmdir()
     except OSError:
         pass
     if err:
