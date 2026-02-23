@@ -8,25 +8,39 @@ This module is created in Plan 01 but wired into the memory engine in Plan 02.
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 
 class EmbeddingService:
-    """Lazy-loaded sentence-transformer singleton."""
+    """Lazy-loaded sentence-transformer singleton (thread-safe)."""
 
     MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
+    # Use default revision (latest release tag) rather than "main" to avoid
+    # pulling unreviewed code from the repository HEAD.
+    MODEL_REVISION = None
 
     def __init__(self) -> None:
         self._model: Any = None
+        self._lock = threading.Lock()
 
     def _ensure_model(self) -> Any:
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
+        if self._model is not None:
+            return self._model
+        with self._lock:
+            # Double-checked locking
+            if self._model is None:
+                from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(
-                self.MODEL_NAME,
-                trust_remote_code=True,
-            )
+                kwargs: dict[str, Any] = {
+                    "trust_remote_code": False,
+                }
+                if self.MODEL_REVISION is not None:
+                    kwargs["revision"] = self.MODEL_REVISION
+                self._model = SentenceTransformer(
+                    self.MODEL_NAME,
+                    **kwargs,
+                )
         return self._model
 
     def embed(self, text: str, prefix: str = "search_document") -> list[float]:

@@ -3,16 +3,27 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
+import os
+import subprocess
+import sys
 import threading
 import time
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
 from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
+from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
 
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
@@ -29,13 +40,16 @@ class MobileIngestServer(ThreadingHTTPServer):
         auth_token: str,
         signing_key: str,
         pipeline: IngestionPipeline,
+        repo_root: Path,
     ) -> None:
         super().__init__(server_address, handler_cls)
         self.auth_token = auth_token
         self.signing_key = signing_key
         self.pipeline = pipeline
+        self.repo_root = repo_root
+        # TODO: persist nonces to disk for replay protection across restarts
         self.nonce_seen: dict[str, float] = {}
-        self.nonce_lock = threading.Lock()
+        self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
         self.nonce_cleanup_interval_s = 30.0
 
@@ -51,20 +65,328 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _write_text(self, status: int, content_type: str, payload: str) -> None:
+        encoded = payload.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _quick_panel_path(self) -> Path:
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        return root / "mobile" / "quick_access.html"
+
+    def _quick_panel_html(self) -> str:
+        path = self._quick_panel_path()
+        if not path.exists():
+            return "<h1>Jarvis Quick Panel not found.</h1>"
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            return "<h1>Jarvis Quick Panel unavailable.</h1>"
+
+    def _run_voice_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+        text = str(payload.get("text", "")).strip()
+        if not text or len(text) > 2000:
+            return {"ok": False, "error": "Invalid text command."}
+
+        execute = bool(payload.get("execute", False))
+        approve_privileged = bool(payload.get("approve_privileged", False))
+        speak = bool(payload.get("speak", False))
+        voice_user = str(payload.get("voice_user", "conner")).strip() or "conner"
+        voice_auth_wav = str(payload.get("voice_auth_wav", "")).strip()
+        master_password = str(payload.get("master_password", "")).strip()
+        voice_threshold_raw = payload.get("voice_threshold", 0.82)
+        try:
+            voice_threshold = float(voice_threshold_raw)
+        except (TypeError, ValueError):
+            voice_threshold = 0.82
+        voice_threshold = min(0.99, max(0.1, voice_threshold))
+
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        engine_dir = root / "engine"
+        if not engine_dir.exists():
+            try:
+                import jarvis_engine.main as main_mod
+
+                original_repo_root = main_mod.repo_root
+                main_mod.repo_root = lambda: root  # type: ignore[assignment]
+                try:
+                    rc = main_mod.cmd_voice_run(
+                        text=text,
+                        execute=execute,
+                        approve_privileged=approve_privileged,
+                        speak=speak,
+                        snapshot_path=root / ".planning" / "ops_snapshot.live.json",
+                        actions_path=root / ".planning" / "actions.generated.json",
+                        voice_user=voice_user,
+                        voice_auth_wav=voice_auth_wav,
+                        voice_threshold=voice_threshold,
+                        master_password=master_password,
+                    )
+                finally:
+                    main_mod.repo_root = original_repo_root  # type: ignore[assignment]
+            except Exception as exc:
+                return {"ok": False, "error": f"Command execution failed: {exc}"}
+            return {
+                "ok": rc == 0,
+                "command_exit_code": rc,
+                "intent": "",
+                "status_code": str(rc),
+                "reason": "",
+                "stdout_tail": [],
+                "stderr_tail": [],
+            }
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "jarvis_engine.main",
+            "voice-run",
+            "--text",
+            text,
+            "--voice-user",
+            voice_user,
+            "--voice-threshold",
+            str(voice_threshold),
+        ]
+        if execute:
+            cmd.append("--execute")
+        if approve_privileged:
+            cmd.append("--approve-privileged")
+        if speak:
+            cmd.append("--speak")
+        if voice_auth_wav:
+            cmd.extend(["--voice-auth-wav", voice_auth_wav])
+        if master_password:
+            cmd.extend(["--master-password", master_password])
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = "src"
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(engine_dir),
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=240,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"ok": False, "error": f"Command execution failed: {exc}"}
+
+        stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+        intent = ""
+        reason = ""
+        status_code = ""
+        for line in stdout_lines:
+            if line.startswith("intent="):
+                intent = line.split("=", 1)[1].strip()
+            elif line.startswith("reason="):
+                reason = line.split("=", 1)[1].strip()
+            elif line.startswith("status_code="):
+                status_code = line.split("=", 1)[1].strip()
+
+        return {
+            "ok": result.returncode == 0,
+            "command_exit_code": result.returncode,
+            "intent": intent,
+            "status_code": status_code,
+            "reason": reason,
+            "stdout_tail": stdout_lines[-20:],
+            "stderr_tail": stderr_lines[-20:],
+        }
+
+    def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        engine_dir = root / "engine"
+        if not engine_dir.exists():
+            return {"ok": False, "error": "Engine directory not found.", "command_exit_code": 2}
+        cmd = [sys.executable, "-m", "jarvis_engine.main", *args]
+        env = os.environ.copy()
+        env["PYTHONPATH"] = "src"
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(engine_dir),
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=max(30, timeout_s),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"ok": False, "error": f"Command execution failed: {exc}", "command_exit_code": 2}
+        stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+        return {
+            "ok": result.returncode == 0,
+            "command_exit_code": result.returncode,
+            "stdout_tail": stdout_lines[-20:],
+            "stderr_tail": stderr_lines[-20:],
+        }
+
     def _unauthorized(self, message: str) -> None:
         self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": message})
 
+    def _read_json_body(self, *, max_content_length: int) -> tuple[dict[str, Any] | None, bytes | None]:
+        raw_content_length = self.headers.get("Content-Length", "0")
+        try:
+            content_length = int(raw_content_length)
+        except (TypeError, ValueError):
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Invalid content length."},
+            )
+            return None, None
+
+        if content_length <= 0 or content_length > max_content_length:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Invalid content length."},
+            )
+            return None, None
+
+        self.connection.settimeout(15.0)
+        body = self.rfile.read(content_length)
+        if not self._validate_auth(body):
+            return None, None
+
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except UnicodeDecodeError:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."})
+            return None, None
+        except json.JSONDecodeError:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."})
+            return None, None
+        if not isinstance(payload, dict):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."})
+            return None, None
+        return payload, body
+
+    def _read_json_body_noauth(self, *, max_content_length: int) -> tuple[dict[str, Any] | None, bytes | None]:
+        raw_content_length = self.headers.get("Content-Length", "0")
+        try:
+            content_length = int(raw_content_length)
+        except (TypeError, ValueError):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
+            return None, None
+        if content_length < 0 or content_length > max_content_length:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
+            return None, None
+        self.connection.settimeout(15.0)
+        body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except UnicodeDecodeError:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."})
+            return None, None
+        except json.JSONDecodeError:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."})
+            return None, None
+        if not isinstance(payload, dict):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."})
+            return None, None
+        return payload, body
+
+    def _client_is_private_or_loopback(self) -> bool:
+        raw_ip = str(self.client_address[0]).strip()
+        try:
+            ip = ip_address(raw_ip)
+            return bool(ip.is_loopback or ip.is_private or ip.is_link_local)
+        except ValueError:
+            return False
+
+    def _gaming_state_path(self) -> Path:
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root_resolved = root.resolve()
+        path = root_resolved / ".planning" / "runtime" / "gaming_mode.json"
+        resolved = path.resolve(strict=False)
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError as exc:
+            raise PermissionError("Unsafe gaming state path resolution.") from exc
+        return path
+
+    def _read_gaming_state(self) -> dict[str, Any]:
+        try:
+            path = self._gaming_state_path()
+        except PermissionError:
+            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+        if not path.exists():
+            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+        if not isinstance(raw, dict):
+            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+        return {
+            "enabled": bool(raw.get("enabled", False)),
+            "auto_detect": bool(raw.get("auto_detect", False)),
+            "reason": str(raw.get("reason", "")).strip()[:200],
+            "updated_utc": str(raw.get("updated_utc", "")),
+        }
+
+    def _write_gaming_state(
+        self,
+        *,
+        enabled: bool | None = None,
+        auto_detect: bool | None = None,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        state = self._read_gaming_state()
+        if enabled is not None:
+            state["enabled"] = enabled
+        if auto_detect is not None:
+            state["auto_detect"] = auto_detect
+        if reason.strip():
+            state["reason"] = reason.strip()[:200]
+        state["updated_utc"] = datetime.now(UTC).isoformat()
+        path = self._gaming_state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return state
+
+    def _settings_payload(self) -> dict[str, Any]:
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        control = read_control_state(root)
+        gaming = self._read_gaming_state()
+        owner_guard = read_owner_guard(root)
+        return {
+            "runtime_control": control,
+            "gaming_mode": gaming,
+            "owner_guard": {
+                "enabled": bool(owner_guard.get("enabled", False)),
+                "owner_user_id": str(owner_guard.get("owner_user_id", "")),
+                "trusted_mobile_device_count": len(owner_guard.get("trusted_mobile_devices", [])),
+            },
+        }
+
     def _cleanup_nonces(self, now: float, *, force: bool = False) -> None:
-        interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
-        next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
-        if not force and now < next_cleanup:
-            return
-        nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
-        cutoff = now - REPLAY_WINDOW_SECONDS
-        stale = [key for key, seen_ts in nonce_seen.items() if seen_ts < cutoff]
-        for key in stale:
-            nonce_seen.pop(key, None)
-        self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
+        with self.server.nonce_lock:  # type: ignore[attr-defined]
+            interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
+            next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
+            if not force and now < next_cleanup:
+                return
+            nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
+            cutoff = now - REPLAY_WINDOW_SECONDS
+            stale = [key for key, seen_ts in nonce_seen.items() if seen_ts < cutoff]
+            for key in stale:
+                nonce_seen.pop(key, None)
+            self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
 
     def _validate_auth(self, body: bytes) -> bool:
         auth = self.headers.get("Authorization", "")
@@ -116,85 +438,251 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return False
             nonce_seen[nonce] = now
 
+        owner_guard = read_owner_guard(self.server.repo_root)  # type: ignore[attr-defined]
+        if bool(owner_guard.get("enabled", False)):
+            trusted = {
+                str(device_id).strip()
+                for device_id in owner_guard.get("trusted_mobile_devices", [])
+                if str(device_id).strip()
+            }
+            device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
+            if not device_id or len(device_id) > 128 or (not device_id.isascii()):
+                self._unauthorized("Missing trusted mobile device id.")
+                return False
+            if device_id not in trusted:
+                master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
+                if master_password and verify_master_password(self.server.repo_root, master_password):  # type: ignore[attr-defined]
+                    trust_mobile_device(self.server.repo_root, device_id)  # type: ignore[attr-defined]
+                else:
+                    self._unauthorized("Untrusted mobile device.")
+                    return False
+
         return True
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path != "/health":
-            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
+        path = self.path.split("?", 1)[0]
+        if path == "/":
+            self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
             return
-        self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy"})
+        if path == "/quick":
+            self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
+            return
+        if path == "/health":
+            self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy"})
+            return
+        if path == "/settings":
+            if not self._validate_auth(b""):
+                return
+            self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
+            return
+        if path == "/dashboard":
+            if not self._validate_auth(b""):
+                return
+            root: Path = self.server.repo_root  # type: ignore[attr-defined]
+            self._write_json(
+                HTTPStatus.OK,
+                {"ok": True, "dashboard": build_intelligence_dashboard(root)},
+            )
+            return
+        self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
+        return
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/ingest":
-            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
-            return
-
-        raw_content_length = self.headers.get("Content-Length", "0")
-        try:
-            content_length = int(raw_content_length)
-        except (TypeError, ValueError):
+        path = self.path.split("?", 1)[0]
+        if path == "/bootstrap":
+            payload, _ = self._read_json_body_noauth(max_content_length=6_000)
+            if payload is None:
+                return
+            allow_remote_bootstrap = os.getenv("JARVIS_ALLOW_REMOTE_BOOTSTRAP", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if (not self._client_is_private_or_loopback()) and (not allow_remote_bootstrap):
+                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Remote bootstrap is disabled."})
+                return
+            master_password = str(payload.get("master_password", "")).strip()
+            if not master_password:
+                master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
+            if not master_password:
+                self._unauthorized("Master password is required.")
+                return
+            root: Path = self.server.repo_root  # type: ignore[attr-defined]
+            if not verify_master_password(root, master_password):
+                self._unauthorized("Invalid master password.")
+                return
+            device_id = str(payload.get("device_id", "")).strip()
+            if not device_id:
+                device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
+            trusted = False
+            if device_id and len(device_id) <= 128 and device_id.isascii():
+                trust_mobile_device(root, device_id)
+                trusted = True
+            host_header = self.headers.get("Host", "").strip()
+            if host_header:
+                base_url = f"http://{host_header}"
+            else:
+                host = str(getattr(self.server, "server_name", "127.0.0.1"))
+                port = int(getattr(self.server, "server_port", 8787))
+                base_url = f"http://{host}:{port}"
+            client_ip = self.client_address[0]
+            if client_ip not in ("127.0.0.1", "::1"):
+                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
+                return
+            logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
             self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Invalid content length."},
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "session": {
+                        "base_url": base_url,
+                        "token": self.server.auth_token,  # type: ignore[attr-defined]
+                        "signing_key": self.server.signing_key,  # type: ignore[attr-defined]
+                        "device_id": device_id,
+                        "trusted_device": trusted,
+                    },
+                    "owner_guard": read_owner_guard(root),
+                },
             )
             return
 
-        if content_length <= 0 or content_length > 50_000:
+        if path == "/ingest":
+            payload, _ = self._read_json_body(max_content_length=50_000)
+            if payload is None:
+                return
+
+            source = str(payload.get("source", "user"))
+            kind = str(payload.get("kind", "episodic"))
+            task_id = str(payload.get("task_id", "")).strip()
+            content = str(payload.get("content", "")).strip()
+
+            if source not in ALLOWED_SOURCES:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid source."})
+                return
+            if kind not in ALLOWED_KINDS:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid kind."})
+                return
+            if not task_id or len(task_id) > 128:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid task_id."})
+                return
+            if not content or len(content) > 20_000:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."})
+                return
+
+            rec = self.server.pipeline.ingest(  # type: ignore[attr-defined]
+                source=source,  # type: ignore[arg-type]
+                kind=kind,  # type: ignore[arg-type]
+                task_id=task_id,
+                content=content,
+            )
             self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Invalid content length."},
+                HTTPStatus.CREATED,
+                {
+                    "ok": True,
+                    "record_id": rec.record_id,
+                    "ts": rec.ts,
+                    "source": rec.source,
+                    "kind": rec.kind,
+                    "task_id": rec.task_id,
+                },
             )
             return
 
-        self.connection.settimeout(15.0)
-        body = self.rfile.read(content_length)
-        if not self._validate_auth(body):
+        if path == "/settings":
+            payload, _ = self._read_json_body(max_content_length=10_000)
+            if payload is None:
+                return
+
+            reason = str(payload.get("reason", "")).strip()[:200]
+            reset_raw = payload.get("reset", False)
+            if not isinstance(reset_raw, bool):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid reset."})
+                return
+            reset = reset_raw
+            daemon_paused = payload.get("daemon_paused")
+            safe_mode = payload.get("safe_mode")
+            gaming_enabled = payload.get("gaming_enabled")
+            gaming_auto_detect = payload.get("gaming_auto_detect")
+
+            for key, value in (
+                ("daemon_paused", daemon_paused),
+                ("safe_mode", safe_mode),
+                ("gaming_enabled", gaming_enabled),
+                ("gaming_auto_detect", gaming_auto_detect),
+            ):
+                if value is not None and not isinstance(value, bool):
+                    self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Invalid {key}."})
+                    return
+
+            root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
+            if reset:
+                reset_control_state(root_path)
+                try:
+                    self._write_gaming_state(enabled=False, auto_detect=False, reason=reason)
+                except PermissionError:
+                    self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
+                    return
+            else:
+                if daemon_paused is not None or safe_mode is not None or reason:
+                    write_control_state(
+                        root_path,
+                        daemon_paused=daemon_paused if isinstance(daemon_paused, bool) else None,
+                        safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                        reason=reason,
+                    )
+                if gaming_enabled is not None or gaming_auto_detect is not None or reason:
+                    try:
+                        self._write_gaming_state(
+                            enabled=gaming_enabled if isinstance(gaming_enabled, bool) else None,
+                            auto_detect=gaming_auto_detect if isinstance(gaming_auto_detect, bool) else None,
+                            reason=reason,
+                        )
+                    except PermissionError:
+                        self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
+                        return
+
+            self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
             return
 
-        try:
-            payload = json.loads(body.decode("utf-8"))
-        except UnicodeDecodeError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."})
-            return
-        except json.JSONDecodeError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."})
-            return
-
-        source = str(payload.get("source", "user"))
-        kind = str(payload.get("kind", "episodic"))
-        task_id = str(payload.get("task_id", "")).strip()
-        content = str(payload.get("content", "")).strip()
-
-        if source not in ALLOWED_SOURCES:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid source."})
-            return
-        if kind not in ALLOWED_KINDS:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid kind."})
-            return
-        if not task_id or len(task_id) > 128:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid task_id."})
-            return
-        if not content or len(content) > 20_000:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."})
+        if path == "/command":
+            payload, _ = self._read_json_body(max_content_length=25_000)
+            if payload is None:
+                return
+            result = self._run_voice_command(payload)
+            self._write_json(HTTPStatus.OK, result)
             return
 
-        rec = self.server.pipeline.ingest(  # type: ignore[attr-defined]
-            source=source,  # type: ignore[arg-type]
-            kind=kind,  # type: ignore[arg-type]
-            task_id=task_id,
-            content=content,
-        )
-        self._write_json(
-            HTTPStatus.CREATED,
-            {
-                "ok": True,
-                "record_id": rec.record_id,
-                "ts": rec.ts,
-                "source": rec.source,
-                "kind": rec.kind,
-                "task_id": rec.task_id,
-            },
-        )
+        if path == "/sync":
+            payload, _ = self._read_json_body(max_content_length=10_000)
+            if payload is None:
+                return
+            _ = bool(payload.get("auto_ingest", False))
+            args = ["mobile-desktop-sync"]
+            result = self._run_main_cli(args, timeout_s=120)
+            self._write_json(HTTPStatus.OK, result)
+            return
+
+        if path == "/self-heal":
+            payload, _ = self._read_json_body(max_content_length=10_000)
+            if payload is None:
+                return
+            keep_recent_raw = payload.get("keep_recent", 1800)
+            force_maintenance = bool(payload.get("force_maintenance", False))
+            snapshot_note = str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160] or "mobile-self-heal"
+            try:
+                keep_recent = int(keep_recent_raw)
+            except (TypeError, ValueError):
+                keep_recent = 1800
+            keep_recent = max(200, min(keep_recent, 50000))
+            args = ["self-heal", "--keep-recent", str(keep_recent), "--snapshot-note", snapshot_note]
+            if force_maintenance:
+                args.append("--force-maintenance")
+            result = self._run_main_cli(args, timeout_s=240)
+            self._write_json(HTTPStatus.OK, result)
+            return
+
+        self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
+        return
 
     def log_message(self, fmt: str, *args: object) -> None:
         # Keep mobile ingestion logs out of stdout unless explicitly logged via memory store.
@@ -202,6 +690,17 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
 
 def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, repo_root: Path) -> None:
+    allow_insecure_non_loopback = os.getenv("JARVIS_ALLOW_INSECURE_MOBILE_BIND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if host not in {"127.0.0.1", "localhost", "::1"} and not allow_insecure_non_loopback:
+        raise RuntimeError(
+            "Refusing non-loopback mobile bind without TLS. "
+            "Set JARVIS_ALLOW_INSECURE_MOBILE_BIND=true only for trusted local testing."
+        )
+
     store = MemoryStore(repo_root)
     pipeline = IngestionPipeline(store)
     server = MobileIngestServer(
@@ -210,9 +709,10 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
         auth_token=auth_token,
         signing_key=signing_key,
         pipeline=pipeline,
+        repo_root=repo_root,
     )
     print(f"mobile_api_listening=http://{host}:{port}")
     if host not in {"127.0.0.1", "localhost", "::1"}:
         print("warning=mobile_api_non_loopback_without_tls")
-    print("endpoints: GET /health, POST /ingest")
+    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync, POST /self-heal")
     server.serve_forever()

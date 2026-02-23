@@ -206,9 +206,14 @@ def _extract_embedding(path: Path) -> np.ndarray:
     return embedding
 
 
+_MAX_AUDIO_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
 def _read_wav_mono(path: Path) -> tuple[int, np.ndarray]:
     if not path.exists():
         raise ValueError(f"Audio file not found: {path}")
+    if path.stat().st_size > _MAX_AUDIO_BYTES:
+        raise ValueError("Audio file too large (max 50MB)")
     with wave.open(str(path), "rb") as wf:
         channels = wf.getnchannels()
         sample_rate = wf.getframerate()
