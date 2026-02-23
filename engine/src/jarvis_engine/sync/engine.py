@@ -119,6 +119,8 @@ class SyncEngine:
                 self._db.commit()
             except Exception as exc:
                 self._db.rollback()
+                applied = 0
+                conflicts_resolved = 0
                 errors.append(str(exc))
                 logger.error("Sync apply_incoming failed: %s", exc)
 

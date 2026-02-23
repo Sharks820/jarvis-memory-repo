@@ -58,8 +58,10 @@ class MemoryEngine:
             import sqlite_vec
 
             self._db.enable_load_extension(True)
-            sqlite_vec.load(self._db)
-            self._db.enable_load_extension(False)
+            try:
+                sqlite_vec.load(self._db)
+            finally:
+                self._db.enable_load_extension(False)
         except Exception as exc:
             self._vec_available = False
             logger.warning("sqlite-vec unavailable, falling back to FTS5-only search: %s", exc)

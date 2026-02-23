@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -147,7 +148,7 @@ class ConnectBootstrapHandler:
         if cmd.auto_open:
             for prompt in prompts:
                 url = prompt.get("option_tap_url", "").strip()
-                if url:
+                if url and re.match(r"^https?://", url, re.IGNORECASE):
                     webbrowser.open(url)
         return ConnectBootstrapResult(prompts=prompts, ready=False)
 

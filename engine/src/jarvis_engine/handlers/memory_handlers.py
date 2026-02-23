@@ -185,7 +185,14 @@ class MemorySnapshotHandler:
                 file_count=result.file_count,
             )
         if cmd.verify_path and cmd.verify_path.strip():
-            verification = verify_signed_snapshot(self._root, Path(cmd.verify_path))
+            target = Path(cmd.verify_path).resolve()
+            try:
+                target.relative_to(self._root.resolve())
+            except ValueError:
+                return MemorySnapshotResult(
+                    verified=True, ok=False, reason="Path outside project root",
+                )
+            verification = verify_signed_snapshot(self._root, target)
             return MemorySnapshotResult(
                 verified=True,
                 ok=verification.ok,

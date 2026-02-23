@@ -13,7 +13,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -166,8 +166,9 @@ def _resolve_and_check_ip(url: str) -> bool:
     host = (parsed.hostname or "").strip().lower()
     if not host:
         return False
+    default_port = 443 if parsed.scheme == "https" else 80
     try:
-        resolved = socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
         return False
     for item in resolved:
@@ -176,9 +177,19 @@ def _resolve_and_check_ip(url: str) -> bool:
             ip = ip_address(raw_ip)
         except ValueError:
             return False
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return False
     return True
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    """Block redirects to non-public IPs to prevent redirect-based SSRF."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        if not _is_safe_public_url(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 # TODO: deduplicate with web_research.py
@@ -195,9 +206,10 @@ def _fetch_page_text(url: str, *, max_bytes: int) -> str:
         },
     )
     try:
-        resp = urlopen(req, timeout=12)  # nosec B310
+        opener = build_opener(_SafeRedirectHandler)
+        resp = opener.open(req, timeout=12)  # nosec B310
         data = resp.read(max_bytes)
-    except OSError:
+    except (OSError, ValueError):
         return ""
     finally:
         try:
@@ -250,11 +262,13 @@ def _is_safe_public_url(url: str) -> bool:
         return False
     try:
         ip = ip_address(host)
-        return not (ip.is_private or ip.is_loopback or ip.is_link_local)
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
     except ValueError:
         pass
+    default_port = 443 if parsed.scheme == "https" else 80
     try:
-        resolved = socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
         return False
     for item in resolved:
@@ -263,7 +277,8 @@ def _is_safe_public_url(url: str) -> bool:
             ip = ip_address(raw_ip)
         except ValueError:
             return False
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return False
     return True
 
