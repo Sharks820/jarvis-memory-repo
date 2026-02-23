@@ -136,7 +136,7 @@ def evaluate_connector_statuses(repo_root: Path) -> list[ConnectorStatus]:
         any_env_ok = _any_env_set(definition.required_any_env)
         all_env_ok, missing_all = _all_env_set(definition.required_all_env)
         file_ok, missing_files = _any_file_exists(repo_root, definition.fallback_local_files)
-        configured = any_env_ok or all_env_ok or file_ok
+        configured = any_env_ok or (definition.required_all_env and all_env_ok) or file_ok
         ready = configured and permission_granted
 
         if ready:

@@ -563,7 +563,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         "device_id": device_id,
                         "trusted_device": trusted,
                     },
-                    "owner_guard": read_owner_guard(root),
+                    "owner_guard": {
+                        k: v for k, v in read_owner_guard(root).items()
+                        if k not in ("master_password_hash", "master_password_salt_b64", "master_password_iterations")
+                    },
                 },
             )
             return

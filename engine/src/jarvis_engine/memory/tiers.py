@@ -97,8 +97,11 @@ class TierManager:
             new_tier = self.classify(record)
             current_tier_str = str(record.get("tier", "warm"))
 
+            rid = record.get("record_id", "")
+            if not rid:
+                continue
             if current_tier_str != new_tier.value:
-                updates.append((record["record_id"], new_tier.value))
+                updates.append((rid, new_tier.value))
                 old_order = tier_order.get(current_tier_str, 1)
                 new_order = tier_order.get(new_tier.value, 1)
                 if new_order > old_order:

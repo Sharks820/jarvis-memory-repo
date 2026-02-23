@@ -21,6 +21,13 @@ DEFAULT_OWNER_GUARD = {
 }
 
 
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 def owner_guard_path(root: Path) -> Path:
     return root / ".planning" / "security" / "owner_guard.json"
 
@@ -55,7 +62,7 @@ def read_owner_guard(root: Path) -> dict[str, Any]:
         "trusted_mobile_devices": [str(d).strip()[:128] for d in devices if str(d).strip()],
         "master_password_hash": str(raw.get("master_password_hash", "")).strip(),
         "master_password_salt_b64": str(raw.get("master_password_salt_b64", "")).strip(),
-        "master_password_iterations": int(raw.get("master_password_iterations", 200000)),
+        "master_password_iterations": _safe_int(raw.get("master_password_iterations", 200000), 200000),
         "updated_utc": str(raw.get("updated_utc", "")),
     }
 

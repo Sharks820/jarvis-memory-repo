@@ -410,7 +410,8 @@ def run_learning_mission(
         "verified_count": len(verified),
         "completed_utc": datetime.now(UTC).isoformat(),
     }
-    report_path = _reports_dir(root) / f"{mission_id}.report.json"
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
+    report_path = _reports_dir(root) / f"{safe_id}.report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
 
