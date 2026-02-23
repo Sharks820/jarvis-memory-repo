@@ -17,6 +17,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 from jarvis_engine.memory_store import MemoryStore
@@ -365,14 +366,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             state["reason"] = reason.strip()[:200]
         state["updated_utc"] = datetime.now(UTC).isoformat()
         path = self._gaming_state_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
-        tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        os.replace(tmp_path, path)
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+        _atomic_write_json(path, state)
         return state
 
     def _settings_payload(self) -> dict[str, Any]:

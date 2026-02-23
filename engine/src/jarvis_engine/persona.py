@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
 # ---------------------------------------------------------------------------
 # Tone profiles: map branch domains to personality instructions
@@ -156,15 +157,7 @@ def save_persona_config(
         "style": current.style if style is None else str(style).strip()[:80] or current.style,
         "updated_utc": datetime.now(UTC).isoformat(),
     }
-    path = _persona_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _atomic_write_json(_persona_path(root), payload)
     return load_persona_config(root)
 
 
