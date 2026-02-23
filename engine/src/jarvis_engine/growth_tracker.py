@@ -303,7 +303,7 @@ def run_eval(
                 think=think,
                 timeout_s=timeout_s,
             )
-        except (URLError, ValueError) as exc:
+        except (URLError, ValueError, TimeoutError) as exc:
             raise RuntimeError(f"Failed to reach Ollama at {endpoint}: {exc}") from exc
 
         response_text = str(raw.get("response", ""))

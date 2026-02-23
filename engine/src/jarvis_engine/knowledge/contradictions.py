@@ -94,35 +94,34 @@ class ContradictionManager:
                 "message": "merge_value is required when resolution is 'merge'.",
             }
 
-        # Load the contradiction
-        row = self._db.execute(
-            "SELECT * FROM kg_contradictions WHERE contradiction_id = ?",
-            (contradiction_id,),
-        ).fetchone()
-
-        if row is None:
-            return {
-                "success": False,
-                "node_id": "",
-                "resolution": resolution,
-                "message": f"Contradiction {contradiction_id} not found.",
-            }
-
-        contradiction = dict(row)
-        if contradiction["status"] != "pending":
-            return {
-                "success": False,
-                "node_id": contradiction["node_id"],
-                "resolution": resolution,
-                "message": f"Contradiction {contradiction_id} is already resolved.",
-            }
-
-        node_id = contradiction["node_id"]
-        existing_value = contradiction["existing_value"]
-        incoming_value = contradiction["incoming_value"]
-        now = datetime.now(UTC).isoformat()
-
         with self._write_lock:
+            # Load the contradiction inside write lock to prevent TOCTOU race
+            row = self._db.execute(
+                "SELECT * FROM kg_contradictions WHERE contradiction_id = ?",
+                (contradiction_id,),
+            ).fetchone()
+
+            if row is None:
+                return {
+                    "success": False,
+                    "node_id": "",
+                    "resolution": resolution,
+                    "message": f"Contradiction {contradiction_id} not found.",
+                }
+
+            contradiction = dict(row)
+            if contradiction["status"] != "pending":
+                return {
+                    "success": False,
+                    "node_id": contradiction["node_id"],
+                    "resolution": resolution,
+                    "message": f"Contradiction {contradiction_id} is already resolved.",
+                }
+
+            node_id = contradiction["node_id"]
+            existing_value = contradiction["existing_value"]
+            incoming_value = contradiction["incoming_value"]
+            now = datetime.now(UTC).isoformat()
             # Load current node for history
             node_row = self._db.execute(
                 "SELECT label, history FROM kg_nodes WHERE node_id = ?",

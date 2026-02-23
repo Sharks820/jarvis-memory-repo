@@ -29,6 +29,7 @@ ALLOWED_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 REPLAY_WINDOW_SECONDS = 300.0
 MAX_NONCES = 100_000
+MAX_AUTH_BODY_SIZE = 1_048_576  # 1 MB
 
 
 class MobileIngestServer(ThreadingHTTPServer):
@@ -385,12 +386,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return
             nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
             cutoff = now - REPLAY_WINDOW_SECONDS
-            stale = [key for key, seen_ts in nonce_seen.items() if seen_ts < cutoff]
-            for key in stale:
-                nonce_seen.pop(key, None)
+            valid_nonces = {k: v for k, v in nonce_seen.items() if v >= cutoff}
+            nonce_seen.clear()
+            nonce_seen.update(valid_nonces)
             self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
 
     def _validate_auth(self, body: bytes) -> bool:
+        if len(body) > MAX_AUTH_BODY_SIZE:
+            self._unauthorized("Request body too large.")
+            return False
         auth = self.headers.get("Authorization", "")
         expected_auth = f"Bearer {self.server.auth_token}"  # type: ignore[attr-defined]
         if not hmac.compare_digest(auth, expected_auth):

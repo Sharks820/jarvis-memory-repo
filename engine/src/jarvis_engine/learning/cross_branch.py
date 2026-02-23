@@ -156,14 +156,17 @@ def create_cross_branch_edges(
     db = kg.db  # type: ignore[attr-defined]
 
     for keyword in keywords:
+        # Escape SQL LIKE wildcards in keyword to prevent injection
+        safe_keyword = keyword.replace("%", "\\%").replace("_", "\\_")
+        safe_branch = (source_branch or "").replace("%", "\\%").replace("_", "\\_")
         # Search for matching nodes in OTHER branches via LIKE query
         try:
             cursor = db.execute(
                 """SELECT node_id, label FROM kg_nodes
-                   WHERE label LIKE ?
-                   AND node_id NOT LIKE ?
+                   WHERE label LIKE ? ESCAPE '\\'
+                   AND node_id NOT LIKE ? ESCAPE '\\'
                    LIMIT 10""",
-                (f"%{keyword}%", f"{source_branch}.%" if source_branch else new_fact_id),
+                (f"%{safe_keyword}%", f"{safe_branch}.%" if source_branch else new_fact_id),
             )
             matches = cursor.fetchall()
         except Exception as exc:
