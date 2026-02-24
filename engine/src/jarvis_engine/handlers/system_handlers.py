@@ -192,7 +192,8 @@ class GamingModeHandler:
         if cmd.reason.strip():
             state["reason"] = cmd.reason.strip()
         if changed:
-            from datetime import UTC, datetime
+            from datetime import datetime
+            from jarvis_engine._compat import UTC
 
             state["updated_utc"] = datetime.now(UTC).isoformat()
             state = _main_mod._write_gaming_mode_state(state)

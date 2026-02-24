@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, asdict
-from datetime import datetime, UTC
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from typing import Literal
 
 from jarvis_engine.memory_store import MemoryStore

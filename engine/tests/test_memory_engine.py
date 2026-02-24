@@ -13,7 +13,8 @@ from __future__ import annotations
 import hashlib
 import struct
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+from jarvis_engine._compat import UTC
 from pathlib import Path
 
 import pytest

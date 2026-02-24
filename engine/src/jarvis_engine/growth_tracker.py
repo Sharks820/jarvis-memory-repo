@@ -6,7 +6,8 @@ import os
 import re
 import threading
 from dataclasses import dataclass, field, asdict
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError

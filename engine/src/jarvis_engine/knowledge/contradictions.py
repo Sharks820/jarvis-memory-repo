@@ -12,7 +12,8 @@ import json
 import logging
 import sqlite3
 import threading
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 
 logger = logging.getLogger(__name__)
 

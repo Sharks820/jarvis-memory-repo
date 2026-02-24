@@ -120,10 +120,12 @@ $mobileRunning = @(
     }
 ).Count -gt 0
 if (-not $mobileRunning) {
-    $env:PYTHONPATH = "src"
-    $env:JARVIS_MOBILE_TOKEN = $token
-    $env:JARVIS_MOBILE_SIGNING_KEY = $signingKey
-    $mobileArgs = @("-m", "jarvis_engine.main", "serve-mobile", "--host", $BindHost, "--port", "$Port")
+    # Pass auth and bind flags via CLI args (avoids env var propagation issues with Start-Process).
+    $mobileArgs = @("-m", "jarvis_engine.main", "serve-mobile", "--host", $BindHost, "--port", "$Port", "--token", $token, "--signing-key", $signingKey)
+    if ($BindHost -ne "127.0.0.1") {
+        $mobileArgs += "--allow-insecure-bind"
+    }
+    $env:PYTHONPATH = Join-Path $engineDir "src"
     Start-Process -FilePath $python -ArgumentList $mobileArgs -WorkingDirectory $engineDir -RedirectStandardOutput $mobileLogPath -RedirectStandardError $mobileErrPath -WindowStyle Hidden
 }
 

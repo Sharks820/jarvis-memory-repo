@@ -201,7 +201,7 @@ class ModelGateway:
             )
         try:
             resp = self._ollama.chat(model=model, messages=messages)
-        except (ConnectionError, ResponseError) as exc:
+        except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             logger.warning("Ollama call failed: %s", exc)
             return GatewayResponse(
                 text="",
@@ -261,7 +261,7 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason=reason,
             )
-        except (ConnectionError, ResponseError) as exc:
+        except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             full_reason = f"{reason} -> Ollama also failed"
             logger.error("All providers failed: %s -> %s", reason, exc)
             return GatewayResponse(

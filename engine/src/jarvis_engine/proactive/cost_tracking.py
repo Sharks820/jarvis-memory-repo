@@ -7,7 +7,8 @@ as Jarvis's local knowledge base grows.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 

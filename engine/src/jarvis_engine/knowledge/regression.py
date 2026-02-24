@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from typing import TYPE_CHECKING
 
 from jarvis_engine._shared import safe_int as _safe_int

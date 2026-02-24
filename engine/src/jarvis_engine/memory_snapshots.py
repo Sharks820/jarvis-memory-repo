@@ -7,7 +7,8 @@ import logging
 import os
 import zipfile
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 

@@ -5,6 +5,10 @@ sqlite-vec>=0.1.6
 networkx>=3.1
 anthropic>=0.81.0
 ollama>=0.4.0
+icalendar>=7.0.1
+recurring-ical-events>=3.8.1
+openai>=1.0.0
+google-genai>=1.0.0
 
 [dev]
 pytest>=8.0.0
@@ -13,3 +17,6 @@ mypy>=1.11.0
 bandit>=1.7.9
 pip-audit>=2.7.0
 hypothesis>=6.112.0
+
+[tasks]
+todoist-api-python
