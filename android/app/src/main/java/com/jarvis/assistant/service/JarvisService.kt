@@ -20,6 +20,10 @@ import com.jarvis.assistant.feature.context.ContextDetector
 import com.jarvis.assistant.feature.context.UserContext
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
+import com.jarvis.assistant.feature.commute.LocationLearner
+import com.jarvis.assistant.feature.commute.ParkingMemory
+import com.jarvis.assistant.feature.commute.TrafficChecker
+import com.jarvis.assistant.feature.finance.SpendSummaryWorker
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import dagger.hilt.android.AndroidEntryPoint
@@ -49,6 +53,9 @@ class JarvisService : Service() {
     @Inject lateinit var contextStateDao: ContextStateDao
     @Inject lateinit var medicationScheduler: MedicationScheduler
     @Inject lateinit var refillTracker: RefillTracker
+    @Inject lateinit var locationLearner: LocationLearner
+    @Inject lateinit var trafficChecker: TrafficChecker
+    @Inject lateinit var parkingMemory: ParkingMemory
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
@@ -56,6 +63,8 @@ class JarvisService : Service() {
     private var lastSpamSyncMs = 0L
     private var lastContextCheckMs = 0L
     private var lastRefillCheckMs = 0L
+    private var lastLocationRecordMs = 0L
+    private var lastTrafficCheckMs = 0L
     private var currentContext: UserContext = UserContext.NORMAL
 
     override fun onCreate() {
@@ -63,6 +72,8 @@ class JarvisService : Service() {
         createNotificationChannel()
         channelManager.createChannels()
         startForeground(NOTIF_ID, buildNotification())
+        parkingMemory.registerBluetoothReceiver()
+        SpendSummaryWorker.enqueue(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -76,6 +87,7 @@ class JarvisService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        parkingMemory.unregisterBluetoothReceiver()
         scope.cancel()
         super.onDestroy()
     }
@@ -151,6 +163,28 @@ class JarvisService : Service() {
                     }
                 }
 
+                // Location recording: every 15 minutes
+                val locationNow = System.currentTimeMillis()
+                if (locationNow - lastLocationRecordMs >= LOCATION_RECORD_INTERVAL_MS) {
+                    lastLocationRecordMs = locationNow
+                    try {
+                        locationLearner.recordLocation()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Location recording error: ${e.message}")
+                    }
+                }
+
+                // Traffic check: every 30 minutes
+                val trafficNow = System.currentTimeMillis()
+                if (trafficNow - lastTrafficCheckMs >= TRAFFIC_CHECK_INTERVAL_MS) {
+                    lastTrafficCheckMs = trafficNow
+                    try {
+                        trafficChecker.checkPreDeparture()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Traffic check error: ${e.message}")
+                    }
+                }
+
                 delay(syncIntervalMs)
             }
         }
@@ -207,5 +241,7 @@ class JarvisService : Service() {
         private const val SPAM_SYNC_INTERVAL_MS = 10L * 60 * 1000 // 10 minutes
         private const val CONTEXT_CHECK_INTERVAL_MS = 120_000L // 2 minutes
         private const val REFILL_CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000 // 6 hours
+        private const val LOCATION_RECORD_INTERVAL_MS = 15L * 60 * 1000 // 15 minutes
+        private const val TRAFFIC_CHECK_INTERVAL_MS = 30L * 60 * 1000 // 30 minutes
     }
 }

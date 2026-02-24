@@ -5,6 +5,7 @@ import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.jarvis.assistant.feature.finance.BankNotificationParser
 import com.jarvis.assistant.feature.notifications.NotificationLearner
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -35,6 +36,7 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         fun cueExtractor(): SchedulingCueExtractor
         fun calendarCreator(): CalendarEventCreator
         fun notificationLearner(): NotificationLearner
+        fun bankNotificationParser(): BankNotificationParser
     }
 
     private val cueExtractor by lazy {
@@ -58,6 +60,13 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         ).notificationLearner()
     }
 
+    private val bankNotificationParser by lazy {
+        EntryPointAccessors.fromApplication(
+            application,
+            SchedulingEntryPoint::class.java,
+        ).bankNotificationParser()
+    }
+
     /** Track notification post times for calculating action delay. */
     private val notificationPostTimes = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
@@ -77,11 +86,7 @@ class JarvisNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val pkg = sbn.packageName
-        if (pkg !in SCHEDULING_PACKAGES) return
-
-        // Check if scheduling extraction is enabled in user preferences
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_EXTRACTION_ENABLED, true)) return
 
         val extras = sbn.notification.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
@@ -91,6 +96,23 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         // Prefer bigText (more content) with title, fall back to text
         val fullText = "$title\n${bigText.ifBlank { text }}"
         if (fullText.isBlank() || fullText.length < 10) return
+
+        // ── Financial notification parsing ─────────────────────
+        if (prefs.getBoolean(KEY_FINANCE_MONITORING_ENABLED, true) &&
+            bankNotificationParser.isBankApp(pkg)
+        ) {
+            scope.launch {
+                try {
+                    bankNotificationParser.parseAndStore(pkg, fullText)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Bank notification parsing failed: ${e.message}")
+                }
+            }
+        }
+
+        // ── Scheduling cue extraction ──────────────────────────
+        if (pkg !in SCHEDULING_PACKAGES) return
+        if (!prefs.getBoolean(KEY_EXTRACTION_ENABLED, true)) return
 
         scope.launch {
             try {
@@ -202,5 +224,8 @@ class JarvisNotificationListenerService : NotificationListenerService() {
 
         /** Minimum confidence to even consider a cue (date-only = 0.3). */
         private const val MIN_CONFIDENCE = 0.3f
+
+        /** Key: enable/disable financial monitoring from notifications. */
+        const val KEY_FINANCE_MONITORING_ENABLED = "finance_monitoring_enabled"
     }
 }

@@ -571,6 +571,156 @@ fun SettingsScreen(
             }
         }
 
+        // ── Financial Watchdog ────────────────────────────
+        item {
+            val financeEnabled by viewModel.financeMonitoringEnabled.collectAsState()
+            val weekTxCount by viewModel.weekTransactionCount.collectAsState()
+            val weekSpend by viewModel.weekTotalSpend.collectAsState()
+            val anomalyCount by viewModel.weekAnomalyCount.collectAsState()
+            val alertUnusual by viewModel.alertUnusualAmounts.collectAsState()
+            val alertNew by viewModel.alertNewMerchants.collectAsState()
+            val weeklySummary by viewModel.weeklySummaryEnabled.collectAsState()
+
+            SectionHeader("Financial Watchdog")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enable Financial Monitoring", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = financeEnabled,
+                            onCheckedChange = { viewModel.setFinanceMonitoringEnabled(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Transactions this week: $weekTxCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        "Week spend: ${"$%.2f".format(weekSpend)}",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        "Anomalies detected: $anomalyCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Alert on unusual amounts", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = alertUnusual,
+                            onCheckedChange = { viewModel.setAlertUnusualAmounts(it) },
+                            enabled = financeEnabled,
+                        )
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Alert on new merchants", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = alertNew,
+                            onCheckedChange = { viewModel.setAlertNewMerchants(it) },
+                            enabled = financeEnabled,
+                        )
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Weekly spend summary", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = weeklySummary,
+                            onCheckedChange = { viewModel.setWeeklySummaryEnabled(it) },
+                            enabled = financeEnabled,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Commute Intelligence ─────────────────────────
+        item {
+            val homeLocValue by viewModel.homeLocation.collectAsState()
+            val workLocValue by viewModel.workLocation.collectAsState()
+            val carBtNames by viewModel.carBluetoothNames.collectAsState()
+            val parkingValue by viewModel.activeParking.collectAsState()
+            val trafficEnabled by viewModel.trafficAlertsEnabled.collectAsState()
+            val parkingEnabled by viewModel.parkingMemoryEnabled.collectAsState()
+
+            SectionHeader("Commute Intelligence")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "Home: $homeLocValue",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        "Work: $workLocValue",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = carBtNames,
+                        onValueChange = { viewModel.saveCarBluetoothNames(it) },
+                        label = { Text("Car Bluetooth Name(s)") },
+                        placeholder = { Text("Comma-separated, e.g. My Car, BMW iDrive") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Current parking: $parkingValue",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Traffic alerts", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = trafficEnabled,
+                            onCheckedChange = { viewModel.setTrafficAlerts(it) },
+                        )
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Parking memory", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = parkingEnabled,
+                            onCheckedChange = { viewModel.setParkingMemory(it) },
+                        )
+                    }
+                }
+            }
+        }
+
         // ── About ──────────────────────────────────────────
         item {
             SectionHeader("About")
