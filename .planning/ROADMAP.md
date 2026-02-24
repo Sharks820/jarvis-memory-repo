@@ -2,180 +2,107 @@
 
 ## Overview
 
-Jarvis is a brownfield project with 29 existing Python source files and 125 passing tests. The codebase has a solid skeleton but a hollow brain -- memory is flat JSONL with keyword matching, connectors are stubs, and the monolithic main.py routes everything inline. This roadmap transforms Jarvis from a command runner into an always-learning personal AI that never forgets. Phase 1 is the foundation: decomposing the architecture and building a real memory system with SQLite, embeddings, and semantic search. Every subsequent phase builds on that foundation -- knowledge graph, intelligence routing, real connectors, voice personality, knowledge harvesting, continuous learning, device sync, and proactive intelligence.
+<details>
+<summary>v1.0 Desktop Engine (Phases 1-9) -- SHIPPED 2026-02-23</summary>
+
+The desktop Python engine is complete: SQLite + FTS5 + sqlite-vec memory engine, knowledge graph with fact locks and contradiction detection, intelligence routing (Ollama + Anthropic), real calendar/email/task connectors with daily briefing, multi-source knowledge harvesting, British butler persona with voice, continuous learning with golden eval, changelog-based encrypted sync, proactive intelligence with wake word, cost tracking with adversarial self-testing, and HMAC-signed mobile API with owner guard. 18 plans executed across 9 phases, 473 passing tests.
+
+</details>
+
+## v2.0 Native Android App
+
+The desktop brain is built. Now Jarvis needs a body -- a native Kotlin Android app on the Samsung Galaxy S25 Ultra that transforms the phone from a web-panel-only interface into a full-featured smart mobile companion. Phase 10 stands up the Android project, connects it to the desktop brain, and delivers a working voice assistant with a Material 3 dashboard. Phase 11 adds the intelligence layer: call screening, notification parsing for scheduling, contextual silence, and proactive notifications. Phase 12 delivers life management features: prescriptions, finance monitoring, document scanning, and commute intelligence. Phase 13 completes the learning loop: habit tracking with adaptive nudges, relationship memory with social context, and feedback loops that make every feature smarter over time.
 
 ## Phases
 
 **Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+- Phases 1-9: v1.0 Desktop Engine (all complete)
+- Phases 10-13: v2.0 Native Android App (current milestone)
+- Decimal phases (10.1, 10.2): Urgent insertions if needed
 
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [x] **Phase 1: Memory Revolution and Architecture** - Decompose monolithic main.py via Command Bus, migrate to SQLite + FTS5 + sqlite-vec with semantic search, enriched ingestion pipeline, and zero-loss data migration
-- [x] **Phase 2: Knowledge Graph and Anti-Regression** - Build fact extraction with NetworkX backed by SQLite, implement fact locks that prevent knowledge loss, contradiction quarantine, and regression verification
-- [ ] **Phase 3: Intelligence Routing** - Unified model gateway for Ollama + Anthropic, intent-based complexity routing, fallback chains, and per-query cost tracking
-- [ ] **Phase 4: Connectors and Daily Intelligence** - Real calendar, email, and task integrations replacing stubs, combined into a genuinely useful daily briefing
-- [x] **Phase 5: Knowledge Harvesting** - Multi-source knowledge extraction from MiniMax, Kimi, Claude Code, Codex, and Gemini with deduplication, validation, and budget controls
-- [ ] **Phase 6: Voice and Personality** - Persona layer with British butler character and contextual tone adaptation, plus Whisper-grade speech-to-text for voice commands
-- [ ] **Phase 7: Continuous Learning and Self-Improvement** - Knowledge extraction from every interaction, cross-branch fact reasoning, temporal metadata on facts, and golden task evaluation
-- [ ] **Phase 8: Mobile-Desktop Sync** - Changelog-based bidirectional sync between desktop PC and Samsung Galaxy S25 Ultra with field-level conflict resolution and encrypted transport
-- [ ] **Phase 9: Proactive Intelligence and Polish** - Proactive assistance that surfaces info before being asked, wake word activation, progressive cost reduction, and adversarial self-testing
+- [ ] **Phase 10: Foundation and Daily Driver** - Android project with Compose UI, desktop API client with HMAC signing, biometric security, encrypted Room DB, foreground sync service, dashboard UI (home/chat/memory/settings), and voice assistant
+- [ ] **Phase 11: Intelligence Core** - Call screening with spam defense, notification-based scheduling extraction, proactive notification channels with smart batching, and contextual silence (meeting/driving/sleep detection)
+- [ ] **Phase 12: Life Management** - Prescription tracking with alarm reminders, financial watchdog for bank notifications, document scanner with encrypted OCR, and commute intelligence with parking memory
+- [ ] **Phase 13: Deep Learning and Social** - Habit detection with adaptive nudges, relationship memory with pre/post-call context, and learning feedback loops across all features
 
 ## Phase Details
 
-### Phase 1: Memory Revolution and Architecture
-**Goal**: Jarvis has a real brain -- semantic search finds what you meant (not just what you said), all memory lives in a queryable database, and the codebase is decomposed into maintainable modules that all 125+ tests still pass against
-**Depends on**: Nothing (first phase)
-**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05, ARCH-06, MEM-01, MEM-02, MEM-03, MEM-04, MEM-05, MEM-06, MEM-07, MEM-08
+### Phase 10: Foundation and Daily Driver
+**Goal**: Jarvis lives on the phone as a working daily-use app -- the user can unlock with biometrics, see their day at a glance, have a voice conversation with the desktop brain, and all data is encrypted and synced
+**Depends on**: v1.0 Desktop Engine (complete)
+**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05, FOUND-06, ASEC-01, ASEC-02, ASEC-03, ASEC-04, DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, AVOICE-01, AVOICE-02, AVOICE-03, AVOICE-04
 **Success Criteria** (what must be TRUE):
-  1. User can ask a natural language question and get semantically relevant memory results (not just keyword matches) -- e.g., asking "what medications do I take" finds records about prescriptions even if they never use the word "medications"
-  2. All existing JSONL/JSON memory data has been migrated into SQLite with zero records lost, verified by count comparison and spot-check queries
-  3. CLI commands, mobile API endpoints, and daemon loop all dispatch through the same Command Bus -- no business logic lives in interface code
-  4. Memory records are automatically classified into the correct branch (ops, coding, health, etc.) using embedding similarity rather than keyword rules
-  5. All 125+ existing tests pass without modification to test assertions (adapter shims are acceptable)
-**Plans**: 3 plans
-
-Plans:
-- [x] 01-01-PLAN.md -- Command Bus architecture and main.py decomposition
-- [x] 01-02-PLAN.md -- SQLite + FTS5 + sqlite-vec memory engine with hybrid search
-- [x] 01-03-PLAN.md -- Enriched ingestion pipeline and data migration
-
-### Phase 2: Knowledge Graph and Anti-Regression
-**Goal**: Jarvis builds a web of interconnected facts from everything it ingests, protects confirmed knowledge with immutable locks, and can prove nothing has been lost between sessions
-**Depends on**: Phase 1
-**Requirements**: KNOW-01, KNOW-02, KNOW-03, KNOW-04
-**Success Criteria** (what must be TRUE):
-  1. Facts extracted from ingested content appear as nodes in the knowledge graph with typed relationships connecting them
-  2. A fact confirmed by the owner or verified by multiple sources becomes locked and cannot be silently overwritten -- attempting to contradict it results in a quarantined "pending contradiction" for owner review
-  3. Running a regression report compares knowledge counts and fact integrity against a previous signed snapshot and reports any discrepancies
-  4. Owner can review and resolve quarantined contradictions via a CLI command (accept new fact, keep old fact, or merge)
-**Plans**: 2 plans
-
-Plans:
-- [x] 02-01-PLAN.md -- NetworkX knowledge graph with SQLite persistence and fact extraction pipeline integration
-- [x] 02-02-PLAN.md -- Fact locks, contradiction quarantine, regression verification, and CLI commands
-
-### Phase 3: Intelligence Routing
-**Goal**: Jarvis routes queries to the right model for the job -- Opus for complex reasoning, Sonnet for routine summarization, local Ollama for simple or private tasks -- with transparent cost tracking
-**Depends on**: Phase 1
-**Requirements**: INTL-01, INTL-02, INTL-03, INTL-04
-**Success Criteria** (what must be TRUE):
-  1. User can send a query and it is automatically routed to the appropriate model (Opus, Sonnet, or Ollama) based on complexity classification, without the user specifying which model to use
-  2. If the Anthropic API is unavailable, queries gracefully fall back to local Ollama with a notification to the user rather than an error
-  3. Per-query cost is logged in SQLite and the user can view a cost summary showing spend by model and time period
-  4. Simple private queries (e.g., "what's on my calendar") never leave the machine -- they are handled by local Ollama
-**Plans**: 2 plans
-
-Plans:
-- [ ] 03-01-PLAN.md -- ModelGateway with Anthropic + Ollama providers, fallback chains, CostTracker, and pricing
-- [ ] 03-02-PLAN.md -- IntentClassifier with embedding-based routing, RouteCommand evolution, and Command Bus wiring
-
-### Phase 4: Connectors and Daily Intelligence
-**Goal**: Jarvis knows the owner's real schedule, real emails, and real tasks -- and combines them into a morning briefing that is genuinely useful for planning the day
-**Depends on**: Phase 1, Phase 3
-**Requirements**: CONN-01, CONN-02, CONN-03, CONN-04
-**Success Criteria** (what must be TRUE):
-  1. Daily briefing includes real calendar events pulled from Google Calendar or an ICS feed (not stub/mock data)
-  2. Daily briefing includes a summary of recent emails triaged by importance, pulled from a real IMAP inbox
-  3. Daily briefing includes actual pending tasks from an integrated task source
-  4. The combined daily briefing weaves together calendar, email, tasks, medications, and relevant memory context into a coherent narrative the owner can act on
-**Plans**: 2 plans
-
-Plans:
-- [ ] 04-01-PLAN.md -- Calendar connector (icalendar + recurring-ical-events ICS parsing) and task source abstraction (JSON, Todoist)
-- [ ] 04-02-PLAN.md -- Enhanced IMAP email triage and LLM-powered narrative daily briefing via ModelGateway
-
-### Phase 5: Knowledge Harvesting
-**Goal**: Jarvis can actively learn from multiple AI sources -- asking MiniMax, Kimi, Claude, Codex, and Gemini about topics and distilling their knowledge into its own permanent memory
-**Depends on**: Phase 1, Phase 2, Phase 3
-**Requirements**: HARV-01, HARV-02, HARV-03, HARV-04, HARV-05, HARV-06, HARV-07
-**Success Criteria** (what must be TRUE):
-  1. User can instruct Jarvis to research a topic and it queries at least three external AI sources (MiniMax, Kimi, Gemini) to gather knowledge
-  2. Harvested knowledge is deduplicated against existing facts and ingested through the standard memory pipeline (not a separate storage path)
-  3. Contradictions between harvested knowledge and existing locked facts are quarantined for review rather than silently accepted
-  4. Cost tracking shows per-source API spend and the user can set daily/monthly budget limits that halt harvesting when exceeded
-**Plans**: 2 plans
-
-Plans:
-- [x] 05-01-PLAN.md -- MiniMax, Kimi, and Gemini API harvester providers with orchestrator and pipeline integration
-- [x] 05-02-PLAN.md -- Claude Code and Codex session ingestors, budget controls, semantic dedup, and Command Bus wiring
-
-### Phase 6: Voice and Personality
-**Goal**: Jarvis speaks with a distinctive British butler personality that adapts its tone to context, and can listen to voice commands with accuracy matching the Whisper app
-**Depends on**: Phase 1
-**Requirements**: VOICE-01, VOICE-02, VOICE-03, VOICE-04
-**Success Criteria** (what must be TRUE):
-  1. Jarvis responses carry a distinct British butler personality with contextual mild humor -- responses about gaming are lighter than responses about health or finance
-  2. Voice output uses Edge-TTS with streaming chunked playback (existing behavior preserved and enhanced with personality-aware phrasing)
-  3. User can speak a voice command and it is transcribed with accuracy comparable to the Whisper desktop app, then executed as if typed
-  4. Persona tone adapts based on the branch/domain of the query: professional for health and finance, warm for family, light humor for gaming and casual topics
+  1. User opens the app on Samsung Galaxy S25 Ultra, authenticates with fingerprint or face, and sees a Material 3 home screen with today's schedule, weather, tasks, and quick actions -- all data pulled from the desktop engine over LAN
+  2. User taps push-to-talk (from notification or in-app), speaks a command, and hears the desktop brain's response spoken back through the phone -- the full voice round-trip works end-to-end
+  3. User can browse conversation history in the Chat tab, search memories in the Memory tab, and configure sync/notification/voice/security settings in the Settings tab
+  4. When the phone loses WiFi connectivity, commands queue locally in the encrypted Room database and automatically flush to the desktop when connectivity returns -- no commands are lost
+  5. All local data (Room DB, tokens, signing keys) is encrypted at rest via SQLCipher and EncryptedSharedPreferences, and sensitive operations (prescriptions, finance, documents) require master password confirmation
 **Plans**: TBD
 
 Plans:
-- [ ] 06-01: Persona integration with contextual tone adaptation
-- [ ] 06-02: Whisper-grade speech-to-text pipeline
+- [ ] 10-01-PLAN.md -- Android project scaffold, Gradle build, Compose navigation, Material 3 theme, biometric lock, encrypted Room DB
+- [ ] 10-02-PLAN.md -- JarvisApiClient (Retrofit2 + OkHttp + HMAC interceptor), foreground service with sync loop, offline command queue, exponential backoff
+- [ ] 10-03-PLAN.md -- Dashboard UI (home/chat/memory/settings tabs), voice engine (STT + command dispatch + TTS response), owner guard device bootstrap
 
-### Phase 7: Continuous Learning and Self-Improvement
-**Goal**: Jarvis extracts and permanently retains knowledge from every interaction, connects facts across life domains for cross-domain reasoning, and can measurably prove it is getting smarter over time
-**Depends on**: Phase 1, Phase 2, Phase 3
-**Requirements**: GROW-01, GROW-02, KNOW-05, KNOW-06
+### Phase 11: Intelligence Core
+**Goal**: The phone actively works for the user -- screening spam calls before they ring, extracting calendar events from notifications, adjusting behavior based on context (driving/meeting/sleeping), and delivering desktop proactive alerts through prioritized notification channels
+**Depends on**: Phase 10
+**Requirements**: CALL-01, CALL-02, CALL-03, CALL-04, SCHED-01, SCHED-02, SCHED-03, SCHED-04, ANOTIF-01, ANOTIF-02, ANOTIF-03, ANOTIF-04, CTX-01, CTX-02, CTX-03, CTX-04
 **Success Criteria** (what must be TRUE):
-  1. After a conversation about a new topic, Jarvis can answer questions about that topic in a future session -- knowledge persists without the user explicitly saving anything
-  2. Cross-branch queries work: asking "do any of my medications conflict with my gaming schedule" finds relationships between health-branch facts and gaming-branch facts
-  3. Golden task evaluation shows capability scores that demonstrably improve over time, with an auditable history of eval runs
-  4. Facts have temporal metadata: permanent facts (pharmacy hours) are distinguished from time-sensitive facts (milk expiration), and expired information is automatically flagged
+  1. When an unknown number calls, the CallScreeningService intercepts it before ringing, scores it against the local spam database synced from desktop, and applies the user-configured action (block/silence/voicemail/allow) based on score threshold
+  2. When the user receives an SMS or email containing a date/time/location, the notification listener extracts the scheduling cues, creates a calendar event via CalendarProvider, and the desktop engine flags any conflicts with existing schedule
+  3. Desktop proactive alerts (bill reminders, meeting prep, medication) appear on the phone as notifications routed to the correct channel (URGENT bypasses DND, IMPORTANT, ROUTINE, BACKGROUND) with related notifications batched and summarized
+  4. The phone detects current context -- calendar meeting, accelerometer driving pattern, time-based sleep, gaming mode sync -- and automatically adjusts notification aggressiveness, call screening strictness, and voice volume (driving: urgent-only read aloud; meeting: full silence except emergency contacts)
+  5. Notification learning tracks which notifications the user acts on versus dismisses and adjusts priority scoring over time
 **Plans**: TBD
 
 Plans:
-- [ ] 07-01: Continuous learning engine with automatic knowledge extraction
-- [ ] 07-02: Cross-branch reasoning and golden task evaluation
+- [ ] 11-01-PLAN.md -- CallScreeningService with local spam DB sync, scoring engine, configurable threshold actions
+- [ ] 11-02-PLAN.md -- NotificationListenerService for scheduling cue extraction, CalendarProvider event creation, desktop conflict checking
+- [ ] 11-03-PLAN.md -- Proactive notification channels (4 priority tiers), smart batching, notification learning, context detector (meeting/driving/sleep/gaming) with auto-adjustment rules
 
-### Phase 8: Mobile-Desktop Sync
-**Goal**: Knowledge learned on the phone is available on the desktop and vice versa, with efficient incremental sync and automatic conflict resolution
-**Depends on**: Phase 1, Phase 2
-**Requirements**: SYNC-01, SYNC-02, SYNC-03, SYNC-04, SYNC-05
+### Phase 12: Life Management
+**Goal**: Jarvis manages the practical details of daily life -- reminding about medications on exact schedules that survive DND, watching bank transactions for anomalies, scanning and searching documents by content, and knowing commute patterns without manual setup
+**Depends on**: Phase 10, Phase 11 (notification channels, context detection)
+**Requirements**: RX-01, RX-02, RX-03, RX-04, FIN-01, FIN-02, FIN-03, DOC-01, DOC-02, DOC-03, DOC-04, COMM-01, COMM-02, COMM-03
 **Success Criteria** (what must be TRUE):
-  1. After ingesting knowledge on the mobile device, that knowledge appears on the desktop after the next sync cycle (and vice versa)
-  2. Only changes since the last sync are transmitted -- not the full database state -- verified by measuring payload size relative to total database size
-  3. If the same record is modified on both devices between syncs, field-level conflict resolution merges the changes with desktop as authoritative for ties
-  4. Sync payloads are encrypted in transit so intercepted network traffic reveals no readable memory content
+  1. User sets up medication schedule, receives exact-time dose reminders that break through Do Not Disturb, can ask "did I take my morning meds?" by voice and get an accurate answer from today's log, and gets proactive refill reminders before running out
+  2. Bank SMS and email notifications are parsed for charges, and the user receives alerts for unusual amounts, new merchants, and subscription price changes, plus a weekly spend summary as a ROUTINE notification
+  3. User can scan a document with the camera, OCR extracts searchable text, the document is stored encrypted in Room DB and synced to desktop, and the user can search across all documents by content (e.g., "find my Best Buy receipt from January") with automatic categorization (receipts, warranties, IDs, medical, insurance)
+  4. The app automatically learns home and work locations from GPS patterns, provides pre-departure traffic checks with leave-time suggestions, and saves parking GPS coordinates when car Bluetooth disconnects
 **Plans**: TBD
 
 Plans:
-- [ ] 08-01: Changelog table and diff-based sync engine
-- [ ] 08-02: Encrypted transport and conflict resolution
+- [ ] 12-01-PLAN.md -- Prescription manager (Room DB schedule, AlarmManager EXACT_ALARM, voice query integration, refill tracking with proactive reminders)
+- [ ] 12-02-PLAN.md -- Financial watchdog (bank SMS/email parsing, anomaly alerts, weekly summary) and commute intelligence (GPS pattern learning, traffic checks, Bluetooth parking memory)
+- [ ] 12-03-PLAN.md -- Document scanner (CameraX + ML Kit OCR, encrypted Room storage, desktop sync, full-text search, auto-categorization)
 
-### Phase 9: Proactive Intelligence and Polish
-**Goal**: Jarvis acts before being asked -- surfacing relevant information at the right time -- and demonstrates measurable, ongoing self-improvement with reducing cloud costs
-**Depends on**: Phase 4, Phase 7, Phase 8
-**Requirements**: CONN-05, VOICE-05, INTL-05, GROW-03, GROW-04
+### Phase 13: Deep Learning and Social
+**Goal**: Jarvis becomes a learning companion -- detecting behavioral patterns and offering useful nudges, maintaining relationship context so the user is never caught off-guard in social situations, and continuously improving every feature through feedback loops
+**Depends on**: Phase 10, Phase 11, Phase 12
+**Requirements**: HABIT-01, HABIT-02, HABIT-03, HABIT-04, SOC-01, SOC-02, SOC-03
 **Success Criteria** (what must be TRUE):
-  1. Jarvis proactively surfaces relevant information without being asked: bill due alerts, medication reminders, meeting prep notes appear at appropriate times
-  2. Saying "Jarvis" from across the room activates voice input mode (wake word detection), enabling hands-free interaction
-  3. The percentage of queries answered locally (without cloud API calls) measurably increases over time as local knowledge grows
-  4. Adversarial self-testing periodically quizzes Jarvis on retained knowledge and alerts the owner if recall accuracy drops below baseline
+  1. The app detects behavioral patterns from phone usage, location, and time data, and delivers gentle nudges for detected routines (e.g., "You usually work out at 5pm on Tuesdays") including built-in types: water reminders, screen time awareness, and sleep schedule
+  2. Nudge response rate is tracked -- nudges the user consistently ignores are automatically suppressed, and nudge timing/content adapts based on engagement patterns
+  3. Before a phone call, the user sees a pre-call card showing last conversation date and key topics for that contact; after a call, the user is prompted to log conversation context for next time
+  4. Proactive relationship alerts surface birthdays, anniversaries, and connections the user hasn't reached out to in a while, drawing from the desktop brain's social context graph
 **Plans**: TBD
 
 Plans:
-- [ ] 09-01: Proactive assistance system and wake word detection
-- [ ] 09-02: Progressive cost reduction and adversarial self-testing
+- [ ] 13-01-PLAN.md -- Habit engine (pattern detection from usage/location/time, nudge delivery, response rate tracking, adaptive suppression, built-in nudge types)
+- [ ] 13-02-PLAN.md -- Relationship memory (pre-call context cards, post-call logging prompts, proactive social alerts for birthdays/anniversaries/neglected connections)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 10 -> 11 -> 12 -> 13
 
-Note: Phases 3, 6, and 8 depend only on Phase 1 and could theoretically run in parallel after Phase 1 completes. The linear order above represents the recommended sequence for a solo developer.
+Note: Phase 12 depends on Phase 11 for notification channels and context detection. Phase 13 depends on all prior phases for data sources. Linear execution is the natural order.
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Memory Revolution and Architecture | 3/3 | Complete | 2026-02-22 |
-| 2. Knowledge Graph and Anti-Regression | 2/2 | Complete | 2026-02-22 |
-| 3. Intelligence Routing | 0/2 | Planned | - |
-| 4. Connectors and Daily Intelligence | 0/2 | Not started | - |
-| 5. Knowledge Harvesting | 0/2 | Planned | - |
-| 6. Voice and Personality | 0/2 | Not started | - |
-| 7. Continuous Learning and Self-Improvement | 0/2 | Not started | - |
-| 8. Mobile-Desktop Sync | 0/2 | Not started | - |
-| 9. Proactive Intelligence and Polish | 0/2 | Not started | - |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1-9 | v1.0 Desktop Engine | 18/18 | Complete | 2026-02-23 |
+| 10. Foundation and Daily Driver | v2.0 Android App | 0/3 | Not started | - |
+| 11. Intelligence Core | v2.0 Android App | 0/3 | Not started | - |
+| 12. Life Management | v2.0 Android App | 0/3 | Not started | - |
+| 13. Deep Learning and Social | v2.0 Android App | 0/2 | Not started | - |
