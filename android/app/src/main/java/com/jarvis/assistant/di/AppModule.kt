@@ -3,6 +3,7 @@ package com.jarvis.assistant.di
 import android.content.Context
 import com.jarvis.assistant.data.JarvisDatabase
 import com.jarvis.assistant.data.dao.CommandQueueDao
+import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
@@ -53,4 +54,8 @@ object AppModule {
     @Provides
     fun provideNotificationLogDao(db: JarvisDatabase): NotificationLogDao =
         db.notificationLogDao()
+
+    @Provides
+    fun provideContextStateDao(db: JarvisDatabase): ContextStateDao =
+        db.contextStateDao()
 }

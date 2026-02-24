@@ -299,6 +299,180 @@ fun SettingsScreen(
             }
         }
 
+        // ── Proactive Notifications ──────────────────────
+        item {
+            val proactiveEnabled by viewModel.proactiveAlertsEnabled.collectAsState()
+            val notifCount by viewModel.notificationLogCount.collectAsState()
+            val learningSummary by viewModel.learningSummary.collectAsState()
+
+            SectionHeader("Proactive Notifications")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enable Proactive Alerts", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = proactiveEnabled,
+                            onCheckedChange = { viewModel.setProactiveAlertsEnabled(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Notifications tracked: $notifCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    if (learningSummary.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Learning insights:",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        for ((alertType, dismissRate) in learningSummary) {
+                            Text(
+                                "  $alertType: ${"%.0f".format(dismissRate * 100)}% dismiss rate",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (dismissRate > 0.8f) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { viewModel.resetLearningData() }) {
+                        Text("Reset Learning Data")
+                    }
+                }
+            }
+        }
+
+        // ── Context Awareness ────────────────────────────
+        item {
+            val currentContextLabel by viewModel.currentContextLabel.collectAsState()
+            val currentConfidence by viewModel.currentContextConfidence.collectAsState()
+            val detectMeeting by viewModel.detectMeeting.collectAsState()
+            val detectDriving by viewModel.detectDriving.collectAsState()
+            val detectSleep by viewModel.detectSleep.collectAsState()
+            val gamingSync by viewModel.gamingSync.collectAsState()
+            val sleepStartHour by viewModel.sleepStartHour.collectAsState()
+            val sleepEndHour by viewModel.sleepEndHour.collectAsState()
+            val emergencyContacts by viewModel.emergencyContacts.collectAsState()
+
+            SectionHeader("Context Awareness")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "Current: $currentContextLabel (${"%.0f".format(currentConfidence * 100)}%)",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Meeting detection toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Auto-detect Meeting", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = detectMeeting,
+                            onCheckedChange = { viewModel.setDetectMeeting(it) },
+                        )
+                    }
+
+                    // Driving detection toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Auto-detect Driving", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = detectDriving,
+                            onCheckedChange = { viewModel.setDetectDriving(it) },
+                        )
+                    }
+
+                    // Sleep detection toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Auto-detect Sleep", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = detectSleep,
+                            onCheckedChange = { viewModel.setDetectSleep(it) },
+                        )
+                    }
+
+                    // Sleep schedule
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Sleep window: ${sleepStartHour}:00 - ${sleepEndHour}:00",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text("Sleep Start Hour", style = MaterialTheme.typography.labelSmall)
+                    Slider(
+                        value = sleepStartHour.toFloat(),
+                        onValueChange = { viewModel.setSleepStartHour(it.toInt()) },
+                        valueRange = 18f..23f,
+                        steps = 4,
+                        enabled = detectSleep,
+                    )
+                    Text("Sleep End Hour", style = MaterialTheme.typography.labelSmall)
+                    Slider(
+                        value = sleepEndHour.toFloat(),
+                        onValueChange = { viewModel.setSleepEndHour(it.toInt()) },
+                        valueRange = 5f..10f,
+                        steps = 4,
+                        enabled = detectSleep,
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Gaming mode sync toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Gaming Mode Sync", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = gamingSync,
+                            onCheckedChange = { viewModel.setGamingSync(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Emergency contacts
+                    OutlinedTextField(
+                        value = emergencyContacts,
+                        onValueChange = { viewModel.setEmergencyContacts(it) },
+                        label = { Text("Emergency Contacts") },
+                        placeholder = { Text("Comma-separated phone numbers") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        maxLines = 3,
+                    )
+                    Text(
+                        "These contacts bypass meeting silence",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         // ── About ──────────────────────────────────────────
         item {
             SectionHeader("About")
