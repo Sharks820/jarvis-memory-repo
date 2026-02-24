@@ -65,4 +65,17 @@ interface HabitDao {
 
     @Query("UPDATE habit_patterns SET isSuppressed = 0, updatedAt = :now WHERE isSuppressed = 1")
     suspend fun unsuppressAll(now: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE habit_patterns SET isSuppressed = 0, updatedAt = :now WHERE id = :id",
+    )
+    suspend fun unsuppress(id: Long, now: Long = System.currentTimeMillis())
+
+    @Query(
+        "UPDATE habit_patterns SET isActive = 1, updatedAt = :now WHERE id = :id",
+    )
+    suspend fun activate(id: Long, now: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM habit_patterns WHERE isActive = 1")
+    suspend fun getAllActivePatterns(): List<HabitPatternEntity>
 }
