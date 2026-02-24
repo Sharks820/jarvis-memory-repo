@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** v2.0 Native Android App -- Phase 13: Deep Learning and Social IN PROGRESS
+**Current focus:** v2.0 Native Android App -- Phase 13: Deep Learning and Social COMPLETE
 
 ## Current Position
 
-Phase: 13 of 13 (Deep Learning and Social) -- IN PROGRESS
-Plan: 2 of 2 complete (13-02 relationship memory done; 13-01 habit tracking parallel)
-Status: Plan 13-02 complete -- 13-01 (habit tracking) executing in parallel
-Last activity: 2026-02-24 -- Completed 13-02 relationship memory with pre-call cards + post-call logging + alerts
+Phase: 13 of 13 (Deep Learning and Social) -- COMPLETE
+Plan: 2 of 2 complete
+Status: Phase 13 complete -- all v2.0 Android App plans delivered
+Last activity: 2026-02-24 -- Completed 13-01 habit engine with pattern detection, nudge delivery, adaptive suppression
 
-Progress (v2.0): [██████████] 91% (10/11 plans)
+Progress (v2.0): [██████████] 100% (11/11 plans)
 
 ## Performance Metrics
 
@@ -25,12 +25,12 @@ Progress (v2.0): [██████████] 91% (10/11 plans)
 - Final test count: 475
 
 **v2.0 Android App:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Phases: 4 (phases 10-13), 11 plans total
 - Phase 10: 3/3 plans complete
 - Phase 11: 3/3 plans complete (11-01 call screening: ~8min, 11-02 scheduling: ~12min, 11-03 notifications+context: ~10min)
 - Phase 12: 3/3 plans complete (12-01 prescription management: ~7min, 12-02 finance+commute: ~15min, 12-03 document scanner: ~12min)
-- Phase 13: 1/2 plans complete (13-02 relationship memory: ~15min; 13-01 habit tracking: in progress)
+- Phase 13: 2/2 plans complete (13-01 habit tracking: ~20min, 13-02 relationship memory: ~15min)
 
 ## Accumulated Context
 
@@ -93,6 +93,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Importance score: callFrequency * 0.4 + recency * 0.6 (range 0.0-1.0)
 - Max 2 neglected contact alerts per day (SharedPreferences date-key dedup)
 - EntryPointAccessors for CallStateReceiver + PostCallLogReceiver DI (BroadcastReceiver pattern)
+- Built-in nudges created inactive by default (user opts in via Settings toggles)
+- Adaptive suppression: >= 80% ignore rate over 20 samples auto-suppresses nudge pattern
+- Rule-based pattern detection (time clustering, location consistency) -- no ML dependencies
+- SharedPreferences habit_nudges_enabled for hot-path check in JarvisService sync loop
+- NudgeActionReceiver top-level class in NudgeEngine.kt (same pattern as DoseActionReceiver)
 
 ### Pending Todos
 
@@ -108,5 +113,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 13-02-PLAN.md (relationship memory). Plan 13-01 (habit tracking) executing in parallel.
+Stopped at: Completed 13-01-PLAN.md (habit engine). All v2.0 plans complete (11/11). Phase 13 done.
 Resume file: None

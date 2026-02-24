@@ -141,10 +141,10 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Habit Tracker (HABIT)
 
-- [ ] **HABIT-01**: Pattern detection from phone usage, location, and time data
-- [ ] **HABIT-02**: Gentle nudges for detected routines ("You usually work out at 5pm on Tuesdays")
-- [ ] **HABIT-03**: Nudge response rate tracking that stops sending consistently-ignored nudges
-- [ ] **HABIT-04**: Built-in nudge types: water reminders, screen time awareness, sleep schedule
+- [x] **HABIT-01**: Pattern detection from phone usage, location, and time data
+- [x] **HABIT-02**: Gentle nudges for detected routines ("You usually work out at 5pm on Tuesdays")
+- [x] **HABIT-03**: Nudge response rate tracking that stops sending consistently-ignored nudges
+- [x] **HABIT-04**: Built-in nudge types: water reminders, screen time awareness, sleep schedule
 
 ### Commute Intelligence (COMM)
 
@@ -214,16 +214,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ASEC-01 through ASEC-04 (4) | Phase 10 | Pending |
 | DASH-01 through DASH-06 (6) | Phase 10 | Pending |
 | AVOICE-01 through AVOICE-04 (4) | Phase 10 | Pending |
-| CALL-01 through CALL-04 (4) | Phase 11 | Pending |
-| SCHED-01 through SCHED-04 (4) | Phase 11 | Pending |
-| ANOTIF-01 through ANOTIF-04 (4) | Phase 11 | Pending |
-| CTX-01 through CTX-04 (4) | Phase 11 | Pending |
+| CALL-01 through CALL-04 (4) | Phase 11 | Complete |
+| SCHED-01 through SCHED-04 (4) | Phase 11 | Complete |
+| ANOTIF-01 through ANOTIF-04 (4) | Phase 11 | Complete |
+| CTX-01 through CTX-04 (4) | Phase 11 | Complete |
 | RX-01 through RX-04 (4) | Phase 12 | Complete |
 | FIN-01 through FIN-03 (3) | Phase 12 | Complete |
 | DOC-01 through DOC-04 (4) | Phase 12 | Complete |
 | COMM-01 through COMM-03 (3) | Phase 12 | Complete |
-| HABIT-01 through HABIT-04 (4) | Phase 13 | Pending |
-| SOC-01 through SOC-03 (3) | Phase 13 | Pending |
+| HABIT-01 through HABIT-04 (4) | Phase 13 | Complete |
+| SOC-01 through SOC-03 (3) | Phase 13 | Complete |
 
 **Coverage:**
 - v1 requirements: 49 total (all complete)
