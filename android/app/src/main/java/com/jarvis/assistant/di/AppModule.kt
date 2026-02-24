@@ -6,6 +6,8 @@ import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
+import com.jarvis.assistant.data.dao.MedicationDao
+import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.security.CryptoHelper
@@ -58,4 +60,12 @@ object AppModule {
     @Provides
     fun provideContextStateDao(db: JarvisDatabase): ContextStateDao =
         db.contextStateDao()
+
+    @Provides
+    fun provideMedicationDao(db: JarvisDatabase): MedicationDao =
+        db.medicationDao()
+
+    @Provides
+    fun provideMedicationLogDao(db: JarvisDatabase): MedicationLogDao =
+        db.medicationLogDao()
 }
