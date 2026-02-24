@@ -14,7 +14,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import Request, build_opener, HTTPSHandler, urlopen
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
@@ -129,8 +129,10 @@ def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> l
         default_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             fd = os.open(str(default_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-            os.write(fd, b"[]\n")
-            os.close(fd)
+            try:
+                os.write(fd, b"[]\n")
+            finally:
+                os.close(fd)
         except FileExistsError:
             pass
     return _read_json_list(default_path)
@@ -157,7 +159,10 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
         if not _is_safe_calendar_url(ics_url):
             return []
         try:
-            with urlopen(ics_url, timeout=15) as resp:  # nosec B310
+            # Use a no-redirect opener to prevent SSRF bypass via HTTP redirect
+            # to internal IPs after initial URL validation.
+            opener = _build_no_redirect_opener()
+            with opener.open(ics_url, timeout=15) as resp:  # nosec B310
                 payload = resp.read(MAX_ICS_BYTES + 1)
                 if len(payload) > MAX_ICS_BYTES:
                     return []
@@ -307,8 +312,7 @@ def _load_todoist_tasks() -> list[dict]:
             for t in tasks
         ]
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Todoist API call failed: %s", exc)
+        logger.warning("Todoist API call failed: %s", exc)
         return []
 
 
@@ -328,7 +332,7 @@ def load_email_items(limit: int = 20) -> list[dict]:
         with imaplib.IMAP4_SSL(host, timeout=10) as client:
             try:
                 client.login(user, password)
-            except imaplib.IMAP4.error as exc:
+            except (imaplib.IMAP4.error, imaplib.IMAP4.abort) as exc:
                 logger.warning("IMAP auth failed for %s@%s: %s", user, host, exc)
                 return []
             client.select("INBOX", readonly=True)
@@ -355,14 +359,18 @@ def load_email_items(limit: int = 20) -> list[dict]:
                         "importance": importance,
                     }
                 )
-    except (OSError, TimeoutError) as exc:
+    except (OSError, TimeoutError, imaplib.IMAP4.error, imaplib.IMAP4.abort) as exc:
         logger.warning("IMAP connection to %s failed: %s", host, exc)
         return []
     return items
 
 
 def _decode_email_header(value: str) -> str:
-    decoded = decode_header(value)
+    try:
+        decoded = decode_header(value)
+    except Exception:
+        # Malformed headers can cause decode_header to raise; return raw value.
+        return str(value).strip()
     parts: list[str] = []
     for item, charset in decoded:
         if isinstance(item, bytes):
@@ -394,6 +402,19 @@ def _triage_email(sender: str, subject: str) -> str:
     if any(sender_email.startswith(m) or sender_email.split("@")[0] + "@" == m for m in high_sender_markers):
         return "high"
     return "normal"
+
+
+class _NoRedirectHandler(HTTPSHandler):
+    """HTTPS handler that raises on any redirect to prevent SSRF via redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        from urllib.error import HTTPError
+        raise HTTPError(newurl, code, f"Redirects are not allowed (got {code})", headers, fp)
+
+
+def _build_no_redirect_opener():
+    """Build a urllib opener that blocks HTTP redirects."""
+    return build_opener(_NoRedirectHandler)
 
 
 def _is_safe_calendar_url(url: str) -> bool:

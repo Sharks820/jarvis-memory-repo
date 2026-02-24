@@ -23,13 +23,16 @@ class TestWidgetSTTReliability:
             """Simulates a process that times out."""
             def __init__(self, *args, **kwargs):
                 pass
-            
+
             def communicate(self, timeout=None):
                 raise subprocess.TimeoutExpired(cmd="powershell", timeout=timeout)
-            
+
             def kill(self):
                 pass
-            
+
+            def wait(self, timeout=None):
+                pass
+
             returncode = 1
 
         monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: SlowProcess())

@@ -2570,13 +2570,26 @@ def _cmd_voice_run_impl(
             persona_desc = "You are Jarvis, a helpful personal AI assistant. Keep responses concise."
         system_prompt = persona_desc
         if context_lines:
-            system_prompt += "\n\nRelevant memories about the user:\n" + "\n".join(f"- {l}" for l in context_lines[:5])
+            system_prompt += "\n\nRelevant memories about the user:\n" + "\n".join(f"- {line}" for line in context_lines[:5])
+        # Pick best available cloud model, fall back to local
+        from jarvis_engine.gateway.models import CLOUD_MODEL_MAP
+        _llm_model: str | None = None
+        for _env_key, _model_alias in [
+            ("GROQ_API_KEY", "kimi-k2"),
+            ("MISTRAL_API_KEY", "devstral-2"),
+            ("ZAI_API_KEY", "glm-4.7-flash"),
+        ]:
+            if os.environ.get(_env_key, ""):
+                _llm_model = _model_alias
+                break
+        if _llm_model is None:
+            _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
         try:
             result: QueryResult = _get_bus().dispatch(QueryCommand(
                 query=text,
                 system_prompt=system_prompt,
                 max_tokens=512,
-                model="qwen3:14b",
+                model=_llm_model,
             ))
             if result.return_code != 0:
                 print(f"intent=llm_unavailable")

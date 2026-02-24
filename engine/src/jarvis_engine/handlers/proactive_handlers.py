@@ -104,21 +104,65 @@ class WakeWordStartHandler:
             )
 
         detector = WakeWordDetector(threshold=cmd.threshold)
+        mic_lock = threading.Lock()
+        self._conversation_until: float = 0.0
 
         def _on_detected() -> None:
-            logger.info("Wake word detected! Ready for voice command.")
+            """Wake word detected — record command, transcribe, and dispatch."""
+            import time as _time
+            logger.info("Wake word detected! Listening for command...")
+            try:
+                from jarvis_engine.stt import record_from_microphone, transcribe_smart
+                # Acquire mic lock so wake word pauses during recording
+                with mic_lock:
+                    audio = record_from_microphone(max_duration_seconds=8.0)
+                result = transcribe_smart(audio, language="en")
+                text = result.text.strip()
+                if not text:
+                    logger.info("No speech detected after wake word.")
+                    return
+                # Strip "jarvis" prefix if present
+                lower = text.lower()
+                for prefix in ("jarvis ", "hey jarvis ", "jarvis, ", "hey jarvis, "):
+                    if lower.startswith(prefix):
+                        text = text[len(prefix):].strip()
+                        break
+                if not text:
+                    logger.info("Wake word only, no command.")
+                    return
+                logger.info("Voice command: '%s' (backend=%s, %.2fs)",
+                           text, result.backend, result.duration_seconds)
+                # Dispatch through voice-run pipeline
+                try:
+                    from jarvis_engine.main import _cmd_voice_run_impl
+                    _cmd_voice_run_impl(
+                        text=text,
+                        execute=True,
+                        approve_privileged=False,
+                        speak=True,
+                        voice_user="conner",
+                        voice_auth_wav="",
+                        voice_threshold=0.82,
+                        master_password="",
+                    )
+                except Exception as exc:
+                    logger.error("Voice command dispatch failed: %s", exc)
+                # Enter conversation mode for 20 seconds
+                self._conversation_until = _time.time() + 20.0
+            except Exception as exc:
+                logger.error("Wake word callback error: %s", exc)
 
         self._stop_event = threading.Event()
         self._thread = threading.Thread(
             target=detector.start,
-            args=(_on_detected, self._stop_event),
+            args=(_on_detected, self._stop_event, mic_lock),
             daemon=True,
         )
         self._thread.start()
 
         return WakeWordStartResult(
             started=True,
-            message="Wake word detection started in background thread.",
+            message="Wake word detection started. Say 'Jarvis' to activate.",
         )
 
     def stop(self) -> None:

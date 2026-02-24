@@ -39,7 +39,13 @@ class CommandBus:
             handler = self._handlers.get(type(command))
         if handler is None:
             raise ValueError(f"No handler for {type(command).__name__}")
-        return handler(command)
+        try:
+            return handler(command)
+        except Exception:
+            logger.exception(
+                "Handler for %s raised an exception", type(command).__name__
+            )
+            raise
 
     @property
     def registered_count(self) -> int:

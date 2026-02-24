@@ -138,16 +138,24 @@ class OpsAutopilotHandler:
 class AutomationRunHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
+        self._store: Any = None
+
+    def _get_store(self) -> Any:
+        """Lazily create and cache the MemoryStore."""
+        if self._store is None:
+            from jarvis_engine.memory_store import MemoryStore
+
+            self._store = MemoryStore(self._root)
+        return self._store
 
     def handle(self, cmd: AutomationRunCommand) -> AutomationRunResult:
         from jarvis_engine.automation import AutomationExecutor, load_actions
-        from jarvis_engine.memory_store import MemoryStore
 
         try:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError:
             return AutomationRunResult()
-        store = MemoryStore(self._root)
+        store = self._get_store()
         executor = AutomationExecutor(store)
         actions = load_actions(cmd.actions_path)
         outcomes = executor.run(
@@ -194,6 +202,18 @@ class MissionStatusHandler:
 class MissionRunHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
+        self._store: Any = None
+        self._pipeline: Any = None
+
+    def _get_ingest_pipeline(self) -> Any:
+        """Lazily create and cache MemoryStore + IngestionPipeline for auto-ingest."""
+        if self._pipeline is None:
+            from jarvis_engine.ingest import IngestionPipeline
+            from jarvis_engine.memory_store import MemoryStore
+
+            self._store = MemoryStore(self._root)
+            self._pipeline = IngestionPipeline(self._store)
+        return self._pipeline
 
     def handle(self, cmd: MissionRunCommand) -> MissionRunResult:
         from jarvis_engine.learning_missions import run_learning_mission
@@ -212,9 +232,6 @@ class MissionRunHandler:
         verified = report.get("verified_findings", [])
         if cmd.auto_ingest and isinstance(verified, list) and verified:
             try:
-                from jarvis_engine.ingest import IngestionPipeline
-                from jarvis_engine.memory_store import MemoryStore
-
                 lines = []
                 for finding in verified[:20]:
                     if not isinstance(finding, dict):
@@ -224,8 +241,7 @@ class MissionRunHandler:
                     if statement:
                         lines.append(f"- {statement} [sources:{domains}]")
                 content = "Verified learning mission findings:\n" + "\n".join(lines)
-                store = MemoryStore(self._root)
-                pipeline = IngestionPipeline(store)
+                pipeline = self._get_ingest_pipeline()
                 rec = pipeline.ingest(
                     source="task_outcome",
                     kind="semantic",

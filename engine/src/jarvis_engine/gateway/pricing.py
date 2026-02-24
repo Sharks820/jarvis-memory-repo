@@ -20,6 +20,15 @@ PRICING: dict[str, tuple[float, float]] = {
     "claude-3-sonnet": (3.0, 15.0),
     "claude-3.5-haiku": (0.80, 4.0),
     "claude-3-haiku": (0.25, 1.25),
+    # Groq (free tier = $0, paid tier below)
+    "kimi-k2": (1.0, 3.0),
+    "llama-3.3-70b": (0.59, 0.79),
+    # Mistral (devstral-2 currently free promo, pricing below for after)
+    "devstral-2": (0.40, 2.00),
+    "devstral-small-2": (0.10, 0.30),
+    # Z.ai GLM (free tier available)
+    "glm-4.7": (0.60, 2.50),
+    "glm-4.7-flash": (0.14, 0.14),
 }
 
 

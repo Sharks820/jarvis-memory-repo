@@ -1,6 +1,7 @@
 """ModelGateway: unified LLM completion interface.
 
-Wraps Anthropic SDK and Ollama Python client with:
+Wraps Anthropic SDK, OpenAI-compatible cloud APIs (Groq, Mistral, Z.ai),
+and Ollama Python client with:
 - Automatic provider resolution based on model name
 - Fallback chain: cloud failure -> local Ollama -> graceful error
 - Per-query cost tracking via CostTracker
@@ -9,10 +10,13 @@ Wraps Anthropic SDK and Ollama Python client with:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+import httpx
 
 try:
     from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
@@ -48,6 +52,47 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# OpenAI-compatible cloud provider configurations
+# Each maps: env_var_for_key -> (base_url, provider_name)
+OPENAI_COMPAT_PROVIDERS: dict[str, dict] = {
+    "groq": {
+        "env_key": "GROQ_API_KEY",
+        "base_url": "https://api.groq.com/openai/v1",
+        "provider_name": "groq",
+    },
+    "mistral": {
+        "env_key": "MISTRAL_API_KEY",
+        "base_url": "https://api.mistral.ai/v1",
+        "provider_name": "mistral",
+    },
+    "zai": {
+        "env_key": "ZAI_API_KEY",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "provider_name": "zai",
+    },
+}
+
+# Model name -> (provider_key, full_model_id)
+CLOUD_MODEL_MAP: dict[str, tuple[str, str]] = {
+    # Groq models
+    "kimi-k2": ("groq", "moonshotai/kimi-k2-instruct"),
+    "llama-3.3-70b": ("groq", "llama-3.3-70b-versatile"),
+    # Mistral models
+    "devstral-2": ("mistral", "devstral-2512"),
+    "devstral-small-2": ("mistral", "devstral-small-2512"),
+    # Z.ai models
+    "glm-4.7": ("zai", "glm-4.7"),
+    "glm-4.7-flash": ("zai", "glm-4.7-flash"),
+}
+
+# Short alias -> full Anthropic API model identifier
+ANTHROPIC_MODEL_ALIASES: dict[str, str] = {
+    "claude-opus": "claude-opus-4-0-20250514",
+    "claude-sonnet": "claude-sonnet-4-5-20250929",
+    "claude-haiku": "claude-haiku-4-5-20251001",
+}
+
+
 @dataclass
 class GatewayResponse:
     """Response from a ModelGateway completion call."""
@@ -65,9 +110,9 @@ class GatewayResponse:
 class ModelGateway:
     """Unified LLM completion interface with fallback chains.
 
-    Dispatches to Anthropic or Ollama based on model name. Handles
-    API failures gracefully with automatic fallback to local models.
-    Logs per-query costs when a CostTracker is provided.
+    Dispatches to Anthropic, OpenAI-compatible cloud APIs (Groq, Mistral, Z.ai),
+    or Ollama based on model name. Handles API failures gracefully with automatic
+    fallback to local models. Logs per-query costs when a CostTracker is provided.
     """
 
     def __init__(
@@ -75,6 +120,9 @@ class ModelGateway:
         anthropic_api_key: str | None = None,
         ollama_host: str = "http://127.0.0.1:11434",
         cost_tracker: "CostTracker | None" = None,
+        groq_api_key: str | None = None,
+        mistral_api_key: str | None = None,
+        zai_api_key: str | None = None,
     ) -> None:
         if anthropic_api_key is not None:
             if _HAS_ANTHROPIC:
@@ -86,9 +134,6 @@ class ModelGateway:
                 )
         else:
             self._anthropic = None
-            logger.warning(
-                "No Anthropic API key configured -- operating in local-only mode"
-            )
 
         if _HAS_OLLAMA:
             self._ollama = OllamaClient(host=ollama_host, timeout=120.0)
@@ -96,11 +141,67 @@ class ModelGateway:
             self._ollama = None
         self._cost_tracker = cost_tracker
 
+        # Build cloud provider registry from explicit keys or env vars
+        self._cloud_keys: dict[str, str] = {}
+        for provider_key, cfg in OPENAI_COMPAT_PROVIDERS.items():
+            key = {
+                "groq": groq_api_key,
+                "mistral": mistral_api_key,
+                "zai": zai_api_key,
+            }.get(provider_key) or os.environ.get(cfg["env_key"], "")
+            if key:
+                self._cloud_keys[provider_key] = key
+
+        # httpx client for cloud calls (shared, connection pooling)
+        self._http = httpx.Client(timeout=30.0)
+
+        # Log available providers
+        available = []
+        if self._anthropic is not None:
+            available.append("anthropic")
+        available.extend(self._cloud_keys.keys())
+        if _HAS_OLLAMA:
+            available.append("ollama")
+        if not available:
+            logger.warning("No LLM providers configured -- all calls will fail")
+        else:
+            logger.info("LLM providers available: %s", ", ".join(available))
+
+    def close(self) -> None:
+        """Release httpx connection pool and other resources."""
+        self._http.close()
+
+    def __enter__(self) -> "ModelGateway":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def _resolve_provider(self, model: str) -> str:
         """Determine which provider to use for a given model."""
         if model.startswith("claude-") and self._anthropic is not None:
             return "anthropic"
+
+        # Check if model maps to an OpenAI-compatible cloud provider
+        if model in CLOUD_MODEL_MAP:
+            provider_key, _ = CLOUD_MODEL_MAP[model]
+            if provider_key in self._cloud_keys:
+                return f"cloud:{provider_key}"
+
         return "ollama"
+
+    def _best_cloud_model(self) -> str | None:
+        """Return the best available cloud model based on configured API keys.
+
+        Priority: Groq Kimi K2 (fastest) > Mistral Devstral 2 > Z.ai GLM-4.7
+        """
+        if "groq" in self._cloud_keys:
+            return "kimi-k2"
+        if "mistral" in self._cloud_keys:
+            return "devstral-2"
+        if "zai" in self._cloud_keys:
+            return "glm-4.7-flash"
+        return None
 
     def complete(
         self,
@@ -111,7 +212,7 @@ class ModelGateway:
     ) -> GatewayResponse:
         """Send a completion request to the appropriate provider.
 
-        Automatically falls back to local Ollama if Anthropic fails.
+        Automatically falls back through the provider chain on failure.
         Logs cost to CostTracker if one is configured.
         """
         provider = self._resolve_provider(model)
@@ -121,8 +222,16 @@ class ModelGateway:
                 response = self._call_anthropic(messages, model, max_tokens)
             except (APIConnectionError, APIStatusError, RateLimitError) as exc:
                 reason = f"{type(exc).__name__}"
-                logger.warning("Anthropic API error, falling back to Ollama: %s", exc)
-                response = self._fallback_to_ollama(messages, max_tokens, reason)
+                logger.warning("Anthropic API error, falling back: %s", exc)
+                response = self._fallback_chain(messages, max_tokens, reason, skip_provider="anthropic")
+        elif provider.startswith("cloud:"):
+            provider_key = provider.split(":", 1)[1]
+            try:
+                response = self._call_openai_compat(messages, model, max_tokens, provider_key)
+            except Exception as exc:
+                reason = f"{provider_key}: {type(exc).__name__}"
+                logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
+                response = self._fallback_chain(messages, max_tokens, reason, skip_provider=provider_key)
         else:
             response = self._call_ollama(messages, model, max_tokens)
 
@@ -140,6 +249,66 @@ class ModelGateway:
 
         return response
 
+    def _call_openai_compat(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        provider_key: str,
+    ) -> GatewayResponse:
+        """Call an OpenAI-compatible API (Groq, Mistral, Z.ai)."""
+        cfg = OPENAI_COMPAT_PROVIDERS[provider_key]
+        api_key = self._cloud_keys[provider_key]
+
+        # Resolve actual model ID for the API
+        if model in CLOUD_MODEL_MAP:
+            _, api_model = CLOUD_MODEL_MAP[model]
+        else:
+            api_model = model
+
+        # Separate system messages (OpenAI format puts system in messages array)
+        url = f"{cfg['base_url']}/chat/completions"
+        payload = {
+            "model": api_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+        }
+
+        resp = self._http.post(
+            url,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        if resp.status_code != 200:
+            error_text = resp.text[:200]
+            raise RuntimeError(f"HTTP {resp.status_code}: {error_text}")
+
+        data = resp.json()
+        choices = data.get("choices", [])
+        text = ""
+        if choices:
+            msg = choices[0].get("message", {})
+            text = msg.get("content", "") or ""
+
+        usage = data.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0) or 0
+        output_tokens = usage.get("completion_tokens", 0) or 0
+        cost = calculate_cost(model, input_tokens, output_tokens)
+
+        return GatewayResponse(
+            text=text,
+            model=model,
+            provider=cfg["provider_name"],
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+        )
+
     def _call_anthropic(
         self,
         messages: list[dict[str, str]],
@@ -151,8 +320,10 @@ class ModelGateway:
             raise RuntimeError("anthropic package is not installed")
         if self._anthropic is None:
             raise RuntimeError("Anthropic client is not initialized")
+        # Resolve short aliases (e.g. "claude-opus") to full API model IDs
+        api_model = ANTHROPIC_MODEL_ALIASES.get(model, model)
         resp = self._anthropic.messages.create(
-            model=model,
+            model=api_model,
             max_tokens=max_tokens,
             messages=messages,
         )
@@ -233,18 +404,50 @@ class ModelGateway:
             cost_usd=0.0,
         )
 
+    def _fallback_chain(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        reason: str,
+        skip_provider: str = "",
+    ) -> GatewayResponse:
+        """Try remaining cloud providers, then fall back to local Ollama.
+
+        Tries each available cloud provider in priority order (skipping
+        the one that already failed) before falling back to local Ollama.
+        """
+        # Try other cloud providers first
+        priority = ["groq", "mistral", "zai"]
+        for pk in priority:
+            if pk == skip_provider or pk not in self._cloud_keys:
+                continue
+            # Find a default model for this provider
+            for model_alias, (provider_key, _) in CLOUD_MODEL_MAP.items():
+                if provider_key == pk:
+                    try:
+                        resp = self._call_openai_compat(messages, model_alias, max_tokens, pk)
+                        resp.fallback_used = True
+                        resp.fallback_reason = reason
+                        return resp
+                    except Exception as exc:
+                        logger.warning("Fallback to %s also failed: %s", pk, exc)
+                    break
+
+        # All cloud providers failed, fall back to local Ollama
+        return self._fallback_to_ollama(messages, max_tokens, reason)
+
     def _fallback_to_ollama(
         self,
         messages: list[dict[str, str]],
         max_tokens: int,
         reason: str,
     ) -> GatewayResponse:
-        """Fall back to local Ollama after a cloud provider failure.
+        """Fall back to local Ollama after all cloud providers fail.
 
-        Uses JARVIS_LOCAL_MODEL env var if set, otherwise defaults to qwen3:14b.
+        Uses JARVIS_LOCAL_MODEL env var if set, otherwise defaults to gemma3:4b.
         Returns a graceful error response if Ollama also fails.
         """
-        fallback_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
+        fallback_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
 
         if not _HAS_OLLAMA:
             full_reason = f"{reason} -> Ollama also failed: ollama package is not installed"
@@ -311,3 +514,17 @@ class ModelGateway:
     def check_anthropic(self) -> bool:
         """Check if Anthropic client is configured (has API key)."""
         return self._anthropic is not None
+
+    def check_cloud(self) -> dict[str, bool]:
+        """Check which cloud providers have API keys configured."""
+        return {k: True for k in self._cloud_keys}
+
+    def available_providers(self) -> list[str]:
+        """Return list of all available provider names."""
+        providers = []
+        if self._anthropic is not None:
+            providers.append("anthropic")
+        providers.extend(self._cloud_keys.keys())
+        if self.check_ollama():
+            providers.append("ollama")
+        return providers

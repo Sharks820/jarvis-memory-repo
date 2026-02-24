@@ -64,14 +64,31 @@ class BranchClassifier:
         self._centroids: dict[str, list[float]] | None = None
 
     def _ensure_centroids(self) -> None:
-        """Lazy-compute branch centroids by embedding each branch description."""
+        """Lazy-compute branch centroids by embedding each branch description.
+
+        Both centroids and content embeddings use ``prefix="search_document"``
+        because classification compares stored-content vectors against branch
+        descriptions (both are *documents*).  Search queries use
+        ``prefix="search_query"`` only at query time, not here.
+
+        If any centroid embedding fails, ``_centroids`` is reset to ``None``
+        so the next call will retry rather than leaving a partially
+        initialized dict.
+        """
         if self._centroids is not None:
             return
-        self._centroids = {}
-        for branch, description in BRANCH_DESCRIPTIONS.items():
-            self._centroids[branch] = self._embed_service.embed(
-                description, prefix="search_document"
-            )
+        building: dict[str, list[float]] = {}
+        try:
+            for branch, description in BRANCH_DESCRIPTIONS.items():
+                building[branch] = self._embed_service.embed(
+                    description, prefix="search_document"
+                )
+        except Exception:
+            # Ensure we don't leave a partial centroid dict; the next call
+            # will retry from scratch.
+            self._centroids = None
+            raise
+        self._centroids = building
 
     def classify(self, text_embedding: list[float], threshold: float = 0.3) -> str:
         """Classify an embedding into the best-matching branch.

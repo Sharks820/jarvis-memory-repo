@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
@@ -131,6 +134,18 @@ class IngestHandler:
     def __init__(self, root: Path, pipeline: Any = None) -> None:
         self._root = root
         self._pipeline = pipeline
+        self._fallback_store: Any = None
+        self._fallback_pipeline: Any = None
+
+    def _get_fallback_pipeline(self) -> Any:
+        """Lazily create and cache the fallback MemoryStore + IngestionPipeline."""
+        if self._fallback_pipeline is None:
+            from jarvis_engine.ingest import IngestionPipeline
+            from jarvis_engine.memory_store import MemoryStore
+
+            self._fallback_store = MemoryStore(self._root)
+            self._fallback_pipeline = IngestionPipeline(self._fallback_store)
+        return self._fallback_pipeline
 
     def handle(self, cmd: IngestCommand) -> IngestResult:
         if self._pipeline is not None:
@@ -148,11 +163,9 @@ class IngestHandler:
                 kind=cmd.kind,
                 task_id=cmd.task_id,
             )
-        from jarvis_engine.ingest import IngestionPipeline, MemoryKind, SourceType
-        from jarvis_engine.memory_store import MemoryStore
+        from jarvis_engine.ingest import MemoryKind, SourceType
 
-        store = MemoryStore(self._root)
-        pipeline = IngestionPipeline(store)
+        pipeline = self._get_fallback_pipeline()
         record = pipeline.ingest(
             source=cast(SourceType, cmd.source),
             kind=cast(MemoryKind, cmd.kind),
