@@ -19,7 +19,13 @@ from jarvis_engine._shared import safe_float as _safe_float
 
 logger = logging.getLogger(__name__)
 
-_brain_io_lock = threading.Lock()
+# NOTE: This is a threading.RLock (reentrant), which only serializes access
+# within a single process.  Cross-process safety (e.g. daemon + CLI both
+# writing at the same time) is NOT covered here.  For the new MemoryEngine/
+# SQLite path, WAL mode handles concurrent access.  This lock protects only
+# the legacy JSONL path.  RLock is used because brain_status() calls
+# brain_regression_report() while already holding the lock.
+_brain_io_lock = threading.RLock()
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{2,}")
 
@@ -75,7 +81,12 @@ def _summaries_path(root: Path) -> Path:
 
 def _tokenize(value: str) -> list[str]:
     normalized = value.replace("_", " ")
-    return [m.group(0).lower() for m in TOKEN_RE.finditer(normalized)]
+    # Filter out pure-numeric tokens (e.g. "42") which are meaningless for search
+    return [
+        t
+        for m in TOKEN_RE.finditer(normalized)
+        if not (t := m.group(0).lower()).isdigit()
+    ]
 
 
 def _pick_branch(tokens: list[str]) -> str:
@@ -408,7 +419,10 @@ def _recency_weight(ts_text: str) -> float:
 
 
 def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> dict[str, Any]:
-    rows = _load_records(root, limit=2000)
+    with _brain_io_lock:
+        rows = _load_records(root, limit=10000)
+        facts_state = _load_facts(root)
+
     query_tokens = set(_tokenize(query))
 
     scored: list[tuple[float, dict[str, Any]]] = []
@@ -454,7 +468,6 @@ def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_cha
         if len(selected) >= max_items:
             break
 
-    facts_state = _load_facts(root)
     facts_raw = facts_state.get("facts", {})
     canonical_facts: list[dict[str, Any]] = []
     if isinstance(facts_raw, dict):
@@ -581,7 +594,10 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, A
 
 
 def brain_regression_report(root: Path) -> dict[str, Any]:
-    records = _load_records(root, limit=200000)
+    with _brain_io_lock:
+        records = _load_records(root, limit=200000)
+        facts_state = _load_facts(root)
+
     total = len(records)
     unique_hashes = len({str(r.get("content_hash", "")) for r in records if str(r.get("content_hash", ""))})
     duplicate_ratio = 0.0
@@ -596,7 +612,6 @@ def brain_regression_report(root: Path) -> dict[str, Any]:
             p = count / total
             entropy -= p * math.log2(max(p, 1e-9))
 
-    facts_state = _load_facts(root)
     conflicts = facts_state.get("conflicts", [])
     if not isinstance(conflicts, list):
         conflicts = []
@@ -625,7 +640,10 @@ def brain_regression_report(root: Path) -> dict[str, Any]:
 
 
 def brain_status(root: Path) -> dict[str, Any]:
-    index = _load_index(root)
+    with _brain_io_lock:
+        index = _load_index(root)
+        facts_state = _load_facts(root)
+
     branches_raw = index.get("branches", {})
     branches: list[dict[str, Any]] = []
     if isinstance(branches_raw, dict):
@@ -642,7 +660,6 @@ def brain_status(root: Path) -> dict[str, Any]:
             )
     branches.sort(key=lambda item: item["count"], reverse=True)
 
-    facts_state = _load_facts(root)
     facts_raw = facts_state.get("facts", {})
     fact_count = len(facts_raw) if isinstance(facts_raw, dict) else 0
 

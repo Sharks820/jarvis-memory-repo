@@ -19,21 +19,25 @@ from jarvis_engine.gateway.classifier import IntentClassifier
 # Mock EmbeddingService
 # ---------------------------------------------------------------------------
 
-# Three orthogonal direction vectors in 768-dim space.
+# Four orthogonal direction vectors in 768-dim space.
 # Each route gets a distinct direction so cosine similarity separates them.
 _DIM = 768
+_MATH_DIR = np.zeros(_DIM)
+_MATH_DIR[0] = 1.0
+
 _COMPLEX_DIR = np.zeros(_DIM)
-_COMPLEX_DIR[0] = 1.0
+_COMPLEX_DIR[1] = 1.0
 
 _ROUTINE_DIR = np.zeros(_DIM)
-_ROUTINE_DIR[1] = 1.0
+_ROUTINE_DIR[2] = 1.0
 
 _PRIVATE_DIR = np.zeros(_DIM)
-_PRIVATE_DIR[2] = 1.0
+_PRIVATE_DIR[3] = 1.0
 
 # Neutral vector -- low similarity with all directions
 _NEUTRAL_DIR = np.ones(_DIM) / np.sqrt(_DIM)
 
+_MATH_KEYWORDS = {"differential equation", "eigenvalues", "irrational", "probability", "logical proof", "incompleteness"}
 _COMPLEX_KEYWORDS = {"debug", "binary search", "architectural", "race condition", "cqrs", "vulnerabilities", "threading code"}
 _ROUTINE_KEYWORDS = {"summarize", "rewrite", "translate", "format", "key points", "concise", "markdown table", "transcript"}
 _PRIVATE_KEYWORDS = {"calendar", "medication", "bill", "dinner", "appointment", "medications", "bills", "doctor"}
@@ -42,6 +46,9 @@ _PRIVATE_KEYWORDS = {"calendar", "medication", "bill", "dinner", "appointment", 
 def _match_direction(text: str) -> np.ndarray:
     """Return a direction vector based on keywords in text."""
     lower = text.lower()
+    for kw in _MATH_KEYWORDS:
+        if kw in lower:
+            return _MATH_DIR.copy()
     for kw in _COMPLEX_KEYWORDS:
         if kw in lower:
             return _COMPLEX_DIR.copy()
@@ -84,19 +91,26 @@ def classifier(mock_embed):
 # ---------------------------------------------------------------------------
 
 class TestIntentClassifierRouting:
+    def test_classify_math_logic_query(self, classifier):
+        route, model, confidence = classifier.classify(
+            "solve this differential equation step by step"
+        )
+        assert route == "math_logic"
+        assert model == "claude-opus"
+
     def test_classify_complex_query(self, classifier):
         route, model, confidence = classifier.classify(
             "help me debug this race condition in Python"
         )
         assert route == "complex"
-        assert model.startswith("claude-opus")
+        assert model == "kimi-k2"
 
     def test_classify_routine_query(self, classifier):
         route, model, confidence = classifier.classify(
             "summarize this meeting transcript for me"
         )
         assert route == "routine"
-        assert model.startswith("claude-sonnet")
+        assert model == "kimi-k2"
 
     def test_classify_simple_private_query(self, classifier):
         route, model, confidence = classifier.classify(

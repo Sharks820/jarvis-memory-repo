@@ -18,6 +18,8 @@ from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import safe_int as _safe_int
 
+_to_int = _safe_int
+
 
 def _tail_lines(path: Path, *, max_lines: int) -> list[str]:
     if not path.exists():
@@ -101,8 +103,8 @@ def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
             "updated_utc": str(control_state.get("updated_utc", "")),
         },
         "memory": {
-            "total_records": int(memory_stats.get("total_records", 0)),
-            "fact_count": int(memory_stats.get("fact_count", 0)),
+            "total_records": _to_int(memory_stats.get("total_records", 0)),
+            "fact_count": _to_int(memory_stats.get("fact_count", 0)),
         },
         "checks": checks,
     }
@@ -179,7 +181,7 @@ def run_self_heal(
     issue_counts = logs.get("issues", {})
     issue_total = 0
     if isinstance(issue_counts, dict):
-        issue_total = sum(int(v) for v in issue_counts.values())
+        issue_total = sum(_to_int(v) for v in issue_counts.values())
 
     overall = "ok"
     if (not regression_healthy) or (isinstance(maintenance, dict) and maintenance.get("status") == "error"):

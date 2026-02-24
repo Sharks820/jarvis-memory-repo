@@ -129,6 +129,8 @@ class TestSTTReliability:
                 raise subprocess.TimeoutExpired(cmd="test", timeout=timeout)
             def kill(self):
                 pass
+            def wait(self, timeout=None):
+                pass
             stdout = property(lambda self: "")
             stderr = property(lambda self: "")
 

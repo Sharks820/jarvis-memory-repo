@@ -1,8 +1,9 @@
 """IntentClassifier: embedding-based query routing with privacy keyword detection.
 
 Routes queries to the optimal model:
-- Complex reasoning/coding -> Claude Opus (cloud)
-- Routine summarization/formatting -> Claude Sonnet (cloud)
+- Math/logic reasoning -> Claude Opus (cloud, best reasoning)
+- Complex coding/architecture -> Kimi K2 via Groq (fast, great code quality)
+- Routine summarization/formatting -> Kimi K2 via Groq (fast cloud)
 - Private/personal data -> Local Ollama (never leaves device)
 
 Privacy keywords force local routing regardless of embedding similarity.
@@ -23,6 +24,13 @@ class IntentClassifier:
     """Classify user queries into routing categories using embedding similarity."""
 
     ROUTES: dict[str, list[str]] = {
+        "math_logic": [
+            "solve this differential equation step by step",
+            "prove that the square root of 2 is irrational",
+            "calculate the eigenvalues of this 3x3 matrix",
+            "explain the logical proof for Godel's incompleteness theorem",
+            "what is the probability of drawing two aces from a shuffled deck",
+        ],
         "complex": [
             "write a Python script that implements a binary search tree with balancing",
             "analyze this codebase and suggest architectural improvements",
@@ -47,8 +55,9 @@ class IntentClassifier:
     }
 
     MODEL_MAP: dict[str, str] = {
-        "complex": "claude-opus-4-5-20250929",
-        "routine": "claude-sonnet-4-5-20250929",
+        "math_logic": "claude-opus",  # Best reasoning for math/logic (Anthropic)
+        "complex": "kimi-k2",        # Best code quality via Groq (free, 200+ t/s)
+        "routine": "kimi-k2",        # Same fast cloud model for routine tasks
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 
@@ -124,7 +133,7 @@ class IntentClassifier:
         """
         # Privacy check first -- always trumps embedding similarity
         if self._check_privacy(query):
-            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
+            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
             return ("simple_private", local_model, 1.0)
 
         # Embed the query and find best route by cosine similarity
@@ -143,13 +152,13 @@ class IntentClassifier:
 
         # Default to local if confidence is below threshold
         if best_sim < self.CONFIDENCE_THRESHOLD:
-            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
+            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
             return ("simple_private", local_model, best_sim)
 
         if best_route == "simple_private":
-            model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
+            model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
         else:
-            model = self.MODEL_MAP.get(best_route, os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b"))
+            model = self.MODEL_MAP.get(best_route, os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b"))
         return (best_route, model, best_sim)
 
     @staticmethod

@@ -285,6 +285,91 @@ class MemoryEngine:
                 self._db.rollback()
                 raise
 
+    def delete_record(self, record_id: str) -> bool:
+        """Delete a record from records, fts_records, and vec_records atomically.
+
+        Returns True if the record existed and was deleted, False otherwise.
+        All three deletes happen in a single transaction so the tables stay
+        consistent even if the process is interrupted.
+        """
+        with self._write_lock:
+            cur = self._db.cursor()
+            try:
+                cur.execute(
+                    "DELETE FROM records WHERE record_id = ?",
+                    (record_id,),
+                )
+                if cur.rowcount == 0:
+                    return False
+
+                cur.execute(
+                    "DELETE FROM fts_records WHERE record_id = ?",
+                    (record_id,),
+                )
+
+                if self._vec_available:
+                    try:
+                        cur.execute(
+                            "DELETE FROM vec_records WHERE record_id = ?",
+                            (record_id,),
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to delete vec_records for %s: %s",
+                            record_id,
+                            exc,
+                        )
+
+                self._db.commit()
+                return True
+
+            except Exception:
+                self._db.rollback()
+                raise
+
+    def delete_records_batch(self, record_ids: list[str]) -> int:
+        """Bulk-delete records from records, fts_records, and vec_records.
+
+        Returns the number of records actually deleted from the records table.
+        All deletes happen in a single transaction for consistency.
+        """
+        if not record_ids:
+            return 0
+
+        with self._write_lock:
+            cur = self._db.cursor()
+            try:
+                placeholders = ",".join("?" for _ in record_ids)
+
+                cur.execute(
+                    f"DELETE FROM records WHERE record_id IN ({placeholders})",
+                    record_ids,
+                )
+                deleted = cur.rowcount
+
+                cur.execute(
+                    f"DELETE FROM fts_records WHERE record_id IN ({placeholders})",
+                    record_ids,
+                )
+
+                if self._vec_available:
+                    try:
+                        cur.execute(
+                            f"DELETE FROM vec_records WHERE record_id IN ({placeholders})",
+                            record_ids,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to batch-delete vec_records: %s", exc
+                        )
+
+                self._db.commit()
+                return deleted
+
+            except Exception:
+                self._db.rollback()
+                raise
+
     def get_record(self, record_id: str) -> dict | None:
         """Fetch a single record by ID."""
         cur = self._db.execute(
@@ -418,13 +503,17 @@ class MemoryEngine:
             self._db.commit()
 
     def update_tiers_batch(self, updates: list[tuple[str, str]]) -> None:
-        """Batch-update tiers: [(record_id, new_tier), ...] in one transaction."""
+        """Batch-update tiers: [(record_id, new_tier), ...] in one transaction.
+
+        Each tuple is (record_id, new_tier).  The comprehension swaps the order
+        to match the SQL parameter order (SET tier=? WHERE record_id=?).
+        """
         if not updates:
             return
         with self._write_lock:
             self._db.executemany(
                 "UPDATE records SET tier = ? WHERE record_id = ?",
-                [(tier, rid) for rid, tier in updates],
+                [(new_tier, record_id) for record_id, new_tier in updates],
             )
             self._db.commit()
 

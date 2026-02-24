@@ -25,13 +25,23 @@ from jarvis_engine.commands.task_commands import (
 class RunTaskHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
+        self._store: object | None = None
+        self._orchestrator: object | None = None
+
+    def _get_orchestrator(self) -> object:
+        """Lazily create and cache MemoryStore + TaskOrchestrator."""
+        if self._orchestrator is None:
+            from jarvis_engine.memory_store import MemoryStore
+            from jarvis_engine.task_orchestrator import TaskOrchestrator
+
+            self._store = MemoryStore(self._root)
+            self._orchestrator = TaskOrchestrator(self._store, self._root)
+        return self._orchestrator
 
     def handle(self, cmd: RunTaskCommand) -> RunTaskResult:
-        from jarvis_engine.memory_store import MemoryStore
-        from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest
+        from jarvis_engine.task_orchestrator import TaskRequest
 
-        store = MemoryStore(self._root)
-        orchestrator = TaskOrchestrator(store, self._root)
+        orchestrator = self._get_orchestrator()
         result = orchestrator.run(
             TaskRequest(
                 task_type=cmd.task_type,  # type: ignore[arg-type]
@@ -116,6 +126,7 @@ class WebResearchHandler:
         except ValueError:
             return WebResearchResult(return_code=2)
         except Exception:
+            logger.warning("Web research failed for query %r", cleaned, exc_info=True)
             return WebResearchResult(return_code=2)
 
         auto_id = ""
@@ -175,6 +186,8 @@ class QueryHandler:
             route_name, model, confidence = self._classifier.classify(cmd.query)
             route_reason = f"Intent: {route_name} (confidence={confidence:.2f})"
         else:
+            # Fallback default model when no classifier is wired in.
+            # TODO: pull from config once gateway config is centralized.
             model = "claude-sonnet-4-5-20250929"
             route_reason = "Default: no classifier available"
 

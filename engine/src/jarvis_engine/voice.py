@@ -75,21 +75,21 @@ def list_windows_voices(refresh: bool = False) -> list[str]:
 def _preferred_voice_patterns(profile: str) -> list[str]:
     if profile == "jarvis_like":
         return [
-            # Best-quality multilingual neural voices first
+            # British butler voices first — refined, authoritative
+            "en-GB-RyanNeural",
+            "en-GB-ThomasNeural",
+            # Polished American male voices as fallback
             "en-US-AndrewMultilingualNeural",
             "en-US-BrianMultilingualNeural",
-            "en-GB-RyanNeural",
             "en-US-AndrewNeural",
-            "en-US-BrianNeural",
             "en-US-GuyNeural",
             "en-US-ChristopherNeural",
             "en-US-RogerNeural",
-            "en-GB-ThomasNeural",
             # Windows SAPI fallbacks
-            "David",
             "Great Britain",
-            "en-US",
+            "David",
             "en-GB",
+            "en-US",
             "Male",
         ]
     return ["David", "en-US", "Male"]
@@ -274,6 +274,9 @@ def _speak_text_edge_streamed(
     q: "queue.Queue[str | None]" = queue.Queue(maxsize=6)
     err: list[Exception] = []
 
+    # Sentinel to signal error to consumer immediately
+    _ERROR_SENTINEL = "__ERROR__"
+
     def producer() -> None:
         try:
             for idx, chunk in enumerate(chunks):
@@ -301,6 +304,7 @@ def _speak_text_edge_streamed(
                 q.put(str(media_path))
         except Exception as exc:  # noqa: BLE001
             err.append(exc)
+            q.put(_ERROR_SENTINEL)  # Signal error immediately instead of waiting
         finally:
             q.put(None)
 
@@ -310,6 +314,8 @@ def _speak_text_edge_streamed(
         item = q.get()
         if item is None:
             break
+        if item == _ERROR_SENTINEL:
+            break  # Stop playback immediately on producer error
         _play_audio_file(item)
     # Clean up streamed chunk files and temp directory
     try:

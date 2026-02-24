@@ -68,6 +68,12 @@ def hybrid_search(
     Returns:
         List of record dicts sorted by combined RRF + recency score, up to k items.
     """
+    # Guard: engine must be open and valid
+    if engine is None:
+        raise ValueError("MemoryEngine is None — cannot perform hybrid search")
+    if getattr(engine, "_closed", False):
+        raise RuntimeError("MemoryEngine is closed — cannot perform hybrid search")
+
     # 1. FTS5 keyword search
     fts_results = engine.search_fts(query, limit=k * 3)
 

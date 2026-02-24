@@ -243,6 +243,9 @@ def create_app(root: Path) -> CommandBus:
         gateway = ModelGateway(
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
             cost_tracker=cost_tracker,
+            groq_api_key=os.environ.get("GROQ_API_KEY"),
+            mistral_api_key=os.environ.get("MISTRAL_API_KEY"),
+            zai_api_key=os.environ.get("ZAI_API_KEY"),
         )
         if embed_service is not None:
             intent_classifier = IntentClassifier(embed_service)

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
+import io
 import json
 import logging
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -33,6 +36,19 @@ ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 REPLAY_WINDOW_SECONDS = 300.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 1_048_576  # 1 MB
+
+# CORS whitelist: only allow localhost/loopback origins and file:// protocol.
+# LAN IPs are added dynamically at server startup via _build_cors_whitelist().
+_CORS_ALLOWED_ORIGIN_PATTERNS = [
+    re.compile(r"^https?://localhost(:\d+)?$"),
+    re.compile(r"^https?://127\.0\.0\.1(:\d+)?$"),
+    re.compile(r"^https?://\[::1\](:\d+)?$"),
+    re.compile(r"^file://"),
+]
+
+# Bootstrap rate-limiter: max 5 failed attempts per IP within 60s window.
+_BOOTSTRAP_RATE_LIMIT_WINDOW = 60.0
+_BOOTSTRAP_RATE_LIMIT_MAX = 5
 
 
 def _parse_bool(value: Any) -> bool:
@@ -62,19 +78,124 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.repo_root = repo_root
         self._sync_engine: Any = None
         self._sync_transport: Any = None
+        self._sync_init_attempted = False
+        self._sync_init_lock = threading.Lock()
         # TODO: persist nonces to disk for replay protection across restarts
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
         self.nonce_cleanup_interval_s = 30.0
+        # Bootstrap rate-limiter: {ip: [timestamp, ...]}
+        self._bootstrap_attempts: dict[str, list[float]] = {}
+        self._bootstrap_rate_lock = threading.Lock()
+        # Dynamic CORS origins (populated at startup with LAN IP)
+        self._extra_cors_origins: list[re.Pattern[str]] = []
+
+    def check_bootstrap_rate(self, client_ip: str) -> bool:
+        """Return True if this IP is rate-limited for bootstrap attempts."""
+        now = time.time()
+        with self._bootstrap_rate_lock:
+            attempts = self._bootstrap_attempts.get(client_ip, [])
+            # Prune attempts outside the sliding window
+            cutoff = now - _BOOTSTRAP_RATE_LIMIT_WINDOW
+            attempts = [ts for ts in attempts if ts > cutoff]
+            self._bootstrap_attempts[client_ip] = attempts
+            return len(attempts) >= _BOOTSTRAP_RATE_LIMIT_MAX
+
+    def record_bootstrap_attempt(self, client_ip: str) -> None:
+        """Record a failed bootstrap attempt for rate limiting."""
+        now = time.time()
+        with self._bootstrap_rate_lock:
+            attempts = self._bootstrap_attempts.get(client_ip, [])
+            cutoff = now - _BOOTSTRAP_RATE_LIMIT_WINDOW
+            attempts = [ts for ts in attempts if ts > cutoff]
+            attempts.append(now)
+            self._bootstrap_attempts[client_ip] = attempts
+
+    def is_cors_origin_allowed(self, origin: str) -> bool:
+        """Check if the given Origin is in the CORS whitelist."""
+        if not origin:
+            return False
+        for pattern in _CORS_ALLOWED_ORIGIN_PATTERNS:
+            if pattern.match(origin):
+                return True
+        for pattern in self._extra_cors_origins:
+            if pattern.match(origin):
+                return True
+        return False
+
+    def ensure_sync_engine(self) -> Any:
+        """Lazy-initialize sync engine when DB becomes available.
+
+        The sync engine uses a dedicated SQLite connection with WAL mode
+        and a threading.Lock to serialize all database operations, ensuring
+        thread-safe access from the multi-threaded HTTP server.
+        """
+        if self._sync_engine is not None:
+            return self._sync_engine
+        with self._sync_init_lock:
+            if self._sync_engine is not None:
+                return self._sync_engine
+            db_path = self.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+            if not db_path.exists():
+                return None
+            try:
+                from jarvis_engine.sync.changelog import install_changelog_triggers
+                from jarvis_engine.sync.engine import SyncEngine
+                from jarvis_engine.sync.transport import SyncTransport
+
+                import sqlite3 as _sqlite3
+
+                sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
+                sync_db.execute("PRAGMA journal_mode=WAL")
+                sync_db.execute("PRAGMA busy_timeout=5000")
+                sync_lock = threading.Lock()
+                install_changelog_triggers(sync_db, device_id="desktop")
+                self._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+                if self.signing_key:
+                    salt_path = self.repo_root / ".planning" / "brain" / "sync_salt.bin"
+                    self._sync_transport = SyncTransport(self.signing_key, salt_path)
+                    logger.info("Sync engine lazy-initialized for mobile API")
+            except Exception as exc:
+                logger.warning("Failed to lazy-initialize sync: %s", exc)
+            return self._sync_engine
 
 
 class MobileIngestHandler(BaseHTTPRequestHandler):
     server_version = "JarvisMobileAPI/0.1"
 
+    def _cors_headers(self) -> None:
+        """Add CORS headers to every response for browser-based clients.
+
+        Only whitelisted origins (localhost, 127.0.0.1, ::1, file://, and
+        any configured LAN IP) are reflected.  Unknown origins receive no
+        Access-Control-Allow-Origin header, effectively blocking CORS.
+        """
+        origin = self.headers.get("Origin", "")
+        server: MobileIngestServer = self.server  # type: ignore[assignment]
+        if origin and server.is_cors_origin_allowed(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+        # If origin is not whitelisted, omit Access-Control-Allow-Origin
+        # so the browser will block the cross-origin request.
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, X-Jarvis-Timestamp, X-Jarvis-Nonce, "
+            "X-Jarvis-Signature, X-Jarvis-Device-Id, X-Jarvis-Master-Password",
+        )
+        self.send_header("Access-Control-Max-Age", "3600")
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        """Handle CORS preflight requests."""
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self._cors_headers()
+        self.end_headers()
+
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:
         encoded = json.dumps(payload, ensure_ascii=True).encode("utf-8")
         self.send_response(status)
+        self._cors_headers()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -83,6 +204,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _write_text(self, status: int, content_type: str, payload: str) -> None:
         encoded = payload.encode("utf-8")
         self.send_response(status)
+        self._cors_headers()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -102,6 +224,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return "<h1>Jarvis Quick Panel unavailable.</h1>"
 
     def _run_voice_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # Validate required field: text (string, non-empty, <= 2000 chars)
+        if "text" not in payload:
+            return {"ok": False, "error": "Missing required field: text."}
         text = str(payload.get("text", "")).strip()
         if not text or len(text) > 2000:
             return {"ok": False, "error": "Invalid text command."}
@@ -128,38 +253,59 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             voice_threshold = 0.82
         voice_threshold = min(0.99, max(0.1, voice_threshold))
-        engine_dir = root / "engine"
-        if not engine_dir.exists():
+        # Always prefer in-process execution for speed and stdout capture.
+        # Fall back to subprocess only if the in-process import fails.
+        _can_import_in_process = True
+        try:
+            import jarvis_engine.main as _test_mod  # noqa: F401
+        except ImportError:
+            _can_import_in_process = False
+        if _can_import_in_process:
+            captured_out = io.StringIO()
             try:
                 import jarvis_engine.main as main_mod
 
                 original_repo_root = main_mod.repo_root
                 main_mod.repo_root = lambda: root  # type: ignore[assignment]
                 try:
-                    rc = main_mod.cmd_voice_run(
-                        text=text,
-                        execute=execute,
-                        approve_privileged=approve_privileged,
-                        speak=speak,
-                        snapshot_path=root / ".planning" / "ops_snapshot.live.json",
-                        actions_path=root / ".planning" / "actions.generated.json",
-                        voice_user=voice_user,
-                        voice_auth_wav=voice_auth_wav,
-                        voice_threshold=voice_threshold,
-                        master_password=master_password,
-                    )
+                    with contextlib.redirect_stdout(captured_out):
+                        rc = main_mod.cmd_voice_run(
+                            text=text,
+                            execute=execute,
+                            approve_privileged=approve_privileged,
+                            speak=speak,
+                            snapshot_path=root / ".planning" / "ops_snapshot.live.json",
+                            actions_path=root / ".planning" / "actions.generated.json",
+                            voice_user=voice_user,
+                            voice_auth_wav=voice_auth_wav,
+                            voice_threshold=voice_threshold,
+                            master_password=master_password,
+                        )
                 finally:
                     main_mod.repo_root = original_repo_root  # type: ignore[assignment]
             except Exception as exc:
                 logger.error("Voice command execution failed: %s", exc)
                 return {"ok": False, "error": "Command execution failed."}
+            # Parse captured stdout for intent/reason/status (same as subprocess path)
+            stdout_text = captured_out.getvalue()
+            stdout_lines = stdout_text.splitlines()
+            intent = ""
+            reason = ""
+            status_code = str(rc)
+            for line in stdout_lines:
+                if line.startswith("intent="):
+                    intent = line.split("=", 1)[1]
+                elif line.startswith("reason="):
+                    reason = line.split("=", 1)[1]
+                elif line.startswith("status_code="):
+                    status_code = line.split("=", 1)[1]
             return {
                 "ok": rc == 0,
                 "command_exit_code": rc,
-                "intent": "",
-                "status_code": str(rc),
-                "reason": "",
-                "stdout_tail": [],
+                "intent": intent,
+                "status_code": status_code,
+                "reason": reason,
+                "stdout_tail": stdout_lines[-20:] if stdout_lines else [],
                 "stderr_tail": [],
             }
 
@@ -186,6 +332,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if master_password:
             cmd.extend(["--master-password", master_password])
 
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        engine_dir = root / "engine"
         env = os.environ.copy()
         env["PYTHONPATH"] = "src"
         try:
@@ -230,7 +378,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         engine_dir = root / "engine"
         if not engine_dir.exists():
-            return {"ok": False, "error": "Engine directory not found.", "command_exit_code": 2}
+            return {"ok": False, "error": "Engine directory not found.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": []}
         cmd = [sys.executable, "-m", "jarvis_engine.main", *args]
         env = os.environ.copy()
         env["PYTHONPATH"] = "src"
@@ -245,9 +393,27 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 errors="replace",
                 timeout=max(30, timeout_s),
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except subprocess.TimeoutExpired as exc:
+            # TimeoutExpired may carry partial stdout/stderr captured before the timeout
+            stderr_partial = ""
+            stdout_partial = ""
+            if exc.stderr:
+                stderr_partial = exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode("utf-8", errors="replace")
+            if exc.stdout:
+                stdout_partial = exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode("utf-8", errors="replace")
+            logger.error("CLI subprocess timed out after %ss: %s", timeout_s, exc)
+            stderr_lines = [line.strip() for line in stderr_partial.splitlines() if line.strip()]
+            stdout_lines = [line.strip() for line in stdout_partial.splitlines() if line.strip()]
+            return {
+                "ok": False,
+                "error": f"Command timed out after {timeout_s}s.",
+                "command_exit_code": 2,
+                "stdout_tail": stdout_lines[-20:],
+                "stderr_tail": stderr_lines[-20:],
+            }
+        except OSError as exc:
             logger.error("CLI subprocess failed: %s", exc)
-            return {"ok": False, "error": "Command execution failed.", "command_exit_code": 2}
+            return {"ok": False, "error": "Command execution failed.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": [str(exc)]}
         stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         return {
@@ -436,6 +602,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return False
 
         signature = self.headers.get("X-Jarvis-Signature", "").strip().lower()
+        # Signing material format: "<timestamp>\n<nonce>\n<body_bytes>"
+        # All clients (mobile, desktop widget, tests) MUST produce the same
+        # byte sequence: timestamp as UTF-8 string, newline, nonce as UTF-8,
+        # newline, then the raw request body bytes (no trailing newline).
         signing_material = ts_raw.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
         expected_sig = hmac.new(
             self.server.signing_key.encode("utf-8"),  # type: ignore[attr-defined]
@@ -509,7 +679,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if path == "/sync/status":
             if not self._validate_auth(b""):
                 return
-            sync_engine = getattr(self.server, "_sync_engine", None)
+            sync_engine = self.server.ensure_sync_engine()
             if sync_engine is None:
                 self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
                 return
@@ -544,6 +714,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if client_ip not in ("127.0.0.1", "::1") and not allow_remote_bootstrap:
                 self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
                 return
+            # Rate-limit bootstrap attempts to prevent brute-force attacks
+            server: MobileIngestServer = self.server  # type: ignore[assignment]
+            if server.check_bootstrap_rate(client_ip):
+                self._write_json(
+                    HTTPStatus.TOO_MANY_REQUESTS,
+                    {"ok": False, "error": "Too many bootstrap attempts. Try again later."},
+                )
+                return
             master_password = str(payload.get("master_password", "")).strip()
             if not master_password:
                 master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
@@ -552,6 +730,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return
             root: Path = self.server.repo_root  # type: ignore[attr-defined]
             if not verify_master_password(root, master_password):
+                server.record_bootstrap_attempt(client_ip)
                 self._unauthorized("Invalid master password.")
                 return
             device_id = str(payload.get("device_id", "")).strip()
@@ -561,9 +740,17 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if device_id and len(device_id) <= 128 and device_id.isascii():
                 trust_mobile_device(root, device_id)
                 trusted = True
-            host = str(getattr(self.server, "server_name", "127.0.0.1"))
-            port = int(getattr(self.server, "server_port", 8787))
-            base_url = f"http://{host}:{port}"
+            bind_addr = self.server.server_address[0]
+            port = self.server.server_address[1]
+            if bind_addr in ("0.0.0.0", "", "::"):
+                # Determine the actual LAN IP so the mobile client can connect
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                        s.connect(("8.8.8.8", 80))
+                        bind_addr = s.getsockname()[0]
+                except OSError:
+                    bind_addr = "127.0.0.1"
+            base_url = f"http://{bind_addr}:{port}"
             logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
             self._write_json(
                 HTTPStatus.OK,
@@ -691,10 +878,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/sync":
-            # Backward compatibility: redirect to new endpoints
+            # Deprecated endpoint — tell clients to use the new endpoints
             self._write_json(
-                HTTPStatus.MOVED_PERMANENTLY,
-                {"ok": False, "error": "Use /sync/pull or /sync/push", "endpoints": ["/sync/pull", "/sync/push", "/sync/status"]},
+                HTTPStatus.GONE,
+                {"ok": False, "error": "Deprecated. Use /sync/pull or /sync/push", "endpoints": ["/sync/pull", "/sync/push", "/sync/status"]},
             )
             return
 
@@ -706,7 +893,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if not device_id or len(device_id) > 128 or not device_id.isascii():
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
                 return
-            sync_engine = getattr(self.server, "_sync_engine", None)
+            sync_engine = self.server.ensure_sync_engine()
             sync_transport = getattr(self.server, "_sync_transport", None)
             if sync_engine is None or sync_transport is None:
                 self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
@@ -740,7 +927,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if not encrypted_payload:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "encrypted_payload is required."})
                 return
-            sync_engine = getattr(self.server, "_sync_engine", None)
+            sync_engine = self.server.ensure_sync_engine()
             sync_transport = getattr(self.server, "_sync_transport", None)
             if sync_engine is None or sync_transport is None:
                 self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
@@ -838,6 +1025,18 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
                 logger.warning("No signing key; sync transport not initialized")
         except Exception as exc:
             logger.warning("Failed to initialize sync for mobile API: %s", exc)
+
+    # Build dynamic CORS whitelist: add the actual LAN IP if binding to 0.0.0.0
+    if host in ("0.0.0.0", "", "::"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                lan_ip = s.getsockname()[0]
+            server._extra_cors_origins.append(
+                re.compile(rf"^https?://{re.escape(lan_ip)}(:\d+)?$")
+            )
+        except OSError:
+            pass
 
     print(f"mobile_api_listening=http://{host}:{port}")
     if host not in {"127.0.0.1", "localhost", "::1"}:

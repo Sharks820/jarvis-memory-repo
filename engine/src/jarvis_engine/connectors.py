@@ -134,6 +134,11 @@ def evaluate_connector_statuses(repo_root: Path) -> list[ConnectorStatus]:
         any_env_ok = _any_env_set(definition.required_any_env)
         all_env_ok, missing_all = _all_env_set(definition.required_all_env)
         file_ok, missing_files = _any_file_exists(repo_root, definition.fallback_local_files)
+        # Connector is configured if ANY of these holds:
+        #   1. At least one env var from required_any_env is set, OR
+        #   2. All env vars from required_all_env are set (only checked when the
+        #      tuple is non-empty -- _all_env_set returns True for empty tuples), OR
+        #   3. A fallback local file exists on disk.
         configured = any_env_ok or (definition.required_all_env and all_env_ok) or file_ok
         ready = configured and permission_granted
 
