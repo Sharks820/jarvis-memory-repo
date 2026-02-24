@@ -2,84 +2,99 @@
 
 ## What This Is
 
-A local-first, always-learning personal AI assistant inspired by Iron Man's J.A.R.V.I.S., built for Conner. Jarvis manages day-to-day life (calendar, email, tasks, bills, health, school, family, gaming), learns continuously from every interaction, syncs seamlessly between desktop PC and Samsung Galaxy S25 Ultra, and speaks with a British male neural voice with mild humor. It is designed to become an all-inclusive assistant with no limitations on its knowledge depth.
+A local-first, always-learning personal AI assistant inspired by Iron Man's J.A.R.V.I.S., built for Conner. The desktop Python engine is the brain — memory store, intelligence routing, proactive engine, heavy computation. The Samsung Galaxy S25 Ultra native Kotlin app is the primary daily interface — voice, calls, location, notifications, camera. Together they form a complete AI assistant that manages day-to-day life, learns from every interaction, and becomes smarter over time.
 
 ## Core Value
 
 Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
 
+## Current Milestone: v2.0 Native Android App
+
+**Goal:** Build a native Kotlin Android app that transforms the Samsung Galaxy S25 Ultra from a web-panel-only interface into a full-featured smart mobile companion for the Jarvis desktop brain.
+
+**Target features:**
+- Voice assistant with on-device STT/TTS
+- Call screening and spam defense
+- Intelligent scheduling from notification parsing
+- Prescription management with alarm reminders
+- Proactive notifications from desktop engine
+- Material Design 3 dashboard (home, chat, memory, settings)
+- Contextual silence (meeting/driving/sleep detection)
+- Relationship memory and social context
+- Financial watchdog (bank SMS/email parsing)
+- Habit tracker with adaptive nudges
+- Commute intelligence (traffic + parking memory)
+- Document scanner with encrypted OCR storage
+
 ## Requirements
 
-### Validated
+### Validated (v1.0 Desktop Engine — Shipped)
 
-- Validated: CLI command interface with 30+ commands — existing
-- Validated: Edge-TTS British male neural voice (en-GB-ThomasNeural) — existing
-- Validated: Windows Speech fallback TTS — existing
-- Validated: HMAC-signed mobile API with replay protection — existing
-- Validated: Owner guard with master password and trusted device management — existing
-- Validated: Tiered capability authorization (read/bounded_write/privileged) — existing
-- Validated: Ollama-based local code generation with quality profiles — existing
-- Validated: Daemon mode with idle detection and gaming auto-pause — existing
-- Validated: Branch-based memory filing (9 branches) — existing (needs upgrade)
-- Validated: Content-hash deduplication (SHA-256) — existing
-- Validated: 125 passing tests — existing
+- ✓ SQLite + FTS5 + sqlite-vec memory engine with semantic search — v1.0
+- ✓ Knowledge graph with fact extraction, contradiction detection, fact locks — v1.0
+- ✓ Intelligence routing: Ollama + Anthropic with intent-based complexity routing — v1.0
+- ✓ Real calendar (ICS), email (IMAP), task (Todoist) connectors + daily briefing — v1.0
+- ✓ Multi-source knowledge harvesting (MiniMax, Kimi, Gemini, Claude Code, Codex) — v1.0
+- ✓ Persona layer with British butler personality + contextual tone — v1.0
+- ✓ Speech-to-text via faster-whisper — v1.0
+- ✓ Continuous learning engine with cross-branch reasoning + golden task eval — v1.0
+- ✓ Changelog-based mobile-desktop sync with encrypted transport — v1.0
+- ✓ Proactive intelligence with wake word detection + adaptive nudges — v1.0
+- ✓ Cost tracking with budget controls + adversarial self-testing — v1.0
+- ✓ HMAC-signed mobile API with owner guard + device trust — v1.0
+- ✓ CQRS command bus architecture (70+ commands) — v1.0
+- ✓ Edge-TTS British male neural voice (en-GB-ThomasNeural) — v1.0
+- ✓ Daemon mode with idle detection and gaming auto-pause — v1.0
+- ✓ 473 passing tests — v1.0
 
-### Active
+### Active (v2.0 Android App)
 
-- [ ] Revolutionary neural-branch memory system (SQLite + embeddings + semantic search + branch filing)
-- [ ] Anti-regression knowledge locks — learned facts are immutable unless explicitly overridden
-- [ ] Multi-source knowledge harvester — pull knowledge from MiniMax, Kimi, Claude, Codex, Gemini and distill into local memory
-- [ ] Continuous learning engine that extracts and retains knowledge from every interaction
-- [ ] Multi-model intelligence routing (Opus for reasoning/coding, best free models for routine tasks)
-- [ ] Progressive cost reduction — start cheap, distill cloud knowledge into local models over time
-- [ ] Bidirectional mobile-desktop learning sync with conflict resolution
-- [ ] J.A.R.V.I.S.-quality personality with contextual humor and natural conversation
-- [ ] Real connector integrations (calendar, email, tasks, bills — not stubs)
-- [ ] Self-improving capability growth with auditable verification
-- [ ] Streaming voice with natural cadence and personality-aware responses
-- [ ] Whisper-grade speech-to-text for voice commands (local faster-whisper or cloud Whisper API)
-- [ ] Knowledge graph with fact interconnection and contradiction detection
+See: .planning/REQUIREMENTS.md
 
 ### Out of Scope
 
 - Cloud-hosted deployment — local-first is non-negotiable for privacy and control
 - Training custom LLMs from scratch — use best available models via API + local inference
-- Mobile native app (for now) — mobile HTTP API + quick-access web panel is sufficient
 - Multi-user support — this is Conner's personal assistant, single-owner by design
+- iOS app — Samsung Galaxy S25 Ultra only
+- Wear OS companion — phone app first, wearable later
+- Widgets — Material You widgets deferred to v2.1
 
 ## Context
 
-- **Runtime**: Windows 11 desktop PC (primary), Samsung Galaxy S25 Ultra (mobile/secondary)
-- **Existing codebase**: 29 Python source files, 125 passing tests, monolithic main.py (~31k tokens)
-- **Current state**: Skeleton is solid but brain is hollow — memory system lacks real search/retrieval, no embeddings, no database, no semantic understanding. Branch-based filing works but uses keyword matching instead of semantic classification. Ingestion pipeline is too thin (no chunking, no enrichment). Connectors are stubs.
-- **Voice**: Edge-TTS with British male voices working well. Needs personality layer on top.
-- **Models**: Currently Ollama only. User wants Opus/best-in-class models for reasoning and learning.
-- **Previous work**: Senior architecture review proposed 6-layer memory hierarchy but was never implemented.
+- **Runtime**: Windows 11 desktop PC (brain), Samsung Galaxy S25 Ultra (interface)
+- **Desktop engine**: 50+ Python source files, 473 passing tests, CQRS command bus architecture
+- **Mobile API**: HTTP server on port 8787, Bearer token + HMAC-SHA256 signing, LAN access at 192.168.50.156
+- **Android target**: Android 15+ (API 35), Kotlin, Jetpack Compose, Material 3
+- **Design doc**: `docs/plans/2026-02-23-jarvis-android-app-design.md`
+- **Sync protocol**: Desktop already has /sync/pull and /sync/push endpoints with Fernet encryption
+- **Intelligence**: Ollama (local), Anthropic Claude (cloud), intent classification already built
 
 ## Constraints
 
 - **Privacy**: All core data stays local. Cloud APIs used for inference only, never for storage.
-- **Platform**: Windows 11 primary. Must work without Docker or Linux dependencies.
-- **Dependencies**: Minimize external services. SQLite over Postgres. Local embeddings preferred.
-- **Python**: >=3.10, existing setuptools build system.
-- **Budget**: Start inexpensive — use free/cheap APIs (MiniMax, Kimi, Gemini free tier) for bulk learning, Opus only for complex reasoning. Ultimate goal: free local bot with premium-grade intelligence.
-- **Regression**: No change may cause previously-learned knowledge to be lost or degraded.
-- **Knowledge sources**: MiniMax, Kimi, Claude Code, Codex, Gemini — harvest and distill knowledge from all available AI sources into local memory.
+- **Platform**: Android 15+ (Samsung Galaxy S25 Ultra). Desktop brain is Windows 11.
+- **Cost**: $0/month infrastructure — all on-device + existing desktop. Cloud LLM only when needed.
+- **Network**: LAN (WiFi) for sync. Offline-first with command queuing.
+- **Security**: Biometric lock, SQLCipher for Room DB, HMAC signing on all API calls, EncryptedSharedPreferences.
+- **Language**: Kotlin with Jetpack Compose. No Java, no Flutter, no React Native.
+- **Dependencies**: Minimize third-party. Prefer Android platform APIs (SpeechRecognizer, CallScreeningService, NotificationListenerService, ML Kit).
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| SQLite + FTS5 for memory storage | No external DB server needed, great Python support, full-text search built-in | — Pending |
-| Local embeddings (sentence-transformers) for semantic search | Privacy-first, no API calls for retrieval, fast inference | — Pending |
-| Claude Opus for complex reasoning, Sonnet for routine tasks | Best-in-class reasoning when it matters, cost-efficient for simple work | — Pending |
-| Edge-TTS for voice output (keep existing) | Already working well, high-quality British neural voices | Validated |
-| Whisper/faster-whisper for speech-to-text | Best-in-class STT accuracy, runs locally, matches Whisper app quality | — Pending |
-| Branch-based filing upgraded to semantic classification | Preserves existing mental model, adds intelligence to filing | — Pending |
-| Bidirectional sync via encrypted diff-based protocol | Efficient bandwidth, conflict resolution, works on mobile data | — Pending |
-| Desktop PC primary, S25 Ultra mobile secondary | Two-device setup, sync between them | — Pending |
-| Multi-source knowledge harvesting (MiniMax, Kimi, Claude, Codex, Gemini) | Extract knowledge from multiple AI sources, distill locally | — Pending |
-| Progressive cost reduction via knowledge distillation | Start with cloud APIs, gradually build local intelligence to reduce costs to zero | — Pending |
+| SQLite + FTS5 for memory storage | No external DB server, great Python support, full-text search | ✓ Good |
+| Local embeddings (sentence-transformers, nomic-embed-text-v1.5) | Privacy-first, no API calls for retrieval | ✓ Good |
+| Claude Opus for complex reasoning, Ollama for routine | Best reasoning when needed, cost-efficient | ✓ Good |
+| Edge-TTS for desktop voice output | High-quality British neural voices | ✓ Good |
+| CQRS command bus architecture | Clean decomposition, 70+ commands | ✓ Good |
+| Fernet encryption for sync payloads | PBKDF2HMAC 480K iterations, zlib compression | ✓ Good |
+| Native Kotlin over cross-platform | Full access to Android platform APIs (CallScreening, NotificationListener) | — Pending |
+| Jetpack Compose + Material 3 | Modern Android UI, Material You dynamic theming | — Pending |
+| Room + SQLCipher for local Android DB | Encrypted local storage, offline-first | — Pending |
+| Retrofit2 + OkHttp with HMAC interceptor | Standard Android networking, clean interceptor pattern | — Pending |
+| Phone as sensor/interface, desktop as brain | Keeps heavy computation on PC, phone does sensing + display | — Pending |
 
 ---
-*Last updated: 2026-02-22 after GSD initialization*
+*Last updated: 2026-02-23 after v2.0 milestone start*
