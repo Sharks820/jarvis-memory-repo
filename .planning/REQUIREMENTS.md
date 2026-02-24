@@ -108,10 +108,10 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Prescription Management (RX)
 
-- [ ] **RX-01**: Medication schedule stored in Room DB and synced to desktop brain
-- [ ] **RX-02**: AlarmManager with EXACT_ALARM for dose reminders that survive Do Not Disturb
-- [ ] **RX-03**: Voice query "did I take my morning meds?" checks today's medication log
-- [ ] **RX-04**: Refill tracking with proactive pharmacy reminder notifications
+- [x] **RX-01**: Medication schedule stored in Room DB and synced to desktop brain
+- [x] **RX-02**: AlarmManager with EXACT_ALARM for dose reminders that survive Do Not Disturb
+- [x] **RX-03**: Voice query "did I take my morning meds?" checks today's medication log
+- [x] **RX-04**: Refill tracking with proactive pharmacy reminder notifications
 
 ### Notifications & Proactive Intelligence (ANOTIF)
 
@@ -218,7 +218,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHED-01 through SCHED-04 (4) | Phase 11 | Pending |
 | ANOTIF-01 through ANOTIF-04 (4) | Phase 11 | Pending |
 | CTX-01 through CTX-04 (4) | Phase 11 | Pending |
-| RX-01 through RX-04 (4) | Phase 12 | Pending |
+| RX-01 through RX-04 (4) | Phase 12 | Complete |
 | FIN-01 through FIN-03 (3) | Phase 12 | Pending |
 | DOC-01 through DOC-04 (4) | Phase 12 | Pending |
 | COMM-01 through COMM-03 (3) | Phase 12 | Pending |
