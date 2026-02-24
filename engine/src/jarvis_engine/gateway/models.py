@@ -91,7 +91,7 @@ class ModelGateway:
             )
 
         if _HAS_OLLAMA:
-            self._ollama = OllamaClient(host=ollama_host)
+            self._ollama = OllamaClient(host=ollama_host, timeout=120.0)
         else:
             self._ollama = None
         self._cost_tracker = cost_tracker
@@ -210,6 +210,16 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason="Ollama error",
             )
+        except Exception as exc:
+            # Catch httpx transport/timeout errors that don't inherit from builtins
+            logger.warning("Ollama call failed (unexpected): %s", exc)
+            return GatewayResponse(
+                text="",
+                model=model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason=f"Ollama error: {type(exc).__name__}",
+            )
         text = resp.message.content if resp.message else ""
         input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
         output_tokens = getattr(resp, "eval_count", 0) or 0
@@ -263,6 +273,19 @@ class ModelGateway:
             )
         except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             full_reason = f"{reason} -> Ollama also failed"
+            logger.error("All providers failed: %s -> %s", reason, exc)
+            return GatewayResponse(
+                text="",
+                model=fallback_model,
+                provider="none",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+                fallback_used=True,
+                fallback_reason=full_reason,
+            )
+        except Exception as exc:
+            full_reason = f"{reason} -> Ollama also failed: {type(exc).__name__}"
             logger.error("All providers failed: %s -> %s", reason, exc)
             return GatewayResponse(
                 text="",

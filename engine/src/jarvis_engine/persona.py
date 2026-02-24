@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
@@ -182,34 +183,43 @@ def compose_persona_reply(
         "Efficiently done, no fuss.",
         "Consider it handled with precision.",
         "Neatly executed, with room for tea.",
+        "Swift and seamless, if I do say so myself.",
+        "All sorted. Shall I fetch anything else?",
+        "Done and dusted.",
+        "Handled without breaking a sweat.",
     ]
     warning_suffixes = [
         "I suggest we proceed with proper authorization.",
         "Best not test fate without verification.",
-        "Even brilliance prefers guardrails.",
-        "Security first, heroics second.",
+        "Security first, shall we?",
+        "Let's ensure proper clearance before proceeding.",
+        "A bit of verification wouldn't go amiss.",
+        "I'd recommend confirming before we continue.",
     ]
-    historical_quips = [
-        "As Churchill might note, this is not the end, merely excellent progress.",
-        "By Bletchley standards, that was delightfully efficient.",
-        "Even Holmes would call that deduction elementary.",
-        "Consider it dispatched with Bond-like discretion.",
+    success_openers = [
+        f"Very good, sir. {intent_label} is complete.",
+        f"Done. {intent_label.capitalize()} is taken care of.",
+        f"{intent_label.capitalize()} complete.",
+        f"All set. {intent_label.capitalize()} handled.",
+        f"Consider {intent_label} done.",
+    ]
+    fail_openers = [
+        f"I'm afraid {intent_label} was blocked.",
+        f"Unfortunately, {intent_label} couldn't proceed.",
+        f"{intent_label.capitalize()} was not permitted.",
+        f"That request was blocked.",
     ]
 
     if success:
-        base = f"Very good, sir. {intent_label} is complete."
+        base = random.choice(success_openers)
         if cfg.humor_level > 0:
-            base += " " + witty_suffixes[min(cfg.humor_level, len(witty_suffixes) - 1)]
-            if "histor" in style_value.lower():
-                base += " " + historical_quips[min(cfg.humor_level, len(historical_quips) - 1)]
+            base += " " + random.choice(witty_suffixes)
         return base
 
-    base = f"I am afraid {intent_label} was blocked."
+    base = random.choice(fail_openers)
     if reason:
         safe_reason = reason.replace("_", " ").strip()[:160]
         base += f" Reason: {safe_reason}."
     if cfg.humor_level > 0:
-        base += " " + warning_suffixes[min(cfg.humor_level, len(warning_suffixes) - 1)]
-        if "histor" in style_value.lower():
-            base += " " + historical_quips[min(cfg.humor_level, len(historical_quips) - 1)]
+        base += " " + random.choice(warning_suffixes)
     return base
