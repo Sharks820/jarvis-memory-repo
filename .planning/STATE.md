@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 12 of 13 (Life Management)
-Plan: 1 of 3 in current phase (12-01 prescription management COMPLETE)
-Status: Executing Phase 12 -- prescription management complete, financial and commute next
-Last activity: 2026-02-24 -- Completed 12-01 prescription management
+Plan: 2 of 3 in current phase (12-01 prescription COMPLETE, 12-02 finance+commute COMPLETE)
+Status: Executing Phase 12 -- prescription and finance/commute complete, 12-03 remaining
+Last activity: 2026-02-24 -- Completed 12-02 financial watchdog and commute intelligence
 
-Progress (v2.0): [███████░░░] 64% (7/11 plans)
+Progress (v2.0): [████████░░] 73% (8/11 plans)
 
 ## Performance Metrics
 
@@ -25,11 +25,11 @@ Progress (v2.0): [███████░░░] 64% (7/11 plans)
 - Final test count: 475
 
 **v2.0 Android App:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Phases: 4 (phases 10-13), 11 plans total
 - Phase 10: 3/3 plans complete
 - Phase 11: 3/3 plans complete (11-01 call screening: ~8min, 11-02 scheduling: ~12min, 11-03 notifications+context: ~10min)
-- Phase 12: 1/3 plans complete (12-01 prescription management: ~7min)
+- Phase 12: 2/3 plans complete (12-01 prescription management: ~7min, 12-02 finance+commute: ~15min)
 
 ## Accumulated Context
 
@@ -70,6 +70,15 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Context detection every 2 minutes in foreground service sync loop
 - 4-tier notification channels: URGENT (bypasses DND), IMPORTANT, ROUTINE, BACKGROUND
 - Priority learning via 80% act/dismiss threshold over 30-day rolling window
+- DB version 7: + TransactionEntity + CommuteLocationEntity + ParkingEntity (explicit MIGRATION_6_7)
+- SHA-256 notification hash dedup for financial transaction records
+- Regex bank notification parsing: Chase, BoA, Wells Fargo patterns with generic fallback
+- Anomaly thresholds: 3x category avg (unusual), first merchant >$50 (new), subscription >10% delta
+- Haversine distance with 200m radius for GPS location proximity matching
+- Auto-classify locations after 5 visits: home (evening/night), work (weekday business hours)
+- Runtime BroadcastReceiver for BT disconnect tied to JarvisService lifecycle
+- WorkManager PeriodicWorkRequest (7-day) for weekly spend summary on Sunday 10 AM
+- Desktop brain as traffic proxy (avoids Google Maps API key dependency)
 
 ### Pending Todos
 
@@ -85,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 12-01-PLAN.md (prescription management). Phase 12 in progress -- 12-02 and 12-03 remaining.
+Stopped at: Completed 12-02-PLAN.md (financial watchdog + commute intelligence). Phase 12 in progress -- 12-03 remaining.
 Resume file: None
