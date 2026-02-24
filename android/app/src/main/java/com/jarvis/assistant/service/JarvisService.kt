@@ -13,6 +13,8 @@ import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
 import com.jarvis.assistant.data.CommandQueueProcessor
 import com.jarvis.assistant.feature.callscreen.SpamDatabaseSync
+import com.jarvis.assistant.feature.notifications.NotificationChannelManager
+import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +35,8 @@ class JarvisService : Service() {
 
     @Inject lateinit var processor: CommandQueueProcessor
     @Inject lateinit var spamDatabaseSync: SpamDatabaseSync
+    @Inject lateinit var proactiveReceiver: ProactiveAlertReceiver
+    @Inject lateinit var channelManager: NotificationChannelManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
@@ -42,6 +46,7 @@ class JarvisService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        channelManager.createChannels()
         startForeground(NOTIF_ID, buildNotification())
     }
 
@@ -79,6 +84,13 @@ class JarvisService : Service() {
                     } catch (e: Exception) {
                         Log.w(TAG, "Spam DB sync error: ${e.message}")
                     }
+                }
+
+                // Proactive alert check: every sync cycle
+                try {
+                    proactiveReceiver.checkAndPost()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Proactive alert check error: ${e.message}")
                 }
 
                 delay(syncIntervalMs)

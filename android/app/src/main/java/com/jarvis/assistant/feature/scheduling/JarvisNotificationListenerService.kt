@@ -5,6 +5,7 @@ import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.jarvis.assistant.feature.notifications.NotificationLearner
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -33,6 +34,7 @@ class JarvisNotificationListenerService : NotificationListenerService() {
     interface SchedulingEntryPoint {
         fun cueExtractor(): SchedulingCueExtractor
         fun calendarCreator(): CalendarEventCreator
+        fun notificationLearner(): NotificationLearner
     }
 
     private val cueExtractor by lazy {
@@ -48,6 +50,16 @@ class JarvisNotificationListenerService : NotificationListenerService() {
             SchedulingEntryPoint::class.java,
         ).calendarCreator()
     }
+
+    private val notificationLearner by lazy {
+        EntryPointAccessors.fromApplication(
+            application,
+            SchedulingEntryPoint::class.java,
+        ).notificationLearner()
+    }
+
+    /** Track notification post times for calculating action delay. */
+    private val notificationPostTimes = mutableMapOf<Int, Long>()
 
     /**
      * Package filter: only process notifications from SMS and email apps.
@@ -104,8 +116,60 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         }
     }
 
+    override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap) {
+        // Track Jarvis notification post times for learning
+        val channelId = sbn.notification.channelId ?: ""
+        if (channelId.startsWith("jarvis_") && channelId != "jarvis_sync") {
+            notificationPostTimes[sbn.id] = System.currentTimeMillis()
+        }
+        // Delegate to the main handler for scheduling extraction
+        onNotificationPosted(sbn)
+    }
+
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        // No action needed on removal
+        // Clean up tracking
+        notificationPostTimes.remove(sbn.id)
+    }
+
+    override fun onNotificationRemoved(
+        sbn: StatusBarNotification,
+        rankingMap: RankingMap,
+        reason: Int,
+    ) {
+        val channelId = sbn.notification.channelId ?: ""
+        // Only log interactions with Jarvis notification channels (not the sync channel)
+        if (!channelId.startsWith("jarvis_") || channelId == "jarvis_sync") {
+            notificationPostTimes.remove(sbn.id)
+            return
+        }
+
+        val action = when (reason) {
+            REASON_CLICK, REASON_APP_CANCEL -> "acted"
+            REASON_CANCEL -> "dismissed"
+            else -> "expired"
+        }
+
+        val postTime = notificationPostTimes.remove(sbn.id) ?: 0L
+        val delayMs = if (postTime > 0) System.currentTimeMillis() - postTime else 0L
+
+        val extras = sbn.notification.extras
+        val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+        val alertType = extras?.getString(EXTRA_ALERT_TYPE) ?: channelId
+
+        scope.launch {
+            try {
+                notificationLearner.logAction(
+                    notificationId = sbn.id,
+                    alertType = alertType,
+                    title = title,
+                    channelId = channelId,
+                    action = action,
+                    actionDelayMs = delayMs,
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to log notification action: ${e.message}")
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -115,6 +179,14 @@ class JarvisNotificationListenerService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "JarvisScheduling"
+
+        /** Notification extra key used to tag the desktop alert type. */
+        private const val EXTRA_ALERT_TYPE = "jarvis_alert_type"
+
+        // Removal reason constants (mirrors NotificationListenerService constants)
+        private const val REASON_CLICK = 1
+        private const val REASON_CANCEL = 2
+        private const val REASON_APP_CANCEL = 8
 
         /** SharedPreferences file for scheduling settings. */
         const val PREFS_NAME = "jarvis_prefs"
