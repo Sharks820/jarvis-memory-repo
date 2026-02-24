@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** v2.0 Native Android App -- Phase 11: Intelligence Core
+**Current focus:** v2.0 Native Android App -- Phase 12: Life Management
 
 ## Current Position
 
-Phase: 11 of 13 (Intelligence Core) -- COMPLETE
-Plan: 3 of 3 in current phase (COMPLETE)
-Status: Phase 11 complete - all intelligence core features implemented
-Last activity: 2026-02-24 -- Completed 11-03 proactive notifications + context detection
+Phase: 12 of 13 (Life Management)
+Plan: 1 of 3 in current phase (12-01 prescription management COMPLETE)
+Status: Executing Phase 12 -- prescription management complete, financial and commute next
+Last activity: 2026-02-24 -- Completed 12-01 prescription management
 
-Progress (v2.0): [██████░░░░] 55% (6/11 plans)
+Progress (v2.0): [███████░░░] 64% (7/11 plans)
 
 ## Performance Metrics
 
@@ -25,10 +25,11 @@ Progress (v2.0): [██████░░░░] 55% (6/11 plans)
 - Final test count: 475
 
 **v2.0 Android App:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Phases: 4 (phases 10-13), 11 plans total
 - Phase 10: 3/3 plans complete
 - Phase 11: 3/3 plans complete (11-01 call screening: ~8min, 11-02 scheduling: ~12min, 11-03 notifications+context: ~10min)
+- Phase 12: 1/3 plans complete (12-01 prescription management: ~7min)
 
 ## Accumulated Context
 
@@ -60,6 +61,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Confidence scoring thresholds: 0.3 (date), 0.5 (date+time), 0.7 (+location), 0.9 (all cues)
 - DB version 3: ConversationEntity + CommandQueueEntity + SpamEntity + ExtractedEventEntity
 - DB version 5: + NotificationLogEntity + ContextStateEntity (fallbackToDestructiveMigration)
+- DB version 6: + MedicationEntity + MedicationLogEntity (explicit MIGRATION_5_6)
+- AlarmManager.setExactAndAllowWhileIdle for Doze-safe medication reminders
+- Separate DoseActionReceiver for notification Taken/Skip button handling
+- JSON-serialized scheduledTimes in MedicationEntity for simplicity
+- SharedPreferences date-key throttling for once-per-day refill reminders
 - Accelerometer-based driving detection (avoids Google Play Services dependency)
 - Context detection every 2 minutes in foreground service sync loop
 - 4-tier notification channels: URGENT (bypasses DND), IMPORTANT, ROUTINE, BACKGROUND
@@ -79,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 11-03-PLAN.md (proactive notifications + context detection). Phase 11 complete. Ready for Phase 12.
+Stopped at: Completed 12-01-PLAN.md (prescription management). Phase 12 in progress -- 12-02 and 12-03 remaining.
 Resume file: None
