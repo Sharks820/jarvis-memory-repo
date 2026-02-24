@@ -129,9 +129,9 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Relationship Memory (SOC)
 
-- [ ] **SOC-01**: Pre-call context display showing last conversation date and key topics per contact
-- [ ] **SOC-02**: Post-call logging prompt to capture conversation context for next time
-- [ ] **SOC-03**: Proactive relationship alerts surfacing birthdays, anniversaries, and neglected connections
+- [x] **SOC-01**: Pre-call context display showing last conversation date and key topics per contact
+- [x] **SOC-02**: Post-call logging prompt to capture conversation context for next time
+- [x] **SOC-03**: Proactive relationship alerts surfacing birthdays, anniversaries, and neglected connections
 
 ### Financial Watchdog (FIN)
 
