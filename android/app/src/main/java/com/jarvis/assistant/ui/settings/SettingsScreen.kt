@@ -782,6 +782,138 @@ fun SettingsScreen(
             }
         }
 
+        // ── Relationship Memory ────────────────────────────
+        item {
+            val relationshipEnabled by viewModel.relationshipAlertsEnabled.collectAsState()
+            val preCallCards by viewModel.preCallCardsEnabled.collectAsState()
+            val postCallLogging by viewModel.postCallLoggingEnabled.collectAsState()
+            val contactCount by viewModel.contactCount.collectAsState()
+            val callLogCount by viewModel.callLogCount.collectAsState()
+            val birthdayReminders by viewModel.birthdayRemindersEnabled.collectAsState()
+            val anniversaryReminders by viewModel.anniversaryRemindersEnabled.collectAsState()
+            val neglectedAlerts by viewModel.neglectedAlertsEnabled.collectAsState()
+            val neglectedDays by viewModel.neglectedThresholdDays.collectAsState()
+
+            SectionHeader("Relationship Memory")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    // Master toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enable Relationship Alerts", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = relationshipEnabled,
+                            onCheckedChange = { viewModel.setRelationshipAlertsEnabled(it) },
+                        )
+                    }
+
+                    // Pre-call cards toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Pre-call Context Cards", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = preCallCards,
+                            onCheckedChange = { viewModel.setPreCallCardsEnabled(it) },
+                            enabled = relationshipEnabled,
+                        )
+                    }
+
+                    // Post-call logging toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Post-call Logging Prompts", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = postCallLogging,
+                            onCheckedChange = { viewModel.setPostCallLoggingEnabled(it) },
+                            enabled = relationshipEnabled,
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Contacts tracked: $contactCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        "Calls logged: $callLogCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    Text("Alert Settings", style = MaterialTheme.typography.bodyMedium)
+
+                    // Birthday reminders toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Birthday Reminders", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = birthdayReminders,
+                            onCheckedChange = { viewModel.setBirthdayRemindersEnabled(it) },
+                            enabled = relationshipEnabled,
+                        )
+                    }
+
+                    // Anniversary reminders toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Anniversary Reminders", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = anniversaryReminders,
+                            onCheckedChange = { viewModel.setAnniversaryRemindersEnabled(it) },
+                            enabled = relationshipEnabled,
+                        )
+                    }
+
+                    // Neglected connection alerts toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Neglected Connection Alerts", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = neglectedAlerts,
+                            onCheckedChange = { viewModel.setNeglectedAlertsEnabled(it) },
+                            enabled = relationshipEnabled,
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Neglected threshold: $neglectedDays days",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = neglectedDays.toFloat(),
+                        onValueChange = { viewModel.setNeglectedThresholdDays(it.toInt()) },
+                        valueRange = 14f..90f,
+                        steps = 14,
+                        enabled = relationshipEnabled && neglectedAlerts,
+                    )
+                    Text(
+                        "Alert when you haven't spoken with important contacts in this many days",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         // ── About ──────────────────────────────────────────
         item {
             SectionHeader("About")
