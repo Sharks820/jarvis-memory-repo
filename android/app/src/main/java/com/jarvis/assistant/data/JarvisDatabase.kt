@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.jarvis.assistant.data.dao.CommandQueueDao
+import com.jarvis.assistant.data.dao.CommuteDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
@@ -14,14 +15,18 @@ import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
+import com.jarvis.assistant.data.dao.TransactionDao
 import com.jarvis.assistant.data.entity.CommandQueueEntity
+import com.jarvis.assistant.data.entity.CommuteLocationEntity
 import com.jarvis.assistant.data.entity.ContextStateEntity
 import com.jarvis.assistant.data.entity.ConversationEntity
 import com.jarvis.assistant.data.entity.ExtractedEventEntity
 import com.jarvis.assistant.data.entity.MedicationEntity
 import com.jarvis.assistant.data.entity.MedicationLogEntity
 import com.jarvis.assistant.data.entity.NotificationLogEntity
+import com.jarvis.assistant.data.entity.ParkingEntity
 import com.jarvis.assistant.data.entity.SpamEntity
+import com.jarvis.assistant.data.entity.TransactionEntity
 import net.sqlcipher.database.SupportFactory
 
 @Database(
@@ -34,8 +39,11 @@ import net.sqlcipher.database.SupportFactory
         ContextStateEntity::class,
         MedicationEntity::class,
         MedicationLogEntity::class,
+        TransactionEntity::class,
+        CommuteLocationEntity::class,
+        ParkingEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -48,6 +56,8 @@ abstract class JarvisDatabase : RoomDatabase() {
     abstract fun contextStateDao(): ContextStateDao
     abstract fun medicationDao(): MedicationDao
     abstract fun medicationLogDao(): MedicationLogDao
+    abstract fun transactionDao(): TransactionDao
+    abstract fun commuteDao(): CommuteDao
 
     companion object {
 
@@ -169,6 +179,63 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        /** v6 -> v7: Add transactions, commute_locations, and parking_locations tables. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `transactions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `amount` REAL NOT NULL,
+                        `merchant` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `sourceApp` TEXT NOT NULL,
+                        `rawText` TEXT NOT NULL,
+                        `isAnomaly` INTEGER NOT NULL DEFAULT 0,
+                        `anomalyReason` TEXT NOT NULL DEFAULT '',
+                        `date` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `notificationHash` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_notificationHash` " +
+                        "ON `transactions` (`notificationHash`)",
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `commute_locations` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `label` TEXT NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `radius` REAL NOT NULL DEFAULT 200.0,
+                        `visitCount` INTEGER NOT NULL DEFAULT 1,
+                        `avgArrivalHour` REAL NOT NULL DEFAULT 0.0,
+                        `avgDepartureHour` REAL NOT NULL DEFAULT 0.0,
+                        `lastVisited` INTEGER NOT NULL,
+                        `confidence` REAL NOT NULL DEFAULT 0.05
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `parking_locations` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `accuracy` REAL NOT NULL,
+                        `bluetoothDeviceName` TEXT NOT NULL,
+                        `timestamp` INTEGER NOT NULL,
+                        `isActive` INTEGER NOT NULL DEFAULT 1,
+                        `note` TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun create(context: Context, passphrase: ByteArray): JarvisDatabase {
             val factory = SupportFactory(passphrase)
             return Room.databaseBuilder(
@@ -183,6 +250,7 @@ abstract class JarvisDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
+                    MIGRATION_6_7,
                 )
                 .build()
         }
