@@ -2172,13 +2172,11 @@ def _cmd_voice_run_impl(
     elif any(
         key in lowered
         for key in [
-            "search web",
-            "search the web",
-            "search internet",
-            "search online",
-            "look up",
-            "lookup",
-            "research ",
+            "search the web for",
+            "search web for",
+            "search the internet for",
+            "search online for",
+            "web search",
             "find on the web",
         ]
     ):

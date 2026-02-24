@@ -38,6 +38,7 @@
       font-weight: 700;
       cursor: pointer;
       z-index: 9999;
+      font-size: 22px;
     }
     #panel {
       position: fixed;
@@ -51,14 +52,14 @@
       background: color-mix(in oklab, var(--panel) 94%, black 6%);
       backdrop-filter: blur(8px);
       box-shadow: 0 30px 70px rgba(0,0,0,.45);
-      padding: 12px;
+      padding: 14px;
       display: none;
       z-index: 9999;
     }
     #panel.open { display: block; }
     .row { display: flex; gap: 8px; align-items: center; }
     .row + .row { margin-top: 8px; }
-    .title { font-weight: 700; letter-spacing: .2px; }
+    .title { font-weight: 700; font-size: 16px; letter-spacing: .2px; }
     .muted { color: var(--muted); font-size: 12px; }
     input, textarea, button, select {
       border-radius: 8px;
@@ -69,7 +70,7 @@
       font: inherit;
     }
     input, textarea, select { width: 100%; }
-    textarea { min-height: 78px; resize: vertical; }
+    textarea { min-height: 60px; resize: vertical; font-size: 14px; }
     button {
       cursor: pointer;
       background: linear-gradient(165deg, #134e4a, #0b1220);
@@ -82,8 +83,6 @@
     button.ghost { background: #0b1220; border-color: var(--line); color: var(--txt); }
     button.warn { border-color: #8b1d1d; background: #2a1111; color: #fecaca; }
     button.active { border-color: var(--green); background: #0a2a1a; color: #bbf7d0; }
-    .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
-    .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
     .out {
       margin-top: 10px;
       padding: 8px;
@@ -93,24 +92,24 @@
       white-space: pre-wrap;
       font-size: 12px;
       line-height: 1.35;
-      max-height: 240px;
+      max-height: 200px;
       overflow: auto;
     }
-    details { border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
-    summary { cursor: pointer; color: var(--muted); }
+    details { border: 1px solid var(--line); border-radius: 8px; padding: 6px; margin-top: 8px; }
+    summary { cursor: pointer; color: var(--muted); font-size: 12px; }
     .status-bar {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
       margin-top: 8px;
-      padding: 6px 8px;
+      padding: 5px 8px;
       border-radius: 8px;
       background: #0a1020;
       border: 1px solid var(--line);
     }
     .badge {
-      font-size: 11px;
-      padding: 2px 8px;
+      font-size: 10px;
+      padding: 2px 7px;
       border-radius: 12px;
       font-weight: 600;
       display: inline-flex;
@@ -165,6 +164,66 @@
       font-weight: 600;
       margin-top: 4px;
     }
+    /* Big talk button */
+    .talk-btn {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border-radius: 12px;
+      background: linear-gradient(165deg, #0f766e, #134e4a);
+      border: 2px solid #2dd4bf;
+      color: #ccfbf1;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .talk-btn.listening {
+      border-color: var(--green);
+      background: linear-gradient(165deg, #064e3b, #0a2a1a);
+      animation: pulse-border-green 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse-border-green {
+      0%, 100% { border-color: var(--green); }
+      50% { border-color: #16a34a; }
+    }
+    /* Quick action chips */
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .chip {
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: #0b1220;
+      color: var(--txt);
+      cursor: pointer;
+      font-weight: 500;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .chip:hover { border-color: var(--accent); background: #0d2030; }
+    .chip:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* Help tooltip */
+    .help-tip {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #0a1020;
+      border: 1px dashed var(--line);
+      margin-top: 6px;
+    }
+    .help-tip b { color: var(--accent); }
+    /* Send row */
+    .send-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .send-row button { flex: 1; }
     @media (max-width: 640px) {
       #panel { right: 10px; left: 10px; width: auto; bottom: 84px; }
       #fab { right: 12px; bottom: 14px; }
@@ -174,47 +233,38 @@
 <body>
   <button id="fab" title="Toggle Jarvis panel">J</button>
   <section id="panel" aria-label="Jarvis Quick Panel">
+    <!-- Header -->
     <div class="row" style="justify-content:space-between">
       <div>
-        <div class="title">Jarvis Unlimited</div>
-        <div class="muted">Ctrl+Space toggle | Ctrl+Enter send</div>
+        <div class="title">Jarvis</div>
+        <div class="muted">Your AI assistant</div>
       </div>
       <div class="row" style="gap:4px">
-        <span id="connDot" class="badge off" title="API connection status">Offline</span>
-        <button id="btnClose" class="ghost" style="padding:4px 8px">Close</button>
+        <span id="connDot" class="badge off" title="Connection to Jarvis engine">Offline</span>
+        <button id="btnClose" class="ghost" style="padding:4px 8px;font-size:12px">X</button>
       </div>
     </div>
 
-    <!-- Live Status Bar -->
+    <!-- Status badges - compact -->
     <div class="status-bar" id="statusBar">
-      <span id="badgeDaemon" class="badge off">Daemon: --</span>
-      <span id="badgeSafe" class="badge off">Safe: --</span>
-      <span id="badgeGaming" class="badge off">Gaming: --</span>
+      <span id="badgeDaemon" class="badge off">Engine: --</span>
       <span id="badgeMemory" class="badge off">Memory: --</span>
+      <span id="badgeSafe" class="badge off">Safe: --</span>
     </div>
 
-    <details>
-      <summary>Secure Session</summary>
-      <div class="row"><input id="baseUrl" placeholder="Base URL (ex: http://127.0.0.1:8787)" /></div>
-      <div class="row"><input id="token" placeholder="Bearer token" /></div>
-      <div class="row"><input id="signingKey" placeholder="Signing key" /></div>
-      <div class="row"><input id="deviceId" placeholder="Device ID (optional)" /></div>
-      <div class="row"><input id="masterPassword" type="password" placeholder="Master password (bootstrap only)" /></div>
-      <div class="row"><button id="btnSaveCreds" class="ghost">Save on Device</button><span class="muted" id="credState"></span></div>
-    </details>
+    <!-- Big Talk Button (primary action) -->
+    <button id="btnTalk" class="talk-btn" title="Tap to speak a command to Jarvis">
+      <span id="talkIcon">&#127908;</span>
+      <span id="talkLabel">Tap to Talk to Jarvis</span>
+    </button>
 
-    <!-- Command Input -->
-    <div class="row" style="margin-top:10px">
-      <textarea id="commandText" placeholder="Type or dictate a command.&#10;Examples: Jarvis, ops brief | brain status | self heal"></textarea>
+    <!-- OR type a command -->
+    <div style="margin-top:8px">
+      <textarea id="commandText" placeholder="Or type a command here..." rows="2"></textarea>
     </div>
-    <div class="row">
-      <label class="muted" style="display:flex;gap:6px;align-items:center" title="When checked, Jarvis may execute shell commands on your system"><input id="execute" type="checkbox" /> Run Actions</label>
-      <label class="muted" style="display:flex;gap:6px;align-items:center" title="Allows owner-level operations without additional confirmation"><input id="approve" type="checkbox" /> Admin Ops</label>
-      <label class="muted" style="display:flex;gap:6px;align-items:center"><input id="speak" type="checkbox" /> Speak</label>
-    </div>
-    <div class="row">
-      <button id="btnDictate" class="ghost" title="Hold to dictate. Auto-sends when done.">🎤 Dictate &amp; Send</button>
-      <button id="btnSend" title="Send the command in the text box">Send Command</button>
+    <div class="send-row">
+      <button id="btnSend" title="Send the typed command">Send</button>
+      <label class="muted" style="display:flex;gap:4px;align-items:center;white-space:nowrap" title="Jarvis speaks the response aloud"><input id="speak" type="checkbox" /> Voice Reply</label>
     </div>
 
     <!-- Thinking/Loading indicator -->
@@ -226,34 +276,58 @@
       </div>
     </div>
 
-    <!-- Runtime Controls (Direct API) -->
-    <div class="section-label">Runtime Controls</div>
-    <div class="grid4">
-      <button id="btnPause" class="warn">Pause</button>
-      <button id="btnResume">Resume</button>
-      <button id="btnSafeOn">Safe On</button>
-      <button id="btnSafeOff" class="ghost">Safe Off</button>
+    <!-- Quick command chips -->
+    <div class="section-label">Quick Commands</div>
+    <div class="chips">
+      <button class="chip" data-cmd="Jarvis, daily brief" title="Get a summary of your day">Daily Brief</button>
+      <button class="chip" data-cmd="Jarvis, brain status" title="Check memory health">Brain Status</button>
+      <button class="chip" data-cmd="Jarvis, self heal" title="Run self-diagnostics">Self Heal</button>
+      <button class="chip" data-cmd="Jarvis, dashboard" title="View scores and rankings">Dashboard</button>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="section-label">Quick Actions</div>
-    <div class="grid3">
-      <button id="btnBrief" class="ghost">Ops Brief</button>
-      <button id="btnBrain" class="ghost">Brain Status</button>
-      <button id="btnHeal" class="ghost">Self Heal</button>
-    </div>
-
-    <!-- Data Views -->
-    <div class="row" style="margin-top:6px">
-      <button id="btnStatus" class="ghost">Load Status</button>
-      <button id="btnDash" class="ghost">Dashboard</button>
+    <!-- What you can say -->
+    <div class="help-tip" id="helpTip">
+      <b>Try saying:</b> "search the web for..." | "what's my schedule" | "remind me to..." | "brain status" | "self heal"
     </div>
 
     <!-- Response Meta (model/provider info) -->
     <div id="responseMeta" class="response-meta" style="display:none"></div>
 
+    <!-- Dashboard display -->
     <div id="dashboard" class="out" style="display:none"></div>
-    <div id="out" class="out">Ready.</div>
+
+    <!-- Output log -->
+    <div id="out" class="out">Ready. Tap the button above to talk to Jarvis.</div>
+
+    <!-- Advanced: hidden behind collapsible -->
+    <details>
+      <summary>Advanced Options</summary>
+      <div style="margin-top:6px">
+        <div class="row">
+          <label class="muted" style="display:flex;gap:6px;align-items:center" title="Allow Jarvis to run shell commands on your PC (needed for automation)"><input id="execute" type="checkbox" /> Allow Actions</label>
+          <label class="muted" style="display:flex;gap:6px;align-items:center" title="Skip confirmation prompts for owner-level operations"><input id="approve" type="checkbox" /> Skip Confirmations</label>
+        </div>
+        <div class="section-label" style="margin-top:8px">Engine Controls</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <button id="btnPause" class="warn" style="font-size:12px">Pause Engine</button>
+          <button id="btnResume" class="ghost" style="font-size:12px">Resume Engine</button>
+          <button id="btnSafeOn" class="ghost" style="font-size:12px">Safe Mode On</button>
+          <button id="btnSafeOff" class="ghost" style="font-size:12px">Safe Mode Off</button>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Connection Settings</summary>
+      <div style="margin-top:6px">
+        <div class="row"><input id="baseUrl" placeholder="Base URL (ex: http://192.168.1.100:8787)" /></div>
+        <div class="row"><input id="token" placeholder="Bearer token" /></div>
+        <div class="row"><input id="signingKey" placeholder="Signing key" /></div>
+        <div class="row"><input id="deviceId" placeholder="Device ID (optional)" /></div>
+        <div class="row"><input id="masterPassword" type="password" placeholder="Master password (first-time setup only)" /></div>
+        <div class="row"><button id="btnSaveCreds" class="ghost" style="font-size:12px">Save</button><span class="muted" id="credState"></span></div>
+      </div>
+    </details>
   </section>
 
   <script>
@@ -263,7 +337,7 @@
     const dashboard = $("dashboard");
 
     // ---- Global state ----
-    let isBusy = false;  // Prevents overlapping commands/dictations
+    let isBusy = false;
 
     // ---- Utility ----
     function write(msg) {
@@ -272,10 +346,9 @@
     }
 
     function showThinking(label, modelHint) {
-      const el = $("thinking");
       $("thinkingLabel").textContent = label || "Jarvis is thinking...";
       $("thinkingModel").textContent = modelHint || "";
-      el.classList.add("active");
+      $("thinking").classList.add("active");
     }
 
     function hideThinking() {
@@ -339,7 +412,7 @@
     // ---- Signed Fetch with timeout ----
     async function signedFetch(path, method, bodyObj, timeoutMs = 30000) {
       const c = creds();
-      if (!c.baseUrl || !c.token || !c.signingKey) throw new Error("Set Base URL, Token, and Signing Key in Secure Session.");
+      if (!c.baseUrl || !c.token || !c.signingKey) throw new Error("Open Connection Settings and enter your Base URL, Token, and Signing Key.");
       const body = bodyObj ? JSON.stringify(bodyObj) : "";
       const ts = `${Date.now() / 1000}`;
       const n = nonce();
@@ -374,34 +447,13 @@
       } catch (err) {
         clearTimeout(timer);
         if (err.name === "AbortError") {
-          throw new Error("Server not responding (timed out). Is the Jarvis daemon running?");
+          throw new Error("Jarvis is not responding (timed out). Is the engine running?");
         }
         if (err.message?.includes("Failed to fetch") || err.message?.includes("NetworkError")) {
-          throw new Error("Cannot reach server. Check that the daemon is running and Base URL is correct.");
+          throw new Error("Cannot reach Jarvis. Check Connection Settings and make sure the engine is running.");
         }
         throw err;
       }
-    }
-
-    // ---- Button state helpers ----
-    function withLoading(btn, fn) {
-      return async () => {
-        if (isBusy) return;  // Prevent overlapping actions
-        const original = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = original + "...";
-        isBusy = true;
-        try {
-          await fn();
-        } catch (err) {
-          write(`Error: ${err.message || err}`);
-        } finally {
-          isBusy = false;
-          btn.disabled = false;
-          btn.textContent = original;
-          hideThinking();
-        }
-      };
     }
 
     // ---- Response display ----
@@ -419,12 +471,10 @@
         }
       }
 
-      // Show Jarvis response prominently
       if (response) {
         write(`Jarvis: ${response}`);
       }
 
-      // Show model tag clearly
       if (model || provider) {
         const tag = [model, provider].filter(Boolean).join(" via ");
         meta.innerHTML = `<span class="model-tag">${tag}</span>`;
@@ -467,11 +517,9 @@
       try {
         const data = await signedFetch("/settings", "GET", null, 8000);
         const rc = data.settings?.runtime_control || {};
-        const gm = data.settings?.gaming_mode || {};
 
-        updateBadge("badgeDaemon", rc.daemon_paused ? "Daemon: Paused" : "Daemon: Running", rc.daemon_paused ? "yellow" : "green");
+        updateBadge("badgeDaemon", rc.daemon_paused ? "Engine: Paused" : "Engine: Running", rc.daemon_paused ? "yellow" : "green");
         updateBadge("badgeSafe", rc.safe_mode ? "Safe: ON" : "Safe: OFF", rc.safe_mode ? "yellow" : "green");
-        updateBadge("badgeGaming", gm.enabled ? "Gaming: ON" : "Gaming: OFF", gm.enabled ? "yellow" : "off");
         updateBadge("connDot", "Online", "green");
       } catch {
         updateBadge("connDot", "Offline", "red");
@@ -495,7 +543,7 @@
       el.className = `badge ${color}`;
     }
 
-    // ---- Dashboard ----
+    // ---- Dashboard (inline in quick commands) ----
     async function updateDashboard() {
       showThinking("Loading dashboard...");
       const data = await signedFetch("/dashboard", "GET", null, 15000);
@@ -505,20 +553,20 @@
       const etas = Array.isArray(d.etas) ? d.etas : [];
       const mr = d.memory_regression || {};
       const lines = [];
-      lines.push(`Score: ${d.jarvis?.score_pct ?? 0}% | Delta: ${d.jarvis?.delta_vs_prev_pct ?? 0}%`);
+      lines.push(`Intelligence Score: ${d.jarvis?.score_pct ?? 0}% (${d.jarvis?.delta_vs_prev_pct >= 0 ? "+" : ""}${d.jarvis?.delta_vs_prev_pct ?? 0}%)`);
       if (d.jarvis?.latest_model) lines.push(`Model: ${d.jarvis.latest_model}`);
-      lines.push("");
-      lines.push("--- Memory Health ---");
-      lines.push(`Status: ${mr.status || "unknown"} | Dupes: ${(mr.duplicate_ratio * 100 || 0).toFixed(1)}% | Conflicts: ${mr.unresolved_conflicts ?? 0}`);
-      lines.push("");
-      lines.push("--- Ranking ---");
-      ranking.slice(0, 8).forEach((r, i) => lines.push(`${i + 1}. ${r.name} - ${r.score_pct}%`));
+      lines.push(`Memory Health: ${mr.status || "unknown"} | Duplicates: ${(mr.duplicate_ratio * 100 || 0).toFixed(1)}%`);
+      if (ranking.length) {
+        lines.push("");
+        lines.push("--- Rankings ---");
+        ranking.slice(0, 5).forEach((r, i) => lines.push(`${i + 1}. ${r.name} - ${r.score_pct}%`));
+      }
       if (etas.length) {
         lines.push("");
-        lines.push("--- ETA ---");
+        lines.push("--- ETA to Targets ---");
         etas.forEach((e) => {
           const eta = e.eta || {};
-          lines.push(`${e.target_name}: ${eta.status} | runs=${eta.runs ?? "n/a"} | days=${eta.days ?? "n/a"}`);
+          lines.push(`${e.target_name}: ${eta.status}${eta.days ? " (~" + eta.days + " days)" : ""}`);
         });
       }
       dashboard.style.display = "block";
@@ -526,15 +574,14 @@
       write("Dashboard loaded");
     }
 
-    // ---- Voice Dictation (auto-sends after recognition) ----
+    // ---- Voice (Talk to Jarvis) ----
     let activeRec = null;
-    function toggleDictation() {
-      // If busy or already recording, stop
+    function toggleTalk() {
       if (activeRec) {
         activeRec.stop();
         activeRec = null;
-        $("btnDictate").textContent = "\uD83C\uDFA4 Dictate & Send";
-        $("btnDictate").classList.remove("active");
+        $("talkLabel").textContent = "Tap to Talk to Jarvis";
+        $("btnTalk").classList.remove("listening");
         return;
       }
       if (isBusy) {
@@ -543,94 +590,134 @@
       }
 
       const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!Speech) { write("Voice not available in this browser. Use Chrome."); return; }
+      if (!Speech) { write("Voice not supported in this browser. Use Chrome."); return; }
 
       const rec = new Speech();
       rec.lang = "en-US";
       rec.maxAlternatives = 1;
       rec.interimResults = false;
 
-      function resetDictateBtn() {
+      function resetTalkBtn() {
         activeRec = null;
-        $("btnDictate").textContent = "\uD83C\uDFA4 Dictate & Send";
-        $("btnDictate").classList.remove("active");
+        $("talkLabel").textContent = "Tap to Talk to Jarvis";
+        $("btnTalk").classList.remove("listening");
       }
 
       rec.onresult = async (evt) => {
         const t = evt.results?.[0]?.[0]?.transcript || "";
-        resetDictateBtn();
-        if (!t.trim()) { write("No speech detected."); return; }
+        resetTalkBtn();
+        if (!t.trim()) { write("No speech detected. Try again."); return; }
         $("commandText").value = t;
-        write(`Heard: "${t}" — sending...`);
-        // Auto-send the command
+        write(`You said: "${t}"`);
         try {
           isBusy = true;
           $("btnSend").disabled = true;
-          $("btnDictate").disabled = true;
+          $("btnTalk").disabled = true;
+          disableChips(true);
           await sendCommand(t);
         } catch (err) {
           write(`Error: ${err.message || err}`);
         } finally {
           isBusy = false;
           $("btnSend").disabled = false;
-          $("btnDictate").disabled = false;
+          $("btnTalk").disabled = false;
+          disableChips(false);
           hideThinking();
         }
       };
 
       rec.onerror = (evt) => {
-        const errMsg = evt.error === "no-speech" ? "No speech detected. Try again."
+        const errMsg = evt.error === "no-speech" ? "No speech detected. Tap and try again."
                      : evt.error === "not-allowed" ? "Microphone blocked. Allow mic access in browser settings."
-                     : `Dictation error: ${evt.error || "unknown"}`;
+                     : `Voice error: ${evt.error || "unknown"}`;
         write(errMsg);
-        resetDictateBtn();
+        resetTalkBtn();
       };
 
-      rec.onend = () => { resetDictateBtn(); };
+      rec.onend = () => { resetTalkBtn(); };
 
       rec.start();
       activeRec = rec;
-      $("btnDictate").textContent = "\uD83C\uDD98 Listening... (tap to cancel)";
-      $("btnDictate").classList.add("active");
+      $("talkLabel").textContent = "Listening... (tap to cancel)";
+      $("btnTalk").classList.add("listening");
     }
 
-    // ---- Quick action helpers ----
-    async function quickCommand(text) {
+    function disableChips(disabled) {
+      document.querySelectorAll(".chip").forEach(c => c.disabled = disabled);
+    }
+
+    // ---- Quick command chip handler ----
+    async function runChip(text) {
+      if (isBusy) return;
       $("commandText").value = text;
-      $("execute").checked = true;
-      showThinking(`Running: ${text}...`);
-      await sendCommand(text);
+
+      // Dashboard chip uses dedicated endpoint
+      if (text.includes("dashboard")) {
+        isBusy = true;
+        disableChips(true);
+        try { await updateDashboard(); } catch (err) { write(`Error: ${err.message || err}`); }
+        finally { isBusy = false; disableChips(false); hideThinking(); }
+        return;
+      }
+
+      isBusy = true;
+      $("btnSend").disabled = true;
+      $("btnTalk").disabled = true;
+      disableChips(true);
+      $("execute").checked = true;  // Quick commands need execution
+      try { await sendCommand(text); } catch (err) { write(`Error: ${err.message || err}`); }
+      finally {
+        isBusy = false;
+        $("btnSend").disabled = false;
+        $("btnTalk").disabled = false;
+        disableChips(false);
+        hideThinking();
+      }
     }
 
     // ---- Wire up buttons ----
     $("fab").onclick = () => toggle();
     $("btnClose").onclick = () => toggle(false);
     $("btnSaveCreds").onclick = saveCreds;
-    $("btnDictate").onclick = toggleDictation;
+    $("btnTalk").onclick = toggleTalk;
 
-    $("btnSend").onclick = withLoading($("btnSend"), async () => {
+    $("btnSend").onclick = async () => {
+      if (isBusy) return;
       const t = $("commandText").value.trim();
-      if (!t) { write("Type or dictate a command first."); return; }
-      await sendCommand(t);
+      if (!t) { write("Type a command first, or tap the talk button."); return; }
+      isBusy = true;
+      $("btnSend").disabled = true;
+      $("btnTalk").disabled = true;
+      disableChips(true);
+      showThinking("Jarvis is thinking...");
+      try { await sendCommand(t); } catch (err) { write(`Error: ${err.message || err}`); }
+      finally {
+        isBusy = false;
+        $("btnSend").disabled = false;
+        $("btnTalk").disabled = false;
+        disableChips(false);
+        hideThinking();
+      }
+    };
+
+    // Quick command chips
+    document.querySelectorAll(".chip").forEach(chip => {
+      chip.onclick = () => runChip(chip.dataset.cmd);
     });
 
-    // Direct API runtime controls
-    $("btnPause").onclick = withLoading($("btnPause"), () =>
-      setRuntimeSetting({ daemon_paused: true, reason: "Quick Panel" }, "Daemon paused"));
-    $("btnResume").onclick = withLoading($("btnResume"), () =>
-      setRuntimeSetting({ daemon_paused: false, reason: "Quick Panel" }, "Daemon resumed"));
-    $("btnSafeOn").onclick = withLoading($("btnSafeOn"), () =>
-      setRuntimeSetting({ safe_mode: true, reason: "Quick Panel" }, "Safe mode enabled"));
-    $("btnSafeOff").onclick = withLoading($("btnSafeOff"), () =>
-      setRuntimeSetting({ safe_mode: false, reason: "Quick Panel" }, "Safe mode disabled"));
-
-    // Quick actions
-    $("btnBrief").onclick = withLoading($("btnBrief"), () => quickCommand("Jarvis, daily brief"));
-    $("btnBrain").onclick = withLoading($("btnBrain"), () => quickCommand("Jarvis, brain status"));
-    $("btnHeal").onclick = withLoading($("btnHeal"), () => quickCommand("Jarvis, self heal"));
-
-    $("btnStatus").onclick = withLoading($("btnStatus"), refreshStatus);
-    $("btnDash").onclick = withLoading($("btnDash"), updateDashboard);
+    // Advanced controls
+    $("btnPause").onclick = async () => {
+      try { await setRuntimeSetting({ daemon_paused: true, reason: "Quick Panel" }, "Engine paused"); } catch (e) { write(`Error: ${e.message}`); }
+    };
+    $("btnResume").onclick = async () => {
+      try { await setRuntimeSetting({ daemon_paused: false, reason: "Quick Panel" }, "Engine resumed"); } catch (e) { write(`Error: ${e.message}`); }
+    };
+    $("btnSafeOn").onclick = async () => {
+      try { await setRuntimeSetting({ safe_mode: true, reason: "Quick Panel" }, "Safe mode ON"); } catch (e) { write(`Error: ${e.message}`); }
+    };
+    $("btnSafeOff").onclick = async () => {
+      try { await setRuntimeSetting({ safe_mode: false, reason: "Quick Panel" }, "Safe mode OFF"); } catch (e) { write(`Error: ${e.message}`); }
+    };
 
     // Keyboard shortcuts
     document.addEventListener("keydown", async (evt) => {
@@ -649,7 +736,7 @@
 
     // ---- Init ----
     loadCreds();
-    write("Quick panel ready. Tap 'Dictate & Send' to speak a command.");
+    write("Ready. Tap the talk button or type a command.");
     setTimeout(() => { refreshStatus().catch(() => {}); }, 500);
   </script>
 </body>
