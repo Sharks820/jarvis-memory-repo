@@ -10,6 +10,8 @@ import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
+import com.jarvis.assistant.data.dao.TransactionDao
+import com.jarvis.assistant.data.dao.CommuteDao
 import com.jarvis.assistant.security.CryptoHelper
 import dagger.Module
 import dagger.Provides
@@ -68,4 +70,12 @@ object AppModule {
     @Provides
     fun provideMedicationLogDao(db: JarvisDatabase): MedicationLogDao =
         db.medicationLogDao()
+
+    @Provides
+    fun provideTransactionDao(db: JarvisDatabase): TransactionDao =
+        db.transactionDao()
+
+    @Provides
+    fun provideCommuteDao(db: JarvisDatabase): CommuteDao =
+        db.commuteDao()
 }
