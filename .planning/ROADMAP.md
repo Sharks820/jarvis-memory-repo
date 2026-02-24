@@ -21,7 +21,7 @@ The desktop brain is built. Now Jarvis needs a body -- a native Kotlin Android a
 - Decimal phases (10.1, 10.2): Urgent insertions if needed
 
 - [ ] **Phase 10: Foundation and Daily Driver** - Android project with Compose UI, desktop API client with HMAC signing, biometric security, encrypted Room DB, foreground sync service, dashboard UI (home/chat/memory/settings), and voice assistant
-- [ ] **Phase 11: Intelligence Core** - Call screening with spam defense, notification-based scheduling extraction, proactive notification channels with smart batching, and contextual silence (meeting/driving/sleep detection)
+- [x] **Phase 11: Intelligence Core** - Call screening with spam defense, notification-based scheduling extraction, proactive notification channels with smart batching, and contextual silence (meeting/driving/sleep detection) (completed 2026-02-24)
 - [ ] **Phase 12: Life Management** - Prescription tracking with alarm reminders, financial watchdog for bank notifications, document scanner with encrypted OCR, and commute intelligence with parking memory
 - [ ] **Phase 13: Deep Learning and Social** - Habit detection with adaptive nudges, relationship memory with pre/post-call context, and learning feedback loops across all features
 
@@ -103,6 +103,6 @@ Note: Phase 12 depends on Phase 11 for notification channels and context detecti
 |-------|-----------|----------------|--------|-----------|
 | 1-9 | v1.0 Desktop Engine | 18/18 | Complete | 2026-02-23 |
 | 10. Foundation and Daily Driver | v2.0 Android App | 0/3 | Planning complete | - |
-| 11. Intelligence Core | 2/3 | In Progress|  | - |
+| 11. Intelligence Core | 3/3 | Complete   | 2026-02-24 | - |
 | 12. Life Management | v2.0 Android App | 0/3 | Not started | - |
 | 13. Deep Learning and Social | v2.0 Android App | 0/2 | Not started | - |
