@@ -10,12 +10,16 @@ import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
+import com.jarvis.assistant.data.dao.MedicationDao
+import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.data.entity.CommandQueueEntity
 import com.jarvis.assistant.data.entity.ContextStateEntity
 import com.jarvis.assistant.data.entity.ConversationEntity
 import com.jarvis.assistant.data.entity.ExtractedEventEntity
+import com.jarvis.assistant.data.entity.MedicationEntity
+import com.jarvis.assistant.data.entity.MedicationLogEntity
 import com.jarvis.assistant.data.entity.NotificationLogEntity
 import com.jarvis.assistant.data.entity.SpamEntity
 import net.sqlcipher.database.SupportFactory
@@ -28,8 +32,10 @@ import net.sqlcipher.database.SupportFactory
         ExtractedEventEntity::class,
         NotificationLogEntity::class,
         ContextStateEntity::class,
+        MedicationEntity::class,
+        MedicationLogEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -40,6 +46,8 @@ abstract class JarvisDatabase : RoomDatabase() {
     abstract fun extractedEventDao(): ExtractedEventDao
     abstract fun notificationLogDao(): NotificationLogDao
     abstract fun contextStateDao(): ContextStateDao
+    abstract fun medicationDao(): MedicationDao
+    abstract fun medicationLogDao(): MedicationLogDao
 
     companion object {
 
@@ -124,6 +132,43 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 -> v6: Add medications and medication_log tables. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `medications` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `dosage` TEXT NOT NULL,
+                        `frequency` TEXT NOT NULL,
+                        `scheduledTimes` TEXT NOT NULL,
+                        `pillsRemaining` INTEGER NOT NULL,
+                        `pillsPerRefill` INTEGER NOT NULL DEFAULT 30,
+                        `refillReminderDays` INTEGER NOT NULL DEFAULT 7,
+                        `isActive` INTEGER NOT NULL DEFAULT 1,
+                        `notes` TEXT NOT NULL DEFAULT '',
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `medication_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `medicationId` INTEGER NOT NULL,
+                        `medicationName` TEXT NOT NULL,
+                        `scheduledTime` TEXT NOT NULL,
+                        `takenAt` INTEGER NOT NULL DEFAULT 0,
+                        `status` TEXT NOT NULL,
+                        `date` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun create(context: Context, passphrase: ByteArray): JarvisDatabase {
             val factory = SupportFactory(passphrase)
             return Room.databaseBuilder(
@@ -132,7 +177,13 @@ abstract class JarvisDatabase : RoomDatabase() {
                 "jarvis.db",
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                 .build()
         }
     }
