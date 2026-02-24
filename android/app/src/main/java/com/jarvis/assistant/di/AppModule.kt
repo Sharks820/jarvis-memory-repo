@@ -5,6 +5,7 @@ import com.jarvis.assistant.data.JarvisDatabase
 import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
+import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.security.CryptoHelper
 import dagger.Module
@@ -48,4 +49,8 @@ object AppModule {
     @Provides
     fun provideExtractedEventDao(db: JarvisDatabase): ExtractedEventDao =
         db.extractedEventDao()
+
+    @Provides
+    fun provideNotificationLogDao(db: JarvisDatabase): NotificationLogDao =
+        db.notificationLogDao()
 }

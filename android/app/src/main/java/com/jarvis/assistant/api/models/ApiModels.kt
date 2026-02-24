@@ -108,6 +108,23 @@ data class SpamCandidateDto(
     val reasons: List<String> = emptyList(),
 )
 
+// ── Proactive Notifications ──────────────────────────────────────────
+
+/** Response from a future dedicated proactive alerts endpoint. */
+data class ProactiveAlertsResponse(
+    val ok: Boolean = false,
+    val alerts: List<ProactiveAlertDto> = emptyList(),
+)
+
+/** Individual proactive alert DTO from the desktop engine. */
+data class ProactiveAlertDto(
+    val id: String = "",
+    val type: String = "",
+    val title: String = "",
+    val body: String = "",
+    @SerializedName("group_key") val groupKey: String = "",
+)
+
 // ── Scheduling / Conflict Detection ─────────────────────────────────
 
 /** Response model for calendar conflict checking (future desktop endpoint). */
