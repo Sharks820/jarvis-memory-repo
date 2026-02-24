@@ -20,6 +20,8 @@ import com.jarvis.assistant.feature.context.ContextDetector
 import com.jarvis.assistant.feature.context.UserContext
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
+import com.jarvis.assistant.feature.prescription.MedicationScheduler
+import com.jarvis.assistant.feature.prescription.RefillTracker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,12 +47,15 @@ class JarvisService : Service() {
     @Inject lateinit var contextDetector: ContextDetector
     @Inject lateinit var contextAdjuster: ContextAdjuster
     @Inject lateinit var contextStateDao: ContextStateDao
+    @Inject lateinit var medicationScheduler: MedicationScheduler
+    @Inject lateinit var refillTracker: RefillTracker
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
     private var syncIntervalMs = DEFAULT_SYNC_MS
     private var lastSpamSyncMs = 0L
     private var lastContextCheckMs = 0L
+    private var lastRefillCheckMs = 0L
     private var currentContext: UserContext = UserContext.NORMAL
 
     override fun onCreate() {
@@ -78,6 +83,15 @@ class JarvisService : Service() {
     private fun startSyncLoop() {
         syncJob?.cancel()
         syncJob = scope.launch {
+            // Schedule all medication alarms on service start (ensures alarms
+            // survive boot/restart).
+            try {
+                medicationScheduler.scheduleAllAlarms()
+                Log.i(TAG, "Medication alarms scheduled on service start")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to schedule medication alarms: ${e.message}")
+            }
+
             while (isActive) {
                 try {
                     processor.flushPending()
@@ -123,6 +137,17 @@ class JarvisService : Service() {
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Context detection error: ${e.message}")
+                    }
+                }
+
+                // Refill check: every 6 hours
+                val refillNow = System.currentTimeMillis()
+                if (refillNow - lastRefillCheckMs >= REFILL_CHECK_INTERVAL_MS) {
+                    lastRefillCheckMs = refillNow
+                    try {
+                        refillTracker.checkRefills()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Refill check error: ${e.message}")
                     }
                 }
 
@@ -181,5 +206,6 @@ class JarvisService : Service() {
         private const val DEFAULT_SYNC_MS = 30_000L
         private const val SPAM_SYNC_INTERVAL_MS = 10L * 60 * 1000 // 10 minutes
         private const val CONTEXT_CHECK_INTERVAL_MS = 120_000L // 2 minutes
+        private const val REFILL_CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000 // 6 hours
     }
 }
