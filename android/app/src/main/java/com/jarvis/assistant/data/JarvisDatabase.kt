@@ -15,6 +15,7 @@ import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
+import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.TransactionDao
 import com.jarvis.assistant.data.entity.CommandQueueEntity
 import com.jarvis.assistant.data.entity.CommuteLocationEntity
@@ -25,6 +26,7 @@ import com.jarvis.assistant.data.entity.MedicationEntity
 import com.jarvis.assistant.data.entity.MedicationLogEntity
 import com.jarvis.assistant.data.entity.NotificationLogEntity
 import com.jarvis.assistant.data.entity.ParkingEntity
+import com.jarvis.assistant.data.entity.ScannedDocumentEntity
 import com.jarvis.assistant.data.entity.SpamEntity
 import com.jarvis.assistant.data.entity.TransactionEntity
 import net.sqlcipher.database.SupportFactory
@@ -42,8 +44,9 @@ import net.sqlcipher.database.SupportFactory
         TransactionEntity::class,
         CommuteLocationEntity::class,
         ParkingEntity::class,
+        ScannedDocumentEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -58,6 +61,7 @@ abstract class JarvisDatabase : RoomDatabase() {
     abstract fun medicationLogDao(): MedicationLogDao
     abstract fun transactionDao(): TransactionDao
     abstract fun commuteDao(): CommuteDao
+    abstract fun documentDao(): DocumentDao
 
     companion object {
 
@@ -236,6 +240,30 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        /** v7 -> v8: Add scanned_documents table. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `scanned_documents` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `ocrText` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `imagePath` TEXT NOT NULL,
+                        `thumbnailPath` TEXT NOT NULL,
+                        `fileSize` INTEGER NOT NULL,
+                        `ocrConfidence` REAL NOT NULL,
+                        `syncedToDesktop` INTEGER NOT NULL DEFAULT 0,
+                        `contentHash` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun create(context: Context, passphrase: ByteArray): JarvisDatabase {
             val factory = SupportFactory(passphrase)
             return Room.databaseBuilder(
@@ -251,6 +279,7 @@ abstract class JarvisDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
+                    MIGRATION_7_8,
                 )
                 .build()
         }

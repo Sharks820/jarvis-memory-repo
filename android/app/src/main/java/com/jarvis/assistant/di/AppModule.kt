@@ -5,6 +5,7 @@ import com.jarvis.assistant.data.JarvisDatabase
 import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
+import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
@@ -78,4 +79,8 @@ object AppModule {
     @Provides
     fun provideCommuteDao(db: JarvisDatabase): CommuteDao =
         db.commuteDao()
+
+    @Provides
+    fun provideDocumentDao(db: JarvisDatabase): DocumentDao =
+        db.documentDao()
 }
