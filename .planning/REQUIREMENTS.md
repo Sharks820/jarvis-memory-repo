@@ -210,27 +210,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 through FOUND-06 | Phase 10 | Pending |
-| ASEC-01 through ASEC-04 | Phase 10 | Pending |
-| DASH-01 through DASH-06 | Phase 10 | Pending |
-| AVOICE-01 through AVOICE-04 | Phase 10 | Pending |
-| CALL-01 through CALL-04 | Phase 11 | Pending |
-| SCHED-01 through SCHED-04 | Phase 11 | Pending |
-| CTX-01 through CTX-04 | Phase 11 | Pending |
-| ANOTIF-01 through ANOTIF-04 | Phase 11 | Pending |
-| RX-01 through RX-04 | Phase 12 | Pending |
-| FIN-01 through FIN-03 | Phase 12 | Pending |
-| DOC-01 through DOC-04 | Phase 12 | Pending |
-| COMM-01 through COMM-03 | Phase 12 | Pending |
-| HABIT-01 through HABIT-04 | Phase 13 | Pending |
-| SOC-01 through SOC-03 | Phase 13 | Pending |
+| FOUND-01 through FOUND-06 (6) | Phase 10 | Pending |
+| ASEC-01 through ASEC-04 (4) | Phase 10 | Pending |
+| DASH-01 through DASH-06 (6) | Phase 10 | Pending |
+| AVOICE-01 through AVOICE-04 (4) | Phase 10 | Pending |
+| CALL-01 through CALL-04 (4) | Phase 11 | Pending |
+| SCHED-01 through SCHED-04 (4) | Phase 11 | Pending |
+| ANOTIF-01 through ANOTIF-04 (4) | Phase 11 | Pending |
+| CTX-01 through CTX-04 (4) | Phase 11 | Pending |
+| RX-01 through RX-04 (4) | Phase 12 | Pending |
+| FIN-01 through FIN-03 (3) | Phase 12 | Pending |
+| DOC-01 through DOC-04 (4) | Phase 12 | Pending |
+| COMM-01 through COMM-03 (3) | Phase 12 | Pending |
+| HABIT-01 through HABIT-04 (4) | Phase 13 | Pending |
+| SOC-01 through SOC-03 (3) | Phase 13 | Pending |
 
 **Coverage:**
 - v1 requirements: 49 total (all complete)
-- v2 requirements: 53 total
-- Mapped to phases: 53
+- v2 requirements: 57 total
+- Phase 10: 20 requirements (FOUND + ASEC + DASH + AVOICE)
+- Phase 11: 16 requirements (CALL + SCHED + ANOTIF + CTX)
+- Phase 12: 14 requirements (RX + FIN + DOC + COMM)
+- Phase 13: 7 requirements (HABIT + SOC)
+- Mapped to phases: 57
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-22*
-*Last updated: 2026-02-23 after v2.0 Android App milestone requirements definition*
+*Last updated: 2026-02-23 after v2.0 roadmap creation (corrected count from 53 to 57)*

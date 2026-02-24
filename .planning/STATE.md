@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** v2.0 Native Android App — defining requirements
+**Current focus:** v2.0 Native Android App -- Phase 10: Foundation and Daily Driver
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements for v2.0 Android App milestone
-Last activity: 2026-02-23 — Milestone v2.0 started
+Phase: 10 of 13 (Foundation and Daily Driver)
+Plan: 0 of 3 in current phase
+Status: Ready to plan
+Last activity: 2026-02-23 -- Roadmap created for v2.0 Android App milestone
 
-Progress: [░░░░░░░░░░] 0%
+Progress (v2.0): [░░░░░░░░░░] 0% (0/11 plans)
 
 ## Performance Metrics
 
@@ -24,6 +24,10 @@ Progress: [░░░░░░░░░░] 0%
 - Total execution time: ~3 hours
 - Final test count: 473
 
+**v2.0 Android App:**
+- Total plans completed: 0
+- Phases: 4 (phases 10-13), 11 plans total
+
 ## Accumulated Context
 
 ### Decisions
@@ -31,30 +35,31 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 
 **v1.0 key decisions (carried forward):**
-- SQLite for everything (memory, KG, cost tracking, sync changelog)
-- Local embeddings via sentence-transformers (nomic-embed-text-v1.5, 768-dim)
-- CQRS command bus architecture (70+ commands)
+- HMAC-SHA256 request signing with nonce replay protection (mobile API port 8787)
 - Fernet encryption with PBKDF2HMAC for sync payloads
-- HMAC-SHA256 request signing with nonce replay protection
-- Owner guard with device trust (trusted devices: galaxy_s25_primary, desktop_widget, quick_panel_browser)
-- Mobile API on port 8787, LAN at 192.168.50.156
+- Owner guard with device trust (galaxy_s25_primary already registered)
 
 **v2.0 decisions (new):**
 - Native Kotlin (not cross-platform) for full Android platform API access
 - Phone is sensor/interface layer, desktop is brain
 - Offline-first with Room DB command queue
+- Jetpack Compose + Material 3 for UI
+- Room + SQLCipher for encrypted local storage
+- Retrofit2 + OkHttp with HMAC interceptor for networking
 
 ### Pending Todos
 
-None — milestone definition in progress.
+None yet.
 
 ### Blockers/Concerns
 
 - Desktop API endpoint coverage: voice commands use keyword matching (not NLP). Android app will need to send exact command phrases or desktop needs fuzzy matching upgrade.
 - Sync protocol: /sync/pull and /sync/push exist but haven't been load-tested with real mobile traffic.
+- CallScreeningService requires default phone app or call screening role -- may need user permission flow.
+- NotificationListenerService requires explicit user grant in Android Settings -- onboarding flow needed.
 
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Defining v2.0 Android App milestone requirements
+Stopped at: Roadmap created for v2.0 Android App milestone (phases 10-13)
 Resume file: None
