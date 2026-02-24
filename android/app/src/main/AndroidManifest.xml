@@ -33,6 +33,10 @@
     <!-- Boot receiver for auto-start -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Exact alarms for medication dose reminders -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <application
         android:name=".JarvisApp"
         android:allowBackup="false"
@@ -76,6 +80,25 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Dose alarm receiver for medication reminders -->
+        <receiver
+            android:name=".feature.prescription.DoseAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.DOSE_ALARM" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Dose action receiver for Taken/Skip notification buttons -->
+        <receiver
+            android:name=".feature.prescription.DoseActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.DOSE_TAKEN" />
+                <action android:name="com.jarvis.assistant.DOSE_SKIPPED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 
