@@ -101,10 +101,10 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Intelligent Scheduling (SCHED)
 
-- [ ] **SCHED-01**: NotificationListenerService reads incoming notifications from SMS and email apps
-- [ ] **SCHED-02**: Scheduling cue extraction (dates, times, locations, people) via regex + desktop Ollama
-- [ ] **SCHED-03**: Automatic calendar event creation via CalendarProvider from extracted cues
-- [ ] **SCHED-04**: Desktop proactive engine cross-references new events with existing schedule for conflicts
+- [x] **SCHED-01**: NotificationListenerService reads incoming notifications from SMS and email apps
+- [x] **SCHED-02**: Scheduling cue extraction (dates, times, locations, people) via regex + desktop Ollama
+- [x] **SCHED-03**: Automatic calendar event creation via CalendarProvider from extracted cues
+- [x] **SCHED-04**: Desktop proactive engine cross-references new events with existing schedule for conflicts
 
 ### Prescription Management (RX)
 
