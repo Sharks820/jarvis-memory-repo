@@ -37,12 +37,12 @@ The desktop brain is built. Now Jarvis needs a body -- a native Kotlin Android a
   3. User can browse conversation history in the Chat tab, search memories in the Memory tab, and configure sync/notification/voice/security settings in the Settings tab
   4. When the phone loses WiFi connectivity, commands queue locally in the encrypted Room database and automatically flush to the desktop when connectivity returns -- no commands are lost
   5. All local data (Room DB, tokens, signing keys) is encrypted at rest via SQLCipher and EncryptedSharedPreferences, and sensitive operations (prescriptions, finance, documents) require master password confirmation
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 10-01-PLAN.md -- Android project scaffold, Gradle build, Compose navigation, Material 3 theme, biometric lock, encrypted Room DB
-- [ ] 10-02-PLAN.md -- JarvisApiClient (Retrofit2 + OkHttp + HMAC interceptor), foreground service with sync loop, offline command queue, exponential backoff
-- [ ] 10-03-PLAN.md -- Dashboard UI (home/chat/memory/settings tabs), voice engine (STT + command dispatch + TTS response), owner guard device bootstrap
+- [ ] 10-01-PLAN.md -- Android project scaffold, Gradle build, Compose navigation, Material 3 dark theme, biometric lock, encrypted Room DB with SQLCipher
+- [ ] 10-02-PLAN.md -- JarvisApiClient (Retrofit2 + OkHttp + HMAC interceptor), foreground service with sync loop, offline command queue, exponential backoff, owner guard device bootstrap
+- [ ] 10-03-PLAN.md -- Dashboard UI (home/chat/memory/settings tabs), voice engine (STT + command dispatch + TTS response), bootstrap onboarding screen
 
 ### Phase 11: Intelligence Core
 **Goal**: The phone actively works for the user -- screening spam calls before they ring, extracting calendar events from notifications, adjusting behavior based on context (driving/meeting/sleeping), and delivering desktop proactive alerts through prioritized notification channels
@@ -102,7 +102,7 @@ Note: Phase 12 depends on Phase 11 for notification channels and context detecti
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1-9 | v1.0 Desktop Engine | 18/18 | Complete | 2026-02-23 |
-| 10. Foundation and Daily Driver | v2.0 Android App | 0/3 | Not started | - |
+| 10. Foundation and Daily Driver | v2.0 Android App | 0/3 | Planning complete | - |
 | 11. Intelligence Core | v2.0 Android App | 0/3 | Not started | - |
 | 12. Life Management | v2.0 Android App | 0/3 | Not started | - |
 | 13. Deep Learning and Social | v2.0 Android App | 0/2 | Not started | - |
