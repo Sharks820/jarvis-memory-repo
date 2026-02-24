@@ -63,6 +63,36 @@ class SettingsViewModel @Inject constructor(
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    // ── Scheduling Settings ──────────────────────────────────────────
+
+    private val schedulingPrefs by lazy {
+        app.getSharedPreferences(
+            JarvisNotificationListenerService.PREFS_NAME,
+            Context.MODE_PRIVATE,
+        )
+    }
+
+    val schedulingExtractionEnabled = MutableStateFlow(
+        schedulingPrefs.getBoolean(
+            JarvisNotificationListenerService.KEY_EXTRACTION_ENABLED,
+            true,
+        ),
+    )
+
+    val schedulingAutoCreateThreshold = MutableStateFlow(
+        schedulingPrefs.getFloat(
+            JarvisNotificationListenerService.KEY_AUTO_CREATE_THRESHOLD,
+            JarvisNotificationListenerService.DEFAULT_AUTO_CREATE_THRESHOLD,
+        ),
+    )
+
+    /** Number of events extracted from notifications. */
+    val extractedEventCount: StateFlow<Int> = extractedEventDao.countFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    /** Whether the notification listener is currently enabled by the user. */
+    val notificationListenerEnabled = MutableStateFlow(isNotificationListenerEnabled())
+
     init {
         checkConnection()
     }
@@ -118,5 +148,32 @@ class SettingsViewModel @Inject constructor(
     fun setVoicemailThreshold(value: Float) {
         voicemailThreshold.value = value
         callScreenPrefs.edit().putFloat(SpamScorer.KEY_VOICEMAIL_THRESHOLD, value).apply()
+    }
+
+    // ── Scheduling Setters ───────────────────────────────────────────
+
+    fun setSchedulingExtractionEnabled(enabled: Boolean) {
+        schedulingExtractionEnabled.value = enabled
+        schedulingPrefs.edit()
+            .putBoolean(JarvisNotificationListenerService.KEY_EXTRACTION_ENABLED, enabled)
+            .apply()
+    }
+
+    fun setSchedulingAutoCreateThreshold(value: Float) {
+        schedulingAutoCreateThreshold.value = value
+        schedulingPrefs.edit()
+            .putFloat(JarvisNotificationListenerService.KEY_AUTO_CREATE_THRESHOLD, value)
+            .apply()
+    }
+
+    /** Refresh the notification listener enabled state (call after returning from settings). */
+    fun refreshNotificationListenerState() {
+        notificationListenerEnabled.value = isNotificationListenerEnabled()
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        val enabledPackages = androidx.core.app.NotificationManagerCompat
+            .getEnabledListenerPackages(app)
+        return enabledPackages.contains(app.packageName)
     }
 }

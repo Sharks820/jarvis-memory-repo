@@ -1,6 +1,7 @@
 package com.jarvis.assistant.ui.settings
 
 import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -223,6 +224,76 @@ fun SettingsScreen(
                             "Device ID: ${deviceIdValue.take(12)}...",
                             style = MaterialTheme.typography.labelSmall,
                         )
+                    }
+                }
+            }
+        }
+
+        // ── Scheduling Intelligence ───────────────────────
+        item {
+            val context = LocalContext.current
+            val schedulingEnabled by viewModel.schedulingExtractionEnabled.collectAsState()
+            val autoCreateThreshold by viewModel.schedulingAutoCreateThreshold.collectAsState()
+            val eventCount by viewModel.extractedEventCount.collectAsState()
+            val listenerEnabled by viewModel.notificationListenerEnabled.collectAsState()
+
+            SectionHeader("Scheduling Intelligence")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    // Enable toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Extract Events from Notifications",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(
+                            checked = schedulingEnabled,
+                            onCheckedChange = { viewModel.setSchedulingExtractionEnabled(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Auto-create confidence threshold slider
+                    Text(
+                        "Auto-create confidence threshold: ${"%.1f".format(autoCreateThreshold)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = autoCreateThreshold,
+                        onValueChange = { viewModel.setSchedulingAutoCreateThreshold(it) },
+                        valueRange = 0f..1f,
+                        enabled = schedulingEnabled,
+                    )
+                    Text(
+                        "Events below this confidence require manual confirmation",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Events extracted: $eventCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    // Notification access button (shown only if listener not enabled)
+                    if (!listenerEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                context.startActivity(intent)
+                                // Refresh state when user returns
+                                viewModel.refreshNotificationListenerState()
+                            },
+                        ) {
+                            Text("Enable Notification Access")
+                        }
                     }
                 }
             }
