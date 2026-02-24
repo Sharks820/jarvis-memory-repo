@@ -10,12 +10,15 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import dagger.hilt.android.AndroidEntryPoint
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * Android [CallScreeningService] that intercepts incoming calls before the
@@ -23,11 +26,25 @@ import javax.inject.Inject
  * and applies the appropriate response (block / silence / voicemail / allow).
  *
  * Requires the user to grant [RoleManager.ROLE_CALL_SCREENING] permission.
+ *
+ * NOTE: CallScreeningService cannot use @AndroidEntryPoint directly because
+ * it is not a standard Hilt-supported lifecycle component. We use @EntryPoint
+ * with EntryPointAccessors for manual Hilt injection instead.
  */
-@AndroidEntryPoint
 class JarvisCallScreeningService : CallScreeningService() {
 
-    @Inject lateinit var spamScorer: SpamScorer
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface CallScreenEntryPoint {
+        fun spamScorer(): SpamScorer
+    }
+
+    private val spamScorer by lazy {
+        EntryPointAccessors.fromApplication(
+            application,
+            CallScreenEntryPoint::class.java,
+        ).spamScorer()
+    }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -52,7 +69,7 @@ class JarvisCallScreeningService : CallScreeningService() {
                 val normalized = spamScorer.normalizeNumber(number)
                 val result = spamScorer.score(normalized)
 
-                Log.d(TAG, "Call from $normalized scored ${result.score} -> ${result.recommendedAction}")
+                Log.d(TAG, "Call from ${maskNumber(normalized)} scored ${result.score} -> ${result.recommendedAction}")
 
                 val response = when (result.recommendedAction) {
                     "block" -> CallResponse.Builder()
@@ -81,19 +98,30 @@ class JarvisCallScreeningService : CallScreeningService() {
 
                 respondToCall(callDetails, response)
             } catch (e: Exception) {
-                Log.e(TAG, "Error screening call from $number: ${e.message}")
+                Log.e(TAG, "Error screening call from ${maskNumber(number)}: ${e.message}")
                 // On error, allow the call through
                 respondToCall(callDetails, CallResponse.Builder().build())
             }
         }
     }
 
+    override fun onDestroy() {
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
     companion object {
         private const val TAG = "JarvisCallScreen"
+
+        /** Mask a phone number to show only the last 4 digits for PII safety. */
+        private fun maskNumber(number: String): String {
+            val digits = number.filter { it.isDigit() }
+            return if (digits.length >= 4) "***" + digits.takeLast(4) else "***"
+        }
     }
 }
 
-// ── Utility functions for call screening role management ─────────────
+// Utility functions for call screening role management
 
 /**
  * Check whether the app currently holds the call screening role.
@@ -105,12 +133,12 @@ fun isCallScreeningRoleGranted(context: Context): Boolean {
 
 /**
  * Register an activity result launcher that requests the call screening role.
- * Call this from `onCreate()` of a [ComponentActivity], then invoke the
+ * Call this from  of a [ComponentActivity], then invoke the
  * returned launcher when the user taps the permission button.
  *
  * @param activity the host activity
- * @param onResult callback with `true` if role was granted
- * @return the launcher, or `null` if the role is not available
+ * @param onResult callback with  if role was granted
+ * @return the launcher, or  if the role is not available
  */
 fun registerCallScreeningRoleLauncher(
     activity: ComponentActivity,

@@ -47,6 +47,7 @@ class ProactiveAlertReceiver @Inject constructor(
     private val apiClient: JarvisApiClient,
     private val channelManager: NotificationChannelManager,
     private val batcher: NotificationBatcher,
+    private val notificationLearner: NotificationLearner,
     @ApplicationContext private val context: Context,
 ) {
 
@@ -61,6 +62,13 @@ class ProactiveAlertReceiver @Inject constructor(
      * pending proactive alerts as JSON lines in stdout_tail.
      */
     suspend fun checkAndPost() {
+        // Bug 5 fix: Respect the proactive alerts toggle from Settings
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_PROACTIVE_ALERTS_ENABLED, true)) {
+            Log.d(TAG, "Proactive alerts disabled in settings, skipping")
+            return
+        }
+
         try {
             val response = apiClient.api().sendCommand(
                 CommandRequest(
@@ -72,7 +80,14 @@ class ProactiveAlertReceiver @Inject constructor(
             if (!response.ok) return
 
             val alerts = parseAlerts(response.stdoutTail)
-            for (alert in alerts) {
+            for (baseAlert in alerts) {
+                // Bug 9 fix: Apply learned priority adjustments
+                val adjustedPriority = notificationLearner.getAdjustedPriority(
+                    baseAlert.type,
+                    baseAlert.priority,
+                )
+                val alert = baseAlert.copy(priority = adjustedPriority)
+
                 // Check context filter before posting
                 val filter = getCurrentFilter()
                 if (!shouldPost(alert.priority, filter)) {
@@ -243,5 +258,8 @@ class ProactiveAlertReceiver @Inject constructor(
 
         /** Key for the current notification filter set by ContextAdjuster. */
         const val KEY_NOTIFICATION_FILTER = "context_notification_filter"
+
+        /** Key for the proactive alerts enabled toggle (matches SettingsViewModel). */
+        const val KEY_PROACTIVE_ALERTS_ENABLED = "proactive_alerts_enabled"
     }
 }

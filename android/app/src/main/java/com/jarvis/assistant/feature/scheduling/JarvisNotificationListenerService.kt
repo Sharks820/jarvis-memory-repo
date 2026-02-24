@@ -59,7 +59,7 @@ class JarvisNotificationListenerService : NotificationListenerService() {
     }
 
     /** Track notification post times for calculating action delay. */
-    private val notificationPostTimes = mutableMapOf<Int, Long>()
+    private val notificationPostTimes = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
     /**
      * Package filter: only process notifications from SMS and email apps.

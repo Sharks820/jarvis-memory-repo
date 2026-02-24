@@ -103,7 +103,10 @@ class CalendarEventCreator @Inject constructor(
             }
             eventId
         } catch (e: SecurityException) {
-            Log.w(TAG, "Calendar permission denied: ${e.message}")
+            // Bug 8 fix: Delete the tracking record so retries are possible
+            // after the user grants the calendar permission.
+            extractedEventDao.deleteByHash(contentHash)
+            Log.w(TAG, "Calendar permission denied, removed tracking record: ${e.message}")
             -1
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create calendar event: ${e.message}")
