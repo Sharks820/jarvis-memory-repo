@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** v2.0 Native Android App -- Phase 12: Life Management COMPLETE
+**Current focus:** v2.0 Native Android App -- Phase 13: Deep Learning and Social IN PROGRESS
 
 ## Current Position
 
-Phase: 12 of 13 (Life Management) -- COMPLETE
-Plan: 3 of 3 in current phase (all plans complete)
-Status: Phase 12 complete -- ready for Phase 13 (Polish and Deployment)
-Last activity: 2026-02-24 -- Completed 12-03 document scanner with CameraX + ML Kit OCR
+Phase: 13 of 13 (Deep Learning and Social) -- IN PROGRESS
+Plan: 2 of 2 complete (13-02 relationship memory done; 13-01 habit tracking parallel)
+Status: Plan 13-02 complete -- 13-01 (habit tracking) executing in parallel
+Last activity: 2026-02-24 -- Completed 13-02 relationship memory with pre-call cards + post-call logging + alerts
 
-Progress (v2.0): [█████████░] 82% (9/11 plans)
+Progress (v2.0): [██████████] 91% (10/11 plans)
 
 ## Performance Metrics
 
@@ -25,11 +25,12 @@ Progress (v2.0): [█████████░] 82% (9/11 plans)
 - Final test count: 475
 
 **v2.0 Android App:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Phases: 4 (phases 10-13), 11 plans total
 - Phase 10: 3/3 plans complete
 - Phase 11: 3/3 plans complete (11-01 call screening: ~8min, 11-02 scheduling: ~12min, 11-03 notifications+context: ~10min)
 - Phase 12: 3/3 plans complete (12-01 prescription management: ~7min, 12-02 finance+commute: ~15min, 12-03 document scanner: ~12min)
+- Phase 13: 1/2 plans complete (13-02 relationship memory: ~15min; 13-01 habit tracking: in progress)
 
 ## Accumulated Context
 
@@ -86,6 +87,12 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Category priority: id > medical > insurance > warranty > receipt > other (critical categories first)
 - CameraX ImageCapture shared via mutableStateOf between AndroidView and Compose FAB
 - CameraX 1.4.1 + ML Kit text-recognition 16.0.1 for on-device OCR
+- DB version 10: + ContactContextEntity + CallLogEntity (MIGRATION_8_9) + HabitPatternEntity + NudgeLogEntity (MIGRATION_9_10)
+- Phone number normalization: strip non-digits, take last 10 for US matching
+- RemoteInput inline reply for post-call note capture (avoids complex activity-from-notification)
+- Importance score: callFrequency * 0.4 + recency * 0.6 (range 0.0-1.0)
+- Max 2 neglected contact alerts per day (SharedPreferences date-key dedup)
+- EntryPointAccessors for CallStateReceiver + PostCallLogReceiver DI (BroadcastReceiver pattern)
 
 ### Pending Todos
 
@@ -101,5 +108,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 12-03-PLAN.md (document scanner). Phase 12 fully complete. Phase 13 next.
+Stopped at: Completed 13-02-PLAN.md (relationship memory). Plan 13-01 (habit tracking) executing in parallel.
 Resume file: None
