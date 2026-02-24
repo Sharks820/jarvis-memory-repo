@@ -23,6 +23,7 @@ import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
 import com.jarvis.assistant.feature.commute.LocationLearner
 import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.commute.TrafficChecker
+import com.jarvis.assistant.feature.documents.DocumentSyncManager
 import com.jarvis.assistant.feature.finance.SpendSummaryWorker
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
@@ -56,6 +57,7 @@ class JarvisService : Service() {
     @Inject lateinit var locationLearner: LocationLearner
     @Inject lateinit var trafficChecker: TrafficChecker
     @Inject lateinit var parkingMemory: ParkingMemory
+    @Inject lateinit var documentSyncManager: DocumentSyncManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
@@ -65,6 +67,7 @@ class JarvisService : Service() {
     private var lastRefillCheckMs = 0L
     private var lastLocationRecordMs = 0L
     private var lastTrafficCheckMs = 0L
+    private var lastDocSyncMs = 0L
     private var currentContext: UserContext = UserContext.NORMAL
 
     override fun onCreate() {
@@ -185,6 +188,22 @@ class JarvisService : Service() {
                     }
                 }
 
+                // Document sync: every 5 minutes (if auto-sync enabled)
+                val docSyncNow = System.currentTimeMillis()
+                if (docSyncNow - lastDocSyncMs >= DOC_SYNC_INTERVAL_MS) {
+                    lastDocSyncMs = docSyncNow
+                    val docAutoSync = getSharedPreferences(
+                        "jarvis_prefs", MODE_PRIVATE,
+                    ).getBoolean("doc_auto_sync", true)
+                    if (docAutoSync) {
+                        try {
+                            documentSyncManager.syncPending()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Document sync error: ${e.message}")
+                        }
+                    }
+                }
+
                 delay(syncIntervalMs)
             }
         }
@@ -243,5 +262,6 @@ class JarvisService : Service() {
         private const val REFILL_CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000 // 6 hours
         private const val LOCATION_RECORD_INTERVAL_MS = 15L * 60 * 1000 // 15 minutes
         private const val TRAFFIC_CHECK_INTERVAL_MS = 30L * 60 * 1000 // 30 minutes
+        private const val DOC_SYNC_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes
     }
 }

@@ -54,6 +54,8 @@ import com.jarvis.assistant.feature.callscreen.isCallScreeningRoleGranted
 @Composable
 fun SettingsScreen(
     onResetBootstrap: () -> Unit,
+    onNavigateToDocumentScanner: () -> Unit = {},
+    onNavigateToDocumentList: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val url by viewModel.desktopUrl.collectAsState()
@@ -716,6 +718,65 @@ fun SettingsScreen(
                             checked = parkingEnabled,
                             onCheckedChange = { viewModel.setParkingMemory(it) },
                         )
+                    }
+                }
+            }
+        }
+
+        // ── Document Scanner ─────────────────────────────────
+        item {
+            val docCount by viewModel.documentCount.collectAsState()
+            val unsyncedDocCount by viewModel.unsyncedDocCount.collectAsState()
+            val docAutoSync by viewModel.docAutoSync.collectAsState()
+            val docAutoCategorize by viewModel.docAutoCategorize.collectAsState()
+
+            SectionHeader("Document Scanner")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "Documents scanned: $docCount",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Pending sync: $unsyncedDocCount",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Auto-sync to desktop", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = docAutoSync,
+                            onCheckedChange = { viewModel.setDocAutoSync(it) },
+                        )
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Auto-categorize", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = docAutoCategorize,
+                            onCheckedChange = { viewModel.setDocAutoCategorize(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    FilledTonalButton(onClick = onNavigateToDocumentScanner) {
+                        Text("Scan Document")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onNavigateToDocumentList) {
+                        Text("View All Documents")
                     }
                 }
             }
