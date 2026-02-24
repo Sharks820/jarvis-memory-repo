@@ -89,3 +89,21 @@ data class BootstrapResponse(
 data class HealthResponse(
     val status: String = "",
 )
+
+// ── Spam / Call Screening ────────────────────────────────────────────
+
+/** Response from GET /spam/candidates (future desktop endpoint). */
+data class SpamCandidatesResponse(
+    val ok: Boolean = false,
+    val candidates: List<SpamCandidateDto> = emptyList(),
+)
+
+/** Individual spam candidate as reported by the desktop phone_guard module. */
+data class SpamCandidateDto(
+    val number: String = "",
+    val score: Float = 0f,
+    val calls: Int = 0,
+    @SerializedName("missed_ratio") val missedRatio: Float = 0f,
+    @SerializedName("avg_duration_s") val avgDurationS: Float = 0f,
+    val reasons: List<String> = emptyList(),
+)

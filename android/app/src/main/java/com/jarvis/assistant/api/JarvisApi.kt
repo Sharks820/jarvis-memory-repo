@@ -6,6 +6,7 @@ import com.jarvis.assistant.api.models.CommandResponse
 import com.jarvis.assistant.api.models.DashboardResponse
 import com.jarvis.assistant.api.models.HealthResponse
 import com.jarvis.assistant.api.models.SettingsResponse
+import com.jarvis.assistant.api.models.SpamCandidatesResponse
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -34,4 +35,12 @@ interface JarvisApi {
 
     @GET("/dashboard")
     suspend fun getDashboard(): DashboardResponse
+
+    /**
+     * Fetch spam candidates directly (future desktop endpoint).
+     * Currently not implemented on desktop; SpamDatabaseSync falls back
+     * to the /command endpoint with "show spam report".
+     */
+    @GET("/spam/candidates")
+    suspend fun getSpamCandidates(): SpamCandidatesResponse
 }
