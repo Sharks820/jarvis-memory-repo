@@ -86,7 +86,7 @@ Plans:
   2. Nudge response rate is tracked -- nudges the user consistently ignores are automatically suppressed, and nudge timing/content adapts based on engagement patterns
   3. Before a phone call, the user sees a pre-call card showing last conversation date and key topics for that contact; after a call, the user is prompted to log conversation context for next time
   4. Proactive relationship alerts surface birthdays, anniversaries, and connections the user hasn't reached out to in a while, drawing from the desktop brain's social context graph
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 13-01-PLAN.md -- Habit engine (pattern detection from usage/location/time, nudge delivery, response rate tracking, adaptive suppression, built-in nudge types)
@@ -105,4 +105,4 @@ Note: Phase 12 depends on Phase 11 for notification channels and context detecti
 | 10. Foundation and Daily Driver | v2.0 Android App | 0/3 | Planning complete | - |
 | 11. Intelligence Core | 3/3 | Complete    | 2026-02-24 | - |
 | 12. Life Management | 3/3 | Complete    | 2026-02-24 | - |
-| 13. Deep Learning and Social | v2.0 Android App | 0/2 | Not started | - |
+| 13. Deep Learning and Social | v2.0 Android App | 0/2 | Planning complete | - |
