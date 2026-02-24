@@ -115,17 +115,17 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Notifications & Proactive Intelligence (ANOTIF)
 
-- [ ] **ANOTIF-01**: Desktop proactive alerts received via sync polling (phone checks every 30 seconds)
-- [ ] **ANOTIF-02**: Four notification channels: URGENT (bypasses DND), IMPORTANT, ROUTINE, BACKGROUND
-- [ ] **ANOTIF-03**: Smart notification batching groups related notifications and provides summary
-- [ ] **ANOTIF-04**: Notification learning tracks user act-vs-dismiss patterns to adjust priority over time
+- [x] **ANOTIF-01**: Desktop proactive alerts received via sync polling (phone checks every 30 seconds)
+- [x] **ANOTIF-02**: Four notification channels: URGENT (bypasses DND), IMPORTANT, ROUTINE, BACKGROUND
+- [x] **ANOTIF-03**: Smart notification batching groups related notifications and provides summary
+- [x] **ANOTIF-04**: Notification learning tracks user act-vs-dismiss patterns to adjust priority over time
 
 ### Contextual Silence (CTX)
 
-- [ ] **CTX-01**: Context detection from calendar (meeting), accelerometer (driving), time (sleeping), and gaming mode sync
-- [ ] **CTX-02**: Auto-adjustment of notification aggressiveness, call screening strictness, and voice volume by detected context
-- [ ] **CTX-03**: Driving mode restricts to urgent-only notifications read aloud, all others queued
-- [ ] **CTX-04**: Meeting mode enables full silence except for emergency contacts
+- [x] **CTX-01**: Context detection from calendar (meeting), accelerometer (driving), time (sleeping), and gaming mode sync
+- [x] **CTX-02**: Auto-adjustment of notification aggressiveness, call screening strictness, and voice volume by detected context
+- [x] **CTX-03**: Driving mode restricts to urgent-only notifications read aloud, all others queued
+- [x] **CTX-04**: Meeting mode enables full silence except for emergency contacts
 
 ### Relationship Memory (SOC)
 
