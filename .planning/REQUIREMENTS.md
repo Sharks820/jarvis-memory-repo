@@ -94,10 +94,10 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Call Screening (CALL)
 
-- [ ] **CALL-01**: CallScreeningService intercepts incoming calls before ringing
-- [ ] **CALL-02**: Local spam database synced from desktop phone_guard module
-- [ ] **CALL-03**: Spam scoring based on unknown number, call frequency, and short duration patterns
-- [ ] **CALL-04**: User-configurable actions per score threshold: block, silence, voicemail, or allow
+- [x] **CALL-01**: CallScreeningService intercepts incoming calls before ringing
+- [x] **CALL-02**: Local spam database synced from desktop phone_guard module
+- [x] **CALL-03**: Spam scoring based on unknown number, call frequency, and short duration patterns
+- [x] **CALL-04**: User-configurable actions per score threshold: block, silence, voicemail, or allow
 
 ### Intelligent Scheduling (SCHED)
 

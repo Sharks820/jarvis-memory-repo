@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 11 of 13 (Intelligence Core)
-Plan: 0 of 3 in current phase (PLANNED)
-Status: Phase 11 planned - ready for execution
-Last activity: 2026-02-24 -- Phase 11 plans created and verified (3 warnings, 0 blockers)
+Plan: 1 of 3 in current phase (IN PROGRESS)
+Status: Phase 11 plan 01 complete - call screening implemented
+Last activity: 2026-02-24 -- Completed 11-01 call screening (CallScreeningService, SpamScorer, Settings UI)
 
-Progress (v2.0): [███░░░░░░░] 27% (3/11 plans)
+Progress (v2.0): [████░░░░░░] 36% (4/11 plans)
 
 ## Performance Metrics
 
@@ -25,9 +25,10 @@ Progress (v2.0): [███░░░░░░░] 27% (3/11 plans)
 - Final test count: 475
 
 **v2.0 Android App:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Phases: 4 (phases 10-13), 11 plans total
 - Phase 10: 3/3 plans complete
+- Phase 11: 1/3 plans complete (11-01 call screening: ~8min)
 
 ## Accumulated Context
 
@@ -51,6 +52,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - TextToSpeech Locale.UK for British butler persona consistency
 - Foreground service with configurable sync interval (default 30s)
 - Command response polling (500ms intervals, 30s timeout) for voice round-trip
+- Spam DB sync via /command endpoint (not dedicated /spam/candidates endpoint) for desktop compatibility
+- Call screening thresholds in SharedPreferences for hot-path performance
+- Spam DB sync throttled to 10-minute intervals within 30s sync loop
 
 ### Pending Todos
 
@@ -60,11 +64,11 @@ None yet.
 
 - Desktop API endpoint coverage: voice commands use keyword matching (not NLP). Android app will need to send exact command phrases or desktop needs fuzzy matching upgrade.
 - Sync protocol: /sync/pull and /sync/push exist but haven't been load-tested with real mobile traffic.
-- CallScreeningService requires default phone app or call screening role -- may need user permission flow.
+- CallScreeningService requires ROLE_CALL_SCREENING -- permission request button added in Settings UI (11-01).
 - NotificationListenerService requires explicit user grant in Android Settings -- onboarding flow needed.
 
 ## Session Continuity
 
-Last session: 2026-02-23
-Stopped at: Phase 10 complete, all 3 plans executed. Ready for Phase 11 planning.
+Last session: 2026-02-24
+Stopped at: Completed 11-01-PLAN.md (call screening). Ready for 11-02 (notification intelligence).
 Resume file: None
