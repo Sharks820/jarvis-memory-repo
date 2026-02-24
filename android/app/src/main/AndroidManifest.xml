@@ -18,6 +18,14 @@
     <!-- Biometric -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- Call screening -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!-- Calendar (scheduling cue extraction creates events) -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
     <!-- Boot receiver for auto-start -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -44,6 +52,26 @@
             android:name=".service.JarvisService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Call screening service (intercepts incoming calls for spam detection) -->
+        <service
+            android:name=".feature.callscreen.JarvisCallScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!-- Notification listener for scheduling cue extraction from SMS/email -->
+        <service
+            android:name=".feature.scheduling.JarvisNotificationListenerService"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
     </application>
 

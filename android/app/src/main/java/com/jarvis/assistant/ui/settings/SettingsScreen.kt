@@ -1,5 +1,6 @@
 package com.jarvis.assistant.ui.settings
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,8 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.jarvis.assistant.feature.callscreen.createCallScreeningRoleIntent
+import com.jarvis.assistant.feature.callscreen.isCallScreeningRoleGranted
 
 @Composable
 fun SettingsScreen(
@@ -116,6 +121,92 @@ fun SettingsScreen(
                         valueRange = 15f..300f,
                         steps = 5,
                     )
+                }
+            }
+        }
+
+        // ── Call Screening ────────────────────────────────────
+        item {
+            val context = LocalContext.current
+            val callScreenEnabled by viewModel.callScreenEnabled.collectAsState()
+            val blockThresh by viewModel.blockThreshold.collectAsState()
+            val silenceThresh by viewModel.silenceThreshold.collectAsState()
+            val voicemailThresh by viewModel.voicemailThreshold.collectAsState()
+            val spamCount by viewModel.spamDbCount.collectAsState()
+            val roleGranted = remember { isCallScreeningRoleGranted(context) }
+
+            SectionHeader("Call Screening")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    // Enable toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enable Call Screening", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = callScreenEnabled,
+                            onCheckedChange = { viewModel.setCallScreenEnabled(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Block threshold slider
+                    Text(
+                        "Block threshold: ${"%.2f".format(blockThresh)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = blockThresh,
+                        onValueChange = { viewModel.setBlockThreshold(it) },
+                        valueRange = 0f..1f,
+                        enabled = callScreenEnabled,
+                    )
+
+                    // Silence threshold slider
+                    Text(
+                        "Silence threshold: ${"%.2f".format(silenceThresh)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = silenceThresh,
+                        onValueChange = { viewModel.setSilenceThreshold(it) },
+                        valueRange = 0f..1f,
+                        enabled = callScreenEnabled,
+                    )
+
+                    // Voicemail threshold slider
+                    Text(
+                        "Voicemail threshold: ${"%.2f".format(voicemailThresh)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = voicemailThresh,
+                        onValueChange = { viewModel.setVoicemailThreshold(it) },
+                        valueRange = 0f..1f,
+                        enabled = callScreenEnabled,
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Spam numbers tracked: $spamCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    // Permission button (only shown if role not held)
+                    if (!roleGranted) {
+                        Spacer(Modifier.height(8.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                val intent = createCallScreeningRoleIntent(context)
+                                context.startActivity(intent)
+                            },
+                        ) {
+                            Text("Request Call Screening Permission")
+                        }
+                    }
                 }
             }
         }

@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
 import com.jarvis.assistant.data.CommandQueueProcessor
+import com.jarvis.assistant.feature.callscreen.SpamDatabaseSync
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,10 +32,12 @@ import javax.inject.Inject
 class JarvisService : Service() {
 
     @Inject lateinit var processor: CommandQueueProcessor
+    @Inject lateinit var spamDatabaseSync: SpamDatabaseSync
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
     private var syncIntervalMs = DEFAULT_SYNC_MS
+    private var lastSpamSyncMs = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -66,6 +69,18 @@ class JarvisService : Service() {
                 } catch (e: Exception) {
                     Log.w(TAG, "Sync cycle error: ${e.message}")
                 }
+
+                // Spam DB sync: run at most every 10 minutes
+                val now = System.currentTimeMillis()
+                if (now - lastSpamSyncMs >= SPAM_SYNC_INTERVAL_MS) {
+                    try {
+                        spamDatabaseSync.syncFromDesktop()
+                        lastSpamSyncMs = now
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Spam DB sync error: ${e.message}")
+                    }
+                }
+
                 delay(syncIntervalMs)
             }
         }
@@ -119,5 +134,6 @@ class JarvisService : Service() {
         const val EXTRA_VOICE_COMMAND = "voice_command"
         private const val TAG = "JarvisService"
         private const val DEFAULT_SYNC_MS = 30_000L
+        private const val SPAM_SYNC_INTERVAL_MS = 10L * 60 * 1000 // 10 minutes
     }
 }
