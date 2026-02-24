@@ -15,9 +15,15 @@ import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
+import com.jarvis.assistant.data.dao.CallLogDao
+import com.jarvis.assistant.data.dao.ContactContextDao
 import com.jarvis.assistant.data.dao.DocumentDao
+import com.jarvis.assistant.data.dao.HabitDao
+import com.jarvis.assistant.data.dao.NudgeLogDao
 import com.jarvis.assistant.data.dao.TransactionDao
+import com.jarvis.assistant.data.entity.CallLogEntity
 import com.jarvis.assistant.data.entity.CommandQueueEntity
+import com.jarvis.assistant.data.entity.ContactContextEntity
 import com.jarvis.assistant.data.entity.CommuteLocationEntity
 import com.jarvis.assistant.data.entity.ContextStateEntity
 import com.jarvis.assistant.data.entity.ConversationEntity
@@ -28,6 +34,8 @@ import com.jarvis.assistant.data.entity.NotificationLogEntity
 import com.jarvis.assistant.data.entity.ParkingEntity
 import com.jarvis.assistant.data.entity.ScannedDocumentEntity
 import com.jarvis.assistant.data.entity.SpamEntity
+import com.jarvis.assistant.data.entity.HabitPatternEntity
+import com.jarvis.assistant.data.entity.NudgeLogEntity
 import com.jarvis.assistant.data.entity.TransactionEntity
 import net.sqlcipher.database.SupportFactory
 
@@ -45,8 +53,12 @@ import net.sqlcipher.database.SupportFactory
         CommuteLocationEntity::class,
         ParkingEntity::class,
         ScannedDocumentEntity::class,
+        ContactContextEntity::class,
+        CallLogEntity::class,
+        HabitPatternEntity::class,
+        NudgeLogEntity::class,
     ],
-    version = 8,
+    version = 10,
     exportSchema = false,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -62,6 +74,10 @@ abstract class JarvisDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun commuteDao(): CommuteDao
     abstract fun documentDao(): DocumentDao
+    abstract fun contactContextDao(): ContactContextDao
+    abstract fun callLogDao(): CallLogDao
+    abstract fun habitDao(): HabitDao
+    abstract fun nudgeLogDao(): NudgeLogDao
 
     companion object {
 
@@ -240,6 +256,94 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        /** v8 -> v9: Add contact_context and call_interaction_log tables for relationship memory. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `contact_context` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `phoneNumber` TEXT NOT NULL,
+                        `contactName` TEXT NOT NULL,
+                        `lastCallDate` TEXT NOT NULL DEFAULT '',
+                        `lastCallTimestamp` INTEGER NOT NULL DEFAULT 0,
+                        `keyTopics` TEXT NOT NULL DEFAULT '[]',
+                        `lastNotes` TEXT NOT NULL DEFAULT '',
+                        `birthday` TEXT NOT NULL DEFAULT '',
+                        `anniversary` TEXT NOT NULL DEFAULT '',
+                        `relationship` TEXT NOT NULL DEFAULT 'other',
+                        `totalCalls` INTEGER NOT NULL DEFAULT 0,
+                        `importance` REAL NOT NULL DEFAULT 0.0,
+                        `syncedToDesktop` INTEGER NOT NULL DEFAULT 0,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_contact_context_phoneNumber` " +
+                        "ON `contact_context` (`phoneNumber`)",
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `call_interaction_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `contactContextId` INTEGER NOT NULL,
+                        `phoneNumber` TEXT NOT NULL,
+                        `contactName` TEXT NOT NULL,
+                        `direction` TEXT NOT NULL,
+                        `durationSeconds` INTEGER NOT NULL DEFAULT 0,
+                        `notes` TEXT NOT NULL DEFAULT '',
+                        `topics` TEXT NOT NULL DEFAULT '[]',
+                        `timestamp` INTEGER NOT NULL,
+                        `date` TEXT NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        /** v9 -> v10: Add habit_patterns and nudge_log tables for habit engine. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `habit_patterns` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `patternType` TEXT NOT NULL,
+                        `label` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        `triggerDays` TEXT NOT NULL,
+                        `triggerHour` INTEGER NOT NULL,
+                        `triggerMinute` INTEGER NOT NULL,
+                        `locationLabel` TEXT NOT NULL DEFAULT '',
+                        `confidence` REAL NOT NULL DEFAULT 0.0,
+                        `occurrenceCount` INTEGER NOT NULL DEFAULT 0,
+                        `isActive` INTEGER NOT NULL DEFAULT 1,
+                        `isSuppressed` INTEGER NOT NULL DEFAULT 0,
+                        `category` TEXT NOT NULL DEFAULT 'custom',
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `nudge_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `patternId` INTEGER NOT NULL,
+                        `patternLabel` TEXT NOT NULL,
+                        `nudgeText` TEXT NOT NULL,
+                        `deliveredAt` INTEGER NOT NULL,
+                        `respondedAt` INTEGER NOT NULL DEFAULT 0,
+                        `response` TEXT NOT NULL DEFAULT '',
+                        `date` TEXT NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
         /** v7 -> v8: Add scanned_documents table. */
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -280,6 +384,8 @@ abstract class JarvisDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
                 )
                 .build()
         }

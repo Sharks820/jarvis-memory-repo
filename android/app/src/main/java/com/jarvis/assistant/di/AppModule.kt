@@ -2,11 +2,15 @@ package com.jarvis.assistant.di
 
 import android.content.Context
 import com.jarvis.assistant.data.JarvisDatabase
+import com.jarvis.assistant.data.dao.CallLogDao
 import com.jarvis.assistant.data.dao.CommandQueueDao
+import com.jarvis.assistant.data.dao.ContactContextDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
+import com.jarvis.assistant.data.dao.HabitDao
+import com.jarvis.assistant.data.dao.NudgeLogDao
 import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
@@ -83,4 +87,20 @@ object AppModule {
     @Provides
     fun provideDocumentDao(db: JarvisDatabase): DocumentDao =
         db.documentDao()
+
+    @Provides
+    fun provideContactContextDao(db: JarvisDatabase): ContactContextDao =
+        db.contactContextDao()
+
+    @Provides
+    fun provideCallLogDao(db: JarvisDatabase): CallLogDao =
+        db.callLogDao()
+
+    @Provides
+    fun provideHabitDao(db: JarvisDatabase): HabitDao =
+        db.habitDao()
+
+    @Provides
+    fun provideNudgeLogDao(db: JarvisDatabase): NudgeLogDao =
+        db.nudgeLogDao()
 }
