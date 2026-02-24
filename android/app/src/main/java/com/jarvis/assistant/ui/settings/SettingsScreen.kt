@@ -12,10 +12,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
@@ -219,6 +226,87 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // ── Prescriptions ─────────────────────────────────
+        item {
+            val activeMeds by viewModel.activeMedications.collectAsState()
+            val medCount by viewModel.activeMedicationCount.collectAsState()
+            val dosesTaken by viewModel.todayDosesTaken.collectAsState()
+            val dosesTotal by viewModel.todayDosesTotal.collectAsState()
+            var showAddDialog by remember { mutableStateOf(false) }
+
+            SectionHeader("Prescriptions")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "Active medications: $medCount",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Today: $dosesTaken/$dosesTotal doses taken",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    FilledTonalButton(onClick = { showAddDialog = true }) {
+                        Text("Add Medication")
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // List active medications
+                    for (med in activeMeds) {
+                        Card(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "${med.name} - ${med.dosage}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Text(
+                                        "${med.pillsRemaining} pills remaining",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (med.pillsRemaining <= med.refillReminderDays) {
+                                            MaterialTheme.colorScheme.error
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                }
+                                Switch(
+                                    checked = med.isActive,
+                                    onCheckedChange = { active ->
+                                        if (!active) viewModel.deactivateMedication(med.id)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (showAddDialog) {
+                AddMedicationDialog(
+                    onDismiss = { showAddDialog = false },
+                    onSave = { name, dosage, frequency, times, pills, refillDays, notes ->
+                        viewModel.addMedication(name, dosage, frequency, times, pills, refillDays, notes)
+                        showAddDialog = false
+                    },
+                )
             }
         }
 
@@ -497,6 +585,152 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddMedicationDialog(
+    onDismiss: () -> Unit,
+    onSave: (
+        name: String,
+        dosage: String,
+        frequency: String,
+        times: String,
+        pillsRemaining: Int,
+        refillReminderDays: Int,
+        notes: String,
+    ) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var dosage by remember { mutableStateOf("") }
+    var frequency by remember { mutableStateOf("daily") }
+    var times by remember { mutableStateOf("08:00") }
+    var pillsRemaining by remember { mutableStateOf("30") }
+    var refillDays by remember { mutableStateOf("7") }
+    var notes by remember { mutableStateOf("") }
+    var frequencyExpanded by remember { mutableStateOf(false) }
+
+    val frequencyOptions = listOf(
+        "daily" to "Daily",
+        "twice_daily" to "Twice Daily",
+        "three_times_daily" to "Three Times Daily",
+        "weekly" to "Weekly",
+        "as_needed" to "As Needed",
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Medication") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Medication Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = dosage,
+                    onValueChange = { dosage = it },
+                    label = { Text("Dosage (e.g. 500mg)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(8.dp))
+
+                // Frequency dropdown
+                ExposedDropdownMenuBox(
+                    expanded = frequencyExpanded,
+                    onExpandedChange = { frequencyExpanded = !frequencyExpanded },
+                ) {
+                    OutlinedTextField(
+                        value = frequencyOptions.firstOrNull { it.first == frequency }?.second ?: "Daily",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Frequency") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = frequencyExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = frequencyExpanded,
+                        onDismissRequest = { frequencyExpanded = false },
+                    ) {
+                        frequencyOptions.forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    frequency = value
+                                    frequencyExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = times,
+                    onValueChange = { times = it },
+                    label = { Text("Scheduled Times (HH:mm, comma-separated)") },
+                    placeholder = { Text("08:00, 20:00") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = pillsRemaining,
+                    onValueChange = { pillsRemaining = it },
+                    label = { Text("Pills Remaining") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = refillDays,
+                    onValueChange = { refillDays = it },
+                    label = { Text("Refill Reminder (days before empty)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes (optional)") },
+                    placeholder = { Text("e.g. take with food") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
+                    maxLines = 2,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        onSave(
+                            name,
+                            dosage,
+                            frequency,
+                            times,
+                            pillsRemaining.toIntOrNull() ?: 30,
+                            refillDays.toIntOrNull() ?: 7,
+                            notes,
+                        )
+                    }
+                },
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
