@@ -1311,6 +1311,21 @@ def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_inges
             if snippet:
                 print(f"finding_{idx}={snippet[:260]}")
 
+    # Emit a response= summary so the Quick Panel and TTS can display findings.
+    summary_parts: list[str] = []
+    if isinstance(findings, list):
+        for row in findings[:4]:
+            if not isinstance(row, dict):
+                continue
+            snippet = str(row.get("snippet", "")).strip()
+            domain = str(row.get("domain", "")).strip()
+            if snippet:
+                summary_parts.append(f"{snippet} ({domain})" if domain else snippet)
+    if summary_parts:
+        print(f"response=Here's what I found: " + " | ".join(summary_parts))
+    else:
+        print(f"response=I searched the web for '{report.get('query', '')}' but couldn't find clear results.")
+
     if result.auto_ingest_record_id:
         print(f"auto_ingest_record_id={result.auto_ingest_record_id}")
     return 0

@@ -55,7 +55,7 @@ class IntentClassifier:
     }
 
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "claude-opus",  # Best reasoning for math/logic (Anthropic)
+        "math_logic": "claude-opus-4-0-20250514",  # Best reasoning for math/logic (Anthropic)
         "complex": "kimi-k2",        # Best code quality via Groq (free, 200+ t/s)
         "routine": "kimi-k2",        # Same fast cloud model for routine tasks
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
