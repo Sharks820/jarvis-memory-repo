@@ -4,6 +4,7 @@ import android.content.Context
 import com.jarvis.assistant.data.JarvisDatabase
 import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ConversationDao
+import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.security.CryptoHelper
 import dagger.Module
@@ -43,4 +44,8 @@ object AppModule {
     @Provides
     fun provideSpamDao(db: JarvisDatabase): SpamDao =
         db.spamDao()
+
+    @Provides
+    fun provideExtractedEventDao(db: JarvisDatabase): ExtractedEventDao =
+        db.extractedEventDao()
 }
