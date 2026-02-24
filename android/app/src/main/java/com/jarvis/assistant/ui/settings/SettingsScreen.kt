@@ -914,6 +914,150 @@ fun SettingsScreen(
             }
         }
 
+        // ── Habit Tracking ────────────────────────────────
+        item {
+            val habitEnabled by viewModel.habitNudgesEnabled.collectAsState()
+            val patternCount by viewModel.activePatternCount.collectAsState()
+            val todayNudges by viewModel.todayNudgeCount.collectAsState()
+            val waterEnabled by viewModel.waterRemindersEnabled.collectAsState()
+            val screenBreakOn by viewModel.screenBreakEnabled.collectAsState()
+            val sleepOn by viewModel.sleepReminderEnabled.collectAsState()
+            val patterns by viewModel.detectedPatterns.collectAsState()
+            val suppressed by viewModel.suppressedCount.collectAsState()
+
+            SectionHeader("Habit Tracking")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    // Master toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enable Habit Nudges", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = habitEnabled,
+                            onCheckedChange = { viewModel.setHabitNudgesEnabled(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Patterns detected: $patternCount",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        "Nudges delivered today: $todayNudges",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    Text("Built-in Nudges", style = MaterialTheme.typography.bodyMedium)
+
+                    // Water reminders toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Water Reminders", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = waterEnabled,
+                            onCheckedChange = { viewModel.setWaterRemindersEnabled(it) },
+                            enabled = habitEnabled,
+                        )
+                    }
+
+                    // Screen break reminders toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Screen Break Reminders", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = screenBreakOn,
+                            onCheckedChange = { viewModel.setScreenBreakEnabled(it) },
+                            enabled = habitEnabled,
+                        )
+                    }
+
+                    // Sleep reminders toggle
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Sleep Reminders", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = sleepOn,
+                            onCheckedChange = { viewModel.setSleepReminderEnabled(it) },
+                            enabled = habitEnabled,
+                        )
+                    }
+
+                    // Detected patterns list (non-built-in, active)
+                    val detectedOnly = patterns.filter { it.patternType != "built_in" }
+                    if (detectedOnly.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Detected Patterns", style = MaterialTheme.typography.bodyMedium)
+
+                        for (pattern in detectedOnly) {
+                            Card(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            pattern.label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                        Text(
+                                            pattern.description,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            "Confidence: ${"%.0f".format(pattern.confidence * 100)}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                    Switch(
+                                        checked = pattern.isActive,
+                                        onCheckedChange = { active ->
+                                            if (!active) viewModel.deactivatePattern(pattern.id)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Suppression info
+                    if (suppressed > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "$suppressed patterns auto-suppressed due to low engagement",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedButton(onClick = { viewModel.resetSuppression() }) {
+                            Text("Reset Suppression")
+                        }
+                    }
+                }
+            }
+        }
+
         // ── About ──────────────────────────────────────────
         item {
             SectionHeader("About")

@@ -12,14 +12,19 @@ import com.jarvis.assistant.data.dao.ContactContextDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
+import com.jarvis.assistant.data.dao.HabitDao
 import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
+import com.jarvis.assistant.data.dao.NudgeLogDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.data.dao.TransactionDao
+import com.jarvis.assistant.data.entity.HabitPatternEntity
 import com.jarvis.assistant.data.entity.MedicationEntity
 import com.jarvis.assistant.feature.callscreen.SpamScorer
 import com.jarvis.assistant.feature.context.ContextDetector
+import com.jarvis.assistant.feature.habit.BuiltInNudges
+import com.jarvis.assistant.feature.habit.NudgeResponseTracker
 import com.jarvis.assistant.feature.notifications.NotificationLearner
 import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
@@ -59,6 +64,10 @@ class SettingsViewModel @Inject constructor(
     private val documentDao: DocumentDao,
     private val contactContextDao: ContactContextDao,
     private val callLogDao: CallLogDao,
+    private val habitDao: HabitDao,
+    private val nudgeLogDao: NudgeLogDao,
+    private val nudgeResponseTracker: NudgeResponseTracker,
+    private val builtInNudges: BuiltInNudges,
 ) : ViewModel() {
 
     val desktopUrl = MutableStateFlow(crypto.getBaseUrl())
@@ -188,6 +197,27 @@ class SettingsViewModel @Inject constructor(
     val callLogCount: StateFlow<Int> = callLogDao.totalCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    // ── Habit Tracking Settings ──────────────────────────────────────
+
+    val habitNudgesEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_HABIT_NUDGES_ENABLED, true),
+    )
+
+    val activePatternCount: StateFlow<Int> = habitDao.activeCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val todayNudgeCount = MutableStateFlow(0)
+
+    val detectedPatterns: StateFlow<List<HabitPatternEntity>> =
+        habitDao.getAllActivePatternsFlow()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val suppressedCount = MutableStateFlow(0)
+
+    val waterRemindersEnabled = MutableStateFlow(false)
+    val screenBreakEnabled = MutableStateFlow(false)
+    val sleepReminderEnabled = MutableStateFlow(false)
+
     // ── Scheduling Settings ──────────────────────────────────────────
 
     private val schedulingPrefs by lazy {
@@ -270,6 +300,7 @@ class SettingsViewModel @Inject constructor(
         loadWeekFinancialStats()
         loadCommuteStatus()
         loadUnsyncedDocCount()
+        loadHabitStatus()
     }
 
     fun saveDesktopUrl() {
@@ -532,6 +563,50 @@ class SettingsViewModel @Inject constructor(
         contextPrefs.edit().putInt(KEY_NEGLECTED_THRESHOLD_DAYS, days).apply()
     }
 
+    // ── Habit Tracking Setters ───────────────────────────────────────
+
+    fun setHabitNudgesEnabled(enabled: Boolean) {
+        habitNudgesEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_HABIT_NUDGES_ENABLED, enabled).apply()
+    }
+
+    fun setWaterRemindersEnabled(enabled: Boolean) {
+        waterRemindersEnabled.value = enabled
+        viewModelScope.launch {
+            toggleBuiltInNudgeGroup(BuiltInNudges.LABEL_WATER, enabled)
+        }
+    }
+
+    fun setScreenBreakEnabled(enabled: Boolean) {
+        screenBreakEnabled.value = enabled
+        viewModelScope.launch {
+            toggleBuiltInNudgeGroup(BuiltInNudges.LABEL_SCREEN_BREAK, enabled)
+        }
+    }
+
+    fun setSleepReminderEnabled(enabled: Boolean) {
+        sleepReminderEnabled.value = enabled
+        viewModelScope.launch {
+            toggleBuiltInNudgeGroup(BuiltInNudges.LABEL_SLEEP, enabled)
+        }
+    }
+
+    fun deactivatePattern(id: Long) {
+        viewModelScope.launch {
+            habitDao.deactivate(id)
+        }
+    }
+
+    fun resetSuppression() {
+        viewModelScope.launch {
+            val suppressed = habitDao.getSuppressedPatterns()
+            for (pattern in suppressed) {
+                habitDao.unsuppress(pattern.id)
+            }
+            suppressedCount.value = 0
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -652,6 +727,54 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private fun loadHabitStatus() {
+        viewModelScope.launch {
+            try {
+                // Ensure built-in patterns exist
+                builtInNudges.ensureBuiltInPatterns()
+
+                // Load today's nudge count
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val todayLogs = nudgeLogDao.getLogsForDate(today)
+                todayNudgeCount.value = todayLogs.size
+
+                // Count suppressed patterns
+                val suppressed = habitDao.getSuppressedPatterns()
+                suppressedCount.value = suppressed.size
+
+                // Load built-in nudge toggle states
+                val waterPattern = habitDao.findByTypeAndLabel("built_in", BuiltInNudges.LABEL_WATER)
+                waterRemindersEnabled.value = waterPattern?.isActive == true
+
+                val screenPattern = habitDao.findByTypeAndLabel("built_in", BuiltInNudges.LABEL_SCREEN_BREAK)
+                screenBreakEnabled.value = screenPattern?.isActive == true
+
+                val sleepPattern = habitDao.findByTypeAndLabel("built_in", BuiltInNudges.LABEL_SLEEP)
+                sleepReminderEnabled.value = sleepPattern?.isActive == true
+            } catch (_: Exception) {
+                // No habit data yet
+            }
+        }
+    }
+
+    /**
+     * Activate or deactivate all built-in patterns whose label starts with [labelPrefix].
+     * E.g. "Water Reminder" matches "Water Reminder", "Water Reminder (Afternoon)", etc.
+     */
+    private suspend fun toggleBuiltInNudgeGroup(labelPrefix: String, active: Boolean) {
+        val allActive = habitDao.getAllActivePatterns()
+        val allPatterns = allActive + habitDao.getSuppressedPatterns()
+        for (pattern in allPatterns) {
+            if (pattern.patternType == "built_in" && pattern.label.startsWith(labelPrefix)) {
+                if (active && !pattern.isActive) {
+                    habitDao.activate(pattern.id)
+                } else if (!active && pattern.isActive) {
+                    habitDao.deactivate(pattern.id)
+                }
+            }
+        }
+    }
+
     companion object {
         private const val KEY_PROACTIVE_ALERTS_ENABLED = "proactive_alerts_enabled"
         private const val KEY_EMERGENCY_CONTACTS = "emergency_contacts"
@@ -670,5 +793,6 @@ class SettingsViewModel @Inject constructor(
         private const val KEY_ANNIVERSARY_REMINDERS = "anniversary_reminders_enabled"
         private const val KEY_NEGLECTED_ALERTS = "neglected_alerts_enabled"
         private const val KEY_NEGLECTED_THRESHOLD_DAYS = "neglected_threshold_days"
+        private const val KEY_HABIT_NUDGES_ENABLED = "habit_nudges_enabled"
     }
 }
