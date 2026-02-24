@@ -288,8 +288,20 @@ def build_narrative_brief(
         )
         if response and hasattr(response, "text") and response.text:
             return response.text
+        logger.warning(
+            "Narrative brief unavailable (Ollama model '%s' not responding). "
+            "Using deterministic brief. Run 'ollama pull %s' to enable narrative briefs.",
+            local_model,
+            local_model,
+        )
     except Exception as exc:
-        logger.warning("LLM narrative generation failed, falling back to deterministic brief: %s", exc)
+        logger.warning(
+            "Narrative brief unavailable (Ollama model '%s' not responding). "
+            "Using deterministic brief. Run 'ollama pull %s' to enable narrative briefs. Error: %s",
+            local_model,
+            local_model,
+            exc,
+        )
 
     return build_daily_brief(snapshot)
 

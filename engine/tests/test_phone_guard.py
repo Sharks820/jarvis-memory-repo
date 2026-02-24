@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+from jarvis_engine._compat import UTC
 
 from jarvis_engine.phone_guard import build_phone_action, build_spam_block_actions, detect_spam_candidates
 

@@ -4,7 +4,8 @@ import json
 import re
 import wave
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 
 import numpy as np

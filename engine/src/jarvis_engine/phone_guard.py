@@ -4,7 +4,8 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 

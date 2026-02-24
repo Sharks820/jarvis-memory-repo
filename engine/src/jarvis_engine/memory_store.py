@@ -4,7 +4,8 @@ import collections
 import json
 import threading
 from dataclasses import dataclass, asdict
-from datetime import datetime, UTC
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Iterable
 

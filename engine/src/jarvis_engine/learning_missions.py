@@ -6,7 +6,8 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse

@@ -9,7 +9,8 @@ import re
 import subprocess
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from pathlib import Path
 
 from jarvis_engine.automation import AutomationExecutor, load_actions
@@ -465,7 +466,7 @@ def cmd_ingest(source: str, kind: str, task_id: str, content: str) -> int:
     return 0
 
 
-def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None) -> int:
+def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None, allow_insecure_bind: bool = False) -> int:
     effective_token = token or os.getenv("JARVIS_MOBILE_TOKEN", "").strip()
     effective_signing_key = signing_key or os.getenv("JARVIS_MOBILE_SIGNING_KEY", "").strip()
     if not effective_token:
@@ -474,6 +475,9 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
     if not effective_signing_key:
         print("error: missing signing key. pass --signing-key or set JARVIS_MOBILE_SIGNING_KEY")
         return 2
+
+    if allow_insecure_bind:
+        os.environ["JARVIS_ALLOW_INSECURE_MOBILE_BIND"] = "true"
 
     # NOTE: run_mobile_server is called directly here (not via bus) so that
     # tests can monkeypatch main_mod.run_mobile_server.
@@ -1710,20 +1714,23 @@ def _cmd_daemon_run_impl(
                 print(f"sleep_s={sleep_seconds}")
                 time.sleep(sleep_seconds)
                 continue
+            # --- Non-core subsystems: isolated so failures never affect circuit breaker ---
             if run_missions:
                 try:
                     mission_rc = _run_next_pending_mission()
                 except Exception as exc:  # noqa: BLE001
                     mission_rc = 2
                     print(f"mission_cycle_error={exc}")
-                print(f"mission_cycle_rc={mission_rc}")
+                else:
+                    print(f"mission_cycle_rc={mission_rc}")
             if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
                 try:
                     sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
                 except Exception as exc:  # noqa: BLE001
                     sync_rc = 2
                     print(f"sync_cycle_error={exc}")
-                print(f"sync_cycle_rc={sync_rc}")
+                else:
+                    print(f"sync_cycle_rc={sync_rc}")
             if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
                 try:
                     heal_rc = cmd_self_heal(
@@ -1735,7 +1742,9 @@ def _cmd_daemon_run_impl(
                 except Exception as exc:  # noqa: BLE001
                     heal_rc = 2
                     print(f"self_heal_cycle_error={exc}")
-                print(f"self_heal_cycle_rc={heal_rc}")
+                else:
+                    print(f"self_heal_cycle_rc={heal_rc}")
+            # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
             approve_cycle = approve_privileged and not safe_mode
             if safe_mode and (execute or approve_privileged):
@@ -1752,6 +1761,8 @@ def _cmd_daemon_run_impl(
                 rc = 2
                 print(f"cycle_error={exc}")
             print(f"cycle_rc={rc}")
+            # Circuit breaker: only autopilot (rc) counts toward consecutive failures.
+            # Mission, sync, and self-heal failures are logged but never trigger shutdown.
             if rc == 0:
                 consecutive_failures = 0
             else:
@@ -2451,6 +2462,11 @@ def main() -> int:
         "--signing-key",
         help="HMAC signing key. Falls back to JARVIS_MOBILE_SIGNING_KEY env var.",
     )
+    p_mobile.add_argument(
+        "--allow-insecure-bind",
+        action="store_true",
+        help="Allow non-loopback HTTP bind (for trusted LAN). Falls back to JARVIS_ALLOW_INSECURE_MOBILE_BIND env var.",
+    )
 
     p_route = sub.add_parser("route", help="Get a route decision.")
     p_route.add_argument("--risk", default="low", choices=["low", "medium", "high", "critical"])
@@ -2861,6 +2877,7 @@ def main() -> int:
             port=args.port,
             token=args.token,
             signing_key=args.signing_key,
+            allow_insecure_bind=args.allow_insecure_bind,
         )
     if args.command == "route":
         return cmd_route(risk=args.risk, complexity=args.complexity)

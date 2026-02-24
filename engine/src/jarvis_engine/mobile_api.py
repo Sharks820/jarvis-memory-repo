@@ -10,7 +10,8 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
@@ -32,6 +33,15 @@ ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 REPLAY_WINDOW_SECONDS = 300.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 1_048_576  # 1 MB
+
+
+def _parse_bool(value: Any) -> bool:
+    """Safely parse a boolean from JSON payload (handles string "false"/"true")."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return bool(value)
 
 
 class MobileIngestServer(ThreadingHTTPServer):
@@ -98,9 +108,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
 
-        execute = bool(payload.get("execute", False))
-        approve_privileged = bool(payload.get("approve_privileged", False))
-        speak = bool(payload.get("speak", False))
+        execute = _parse_bool(payload.get("execute", False))
+        approve_privileged = _parse_bool(payload.get("approve_privileged", False))
+        speak = _parse_bool(payload.get("speak", False))
         voice_user = str(payload.get("voice_user", "conner")).strip() or "conner"
         if not re.fullmatch(r"[a-zA-Z0-9._-]{1,64}", voice_user):
             return {"ok": False, "error": "Invalid voice_user."}
@@ -510,6 +520,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 logger.error("sync/status failed: %s", exc)
                 self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync status query failed."})
             return
+        if path == "/favicon.ico":
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.end_headers()
+            return
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
 
@@ -752,7 +766,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             keep_recent_raw = payload.get("keep_recent", 1800)
-            force_maintenance = bool(payload.get("force_maintenance", False))
+            force_maintenance = _parse_bool(payload.get("force_maintenance", False))
             snapshot_note = str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160] or "mobile-self-heal"
             snapshot_note = snapshot_note.lstrip("-") or "mobile-self-heal"
             try:

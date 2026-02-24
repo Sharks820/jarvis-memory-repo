@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$launcher = Join-Path $scriptDir "start-jarvis-widget.ps1"
+$launcher = Join-Path $scriptDir "start-jarvis-services.ps1"
 if (-not (Test-Path $launcher)) {
     throw "Missing launcher script: $launcher"
 }
@@ -15,7 +15,7 @@ $lnkPath = Join-Path $desktop ("$ShortcutName.lnk")
 $wsh = New-Object -ComObject WScript.Shell
 $shortcut = $wsh.CreateShortcut($lnkPath)
 $shortcut.TargetPath = "powershell.exe"
-$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launcher`""
+$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`" -StartWidget -BindHost 0.0.0.0"
 $shortcut.WorkingDirectory = Split-Path -Parent $scriptDir
 $iconPath = Join-Path $scriptDir "jarvis.ico"
 if (Test-Path $iconPath) {

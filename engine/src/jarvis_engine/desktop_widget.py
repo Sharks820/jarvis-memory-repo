@@ -114,12 +114,22 @@ def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -
 
 
 def _is_safe_widget_base_url(url: str) -> bool:
+    import ipaddress
     from urllib.parse import urlparse
     parsed = urlparse(url)
     host = (parsed.hostname or "").strip().lower()
     if parsed.scheme == "https":
         return True
-    return host in {"127.0.0.1", "localhost", "::1"}
+    if host in {"127.0.0.1", "localhost", "::1"}:
+        return True
+    # Allow HTTP for private/LAN IPs (trusted local network)
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_private:
+            return True
+    except ValueError:
+        pass
+    return False
 
 
 def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -822,7 +832,11 @@ class JarvisDesktopWidget(tk.Tk):
                     break
                 time.sleep(0.2)
             self.online = ok
-            self.after(0, self._refresh_status_view)
+            if not self.stop_event.is_set():
+                try:
+                    self.after(0, self._refresh_status_view)
+                except Exception:
+                    return
             for _ in range(16):
                 if self.stop_event.is_set():
                     return
@@ -832,6 +846,8 @@ class JarvisDesktopWidget(tk.Tk):
         self.status_var.set("ONLINE" if self.online else "OFFLINE")
 
     def _animate_orb(self) -> None:
+        if self.stop_event.is_set():
+            return
         self._pulse_phase += 0.22
         pulse = 5.0 + (math.sin(self._pulse_phase) * 1.8)
         cx, cy = 13.0, 13.0
@@ -840,30 +856,38 @@ class JarvisDesktopWidget(tk.Tk):
         x1 = cx + pulse
         y1 = cy + pulse
         color = self.ACCENT if self.online else self.WARN
-        self.orb_canvas.coords(self.orb_id, x0, y0, x1, y1)
-        self.orb_canvas.itemconfig(self.orb_id, fill=color)
-        self.after(120, self._animate_orb)
+        try:
+            self.orb_canvas.coords(self.orb_id, x0, y0, x1, y1)
+            self.orb_canvas.itemconfig(self.orb_id, fill=color)
+            self.after(120, self._animate_orb)
+        except Exception:
+            return
 
     def _animate_launcher(self) -> None:
-        if self.launcher_canvas is not None and self._launcher_outer_id is not None and self._launcher_inner_id is not None:
-            size = self._launcher_size
-            self._launcher_phase += 0.18
-            pulse = 1.0 + (math.sin(self._launcher_phase) * 1.2)
-            outer_pad = 4.0 + pulse
-            mid_pad = 8.0 + (pulse * 0.8)
-            inner_pad = 15.0 + (pulse * 0.7)
-            glow = "#2dd4bf" if self.online else "#93c5fd"
-            ring = "#0ea5e9" if self.online else "#60a5fa"
-            core = "#0f766e" if self.online else "#1e3a8a"
-            self.launcher_canvas.coords(self._launcher_outer_id, outer_pad, outer_pad, size - outer_pad, size - outer_pad)
-            if self._launcher_ring_2_id is not None:
-                self.launcher_canvas.coords(self._launcher_ring_2_id, mid_pad, mid_pad, size - mid_pad, size - mid_pad)
-            self.launcher_canvas.coords(self._launcher_inner_id, inner_pad, inner_pad, size - inner_pad, size - inner_pad)
-            self.launcher_canvas.itemconfig(self._launcher_outer_id, outline=glow)
-            if self._launcher_ring_2_id is not None:
-                self.launcher_canvas.itemconfig(self._launcher_ring_2_id, outline=ring)
-            self.launcher_canvas.itemconfig(self._launcher_inner_id, fill=core)
-        self.after(70, self._animate_launcher)
+        if self.stop_event.is_set():
+            return
+        try:
+            if self.launcher_canvas is not None and self._launcher_outer_id is not None and self._launcher_inner_id is not None:
+                size = self._launcher_size
+                self._launcher_phase += 0.18
+                pulse = 1.0 + (math.sin(self._launcher_phase) * 1.2)
+                outer_pad = 4.0 + pulse
+                mid_pad = 8.0 + (pulse * 0.8)
+                inner_pad = 15.0 + (pulse * 0.7)
+                glow = "#2dd4bf" if self.online else "#93c5fd"
+                ring = "#0ea5e9" if self.online else "#60a5fa"
+                core = "#0f766e" if self.online else "#1e3a8a"
+                self.launcher_canvas.coords(self._launcher_outer_id, outer_pad, outer_pad, size - outer_pad, size - outer_pad)
+                if self._launcher_ring_2_id is not None:
+                    self.launcher_canvas.coords(self._launcher_ring_2_id, mid_pad, mid_pad, size - mid_pad, size - mid_pad)
+                self.launcher_canvas.coords(self._launcher_inner_id, inner_pad, inner_pad, size - inner_pad, size - inner_pad)
+                self.launcher_canvas.itemconfig(self._launcher_outer_id, outline=glow)
+                if self._launcher_ring_2_id is not None:
+                    self.launcher_canvas.itemconfig(self._launcher_ring_2_id, outline=ring)
+                self.launcher_canvas.itemconfig(self._launcher_inner_id, fill=core)
+            self.after(70, self._animate_launcher)
+        except Exception:
+            return
 
 
 def run_desktop_widget() -> None:

@@ -11,7 +11,8 @@ Records are promoted or demoted by periodic tier maintenance.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
+from jarvis_engine._compat import UTC
 from enum import Enum
 from typing import TYPE_CHECKING
 

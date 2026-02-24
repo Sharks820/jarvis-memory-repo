@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import imaplib
 import json
+import logging
 import os
 import socket
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
+from jarvis_engine._compat import UTC
 from email import message_from_bytes
 from email.header import decode_header
 from ipaddress import ip_address
@@ -21,6 +23,8 @@ from jarvis_engine.connectors import (
     evaluate_connector_statuses,
     serialize_statuses,
 )
+
+logger = logging.getLogger(__name__)
 
 MAX_ICS_BYTES = 5 * 1024 * 1024
 
@@ -321,8 +325,12 @@ def load_email_items(limit: int = 20) -> list[dict]:
 
     items: list[dict] = []
     try:
-        with imaplib.IMAP4_SSL(host, timeout=30) as client:
-            client.login(user, password)
+        with imaplib.IMAP4_SSL(host, timeout=10) as client:
+            try:
+                client.login(user, password)
+            except imaplib.IMAP4.error as exc:
+                logger.warning("IMAP auth failed for %s@%s: %s", user, host, exc)
+                return []
             client.select("INBOX", readonly=True)
             typ, data = client.search(None, "UNSEEN")
             if typ != "OK" or not data or not data[0]:
@@ -347,7 +355,8 @@ def load_email_items(limit: int = 20) -> list[dict]:
                         "importance": importance,
                     }
                 )
-    except (imaplib.IMAP4.error, OSError, TimeoutError):
+    except (OSError, TimeoutError) as exc:
+        logger.warning("IMAP connection to %s failed: %s", host, exc)
         return []
     return items
 
