@@ -12,7 +12,12 @@ import androidx.core.app.NotificationCompat
 import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
 import com.jarvis.assistant.data.CommandQueueProcessor
+import com.jarvis.assistant.data.dao.ContextStateDao
+import com.jarvis.assistant.data.entity.ContextStateEntity
 import com.jarvis.assistant.feature.callscreen.SpamDatabaseSync
+import com.jarvis.assistant.feature.context.ContextAdjuster
+import com.jarvis.assistant.feature.context.ContextDetector
+import com.jarvis.assistant.feature.context.UserContext
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
 import dagger.hilt.android.AndroidEntryPoint
@@ -37,11 +42,16 @@ class JarvisService : Service() {
     @Inject lateinit var spamDatabaseSync: SpamDatabaseSync
     @Inject lateinit var proactiveReceiver: ProactiveAlertReceiver
     @Inject lateinit var channelManager: NotificationChannelManager
+    @Inject lateinit var contextDetector: ContextDetector
+    @Inject lateinit var contextAdjuster: ContextAdjuster
+    @Inject lateinit var contextStateDao: ContextStateDao
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
     private var syncIntervalMs = DEFAULT_SYNC_MS
     private var lastSpamSyncMs = 0L
+    private var lastContextCheckMs = 0L
+    private var currentContext: UserContext = UserContext.NORMAL
 
     override fun onCreate() {
         super.onCreate()
@@ -91,6 +101,29 @@ class JarvisService : Service() {
                     proactiveReceiver.checkAndPost()
                 } catch (e: Exception) {
                     Log.w(TAG, "Proactive alert check error: ${e.message}")
+                }
+
+                // Context detection: every 2 minutes
+                val contextNow = System.currentTimeMillis()
+                if (contextNow - lastContextCheckMs > CONTEXT_CHECK_INTERVAL_MS) {
+                    lastContextCheckMs = contextNow
+                    try {
+                        val state = contextDetector.detectCurrentContext()
+                        if (state.context != currentContext) {
+                            currentContext = state.context
+                            contextAdjuster.applyContext(state)
+                            contextStateDao.insert(
+                                ContextStateEntity(
+                                    context = state.context.name,
+                                    confidence = state.confidence,
+                                    source = state.source,
+                                ),
+                            )
+                            Log.i(TAG, "Context changed to: ${state.context.label}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Context detection error: ${e.message}")
+                    }
                 }
 
                 delay(syncIntervalMs)
@@ -147,5 +180,6 @@ class JarvisService : Service() {
         private const val TAG = "JarvisService"
         private const val DEFAULT_SYNC_MS = 30_000L
         private const val SPAM_SYNC_INTERVAL_MS = 10L * 60 * 1000 // 10 minutes
+        private const val CONTEXT_CHECK_INTERVAL_MS = 120_000L // 2 minutes
     }
 }
