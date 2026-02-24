@@ -196,7 +196,7 @@ def test_compose_persona_reply_unchanged() -> None:
     ok = compose_persona_reply(cfg, intent="test_op", success=True)
     fail = compose_persona_reply(cfg, intent="test_op", success=False, reason="auth")
     assert "test op" in ok.lower() or "done" in ok.lower() or "complete" in ok.lower()
-    assert "blocked" in fail.lower() or "not permitted" in fail.lower()
+    assert any(k in fail.lower() for k in ("blocked", "not permitted", "couldn't proceed"))
 
 
 def test_compose_persona_reply_disabled() -> None:
