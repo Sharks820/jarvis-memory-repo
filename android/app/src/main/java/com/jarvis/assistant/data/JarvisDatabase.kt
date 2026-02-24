@@ -6,15 +6,22 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ConversationDao
+import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.data.entity.CommandQueueEntity
 import com.jarvis.assistant.data.entity.ConversationEntity
+import com.jarvis.assistant.data.entity.ExtractedEventEntity
 import com.jarvis.assistant.data.entity.SpamEntity
 import net.sqlcipher.database.SupportFactory
 
 @Database(
-    entities = [ConversationEntity::class, CommandQueueEntity::class, SpamEntity::class],
-    version = 2,
+    entities = [
+        ConversationEntity::class,
+        CommandQueueEntity::class,
+        SpamEntity::class,
+        ExtractedEventEntity::class,
+    ],
+    version = 3,
     exportSchema = false,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -22,6 +29,7 @@ abstract class JarvisDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
     abstract fun commandQueueDao(): CommandQueueDao
     abstract fun spamDao(): SpamDao
+    abstract fun extractedEventDao(): ExtractedEventDao
 
     companion object {
         fun create(context: Context, passphrase: ByteArray): JarvisDatabase {

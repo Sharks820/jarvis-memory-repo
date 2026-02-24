@@ -107,3 +107,11 @@ data class SpamCandidateDto(
     @SerializedName("avg_duration_s") val avgDurationS: Float = 0f,
     val reasons: List<String> = emptyList(),
 )
+
+// ── Scheduling / Conflict Detection ─────────────────────────────────
+
+/** Response model for calendar conflict checking (future desktop endpoint). */
+data class ConflictCheckResponse(
+    val ok: Boolean = false,
+    val conflicts: List<String> = emptyList(),
+)
