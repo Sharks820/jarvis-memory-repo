@@ -6,16 +6,19 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.api.JarvisApiClient
+import com.jarvis.assistant.data.dao.CommuteDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
 import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
+import com.jarvis.assistant.data.dao.TransactionDao
 import com.jarvis.assistant.data.entity.MedicationEntity
 import com.jarvis.assistant.feature.callscreen.SpamScorer
 import com.jarvis.assistant.feature.context.ContextDetector
 import com.jarvis.assistant.feature.notifications.NotificationLearner
+import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.scheduling.JarvisNotificationListenerService
@@ -48,6 +51,8 @@ class SettingsViewModel @Inject constructor(
     private val medicationLogDao: MedicationLogDao,
     private val medicationScheduler: MedicationScheduler,
     private val refillTracker: RefillTracker,
+    private val transactionDao: TransactionDao,
+    private val commuteDao: CommuteDao,
 ) : ViewModel() {
 
     val desktopUrl = MutableStateFlow(crypto.getBaseUrl())
@@ -97,6 +102,40 @@ class SettingsViewModel @Inject constructor(
 
     val todayDosesTaken = MutableStateFlow(0)
     val todayDosesTotal = MutableStateFlow(0)
+
+    // ── Financial Watchdog Settings ───────────────────────────────────
+
+    val financeMonitoringEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_FINANCE_MONITORING_ENABLED, true),
+    )
+    val alertUnusualAmounts = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_ALERT_UNUSUAL_AMOUNTS, true),
+    )
+    val alertNewMerchants = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_ALERT_NEW_MERCHANTS, true),
+    )
+    val weeklySummaryEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_WEEKLY_SUMMARY_ENABLED, true),
+    )
+
+    val weekTransactionCount = MutableStateFlow(0)
+    val weekTotalSpend = MutableStateFlow(0.0)
+    val weekAnomalyCount = MutableStateFlow(0)
+
+    // ── Commute Intelligence Settings ─────────────────────────────────
+
+    val homeLocation = MutableStateFlow("Not yet learned")
+    val workLocation = MutableStateFlow("Not yet learned")
+    val activeParking = MutableStateFlow("No parking saved")
+    val carBluetoothNames = MutableStateFlow(
+        contextPrefs.getString(ParkingMemory.PREF_CAR_BT_NAMES, "") ?: "",
+    )
+    val trafficAlertsEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_TRAFFIC_ALERTS, true),
+    )
+    val parkingMemoryEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_PARKING_MEMORY, true),
+    )
 
     // ── Scheduling Settings ──────────────────────────────────────────
 
@@ -177,6 +216,8 @@ class SettingsViewModel @Inject constructor(
         loadLearningSummary()
         loadLatestContext()
         loadTodayMedicationStatus()
+        loadWeekFinancialStats()
+        loadCommuteStatus()
     }
 
     fun saveDesktopUrl() {
@@ -351,6 +392,45 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ── Financial Watchdog Setters ──────────────────────────────────
+
+    fun setFinanceMonitoringEnabled(enabled: Boolean) {
+        financeMonitoringEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_FINANCE_MONITORING_ENABLED, enabled).apply()
+    }
+
+    fun setAlertUnusualAmounts(enabled: Boolean) {
+        alertUnusualAmounts.value = enabled
+        contextPrefs.edit().putBoolean(KEY_ALERT_UNUSUAL_AMOUNTS, enabled).apply()
+    }
+
+    fun setAlertNewMerchants(enabled: Boolean) {
+        alertNewMerchants.value = enabled
+        contextPrefs.edit().putBoolean(KEY_ALERT_NEW_MERCHANTS, enabled).apply()
+    }
+
+    fun setWeeklySummaryEnabled(enabled: Boolean) {
+        weeklySummaryEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_WEEKLY_SUMMARY_ENABLED, enabled).apply()
+    }
+
+    // ── Commute Intelligence Setters ─────────────────────────────────
+
+    fun saveCarBluetoothNames(names: String) {
+        carBluetoothNames.value = names
+        contextPrefs.edit().putString(ParkingMemory.PREF_CAR_BT_NAMES, names).apply()
+    }
+
+    fun setTrafficAlerts(enabled: Boolean) {
+        trafficAlertsEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_TRAFFIC_ALERTS, enabled).apply()
+    }
+
+    fun setParkingMemory(enabled: Boolean) {
+        parkingMemoryEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_PARKING_MEMORY, enabled).apply()
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -408,8 +488,66 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private fun loadWeekFinancialStats() {
+        viewModelScope.launch {
+            try {
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val today = dateFormat.format(Date())
+                val cal = java.util.Calendar.getInstance()
+                cal.add(java.util.Calendar.DAY_OF_YEAR, -7)
+                val weekStart = dateFormat.format(cal.time)
+
+                val transactions = transactionDao.getTransactionsInRange(weekStart, today)
+                weekTransactionCount.value = transactions.size
+                weekTotalSpend.value = transactionDao.getTotalSpendInRange(weekStart, today) ?: 0.0
+                weekAnomalyCount.value = transactionDao.getAnomalyCountInRange(weekStart, today)
+            } catch (_: Exception) {
+                // No transaction data yet
+            }
+        }
+    }
+
+    private fun loadCommuteStatus() {
+        viewModelScope.launch {
+            try {
+                val home = commuteDao.getLocationByLabel("home")
+                homeLocation.value = if (home != null) {
+                    "%.4f, %.4f".format(home.latitude, home.longitude)
+                } else {
+                    "Not yet learned"
+                }
+
+                val work = commuteDao.getLocationByLabel("work")
+                workLocation.value = if (work != null) {
+                    "%.4f, %.4f".format(work.latitude, work.longitude)
+                } else {
+                    "Not yet learned"
+                }
+
+                val parking = commuteDao.getActiveParking()
+                activeParking.value = if (parking != null) {
+                    val timeStr = SimpleDateFormat(
+                        "HH:mm",
+                        Locale.US,
+                    ).format(Date(parking.timestamp))
+                    "%.4f, %.4f at $timeStr".format(parking.latitude, parking.longitude)
+                } else {
+                    "No parking saved"
+                }
+            } catch (_: Exception) {
+                // No commute data yet
+            }
+        }
+    }
+
     companion object {
         private const val KEY_PROACTIVE_ALERTS_ENABLED = "proactive_alerts_enabled"
         private const val KEY_EMERGENCY_CONTACTS = "emergency_contacts"
+        private const val KEY_FINANCE_MONITORING_ENABLED = "finance_monitoring_enabled"
+        private const val KEY_ALERT_UNUSUAL_AMOUNTS = "alert_unusual_amounts"
+        private const val KEY_ALERT_NEW_MERCHANTS = "alert_new_merchants"
+        private const val KEY_WEEKLY_SUMMARY_ENABLED = "weekly_summary_enabled"
+        private const val KEY_TRAFFIC_ALERTS = "traffic_alerts"
+        private const val KEY_PARKING_MEMORY = "parking_memory"
     }
 }
