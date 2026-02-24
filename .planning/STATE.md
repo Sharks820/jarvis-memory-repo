@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Jarvis learns from everything it ingests, never forgets, never regresses, and becomes more useful every single day without constant maintenance.
-**Current focus:** v2.0 Native Android App -- Phase 12: Life Management
+**Current focus:** v2.0 Native Android App -- Phase 12: Life Management COMPLETE
 
 ## Current Position
 
-Phase: 12 of 13 (Life Management)
-Plan: 2 of 3 in current phase (12-01 prescription COMPLETE, 12-02 finance+commute COMPLETE)
-Status: Executing Phase 12 -- prescription and finance/commute complete, 12-03 remaining
-Last activity: 2026-02-24 -- Completed 12-02 financial watchdog and commute intelligence
+Phase: 12 of 13 (Life Management) -- COMPLETE
+Plan: 3 of 3 in current phase (all plans complete)
+Status: Phase 12 complete -- ready for Phase 13 (Polish and Deployment)
+Last activity: 2026-02-24 -- Completed 12-03 document scanner with CameraX + ML Kit OCR
 
-Progress (v2.0): [████████░░] 73% (8/11 plans)
+Progress (v2.0): [█████████░] 82% (9/11 plans)
 
 ## Performance Metrics
 
@@ -25,11 +25,11 @@ Progress (v2.0): [████████░░] 73% (8/11 plans)
 - Final test count: 475
 
 **v2.0 Android App:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Phases: 4 (phases 10-13), 11 plans total
 - Phase 10: 3/3 plans complete
 - Phase 11: 3/3 plans complete (11-01 call screening: ~8min, 11-02 scheduling: ~12min, 11-03 notifications+context: ~10min)
-- Phase 12: 2/3 plans complete (12-01 prescription management: ~7min, 12-02 finance+commute: ~15min)
+- Phase 12: 3/3 plans complete (12-01 prescription management: ~7min, 12-02 finance+commute: ~15min, 12-03 document scanner: ~12min)
 
 ## Accumulated Context
 
@@ -79,6 +79,13 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Runtime BroadcastReceiver for BT disconnect tied to JarvisService lifecycle
 - WorkManager PeriodicWorkRequest (7-day) for weekly spend summary on Sunday 10 AM
 - Desktop brain as traffic proxy (avoids Google Maps API key dependency)
+- DB version 8: + ScannedDocumentEntity (explicit MIGRATION_7_8)
+- SQL LIKE search on ocrText instead of FTS4 (SQLCipher FTS4 compatibility uncertain, LIKE sufficient at document scale)
+- Images stored as files in filesDir/documents/ (not Room BLOB) for large binary efficiency
+- OCR text truncated to 5000 chars for desktop sync (/command endpoint practical limits)
+- Category priority: id > medical > insurance > warranty > receipt > other (critical categories first)
+- CameraX ImageCapture shared via mutableStateOf between AndroidView and Compose FAB
+- CameraX 1.4.1 + ML Kit text-recognition 16.0.1 for on-device OCR
 
 ### Pending Todos
 
@@ -94,5 +101,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 12-02-PLAN.md (financial watchdog + commute intelligence). Phase 12 in progress -- 12-03 remaining.
+Stopped at: Completed 12-03-PLAN.md (document scanner). Phase 12 fully complete. Phase 13 next.
 Resume file: None
