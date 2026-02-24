@@ -45,6 +45,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
 
+    <!-- Contacts (relationship memory: resolve contact names) -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <!-- Camera (document scanner) -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -109,6 +112,35 @@
             <intent-filter>
                 <action android:name="com.jarvis.assistant.DOSE_TAKEN" />
                 <action android:name="com.jarvis.assistant.DOSE_SKIPPED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Nudge action receiver for Done/Dismiss habit nudge buttons -->
+        <receiver
+            android:name=".feature.habit.NudgeActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.NUDGE_ACTED" />
+                <action android:name="com.jarvis.assistant.NUDGE_DISMISSED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Call state receiver for pre/post-call context -->
+        <receiver
+            android:name=".feature.social.CallStateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Post-call logging receiver for inline note capture -->
+        <receiver
+            android:name=".feature.social.PostCallLogReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.POST_CALL_LOG" />
+                <action android:name="com.jarvis.assistant.POST_CALL_SKIP" />
             </intent-filter>
         </receiver>
 
