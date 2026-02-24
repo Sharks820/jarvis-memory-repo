@@ -96,7 +96,7 @@ class TestIntentClassifierRouting:
             "solve this differential equation step by step"
         )
         assert route == "math_logic"
-        assert model == "claude-opus"
+        assert model == "claude-opus-4-0-20250514"
 
     def test_classify_complex_query(self, classifier):
         route, model, confidence = classifier.classify(
