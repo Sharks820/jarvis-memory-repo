@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.api.JarvisApiClient
 import com.jarvis.assistant.data.dao.CommuteDao
 import com.jarvis.assistant.data.dao.ContextStateDao
+import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.MedicationLogDao
@@ -53,6 +54,7 @@ class SettingsViewModel @Inject constructor(
     private val refillTracker: RefillTracker,
     private val transactionDao: TransactionDao,
     private val commuteDao: CommuteDao,
+    private val documentDao: DocumentDao,
 ) : ViewModel() {
 
     val desktopUrl = MutableStateFlow(crypto.getBaseUrl())
@@ -137,6 +139,21 @@ class SettingsViewModel @Inject constructor(
         contextPrefs.getBoolean(KEY_PARKING_MEMORY, true),
     )
 
+    // ── Document Scanner Settings ─────────────────────────────────────
+
+    val documentCount: StateFlow<Int> = documentDao.getCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val unsyncedDocCount = MutableStateFlow(0)
+
+    val docAutoSync = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_DOC_AUTO_SYNC, true),
+    )
+
+    val docAutoCategorize = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_DOC_AUTO_CATEGORIZE, true),
+    )
+
     // ── Scheduling Settings ──────────────────────────────────────────
 
     private val schedulingPrefs by lazy {
@@ -218,6 +235,7 @@ class SettingsViewModel @Inject constructor(
         loadTodayMedicationStatus()
         loadWeekFinancialStats()
         loadCommuteStatus()
+        loadUnsyncedDocCount()
     }
 
     fun saveDesktopUrl() {
@@ -431,6 +449,18 @@ class SettingsViewModel @Inject constructor(
         contextPrefs.edit().putBoolean(KEY_PARKING_MEMORY, enabled).apply()
     }
 
+    // ── Document Scanner Setters ────────────────────────────────────
+
+    fun setDocAutoSync(enabled: Boolean) {
+        docAutoSync.value = enabled
+        contextPrefs.edit().putBoolean(KEY_DOC_AUTO_SYNC, enabled).apply()
+    }
+
+    fun setDocAutoCategorize(enabled: Boolean) {
+        docAutoCategorize.value = enabled
+        contextPrefs.edit().putBoolean(KEY_DOC_AUTO_CATEGORIZE, enabled).apply()
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -507,6 +537,17 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private fun loadUnsyncedDocCount() {
+        viewModelScope.launch {
+            try {
+                val unsynced = documentDao.getUnsyncedDocuments()
+                unsyncedDocCount.value = unsynced.size
+            } catch (_: Exception) {
+                // No document data yet
+            }
+        }
+    }
+
     private fun loadCommuteStatus() {
         viewModelScope.launch {
             try {
@@ -549,5 +590,7 @@ class SettingsViewModel @Inject constructor(
         private const val KEY_WEEKLY_SUMMARY_ENABLED = "weekly_summary_enabled"
         private const val KEY_TRAFFIC_ALERTS = "traffic_alerts"
         private const val KEY_PARKING_MEMORY = "parking_memory"
+        private const val KEY_DOC_AUTO_SYNC = "doc_auto_sync"
+        private const val KEY_DOC_AUTO_CATEGORIZE = "doc_auto_categorize"
     }
 }

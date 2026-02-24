@@ -9,6 +9,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.jarvis.assistant.feature.voice.VoiceEngine
 import com.jarvis.assistant.ui.chat.ChatScreen
+import com.jarvis.assistant.ui.documents.DocumentListScreen
+import com.jarvis.assistant.ui.documents.DocumentScannerScreen
 import com.jarvis.assistant.ui.home.HomeScreen
 import com.jarvis.assistant.ui.memory.MemoryScreen
 import com.jarvis.assistant.ui.onboarding.BootstrapScreen
@@ -60,6 +62,26 @@ fun JarvisNavGraph(
                         navController.navigate("bootstrap") {
                             popUpTo(0) { inclusive = true }
                         }
+                    },
+                    onNavigateToDocumentScanner = {
+                        navController.navigate("documents/scan")
+                    },
+                    onNavigateToDocumentList = {
+                        navController.navigate("documents")
+                    },
+                )
+            }
+            composable("documents") {
+                DocumentListScreen(
+                    onNavigateToScanner = {
+                        navController.navigate("documents/scan")
+                    },
+                )
+            }
+            composable("documents/scan") {
+                DocumentScannerScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
                     },
                 )
             }
