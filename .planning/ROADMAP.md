@@ -54,7 +54,7 @@ Plans:
   3. Desktop proactive alerts (bill reminders, meeting prep, medication) appear on the phone as notifications routed to the correct channel (URGENT bypasses DND, IMPORTANT, ROUTINE, BACKGROUND) with related notifications batched and summarized
   4. The phone detects current context -- calendar meeting, accelerometer driving pattern, time-based sleep, gaming mode sync -- and automatically adjusts notification aggressiveness, call screening strictness, and voice volume (driving: urgent-only read aloud; meeting: full silence except emergency contacts)
   5. Notification learning tracks which notifications the user acts on versus dismisses and adjusts priority scoring over time
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [ ] 11-01-PLAN.md -- CallScreeningService with local spam DB sync, scoring engine, configurable threshold actions
@@ -103,6 +103,6 @@ Note: Phase 12 depends on Phase 11 for notification channels and context detecti
 |-------|-----------|----------------|--------|-----------|
 | 1-9 | v1.0 Desktop Engine | 18/18 | Complete | 2026-02-23 |
 | 10. Foundation and Daily Driver | v2.0 Android App | 0/3 | Planning complete | - |
-| 11. Intelligence Core | v2.0 Android App | 0/3 | Not started | - |
+| 11. Intelligence Core | v2.0 Android App | 0/3 | Planning complete | - |
 | 12. Life Management | v2.0 Android App | 0/3 | Not started | - |
 | 13. Deep Learning and Social | v2.0 Android App | 0/2 | Not started | - |
