@@ -135,9 +135,9 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Financial Watchdog (FIN)
 
-- [ ] **FIN-01**: Bank notification parsing from SMS and email for charge detection
-- [ ] **FIN-02**: Alerts on unusual amounts, new merchants, and subscription price changes
-- [ ] **FIN-03**: Weekly spend summary pushed as ROUTINE notification
+- [x] **FIN-01**: Bank notification parsing from SMS and email for charge detection
+- [x] **FIN-02**: Alerts on unusual amounts, new merchants, and subscription price changes
+- [x] **FIN-03**: Weekly spend summary pushed as ROUTINE notification
 
 ### Habit Tracker (HABIT)
 
@@ -148,9 +148,9 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Commute Intelligence (COMM)
 
-- [ ] **COMM-01**: Automatic home/work location learning from GPS patterns (no manual setup)
-- [ ] **COMM-02**: Pre-departure traffic check with leave-time and alternate route suggestions
-- [ ] **COMM-03**: Parking memory saves GPS coordinates when car Bluetooth disconnects
+- [x] **COMM-01**: Automatic home/work location learning from GPS patterns (no manual setup)
+- [x] **COMM-02**: Pre-departure traffic check with leave-time and alternate route suggestions
+- [x] **COMM-03**: Parking memory saves GPS coordinates when car Bluetooth disconnects
 
 ### Document Scanner (DOC)
 
