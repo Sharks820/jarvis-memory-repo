@@ -154,10 +154,10 @@ Requirements for the native Kotlin Android app. Each maps to roadmap phases 10-1
 
 ### Document Scanner (DOC)
 
-- [ ] **DOC-01**: CameraX-based document scanning with ML Kit OCR text extraction
-- [ ] **DOC-02**: Encrypted storage in Room DB with sync to desktop memory brain
-- [ ] **DOC-03**: Full-text search across scanned documents ("find my Best Buy receipt from January")
-- [ ] **DOC-04**: Document categorization: receipts, warranties, IDs, medical, insurance, other
+- [x] **DOC-01**: CameraX-based document scanning with ML Kit OCR text extraction
+- [x] **DOC-02**: Encrypted storage in Room DB with sync to desktop memory brain
+- [x] **DOC-03**: Full-text search across scanned documents ("find my Best Buy receipt from January")
+- [x] **DOC-04**: Document categorization: receipts, warranties, IDs, medical, insurance, other
 
 ## v3 Requirements (Future)
 
@@ -219,9 +219,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ANOTIF-01 through ANOTIF-04 (4) | Phase 11 | Pending |
 | CTX-01 through CTX-04 (4) | Phase 11 | Pending |
 | RX-01 through RX-04 (4) | Phase 12 | Complete |
-| FIN-01 through FIN-03 (3) | Phase 12 | Pending |
-| DOC-01 through DOC-04 (4) | Phase 12 | Pending |
-| COMM-01 through COMM-03 (3) | Phase 12 | Pending |
+| FIN-01 through FIN-03 (3) | Phase 12 | Complete |
+| DOC-01 through DOC-04 (4) | Phase 12 | Complete |
+| COMM-01 through COMM-03 (3) | Phase 12 | Complete |
 | HABIT-01 through HABIT-04 (4) | Phase 13 | Pending |
 | SOC-01 through SOC-03 (3) | Phase 13 | Pending |
 
