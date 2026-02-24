@@ -6,7 +6,9 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.api.JarvisApiClient
+import com.jarvis.assistant.data.dao.CallLogDao
 import com.jarvis.assistant.data.dao.CommuteDao
+import com.jarvis.assistant.data.dao.ContactContextDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.ExtractedEventDao
@@ -55,6 +57,8 @@ class SettingsViewModel @Inject constructor(
     private val transactionDao: TransactionDao,
     private val commuteDao: CommuteDao,
     private val documentDao: DocumentDao,
+    private val contactContextDao: ContactContextDao,
+    private val callLogDao: CallLogDao,
 ) : ViewModel() {
 
     val desktopUrl = MutableStateFlow(crypto.getBaseUrl())
@@ -153,6 +157,36 @@ class SettingsViewModel @Inject constructor(
     val docAutoCategorize = MutableStateFlow(
         contextPrefs.getBoolean(KEY_DOC_AUTO_CATEGORIZE, true),
     )
+
+    // ── Relationship Memory Settings ────────────────────────────────
+
+    val relationshipAlertsEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_RELATIONSHIP_ALERTS, true),
+    )
+    val preCallCardsEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_PRE_CALL_CARDS, true),
+    )
+    val postCallLoggingEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_POST_CALL_LOGGING, true),
+    )
+    val birthdayRemindersEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_BIRTHDAY_REMINDERS, true),
+    )
+    val anniversaryRemindersEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_ANNIVERSARY_REMINDERS, true),
+    )
+    val neglectedAlertsEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_NEGLECTED_ALERTS, true),
+    )
+    val neglectedThresholdDays = MutableStateFlow(
+        contextPrefs.getInt(KEY_NEGLECTED_THRESHOLD_DAYS, 30),
+    )
+
+    val contactCount: StateFlow<Int> = contactContextDao.countFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val callLogCount: StateFlow<Int> = callLogDao.totalCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // ── Scheduling Settings ──────────────────────────────────────────
 
@@ -461,6 +495,43 @@ class SettingsViewModel @Inject constructor(
         contextPrefs.edit().putBoolean(KEY_DOC_AUTO_CATEGORIZE, enabled).apply()
     }
 
+    // ── Relationship Memory Setters ──────────────────────────────────
+
+    fun setRelationshipAlertsEnabled(enabled: Boolean) {
+        relationshipAlertsEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_RELATIONSHIP_ALERTS, enabled).apply()
+    }
+
+    fun setPreCallCardsEnabled(enabled: Boolean) {
+        preCallCardsEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_PRE_CALL_CARDS, enabled).apply()
+    }
+
+    fun setPostCallLoggingEnabled(enabled: Boolean) {
+        postCallLoggingEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_POST_CALL_LOGGING, enabled).apply()
+    }
+
+    fun setBirthdayRemindersEnabled(enabled: Boolean) {
+        birthdayRemindersEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_BIRTHDAY_REMINDERS, enabled).apply()
+    }
+
+    fun setAnniversaryRemindersEnabled(enabled: Boolean) {
+        anniversaryRemindersEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_ANNIVERSARY_REMINDERS, enabled).apply()
+    }
+
+    fun setNeglectedAlertsEnabled(enabled: Boolean) {
+        neglectedAlertsEnabled.value = enabled
+        contextPrefs.edit().putBoolean(KEY_NEGLECTED_ALERTS, enabled).apply()
+    }
+
+    fun setNeglectedThresholdDays(days: Int) {
+        neglectedThresholdDays.value = days
+        contextPrefs.edit().putInt(KEY_NEGLECTED_THRESHOLD_DAYS, days).apply()
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -592,5 +663,12 @@ class SettingsViewModel @Inject constructor(
         private const val KEY_PARKING_MEMORY = "parking_memory"
         private const val KEY_DOC_AUTO_SYNC = "doc_auto_sync"
         private const val KEY_DOC_AUTO_CATEGORIZE = "doc_auto_categorize"
+        private const val KEY_RELATIONSHIP_ALERTS = "relationship_alerts_enabled"
+        private const val KEY_PRE_CALL_CARDS = "pre_call_cards_enabled"
+        private const val KEY_POST_CALL_LOGGING = "post_call_logging_enabled"
+        private const val KEY_BIRTHDAY_REMINDERS = "birthday_reminders_enabled"
+        private const val KEY_ANNIVERSARY_REMINDERS = "anniversary_reminders_enabled"
+        private const val KEY_NEGLECTED_ALERTS = "neglected_alerts_enabled"
+        private const val KEY_NEGLECTED_THRESHOLD_DAYS = "neglected_threshold_days"
     }
 }

@@ -25,8 +25,12 @@ import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.commute.TrafficChecker
 import com.jarvis.assistant.feature.documents.DocumentSyncManager
 import com.jarvis.assistant.feature.finance.SpendSummaryWorker
+import com.jarvis.assistant.feature.habit.NudgeEngine
+import com.jarvis.assistant.feature.habit.NudgeResponseTracker
+import com.jarvis.assistant.feature.habit.PatternDetector
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
+import com.jarvis.assistant.feature.social.RelationshipAlertEngine
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +62,10 @@ class JarvisService : Service() {
     @Inject lateinit var trafficChecker: TrafficChecker
     @Inject lateinit var parkingMemory: ParkingMemory
     @Inject lateinit var documentSyncManager: DocumentSyncManager
+    @Inject lateinit var relationshipAlertEngine: RelationshipAlertEngine
+    @Inject lateinit var patternDetector: PatternDetector
+    @Inject lateinit var nudgeEngine: NudgeEngine
+    @Inject lateinit var nudgeResponseTracker: NudgeResponseTracker
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
@@ -68,6 +76,10 @@ class JarvisService : Service() {
     private var lastLocationRecordMs = 0L
     private var lastTrafficCheckMs = 0L
     private var lastDocSyncMs = 0L
+    private var lastRelationshipCheckMs = 0L
+    private var lastPatternDetectionMs = 0L
+    private var lastNudgeCheckMs = 0L
+    private var lastNudgeExpiryMs = 0L
     private var currentContext: UserContext = UserContext.NORMAL
 
     override fun onCreate() {
@@ -204,6 +216,55 @@ class JarvisService : Service() {
                     }
                 }
 
+                // Relationship alerts: once per day
+                val relationshipNow = System.currentTimeMillis()
+                if (relationshipNow - lastRelationshipCheckMs >= RELATIONSHIP_CHECK_INTERVAL_MS) {
+                    lastRelationshipCheckMs = relationshipNow
+                    try {
+                        relationshipAlertEngine.checkRelationshipAlerts()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Relationship alert check error: ${e.message}")
+                    }
+                }
+
+                // Pattern detection: once per day (habit engine)
+                val patternNow = System.currentTimeMillis()
+                if (patternNow - lastPatternDetectionMs >= PATTERN_DETECTION_INTERVAL_MS) {
+                    lastPatternDetectionMs = patternNow
+                    try {
+                        patternDetector.detectPatterns()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Pattern detection error: ${e.message}")
+                    }
+                }
+
+                // Nudge check: every 5 minutes (habit engine)
+                val nudgeNow = System.currentTimeMillis()
+                if (nudgeNow - lastNudgeCheckMs >= NUDGE_CHECK_INTERVAL_MS) {
+                    lastNudgeCheckMs = nudgeNow
+                    val nudgesEnabled = getSharedPreferences(
+                        "jarvis_prefs", MODE_PRIVATE,
+                    ).getBoolean("habit_nudges_enabled", true)
+                    if (nudgesEnabled) {
+                        try {
+                            nudgeEngine.checkAndDeliver()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Nudge check error: ${e.message}")
+                        }
+                    }
+                }
+
+                // Expire stale nudges: every hour (habit engine)
+                val expiryNow = System.currentTimeMillis()
+                if (expiryNow - lastNudgeExpiryMs >= NUDGE_EXPIRY_INTERVAL_MS) {
+                    lastNudgeExpiryMs = expiryNow
+                    try {
+                        nudgeResponseTracker.expireStaleNudges()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Nudge expiry error: ${e.message}")
+                    }
+                }
+
                 delay(syncIntervalMs)
             }
         }
@@ -263,5 +324,9 @@ class JarvisService : Service() {
         private const val LOCATION_RECORD_INTERVAL_MS = 15L * 60 * 1000 // 15 minutes
         private const val TRAFFIC_CHECK_INTERVAL_MS = 30L * 60 * 1000 // 30 minutes
         private const val DOC_SYNC_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes
+        private const val RELATIONSHIP_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
+        private const val PATTERN_DETECTION_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
+        private const val NUDGE_CHECK_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes
+        private const val NUDGE_EXPIRY_INTERVAL_MS = 1L * 60 * 60 * 1000 // 1 hour
     }
 }
