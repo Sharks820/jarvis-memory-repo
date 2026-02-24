@@ -26,6 +26,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jarvis.assistant.feature.callscreen.createCallScreeningRoleIntent
@@ -134,7 +138,13 @@ fun SettingsScreen(
             val silenceThresh by viewModel.silenceThreshold.collectAsState()
             val voicemailThresh by viewModel.voicemailThreshold.collectAsState()
             val spamCount by viewModel.spamDbCount.collectAsState()
-            val roleGranted = remember { isCallScreeningRoleGranted(context) }
+            var roleGranted by remember { mutableStateOf(isCallScreeningRoleGranted(context)) }
+            val lifecycleOwner = LocalLifecycleOwner.current
+            LaunchedEffect(lifecycleOwner) {
+                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    roleGranted = isCallScreeningRoleGranted(context)
+                }
+            }
 
             SectionHeader("Call Screening")
             Card(Modifier.fillMaxWidth()) {

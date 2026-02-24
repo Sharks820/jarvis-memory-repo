@@ -29,6 +29,9 @@ class ContextAdjuster @Inject constructor(
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
 
+    /** Saved ringer mode before Jarvis overrides it, so we can restore on NORMAL. */
+    private var savedRingerMode: Int? = null
+
     private val prefs by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -61,6 +64,7 @@ class ContextAdjuster @Inject constructor(
      * Meeting mode: full silence except emergency contacts.
      */
     private fun applyMeetingMode() {
+        saveCurrentRingerMode()
         setRingerModeSafe(AudioManager.RINGER_MODE_SILENT)
         prefs.edit()
             .putString(KEY_NOTIFICATION_FILTER, "emergency_only")
@@ -73,6 +77,7 @@ class ContextAdjuster @Inject constructor(
      * Keep ringer normal so urgent alerts can be heard.
      */
     private fun applyDrivingMode() {
+        saveCurrentRingerMode()
         setRingerModeSafe(AudioManager.RINGER_MODE_NORMAL)
         prefs.edit()
             .putString(KEY_NOTIFICATION_FILTER, "urgent_read_aloud")
@@ -85,6 +90,7 @@ class ContextAdjuster @Inject constructor(
      * Sleep mode: urgent-only notifications.
      */
     private fun applySleepMode() {
+        saveCurrentRingerMode()
         setRingerModeSafe(AudioManager.RINGER_MODE_SILENT)
         prefs.edit()
             .putString(KEY_NOTIFICATION_FILTER, "urgent_only")
@@ -106,12 +112,25 @@ class ContextAdjuster @Inject constructor(
      * Normal mode: all notifications, no overrides.
      */
     private fun applyNormalMode() {
-        setRingerModeSafe(AudioManager.RINGER_MODE_NORMAL)
+        val modeToRestore = savedRingerMode ?: AudioManager.RINGER_MODE_NORMAL
+        savedRingerMode = null
+        setRingerModeSafe(modeToRestore)
         prefs.edit()
             .putString(KEY_NOTIFICATION_FILTER, "all")
             .remove(KEY_VOICE_VOLUME)
             .apply()
-        Log.i(TAG, "Normal mode: all notifications enabled")
+        Log.i(TAG, "Normal mode: all notifications enabled, ringer restored to $modeToRestore")
+    }
+
+    /**
+     * Save the current ringer mode so it can be restored when returning to NORMAL.
+     * Only saves once (if savedRingerMode is null) to preserve the original user setting.
+     */
+    private fun saveCurrentRingerMode() {
+        if (savedRingerMode == null) {
+            savedRingerMode = audioManager.ringerMode
+            Log.d(TAG, "Saved user ringer mode: $savedRingerMode")
+        }
     }
 
     /**

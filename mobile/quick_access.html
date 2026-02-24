@@ -414,7 +414,7 @@
       const c = creds();
       if (!c.baseUrl || !c.token || !c.signingKey) throw new Error("Open Connection Settings and enter your Base URL, Token, and Signing Key.");
       const body = bodyObj ? JSON.stringify(bodyObj) : "";
-      const ts = `${Date.now() / 1000}`;
+      const ts = `${Math.floor(Date.now() / 1000)}`;
       const n = nonce();
       const signingMaterial = `${ts}\n${n}\n${body}`;
       const sig = await hmacSha256Hex(c.signingKey, signingMaterial);

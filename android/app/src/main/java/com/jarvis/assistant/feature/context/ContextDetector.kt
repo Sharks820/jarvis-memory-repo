@@ -8,10 +8,13 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.net.Uri
+import android.content.ContentUris
 import android.provider.CalendarContract
 import android.util.Log
 import com.jarvis.assistant.api.JarvisApiClient
 import dagger.hilt.android.qualifiers.ApplicationContext
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -125,25 +128,31 @@ class ContextDetector @Inject constructor(
             val now = System.currentTimeMillis()
             val resolver: ContentResolver = context.contentResolver
             val projection = arrayOf(
-                CalendarContract.Events._ID,
-                CalendarContract.Events.DTSTART,
-                CalendarContract.Events.DTEND,
-                CalendarContract.Events.TITLE,
+                CalendarContract.Instances._ID,
+                CalendarContract.Instances.BEGIN,
+                CalendarContract.Instances.END,
+                CalendarContract.Instances.TITLE,
             )
 
-            // Query for events happening right now
-            val selection = "${CalendarContract.Events.DTSTART} <= ? AND ${CalendarContract.Events.DTEND} >= ?"
-            val selectionArgs = arrayOf(now.toString(), now.toString())
+            // Bug 6 fix: Use Instances table with time range instead of Events table.
+            // Events.CONTENT_URI does not expand recurring events; Instances does.
+            val startMs = now
+            val endMs = now + 1 // Query for instances overlapping "now"
+            val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
+            ContentUris.appendId(builder, startMs)
+            ContentUris.appendId(builder, endMs)
 
-            val uri: Uri = CalendarContract.Events.CONTENT_URI
-            val cursor: Cursor? = resolver.query(uri, projection, selection, selectionArgs, null)
+            val cursor: Cursor? = resolver.query(
+                builder.build(), projection, null, null, null,
+            )
 
             cursor?.use {
                 if (it.moveToFirst()) {
-                    val startIdx = it.getColumnIndex(CalendarContract.Events.DTSTART)
-                    val endIdx = it.getColumnIndex(CalendarContract.Events.DTEND)
-                    val dtStart = if (startIdx >= 0) it.getLong(startIdx) else now
-                    val dtEnd = if (endIdx >= 0) it.getLong(endIdx) else now
+                    val startIdx = it.getColumnIndex(CalendarContract.Instances.BEGIN)
+                    val endIdx = it.getColumnIndex(CalendarContract.Instances.END)
+                    if (startIdx < 0 || endIdx < 0) return null
+                    val dtStart = it.getLong(startIdx)
+                    val dtEnd = it.getLong(endIdx)
 
                     // Confidence: higher when we're early in the meeting
                     val duration = (dtEnd - dtStart).coerceAtLeast(1)
@@ -205,6 +214,7 @@ class ContextDetector @Inject constructor(
                     listener,
                     accel,
                     SensorManager.SENSOR_DELAY_NORMAL,
+                    Handler(Looper.getMainLooper()),
                 )
 
                 cont.invokeOnCancellation {

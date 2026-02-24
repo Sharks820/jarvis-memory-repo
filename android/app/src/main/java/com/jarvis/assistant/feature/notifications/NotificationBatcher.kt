@@ -1,5 +1,6 @@
 package com.jarvis.assistant.feature.notifications
 
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,8 +32,11 @@ class NotificationBatcher @Inject constructor() {
      * the batch threshold or age limit and returns the resulting batched
      * notifications (may be empty if nothing is ready to flush).
      */
+    @Synchronized
     fun addAndFlush(alert: ProactiveAlert): List<BatchedNotification> {
-        buffer.getOrPut(alert.groupKey) { mutableListOf() }.add(alert)
+        buffer.getOrPut(alert.groupKey) {
+            Collections.synchronizedList(mutableListOf())
+        }.add(alert)
 
         val results = mutableListOf<BatchedNotification>()
         val now = System.currentTimeMillis()
@@ -58,6 +62,7 @@ class NotificationBatcher @Inject constructor() {
      * Flush all pending groups regardless of size or age.
      * Called on context change or settings change.
      */
+    @Synchronized
     fun flushAll(): List<BatchedNotification> {
         val results = mutableListOf<BatchedNotification>()
         val iter = buffer.entries.iterator()
