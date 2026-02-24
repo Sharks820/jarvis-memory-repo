@@ -20,6 +20,10 @@ interface ContextStateDao {
     @Query("SELECT * FROM context_state_log ORDER BY createdAt DESC LIMIT 50")
     fun recentFlow(): Flow<List<ContextStateEntity>>
 
+    /** Get all context states since a given timestamp for pattern detection. */
+    @Query("SELECT * FROM context_state_log WHERE createdAt >= :since ORDER BY createdAt ASC")
+    suspend fun getStatesSince(since: Long): List<ContextStateEntity>
+
     /** Delete old entries to prevent unbounded growth. */
     @Query("DELETE FROM context_state_log WHERE createdAt < :cutoff")
     suspend fun deleteOld(cutoff: Long)
