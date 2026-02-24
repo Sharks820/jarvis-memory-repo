@@ -92,6 +92,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         "token": cfg.token,
         "signing_key": cfg.signing_key,
         "device_id": cfg.device_id,
+        "master_password": cfg.master_password,
         "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     _atomic_write_json(_widget_cfg_path(root), payload)
@@ -143,6 +144,8 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     try:
         with urlopen(req, timeout=35) as resp:
             raw = resp.read().decode("utf-8")
+    except HTTPError as exc:
+        raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
     except (URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"HTTP request failed: {exc}") from exc
     try:
@@ -174,7 +177,10 @@ def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) ->
     )
     with urlopen(req, timeout=35) as resp:
         raw = resp.read().decode("utf-8")
-    parsed = json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid bootstrap JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError("Invalid bootstrap response payload")
     return parsed
@@ -196,6 +202,30 @@ def _http_error_details(exc: HTTPError) -> str:
 
 
 def _voice_dictate_once(timeout_s: int = 8) -> str:
+    """Transcribe speech from microphone using faster-whisper (Whisper AI model).
+
+    Falls back to Windows System.Speech if faster-whisper or sounddevice
+    are not installed.
+    """
+    try:
+        from jarvis_engine.stt import listen_and_transcribe
+        result = listen_and_transcribe(
+            max_duration_seconds=float(max(3, timeout_s)),
+            language="en",
+            model_size=os.environ.get("JARVIS_STT_MODEL", "small.en"),
+        )
+        return result.text.strip()
+    except RuntimeError:
+        # faster-whisper or sounddevice not available -- fall back to System.Speech
+        pass
+    except Exception as exc:
+        logger.warning("Whisper STT failed, falling back to System.Speech: %s", exc)
+    # Fallback: Windows System.Speech via PowerShell
+    return _voice_dictate_system_speech(timeout_s)
+
+
+def _voice_dictate_system_speech(timeout_s: int = 8) -> str:
+    """Legacy Windows System.Speech dictation (lower quality fallback)."""
     script = (
         "Add-Type -AssemblyName System.Speech; "
         "$r = New-Object System.Speech.Recognition.SpeechRecognitionEngine; "
@@ -219,6 +249,7 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
     except subprocess.TimeoutExpired as exc:
         try:
             proc.kill()
+            proc.wait(timeout=5)
         except OSError:
             pass
         raise RuntimeError("Voice dictation timed out") from exc
@@ -282,6 +313,9 @@ class JarvisDesktopWidget(tk.Tk):
         self._drag_offset_x = 0
         self._drag_offset_y = 0
         self._launcher_dragged = False
+        self._hotword_active = threading.Event()  # Guards against multiple hotword loops
+        self._orb_after_id: str | None = None
+        self._launcher_after_id: str | None = None
 
         self.title("Jarvis Unlimited")
         self.geometry("470x760+40+60")
@@ -300,16 +334,36 @@ class JarvisDesktopWidget(tk.Tk):
         self._log("Widget online. Enter sends command, Shift+Enter inserts newline.")
 
     def _on_close(self) -> None:
+        """Handle window close: minimize to launcher orb (tray-app pattern).
+        Use the Exit button or Ctrl+Shift+Q for full shutdown."""
         self._hide_panel()
 
     def _shutdown(self) -> None:
         self.stop_event.set()
+        # Cancel pending animation callbacks to prevent post-destroy TclError
+        if self._orb_after_id is not None:
+            try:
+                self.after_cancel(self._orb_after_id)
+            except Exception:
+                pass
+        if self._launcher_after_id is not None:
+            try:
+                self.after_cancel(self._launcher_after_id)
+            except Exception:
+                pass
+        # Wait briefly for background threads to finish
+        for t in threading.enumerate():
+            if t.daemon and t.is_alive() and t is not threading.current_thread():
+                t.join(timeout=1.0)
         if self.launcher_win is not None:
             try:
                 self.launcher_win.destroy()
             except Exception:
                 pass
-        self.destroy()
+        try:
+            self.destroy()
+        except Exception:
+            pass
 
     def _bind_shortcuts(self) -> None:
         self.bind("<Control-space>", lambda _e: self._toggle_min())
@@ -590,9 +644,18 @@ class JarvisDesktopWidget(tk.Tk):
         stamp = time.strftime("%H:%M:%S")
         self.output.insert("1.0", f"[{stamp}] {message}\n")
         self.output.see("1.0")
+        # Limit output widget to 500 lines to prevent unbounded memory growth
+        line_count = int(self.output.index("end-1c").split(".")[0])
+        if line_count > 500:
+            self.output.delete("501.0", tk.END)
 
     def _log_async(self, message: str) -> None:
-        self.after(0, self._log, message)
+        if self.stop_event.is_set():
+            return
+        try:
+            self.after(0, self._log, message)
+        except Exception:
+            pass  # Widget destroyed
 
     def _set_command_text(self, value: str) -> None:
         self.command_text.delete("1.0", tk.END)
@@ -659,8 +722,9 @@ class JarvisDesktopWidget(tk.Tk):
         self._thread(worker)
 
     def _diagnose_repair_async(self) -> None:
+        cfg = self._current_cfg()  # Read tkinter vars on main thread
+
         def worker() -> None:
-            cfg = self._current_cfg()
             try:
                 self._log_async("Running sync checks...")
                 sync_data = _http_json(cfg, "/sync/status", method="GET")
@@ -706,15 +770,20 @@ class JarvisDesktopWidget(tk.Tk):
         if not text:
             self._log("No command text.")
             return
+        # Read all tkinter vars on the main thread before spawning background thread
+        cfg = self._current_cfg()
+        execute = bool(self.execute_var.get())
+        approve_privileged = bool(self.priv_var.get())
+        speak = bool(self.speak_var.get())
 
         def worker() -> None:
             try:
-                cfg = self._current_cfg()
                 payload = {
                     "text": text,
-                    "execute": bool(self.execute_var.get()),
-                    "approve_privileged": bool(self.priv_var.get()),
-                    "speak": bool(self.speak_var.get()),
+                    "execute": execute,
+                    "approve_privileged": approve_privileged,
+                    "speak": speak,
+                    "master_password": cfg.master_password,
                 }
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
                 intent = str(data.get("intent", "unknown"))
@@ -737,9 +806,11 @@ class JarvisDesktopWidget(tk.Tk):
         self._send_command_async()
 
     def _refresh_settings_async(self) -> None:
+        cfg = self._current_cfg()  # Read tkinter vars on main thread
+
         def worker() -> None:
             try:
-                data = _http_json(self._current_cfg(), "/settings", method="GET")
+                data = _http_json(cfg, "/settings", method="GET")
                 settings = data.get("settings", {})
                 self._log_async(json.dumps(settings, ensure_ascii=True)[:600])
             except Exception as exc:  # noqa: BLE001
@@ -748,9 +819,11 @@ class JarvisDesktopWidget(tk.Tk):
         self._thread(worker)
 
     def _refresh_dashboard_async(self) -> None:
+        cfg = self._current_cfg()  # Read tkinter vars on main thread
+
         def worker() -> None:
             try:
-                data = _http_json(self._current_cfg(), "/dashboard", method="GET")
+                data = _http_json(cfg, "/dashboard", method="GET")
                 dash = data.get("dashboard", {})
                 jar = dash.get("jarvis", {}) if isinstance(dash, dict) else {}
                 mem = dash.get("memory_regression", {}) if isinstance(dash, dict) else {}
@@ -783,23 +856,57 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _hotword_changed(self) -> None:
         if self.hotword_var.get():
+            if self._hotword_active.is_set():
+                self._log("Wake Word loop already running.")
+                return
             self._log("Wake Word enabled. Say 'Jarvis' to trigger dictation.")
             self._thread(self._hotword_loop)
         else:
             self._log("Wake Word disabled.")
 
     def _hotword_loop(self) -> None:
-        while self.hotword_var.get() and (not self.stop_event.is_set()):
+        if self._hotword_active.is_set():
+            return  # Another loop is already running
+        self._hotword_active.set()
+        try:
+            self._hotword_loop_inner()
+        finally:
+            self._hotword_active.clear()
+
+    def _hotword_loop_inner(self) -> None:
+        def _read_hotword_var() -> bool:
+            """Read hotword BooleanVar on main thread."""
+            result: list[bool] = [False]
+            ready = threading.Event()
+
+            def _read() -> None:
+                try:
+                    result[0] = bool(self.hotword_var.get())
+                except Exception:
+                    result[0] = False
+                ready.set()
+
+            try:
+                self.after(0, _read)
+            except Exception:
+                return False
+            ready.wait(timeout=2.0)
+            return result[0]
+
+        while _read_hotword_var() and (not self.stop_event.is_set()):
             try:
                 heard = _detect_hotword_once(keyword="jarvis", timeout_s=2)
-                if heard:
-                    self.after(0, self._show_panel)
-                    self._log_async("Wake word detected.")
-                    self.after(0, self._dictate_async)
+                if heard and not self.stop_event.is_set():
+                    try:
+                        self.after(0, self._show_panel)
+                        self._log_async("Wake word detected.")
+                        self.after(0, self._dictate_async)
+                    except Exception:
+                        return  # Widget destroyed
             except Exception as exc:
                 logger.warning("Hotword detection error: %s", exc)
             for _ in range(6):
-                if self.stop_event.is_set() or (not self.hotword_var.get()):
+                if self.stop_event.is_set() or (not _read_hotword_var()):
                     return
                 time.sleep(0.5)
 
@@ -808,39 +915,75 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _health_loop(self) -> None:
         while not self.stop_event.is_set():
-            cfg = self._current_cfg()
+            # Schedule tkinter var read on main thread and wait for result
+            cfg_holder: list[WidgetConfig | None] = [None]
+            ready = threading.Event()
+
+            def _read_cfg() -> None:
+                cfg_holder[0] = self._current_cfg()
+                ready.set()
+
+            try:
+                self.after(0, _read_cfg)
+            except Exception:
+                return  # Widget destroyed
+            ready.wait(timeout=5.0)
+            cfg = cfg_holder[0]
+            if cfg is None:
+                for _ in range(16):
+                    if self.stop_event.is_set():
+                        return
+                    time.sleep(0.5)
+                continue
             if not _is_safe_widget_base_url(cfg.base_url):
-                self.online = False
-                self.after(0, self._refresh_status_view)
+                try:
+                    self.after(0, self._set_online, False)
+                except Exception:
+                    return  # Widget destroyed
                 for _ in range(16):
                     if self.stop_event.is_set():
                         return
                     time.sleep(0.5)
                 continue
             url = f"{cfg.base_url.rstrip('/')}/health"
+            resp = None
             ok = False
             for _attempt in range(2):
                 try:
                     req = Request(url=url, method="GET")
-                    with urlopen(req, timeout=5) as resp:
-                        ok = resp.status == 200
+                    resp = urlopen(req, timeout=5)
+                    ok = resp.status == 200
+                    resp.close()
+                    resp = None
                     if ok:
                         break
                 except Exception:
                     ok = False
+                finally:
+                    # Ensure the response is always closed to prevent leaks
+                    if resp is not None:
+                        try:
+                            resp.close()
+                        except Exception:
+                            pass
+                        resp = None
                 if self.stop_event.is_set():
                     break
                 time.sleep(0.2)
-            self.online = ok
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._refresh_status_view)
+                    self.after(0, self._set_online, ok)
                 except Exception:
-                    return
+                    return  # Widget destroyed
             for _ in range(16):
                 if self.stop_event.is_set():
                     return
                 time.sleep(0.5)
+
+    def _set_online(self, value: bool) -> None:
+        """Update online state and refresh status — always call on main thread."""
+        self.online = value
+        self._refresh_status_view()
 
     def _refresh_status_view(self) -> None:
         self.status_var.set("ONLINE" if self.online else "OFFLINE")
@@ -848,7 +991,7 @@ class JarvisDesktopWidget(tk.Tk):
     def _animate_orb(self) -> None:
         if self.stop_event.is_set():
             return
-        self._pulse_phase += 0.22
+        self._pulse_phase = (self._pulse_phase + 0.22) % (2 * math.pi * 100)
         pulse = 5.0 + (math.sin(self._pulse_phase) * 1.8)
         cx, cy = 13.0, 13.0
         x0 = cx - pulse
@@ -859,7 +1002,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.orb_canvas.coords(self.orb_id, x0, y0, x1, y1)
             self.orb_canvas.itemconfig(self.orb_id, fill=color)
-            self.after(120, self._animate_orb)
+            self._orb_after_id = self.after(120, self._animate_orb)
         except Exception:
             return
 
@@ -869,7 +1012,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             if self.launcher_canvas is not None and self._launcher_outer_id is not None and self._launcher_inner_id is not None:
                 size = self._launcher_size
-                self._launcher_phase += 0.18
+                self._launcher_phase = (self._launcher_phase + 0.18) % (2 * math.pi * 100)
                 pulse = 1.0 + (math.sin(self._launcher_phase) * 1.2)
                 outer_pad = 4.0 + pulse
                 mid_pad = 8.0 + (pulse * 0.8)
@@ -885,7 +1028,7 @@ class JarvisDesktopWidget(tk.Tk):
                 if self._launcher_ring_2_id is not None:
                     self.launcher_canvas.itemconfig(self._launcher_ring_2_id, outline=ring)
                 self.launcher_canvas.itemconfig(self._launcher_inner_id, fill=core)
-            self.after(70, self._animate_launcher)
+            self._launcher_after_id = self.after(70, self._animate_launcher)
         except Exception:
             return
 

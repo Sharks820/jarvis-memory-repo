@@ -100,6 +100,8 @@ from jarvis_engine.commands.system_commands import (
     WeatherCommand,
 )
 from jarvis_engine.commands.task_commands import (
+    QueryCommand,
+    QueryResult,
     RouteCommand,
     RunTaskCommand,
     WebResearchCommand,
@@ -1515,12 +1517,20 @@ def _extract_first_phone_number(text: str) -> str:
 
 
 def _extract_weather_location(text: str) -> str:
-    match = re.search(r"(?:weather|forecast)(?:\s+(?:in|for))?\s+(.+)", text, flags=re.IGNORECASE)
+    # Try explicit "in/for <location>" first
+    match = re.search(r"(?:weather|forecast)\s+(?:in|for|at)\s+(.+)", text, flags=re.IGNORECASE)
+    if match:
+        location = match.group(1).strip().rstrip("?.!,;:")
+        return location[:120]
+    # Fallback: grab text after weather/forecast, filter noise words
+    match = re.search(r"(?:weather|forecast)\s+(.+)", text, flags=re.IGNORECASE)
     if not match:
         return ""
-    location = match.group(1).strip()
-    location = location.rstrip("?.!,;:")
-    return location[:120]
+    location = match.group(1).strip().rstrip("?.!,;:")
+    noise = {"like", "today", "right", "now", "outside", "currently", "report",
+             "update", "check", "please", "is", "the", "what", "how", "look"}
+    words = [w for w in location.split() if w.lower() not in noise]
+    return " ".join(words)[:120]
 
 
 def _extract_web_query(text: str) -> str:
@@ -1607,29 +1617,70 @@ def _is_read_only_voice_request(lowered: str, *, execute: bool, approve_privileg
     ]
     if any(marker in lowered for marker in mutation_markers):
         return False
-    if any(
-        key in lowered
-        for key in [
-            "runtime status",
-            "control status",
-            "safe mode status",
-            "gaming mode status",
-            "gaming mode state",
-            "weather",
-            "forecast",
-            "search web",
-            "search the web",
-            "search internet",
-            "search online",
-            "look up",
-            "lookup",
-            "research ",
-            "brief",
-        ]
-    ):
+    read_only_markers = [
+        "runtime status",
+        "control status",
+        "safe mode status",
+        "gaming mode status",
+        "gaming mode state",
+        "what time",
+        "time is it",
+        "current time",
+        "what date",
+        "what day",
+        "weather",
+        "forecast",
+        "search web",
+        "search the web",
+        "search internet",
+        "search online",
+        "look up",
+        "lookup",
+        "research ",
+        "daily brief",
+        "ops brief",
+        "morning brief",
+        "my brief",
+        "brief me",
+        "give me a brief",
+        "run brief",
+        "my schedule",
+        "my calendar",
+        "my meetings",
+        "my agenda",
+        "my tasks",
+        "my todo",
+        "my to-do",
+        "what do you know",
+        "what do you remember",
+        "do you remember",
+        "search memory",
+        "what did i tell you",
+        "what have i said",
+        "knowledge status",
+        "knowledge graph",
+        "brain status",
+        "memory status",
+        "mission status",
+        "system status",
+        "jarvis status",
+        "how are you",
+        "status report",
+        "health check",
+        "are you working",
+        "are you running",
+    ]
+    if any(marker in lowered for marker in read_only_markers):
         return True
-    # For non-execution voice prompts that do not match state-changing markers,
-    # treat as read-only to avoid unnecessary owner-guard blocks on regular Q&A.
+    # Bare wake words or very short greetings (e.g. "jarvis", "hey jarvis")
+    # are not state-mutating — treat as read-only so owner guard doesn't block them.
+    stripped = lowered.strip()
+    if stripped in ("jarvis", "hey jarvis", "hi jarvis", "hello jarvis", "ok jarvis", "a jarvis", "ay jarvis", "jarvis activate"):
+        return True
+    # Commands that don't match any mutation marker are conversational queries
+    # routed to the LLM. These are read-only (no state changes) and should
+    # not be blocked by owner guard. Only explicit mutation commands above
+    # require authentication.
     return True
 
 
@@ -2189,10 +2240,27 @@ def _cmd_voice_run_impl(
             threshold=0.65,
             queue_actions=execute,
         )
-    elif any(k in lowered for k in ["send text", "send message", "text ", "message "]):
+    elif any(k in lowered for k in ["send text", "send message", "send a text", "send a message", "text to ", "message to "]):
         number = _extract_first_phone_number(text)
-        sms_body = text.split(":", 1)[1].strip() if ":" in text else text
         intent = "phone_send_sms"
+        if not number:
+            print("intent=phone_send_sms")
+            print("reason=No phone number found in voice command.")
+            return 2
+        # Extract SMS body: strip trigger phrase and number, use remainder
+        sms_body = text
+        for _trigger in ["send a text to", "send a message to", "send text to", "send message to", "text to", "message to"]:
+            if _trigger in lowered:
+                sms_body = text[lowered.index(_trigger) + len(_trigger):].strip()
+                break
+        # Remove the phone number from the body if present
+        if number in sms_body:
+            sms_body = sms_body.replace(number, "", 1).strip()
+        # Fall back to colon-delimited body
+        if not sms_body and ":" in text:
+            sms_body = text.split(":", 1)[1].strip()
+        if not sms_body:
+            sms_body = text
         if not execute:
             print("reason=Set --execute to queue phone actions.")
             return 2
@@ -2205,6 +2273,10 @@ def _cmd_voice_run_impl(
     elif any(k in lowered for k in ["ignore call", "decline call", "reject call"]):
         number = _extract_first_phone_number(text)
         intent = "phone_ignore_call"
+        if not number:
+            print("intent=phone_ignore_call")
+            print("reason=No phone number found in voice command.")
+            return 2
         if not execute:
             print("reason=Set --execute to queue phone actions.")
             return 2
@@ -2214,9 +2286,14 @@ def _cmd_voice_run_impl(
             message="",
             queue_path=phone_queue,
         )
-    elif ("call " in lowered) or lowered.startswith("call"):
+    elif (lowered.startswith("call ") or "place a call" in lowered or "make a call" in lowered or "phone call" in lowered):
         number = _extract_first_phone_number(text)
         intent = "phone_place_call"
+        if not number:
+            # No phone number found — don't queue a call to nobody
+            print("intent=phone_place_call")
+            print("reason=No phone number found in voice command.")
+            return 2
         if not execute:
             print("reason=Set --execute to queue phone actions.")
             return 2
@@ -2230,7 +2307,7 @@ def _cmd_voice_run_impl(
         intent = "ops_sync"
         live_snapshot = snapshot_path.with_name("ops_snapshot.live.json")
         rc = cmd_ops_sync(live_snapshot)
-    elif "brief" in lowered:
+    elif any(k in lowered for k in ["daily brief", "ops brief", "morning brief", "give me a brief", "my brief", "run brief", "brief me"]):
         intent = "ops_brief"
         rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
     elif "automation" in lowered and any(k in lowered for k in ["run", "execute", "start"]):
@@ -2282,7 +2359,7 @@ def _cmd_voice_run_impl(
             quality_profile="max_quality",
             output_path=None,
         )
-    elif "generate 3d" in lowered or "generate model" in lowered:
+    elif "generate 3d" in lowered or "generate a 3d model" in lowered or "generate 3d model" in lowered:
         intent = "generate_model3d"
         rc = cmd_run_task(
             task_type="model3d",
@@ -2294,36 +2371,246 @@ def _cmd_voice_run_impl(
             quality_profile="max_quality",
             output_path=None,
         )
+    # --- Schedule / calendar / meeting queries ---
+    elif any(
+        k in lowered
+        for k in [
+            "my schedule",
+            "my calendar",
+            "my meetings",
+            "my agenda",
+            "what's on today",
+            "what is on today",
+            "what do i have today",
+            "what's happening today",
+            "what is happening today",
+            "today's schedule",
+            "today's meetings",
+            "upcoming meetings",
+            "upcoming events",
+            "next meeting",
+            "next appointment",
+            "daily briefing",
+            "morning briefing",
+            "give me a briefing",
+            "give me my briefing",
+        ]
+    ):
+        intent = "ops_brief"
+        rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
+    # --- Task queries ---
+    elif any(
+        k in lowered
+        for k in [
+            "my tasks",
+            "my to-do",
+            "my todo",
+            "what are my tasks",
+            "task list",
+            "pending tasks",
+            "open tasks",
+            "what do i need to do",
+            "what should i do",
+            "what needs to be done",
+        ]
+    ):
+        intent = "ops_brief"
+        rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
+    # --- Memory search / knowledge queries ---
+    elif any(
+        k in lowered
+        for k in [
+            "what do you know about",
+            "what do you remember about",
+            "do you remember when",
+            "do you remember that",
+            "do you remember my",
+            "search memory for",
+            "search your memory for",
+            "search your memory about",
+            "what did i tell you about",
+            "what have i said about",
+        ]
+    ):
+        intent = "brain_context"
+        # Extract the query portion after the trigger phrase (longest-first to avoid partial matches)
+        _memory_triggers = [
+            "what do you remember about",
+            "what do you know about",
+            "search your memory about",
+            "search your memory for",
+            "what did i tell you about",
+            "what have i said about",
+            "do you remember when",
+            "do you remember that",
+            "do you remember my",
+            "search memory for",
+        ]
+        query_text = text
+        for trigger in _memory_triggers:
+            if trigger in lowered:
+                idx = lowered.index(trigger) + len(trigger)
+                query_text = text[idx:].strip().rstrip("?").strip()
+                break
+        if not query_text:
+            query_text = text
+        rc = cmd_brain_context(query=query_text, max_items=5, max_chars=1200, as_json=False)
+    # --- Memory save / remember ---
+    elif any(
+        k in lowered
+        for k in [
+            "remember that",
+            "remember this",
+            "save this",
+            "make a note",
+            "take a note",
+            "note that",
+            "don't forget",
+        ]
+    ):
+        intent = "memory_ingest"
+        # Extract content after the trigger phrase (include both colon and non-colon variants)
+        content = text
+        _remember_triggers = [
+            "remember that",
+            "remember this:",
+            "remember this",
+            "save this:",
+            "save this",
+            "make a note:",
+            "make a note that",
+            "make a note",
+            "take a note:",
+            "take a note that",
+            "take a note",
+            "note that",
+            "don't forget that",
+            "don't forget",
+        ]
+        for trigger in _remember_triggers:
+            if trigger in lowered:
+                idx = lowered.index(trigger) + len(trigger)
+                content = text[idx:].strip()
+                break
+        if not content:
+            content = text
+        rc = cmd_ingest(
+            source="user",
+            kind="episodic",
+            task_id=f"voice-remember-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+            content=content,
+        )
+    # --- Knowledge graph queries ---
+    elif any(
+        k in lowered
+        for k in [
+            "knowledge status",
+            "knowledge graph",
+            "how much do you know",
+            "brain status",
+            "memory status",
+        ]
+    ):
+        intent = "brain_status"
+        rc = cmd_brain_status(as_json=False)
+    # --- Mission / learning queries ---
+    elif any(
+        k in lowered
+        for k in [
+            "mission status",
+            "learning mission",
+            "active missions",
+            "my missions",
+        ]
+    ):
+        intent = "mission_status"
+        rc = cmd_mission_status(last=5)
+    # --- System status ---
+    elif any(
+        k in lowered
+        for k in [
+            "system status",
+            "jarvis status",
+            "how are you",
+            "status report",
+            "health check",
+            "are you working",
+            "are you running",
+        ]
+    ):
+        intent = "system_status"
+        rc = cmd_status()
     else:
-        print("intent=unknown")
-        print("reason=No supported voice intent matched.")
+        # No keyword match -- route through LLM for a conversational response.
+        intent = "llm_conversation"
+        # Build memory context so the LLM knows about the user
+        context_lines: list[str] = []
         try:
-            packet = build_context_packet(repo_root(), query=text, max_items=3, max_chars=600)
+            packet = build_context_packet(repo_root(), query=text, max_items=5, max_chars=1200)
             selected = packet.get("selected", [])
             if isinstance(selected, list):
                 for row in selected:
                     if not isinstance(row, dict):
                         continue
-                    print(f"context_hint_branch={row.get('branch','')}")
-                    print(f"context_hint_summary={row.get('summary','')}")
+                    summary = str(row.get("summary", "")).strip()
+                    if summary:
+                        context_lines.append(summary)
         except Exception:
             pass
-        if speak:
-            persona = load_persona_config(repo_root())
-            persona_line = compose_persona_reply(
-                persona,
-                intent="unknown_command",
-                success=False,
-                reason="no supported voice intent matched",
+        persona = load_persona_config(repo_root())
+        persona_desc = ""
+        if persona.enabled:
+            persona_desc = (
+                "You are Jarvis, an intelligent personal AI assistant. "
+                "You are witty, knowledgeable, and speak like a refined British butler "
+                "with dry humor. Keep responses concise and natural. "
+                "Never repeat the same phrases. Vary your language."
             )
-            cmd_voice_say(
-                text=persona_line,
-                profile="jarvis_like",
-                voice_pattern="",
-                output_wav="",
-                rate=-1,
-            )
-        return 2
+        else:
+            persona_desc = "You are Jarvis, a helpful personal AI assistant. Keep responses concise."
+        system_prompt = persona_desc
+        if context_lines:
+            system_prompt += "\n\nRelevant memories about the user:\n" + "\n".join(f"- {l}" for l in context_lines[:5])
+        try:
+            result: QueryResult = _get_bus().dispatch(QueryCommand(
+                query=text,
+                system_prompt=system_prompt,
+                max_tokens=512,
+                model="qwen3:14b",
+            ))
+            if result.return_code != 0:
+                print(f"intent=llm_unavailable")
+                print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
+                rc = 1
+            elif result.text.strip():
+                print(f"response={result.text.strip()}")
+                print(f"model={result.model}")
+                print(f"provider={result.provider}")
+                if speak:
+                    cmd_voice_say(
+                        text=result.text.strip(),
+                        profile="jarvis_like",
+                        voice_pattern="",
+                        output_wav="",
+                        rate=-1,
+                    )
+                rc = 0
+            else:
+                print("intent=llm_empty_response")
+                print("reason=LLM returned empty response.")
+                rc = 1
+        except Exception as exc:
+            print(f"intent=llm_error")
+            print(f"reason={exc}")
+            if speak:
+                cmd_voice_say(
+                    text="I'm having trouble connecting to my language model. Please try again.",
+                    profile="jarvis_like",
+                    voice_pattern="",
+                    output_wav="",
+                    rate=-1,
+                )
+            rc = 1
 
     print(f"intent={intent}")
     print(f"status_code={rc}")
@@ -2627,14 +2914,14 @@ def main() -> int:
     p_ops_brief = sub.add_parser("ops-brief", help="Generate daily life operations brief.")
     p_ops_brief.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.json"),
+        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
     )
     p_ops_brief.add_argument("--output-path")
 
     p_ops_actions = sub.add_parser("ops-export-actions", help="Export suggested actions from ops snapshot.")
     p_ops_actions.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.json"),
+        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
     )
     p_ops_actions.add_argument(
         "--actions-path",
@@ -2714,7 +3001,11 @@ def main() -> int:
     p_owner.add_argument("--owner-user", default="")
     p_owner.add_argument("--trust-device", default="")
     p_owner.add_argument("--revoke-device", default="")
-    p_owner.add_argument("--set-master-password", default="")
+    p_owner.add_argument(
+        "--set-master-password", default="",
+        help="DEPRECATED: use JARVIS_MASTER_PASSWORD env var instead. "
+             "CLI passwords are visible in process listings.",
+    )
     p_owner.add_argument("--clear-master-password", action="store_true")
 
     p_gaming = sub.add_parser("gaming-mode", help="Enable/disable low-impact mode for gaming sessions.")
@@ -2800,7 +3091,11 @@ def main() -> int:
     p_voice_run.add_argument("--voice-user", default="conner")
     p_voice_run.add_argument("--voice-auth-wav", default="", help="Optional WAV path for voice authentication.")
     p_voice_run.add_argument("--voice-threshold", type=float, default=0.82)
-    p_voice_run.add_argument("--master-password", default="", help="Optional owner master password fallback.")
+    p_voice_run.add_argument(
+        "--master-password", default="",
+        help="DEPRECATED: use JARVIS_MASTER_PASSWORD env var instead. "
+             "CLI passwords are visible in process listings.",
+    )
     p_voice_run.add_argument(
         "--snapshot-path",
         default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
@@ -3076,7 +3371,7 @@ def main() -> int:
             owner_user=args.owner_user,
             trust_device=args.trust_device,
             revoke_device=args.revoke_device,
-            set_master_password_value=args.set_master_password,
+            set_master_password_value=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or args.set_master_password,
             clear_master_password_value=args.clear_master_password,
         )
     if args.command == "gaming-mode":
@@ -3148,7 +3443,7 @@ def main() -> int:
             voice_user=args.voice_user,
             voice_auth_wav=args.voice_auth_wav,
             voice_threshold=args.voice_threshold,
-            master_password=args.master_password,
+            master_password=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or args.master_password,
         )
     if args.command == "voice-listen":
         return cmd_voice_listen(

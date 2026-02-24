@@ -292,6 +292,15 @@ def test_command_endpoint_executes_voice_route(mobile_server) -> None:
 
 
 def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> None:
+    from unittest.mock import patch
+    from jarvis_engine.gateway.models import GatewayResponse
+
+    def _mock_ollama(self, messages, model, max_tokens):
+        return GatewayResponse(
+            text="", model=model, provider="none",
+            fallback_used=True, fallback_reason="mocked for test",
+        )
+
     payload = {
         "text": "Jarvis, this intent does not exist",
         "execute": False,
@@ -300,7 +309,8 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+    with patch("jarvis_engine.gateway.models.ModelGateway._call_ollama", _mock_ollama):
+        code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is False
@@ -400,12 +410,12 @@ def test_bootstrap_endpoint_rejects_invalid_master_password(mobile_server) -> No
 
 
 def test_sync_endpoint_redirects_to_new_endpoints(mobile_server, monkeypatch) -> None:
-    """Old /sync endpoint returns 301 redirect to new /sync/pull and /sync/push endpoints."""
+    """Old /sync endpoint returns 410 Gone with migration pointers."""
     payload = {"auto_ingest": True}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
     code, body = http_request("POST", f"{mobile_server.base_url}/sync", raw, headers)
-    assert code == 301
+    assert code == 410
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is False
     assert "/sync/pull" in parsed["endpoints"]

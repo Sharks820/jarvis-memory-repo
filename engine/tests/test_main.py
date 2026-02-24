@@ -159,6 +159,69 @@ def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(tmp_path: Pa
     assert rc == 2
 
 
+def test_cmd_voice_run_owner_guard_allows_bare_wake_word(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Bare wake words like 'Jarvis' should not be blocked by owner guard."""
+    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    rc_owner = main_mod.cmd_owner_guard(
+        enable=True,
+        disable=False,
+        owner_user="conner",
+        trust_device="",
+        revoke_device="",
+        set_master_password_value="",
+        clear_master_password_value=False,
+    )
+    assert rc_owner == 0
+
+    for wake_word in ["Jarvis", "hey jarvis", "Hi Jarvis", "hello jarvis", "ok jarvis"]:
+        capsys.readouterr()  # clear buffer
+        main_mod.cmd_voice_run(
+            text=wake_word,
+            execute=False,
+            approve_privileged=False,
+            speak=False,
+            snapshot_path=tmp_path / "ops_snapshot.live.json",
+            actions_path=tmp_path / "actions.generated.json",
+            voice_user="conner",
+            voice_auth_wav="",
+            voice_threshold=0.82,
+            master_password="",
+        )
+        captured = capsys.readouterr()
+        assert "owner_guard_blocked" not in captured.out, (
+            f"Owner guard should not block bare wake word: {wake_word!r}"
+        )
+
+
+def test_cmd_voice_run_owner_guard_allows_with_master_password(tmp_path: Path, monkeypatch) -> None:
+    """Master password should bypass owner guard for any command."""
+    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    rc_owner = main_mod.cmd_owner_guard(
+        enable=True,
+        disable=False,
+        owner_user="conner",
+        trust_device="",
+        revoke_device="",
+        set_master_password_value="TestPass123!",
+        clear_master_password_value=False,
+    )
+    assert rc_owner == 0
+
+    rc = main_mod.cmd_voice_run(
+        text="pause daemon",
+        execute=False,
+        approve_privileged=False,
+        speak=False,
+        snapshot_path=tmp_path / "ops_snapshot.live.json",
+        actions_path=tmp_path / "actions.generated.json",
+        voice_user="conner",
+        voice_auth_wav="",
+        voice_threshold=0.82,
+        master_password="TestPass123!",
+    )
+    assert rc != 2, "Master password should bypass owner guard"
+
+
 def test_cmd_phone_spam_guard_can_run_without_queue(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     call_log_path = tmp_path / "calls.json"

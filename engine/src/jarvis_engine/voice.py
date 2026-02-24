@@ -75,21 +75,24 @@ def list_windows_voices(refresh: bool = False) -> list[str]:
 def _preferred_voice_patterns(profile: str) -> list[str]:
     if profile == "jarvis_like":
         return [
-            "en-GB-ThomasNeural",
+            # Best-quality multilingual neural voices first
+            "en-US-AndrewMultilingualNeural",
+            "en-US-BrianMultilingualNeural",
             "en-GB-RyanNeural",
-            "en-GB-EthanNeural",
-            "en-GB",
-            "British",
-            "Thomas",
-            "Ryan",
-            "Ethan",
-            "Hazel",
-            "George",
+            "en-US-AndrewNeural",
+            "en-US-BrianNeural",
+            "en-US-GuyNeural",
+            "en-US-ChristopherNeural",
+            "en-US-RogerNeural",
+            "en-GB-ThomasNeural",
+            # Windows SAPI fallbacks
             "David",
-            "James",
+            "Great Britain",
+            "en-US",
+            "en-GB",
             "Male",
         ]
-    return ["en-US", "Male"]
+    return ["David", "en-US", "Male"]
 
 
 def _edge_tts_executable() -> str:
