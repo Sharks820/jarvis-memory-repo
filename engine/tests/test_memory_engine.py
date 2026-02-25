@@ -320,3 +320,379 @@ class TestHybridSearch:
 
         results = hybrid_search(engine, "memory testing", query_emb, k=5)
         assert len(results) <= 5
+
+
+# ---------------------------------------------------------------------------
+# Extended MemoryEngine Tests (CRUD, search, concurrency, edge cases)
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryEngineDelete:
+    """Tests for record deletion operations."""
+
+    def test_delete_record_removes_from_all_tables(self, engine: MemoryEngine) -> None:
+        """delete_record removes the record from records, fts_records, and vec_records."""
+        emb = _make_embedding(seed=5.0)
+        r = _make_record(record_id="del1", summary="delete me")
+        engine.insert_record(r, embedding=emb)
+        assert engine.get_record("del1") is not None
+
+        result = engine.delete_record("del1")
+        assert result is True
+        assert engine.get_record("del1") is None
+        # FTS should also be gone
+        fts_results = engine.search_fts("delete")
+        assert all(rid != "del1" for rid, _ in fts_results)
+
+    def test_delete_nonexistent_record_returns_false(self, engine: MemoryEngine) -> None:
+        """Deleting a record that does not exist returns False."""
+        assert engine.delete_record("does_not_exist") is False
+
+    def test_delete_records_batch_removes_multiple(self, engine: MemoryEngine) -> None:
+        """Batch delete removes all specified records."""
+        for i in range(5):
+            r = _make_record(record_id=f"batch_del_{i}", summary=f"batch record {i}")
+            engine.insert_record(r)
+        assert engine.count_records() == 5
+
+        deleted = engine.delete_records_batch(["batch_del_0", "batch_del_2", "batch_del_4"])
+        assert deleted == 3
+        assert engine.count_records() == 2
+        assert engine.get_record("batch_del_1") is not None
+        assert engine.get_record("batch_del_3") is not None
+
+    def test_delete_records_batch_empty_list(self, engine: MemoryEngine) -> None:
+        """Batch delete with empty list does nothing and returns 0."""
+        r = _make_record(record_id="keep", summary="keep me")
+        engine.insert_record(r)
+        assert engine.delete_records_batch([]) == 0
+        assert engine.count_records() == 1
+
+    def test_delete_records_batch_nonexistent_ids(self, engine: MemoryEngine) -> None:
+        """Batch delete with nonexistent IDs returns 0 deleted."""
+        assert engine.delete_records_batch(["ghost1", "ghost2"]) == 0
+
+
+class TestMemoryEngineRetrieve:
+    """Tests for record retrieval operations."""
+
+    def test_get_record_returns_none_for_missing(self, engine: MemoryEngine) -> None:
+        """get_record returns None for nonexistent record_id."""
+        assert engine.get_record("no_such_id") is None
+
+    def test_get_record_by_hash(self, engine: MemoryEngine) -> None:
+        """get_record_by_hash finds record by content_hash."""
+        r = _make_record(record_id="hash_test", summary="hash lookup test")
+        engine.insert_record(r)
+        expected_hash = hashlib.sha256("hash lookup test".encode()).hexdigest()
+
+        found = engine.get_record_by_hash(expected_hash)
+        assert found is not None
+        assert found["record_id"] == "hash_test"
+
+    def test_get_record_by_hash_missing(self, engine: MemoryEngine) -> None:
+        """get_record_by_hash returns None for unknown hash."""
+        assert engine.get_record_by_hash("abcdef1234567890" * 4) is None
+
+    def test_get_records_batch(self, engine: MemoryEngine) -> None:
+        """get_records_batch retrieves multiple records in one call."""
+        for i in range(4):
+            engine.insert_record(_make_record(record_id=f"batch_{i}", summary=f"record {i}"))
+
+        results = engine.get_records_batch(["batch_0", "batch_2"])
+        assert len(results) == 2
+        ids = {r["record_id"] for r in results}
+        assert ids == {"batch_0", "batch_2"}
+
+    def test_get_records_batch_empty_list(self, engine: MemoryEngine) -> None:
+        """get_records_batch with empty list returns empty list."""
+        assert engine.get_records_batch([]) == []
+
+    def test_get_all_record_ids(self, engine: MemoryEngine) -> None:
+        """get_all_record_ids returns all stored record IDs."""
+        for i in range(3):
+            engine.insert_record(_make_record(record_id=f"all_{i}", summary=f"record {i}"))
+
+        ids = engine.get_all_record_ids()
+        assert set(ids) == {"all_0", "all_1", "all_2"}
+
+    def test_get_all_records_for_tier_maintenance(self, engine: MemoryEngine) -> None:
+        """get_all_records_for_tier_maintenance returns correct columns."""
+        engine.insert_record(_make_record(record_id="tier_rec", summary="tier test"))
+        results = engine.get_all_records_for_tier_maintenance()
+        assert len(results) == 1
+        record = results[0]
+        assert "record_id" in record
+        assert "ts" in record
+        assert "access_count" in record
+        assert "confidence" in record
+        assert "tier" in record
+
+
+class TestMemoryEngineUpdate:
+    """Tests for record update operations."""
+
+    def test_update_access_nonexistent_returns_false(self, engine: MemoryEngine) -> None:
+        """update_access on missing record returns False."""
+        assert engine.update_access("missing") is False
+
+    def test_update_access_batch(self, engine: MemoryEngine) -> None:
+        """Batch access update increments counts for all specified records."""
+        for i in range(3):
+            engine.insert_record(_make_record(record_id=f"acc_b_{i}", summary=f"access batch {i}"))
+
+        engine.update_access_batch(["acc_b_0", "acc_b_1"])
+        engine.update_access_batch(["acc_b_0"])
+
+        r0 = engine.get_record("acc_b_0")
+        r1 = engine.get_record("acc_b_1")
+        r2 = engine.get_record("acc_b_2")
+        assert r0["access_count"] == 2
+        assert r1["access_count"] == 1
+        assert r2["access_count"] == 0
+
+    def test_update_access_batch_empty(self, engine: MemoryEngine) -> None:
+        """Batch access update with empty list is a no-op."""
+        engine.update_access_batch([])  # should not raise
+
+    def test_update_tier(self, engine: MemoryEngine) -> None:
+        """update_tier changes the tier of a record."""
+        engine.insert_record(_make_record(record_id="tier1", summary="tier update test"))
+        engine.update_tier("tier1", "hot")
+        record = engine.get_record("tier1")
+        assert record["tier"] == "hot"
+
+    def test_update_tiers_batch(self, engine: MemoryEngine) -> None:
+        """Batch tier update changes tiers for multiple records."""
+        for i in range(3):
+            engine.insert_record(_make_record(record_id=f"tb_{i}", summary=f"tier batch {i}"))
+
+        engine.update_tiers_batch([("tb_0", "hot"), ("tb_2", "cold")])
+
+        assert engine.get_record("tb_0")["tier"] == "hot"
+        assert engine.get_record("tb_1")["tier"] == "warm"  # unchanged
+        assert engine.get_record("tb_2")["tier"] == "cold"
+
+    def test_update_tiers_batch_empty(self, engine: MemoryEngine) -> None:
+        """Batch tier update with empty list is a no-op."""
+        engine.update_tiers_batch([])  # should not raise
+
+
+class TestMemoryEngineFTS:
+    """Extended FTS5 search tests."""
+
+    def test_fts_empty_query_returns_empty(self, engine: MemoryEngine) -> None:
+        """Empty query after sanitization returns empty list."""
+        engine.insert_record(_make_record(record_id="fts_e", summary="some content here"))
+        assert engine.search_fts("") == []
+
+    def test_fts_special_chars_sanitized(self, engine: MemoryEngine) -> None:
+        """FTS5 special characters are stripped from queries."""
+        engine.insert_record(_make_record(record_id="fts_s", summary="special test content"))
+        # Queries with special chars should still work (chars are stripped)
+        results = engine.search_fts('"special"')
+        ids = [rid for rid, _ in results]
+        assert "fts_s" in ids
+
+    def test_fts_boolean_operators_stripped(self, engine: MemoryEngine) -> None:
+        """FTS5 boolean operators (AND, OR, NOT) are stripped from queries."""
+        sanitized = MemoryEngine._sanitize_fts_query("python AND java OR NOT ruby")
+        assert "AND" not in sanitized.split()
+        assert "OR" not in sanitized.split()
+        assert "NOT" not in sanitized.split()
+        assert "python" in sanitized
+        assert "java" in sanitized
+        assert "ruby" in sanitized
+
+    def test_fts_limit_parameter(self, engine: MemoryEngine) -> None:
+        """FTS search respects the limit parameter."""
+        for i in range(10):
+            engine.insert_record(_make_record(
+                record_id=f"lim_{i}", summary=f"python tutorial chapter {i}"
+            ))
+        results = engine.search_fts("python", limit=3)
+        assert len(results) <= 3
+
+    def test_fts_only_special_chars_returns_empty(self, engine: MemoryEngine) -> None:
+        """Query consisting only of special chars returns empty list."""
+        engine.insert_record(_make_record(record_id="fts_sp", summary="data"))
+        assert engine.search_fts('***"[]()') == []
+
+
+class TestMemoryEngineVecSearch:
+    """Extended sqlite-vec search tests."""
+
+    def test_vec_search_graceful_when_unavailable(self, tmp_path: Path) -> None:
+        """search_vec returns empty list when vec extension is unavailable."""
+        db_path = tmp_path / "no_vec.db"
+        eng = MemoryEngine(db_path)
+        # Force vec unavailable
+        eng._vec_available = False
+        try:
+            results = eng.search_vec([0.0] * 768)
+            assert results == []
+        finally:
+            eng.close()
+
+    def test_vec_search_limit(self, engine: MemoryEngine) -> None:
+        """Vec search respects the limit parameter."""
+        if not engine._vec_available:
+            pytest.skip("sqlite-vec not available")
+
+        for i in range(10):
+            engine.insert_record(
+                _make_record(record_id=f"vlim_{i}", summary=f"vec limit {i}"),
+                embedding=_make_embedding(seed=float(i)),
+            )
+        results = engine.search_vec(_make_embedding(seed=0.0), limit=3)
+        assert len(results) <= 3
+
+
+class TestMemoryEngineTagHandling:
+    """Tests for tag normalization during insert."""
+
+    def test_tags_list_normalized_to_json(self, engine: MemoryEngine) -> None:
+        """Tags provided as a list are JSON-serialized."""
+        r = _make_record(record_id="tag1", summary="tag test")
+        r["tags"] = ["alpha", "beta"]
+        engine.insert_record(r)
+        retrieved = engine.get_record("tag1")
+        import json
+        assert json.loads(retrieved["tags"]) == ["alpha", "beta"]
+
+    def test_tags_string_stored_as_is(self, engine: MemoryEngine) -> None:
+        """Tags provided as a JSON string are stored directly."""
+        r = _make_record(record_id="tag2", summary="tag test 2")
+        r["tags"] = '["x","y"]'
+        engine.insert_record(r)
+        retrieved = engine.get_record("tag2")
+        assert retrieved["tags"] == '["x","y"]'
+
+    def test_tags_non_list_non_string_defaults_to_empty(self, engine: MemoryEngine) -> None:
+        """Tags of unexpected type default to '[]'."""
+        r = _make_record(record_id="tag3", summary="tag test 3")
+        r["tags"] = 12345  # neither list nor string
+        engine.insert_record(r)
+        retrieved = engine.get_record("tag3")
+        assert retrieved["tags"] == "[]"
+
+
+class TestMemoryEngineEmbeddingValidation:
+    """Tests for embedding dimension validation."""
+
+    def test_wrong_embedding_dimension_raises(self, engine: MemoryEngine) -> None:
+        """Insert with wrong embedding dimension raises ValueError."""
+        if not engine._vec_available:
+            pytest.skip("sqlite-vec not available")
+        r = _make_record(record_id="bad_emb", summary="bad embedding")
+        with pytest.raises(ValueError, match="Embedding dimension mismatch"):
+            engine.insert_record(r, embedding=[0.0] * 100)  # wrong dim
+
+    def test_no_embedding_skips_vec_insert(self, engine: MemoryEngine) -> None:
+        """Insert without embedding skips vec_records insert."""
+        r = _make_record(record_id="no_emb", summary="no embedding")
+        assert engine.insert_record(r, embedding=None) is True
+        assert engine.get_record("no_emb") is not None
+
+
+class TestMemoryEngineContextManager:
+    """Tests for context manager and close behavior."""
+
+    def test_context_manager(self, tmp_path: Path) -> None:
+        """MemoryEngine works as a context manager."""
+        db_path = tmp_path / "ctx.db"
+        with MemoryEngine(db_path) as eng:
+            r = _make_record(record_id="ctx1", summary="context manager test")
+            eng.insert_record(r)
+            assert eng.get_record("ctx1") is not None
+        # After __exit__, engine should be closed
+        assert eng._closed is True
+
+    def test_close_idempotent(self, engine: MemoryEngine) -> None:
+        """Calling close() multiple times does not raise."""
+        engine.close()
+        engine.close()  # second close should be a no-op
+        assert engine._closed is True
+
+    def test_del_calls_close(self, tmp_path: Path) -> None:
+        """__del__ closes the engine without raising."""
+        db_path = tmp_path / "del_test.db"
+        eng = MemoryEngine(db_path)
+        eng.__del__()
+        assert eng._closed is True
+
+
+class TestMemoryEngineKGSchema:
+    """Tests for knowledge graph schema initialization."""
+
+    def test_kg_tables_created(self, engine: MemoryEngine) -> None:
+        """Knowledge graph tables (kg_nodes, kg_edges, kg_contradictions) exist."""
+        cur = engine._db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        tables = {row[0] for row in cur.fetchall()}
+        assert "kg_nodes" in tables
+        assert "kg_edges" in tables
+        assert "kg_contradictions" in tables
+
+    def test_schema_version_includes_v2(self, engine: MemoryEngine) -> None:
+        """Schema version 2 is recorded for KG tables."""
+        cur = engine._db.execute("SELECT version FROM schema_version ORDER BY version")
+        versions = [row[0] for row in cur.fetchall()]
+        assert 1 in versions
+        assert 2 in versions
+
+
+class TestMemoryEngineConcurrency:
+    """Basic concurrency tests (write serialization)."""
+
+    def test_concurrent_inserts_via_threads(self, engine: MemoryEngine) -> None:
+        """Multiple threads inserting records concurrently do not corrupt DB."""
+        import threading
+
+        errors = []
+
+        def insert_worker(worker_id: int) -> None:
+            try:
+                for i in range(10):
+                    r = _make_record(
+                        record_id=f"w{worker_id}_r{i}",
+                        summary=f"worker {worker_id} record {i}",
+                    )
+                    engine.insert_record(r)
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=insert_worker, args=(w,)) for w in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == [], f"Concurrent insert errors: {errors}"
+        assert engine.count_records() == 40
+
+    def test_concurrent_reads_via_threads(self, engine: MemoryEngine) -> None:
+        """Multiple threads reading records concurrently do not fail."""
+        import threading
+
+        for i in range(10):
+            engine.insert_record(_make_record(record_id=f"cr_{i}", summary=f"concurrent read {i}"))
+
+        errors = []
+
+        def read_worker() -> None:
+            try:
+                for i in range(10):
+                    engine.get_record(f"cr_{i}")
+                    engine.count_records()
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=read_worker) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == [], f"Concurrent read errors: {errors}"

@@ -756,3 +756,310 @@ class TestVersionMonotonicity:
         ]
         assert versions == sorted(versions)
         assert len(set(versions)) == len(versions)  # All unique
+
+
+# ===========================================================================
+# Transport edge-case tests
+# ===========================================================================
+
+
+class TestTransportEdgeCases:
+    """Edge-case tests for transport: size limits, TTL, salt races, key locking."""
+
+    # --- Payload size limit enforcement ---
+
+    def test_encrypt_payload_exceeding_max_size_raises(self):
+        """Payloads larger than MAX_SYNC_PAYLOAD_BYTES (16 MiB) must raise ValueError."""
+        from jarvis_engine.sync.transport import (
+            derive_sync_key,
+            encrypt_sync_payload,
+            MAX_SYNC_PAYLOAD_BYTES,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        # Build a payload whose JSON serialization exceeds 16 MiB.
+        # A single string of (MAX + 1) chars plus JSON overhead is enough.
+        huge_payload = {"data": "A" * (MAX_SYNC_PAYLOAD_BYTES + 1)}
+
+        with pytest.raises(ValueError, match="too large"):
+            encrypt_sync_payload(huge_payload, key)
+
+    def test_encrypt_payload_exactly_at_limit_succeeds(self):
+        """A payload exactly at MAX_SYNC_PAYLOAD_BYTES should NOT raise."""
+        from jarvis_engine.sync.transport import (
+            derive_sync_key,
+            encrypt_sync_payload,
+            MAX_SYNC_PAYLOAD_BYTES,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        # JSON overhead for {"d":"..."} with separators=(",",":") is 6 bytes
+        # So we need a string of exactly MAX - 6 chars.
+        overhead = len(json.dumps({"d": ""}, separators=(",", ":")).encode("utf-8"))
+        filler_len = MAX_SYNC_PAYLOAD_BYTES - overhead
+        payload = {"d": "B" * filler_len}
+
+        # Should not raise
+        encrypted = encrypt_sync_payload(payload, key)
+        assert len(encrypted) > 0
+
+    # --- Empty payload handling ---
+
+    def test_encrypt_decrypt_empty_dict(self):
+        """Encrypting and decrypting an empty dict should round-trip cleanly."""
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        payload = {}
+        encrypted = encrypt_sync_payload(payload, key)
+        decrypted = decrypt_sync_payload(encrypted, key)
+        assert decrypted == {}
+
+    def test_encrypt_decrypt_empty_nested_structures(self):
+        """Empty nested lists and dicts should round-trip correctly."""
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        payload = {"changes": {}, "cursors": {}, "items": []}
+        encrypted = encrypt_sync_payload(payload, key)
+        decrypted = decrypt_sync_payload(encrypted, key)
+        assert decrypted == payload
+
+    # --- TTL rejection in decrypt_sync_payload ---
+
+    def test_decrypt_rejects_expired_token(self):
+        """A token encrypted more than ttl seconds ago must be rejected."""
+        import struct
+        import time
+        from cryptography.fernet import Fernet, InvalidToken
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        payload = {"msg": "hello"}
+        encrypted = encrypt_sync_payload(payload, key)
+
+        # Fernet tokens encode the timestamp in bytes 1-9 (big-endian uint64).
+        # Rewrite the timestamp to 2 hours ago so that ttl=1 rejects it.
+        token_bytes = base64.urlsafe_b64decode(encrypted)
+        old_ts = int(time.time()) - 7200  # 2 hours ago
+        tampered = (
+            token_bytes[0:1]
+            + struct.pack(">Q", old_ts)
+            + token_bytes[9:]
+        )
+        old_token = base64.urlsafe_b64encode(tampered)
+
+        # Must be rejected with a 1-second TTL — token is 2 hours old
+        with pytest.raises(InvalidToken):
+            decrypt_sync_payload(old_token, key, ttl=1)
+
+    # --- Invalid key material ---
+
+    def test_decrypt_with_wrong_key_raises(self):
+        """Decrypting a token with a different key must fail gracefully."""
+        from cryptography.fernet import InvalidToken
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+        )
+
+        salt = b"0123456789abcdef"
+        key_a = derive_sync_key("key-alpha", salt)
+        key_b = derive_sync_key("key-bravo", salt)
+
+        payload = {"secret": "data"}
+        encrypted = encrypt_sync_payload(payload, key_a)
+
+        with pytest.raises(InvalidToken):
+            decrypt_sync_payload(encrypted, key_b)
+
+    def test_decrypt_with_corrupted_token_raises(self):
+        """A token with flipped bytes must fail with InvalidToken."""
+        from cryptography.fernet import InvalidToken
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        payload = {"data": "value"}
+        encrypted = encrypt_sync_payload(payload, key)
+
+        # Flip a byte near the middle of the ciphertext
+        corrupted = bytearray(encrypted)
+        mid = len(corrupted) // 2
+        corrupted[mid] ^= 0xFF
+        corrupted = bytes(corrupted)
+
+        with pytest.raises(InvalidToken):
+            decrypt_sync_payload(corrupted, key)
+
+    # --- Salt file already exists ---
+
+    def test_get_or_create_salt_returns_existing_without_overwrite(self):
+        """If a salt file already exists, its contents are returned unchanged."""
+        from jarvis_engine.sync.transport import get_or_create_salt
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            salt_path = Path(tmpdir) / "existing_salt.bin"
+            known_salt = b"KNOWN_SALT_BYTES"
+            salt_path.write_bytes(known_salt)
+
+            result = get_or_create_salt(salt_path)
+            assert result == known_salt
+            # File was not overwritten
+            assert salt_path.read_bytes() == known_salt
+
+    # --- get_or_create_salt race condition (os.replace failure fallback) ---
+
+    def test_get_or_create_salt_race_condition_fallback(self):
+        """When os.replace fails but salt_path exists, the winner's salt is returned."""
+        from unittest.mock import patch
+        from jarvis_engine.sync.transport import get_or_create_salt
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            salt_path = Path(tmpdir) / "race_salt.bin"
+            winner_salt = b"WINNER_SALT_BYTE"  # 16 bytes
+
+            def mock_replace(src, dst):
+                # Simulate another process winning the race: write the winner's
+                # salt into place, then raise OSError as if our replace failed.
+                Path(dst).write_bytes(winner_salt)
+                raise OSError("simulated race loss")
+
+            with patch("jarvis_engine.sync.transport.os.replace", side_effect=mock_replace):
+                result = get_or_create_salt(salt_path)
+
+            assert result == winner_salt
+
+    def test_get_or_create_salt_race_replace_fails_and_no_file_reraises(self):
+        """When os.replace fails and salt_path does not exist, OSError is re-raised."""
+        from unittest.mock import patch
+        from jarvis_engine.sync.transport import get_or_create_salt
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            salt_path = Path(tmpdir) / "missing_salt.bin"
+
+            def mock_replace(src, dst):
+                # Ensure the salt_path does NOT exist so the fallback re-raises
+                raise OSError("simulated failure")
+
+            with patch("jarvis_engine.sync.transport.os.replace", side_effect=mock_replace):
+                with pytest.raises(OSError, match="simulated failure"):
+                    get_or_create_salt(salt_path)
+
+    # --- SyncTransport._ensure_key() double-checked locking ---
+
+    def test_ensure_key_derived_only_once(self):
+        """_ensure_key should derive the Fernet key exactly once, even when called many times."""
+        from unittest.mock import patch
+        from jarvis_engine.sync.transport import SyncTransport
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            salt_path = Path(tmpdir) / "salt.bin"
+            transport = SyncTransport("test-key", salt_path)
+
+            with patch(
+                "jarvis_engine.sync.transport.derive_sync_key",
+                wraps=__import__(
+                    "jarvis_engine.sync.transport", fromlist=["derive_sync_key"]
+                ).derive_sync_key,
+            ) as mock_derive:
+                # Call _ensure_key many times
+                keys = [transport._ensure_key() for _ in range(10)]
+
+                # All returned keys must be identical
+                assert all(k == keys[0] for k in keys)
+                # derive_sync_key was called exactly once
+                assert mock_derive.call_count == 1
+
+    def test_ensure_key_concurrent_threads_derive_once(self):
+        """Multiple threads calling _ensure_key concurrently should still derive only once."""
+        from unittest.mock import patch
+        from jarvis_engine.sync.transport import SyncTransport
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            salt_path = Path(tmpdir) / "salt.bin"
+            transport = SyncTransport("test-key", salt_path)
+
+            call_count = {"n": 0}
+            original_derive = __import__(
+                "jarvis_engine.sync.transport", fromlist=["derive_sync_key"]
+            ).derive_sync_key
+
+            def counting_derive(*args, **kwargs):
+                call_count["n"] += 1
+                return original_derive(*args, **kwargs)
+
+            results = [None] * 20
+            barrier = threading.Barrier(20)
+
+            def worker(idx):
+                barrier.wait()  # Synchronize all threads to start together
+                results[idx] = transport._ensure_key()
+
+            with patch(
+                "jarvis_engine.sync.transport.derive_sync_key",
+                side_effect=counting_derive,
+            ):
+                threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+
+            # All threads got the same key
+            assert all(r == results[0] for r in results)
+            # Key was derived exactly once
+            assert call_count["n"] == 1
+
+    # --- Round-trip with various payload sizes ---
+
+    @pytest.mark.parametrize(
+        "size_label,payload_factory",
+        [
+            ("tiny", lambda: {"a": 1}),
+            ("small_100B", lambda: {"data": "x" * 100}),
+            ("medium_10KB", lambda: {"data": "y" * 10_000}),
+            ("large_1MB", lambda: {"data": "z" * 1_000_000}),
+        ],
+        ids=["tiny", "small-100B", "medium-10KB", "large-1MB"],
+    )
+    def test_transport_roundtrip_various_sizes(self, size_label, payload_factory):
+        """SyncTransport round-trips payloads of varying sizes correctly."""
+        from jarvis_engine.sync.transport import SyncTransport
+
+        payload = payload_factory()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            salt_path = Path(tmpdir) / "salt.bin"
+            transport = SyncTransport("test-key", salt_path)
+
+            encrypted = transport.encrypt(payload)
+            decrypted = transport.decrypt(encrypted)
+            assert decrypted == payload

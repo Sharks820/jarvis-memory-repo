@@ -258,3 +258,296 @@ class TestBranchClassifier:
         a = [1.0, 0.0, 0.0]
         b = [0.0, 1.0, 0.0]
         assert abs(_cosine_similarity(a, b)) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Extended EnrichedIngestPipeline Tests
+# ---------------------------------------------------------------------------
+
+
+class TestIngestSanitization:
+    """Tests for the _sanitize method and credential redaction."""
+
+    def test_sanitize_strips_whitespace(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Leading/trailing whitespace is stripped."""
+        assert pipeline._sanitize("  hello  ") == "hello"
+
+    def test_sanitize_truncates_to_10000_chars(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Content longer than 10000 chars is truncated."""
+        long_text = "x" * 15000
+        result = pipeline._sanitize(long_text)
+        assert len(result) == 10000
+
+    def test_sanitize_redacts_api_key(self, pipeline: EnrichedIngestPipeline) -> None:
+        """API key patterns are redacted."""
+        text = "config: api_key=sk_live_abc123def456"
+        result = pipeline._sanitize(text)
+        assert "sk_live_abc123def456" not in result
+        assert "[REDACTED]" in result
+
+    def test_sanitize_redacts_bearer_token(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Bearer token patterns are redacted."""
+        text = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9"
+        result = pipeline._sanitize(text)
+        assert "eyJhbGciOiJIUzI1NiJ9" not in result
+        assert "[REDACTED]" in result
+
+    def test_sanitize_redacts_signing_key(self, pipeline: EnrichedIngestPipeline) -> None:
+        """signing-key patterns are redacted."""
+        text = "signing-key: my_secret_value_here"
+        result = pipeline._sanitize(text)
+        assert "my_secret_value_here" not in result
+
+    def test_sanitize_preserves_normal_text(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Non-credential text is preserved unchanged."""
+        text = "I went to the store and bought milk"
+        assert pipeline._sanitize(text) == text
+
+    def test_sanitize_empty_returns_empty(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Empty string returns empty string."""
+        assert pipeline._sanitize("") == ""
+
+
+class TestIngestChunking:
+    """Tests for the _chunk_content method."""
+
+    def test_short_content_single_chunk(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Content within 120% of max_chunk is returned as a single chunk."""
+        text = "Short content. Only a few words."
+        chunks = pipeline._chunk_content(text, max_chunk=1500)
+        assert len(chunks) == 1
+        assert chunks[0] == text
+
+    def test_long_content_splits_at_sentences(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Long content is split at sentence boundaries."""
+        sentences = [f"This is sentence {i}. " for i in range(50)]
+        text = "".join(sentences)
+        chunks = pipeline._chunk_content(text, max_chunk=200)
+        assert len(chunks) > 1
+        # Each chunk should be <= max_chunk (approximately)
+        for chunk in chunks:
+            # Oversized single sentences are allowed to exceed max_chunk
+            assert len(chunk) <= 200 or len(chunk.split(". ")) <= 2
+
+    def test_paragraph_splitting(self, pipeline: EnrichedIngestPipeline) -> None:
+        """Content with double newlines splits on paragraph boundaries."""
+        text = "Paragraph one sentence. Second sentence.\n\nParagraph two here. More text."
+        chunks = pipeline._chunk_content(text, max_chunk=50)
+        assert len(chunks) >= 2
+
+    def test_oversized_sentence_hard_split(self, pipeline: EnrichedIngestPipeline) -> None:
+        """A single sentence exceeding max_chunk is hard-split."""
+        # One continuous string with no sentence boundaries
+        text = "x" * 3000
+        chunks = pipeline._chunk_content(text, max_chunk=500)
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert len(chunk) <= 500
+
+    def test_empty_content_fallback(self, pipeline: EnrichedIngestPipeline) -> None:
+        """If chunking produces no results, fallback returns original content."""
+        # Unusual but edge case: content within threshold returns single chunk
+        text = "Hello world"
+        chunks = pipeline._chunk_content(text, max_chunk=1500)
+        assert chunks == [text]
+
+
+class TestIngestTagHandling:
+    """Tests for tag normalization during ingestion."""
+
+    def test_tags_lowercased_and_sorted(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Tags are lowercased, deduplicated, and sorted."""
+        import json
+
+        ids = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_tag",
+            content="tag handling test content",
+            tags=["Zebra", "alpha", "ALPHA", "Beta"],
+        )
+        assert len(ids) == 1
+        record = engine.get_record(ids[0])
+        tags = json.loads(record["tags"])
+        assert tags == ["alpha", "beta", "zebra"]
+
+    def test_tags_limited_to_10(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """At most 10 tags are stored."""
+        import json
+
+        many_tags = [f"tag{i}" for i in range(20)]
+        ids = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_tag2",
+            content="many tags test",
+            tags=many_tags,
+        )
+        assert len(ids) == 1
+        record = engine.get_record(ids[0])
+        tags = json.loads(record["tags"])
+        assert len(tags) <= 10
+
+    def test_empty_tags_filtered(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Whitespace-only and empty tag strings are filtered out."""
+        import json
+
+        ids = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_tag3",
+            content="empty tag test",
+            tags=["valid", "", "  ", "another"],
+        )
+        assert len(ids) == 1
+        record = engine.get_record(ids[0])
+        tags = json.loads(record["tags"])
+        assert "" not in tags
+        assert "valid" in tags
+        assert "another" in tags
+
+    def test_none_tags_defaults_to_empty_list(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """When tags=None, stored tags should be '[]'."""
+        import json
+
+        ids = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_tag4",
+            content="no tags test",
+            tags=None,
+        )
+        assert len(ids) == 1
+        record = engine.get_record(ids[0])
+        tags = json.loads(record["tags"])
+        assert tags == []
+
+
+class TestIngestDeduplication:
+    """Extended deduplication tests."""
+
+    def test_multi_chunk_dedup_per_chunk_hash(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Multi-chunk content uses per-chunk hashes, not full-document hash."""
+        # Build multi-chunk content
+        sentences = [f"Important finding number {i} from the research. " for i in range(60)]
+        long_content = " ".join(sentences)
+
+        ids1 = pipeline.ingest(source="user", kind="semantic", task_id="t_dd1", content=long_content)
+        assert len(ids1) > 1
+
+        # Second ingest of same content: engine-level dedup catches per-chunk hashes
+        ids2 = pipeline.ingest(source="user", kind="semantic", task_id="t_dd1", content=long_content)
+        assert len(ids2) == 0
+
+    def test_similar_but_different_content_not_deduped(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Slightly different content produces different hashes and is stored."""
+        ids1 = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_dd2",
+            content="The cat sat on the mat in the morning",
+        )
+        ids2 = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_dd2",
+            content="The cat sat on the mat in the evening",
+        )
+        assert len(ids1) == 1
+        assert len(ids2) == 1
+        assert ids1[0] != ids2[0]
+        assert engine.count_records() == 2
+
+
+class TestIngestSummaryGeneration:
+    """Tests for summary truncation behavior."""
+
+    def test_short_content_summary_is_full_content(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Short content (<200 chars) has summary == content."""
+        short = "This is a short memo about groceries."
+        ids = pipeline.ingest(source="user", kind="episodic", task_id="t_sum1", content=short)
+        record = engine.get_record(ids[0])
+        assert record["summary"] == short
+
+    def test_long_content_summary_truncated_at_word_boundary(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Content > 200 chars has summary truncated at word boundary."""
+        # Intentionally 250+ chars of readable text
+        text = "The quick brown fox jumps over the lazy dog. " * 10
+        assert len(text) > 200
+        # Because this is within 120% of 1500 it will be single-chunk
+        ids = pipeline.ingest(source="user", kind="episodic", task_id="t_sum2", content=text)
+        record = engine.get_record(ids[0])
+        assert len(record["summary"]) <= 200
+        # Should not end mid-word (unless the last space is before pos 100)
+        assert not record["summary"].endswith("T")  # would indicate mid-word cut
+
+
+class TestIngestFactExtraction:
+    """Tests for knowledge graph fact extraction during ingest."""
+
+    def test_fact_extraction_failure_does_not_block_record(
+        self, engine: MemoryEngine, embed_service: MockEmbeddingService, classifier: BranchClassifier
+    ) -> None:
+        """If fact extraction throws, the record is still stored."""
+        kg = MagicMock()
+        pipeline = EnrichedIngestPipeline(engine, embed_service, classifier, knowledge_graph=kg)
+
+        # Make the fact extractor fail
+        kg.add_fact.side_effect = RuntimeError("KG broken")
+
+        ids = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_fact1",
+            content="The capital of France is Paris",
+        )
+        # Record should still be stored despite KG failure
+        assert len(ids) == 1
+        assert engine.get_record(ids[0]) is not None
+
+    def test_no_kg_skips_fact_extraction(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """When knowledge_graph is None, fact extraction is skipped entirely."""
+        # The default pipeline fixture has no KG
+        ids = pipeline.ingest(
+            source="user", kind="episodic", task_id="t_fact2",
+            content="Some content for testing",
+        )
+        assert len(ids) == 1
+
+
+class TestIngestEmbeddingFailure:
+    """Tests for embedding service failure handling."""
+
+    def test_embedding_failure_propagates(
+        self, engine: MemoryEngine, classifier: BranchClassifier
+    ) -> None:
+        """If the embedding service raises, the error propagates (no silent swallow)."""
+        failing_embed = MagicMock()
+        failing_embed.embed.side_effect = RuntimeError("Model not loaded")
+
+        pipeline = EnrichedIngestPipeline(engine, failing_embed, classifier)
+        with pytest.raises(RuntimeError, match="Model not loaded"):
+            pipeline.ingest(
+                source="user", kind="episodic", task_id="t_emb_fail",
+                content="Some content to embed",
+            )
+
+    def test_record_id_deterministic(
+        self, pipeline: EnrichedIngestPipeline, engine: MemoryEngine
+    ) -> None:
+        """Same content+source+kind+task_id produces the same record_id."""
+        ids1 = pipeline.ingest(
+            source="user", kind="episodic", task_id="det_test",
+            content="deterministic id test",
+        )
+        # Delete the record so we can re-ingest
+        engine.delete_record(ids1[0])
+        ids2 = pipeline.ingest(
+            source="user", kind="episodic", task_id="det_test",
+            content="deterministic id test",
+        )
+        assert ids1[0] == ids2[0]

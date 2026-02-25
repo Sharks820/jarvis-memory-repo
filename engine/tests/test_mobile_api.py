@@ -5,8 +5,13 @@ import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from pathlib import Path
+
 from conftest import http_request, signed_headers
 from jarvis_engine import mobile_api
+from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
 from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
 
 
@@ -16,6 +21,139 @@ def test_health_endpoint(mobile_server) -> None:
     payload = json.loads(body.decode("utf-8"))
     assert payload["ok"] is True
     assert payload["status"] == "healthy"
+    # Intelligence status should always be present (defaults when no history file)
+    assert "intelligence" in payload
+    intel = payload["intelligence"]
+    assert isinstance(intel["score"], (int, float))
+    assert isinstance(intel["regression"], bool)
+    assert isinstance(intel["last_test"], str)
+
+
+def test_health_endpoint_with_self_test_history(mobile_server) -> None:
+    """Health endpoint reads intelligence score from self_test_history.jsonl."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    history_path = runtime_dir / "self_test_history.jsonl"
+    record = json.dumps({
+        "average_score": 0.85,
+        "timestamp": "2026-02-25T10:00:00Z",
+        "below_threshold": False,
+    })
+    history_path.write_text(record + "\n", encoding="utf-8")
+
+    code, body = http_request("GET", f"{mobile_server.base_url}/health")
+    assert code == 200
+    payload = json.loads(body.decode("utf-8"))
+    intel = payload["intelligence"]
+    assert intel["score"] == 0.85
+    assert intel["last_test"] == "2026-02-25T10:00:00Z"
+    assert intel["regression"] is False
+
+
+def test_health_endpoint_with_regression_detected(mobile_server) -> None:
+    """Health endpoint reports regression when below_threshold is True."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    history_path = runtime_dir / "self_test_history.jsonl"
+    records = [
+        json.dumps({"average_score": 0.85, "timestamp": "2026-02-24T10:00:00Z", "below_threshold": False}),
+        json.dumps({"average_score": 0.42, "timestamp": "2026-02-25T10:00:00Z", "below_threshold": True}),
+    ]
+    history_path.write_text("\n".join(records) + "\n", encoding="utf-8")
+
+    code, body = http_request("GET", f"{mobile_server.base_url}/health")
+    assert code == 200
+    payload = json.loads(body.decode("utf-8"))
+    intel = payload["intelligence"]
+    assert intel["score"] == 0.42
+    assert intel["regression"] is True
+
+
+# ---------------------------------------------------------------------------
+# TestHealthIntelligence — intelligence regression feature in /health
+# ---------------------------------------------------------------------------
+
+
+class TestHealthIntelligence:
+    """Tests for the intelligence regression status returned by GET /health."""
+
+    def test_health_includes_intelligence_data(self, mobile_server) -> None:
+        """Create self_test_history.jsonl with valid data, verify /health response."""
+        runtime_dir = mobile_server.root / ".planning" / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        history_path = runtime_dir / "self_test_history.jsonl"
+        record = json.dumps({
+            "average_score": 0.85,
+            "timestamp": "2026-02-25T12:00:00",
+            "below_threshold": False,
+        })
+        history_path.write_text(record + "\n", encoding="utf-8")
+
+        code, body = http_request("GET", f"{mobile_server.base_url}/health")
+        assert code == 200
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["ok"] is True
+        assert payload["status"] == "healthy"
+        intel = payload["intelligence"]
+        assert intel["score"] == 0.85
+        assert intel["regression"] is False
+        assert intel["last_test"] == "2026-02-25T12:00:00"
+
+    def test_health_intelligence_defaults_when_no_file(self, mobile_server) -> None:
+        """Verify default values when self_test_history.jsonl doesn't exist."""
+        # Ensure the file does not exist
+        history_path = mobile_server.root / ".planning" / "runtime" / "self_test_history.jsonl"
+        if history_path.exists():
+            history_path.unlink()
+
+        code, body = http_request("GET", f"{mobile_server.base_url}/health")
+        assert code == 200
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["ok"] is True
+        assert payload["status"] == "healthy"
+        intel = payload["intelligence"]
+        assert intel["score"] == 0.0
+        assert intel["regression"] is False
+        assert intel["last_test"] == ""
+
+    def test_health_intelligence_handles_corrupt_file(self, mobile_server) -> None:
+        """Malformed JSONL doesn't crash /health — defaults are returned."""
+        runtime_dir = mobile_server.root / ".planning" / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        history_path = runtime_dir / "self_test_history.jsonl"
+        # Write corrupt content that is not valid JSON
+        history_path.write_text("{not valid json!!\n", encoding="utf-8")
+
+        code, body = http_request("GET", f"{mobile_server.base_url}/health")
+        assert code == 200
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["ok"] is True
+        assert payload["status"] == "healthy"
+        # Should fall back to defaults since parsing failed
+        intel = payload["intelligence"]
+        assert intel["score"] == 0.0
+        assert intel["regression"] is False
+        assert intel["last_test"] == ""
+
+    def test_health_intelligence_shows_regression(self, mobile_server) -> None:
+        """Verify regression=true when below_threshold=true in history."""
+        runtime_dir = mobile_server.root / ".planning" / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        history_path = runtime_dir / "self_test_history.jsonl"
+        records = [
+            json.dumps({"average_score": 0.90, "timestamp": "2026-02-24T08:00:00", "below_threshold": False}),
+            json.dumps({"average_score": 0.35, "timestamp": "2026-02-25T14:30:00", "below_threshold": True}),
+        ]
+        history_path.write_text("\n".join(records) + "\n", encoding="utf-8")
+
+        code, body = http_request("GET", f"{mobile_server.base_url}/health")
+        assert code == 200
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["ok"] is True
+        intel = payload["intelligence"]
+        assert intel["score"] == 0.35
+        assert intel["regression"] is True
+        assert intel["last_test"] == "2026-02-25T14:30:00"
 
 
 def test_ingest_valid_request_writes_event(mobile_server) -> None:
@@ -579,3 +717,823 @@ def test_processes_kill_rejects_unknown_service(mobile_server) -> None:
     assert code == 400
     resp = json.loads(body.decode("utf-8"))
     assert "Unknown service" in resp["error"]
+
+
+# ---------------------------------------------------------------------------
+# /sync/pull endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_sync_pull_success_with_valid_auth(mobile_server, monkeypatch) -> None:
+    """POST /sync/pull returns encrypted payload when sync engine is available."""
+    import base64
+
+    mock_outgoing = {"changes": {"memories": []}, "cursors": {"memories": 42}}
+    mock_encrypted = b"fake-encrypted-data"
+
+    class FakeSyncEngine:
+        def compute_outgoing(self, device_id):
+            return mock_outgoing
+
+    class FakeSyncTransport:
+        def encrypt(self, payload):
+            return mock_encrypted
+
+    mobile_server.server._sync_engine = FakeSyncEngine()
+    mobile_server.server._sync_transport = FakeSyncTransport()
+
+    payload = {"device_id": "galaxy_s25_primary"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["encrypted_payload"] == base64.b64encode(mock_encrypted).decode("ascii")
+    assert resp["new_cursors"] == {"memories": 42}
+    assert resp["has_more"] is False
+
+
+def test_sync_pull_rejects_invalid_auth(mobile_server) -> None:
+    """POST /sync/pull with bad bearer token returns 401."""
+    payload = {"device_id": "galaxy_s25_primary"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    headers["Authorization"] = "Bearer wrong-token"
+    code, _ = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    assert code == 401
+
+
+def test_sync_pull_rejects_missing_device_id(mobile_server) -> None:
+    """POST /sync/pull with empty device_id returns 400."""
+    payload = {"device_id": ""}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    assert code == 400
+    resp = json.loads(body.decode("utf-8"))
+    assert "device_id" in resp["error"].lower()
+
+
+def test_sync_pull_returns_503_when_sync_unavailable(mobile_server) -> None:
+    """POST /sync/pull when no sync engine returns 503."""
+    mobile_server.server._sync_engine = None
+    mobile_server.server._sync_transport = None
+
+    payload = {"device_id": "galaxy_s25_primary"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    assert code == 503
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# /sync/push endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_sync_push_success_with_valid_auth(mobile_server) -> None:
+    """POST /sync/push applies incoming changes successfully."""
+    import base64
+
+    mock_result = {"applied": 5, "conflicts_resolved": 1, "errors": []}
+
+    class FakeSyncEngine:
+        def apply_incoming(self, changes, device_id):
+            return mock_result
+
+    class FakeSyncTransport:
+        def decrypt(self, token, ttl=3600):
+            return {"changes": []}
+
+    mobile_server.server._sync_engine = FakeSyncEngine()
+    mobile_server.server._sync_transport = FakeSyncTransport()
+
+    encrypted = base64.b64encode(b"fake-encrypted").decode("ascii")
+    payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": encrypted}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["applied"] == 5
+    assert resp["conflicts_resolved"] == 1
+    assert resp["errors"] == []
+
+
+def test_sync_push_rejects_invalid_auth(mobile_server) -> None:
+    """POST /sync/push with bad signature returns 401."""
+    import base64
+
+    encrypted = base64.b64encode(b"fake").decode("ascii")
+    payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": encrypted}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    headers["X-Jarvis-Signature"] = "deadbeef"
+    code, _ = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    assert code == 401
+
+
+def test_sync_push_rejects_missing_encrypted_payload(mobile_server) -> None:
+    """POST /sync/push with empty encrypted_payload returns 400."""
+    payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": ""}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    assert code == 400
+    resp = json.loads(body.decode("utf-8"))
+    assert "encrypted_payload" in resp["error"].lower()
+
+
+def test_sync_push_rejects_missing_device_id(mobile_server) -> None:
+    """POST /sync/push with empty device_id returns 400."""
+    import base64
+
+    encrypted = base64.b64encode(b"data").decode("ascii")
+    payload = {"device_id": "", "encrypted_payload": encrypted}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    assert code == 400
+    resp = json.loads(body.decode("utf-8"))
+    assert "device_id" in resp["error"].lower()
+
+
+def test_sync_push_returns_503_when_sync_unavailable(mobile_server) -> None:
+    """POST /sync/push when no sync engine returns 503."""
+    import base64
+
+    mobile_server.server._sync_engine = None
+    mobile_server.server._sync_transport = None
+
+    encrypted = base64.b64encode(b"data").decode("ascii")
+    payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": encrypted}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    assert code == 503
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# /sync/status endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_sync_status_returns_status_when_available(mobile_server) -> None:
+    """GET /sync/status returns sync status from engine."""
+    mock_status = {"last_sync": "2026-02-25T10:00:00", "pending_changes": 3}
+
+    class FakeSyncEngine:
+        def sync_status(self):
+            return mock_status
+
+    mobile_server.server._sync_engine = FakeSyncEngine()
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["sync_status"] == mock_status
+
+
+def test_sync_status_returns_503_when_unavailable(mobile_server) -> None:
+    """GET /sync/status when no sync engine returns 503."""
+    mobile_server.server._sync_engine = None
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+    assert code == 503
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+    assert "not available" in resp["error"].lower()
+
+
+def test_sync_status_requires_auth(mobile_server) -> None:
+    """GET /sync/status without auth returns 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/sync/status")
+    assert code == 401
+
+
+def test_sync_status_handles_engine_exception(mobile_server) -> None:
+    """GET /sync/status returns 500 when engine raises."""
+
+    class BrokenSyncEngine:
+        def sync_status(self):
+            raise RuntimeError("db locked")
+
+    mobile_server.server._sync_engine = BrokenSyncEngine()
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+    assert code == 500
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# CORS handling
+# ---------------------------------------------------------------------------
+
+
+def test_options_returns_cors_headers(mobile_server) -> None:
+    """OPTIONS request returns 204 with CORS headers."""
+    import http.client
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(mobile_server.base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    conn.request("OPTIONS", "/health", headers={"Origin": "http://localhost:3000"})
+    resp = conn.getresponse()
+    resp.read()
+
+    assert resp.status == 204
+    assert "GET" in resp.getheader("Access-Control-Allow-Methods", "")
+    assert "POST" in resp.getheader("Access-Control-Allow-Methods", "")
+    assert "OPTIONS" in resp.getheader("Access-Control-Allow-Methods", "")
+    assert "X-Jarvis-Signature" in resp.getheader("Access-Control-Allow-Headers", "")
+    assert resp.getheader("Access-Control-Max-Age") == "3600"
+    conn.close()
+
+
+def test_cors_allows_localhost_origin(mobile_server) -> None:
+    """CORS headers include Access-Control-Allow-Origin for localhost."""
+    import http.client
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(mobile_server.base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    conn.request("GET", "/health", headers={"Origin": "http://localhost:8080"})
+    resp = conn.getresponse()
+    resp.read()
+
+    assert resp.getheader("Access-Control-Allow-Origin") == "http://localhost:8080"
+    assert resp.getheader("Vary") == "Origin"
+    conn.close()
+
+
+def test_cors_blocks_unknown_origin(mobile_server) -> None:
+    """CORS headers omit Access-Control-Allow-Origin for unknown origins."""
+    import http.client
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(mobile_server.base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    conn.request("GET", "/health", headers={"Origin": "https://evil.com"})
+    resp = conn.getresponse()
+    resp.read()
+
+    assert resp.getheader("Access-Control-Allow-Origin") is None
+    conn.close()
+
+
+def test_is_cors_origin_allowed_patterns(mobile_server) -> None:
+    """is_cors_origin_allowed returns correct results for various origins."""
+    server = mobile_server.server
+    assert server.is_cors_origin_allowed("http://localhost") is True
+    assert server.is_cors_origin_allowed("http://localhost:3000") is True
+    assert server.is_cors_origin_allowed("https://localhost:443") is True
+    assert server.is_cors_origin_allowed("http://127.0.0.1") is True
+    assert server.is_cors_origin_allowed("http://127.0.0.1:8787") is True
+    assert server.is_cors_origin_allowed("http://[::1]") is True
+    assert server.is_cors_origin_allowed("http://[::1]:8080") is True
+    assert server.is_cors_origin_allowed("file:///home/user/page.html") is True
+    assert server.is_cors_origin_allowed("https://evil.com") is False
+    assert server.is_cors_origin_allowed("http://192.168.1.100") is False
+    assert server.is_cors_origin_allowed("") is False
+
+
+# ---------------------------------------------------------------------------
+# Gaming state management
+# ---------------------------------------------------------------------------
+
+
+def _make_handler_stub(server):
+    """Create a minimal object that can call MobileIngestHandler methods
+    that only need ``self.server`` (gaming state, nonce cleanup, _run_main_cli)."""
+    class _Stub:
+        pass
+    stub = _Stub()
+    stub.server = server
+    # Bind unbound methods from the real handler class
+    stub._gaming_state_path = mobile_api.MobileIngestHandler._gaming_state_path.__get__(stub)
+    stub._read_gaming_state = mobile_api.MobileIngestHandler._read_gaming_state.__get__(stub)
+    stub._write_gaming_state = mobile_api.MobileIngestHandler._write_gaming_state.__get__(stub)
+    stub._cleanup_nonces = mobile_api.MobileIngestHandler._cleanup_nonces.__get__(stub)
+    stub._run_main_cli = mobile_api.MobileIngestHandler._run_main_cli.__get__(stub)
+    return stub
+
+
+def test_read_gaming_state_file_missing(mobile_server) -> None:
+    """_read_gaming_state returns defaults when file does not exist."""
+    stub = _make_handler_stub(mobile_server.server)
+    state = stub._read_gaming_state()
+    assert state["enabled"] is False
+    assert state["auto_detect"] is False
+    assert state["reason"] == ""
+    assert state["updated_utc"] == ""
+
+
+def test_read_gaming_state_file_exists(mobile_server) -> None:
+    """_read_gaming_state reads valid JSON from disk."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    state = {"enabled": True, "auto_detect": True, "reason": "playing", "updated_utc": "2026-02-25T10:00:00"}
+    (runtime_dir / "gaming_mode.json").write_text(json.dumps(state), encoding="utf-8")
+
+    stub = _make_handler_stub(mobile_server.server)
+    result = stub._read_gaming_state()
+    assert result["enabled"] is True
+    assert result["auto_detect"] is True
+    assert result["reason"] == "playing"
+
+
+def test_read_gaming_state_corrupt_json(mobile_server) -> None:
+    """_read_gaming_state returns defaults for corrupt JSON."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_dir / "gaming_mode.json").write_text("{bad json", encoding="utf-8")
+
+    stub = _make_handler_stub(mobile_server.server)
+    result = stub._read_gaming_state()
+    assert result["enabled"] is False
+    assert result["auto_detect"] is False
+
+
+def test_write_gaming_state_roundtrip(mobile_server) -> None:
+    """_write_gaming_state writes state that _read_gaming_state can read back."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    stub = _make_handler_stub(mobile_server.server)
+    written = stub._write_gaming_state(enabled=True, auto_detect=False, reason="test roundtrip")
+    assert written["enabled"] is True
+    assert written["auto_detect"] is False
+    assert written["reason"] == "test roundtrip"
+    assert written["updated_utc"] != ""
+
+    read_back = stub._read_gaming_state()
+    assert read_back["enabled"] is True
+    assert read_back["auto_detect"] is False
+    assert read_back["reason"] == "test roundtrip"
+
+
+def test_gaming_state_path_returns_expected_path(mobile_server) -> None:
+    """_gaming_state_path returns correct path under repo root."""
+    stub = _make_handler_stub(mobile_server.server)
+    path = stub._gaming_state_path()
+    assert path.name == "gaming_mode.json"
+    assert "runtime" in str(path)
+    assert ".planning" in str(path)
+
+
+# ---------------------------------------------------------------------------
+# _run_main_cli method
+# ---------------------------------------------------------------------------
+
+
+def test_run_main_cli_successful_command(mobile_server) -> None:
+    """_run_main_cli returns success result for subprocess that exits 0."""
+    from unittest.mock import MagicMock, patch
+
+    engine_dir = mobile_server.root / "engine"
+    engine_dir.mkdir(parents=True, exist_ok=True)
+
+    stub = _make_handler_stub(mobile_server.server)
+
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = "output line 1\noutput line 2\n"
+    fake_result.stderr = ""
+
+    with patch("subprocess.run", return_value=fake_result):
+        result = stub._run_main_cli(["self-heal"])
+    assert result["ok"] is True
+    assert result["command_exit_code"] == 0
+    assert "output line 1" in result["stdout_tail"]
+
+
+def test_run_main_cli_command_timeout(mobile_server) -> None:
+    """_run_main_cli handles TimeoutExpired gracefully."""
+    import subprocess
+    from unittest.mock import patch
+
+    engine_dir = mobile_server.root / "engine"
+    engine_dir.mkdir(parents=True, exist_ok=True)
+
+    stub = _make_handler_stub(mobile_server.server)
+
+    exc = subprocess.TimeoutExpired(cmd=["python"], timeout=30)
+    exc.stdout = "partial output"
+    exc.stderr = "partial error"
+
+    with patch("subprocess.run", side_effect=exc):
+        result = stub._run_main_cli(["self-heal"], timeout_s=30)
+    assert result["ok"] is False
+    assert "timed out" in result["error"].lower()
+    assert result["command_exit_code"] == 2
+
+
+def test_run_main_cli_command_failure(mobile_server) -> None:
+    """_run_main_cli handles non-zero exit code."""
+    from unittest.mock import MagicMock, patch
+
+    engine_dir = mobile_server.root / "engine"
+    engine_dir.mkdir(parents=True, exist_ok=True)
+
+    stub = _make_handler_stub(mobile_server.server)
+
+    fake_result = MagicMock()
+    fake_result.returncode = 1
+    fake_result.stdout = "some output\n"
+    fake_result.stderr = "error occurred\n"
+
+    with patch("subprocess.run", return_value=fake_result):
+        result = stub._run_main_cli(["bad-cmd"])
+    assert result["ok"] is False
+    assert result["command_exit_code"] == 1
+    assert "error occurred" in result["stderr_tail"]
+
+
+def test_run_main_cli_engine_dir_missing(mobile_server) -> None:
+    """_run_main_cli returns error when engine directory does not exist."""
+    stub = _make_handler_stub(mobile_server.server)
+
+    result = stub._run_main_cli(["self-heal"])
+    assert result["ok"] is False
+    assert result["command_exit_code"] == 2
+    assert "not found" in result["error"].lower()
+
+
+def test_run_main_cli_os_error(mobile_server) -> None:
+    """_run_main_cli handles OSError from subprocess."""
+    from unittest.mock import patch
+
+    engine_dir = mobile_server.root / "engine"
+    engine_dir.mkdir(parents=True, exist_ok=True)
+
+    stub = _make_handler_stub(mobile_server.server)
+
+    with patch("subprocess.run", side_effect=OSError("No such file")):
+        result = stub._run_main_cli(["self-heal"])
+    assert result["ok"] is False
+    assert result["command_exit_code"] == 2
+    assert "No such file" in result["stderr_tail"][0]
+
+
+# ---------------------------------------------------------------------------
+# _cleanup_nonces method
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_nonces_removes_old_nonces(mobile_server) -> None:
+    """_cleanup_nonces purges nonces older than REPLAY_WINDOW_SECONDS."""
+    stub = _make_handler_stub(mobile_server.server)
+
+    now = time.time()
+    old_ts = now - mobile_api.REPLAY_WINDOW_SECONDS - 60  # expired
+    recent_ts = now - 10  # still valid
+
+    mobile_server.server.nonce_seen["old_nonce"] = old_ts
+    mobile_server.server.nonce_seen["recent_nonce"] = recent_ts
+
+    stub._cleanup_nonces(now, force=True)
+
+    assert "old_nonce" not in mobile_server.server.nonce_seen
+    assert "recent_nonce" in mobile_server.server.nonce_seen
+
+
+def test_cleanup_nonces_retains_recent(mobile_server) -> None:
+    """_cleanup_nonces keeps nonces within the replay window."""
+    stub = _make_handler_stub(mobile_server.server)
+
+    now = time.time()
+    mobile_server.server.nonce_seen.clear()
+
+    for i in range(5):
+        mobile_server.server.nonce_seen[f"nonce_{i}"] = now - i * 10
+
+    stub._cleanup_nonces(now, force=True)
+
+    assert len(mobile_server.server.nonce_seen) == 5
+
+
+def test_cleanup_nonces_skips_when_not_due(mobile_server) -> None:
+    """_cleanup_nonces skips cleanup when interval hasn't elapsed (without force)."""
+    stub = _make_handler_stub(mobile_server.server)
+
+    now = time.time()
+    # Set next cleanup far in the future
+    mobile_server.server.next_nonce_cleanup_ts = now + 9999
+
+    old_ts = now - mobile_api.REPLAY_WINDOW_SECONDS - 60
+    mobile_server.server.nonce_seen["expired_nonce"] = old_ts
+
+    stub._cleanup_nonces(now, force=False)
+
+    # Should NOT have been cleaned because we are not due yet
+    assert "expired_nonce" in mobile_server.server.nonce_seen
+
+
+# ---------------------------------------------------------------------------
+# Nonce persistence across restarts
+# ---------------------------------------------------------------------------
+
+
+def test_persist_nonces_writes_jsonl_file(mobile_server) -> None:
+    """_persist_nonces writes valid nonces to JSONL file on disk."""
+    now = time.time()
+    mobile_server.server.nonce_seen.clear()
+    mobile_server.server.nonce_seen["nonce_alpha"] = now - 10
+    mobile_server.server.nonce_seen["nonce_beta"] = now - 20
+
+    mobile_server.server._persist_nonces()
+
+    cache_path = mobile_server.server._nonce_cache_path
+    assert cache_path.exists()
+    lines = cache_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    nonces_on_disk = set()
+    for line in lines:
+        entry = json.loads(line)
+        assert "nonce" in entry
+        assert "ts" in entry
+        nonces_on_disk.add(entry["nonce"])
+    assert nonces_on_disk == {"nonce_alpha", "nonce_beta"}
+
+
+def test_persist_nonces_excludes_expired(mobile_server) -> None:
+    """_persist_nonces only writes nonces within the replay window."""
+    now = time.time()
+    mobile_server.server.nonce_seen.clear()
+    mobile_server.server.nonce_seen["fresh"] = now - 10
+    mobile_server.server.nonce_seen["expired"] = now - mobile_api.REPLAY_WINDOW_SECONDS - 60
+
+    mobile_server.server._persist_nonces()
+
+    cache_path = mobile_server.server._nonce_cache_path
+    lines = cache_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["nonce"] == "fresh"
+
+
+def test_load_nonces_restores_valid_nonces(mobile_server) -> None:
+    """_load_nonces restores nonces from disk that are within the replay window."""
+    now = time.time()
+    cache_path = mobile_server.server._nonce_cache_path
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    entries = [
+        json.dumps({"nonce": "restored_1", "ts": now - 10}),
+        json.dumps({"nonce": "restored_2", "ts": now - 50}),
+        json.dumps({"nonce": "too_old", "ts": now - mobile_api.REPLAY_WINDOW_SECONDS - 100}),
+    ]
+    cache_path.write_text("\n".join(entries) + "\n", encoding="utf-8")
+
+    mobile_server.server.nonce_seen.clear()
+    mobile_server.server._load_nonces()
+
+    assert "restored_1" in mobile_server.server.nonce_seen
+    assert "restored_2" in mobile_server.server.nonce_seen
+    assert "too_old" not in mobile_server.server.nonce_seen
+
+
+def test_load_nonces_handles_missing_file(mobile_server) -> None:
+    """_load_nonces silently handles missing cache file."""
+    cache_path = mobile_server.server._nonce_cache_path
+    if cache_path.exists():
+        cache_path.unlink()
+
+    mobile_server.server.nonce_seen.clear()
+    mobile_server.server._load_nonces()
+    assert len(mobile_server.server.nonce_seen) == 0
+
+
+def test_cleanup_nonces_triggers_persist(mobile_server) -> None:
+    """_cleanup_nonces calls _persist_nonces during periodic cleanup."""
+    stub = _make_handler_stub(mobile_server.server)
+
+    now = time.time()
+    mobile_server.server.nonce_seen.clear()
+    mobile_server.server.nonce_seen["persist_test"] = now - 5
+
+    stub._cleanup_nonces(now, force=True)
+
+    cache_path = mobile_server.server._nonce_cache_path
+    assert cache_path.exists()
+    lines = cache_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["nonce"] == "persist_test"
+
+
+# ---------------------------------------------------------------------------
+# TestNoncePersistence — nonce cache persistence across server restarts
+# ---------------------------------------------------------------------------
+
+
+class TestNoncePersistence:
+    """Tests for _persist_nonces / _load_nonces round-trip and edge cases."""
+
+    def _make_server(self, root: Path) -> MobileIngestServer:
+        """Create a MobileIngestServer for unit tests (not started)."""
+        store = MemoryStore(root)
+        pipeline = IngestionPipeline(store)
+        return MobileIngestServer(
+            ("127.0.0.1", 0),
+            MobileIngestHandler,
+            auth_token="t",
+            signing_key="k",
+            pipeline=pipeline,
+            repo_root=root,
+        )
+
+    def test_persist_nonces_creates_file(self, tmp_path: Path) -> None:
+        """_persist_nonces creates a JSONL file with correct nonce entries."""
+        from unittest.mock import patch
+
+        root = tmp_path / "repo"
+        root.mkdir(parents=True, exist_ok=True)
+        fake_now = 1_700_000_000.0
+
+        with patch("time.time", return_value=fake_now):
+            server = self._make_server(root)
+
+        server.nonce_seen["aaa"] = fake_now - 10
+        server.nonce_seen["bbb"] = fake_now - 20
+
+        with patch("time.time", return_value=fake_now):
+            server._persist_nonces()
+
+        cache_path = server._nonce_cache_path
+        assert cache_path.exists(), "Nonce cache file should exist after persist"
+        lines = cache_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+        written = {}
+        for line in lines:
+            entry = json.loads(line)
+            assert "nonce" in entry
+            assert "ts" in entry
+            assert isinstance(entry["ts"], float)
+            written[entry["nonce"]] = entry["ts"]
+        assert set(written.keys()) == {"aaa", "bbb"}
+        assert written["aaa"] == fake_now - 10
+        assert written["bbb"] == fake_now - 20
+
+    def test_load_nonces_restores_valid(self, tmp_path: Path) -> None:
+        """Persist nonces on one server, create a new server, verify they load."""
+        from unittest.mock import patch
+
+        root = tmp_path / "repo"
+        root.mkdir(parents=True, exist_ok=True)
+        fake_now = 1_700_000_000.0
+
+        with patch("time.time", return_value=fake_now):
+            server1 = self._make_server(root)
+
+        server1.nonce_seen["nonce_x"] = fake_now - 30
+        server1.nonce_seen["nonce_y"] = fake_now - 60
+
+        with patch("time.time", return_value=fake_now):
+            server1._persist_nonces()
+
+        # Create a brand-new server (simulates restart) — _load_nonces runs in __init__
+        with patch("time.time", return_value=fake_now):
+            server2 = self._make_server(root)
+
+        assert "nonce_x" in server2.nonce_seen
+        assert "nonce_y" in server2.nonce_seen
+        assert len(server2.nonce_seen) == 2
+
+    def test_load_nonces_filters_expired(self, tmp_path: Path) -> None:
+        """Load a cache with valid and expired nonces; only valid survive."""
+        from unittest.mock import patch
+
+        root = tmp_path / "repo"
+        root.mkdir(parents=True, exist_ok=True)
+        fake_now = 1_700_000_000.0
+
+        # Write both valid and expired nonces directly to disk
+        cache_path = root / ".planning" / "runtime" / "nonce_cache.jsonl"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        entries = [
+            json.dumps({"nonce": "still_valid", "ts": fake_now - 50}),
+            json.dumps({"nonce": "barely_valid", "ts": fake_now - 299}),
+            json.dumps({"nonce": "just_expired", "ts": fake_now - 361}),
+            json.dumps({"nonce": "way_too_old", "ts": fake_now - 999}),
+        ]
+        cache_path.write_text("\n".join(entries) + "\n", encoding="utf-8")
+
+        with patch("time.time", return_value=fake_now):
+            server = self._make_server(root)
+
+        assert "still_valid" in server.nonce_seen
+        assert "barely_valid" in server.nonce_seen
+        assert "just_expired" not in server.nonce_seen
+        assert "way_too_old" not in server.nonce_seen
+        assert len(server.nonce_seen) == 2
+
+    def test_persist_atomic_write(self, tmp_path: Path) -> None:
+        """After successful persist, the .tmp file should not remain on disk."""
+        from unittest.mock import patch
+
+        root = tmp_path / "repo"
+        root.mkdir(parents=True, exist_ok=True)
+        fake_now = 1_700_000_000.0
+
+        with patch("time.time", return_value=fake_now):
+            server = self._make_server(root)
+
+        server.nonce_seen["abc123"] = fake_now - 5
+
+        with patch("time.time", return_value=fake_now):
+            server._persist_nonces()
+
+        assert server._nonce_cache_path.exists()
+        tmp_file = server._nonce_cache_path.with_suffix(".jsonl.tmp")
+        assert not tmp_file.exists(), "Temp file should be cleaned up after atomic rename"
+
+    def test_load_nonces_handles_missing_file(self, tmp_path: Path) -> None:
+        """_load_nonces does not crash when no cache file exists on disk."""
+        root = tmp_path / "repo"
+        root.mkdir(parents=True, exist_ok=True)
+
+        cache_path = root / ".planning" / "runtime" / "nonce_cache.jsonl"
+        assert not cache_path.exists()
+
+        # __init__ calls _load_nonces — should not crash
+        server = self._make_server(root)
+        assert len(server.nonce_seen) == 0
+
+    def test_load_nonces_handles_corrupt_file(self, tmp_path: Path) -> None:
+        """_load_nonces gracefully skips malformed JSONL lines."""
+        from unittest.mock import patch
+
+        root = tmp_path / "repo"
+        root.mkdir(parents=True, exist_ok=True)
+        fake_now = 1_700_000_000.0
+
+        runtime_dir = root / ".planning" / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = runtime_dir / "nonce_cache.jsonl"
+
+        content = "\n".join([
+            json.dumps({"nonce": "good_one", "ts": fake_now - 10}),
+            "{this is not valid json",
+            json.dumps({"nonce": "", "ts": fake_now - 5}),         # empty nonce
+            json.dumps({"ts": fake_now - 5}),                      # missing nonce key
+            json.dumps({"nonce": "also_good", "ts": fake_now - 20}),
+            "",                                                      # blank line
+            "null",                                                  # valid JSON but wrong type
+        ]) + "\n"
+        cache_path.write_text(content, encoding="utf-8")
+
+        with patch("time.time", return_value=fake_now):
+            server = self._make_server(root)
+
+        assert "good_one" in server.nonce_seen
+        assert "also_good" in server.nonce_seen
+        assert len(server.nonce_seen) == 2
+
+
+# ---------------------------------------------------------------------------
+# _parse_bool utility
+# ---------------------------------------------------------------------------
+
+
+def test_parse_bool_true_values() -> None:
+    """_parse_bool returns True for truthy inputs."""
+    assert mobile_api._parse_bool(True) is True
+    assert mobile_api._parse_bool("true") is True
+    assert mobile_api._parse_bool("True") is True
+    assert mobile_api._parse_bool("TRUE") is True
+    assert mobile_api._parse_bool("1") is True
+    assert mobile_api._parse_bool("yes") is True
+    assert mobile_api._parse_bool("  YES  ") is True
+
+
+def test_parse_bool_false_values() -> None:
+    """_parse_bool returns False for falsy inputs."""
+    assert mobile_api._parse_bool(False) is False
+    assert mobile_api._parse_bool("false") is False
+    assert mobile_api._parse_bool("False") is False
+    assert mobile_api._parse_bool("0") is False
+    assert mobile_api._parse_bool("no") is False
+    assert mobile_api._parse_bool("") is False
+    assert mobile_api._parse_bool("random") is False
+
+
+def test_parse_bool_non_string_non_bool() -> None:
+    """_parse_bool casts non-string/non-bool via bool()."""
+    assert mobile_api._parse_bool(1) is True
+    assert mobile_api._parse_bool(0) is False
+    assert mobile_api._parse_bool(42) is True
+    assert mobile_api._parse_bool(None) is False
+    assert mobile_api._parse_bool([]) is False
+    assert mobile_api._parse_bool([1]) is True
