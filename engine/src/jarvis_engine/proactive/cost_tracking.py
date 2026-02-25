@@ -7,10 +7,13 @@ as Jarvis's local knowledge base grows.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
@@ -22,17 +25,17 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
     try:
         summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
         summary_30d = cost_tracker.local_vs_cloud_summary(days=30)
-    except Exception:
-        # Return empty snapshot on cost tracker failure rather than crashing
+    except Exception as exc:
+        logger.warning("Cost tracker summary failed: %s", exc)
         summary_7d = {"local_pct": 0.0, "cloud_cost_usd": 0.0, "total_count": 0}
         summary_30d = {"local_pct": 0.0, "cloud_cost_usd": 0.0, "total_count": 0}
 
     snapshot = {
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
-        "7d_local_pct": summary_7d.get("local_pct", 0.0),
-        "30d_local_pct": summary_30d.get("local_pct", 0.0),
-        "7d_cloud_cost_usd": summary_7d.get("cloud_cost_usd", 0.0),
-        "30d_cloud_cost_usd": summary_30d.get("cloud_cost_usd", 0.0),
+        "7d_local_pct": round(float(summary_7d.get("local_pct", 0.0)), 4),
+        "30d_local_pct": round(float(summary_30d.get("local_pct", 0.0)), 4),
+        "7d_cloud_cost_usd": round(float(summary_7d.get("cloud_cost_usd", 0.0)), 6),
+        "30d_cloud_cost_usd": round(float(summary_30d.get("cloud_cost_usd", 0.0)), 6),
         "7d_total_queries": summary_7d.get("total_count", 0),
         "30d_total_queries": summary_30d.get("total_count", 0),
     }

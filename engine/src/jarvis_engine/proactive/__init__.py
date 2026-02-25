@@ -41,6 +41,7 @@ class ProactiveEngine:
         """Check each rule, respect cooldowns, fire notifications, return alerts."""
         now = datetime.now(timezone.utc)
         alerts: list[TriggerAlert] = []
+        seen_messages: set[str] = set()
 
         for rule in self._rules:
             # Check cooldown (thread-safe)
@@ -61,19 +62,26 @@ class ProactiveEngine:
             if not messages:
                 continue
 
-            # Create alerts and send notifications
+            # Create alerts and send notifications (with dedup)
+            new_alerts: list[TriggerAlert] = []
             for msg in messages:
+                dedup_key = f"{rule.rule_id}:{msg}"
+                if dedup_key in seen_messages:
+                    continue
+                seen_messages.add(dedup_key)
                 alert = TriggerAlert(
                     rule_id=rule.rule_id,
                     message=msg,
                     priority="normal",
                     timestamp=now.isoformat(),
                 )
+                new_alerts.append(alert)
                 alerts.append(alert)
 
-            self._notifier.send_batch(alerts[-len(messages):])
-            with self._lock:
-                self._last_fired[rule.rule_id] = now
+            if new_alerts:
+                self._notifier.send_batch(new_alerts)
+                with self._lock:
+                    self._last_fired[rule.rule_id] = now
 
         return alerts
 

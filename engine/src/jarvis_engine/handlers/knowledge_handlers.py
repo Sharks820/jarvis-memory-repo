@@ -32,7 +32,11 @@ class KnowledgeStatusHandler:
         if self._kg is None:
             return KnowledgeStatusResult()
 
-        from jarvis_engine.knowledge.regression import RegressionChecker
+        try:
+            from jarvis_engine.knowledge.regression import RegressionChecker
+        except ImportError as exc:
+            logger.warning("regression module not available: %s", exc)
+            return KnowledgeStatusResult()
 
         metrics = RegressionChecker(self._kg).capture_metrics()
         return KnowledgeStatusResult(
@@ -53,9 +57,13 @@ class ContradictionListHandler:
         if self._kg is None:
             return ContradictionListResult()
 
-        from jarvis_engine.knowledge.contradictions import ContradictionManager
+        try:
+            from jarvis_engine.knowledge.contradictions import ContradictionManager
+        except ImportError as exc:
+            logger.warning("contradictions module not available: %s", exc)
+            return ContradictionListResult()
 
-        mgr = ContradictionManager(self._kg.db, self._kg.write_lock)
+        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock)
         contradictions = mgr.list_all(
             status=cmd.status if cmd.status else None,
             limit=min(cmd.limit, 500),
@@ -75,9 +83,16 @@ class ContradictionResolveHandler:
                 message="Knowledge graph not available.",
             )
 
-        from jarvis_engine.knowledge.contradictions import ContradictionManager
+        try:
+            from jarvis_engine.knowledge.contradictions import ContradictionManager
+        except ImportError as exc:
+            logger.warning("contradictions module not available: %s", exc)
+            return ContradictionResolveResult(
+                success=False,
+                message="Contradictions module not available.",
+            )
 
-        mgr = ContradictionManager(self._kg.db, self._kg.write_lock)
+        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock)
         result = mgr.resolve(
             contradiction_id=cmd.contradiction_id,
             resolution=cmd.resolution,
@@ -111,9 +126,17 @@ class FactLockHandler:
                 message=f"Invalid action: {cmd.action!r}. Must be 'lock' or 'unlock'.",
             )
 
-        from jarvis_engine.knowledge.locks import FactLockManager
+        try:
+            from jarvis_engine.knowledge.locks import FactLockManager
+        except ImportError as exc:
+            logger.warning("locks module not available: %s", exc)
+            return FactLockResult(
+                success=False,
+                node_id=cmd.node_id,
+                message="Locks module not available.",
+            )
 
-        lock_mgr = FactLockManager(self._kg.db, self._kg.write_lock)
+        lock_mgr = FactLockManager(self._kg.db, self._kg.write_lock, self._kg.db_lock)
         if cmd.action == "lock":
             success = lock_mgr.owner_confirm_lock(cmd.node_id)
             return FactLockResult(
@@ -143,7 +166,13 @@ class KnowledgeRegressionHandler:
                 report={"status": "error", "message": "Knowledge graph not available."},
             )
 
-        from jarvis_engine.knowledge.regression import RegressionChecker
+        try:
+            from jarvis_engine.knowledge.regression import RegressionChecker
+        except ImportError as exc:
+            logger.warning("regression module not available: %s", exc)
+            return KnowledgeRegressionResult(
+                report={"status": "error", "message": "Regression module not available."},
+            )
 
         checker = RegressionChecker(self._kg)
         current = checker.capture_metrics()

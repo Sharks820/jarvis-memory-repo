@@ -63,7 +63,11 @@ class CrossBranchQueryHandler:
                 message="Cross-branch query requires engine, kg, and embed_service.",
             )
 
-        from jarvis_engine.learning.cross_branch import cross_branch_query
+        try:
+            from jarvis_engine.learning.cross_branch import cross_branch_query
+        except ImportError as exc:
+            logger.warning("cross_branch module not available: %s", exc)
+            return CrossBranchQueryResult(message="Cross-branch module not available.")
 
         result = cross_branch_query(
             query=cmd.query,
@@ -93,7 +97,11 @@ class FlagExpiredFactsHandler:
                 message="Knowledge graph not available.",
             )
 
-        from jarvis_engine.learning.temporal import flag_expired_facts
+        try:
+            from jarvis_engine.learning.temporal import flag_expired_facts
+        except ImportError as exc:
+            logger.warning("temporal module not available: %s", exc)
+            return FlagExpiredFactsResult(message="Temporal module not available.")
 
         count = flag_expired_facts(self._kg)
         return FlagExpiredFactsResult(
