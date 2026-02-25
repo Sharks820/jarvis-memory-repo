@@ -47,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jarvis.assistant.feature.callscreen.createCallScreeningRoleIntent
 import com.jarvis.assistant.feature.callscreen.isCallScreeningRoleGranted
@@ -130,7 +131,7 @@ fun SettingsScreen(
                     Text("Sync interval: ${syncSec}s", style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = syncSec.toFloat(),
-                        onValueChange = { viewModel.syncIntervalSec.value = it.toInt() },
+                        onValueChange = { viewModel.syncIntervalSec.value = it.roundToInt() },
                         onValueChangeFinished = { viewModel.saveSyncInterval(syncSec) },
                         valueRange = 15f..300f,
                         steps = 5,
@@ -523,7 +524,7 @@ fun SettingsScreen(
                     Text("Sleep Start Hour", style = MaterialTheme.typography.labelSmall)
                     Slider(
                         value = sleepStartHour.toFloat(),
-                        onValueChange = { viewModel.setSleepStartHour(it.toInt()) },
+                        onValueChange = { viewModel.setSleepStartHour(it.roundToInt()) },
                         valueRange = 18f..23f,
                         steps = 4,
                         enabled = detectSleep,
@@ -531,7 +532,7 @@ fun SettingsScreen(
                     Text("Sleep End Hour", style = MaterialTheme.typography.labelSmall)
                     Slider(
                         value = sleepEndHour.toFloat(),
-                        onValueChange = { viewModel.setSleepEndHour(it.toInt()) },
+                        onValueChange = { viewModel.setSleepEndHour(it.roundToInt()) },
                         valueRange = 5f..10f,
                         steps = 4,
                         enabled = detectSleep,
@@ -900,7 +901,7 @@ fun SettingsScreen(
                     )
                     Slider(
                         value = neglectedDays.toFloat(),
-                        onValueChange = { viewModel.setNeglectedThresholdDays(it.toInt()) },
+                        onValueChange = { viewModel.setNeglectedThresholdDays(it.roundToInt()) },
                         valueRange = 14f..90f,
                         steps = 14,
                         enabled = relationshipEnabled && neglectedAlerts,
