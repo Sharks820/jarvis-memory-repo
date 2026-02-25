@@ -14,10 +14,13 @@ import com.jarvis.assistant.data.dao.CommandQueueDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,7 +37,9 @@ class VoiceEngine @Inject constructor(
     private val processor: CommandQueueProcessor,
     private val commandQueueDao: CommandQueueDao,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val supervisorJob = SupervisorJob()
+    private val scope = CoroutineScope(supervisorJob + Dispatchers.Main)
+    private val ttsMutex = Mutex()
 
     private val _state = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val state: StateFlow<VoiceState> = _state
@@ -143,7 +148,7 @@ class VoiceEngine @Inject constructor(
                 }
                 val reply = response
                     ?: "I've queued your command, but the desktop hasn't responded yet."
-                scope.launch(Dispatchers.Main) { speakResponse(reply) }
+                speakResponse(reply)
             } catch (e: Exception) {
                 Log.e(TAG, "processCommand error", e)
                 _state.value = VoiceState.Error("Failed to send command: ${e.message}")
@@ -154,20 +159,24 @@ class VoiceEngine @Inject constructor(
     // ── TTS ────────────────────────────────────────────────────────────
 
     private fun speakResponse(text: String) {
-        _state.value = VoiceState.Speaking(text)
-        ensureTts { engine ->
-            engine.setSpeechRate(ttsSpeed)
-            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) {
-                    _state.value = VoiceState.Idle
+        scope.launch {
+            ttsMutex.withLock {
+                _state.value = VoiceState.Speaking(text)
+                ensureTts { engine ->
+                    engine.setSpeechRate(ttsSpeed)
+                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) {
+                            _state.value = VoiceState.Idle
+                        }
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) {
+                            _state.value = VoiceState.Idle
+                        }
+                    })
+                    engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_response")
                 }
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) {
-                    _state.value = VoiceState.Idle
-                }
-            })
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis_response")
+            }
         }
     }
 
@@ -194,6 +203,7 @@ class VoiceEngine @Inject constructor(
     }
 
     fun destroy() {
+        supervisorJob.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
         tts?.shutdown()
