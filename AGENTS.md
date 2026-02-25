@@ -3,7 +3,7 @@
 This repository is the execution base for the local-first Jarvis engine.
 
 ## Source Of Truth
-- `JARVIS_MASTERPLAN.md`
+- `CLAUDE.md`
 - `.planning/PROJECT.md`
 - `.planning/REQUIREMENTS.md`
 - `.planning/ROADMAP.md`
