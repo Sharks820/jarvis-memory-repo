@@ -36,8 +36,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.jarvis.assistant.data.entity.ConversationEntity
 import com.jarvis.assistant.feature.voice.VoiceEngine
 import com.jarvis.assistant.feature.voice.VoiceState
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -181,5 +182,6 @@ private fun ChatBubble(msg: ConversationEntity) {
     }
 }
 
-private val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-private fun formatTime(millis: Long): String = timeFormat.format(Date(millis))
+private val timeFormat = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+    .withZone(ZoneId.systemDefault())
+private fun formatTime(millis: Long): String = timeFormat.format(Instant.ofEpochMilli(millis))
