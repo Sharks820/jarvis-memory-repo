@@ -20,6 +20,8 @@ import com.jarvis.assistant.feature.notifications.NotificationPriority
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,7 +46,7 @@ class ParkingMemory @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var receiver: BroadcastReceiver? = null
 
@@ -54,6 +56,7 @@ class ParkingMemory @Inject constructor(
      */
     fun registerBluetoothReceiver() {
         if (receiver != null) return // already registered
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
@@ -115,6 +118,7 @@ class ParkingMemory @Inject constructor(
      * Unregister the BroadcastReceiver. Call from [JarvisService.onDestroy].
      */
     fun unregisterBluetoothReceiver() {
+        scope.cancel()
         receiver?.let {
             try {
                 context.unregisterReceiver(it)
