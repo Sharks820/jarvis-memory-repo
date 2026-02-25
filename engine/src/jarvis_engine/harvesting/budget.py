@@ -224,10 +224,10 @@ class BudgetManager:
         try:
             self._db.close()
         except Exception:
-            pass
+            logger.warning("Failed to close BudgetManager database connection")
 
     def __del__(self) -> None:
         try:
             self.close()
         except Exception:
-            pass
+            logger.debug("Failed to close BudgetManager database in __del__")

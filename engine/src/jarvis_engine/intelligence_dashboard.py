@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
@@ -279,7 +282,7 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
                 "trend": trend,
             }
     except Exception:
-        pass
+        logger.debug("Failed to collect KG metrics (knowledge graph module may not be available)")
     return {}
 
 
@@ -292,5 +295,5 @@ def _safe_gateway_summary(root: Path) -> dict[str, Any]:
             audit = GatewayAudit(audit_path)
             return audit.summary(hours=24)
     except Exception:
-        pass
+        logger.debug("Failed to collect gateway audit summary (audit log may not exist)")
     return {}

@@ -3,6 +3,7 @@ package com.jarvis.assistant
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -12,9 +13,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -34,13 +34,15 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var voiceEngine: VoiceEngine
     @Inject lateinit var crypto: CryptoHelper
 
-    private var isAuthenticated by mutableStateOf(false)
-    private var authError by mutableStateOf<String?>(null)
+    private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
+            val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+            val authError by viewModel.authError.collectAsState()
+
             JarvisTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -87,11 +89,14 @@ class MainActivity : FragmentActivity() {
             }
         }
 
-        // Auto-prompt biometric on launch
-        if (BiometricHelper.canAuthenticate(this)) {
-            promptBiometric()
-        } else {
-            isAuthenticated = true
+        // Auto-prompt biometric on launch (only if not already authenticated,
+        // e.g. after rotation the ViewModel preserves the auth state)
+        if (!viewModel.isAuthenticated.value) {
+            if (BiometricHelper.canAuthenticate(this)) {
+                promptBiometric()
+            } else {
+                viewModel.setAuthenticated(true)
+            }
         }
 
         // Start the foreground sync service
@@ -108,7 +113,7 @@ class MainActivity : FragmentActivity() {
 
     private fun handleVoiceIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(JarvisService.EXTRA_VOICE_COMMAND, false) == true) {
-            if (isAuthenticated) {
+            if (viewModel.isAuthenticated.value) {
                 voiceEngine.startListening()
             }
         }
@@ -123,11 +128,10 @@ class MainActivity : FragmentActivity() {
         BiometricHelper.authenticate(
             activity = this,
             onSuccess = {
-                isAuthenticated = true
-                authError = null
+                viewModel.onAuthSuccess()
             },
             onError = { error ->
-                authError = error
+                viewModel.onAuthError(error)
             },
         )
     }

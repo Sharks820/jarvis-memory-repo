@@ -99,7 +99,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
 
 
 def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -> dict[str, str]:
-    ts = str(time.time())
+    ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
     signing_material = ts.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
     sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()
@@ -844,7 +844,7 @@ class JarvisDesktopWidget(tk.Tk):
                     dot.config(text="\u25CB", fg=self.MUTED)
                     uptime_lbl.config(text="stopped")
         except Exception:
-            pass
+            logger.debug("Failed to refresh service status: list_services unavailable or errored")
         # Re-schedule every 10 seconds
         self.after(10000, self._refresh_services)
 

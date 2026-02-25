@@ -60,11 +60,17 @@ class NudgeResponseTracker @Inject constructor(
 
         // Positive reinforcement: if user acted on the nudge, bump the pattern's confidence
         if (response == "acted") {
-            val logs = nudgeLogDao.getLogsForPattern(nudgeLogId, 1)
-            // The logId and patternId are different -- we need the patternId from the log
-            // Since we don't have a direct lookup by logId, find via the response we just set
-            // Actually we need to query differently -- get the log we just updated
-            // For simplicity, the caller (NudgeActionReceiver) already has the patternId
+            val logEntry = nudgeLogDao.getById(nudgeLogId)
+            if (logEntry != null) {
+                val pattern = habitDao.getById(logEntry.patternId)
+                if (pattern != null) {
+                    // Small confidence bump (capped at 1.0) for positive reinforcement
+                    val newConfidence = (pattern.confidence + CONFIDENCE_BUMP).coerceAtMost(1.0f)
+                    habitDao.incrementOccurrence(logEntry.patternId, newConfidence)
+                }
+            } else {
+                Log.w(TAG, "Nudge log $nudgeLogId not found for positive reinforcement")
+            }
         }
 
         Log.i(TAG, "Recorded response '$response' for nudge log $nudgeLogId")
@@ -96,6 +102,7 @@ class NudgeResponseTracker @Inject constructor(
         private const val SAMPLE_SIZE = 20
         private const val MIN_SAMPLES = 5
         private const val SUPPRESSION_THRESHOLD = 0.8f
+        private const val CONFIDENCE_BUMP = 0.05f
         private const val EXPIRY_MS = 2L * 60 * 60 * 1000 // 2 hours
     }
 }

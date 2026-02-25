@@ -52,6 +52,12 @@ class CallStateReceiver : BroadcastReceiver() {
         val preCallCardManager = entryPoint.preCallCardManager()
         val postCallLogger = entryPoint.postCallLogger()
 
+        // Acquire a PendingResult so Android keeps the process alive while
+        // coroutines run.  Each branch that launches a coroutine is responsible
+        // for calling pendingResult.finish() in its finally block.
+        val pendingResult = goAsync()
+        var asyncHandled = false
+
         when (stateStr) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
                 // Incoming call ringing
@@ -62,11 +68,14 @@ class CallStateReceiver : BroadcastReceiver() {
                 Log.i(TAG, "RINGING: $currentNumber")
 
                 if (currentNumber.isNotBlank()) {
+                    asyncHandled = true
                     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                         try {
                             preCallCardManager.showPreCallCard(currentNumber)
                         } catch (e: Exception) {
                             Log.w(TAG, "Pre-call card error: ${e.message}")
+                        } finally {
+                            pendingResult.finish()
                         }
                     }
                 }
@@ -84,11 +93,14 @@ class CallStateReceiver : BroadcastReceiver() {
                     }
 
                     if (currentNumber.isNotBlank()) {
+                        asyncHandled = true
                         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                             try {
                                 preCallCardManager.showPreCallCard(currentNumber)
                             } catch (e: Exception) {
                                 Log.w(TAG, "Pre-call card error: ${e.message}")
+                            } finally {
+                                pendingResult.finish()
                             }
                         }
                     }
@@ -113,6 +125,7 @@ class CallStateReceiver : BroadcastReceiver() {
                     )
 
                     val numberToLog = currentNumber
+                    asyncHandled = true
                     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                         try {
                             postCallLogger.promptForContext(
@@ -122,6 +135,8 @@ class CallStateReceiver : BroadcastReceiver() {
                             )
                         } catch (e: Exception) {
                             Log.w(TAG, "Post-call logger error: ${e.message}")
+                        } finally {
+                            pendingResult.finish()
                         }
                     }
                 }
@@ -131,6 +146,11 @@ class CallStateReceiver : BroadcastReceiver() {
                 currentNumber = ""
                 wasIncoming = false
             }
+        }
+
+        // If no coroutine was launched, finish the pending result synchronously
+        if (!asyncHandled) {
+            pendingResult.finish()
         }
 
         lastState = stateStr

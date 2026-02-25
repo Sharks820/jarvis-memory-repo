@@ -1140,4 +1140,24 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
     if host not in {"127.0.0.1", "localhost", "::1"}:
         print("warning=mobile_api_non_loopback_without_tls")
     print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Mobile API server shutting down (KeyboardInterrupt)")
+    finally:
+        server.shutdown()
+        # Close sync DB connections to prevent SQLite connection leaks
+        if server._sync_engine is not None:
+            try:
+                sync_db = getattr(server._sync_engine, "_db", None)
+                if sync_db is not None:
+                    sync_db.close()
+                    logger.info("Sync engine DB connection closed")
+            except Exception as exc:
+                logger.warning("Failed to close sync engine DB: %s", exc)
+        # Close the MemoryStore (which holds its own SQLite connection)
+        try:
+            store.close()
+            logger.info("MemoryStore connection closed")
+        except Exception as exc:
+            logger.warning("Failed to close MemoryStore: %s", exc)

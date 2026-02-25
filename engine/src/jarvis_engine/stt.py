@@ -169,10 +169,42 @@ def transcribe_groq(
     text = data.get("text", "").strip()
     detected_lang = data.get("language", language)
 
+    # Compute real confidence from segment-level avg_logprob and no_speech_prob
+    segments = data.get("segments", [])
+    if segments and isinstance(segments, list):
+        import math
+
+        logprobs = []
+        no_speech_probs = []
+        for seg in segments:
+            if isinstance(seg, dict):
+                alp = seg.get("avg_logprob")
+                if isinstance(alp, (int, float)) and math.isfinite(alp):
+                    logprobs.append(alp)
+                nsp = seg.get("no_speech_prob")
+                if isinstance(nsp, (int, float)) and math.isfinite(nsp):
+                    no_speech_probs.append(nsp)
+
+        if logprobs:
+            # avg_logprob is typically -1.0 to 0.0; exp() gives token probability
+            avg_logprob = sum(logprobs) / len(logprobs)
+            token_prob = math.exp(max(-5.0, avg_logprob))  # clamp extreme negatives
+            # Penalize if high no-speech probability detected
+            avg_no_speech = (
+                sum(no_speech_probs) / len(no_speech_probs)
+                if no_speech_probs
+                else 0.0
+            )
+            confidence = round(token_prob * (1.0 - avg_no_speech * 0.5), 4)
+        else:
+            confidence = 0.85  # fallback if segments lack logprobs
+    else:
+        confidence = 0.85  # fallback if no segments returned
+
     return TranscriptionResult(
         text=text,
         language=detected_lang,
-        confidence=0.95,  # Whisper large-v3 is consistently high accuracy
+        confidence=confidence,
         duration_seconds=round(elapsed, 3),
         backend="groq-whisper",
     )

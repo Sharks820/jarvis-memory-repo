@@ -193,9 +193,11 @@ class VoiceEngine @Inject constructor(
         }
         tts = TextToSpeech(app) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.UK  // British persona
+                // Capture a local reference to avoid race with destroy()
+                val engine = tts ?: return@TextToSpeech
+                engine.language = Locale.UK  // British persona
                 ttsReady = true
-                block(tts!!)
+                block(engine)
             } else {
                 _state.value = VoiceState.Error("TTS initialisation failed")
             }
@@ -206,9 +208,11 @@ class VoiceEngine @Inject constructor(
         supervisorJob.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
-        tts?.shutdown()
+        // Capture local ref before nulling to avoid race with ensureTts callback
+        val ttsRef = tts
         tts = null
         ttsReady = false
+        ttsRef?.shutdown()
     }
 
     companion object {
