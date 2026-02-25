@@ -389,6 +389,70 @@ def _detect_hotword_once(keyword: str = "jarvis", timeout_s: int = 2) -> bool:
     return proc.stdout.strip().lower() == keyword
 
 
+# ---------------------------------------------------------------------------
+# Windows toast notifications via PowerShell BalloonTip (no external deps)
+# ---------------------------------------------------------------------------
+
+_TOAST_ICON_TYPES = {"Info", "Warning", "Error"}
+_TOAST_MAX_TITLE = 64
+_TOAST_MAX_MESSAGE = 256
+_TOAST_COOLDOWN_SECONDS = 120  # Max 1 toast per 2 minutes
+
+# Module-level throttle state (thread-safe via GIL for simple reads/writes)
+_last_toast_time: float = 0.0
+_toast_lock = threading.Lock()
+
+
+def _show_toast(title: str, message: str, icon: str = "Info") -> None:
+    """Show a Windows balloon-tip notification via PowerShell.
+
+    Fire-and-forget: launches a detached PowerShell process and returns
+    immediately.  Errors are logged but never raised.
+
+    Args:
+        title: Notification title (truncated to 64 chars).
+        message: Notification body (truncated to 256 chars).
+        icon: One of "Info", "Warning", "Error".
+    """
+    global _last_toast_time
+
+    if icon not in _TOAST_ICON_TYPES:
+        icon = "Info"
+    title = (title or "Jarvis")[:_TOAST_MAX_TITLE]
+    message = (message or "")[:_TOAST_MAX_MESSAGE]
+
+    # Throttle: max 1 toast per cooldown period
+    with _toast_lock:
+        now = time.time()
+        if now - _last_toast_time < _TOAST_COOLDOWN_SECONDS:
+            logger.debug("Toast throttled (cooldown active)")
+            return
+        _last_toast_time = now
+
+    # Escape single quotes for PowerShell string literals
+    safe_title = title.replace("'", "''")
+    safe_message = message.replace("'", "''")
+
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$n = New-Object System.Windows.Forms.NotifyIcon; "
+        "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+        "$n.Visible = $true; "
+        f"$n.ShowBalloonTip(5000, '{safe_title}', '{safe_message}', "
+        f"[System.Windows.Forms.ToolTipIcon]::{icon}); "
+        "Start-Sleep 6; $n.Dispose()"
+    )
+    try:
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-Command", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **_win_hidden_subprocess_kwargs(),
+        )
+    except Exception:
+        logger.debug("Failed to launch toast notification", exc_info=True)
+
+
 class JarvisDesktopWidget(tk.Tk):
     BG = "#070d1a"
     PANEL = "#0d1628"
@@ -420,6 +484,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._hotword_active = threading.Event()  # Guards against multiple hotword loops
         self._orb_after_id: str | None = None
         self._launcher_after_id: str | None = None
+        self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
 
         self.title("Jarvis Unlimited")
         self.geometry("470x760+40+60")
@@ -658,11 +723,13 @@ class JarvisDesktopWidget(tk.Tk):
         self.speak_var = tk.BooleanVar(value=False)
         self.auto_send_var = tk.BooleanVar(value=True)
         self.hotword_var = tk.BooleanVar(value=False)
+        self.notify_var = tk.BooleanVar(value=True)
         self._check(flags, "Allow PC Actions", self.execute_var).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Auto-Approve", self.priv_var).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Speak", self.speak_var).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Auto Send", self.auto_send_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed).pack(side=tk.LEFT)
+        self._check(flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed).pack(side=tk.LEFT, padx=(0, 10))
+        self._check(flags, "Notifications", self.notify_var).pack(side=tk.LEFT)
 
         row = tk.Frame(body, bg=self.PANEL)
         row.pack(fill=tk.X, padx=10, pady=(8, 0))
@@ -798,6 +865,14 @@ class JarvisDesktopWidget(tk.Tk):
         except Exception:
             pass  # Widget destroyed
 
+    def _notify_toast(self, title: str, message: str, icon: str = "Info") -> None:
+        """Send a toast notification if the Notifications toggle is enabled."""
+        try:
+            if self.notify_var.get():
+                _show_toast(title, message, icon)
+        except Exception:
+            pass  # Widget may be destroyed
+
     def _set_command_text(self, value: str) -> None:
         self.command_text.delete("1.0", tk.END)
         self.command_text.insert("1.0", value)
@@ -894,10 +969,14 @@ class JarvisDesktopWidget(tk.Tk):
                     self._log_async(" | ".join(str(x) for x in heal_lines[-4:]))
                 if sync_ok and heal_ok:
                     self._log_async("Self-Heal completed.")
+                elif not heal_ok:
+                    self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
             except HTTPError as exc:
                 self._log_async(f"diagnose failed: {_http_error_details(exc)}")
+                self._notify_toast("Jarvis Self-Heal", "Self-heal failed to complete", "Error")
             except (URLError, RuntimeError, TimeoutError) as exc:
                 self._log_async(f"diagnose failed: {exc}")
+                self._notify_toast("Jarvis Self-Heal", "Self-heal failed to complete", "Error")
             except Exception as exc:  # noqa: BLE001
                 self._log_async(f"diagnose failed: {exc}")
 
@@ -969,6 +1048,10 @@ class JarvisDesktopWidget(tk.Tk):
                 else:
                     dot.config(text="\u25CB", fg=self.MUTED)
                     uptime_lbl.config(text="stopped")
+                    # Notify if service was previously running (crash detected)
+                    if self._prev_svc_running.get(name, False):
+                        self._notify_toast("Jarvis Service Down", f"{name} has stopped", "Warning")
+                self._prev_svc_running[name] = svc["running"]
         except Exception:
             logger.debug("Failed to refresh service status: list_services unavailable or errored")
         # Re-schedule every 10 seconds
@@ -1192,6 +1275,19 @@ class JarvisDesktopWidget(tk.Tk):
                     growth_data = _http_json(cfg, "/intelligence/growth", method="GET")
                 except Exception:
                     pass  # Growth data is best-effort
+            # Fetch proactive alerts and send toast notifications
+            if ok and cfg.token and cfg.signing_key:
+                try:
+                    dash = _http_json(cfg, "/dashboard", method="GET")
+                    alerts = dash.get("dashboard", {}).get("proactive_alerts", [])
+                    if isinstance(alerts, list):
+                        for alert in alerts:
+                            msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
+                            if msg:
+                                self._notify_toast("Jarvis Alert", msg, "Warning")
+                                break  # One toast per poll cycle (throttle handles the rest)
+                except Exception:
+                    pass  # Proactive alerts are best-effort
             if not self.stop_event.is_set():
                 try:
                     self.after(0, self._set_online, ok, intel_data, growth_data)

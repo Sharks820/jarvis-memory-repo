@@ -10,6 +10,7 @@ from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
     is_safe_public_url as _is_safe_public_url,
     search_duckduckgo as _search_duckduckgo,
+    search_web as _search_web,
 )
 
 STOPWORDS = {
@@ -51,7 +52,7 @@ def _query_keywords(query: str) -> set[str]:
     return {word for word in words if word not in STOPWORDS}
 
 
-# _is_safe_public_url, _search_duckduckgo, _fetch_page_text imported from web_fetch
+# _is_safe_public_url, _search_web, _search_duckduckgo, _fetch_page_text imported from web_fetch
 
 
 def _extract_snippet(text: str, *, query: str, max_sentences: int = 2) -> str:
@@ -82,7 +83,7 @@ def run_web_research(
     cleaned_query = query.strip()[:260]
     if not cleaned_query:
         raise ValueError("query is required")
-    urls = _search_duckduckgo(cleaned_query, limit=max(2, min(max_results, 20)))
+    urls = _search_web(cleaned_query, limit=max(2, min(max_results, 20)))
     findings: list[dict[str, str]] = []
     scanned_urls: list[str] = []
     for url in urls[: max(1, min(max_pages, 20))]:
