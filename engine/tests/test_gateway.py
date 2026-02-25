@@ -13,7 +13,12 @@ from anthropic import APIConnectionError
 
 from jarvis_engine.gateway.audit import GatewayAudit
 from jarvis_engine.gateway.costs import CostTracker
-from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
+from jarvis_engine.gateway.models import (
+    CLOUD_MODEL_MAP,
+    OPENAI_COMPAT_PROVIDERS,
+    GatewayResponse,
+    ModelGateway,
+)
 from jarvis_engine.gateway.pricing import PRICING, calculate_cost
 
 
@@ -612,3 +617,771 @@ class TestModelGatewayAudit:
         records = GatewayAudit(audit_path).recent()
         assert len(records) == 1
         assert records[0]["privacy_routed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Helper: mock httpx response for OpenAI-compatible APIs
+# ---------------------------------------------------------------------------
+
+def _mock_httpx_response(
+    status_code: int = 200,
+    json_body: dict | None = None,
+    text: str = "",
+) -> MagicMock:
+    """Create a mock httpx.Response for cloud API calls."""
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = status_code
+    if json_body is not None:
+        resp.json.return_value = json_body
+        resp.text = json.dumps(json_body)
+    else:
+        resp.text = text
+        resp.json.side_effect = json.JSONDecodeError("bad json", text, 0)
+    return resp
+
+
+def _openai_chat_response(
+    content: str = "cloud answer",
+    prompt_tokens: int = 15,
+    completion_tokens: int = 8,
+) -> dict:
+    """Return a standard OpenAI-compatible chat/completions response body."""
+    return {
+        "choices": [{"message": {"content": content}}],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# _call_openai_compat tests
+# ---------------------------------------------------------------------------
+
+class TestCallOpenaiCompat:
+    """Tests for ModelGateway._call_openai_compat() with mocked httpx."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_successful_groq_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Groq provider calls the correct endpoint with GROQ_API_KEY."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("groq answer", 20, 10)
+        )
+
+        resp = gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "kimi-k2", 1024, "groq"
+        )
+
+        assert resp.text == "groq answer"
+        assert resp.provider == "groq"
+        assert resp.input_tokens == 20
+        assert resp.output_tokens == 10
+        assert resp.cost_usd > 0  # kimi-k2 is priced
+
+        # Verify URL and headers
+        call_args = gw._http.post.call_args
+        assert "groq.com" in call_args[0][0]
+        assert call_args[1]["headers"]["Authorization"] == "Bearer groq-test-key"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "mistral-test-key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_successful_mistral_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Mistral provider calls the correct endpoint with MISTRAL_API_KEY."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("mistral answer", 30, 15)
+        )
+
+        resp = gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "devstral-2", 1024, "mistral"
+        )
+
+        assert resp.text == "mistral answer"
+        assert resp.provider == "mistral"
+        assert resp.input_tokens == 30
+        assert resp.output_tokens == 15
+
+        call_args = gw._http.post.call_args
+        assert "mistral.ai" in call_args[0][0]
+        assert call_args[1]["headers"]["Authorization"] == "Bearer mistral-test-key"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": "zai-test-key"})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_successful_zai_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Z.ai provider calls the correct endpoint with ZAI_API_KEY."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("zai answer", 25, 12)
+        )
+
+        resp = gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "glm-4.7", 1024, "zai"
+        )
+
+        assert resp.text == "zai answer"
+        assert resp.provider == "zai"
+        assert resp.input_tokens == 25
+        assert resp.output_tokens == 12
+
+        call_args = gw._http.post.call_args
+        assert "bigmodel.cn" in call_args[0][0]
+        assert call_args[1]["headers"]["Authorization"] == "Bearer zai-test-key"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_http_error_raises_runtime_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Non-200 HTTP status from cloud API raises RuntimeError."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            429, text="Rate limit exceeded"
+        )
+
+        with pytest.raises(RuntimeError, match="HTTP 429"):
+            gw._call_openai_compat(
+                [{"role": "user", "content": "hi"}], "kimi-k2", 1024, "groq"
+            )
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_http_500_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """HTTP 500 from cloud API raises RuntimeError with status code."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            500, text="Internal Server Error"
+        )
+
+        with pytest.raises(RuntimeError, match="HTTP 500"):
+            gw._call_openai_compat(
+                [{"role": "user", "content": "hi"}], "kimi-k2", 1024, "groq"
+            )
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_model_alias_resolved_to_api_model(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Cloud model aliases (e.g. kimi-k2) are resolved to API model IDs in the payload."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("ok")
+        )
+
+        gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "kimi-k2", 512, "groq"
+        )
+
+        call_args = gw._http.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["model"] == "moonshotai/kimi-k2-instruct"
+        assert payload["max_tokens"] == 512
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_unknown_model_passes_through(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Model name not in CLOUD_MODEL_MAP passes through as-is."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("ok")
+        )
+
+        gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "custom-model-xyz", 1024, "groq"
+        )
+
+        call_args = gw._http.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["model"] == "custom-model-xyz"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_empty_choices_returns_empty_text(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When API returns empty choices array, text should be empty string."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 0}}
+        )
+
+        resp = gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "kimi-k2", 1024, "groq"
+        )
+
+        assert resp.text == ""
+        assert resp.input_tokens == 5
+        assert resp.output_tokens == 0
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-test-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_missing_usage_defaults_to_zero(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When API response lacks usage field, tokens default to 0."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, {"choices": [{"message": {"content": "hi"}}]}
+        )
+
+        resp = gw._call_openai_compat(
+            [{"role": "user", "content": "hi"}], "kimi-k2", 1024, "groq"
+        )
+
+        assert resp.text == "hi"
+        assert resp.input_tokens == 0
+        assert resp.output_tokens == 0
+
+
+# ---------------------------------------------------------------------------
+# _resolve_provider tests
+# ---------------------------------------------------------------------------
+
+class TestResolveProvider:
+    """Tests for ModelGateway._resolve_provider() routing logic."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_claude_model_routes_to_anthropic(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """claude-* models route to anthropic when API key is configured."""
+        mock_anthropic_cls.return_value = MagicMock()
+        gw = ModelGateway(anthropic_api_key="test-key")
+
+        assert gw._resolve_provider("claude-sonnet-4-5-20250929") == "anthropic"
+        assert gw._resolve_provider("claude-opus") == "anthropic"
+        assert gw._resolve_provider("claude-haiku") == "anthropic"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_claude_without_key_falls_to_ollama(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """claude-* models fall through to ollama when no API key."""
+        gw = ModelGateway(anthropic_api_key=None)
+
+        assert gw._resolve_provider("claude-sonnet-4-5-20250929") == "ollama"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_groq_model_routes_to_cloud(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Groq cloud models route to cloud:groq when GROQ_API_KEY is set."""
+        gw = ModelGateway()
+
+        assert gw._resolve_provider("kimi-k2") == "cloud:groq"
+        assert gw._resolve_provider("llama-3.3-70b") == "cloud:groq"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "mistral-key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_mistral_model_routes_to_cloud(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Mistral models route to cloud:mistral when MISTRAL_API_KEY is set."""
+        gw = ModelGateway()
+
+        assert gw._resolve_provider("devstral-2") == "cloud:mistral"
+        assert gw._resolve_provider("devstral-small-2") == "cloud:mistral"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": "zai-key"})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_zai_model_routes_to_cloud(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Z.ai models route to cloud:zai when ZAI_API_KEY is set."""
+        gw = ModelGateway()
+
+        assert gw._resolve_provider("glm-4.7") == "cloud:zai"
+        assert gw._resolve_provider("glm-4.7-flash") == "cloud:zai"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_cloud_model_without_key_falls_to_ollama(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Cloud model names fall to ollama when their API key is missing."""
+        gw = ModelGateway()
+
+        assert gw._resolve_provider("kimi-k2") == "ollama"
+        assert gw._resolve_provider("devstral-2") == "ollama"
+        assert gw._resolve_provider("glm-4.7") == "ollama"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_unknown_model_routes_to_ollama(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Unknown/local model names always route to ollama."""
+        gw = ModelGateway()
+
+        assert gw._resolve_provider("qwen3:14b") == "ollama"
+        assert gw._resolve_provider("gemma3:4b") == "ollama"
+        assert gw._resolve_provider("custom-model") == "ollama"
+
+
+# ---------------------------------------------------------------------------
+# _best_cloud_model tests
+# ---------------------------------------------------------------------------
+
+class TestBestCloudModel:
+    """Tests for ModelGateway._best_cloud_model() priority selection."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "key", "MISTRAL_API_KEY": "key", "ZAI_API_KEY": "key"})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_groq_is_highest_priority(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When all cloud keys present, Groq (kimi-k2) wins as fastest."""
+        gw = ModelGateway()
+        assert gw._best_cloud_model() == "kimi-k2"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "key", "ZAI_API_KEY": "key"})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_mistral_when_no_groq(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When Groq missing, Mistral (devstral-2) is next priority."""
+        gw = ModelGateway()
+        assert gw._best_cloud_model() == "devstral-2"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": "key"})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_zai_when_no_groq_or_mistral(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When Groq and Mistral missing, Z.ai (glm-4.7-flash) is selected."""
+        gw = ModelGateway()
+        assert gw._best_cloud_model() == "glm-4.7-flash"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_no_cloud_keys_returns_none(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When no cloud keys are configured, returns None."""
+        gw = ModelGateway()
+        assert gw._best_cloud_model() is None
+
+
+# ---------------------------------------------------------------------------
+# _fallback_chain tests
+# ---------------------------------------------------------------------------
+
+class TestFallbackChain:
+    """Tests for ModelGateway._fallback_chain() provider cascade."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_anthropic_fails_groq_succeeds(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When Anthropic fails, fallback chain tries Groq and succeeds."""
+        gw = ModelGateway(anthropic_api_key="test-key")
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("groq fallback", 10, 5)
+        )
+
+        resp = gw._fallback_chain(
+            [{"role": "user", "content": "hi"}], 1024, "APIConnectionError",
+            skip_provider="anthropic",
+        )
+
+        assert resp.provider == "groq"
+        assert resp.text == "groq fallback"
+        assert resp.fallback_used is True
+        assert "APIConnectionError" in resp.fallback_reason
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_all_cloud_fails_ollama_fallback(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """When no cloud providers available, chain falls back to Ollama."""
+        mock_ollama = MagicMock()
+        mock_ollama.chat.return_value = _mock_ollama_response("ollama saves the day")
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway(anthropic_api_key="test-key")
+
+        resp = gw._fallback_chain(
+            [{"role": "user", "content": "hi"}], 1024, "APIConnectionError",
+            skip_provider="anthropic",
+        )
+
+        assert resp.provider == "ollama"
+        assert resp.fallback_used is True
+        assert resp.text == "ollama saves the day"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "key", "MISTRAL_API_KEY": "key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_skip_failed_provider(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Fallback chain skips the provider that already failed."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("mistral fallback", 10, 5)
+        )
+
+        resp = gw._fallback_chain(
+            [{"role": "user", "content": "hi"}], 1024, "groq error",
+            skip_provider="groq",
+        )
+
+        # Should have called Mistral, not Groq
+        assert resp.provider == "mistral"
+        assert resp.fallback_used is True
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "key", "MISTRAL_API_KEY": "key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_groq_fails_mistral_fails_ollama_succeeds(
+        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock
+    ) -> None:
+        """When Groq and Mistral both fail, chain falls through to Ollama."""
+        mock_ollama = MagicMock()
+        mock_ollama.chat.return_value = _mock_ollama_response("local final")
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(500, text="Server Error")
+
+        resp = gw._fallback_chain(
+            [{"role": "user", "content": "hi"}], 1024, "anthropic error",
+            skip_provider="anthropic",
+        )
+
+        assert resp.provider == "ollama"
+        assert resp.fallback_used is True
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", False)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_all_providers_fail_returns_none_provider(
+        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock
+    ) -> None:
+        """When all cloud and Ollama unavailable, provider is 'none'."""
+        gw = ModelGateway()
+
+        resp = gw._fallback_chain(
+            [{"role": "user", "content": "hi"}], 1024, "everything broke",
+            skip_provider="anthropic",
+        )
+
+        assert resp.provider == "none"
+        assert resp.fallback_used is True
+        assert "Ollama also failed" in resp.fallback_reason
+
+
+# ---------------------------------------------------------------------------
+# Health check tests
+# ---------------------------------------------------------------------------
+
+class TestHealthChecks:
+    """Tests for check_ollama(), check_anthropic(), check_cloud()."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_ollama_reachable(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_ollama returns True when Ollama server responds."""
+        mock_ollama = MagicMock()
+        mock_ollama.list.return_value = {"models": []}
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway()
+        assert gw.check_ollama() is True
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_ollama_unreachable(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_ollama returns False when Ollama server is down."""
+        mock_ollama = MagicMock()
+        mock_ollama.list.side_effect = ConnectionError("Connection refused")
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway()
+        assert gw.check_ollama() is False
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", False)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_ollama_no_package(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_ollama returns False when ollama package is not installed."""
+        gw = ModelGateway()
+        # _HAS_OLLAMA is False, so _ollama will be None
+        gw._ollama = None
+        assert gw.check_ollama() is False
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_anthropic_with_key(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_anthropic returns True when API key is configured."""
+        mock_anthropic_cls.return_value = MagicMock()
+        gw = ModelGateway(anthropic_api_key="test-key")
+        assert gw.check_anthropic() is True
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_anthropic_without_key(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_anthropic returns False when no API key."""
+        gw = ModelGateway(anthropic_api_key=None)
+        assert gw.check_anthropic() is False
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "gk", "MISTRAL_API_KEY": "", "ZAI_API_KEY": "zk"})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_cloud_returns_configured_providers(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_cloud returns dict of providers that have keys."""
+        gw = ModelGateway()
+        cloud = gw.check_cloud()
+        assert cloud == {"groq": True, "zai": True}
+        assert "mistral" not in cloud
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_check_cloud_no_keys(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """check_cloud returns empty dict when no cloud keys configured."""
+        gw = ModelGateway()
+        assert gw.check_cloud() == {}
+
+
+# ---------------------------------------------------------------------------
+# available_providers tests
+# ---------------------------------------------------------------------------
+
+class TestAvailableProviders:
+    """Tests for ModelGateway.available_providers()."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "gk", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_all_providers_available(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Lists anthropic, cloud providers, and ollama when all configured."""
+        mock_anthropic_cls.return_value = MagicMock()
+        mock_ollama = MagicMock()
+        mock_ollama.list.return_value = {"models": []}
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway(anthropic_api_key="test-key")
+        providers = gw.available_providers()
+
+        assert "anthropic" in providers
+        assert "groq" in providers
+        assert "ollama" in providers
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_ollama_only(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """With no API keys, only ollama is available (if running)."""
+        mock_ollama = MagicMock()
+        mock_ollama.list.return_value = {"models": []}
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway(anthropic_api_key=None)
+        providers = gw.available_providers()
+
+        assert providers == ["ollama"]
+        assert "anthropic" not in providers
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_no_providers_when_ollama_down(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """With no API keys and Ollama down, empty provider list."""
+        mock_ollama = MagicMock()
+        mock_ollama.list.side_effect = ConnectionError("down")
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway(anthropic_api_key=None)
+        providers = gw.available_providers()
+
+        assert providers == []
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "gk", "MISTRAL_API_KEY": "mk", "ZAI_API_KEY": "zk"})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_all_cloud_keys_present(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """All three cloud providers appear when all keys set."""
+        mock_ollama = MagicMock()
+        mock_ollama.list.side_effect = ConnectionError("down")
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway()
+        providers = gw.available_providers()
+
+        assert "groq" in providers
+        assert "mistral" in providers
+        assert "zai" in providers
+        assert "ollama" not in providers  # Ollama is down
+
+
+# ---------------------------------------------------------------------------
+# Context manager and close() tests
+# ---------------------------------------------------------------------------
+
+class TestGatewayLifecycle:
+    """Tests for close() and context manager protocol."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_close_releases_http_client(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """close() calls _http.close() to release connection pool."""
+        gw = ModelGateway()
+        mock_http = MagicMock()
+        gw._http = mock_http
+
+        gw.close()
+
+        mock_http.close.assert_called_once()
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_context_manager_returns_gateway(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Context manager __enter__ returns the gateway instance."""
+        gw = ModelGateway()
+        mock_http = MagicMock()
+        gw._http = mock_http
+
+        with gw as g:
+            assert g is gw
+
+        mock_http.close.assert_called_once()
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_context_manager_closes_on_exception(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """Context manager still calls close() even if body raises."""
+        gw = ModelGateway()
+        mock_http = MagicMock()
+        gw._http = mock_http
+
+        with pytest.raises(ValueError):
+            with gw:
+                raise ValueError("test error")
+
+        mock_http.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Cloud complete() integration tests (full path through complete())
+# ---------------------------------------------------------------------------
+
+class TestCloudCompleteIntegration:
+    """End-to-end tests for complete() dispatching to cloud providers."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-key", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_complete_dispatches_to_groq(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """complete() with a Groq model name dispatches through cloud path."""
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        gw._http.post.return_value = _mock_httpx_response(
+            200, _openai_chat_response("groq response", 20, 10)
+        )
+
+        resp = gw.complete(
+            messages=[{"role": "user", "content": "hi"}],
+            model="kimi-k2",
+        )
+
+        assert resp.provider == "groq"
+        assert resp.text == "groq response"
+        assert resp.fallback_used is False
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "groq-key", "MISTRAL_API_KEY": "mistral-key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_complete_cloud_failure_triggers_fallback(
+        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock
+    ) -> None:
+        """complete() with cloud provider failure falls back through chain."""
+        mock_ollama = MagicMock()
+        mock_ollama.chat.return_value = _mock_ollama_response("ollama rescue")
+        mock_ollama_cls.return_value = mock_ollama
+
+        gw = ModelGateway()
+        gw._http = MagicMock()
+        # All HTTP calls fail
+        gw._http.post.return_value = _mock_httpx_response(500, text="Server Error")
+
+        resp = gw.complete(
+            messages=[{"role": "user", "content": "hi"}],
+            model="kimi-k2",
+        )
+
+        assert resp.fallback_used is True
+        # Should have fallen through groq failure -> tried mistral (also failed) -> ollama
+        assert resp.provider == "ollama"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.OllamaClient")
+    @patch("jarvis_engine.gateway.models.Anthropic")
+    def test_init_with_explicit_cloud_keys(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+        """ModelGateway accepts explicit cloud API keys via constructor."""
+        gw = ModelGateway(groq_api_key="explicit-groq", mistral_api_key="explicit-mistral")
+
+        assert "groq" in gw._cloud_keys
+        assert "mistral" in gw._cloud_keys
+        assert "zai" not in gw._cloud_keys
+        assert gw._cloud_keys["groq"] == "explicit-groq"
+        assert gw._cloud_keys["mistral"] == "explicit-mistral"
+
+
+# ---------------------------------------------------------------------------
+# Data integrity tests
+# ---------------------------------------------------------------------------
+
+class TestCloudModelRegistry:
+    """Tests for the CLOUD_MODEL_MAP and OPENAI_COMPAT_PROVIDERS data."""
+
+    def test_all_cloud_models_reference_valid_providers(self) -> None:
+        """Every model in CLOUD_MODEL_MAP references a provider in OPENAI_COMPAT_PROVIDERS."""
+        for model_alias, (provider_key, _) in CLOUD_MODEL_MAP.items():
+            assert provider_key in OPENAI_COMPAT_PROVIDERS, (
+                f"Model '{model_alias}' references unknown provider '{provider_key}'"
+            )
+
+    def test_all_providers_have_required_fields(self) -> None:
+        """Every provider config has env_key, base_url, and provider_name."""
+        for key, cfg in OPENAI_COMPAT_PROVIDERS.items():
+            assert "env_key" in cfg, f"Provider '{key}' missing env_key"
+            assert "base_url" in cfg, f"Provider '{key}' missing base_url"
+            assert "provider_name" in cfg, f"Provider '{key}' missing provider_name"
+
+    def test_provider_urls_are_https(self) -> None:
+        """All cloud provider base URLs use HTTPS."""
+        for key, cfg in OPENAI_COMPAT_PROVIDERS.items():
+            assert cfg["base_url"].startswith("https://"), (
+                f"Provider '{key}' base_url is not HTTPS"
+            )
+
+    def test_all_cloud_models_have_pricing(self) -> None:
+        """Every cloud model alias in CLOUD_MODEL_MAP has a pricing entry."""
+        for model_alias in CLOUD_MODEL_MAP:
+            cost = calculate_cost(model_alias, 1_000_000, 1_000_000)
+            assert cost > 0, f"Model '{model_alias}' has no pricing entry"
