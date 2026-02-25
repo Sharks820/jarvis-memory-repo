@@ -1876,10 +1876,21 @@ def _cmd_daemon_run_impl(
                     print(f"self_heal_cycle_rc={heal_rc}")
                 # Collect KG growth metrics alongside self-heal
                 try:
-                    from jarvis_engine.knowledge.graph import KnowledgeGraph
+                    import sqlite3 as _sqlite3
                     from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
-                    kg = KnowledgeGraph(root)
-                    metrics = collect_kg_metrics(kg)
+                    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+                    if db_path.exists():
+                        _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
+                        try:
+                            # collect_kg_metrics uses kg.db — provide a lightweight shim
+                            class _KGShim:
+                                def __init__(self, conn: _sqlite3.Connection) -> None:
+                                    self.db = conn
+                            metrics = collect_kg_metrics(_KGShim(_kg_conn))
+                        finally:
+                            _kg_conn.close()
+                    else:
+                        metrics = {"node_count": 0, "edge_count": 0}
                     history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
                     append_kg_metrics(metrics, history_path)
                     print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")

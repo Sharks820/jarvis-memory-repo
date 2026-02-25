@@ -105,7 +105,8 @@ def _summarize(text: str, max_len: int = 280) -> str:
     one_line = re.sub(r"\s+", " ", text).strip()
     if len(one_line) <= max_len:
         return one_line
-    return one_line[: max_len - 12].rstrip() + " ...(trimmed)"
+    _SUFFIX = " ...(trimmed)"
+    return one_line[: max_len - len(_SUFFIX)].rstrip() + _SUFFIX
 
 
 def _load_records(root: Path, limit: int = 1500) -> list[dict[str, Any]]:
