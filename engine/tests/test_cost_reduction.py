@@ -33,7 +33,9 @@ from jarvis_engine.proactive.self_test import AdversarialSelfTest
 def cost_db(tmp_path: Path) -> CostTracker:
     """Create a CostTracker backed by a temp SQLite DB."""
     db_path = tmp_path / "test_costs.db"
-    return CostTracker(db_path)
+    tracker = CostTracker(db_path)
+    yield tracker
+    tracker.close()
 
 
 @pytest.fixture

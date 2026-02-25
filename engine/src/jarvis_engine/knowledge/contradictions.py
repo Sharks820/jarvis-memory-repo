@@ -21,9 +21,15 @@ logger = logging.getLogger(__name__)
 class ContradictionManager:
     """Manages contradiction quarantine entries for owner review."""
 
-    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        write_lock: threading.Lock,
+        db_lock: threading.Lock | None = None,
+    ) -> None:
         self._db = db
         self._write_lock = write_lock
+        self._db_lock = db_lock or threading.Lock()
 
     # ------------------------------------------------------------------
     # List operations
@@ -31,33 +37,35 @@ class ContradictionManager:
 
     def list_pending(self, limit: int = 20) -> list[dict]:
         """List pending contradictions, most recent first."""
-        cur = self._db.execute(
-            """SELECT * FROM kg_contradictions
-               WHERE status = 'pending'
-               ORDER BY created_at DESC
-               LIMIT ?""",
-            (limit,),
-        )
-        return [dict(row) for row in cur.fetchall()]
-
-    def list_all(self, status: str | None = None, limit: int = 50) -> list[dict]:
-        """List contradictions with optional status filter."""
-        if status:
+        with self._db_lock:
             cur = self._db.execute(
                 """SELECT * FROM kg_contradictions
-                   WHERE status = ?
-                   ORDER BY created_at DESC
-                   LIMIT ?""",
-                (status, limit),
-            )
-        else:
-            cur = self._db.execute(
-                """SELECT * FROM kg_contradictions
+                   WHERE status = 'pending'
                    ORDER BY created_at DESC
                    LIMIT ?""",
                 (limit,),
             )
-        return [dict(row) for row in cur.fetchall()]
+            return [dict(row) for row in cur.fetchall()]
+
+    def list_all(self, status: str | None = None, limit: int = 50) -> list[dict]:
+        """List contradictions with optional status filter."""
+        with self._db_lock:
+            if status:
+                cur = self._db.execute(
+                    """SELECT * FROM kg_contradictions
+                       WHERE status = ?
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (status, limit),
+                )
+            else:
+                cur = self._db.execute(
+                    """SELECT * FROM kg_contradictions
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (limit,),
+                )
+            return [dict(row) for row in cur.fetchall()]
 
     # ------------------------------------------------------------------
     # Resolution

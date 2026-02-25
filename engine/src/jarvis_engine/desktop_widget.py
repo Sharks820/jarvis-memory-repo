@@ -572,7 +572,22 @@ class JarvisDesktopWidget(tk.Tk):
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._btn(fetch, "Refresh Settings", self._refresh_settings_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self._btn(fetch, "Refresh Dashboard", self._refresh_dashboard_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(fetch, "Diagnose + Repair", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._btn(fetch, "Self-Heal", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Running Services section
+        svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        svc_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
+        self._svc_labels: dict[str, tuple[tk.Label, tk.Label]] = {}
+        for svc_name, display_name in [("daemon", "Daemon"), ("mobile_api", "Mobile API"), ("widget", "Widget")]:
+            row_f = tk.Frame(svc_frame, bg=self.PANEL)
+            row_f.pack(fill=tk.X, padx=6, pady=2)
+            dot = tk.Label(row_f, text="\u25CB", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10))
+            dot.pack(side=tk.LEFT)
+            tk.Label(row_f, text=display_name, bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(4, 0))
+            uptime_lbl = tk.Label(row_f, text="--", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9))
+            uptime_lbl.pack(side=tk.RIGHT)
+            self._svc_labels[svc_name] = (dot, uptime_lbl)
+        self._refresh_services()
 
         tk.Label(body, text="Output", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=10, pady=(10, 0))
         self.output = tk.Text(
@@ -752,7 +767,7 @@ class JarvisDesktopWidget(tk.Tk):
                 if isinstance(heal_lines, list) and heal_lines:
                     self._log_async(" | ".join(str(x) for x in heal_lines[-4:]))
                 if sync_ok and heal_ok:
-                    self._log_async("Diagnose + Repair completed.")
+                    self._log_async("Self-Heal completed.")
             except HTTPError as exc:
                 self._log_async(f"diagnose failed: {_http_error_details(exc)}")
             except (URLError, RuntimeError, TimeoutError) as exc:
@@ -804,6 +819,34 @@ class JarvisDesktopWidget(tk.Tk):
     def _quick_phrase(self, text: str) -> None:
         self._set_command_text(text)
         self._send_command_async()
+
+    def _refresh_services(self) -> None:
+        """Update service status dots directly from process_manager (no HTTP)."""
+        try:
+            from jarvis_engine.process_manager import list_services
+            root = _repo_root()
+            services = list_services(root)
+            for svc in services:
+                name = svc["service"]
+                if name not in self._svc_labels:
+                    continue
+                dot, uptime_lbl = self._svc_labels[name]
+                if svc["running"]:
+                    dot.config(text="\u2022", fg="#22c55e")
+                    s = svc.get("uptime_seconds", 0)
+                    if s < 60:
+                        uptime_lbl.config(text=f"{s}s")
+                    elif s < 3600:
+                        uptime_lbl.config(text=f"{s // 60}m")
+                    else:
+                        uptime_lbl.config(text=f"{s // 3600}h {(s % 3600) // 60}m")
+                else:
+                    dot.config(text="\u25CB", fg=self.MUTED)
+                    uptime_lbl.config(text="stopped")
+        except Exception:
+            pass
+        # Re-schedule every 10 seconds
+        self.after(10000, self._refresh_services)
 
     def _refresh_settings_async(self) -> None:
         cfg = self._current_cfg()  # Read tkinter vars on main thread

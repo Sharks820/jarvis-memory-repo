@@ -326,7 +326,8 @@ class TestCrossBranch:
         assert "branches_involved" in result
         assert len(result["direct_results"]) == 2
         # Check that cross-branch connections found the family branch
-        assert "family" in result["branches_involved"] or len(result["cross_branch_connections"]) >= 0
+        assert "family" in result["branches_involved"]
+        assert len(result["cross_branch_connections"]) > 0
 
     def test_cross_branch_edges_created(self):
         """Mock KG, verify add_edge calls for cross-branch connections."""

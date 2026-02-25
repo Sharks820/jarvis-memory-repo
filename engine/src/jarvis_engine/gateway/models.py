@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
@@ -44,6 +46,7 @@ except ImportError:
     class ResponseError(Exception):  # type: ignore[no-redef]
         pass
 
+from jarvis_engine.gateway.audit import GatewayAudit
 from jarvis_engine.gateway.pricing import calculate_cost
 
 if TYPE_CHECKING:
@@ -123,7 +126,11 @@ class ModelGateway:
         groq_api_key: str | None = None,
         mistral_api_key: str | None = None,
         zai_api_key: str | None = None,
+        audit_path: Path | None = None,
     ) -> None:
+        self._audit: GatewayAudit | None = (
+            GatewayAudit(audit_path) if audit_path is not None else None
+        )
         if anthropic_api_key is not None:
             if _HAS_ANTHROPIC:
                 self._anthropic: Anthropic | None = Anthropic(api_key=anthropic_api_key)
@@ -209,31 +216,80 @@ class ModelGateway:
         model: str = "claude-sonnet-4-5-20250929",
         max_tokens: int = 1024,
         route_reason: str = "",
+        privacy_routed: bool = False,
     ) -> GatewayResponse:
         """Send a completion request to the appropriate provider.
 
         Automatically falls back through the provider chain on failure.
         Logs cost to CostTracker if one is configured.
+        Logs routing decision to GatewayAudit if one is configured.
         """
         provider = self._resolve_provider(model)
+        t0 = time.perf_counter()
 
         if provider == "anthropic":
             try:
                 response = self._call_anthropic(messages, model, max_tokens)
+                audit_reason = route_reason or "primary:anthropic"
             except (APIConnectionError, APIStatusError, RateLimitError) as exc:
                 reason = f"{type(exc).__name__}"
                 logger.warning("Anthropic API error, falling back: %s", exc)
+                # Log the failed attempt before fallback
+                self._audit_decision(
+                    provider="anthropic",
+                    model=model,
+                    reason=route_reason or "primary:anthropic",
+                    latency_ms=(time.perf_counter() - t0) * 1000,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    success=False,
+                    privacy_routed=privacy_routed,
+                )
+                t0 = time.perf_counter()  # reset timer for fallback
                 response = self._fallback_chain(messages, max_tokens, reason, skip_provider="anthropic")
+                audit_reason = f"fallback:{reason}"
         elif provider.startswith("cloud:"):
             provider_key = provider.split(":", 1)[1]
             try:
                 response = self._call_openai_compat(messages, model, max_tokens, provider_key)
+                audit_reason = route_reason or f"primary:cloud:{provider_key}"
             except Exception as exc:
                 reason = f"{provider_key}: {type(exc).__name__}"
                 logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
+                self._audit_decision(
+                    provider=provider_key,
+                    model=model,
+                    reason=route_reason or f"primary:cloud:{provider_key}",
+                    latency_ms=(time.perf_counter() - t0) * 1000,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    success=False,
+                    privacy_routed=privacy_routed,
+                )
+                t0 = time.perf_counter()
                 response = self._fallback_chain(messages, max_tokens, reason, skip_provider=provider_key)
+                audit_reason = f"fallback:{reason}"
         else:
             response = self._call_ollama(messages, model, max_tokens)
+            audit_reason = route_reason or "primary:ollama"
+
+        latency_ms = (time.perf_counter() - t0) * 1000
+
+        # Log the successful (or final fallback) decision
+        self._audit_decision(
+            provider=response.provider,
+            model=response.model,
+            reason=audit_reason,
+            latency_ms=latency_ms,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            cost_usd=response.cost_usd,
+            success=response.provider != "none",
+            fallback_from=response.fallback_reason if response.fallback_used else "",
+            privacy_routed=privacy_routed,
+        )
 
         # Log cost if tracker is configured
         if self._cost_tracker is not None:
@@ -248,6 +304,11 @@ class ModelGateway:
             )
 
         return response
+
+    def _audit_decision(self, **kwargs: object) -> None:
+        """Log a routing decision if audit is configured."""
+        if self._audit is not None:
+            self._audit.log_decision(**kwargs)  # type: ignore[arg-type]
 
     def _call_openai_compat(
         self,

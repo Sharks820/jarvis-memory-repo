@@ -468,7 +468,25 @@ def cmd_ingest(source: str, kind: str, task_id: str, content: str) -> int:
     return 0
 
 
-def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None, allow_insecure_bind: bool = False) -> int:
+def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None, allow_insecure_bind: bool = False, config_file: str | None = None) -> int:
+    # Load credentials from config file if provided
+    if config_file:
+        config_path = Path(config_file)
+        if not config_path.exists():
+            print(f"error: config file not found: {config_file}")
+            return 2
+        try:
+            import json as _json
+            config_data = _json.loads(config_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            print(f"error: failed to read config file: {exc}")
+            return 2
+        # CLI args override config file values
+        if not token:
+            token = config_data.get("token")
+        if not signing_key:
+            signing_key = config_data.get("signing_key")
+
     effective_token = token or os.getenv("JARVIS_MOBILE_TOKEN", "").strip()
     effective_signing_key = signing_key or os.getenv("JARVIS_MOBILE_SIGNING_KEY", "").strip()
     if not effective_token:
@@ -481,15 +499,30 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
     if allow_insecure_bind:
         os.environ["JARVIS_ALLOW_INSECURE_MOBILE_BIND"] = "true"
 
+    # Set descriptive process title for Task Manager visibility
+    try:
+        import setproctitle
+        setproctitle.setproctitle("jarvis-mobile-api")
+    except ImportError:
+        pass
+
+    root = repo_root()
+    # Register PID file for duplicate detection and dashboard visibility
+    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
+    if is_service_running("mobile_api", root):
+        print("error: mobile API is already running")
+        return 4
+
     # NOTE: run_mobile_server is called directly here (not via bus) so that
     # tests can monkeypatch main_mod.run_mobile_server.
     try:
+        write_pid_file("mobile_api", root)
         run_mobile_server(
             host=host,
             port=port,
             auth_token=effective_token,
             signing_key=effective_signing_key,
-            repo_root=repo_root(),
+            repo_root=root,
         )
     except KeyboardInterrupt:
         print("\nmobile_api_stopped=true")
@@ -499,6 +532,8 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
     except OSError as exc:
         print(f"error: could not bind mobile API on {host}:{port}: {exc}")
         return 3
+    finally:
+        remove_pid_file("mobile_api", root)
     return 0
 
 
@@ -877,10 +912,24 @@ def cmd_persona_config(
 
 
 def cmd_desktop_widget() -> int:
-    result = _get_bus().dispatch(DesktopWidgetCommand())
-    if result.return_code != 0:
-        print("error: desktop widget unavailable")
-    return result.return_code
+    try:
+        import setproctitle
+        setproctitle.setproctitle("jarvis-widget")
+    except ImportError:
+        pass
+    root = repo_root()
+    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
+    if is_service_running("widget", root):
+        print("error: widget is already running")
+        return 4
+    try:
+        write_pid_file("widget", root)
+        result = _get_bus().dispatch(DesktopWidgetCommand())
+        if result.return_code != 0:
+            print("error: desktop widget unavailable")
+        return result.return_code
+    finally:
+        remove_pid_file("widget", root)
 
 
 def cmd_run_task(
@@ -1724,6 +1773,21 @@ def _cmd_daemon_run_impl(
     self_heal_every_cycles: int = 20,
 ) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
+    # Set descriptive process title for Task Manager visibility
+    try:
+        import setproctitle
+        setproctitle.setproctitle("jarvis-daemon")
+    except ImportError:
+        pass
+
+    root = repo_root()
+    # Register PID file for duplicate detection and dashboard visibility
+    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
+    if is_service_running("daemon", root):
+        print("error: daemon is already running")
+        return 4
+    write_pid_file("daemon", root)
+
     active_interval = max(30, interval_s)
     idle_interval = max(30, idle_interval_s)
     idle_after = max(60, idle_after_s)
@@ -1810,6 +1874,17 @@ def _cmd_daemon_run_impl(
                     print(f"self_heal_cycle_error={exc}")
                 else:
                     print(f"self_heal_cycle_rc={heal_rc}")
+                # Collect KG growth metrics alongside self-heal
+                try:
+                    from jarvis_engine.knowledge.graph import KnowledgeGraph
+                    from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
+                    kg = KnowledgeGraph(root)
+                    metrics = collect_kg_metrics(kg)
+                    history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
+                    append_kg_metrics(metrics, history_path)
+                    print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"kg_metrics_error={exc}")
             # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
             approve_cycle = approve_privileged and not safe_mode
@@ -1843,6 +1918,8 @@ def _cmd_daemon_run_impl(
             time.sleep(sleep_seconds)
     except KeyboardInterrupt:
         print("jarvis_daemon_stopped=true")
+    finally:
+        remove_pid_file("daemon", root)
     return 0
 
 

@@ -27,12 +27,14 @@ class TriggerAlert:
     timestamp: str = ""
 
 
-def check_medication_reminders(snapshot_data: dict) -> list[str]:
+def check_medication_reminders(snapshot_data: dict, _now: datetime | None = None) -> list[str]:
     """Check medications list for items with due_time within 30 minutes of now."""
+    from datetime import timedelta
+
     alerts: list[str] = []
     medications = snapshot_data.get("medications", [])
     # Use local time since medication due_times are in local HH:MM format
-    now = datetime.now()
+    now = _now or datetime.now()
 
     for med in medications:
         due_time_str = med.get("due_time", "")
@@ -44,6 +46,10 @@ def check_medication_reminders(snapshot_data: dict) -> list[str]:
             due_hour, due_min = int(parts[0]), int(parts[1])
             due_dt = now.replace(hour=due_hour, minute=due_min, second=0, microsecond=0)
             diff_minutes = (due_dt - now).total_seconds() / 60.0
+            # Handle midnight crossing: if due_time appears to be far in the past,
+            # it's actually tomorrow (e.g., now=23:50, due=00:05 -> +15min not -1425min)
+            if diff_minutes < -720:  # More than 12 hours in the past = tomorrow
+                diff_minutes += 1440  # Add 24 hours
             if 0 <= diff_minutes <= 30:
                 name = med.get("name", "medication")
                 alerts.append(f"Medication reminder: {name} due at {due_time_str}")

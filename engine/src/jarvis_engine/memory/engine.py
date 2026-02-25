@@ -4,8 +4,8 @@ Provides ACID-transactional storage for memory records with:
 - Full-text keyword search via FTS5
 - Semantic similarity search via sqlite-vec KNN
 - WAL mode for concurrent access from daemon + API + CLI
-- Write-lock serialization via threading.Lock (reads are lock-free; WAL mode
-  allows concurrent readers alongside a single writer)
+- Write-lock serialization via threading.Lock for writes
+- Read-lock (_db_lock) to prevent cursor interleaving on shared connection
 - Graceful degradation when sqlite-vec is unavailable
 """
 
@@ -46,6 +46,7 @@ class MemoryEngine:
         self._embed_service = embed_service
         self._vec_available = True
         self._write_lock = threading.Lock()
+        self._db_lock = threading.Lock()
         self._closed = False
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -331,7 +332,8 @@ class MemoryEngine:
         """Bulk-delete records from records, fts_records, and vec_records.
 
         Returns the number of records actually deleted from the records table.
-        All deletes happen in a single transaction for consistency.
+        All deletes happen in a single transaction for consistency.  Vec
+        failures roll back the entire batch to prevent partial state.
         """
         if not record_ids:
             return 0
@@ -353,15 +355,10 @@ class MemoryEngine:
                 )
 
                 if self._vec_available:
-                    try:
-                        cur.execute(
-                            f"DELETE FROM vec_records WHERE record_id IN ({placeholders})",
-                            record_ids,
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to batch-delete vec_records: %s", exc
-                        )
+                    cur.execute(
+                        f"DELETE FROM vec_records WHERE record_id IN ({placeholders})",
+                        record_ids,
+                    )
 
                 self._db.commit()
                 return deleted
@@ -372,22 +369,24 @@ class MemoryEngine:
 
     def get_record(self, record_id: str) -> dict | None:
         """Fetch a single record by ID."""
-        cur = self._db.execute(
-            "SELECT * FROM records WHERE record_id = ?",
-            (record_id,),
-        )
-        row = cur.fetchone()
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT * FROM records WHERE record_id = ?",
+                (record_id,),
+            )
+            row = cur.fetchone()
         if row is None:
             return None
         return dict(row)
 
     def get_record_by_hash(self, content_hash: str) -> dict | None:
         """Fetch a single record by content_hash."""
-        cur = self._db.execute(
-            "SELECT * FROM records WHERE content_hash = ?",
-            (content_hash,),
-        )
-        row = cur.fetchone()
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT * FROM records WHERE content_hash = ?",
+                (content_hash,),
+            )
+            row = cur.fetchone()
         if row is None:
             return None
         return dict(row)
@@ -414,17 +413,18 @@ class MemoryEngine:
         if not safe_query:
             return []
         try:
-            cur = self._db.execute(
-                """
-                SELECT record_id, rank
-                FROM fts_records
-                WHERE fts_records MATCH ?
-                ORDER BY rank
-                LIMIT ?
-                """,
-                (safe_query, limit),
-            )
-            return [(row[0], row[1]) for row in cur.fetchall()]
+            with self._db_lock:
+                cur = self._db.execute(
+                    """
+                    SELECT record_id, rank
+                    FROM fts_records
+                    WHERE fts_records MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                    """,
+                    (safe_query, limit),
+                )
+                return [(row[0], row[1]) for row in cur.fetchall()]
         except Exception as exc:
             logger.warning("FTS5 search failed for query %r: %s", safe_query, exc)
             return []
@@ -442,17 +442,18 @@ class MemoryEngine:
             return []
         try:
             blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
-            cur = self._db.execute(
-                """
-                SELECT record_id, distance
-                FROM vec_records
-                WHERE embedding MATCH ?
-                ORDER BY distance
-                LIMIT ?
-                """,
-                (blob, limit),
-            )
-            return [(row[0], row[1]) for row in cur.fetchall()]
+            with self._db_lock:
+                cur = self._db.execute(
+                    """
+                    SELECT record_id, distance
+                    FROM vec_records
+                    WHERE embedding MATCH ?
+                    ORDER BY distance
+                    LIMIT ?
+                    """,
+                    (blob, limit),
+                )
+                return [(row[0], row[1]) for row in cur.fetchall()]
         except Exception as exc:
             logger.warning("Vec search failed: %s", exc)
             return []
@@ -522,39 +523,48 @@ class MemoryEngine:
         if not record_ids:
             return []
         placeholders = ",".join("?" for _ in record_ids)
-        cur = self._db.execute(
-            f"SELECT * FROM records WHERE record_id IN ({placeholders})",
-            record_ids,
-        )
-        return [dict(row) for row in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.execute(
+                f"SELECT * FROM records WHERE record_id IN ({placeholders})",
+                record_ids,
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def get_all_records_for_tier_maintenance(self) -> list[dict]:
         """Fetch all records with only the columns needed for tier classification."""
-        cur = self._db.execute(
-            "SELECT record_id, ts, access_count, confidence, tier FROM records"
-        )
-        return [dict(row) for row in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT record_id, ts, access_count, confidence, tier FROM records"
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def get_all_record_ids(self) -> list[str]:
         """List all record IDs (for tier management)."""
-        cur = self._db.execute("SELECT record_id FROM records")
-        return [row[0] for row in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.execute("SELECT record_id FROM records")
+            return [row[0] for row in cur.fetchall()]
 
     def count_records(self) -> int:
         """Return total record count."""
-        cur = self._db.execute("SELECT COUNT(*) FROM records")
-        return cur.fetchone()[0]
+        with self._db_lock:
+            cur = self._db.execute("SELECT COUNT(*) FROM records")
+            return cur.fetchone()[0]
 
     def close(self) -> None:
-        """Close the database connection (idempotent)."""
+        """Close the database connection (idempotent).
+
+        Acquires both locks to ensure no in-flight reads or writes
+        touch the connection after close.
+        """
         with self._write_lock:
-            if self._closed:
-                return
-            self._closed = True
-            try:
-                self._db.close()
-            except Exception:
-                pass
+            with self._db_lock:
+                if self._closed:
+                    return
+                self._closed = True
+                try:
+                    self._db.close()
+                except Exception:
+                    pass
 
     def __enter__(self) -> "MemoryEngine":
         return self

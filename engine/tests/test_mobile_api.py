@@ -159,6 +159,9 @@ def test_ingest_rejects_invalid_content_length_header(mobile_server) -> None:
 
 
 def test_concurrent_ingest_writes_are_jsonl_safe(mobile_server) -> None:
+    # Clear rate limiter state so 80 concurrent requests aren't rate-limited
+    mobile_server.server._api_rate_attempts.clear()
+
     def worker(i: int) -> int:
         payload = {
             "source": "user",
@@ -295,7 +298,7 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     from unittest.mock import patch
     from jarvis_engine.gateway.models import GatewayResponse
 
-    def _mock_ollama(self, messages, model, max_tokens):
+    def _mock_complete(self, messages, model="claude-sonnet-4-5-20250929", max_tokens=1024, route_reason=""):
         return GatewayResponse(
             text="", model=model, provider="none",
             fallback_used=True, fallback_reason="mocked for test",
@@ -309,7 +312,7 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    with patch("jarvis_engine.gateway.models.ModelGateway._call_ollama", _mock_ollama):
+    with patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete):
         code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
@@ -443,3 +446,136 @@ def test_self_heal_endpoint_calls_main_cli(mobile_server, monkeypatch) -> None:
             240,
         )
     ]
+
+
+# ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+
+
+def test_health_response_includes_security_headers(mobile_server) -> None:
+    """All responses should include security headers."""
+    import http.client
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(mobile_server.base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    conn.request("GET", "/health")
+    resp = conn.getresponse()
+    resp.read()
+
+    assert resp.getheader("X-Content-Type-Options") == "nosniff"
+    assert resp.getheader("X-Frame-Options") == "DENY"
+    assert resp.getheader("X-XSS-Protection") == "1; mode=block"
+    assert resp.getheader("Cache-Control") == "no-store"
+    assert resp.getheader("Referrer-Policy") == "no-referrer"
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Global API rate limiting
+# ---------------------------------------------------------------------------
+
+
+def test_api_rate_limiter_allows_normal_requests(mobile_server) -> None:
+    """A few requests should not be rate-limited."""
+    for _ in range(3):
+        code, _ = http_request("GET", f"{mobile_server.base_url}/health")
+        assert code == 200
+
+
+def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
+    """Exceeding _API_RATE_LIMIT_EXPENSIVE on /command should yield 429."""
+    import unittest.mock as _mock
+
+    # Temporarily lower the limit for testing
+    with _mock.patch.object(mobile_api, "_API_RATE_LIMIT_EXPENSIVE", 2):
+        # Clear any existing rate state for our IP
+        mobile_server.server._api_rate_attempts.clear()
+
+        payload = {"text": "hello jarvis"}
+        raw = json.dumps(payload).encode("utf-8")
+
+        for i in range(4):
+            headers = signed_headers(
+                raw, mobile_server.auth_token, mobile_server.signing_key,
+            )
+            code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+            if i >= 2:
+                # Should be rate-limited after 2 requests
+                assert code == 429, f"Expected 429 on request {i + 1}, got {code}"
+                resp = json.loads(body.decode("utf-8"))
+                assert "rate limit" in resp["error"].lower()
+                break
+
+
+# ---------------------------------------------------------------------------
+# Audit endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_audit_endpoint_requires_auth(mobile_server) -> None:
+    """GET /audit without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/audit")
+    assert code == 401
+
+
+def test_audit_endpoint_returns_empty_when_no_file(mobile_server) -> None:
+    """GET /audit with auth should return empty list if no audit file."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/audit", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["audit"] == []
+    assert resp["total"] == 0
+
+
+def test_audit_endpoint_returns_records(mobile_server) -> None:
+    """GET /audit returns audit records from JSONL file."""
+    audit_path = mobile_server.root / ".planning" / "runtime" / "gateway_audit.jsonl"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        '{"ts":"2026-02-24T10:00:00","provider":"groq","model":"mixtral","reason":"primary","latency_ms":120.5}',
+        '{"ts":"2026-02-24T10:01:00","provider":"ollama","model":"qwen3:8b","reason":"privacy","latency_ms":450.0}',
+    ]
+    audit_path.write_text("\n".join(records) + "\n", encoding="utf-8")
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/audit", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["total"] == 2
+    assert resp["audit"][0]["provider"] == "groq"
+    assert resp["audit"][1]["provider"] == "ollama"
+
+
+def test_processes_endpoint_returns_services(mobile_server) -> None:
+    """GET /processes returns service statuses without auth."""
+    code, body = http_request("GET", f"{mobile_server.base_url}/processes")
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert isinstance(resp["services"], list)
+    assert len(resp["services"]) == 3
+    names = {s["service"] for s in resp["services"]}
+    assert names == {"daemon", "mobile_api", "widget"}
+
+
+def test_processes_kill_requires_auth(mobile_server) -> None:
+    """POST /processes/kill requires HMAC auth."""
+    raw = json.dumps({"service": "daemon"}).encode("utf-8")
+    code, _body = http_request("POST", f"{mobile_server.base_url}/processes/kill", raw,
+                               {"Content-Type": "application/json"})
+    assert code == 401
+
+
+def test_processes_kill_rejects_unknown_service(mobile_server) -> None:
+    """POST /processes/kill returns 400 for unknown service name."""
+    raw = json.dumps({"service": "nonexistent"}).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/processes/kill", raw, headers)
+    assert code == 400
+    resp = json.loads(body.decode("utf-8"))
+    assert "Unknown service" in resp["error"]

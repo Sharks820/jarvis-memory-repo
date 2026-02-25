@@ -246,6 +246,7 @@ def create_app(root: Path) -> CommandBus:
             groq_api_key=os.environ.get("GROQ_API_KEY"),
             mistral_api_key=os.environ.get("MISTRAL_API_KEY"),
             zai_api_key=os.environ.get("ZAI_API_KEY"),
+            audit_path=root / ".planning" / "runtime" / "gateway_audit.jsonl",
         )
         if embed_service is not None:
             intent_classifier = IntentClassifier(embed_service)
