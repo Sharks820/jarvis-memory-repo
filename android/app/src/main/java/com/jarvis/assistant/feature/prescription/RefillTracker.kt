@@ -155,6 +155,6 @@ class RefillTracker @Inject constructor(
     companion object {
         private const val TAG = "RefillTracker"
         private const val PREFS_NAME = "jarvis_refill_prefs"
-        private const val REFILL_NOTIFICATION_OFFSET = 20000
+        private const val REFILL_NOTIFICATION_OFFSET = 15000
     }
 }
