@@ -6,7 +6,6 @@ import logging
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
-from typing import cast
 
 logger = logging.getLogger(__name__)
 

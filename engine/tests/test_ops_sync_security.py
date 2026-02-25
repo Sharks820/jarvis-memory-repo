@@ -8,17 +8,19 @@ from jarvis_engine import ops_sync
 def test_calendar_remote_url_disabled_by_default(monkeypatch) -> None:
     monkeypatch.setenv("JARVIS_CALENDAR_ICS_URL", "https://example.com/calendar.ics")
     monkeypatch.delenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", raising=False)
+    monkeypatch.delenv("JARVIS_CALENDAR_JSON", raising=False)
+    monkeypatch.delenv("JARVIS_CALENDAR_ICS_FILE", raising=False)
 
-    called = {"urlopen": False}
+    called = {"opener": False}
 
-    def fake_urlopen(*args, **kwargs):  # pragma: no cover - guard only
-        called["urlopen"] = True
-        raise AssertionError("urlopen should not be called when remote calendar URLs are disabled")
+    def fake_build_opener():  # pragma: no cover - guard only
+        called["opener"] = True
+        raise AssertionError("opener should not be built when remote calendar URLs are disabled")
 
-    monkeypatch.setattr(ops_sync, "urlopen", fake_urlopen)
+    monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", fake_build_opener)
     events = ops_sync.load_calendar_events()
     assert events == []
-    assert called["urlopen"] is False
+    assert called["opener"] is False
 
 
 def test_feed_loader_blocks_unc_paths_even_when_external_allowed(monkeypatch, tmp_path: Path) -> None:
