@@ -472,4 +472,8 @@ def create_app(root: Path) -> CommandBus:
         SelfTestHandler(root, engine=engine, embed_service=embed_service).handle,
     )
 
+    # Expose subsystem references for daemon self-test access
+    bus._engine = engine  # type: ignore[attr-defined]
+    bus._embed_service = embed_service  # type: ignore[attr-defined]
+
     return bus
