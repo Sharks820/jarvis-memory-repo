@@ -192,7 +192,9 @@ class NudgeEngine @Inject constructor(
         val currentTotalMinutes = currentHour * 60 + currentMinute
         val triggerTotalMinutes = triggerHour * 60 + triggerMinute
         val diff = kotlin.math.abs(currentTotalMinutes - triggerTotalMinutes)
-        return diff <= windowMinutes
+        // Handle midnight wrap-around (e.g., trigger 23:50, current 00:05)
+        val wrappedDiff = kotlin.math.min(diff, 1440 - diff)
+        return wrappedDiff <= windowMinutes
     }
 
     private fun hasNotificationPermission(): Boolean {
