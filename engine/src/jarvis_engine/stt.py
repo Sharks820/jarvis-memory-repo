@@ -7,14 +7,20 @@ Backend selected via JARVIS_STT_BACKEND env var: "groq", "local", or "auto" (def
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 import struct
 import tempfile
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
+
+from jarvis_engine._compat import UTC
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +34,46 @@ class TranscriptionResult:
     confidence: float = 0.0
     duration_seconds: float = 0.0
     backend: str = ""
+    retried: bool = False
+
+
+# ---------------------------------------------------------------------------
+# STT quality metrics logging
+# ---------------------------------------------------------------------------
+
+_stt_metrics_lock = threading.Lock()
+
+CONFIDENCE_RETRY_THRESHOLD = 0.6
+
+
+def _log_stt_metric(
+    root_dir: Path | None,
+    *,
+    backend: str,
+    confidence: float,
+    latency_ms: float,
+    text_length: int,
+    retried: bool = False,
+) -> None:
+    """Log STT quality metric for tracking improvement over time."""
+    if root_dir is None:
+        return
+    metrics_path = root_dir / ".planning" / "runtime" / "stt_metrics.jsonl"
+    record = {
+        "ts": datetime.now(UTC).isoformat(),
+        "backend": backend,
+        "confidence": round(confidence, 3),
+        "latency_ms": round(latency_ms, 1),
+        "text_length": text_length,
+        "retried": retried,
+    }
+    try:
+        with _stt_metrics_lock:
+            metrics_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(metrics_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -226,11 +272,102 @@ class SpeechToText:
 # Smart transcription (auto-selects best available backend)
 # ---------------------------------------------------------------------------
 
+def _try_groq(
+    audio: np.ndarray | str, *, language: str, prompt: str
+) -> TranscriptionResult | None:
+    """Attempt Groq transcription, returning *None* on failure."""
+    try:
+        return transcribe_groq(audio, language=language, prompt=prompt)
+    except Exception as exc:
+        logger.warning("Groq STT attempt failed: %s", exc)
+        return None
+
+
+def _try_local(
+    audio: np.ndarray | str, *, language: str
+) -> TranscriptionResult | None:
+    """Attempt local faster-whisper transcription, returning *None* on failure."""
+    try:
+        stt = SpeechToText()
+        return stt.transcribe_audio(audio, language=language)
+    except Exception as exc:
+        logger.warning("Local STT attempt failed: %s", exc)
+        return None
+
+
+def _confidence_retry(
+    primary: TranscriptionResult,
+    audio: np.ndarray | str,
+    *,
+    language: str,
+    prompt: str,
+    root_dir: Path | None,
+) -> TranscriptionResult:
+    """If *primary* confidence is below threshold, try the alternative backend.
+
+    Returns whichever result has higher confidence.  If the retry fails
+    or produces lower confidence, the original result is returned unchanged.
+    At most ONE retry is attempted.
+    """
+    if primary.confidence >= CONFIDENCE_RETRY_THRESHOLD:
+        return primary
+
+    has_groq = bool(os.environ.get("GROQ_API_KEY", ""))
+
+    # Determine alternative backend
+    if primary.backend == "groq-whisper":
+        retry_result = _try_local(audio, language=language)
+    elif primary.backend == "faster-whisper" and has_groq:
+        retry_result = _try_groq(audio, language=language, prompt=prompt)
+    else:
+        # No alternative available
+        return primary
+
+    if retry_result is None:
+        logger.info(
+            "Confidence retry failed; keeping original (%.3f)",
+            primary.confidence,
+        )
+        return primary
+
+    # Log metrics for retry attempt
+    _log_stt_metric(
+        root_dir,
+        backend=retry_result.backend,
+        confidence=retry_result.confidence,
+        latency_ms=retry_result.duration_seconds * 1000,
+        text_length=len(retry_result.text),
+        retried=True,
+    )
+
+    if retry_result.confidence > primary.confidence:
+        logger.info(
+            "Confidence retry improved: %.3f (%s) -> %.3f (%s)",
+            primary.confidence,
+            primary.backend,
+            retry_result.confidence,
+            retry_result.backend,
+        )
+        retry_result.retried = True
+        return retry_result
+
+    logger.info(
+        "Confidence retry did not improve: %.3f (%s) vs %.3f (%s); keeping original",
+        primary.confidence,
+        primary.backend,
+        retry_result.confidence,
+        retry_result.backend,
+    )
+    primary.retried = True  # Mark that a retry was attempted
+    return primary
+
+
 def transcribe_smart(
     audio: np.ndarray | str,
     *,
     language: str = "en",
     prompt: str = "",
+    root_dir: Path | None = None,
 ) -> TranscriptionResult:
     """Transcribe using the best available backend.
 
@@ -238,33 +375,59 @@ def transcribe_smart(
     - "groq": Force Groq Whisper (fail if unavailable)
     - "local": Force local faster-whisper (fail if unavailable)
     - "auto" (default): Try Groq first, fall back to local
+
+    When *root_dir* is provided, quality metrics are logged to
+    ``<root_dir>/.planning/runtime/stt_metrics.jsonl``.
+
+    If the primary transcription confidence is below
+    ``CONFIDENCE_RETRY_THRESHOLD`` (0.6), an automatic retry using the
+    alternative backend is attempted.  The result with higher confidence
+    is returned.
     """
     backend = os.environ.get("JARVIS_STT_BACKEND", "auto").lower()
 
     if backend == "groq":
-        return transcribe_groq(audio, language=language, prompt=prompt)
+        result = transcribe_groq(audio, language=language, prompt=prompt)
+        _log_stt_metric(
+            root_dir,
+            backend=result.backend,
+            confidence=result.confidence,
+            latency_ms=result.duration_seconds * 1000,
+            text_length=len(result.text),
+        )
+        return _confidence_retry(
+            result, audio, language=language, prompt=prompt, root_dir=root_dir,
+        )
 
     if backend == "local":
         stt = SpeechToText()
-        return stt.transcribe_audio(audio, language=language)
+        result = stt.transcribe_audio(audio, language=language)
+        _log_stt_metric(
+            root_dir,
+            backend=result.backend,
+            confidence=result.confidence,
+            latency_ms=result.duration_seconds * 1000,
+            text_length=len(result.text),
+        )
+        return _confidence_retry(
+            result, audio, language=language, prompt=prompt, root_dir=root_dir,
+        )
 
     # Auto mode: try Groq first, fall back to local
+    result: TranscriptionResult | None = None
     if os.environ.get("GROQ_API_KEY", ""):
-        try:
-            result = transcribe_groq(audio, language=language, prompt=prompt)
+        result = _try_groq(audio, language=language, prompt=prompt)
+        if result is not None:
             logger.info("Groq STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
-            return result
-        except Exception as exc:
-            logger.warning("Groq STT failed, falling back to local: %s", exc)
 
-    # Fall back to local faster-whisper
-    try:
-        stt = SpeechToText()
-        result = stt.transcribe_audio(audio, language=language)
-        logger.info("Local STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
-        return result
-    except Exception as exc:
-        logger.error("All STT backends failed: %s", exc)
+    if result is None:
+        # Fall back to local faster-whisper
+        result = _try_local(audio, language=language)
+        if result is not None:
+            logger.info("Local STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
+
+    if result is None:
+        logger.error("All STT backends failed")
         return TranscriptionResult(
             text="",
             language=language,
@@ -272,6 +435,20 @@ def transcribe_smart(
             duration_seconds=0.0,
             backend="none",
         )
+
+    # Log primary attempt metrics
+    _log_stt_metric(
+        root_dir,
+        backend=result.backend,
+        confidence=result.confidence,
+        latency_ms=result.duration_seconds * 1000,
+        text_length=len(result.text),
+    )
+
+    # Confidence retry with alternative backend
+    return _confidence_retry(
+        result, audio, language=language, prompt=prompt, root_dir=root_dir,
+    )
 
 
 # ---------------------------------------------------------------------------
