@@ -394,13 +394,12 @@
 
     <details>
       <summary>How Jarvis Works</summary>
-      <div style="margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5">
-        <p><b>Desktop Engine</b> runs on your PC as a daemon. It handles all intelligence: memory, knowledge graph, LLM routing, proactive analysis, and automation.</p>
-        <p><b>Android App</b> acts as your mobile interface: voice, notifications, calls, location, camera. It sends sensor data to the desktop brain and displays responses.</p>
-        <p><b>Intelligence Routing</b>: Commands are classified by intent, then routed to the best LLM provider (Anthropic, Groq, Mistral, Z.ai, or local Ollama) based on complexity and privacy needs. Privacy-sensitive queries always stay local.</p>
-        <p><b>Memory</b>: Everything Jarvis learns is stored in a local SQLite database with full-text search and vector embeddings. Knowledge is organized into branches (health, work, gaming, family, etc.) with confidence scores and contradiction detection.</p>
-        <p><b>Anti-Regression</b>: Golden tasks are periodically re-evaluated to ensure intelligence scores never decline. Memory health is monitored for duplicates and staleness.</p>
-        <p><b>Security</b>: All API calls use HMAC-SHA256 signing with nonce replay protection. Sync payloads are Fernet-encrypted. Master password required for sensitive operations.</p>
+      <div style="margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6">
+        <p style="margin:0 0 8px"><b style="color:var(--accent)">Architecture</b><br/>Jarvis has two parts: your phone acts as the sensor and interface, while your desktop PC is the brain that does all the thinking.</p>
+        <p style="margin:0 0 8px"><b style="color:var(--accent)">Intelligence</b><br/>When you ask Jarvis a question, it routes to the best available AI model. For privacy-sensitive queries, it uses a local model that never sends data to the cloud.</p>
+        <p style="margin:0 0 8px"><b style="color:var(--accent)">Memory</b><br/>Jarvis remembers your conversations, facts about you, and builds a knowledge graph of connections between concepts.</p>
+        <p style="margin:0 0 8px"><b style="color:var(--accent)">Proactive Engine</b><br/>Jarvis doesn't just wait for commands -- it monitors your schedule, habits, and context to provide helpful nudges.</p>
+        <p style="margin:0"><b style="color:var(--accent)">Security</b><br/>All communication between your phone and desktop is encrypted and signed. Your data stays on your devices.</p>
       </div>
     </details>
   </section>

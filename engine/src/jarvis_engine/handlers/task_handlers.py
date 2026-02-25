@@ -202,12 +202,20 @@ class QueryHandler:
         messages.append({"role": "user", "content": cmd.query})
 
         # Call gateway
-        resp: GatewayResponse = gateway.complete(
-            messages=messages,
-            model=model,
-            max_tokens=cmd.max_tokens,
-            route_reason=route_reason,
-        )
+        try:
+            resp: GatewayResponse = gateway.complete(
+                messages=messages,
+                model=model,
+                max_tokens=cmd.max_tokens,
+                route_reason=route_reason,
+            )
+        except (ConnectionError, RuntimeError, OSError, Exception) as exc:
+            logger.error("QueryHandler gateway.complete failed: %s", exc, exc_info=True)
+            return QueryResult(
+                text=f"error: query failed ({type(exc).__name__})",
+                route_reason=route_reason,
+                return_code=2,
+            )
 
         return QueryResult(
             text=resp.text,

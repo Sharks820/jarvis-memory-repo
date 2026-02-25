@@ -52,13 +52,17 @@ class VoiceSayHandler:
             logger.warning("voice module not available: %s", exc)
             return VoiceSayResult(message="error: voice module not available.")
 
-        result = speak_text(
-            text=cmd.text,
-            profile=cmd.profile,
-            custom_voice_pattern=cmd.voice_pattern,
-            output_wav=cmd.output_wav,
-            rate=cmd.rate,
-        )
+        try:
+            result = speak_text(
+                text=cmd.text,
+                profile=cmd.profile,
+                custom_voice_pattern=cmd.voice_pattern,
+                output_wav=cmd.output_wav,
+                rate=cmd.rate,
+            )
+        except (RuntimeError, OSError, Exception) as exc:
+            logger.error("TTS speak_text failed: %s", exc, exc_info=True)
+            return VoiceSayResult(message="error: TTS failed.")
         return VoiceSayResult(
             voice_name=result.voice_name,
             output_wav=result.output_wav,
