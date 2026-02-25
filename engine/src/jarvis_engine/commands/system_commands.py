@@ -42,6 +42,7 @@ class ServeMobileCommand:
     port: int = 8787
     token: str | None = None
     signing_key: str | None = None
+    tls: bool | None = None  # None = auto-detect
 
 
 @dataclass

@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import re
+import ssl
 import subprocess
 import sys
 import threading
@@ -238,6 +239,32 @@ def _is_safe_widget_base_url(url: str) -> bool:
     return False
 
 
+def _make_ssl_context_for_self_signed() -> ssl.SSLContext:
+    """Create an SSL context that accepts self-signed certificates.
+
+    This is safe for LAN communication with the Jarvis mobile API server
+    where the self-signed cert is generated locally.  Hostname verification
+    and CA trust are disabled because the cert is not issued by a public CA.
+
+    SECURITY NOTE: This context should ONLY be used for connections to
+    the local Jarvis server (private/loopback IPs).  ``_is_safe_widget_base_url``
+    gates all callers to ensure this.
+    """
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def _get_ssl_context(url: str) -> ssl.SSLContext | None:
+    """Return an SSL context if the URL is HTTPS, else None."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return _make_ssl_context_for_self_signed()
+    return None
+
+
 def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if not _is_safe_widget_base_url(cfg.base_url):
         raise RuntimeError("Widget base_url must use HTTPS for non-localhost hosts.")
@@ -246,8 +273,9 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     if payload is not None:
         headers["Content-Type"] = "application/json"
     req = Request(url=f"{cfg.base_url.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
+    ssl_ctx = _get_ssl_context(cfg.base_url)
     try:
-        with urlopen(req, timeout=35) as resp:
+        with urlopen(req, timeout=35, context=ssl_ctx) as resp:
             raw = resp.read().decode("utf-8")
     except HTTPError as exc:
         raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
@@ -280,7 +308,8 @@ def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) ->
         data=body,
         headers={"Content-Type": "application/json"},
     )
-    with urlopen(req, timeout=35) as resp:
+    ssl_ctx = _get_ssl_context(base_url)
+    with urlopen(req, timeout=35, context=ssl_ctx) as resp:
         raw = resp.read().decode("utf-8")
     try:
         parsed = json.loads(raw)
@@ -782,7 +811,21 @@ class JarvisDesktopWidget(tk.Tk):
             val.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
             self._growth_labels[key] = val
 
-        tk.Label(body, text="Output", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=10, pady=(10, 0))
+        output_header = tk.Frame(body, bg=self.PANEL)
+        output_header.pack(fill=tk.X, padx=10, pady=(10, 0))
+        tk.Label(output_header, text="Conversation", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
+        tk.Button(
+            output_header,
+            text="Clear",
+            bg="#1a2742",
+            fg=self.MUTED,
+            activebackground="#2a3752",
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8),
+            command=self._clear_history,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT)
         self.output = tk.Text(
             body,
             height=12,
@@ -794,8 +837,76 @@ class JarvisDesktopWidget(tk.Tk):
             highlightbackground="#2a4368",
             highlightthickness=1,
             font=("Consolas", 10),
+            state=tk.DISABLED,
         )
         self.output.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 10))
+        self._configure_chat_tags()
+
+    def _configure_chat_tags(self) -> None:
+        """Set up tag-based visual styles for the chat-style conversation display."""
+        self.output.tag_configure(
+            "user",
+            background="#0c2d5e",
+            foreground="#b8d4ff",
+            font=("Consolas", 10, "bold"),
+            lmargin1=40,
+            lmargin2=40,
+            rmargin=8,
+            spacing1=4,
+            spacing3=4,
+        )
+        self.output.tag_configure(
+            "jarvis",
+            background="#0d1e1e",
+            foreground="#a8e6cf",
+            font=("Consolas", 10),
+            lmargin1=8,
+            lmargin2=8,
+            rmargin=40,
+            spacing1=4,
+            spacing3=4,
+        )
+        self.output.tag_configure(
+            "system",
+            foreground="#5a7a9e",
+            font=("Consolas", 9),
+            lmargin1=8,
+            lmargin2=8,
+            spacing1=2,
+            spacing3=2,
+        )
+        self.output.tag_configure(
+            "error",
+            background="#1a0a0a",
+            foreground="#f87171",
+            font=("Consolas", 10),
+            lmargin1=8,
+            lmargin2=8,
+            spacing1=4,
+            spacing3=4,
+        )
+        self.output.tag_configure(
+            "separator",
+            foreground="#1e3250",
+            font=("Consolas", 6),
+            justify="center",
+            spacing1=2,
+            spacing3=2,
+        )
+        self.output.tag_configure(
+            "timestamp",
+            foreground="#3a5a7e",
+            font=("Consolas", 8),
+            justify="center",
+            spacing1=6,
+            spacing3=2,
+        )
+
+    def _clear_history(self) -> None:
+        """Clear all text from the conversation display."""
+        self.output.config(state=tk.NORMAL)
+        self.output.delete("1.0", tk.END)
+        self.output.config(state=tk.DISABLED)
 
     def _entry(self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None) -> None:
         tk.Label(parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=6, pady=(4, 0))
@@ -848,20 +959,47 @@ class JarvisDesktopWidget(tk.Tk):
         self._send_command_async()
         return "break"
 
-    def _log(self, message: str) -> None:
+    def _log(self, message: str, role: str = "system") -> None:
         stamp = time.strftime("%H:%M:%S")
-        self.output.insert("1.0", f"[{stamp}] {message}\n")
-        self.output.see("1.0")
+        self.output.config(state=tk.NORMAL)
+
+        # Build the display line based on role
+        if role == "user":
+            prefix = "You"
+            display = f"{prefix}: {message}\n"
+        elif role == "jarvis":
+            prefix = "Jarvis"
+            display = f"{prefix}: {message}\n"
+        elif role == "error":
+            display = f"[{stamp}] ERROR: {message}\n"
+        else:
+            # system (default)
+            display = f"[{stamp}] {message}\n"
+
+        # Insert separator + timestamp before new exchanges (user messages)
+        if role == "user":
+            sep_line = "\u2500" * 48 + "\n"
+            self.output.insert(tk.END, sep_line, "separator")
+            self.output.insert(tk.END, f"  {stamp}  \n", "timestamp")
+
+        # Insert the message with the appropriate tag
+        tag = role if role in ("user", "jarvis", "system", "error") else "system"
+        self.output.insert(tk.END, display, tag)
+
+        self.output.see(tk.END)
+
         # Limit output widget to 500 lines to prevent unbounded memory growth
         line_count = int(self.output.index("end-1c").split(".")[0])
         if line_count > 500:
-            self.output.delete("501.0", tk.END)
+            self.output.delete("1.0", f"{line_count - 500}.0")
 
-    def _log_async(self, message: str) -> None:
+        self.output.config(state=tk.DISABLED)
+
+    def _log_async(self, message: str, role: str = "system") -> None:
         if self.stop_event.is_set():
             return
         try:
-            self.after(0, self._log, message)
+            self.after(0, self._log, message, role)
         except Exception:
             pass  # Widget destroyed
 
@@ -912,10 +1050,10 @@ class JarvisDesktopWidget(tk.Tk):
     def _bootstrap_session_async(self) -> None:
         cfg = self._current_cfg()
         if not cfg.base_url.strip():
-            self._log("Bootstrap failed: missing Base URL.")
+            self._log("Bootstrap failed: missing Base URL.", role="error")
             return
         if not cfg.master_password.strip():
-            self._log("Bootstrap failed: enter Master password first.")
+            self._log("Bootstrap failed: enter Master password first.", role="error")
             return
 
         def worker() -> None:
@@ -927,13 +1065,13 @@ class JarvisDesktopWidget(tk.Tk):
                     raise RuntimeError(str(data.get("error", "Bootstrap returned no session data.")))
                 self.after(0, self._apply_session_update, session)
                 trusted = bool(session.get("trusted_device", False))
-                self._log_async(f"Bootstrap complete. trusted_device={trusted}")
+                self._log_async(f"Bootstrap complete. trusted_device={trusted}", role="jarvis")
             except HTTPError as exc:
-                self._log_async(f"bootstrap failed: {_http_error_details(exc)}")
+                self._log_async(f"bootstrap failed: {_http_error_details(exc)}", role="error")
             except (URLError, RuntimeError, TimeoutError) as exc:
-                self._log_async(f"bootstrap failed: {exc}")
+                self._log_async(f"bootstrap failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"bootstrap failed: {exc}")
+                self._log_async(f"bootstrap failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -942,15 +1080,15 @@ class JarvisDesktopWidget(tk.Tk):
 
         def worker() -> None:
             try:
-                self._log_async("Running sync checks...")
+                self._log_async("Running sync checks...", role="system")
                 sync_data = _http_json(cfg, "/sync/status", method="GET")
                 sync_ok = bool(sync_data.get("ok", False))
-                self._log_async(f"sync ok={sync_ok}")
+                self._log_async(f"sync ok={sync_ok}", role="jarvis")
                 last_sync = sync_data.get("last_sync_utc", "")
                 if last_sync:
-                    self._log_async(f"last sync: {last_sync}")
+                    self._log_async(f"last sync: {last_sync}", role="jarvis")
 
-                self._log_async("Running self-heal...")
+                self._log_async("Running self-heal...", role="system")
                 heal_data = _http_json(
                     cfg,
                     "/self-heal",
@@ -963,22 +1101,22 @@ class JarvisDesktopWidget(tk.Tk):
                 )
                 heal_ok = bool(heal_data.get("ok", False))
                 heal_exit = int(heal_data.get("command_exit_code", -1))
-                self._log_async(f"self-heal ok={heal_ok} exit={heal_exit}")
+                self._log_async(f"self-heal ok={heal_ok} exit={heal_exit}", role="jarvis")
                 heal_lines = heal_data.get("stdout_tail", [])
                 if isinstance(heal_lines, list) and heal_lines:
-                    self._log_async(" | ".join(str(x) for x in heal_lines[-4:]))
+                    self._log_async(" | ".join(str(x) for x in heal_lines[-4:]), role="jarvis")
                 if sync_ok and heal_ok:
-                    self._log_async("Self-Heal completed.")
+                    self._log_async("Self-Heal completed.", role="jarvis")
                 elif not heal_ok:
                     self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
             except HTTPError as exc:
-                self._log_async(f"diagnose failed: {_http_error_details(exc)}")
+                self._log_async(f"diagnose failed: {_http_error_details(exc)}", role="error")
                 self._notify_toast("Jarvis Self-Heal", "Self-heal failed to complete", "Error")
             except (URLError, RuntimeError, TimeoutError) as exc:
-                self._log_async(f"diagnose failed: {exc}")
+                self._log_async(f"diagnose failed: {exc}", role="error")
                 self._notify_toast("Jarvis Self-Heal", "Self-heal failed to complete", "Error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"diagnose failed: {exc}")
+                self._log_async(f"diagnose failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -990,6 +1128,8 @@ class JarvisDesktopWidget(tk.Tk):
         if not text:
             self._log("No command text.")
             return
+        # Log the user's command with the "user" role
+        self._log(text, role="user")
         # Read all tkinter vars on the main thread before spawning background thread
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())
@@ -1008,16 +1148,16 @@ class JarvisDesktopWidget(tk.Tk):
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
                 intent = str(data.get("intent", "unknown"))
                 ok = bool(data.get("ok", False))
-                self._log_async(f"intent={intent} ok={ok}")
+                self._log_async(f"[{intent}] ok={ok}", role="jarvis")
                 lines = data.get("stdout_tail", [])
                 if isinstance(lines, list) and lines:
-                    self._log_async(" | ".join(str(x) for x in lines[-6:]))
+                    self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
             except HTTPError as exc:
-                self._log_async(f"command failed: {_http_error_details(exc)}")
+                self._log_async(f"command failed: {_http_error_details(exc)}", role="error")
             except (URLError, RuntimeError, TimeoutError) as exc:
-                self._log_async(f"command failed: {exc}")
+                self._log_async(f"command failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"command failed: {exc}")
+                self._log_async(f"command failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1064,9 +1204,9 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 data = _http_json(cfg, "/settings", method="GET")
                 settings = data.get("settings", {})
-                self._log_async(json.dumps(settings, ensure_ascii=True)[:600])
+                self._log_async(json.dumps(settings, ensure_ascii=True)[:600], role="jarvis")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"settings failed: {exc}")
+                self._log_async(f"settings failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1081,10 +1221,11 @@ class JarvisDesktopWidget(tk.Tk):
                 mem = dash.get("memory_regression", {}) if isinstance(dash, dict) else {}
                 self._log_async(
                     f"score={jar.get('score_pct', 0.0)} delta={jar.get('delta_vs_prev_pct', 0.0)} "
-                    f"memory={mem.get('status', 'unknown')}"
+                    f"memory={mem.get('status', 'unknown')}",
+                    role="jarvis",
                 )
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"dashboard failed: {exc}")
+                self._log_async(f"dashboard failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1110,18 +1251,19 @@ class JarvisDesktopWidget(tk.Tk):
                 stats = data.get("stats", {})
                 if stats:
                     parts = [f"{k}:{v}" for k, v in stats.items()]
-                    self._log_async(f"Activity (24h): {', '.join(parts)}")
+                    self._log_async(f"Activity (24h): {', '.join(parts)}", role="jarvis")
                 if not events:
-                    self._log_async("No recent activity events.")
+                    self._log_async("No recent activity events.", role="system")
                     return
                 for evt in reversed(events):
                     ts_raw = str(evt.get("timestamp", ""))
                     ts_short = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
                     cat = str(evt.get("category", ""))
                     summary = str(evt.get("summary", ""))
-                    self._log_async(f"[{ts_short}] [{cat.upper()}] {summary}")
+                    role = "error" if cat == "error" else "jarvis"
+                    self._log_async(f"[{ts_short}] [{cat.upper()}] {summary}", role=role)
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"activity failed: {exc}")
+                self._log_async(f"activity failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1132,14 +1274,14 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 text = _voice_dictate_once(timeout_s=8)
                 if not text:
-                    self._log_async("No speech recognized.")
+                    self._log_async("No speech recognized.", role="system")
                     return
                 self._set_command_text_async(text)
-                self._log_async(f"dictated: {text}")
+                self._log_async(f"dictated: {text}", role="system")
                 if auto_send:
                     self.after(0, self._send_command_async)
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"dictation failed: {exc}")
+                self._log_async(f"dictation failed: {exc}", role="error")
 
         self._thread(worker)
 

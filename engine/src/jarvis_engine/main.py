@@ -922,7 +922,7 @@ def cmd_ingest(source: str, kind: str, task_id: str, content: str) -> int:
     return 0
 
 
-def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None, allow_insecure_bind: bool = False, config_file: str | None = None) -> int:
+def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str | None, allow_insecure_bind: bool = False, config_file: str | None = None, tls: bool | None = None) -> int:
     # Load credentials from config file if provided
     if config_file:
         config_path = Path(config_file)
@@ -995,6 +995,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
             auth_token=effective_token,
             signing_key=effective_signing_key,
             repo_root=root,
+            tls=tls,
         )
     except KeyboardInterrupt:
         print("\nmobile_api_stopped=true")
@@ -3673,6 +3674,19 @@ def main() -> int:
         action="store_true",
         help="Allow non-loopback HTTP bind (for trusted LAN). Falls back to JARVIS_ALLOW_INSECURE_MOBILE_BIND env var.",
     )
+    _tls_group = p_mobile.add_mutually_exclusive_group()
+    _tls_group.add_argument(
+        "--tls",
+        action="store_true",
+        default=None,
+        help="Require TLS (generate self-signed cert if needed). Default: auto-detect.",
+    )
+    _tls_group.add_argument(
+        "--no-tls",
+        action="store_true",
+        default=False,
+        help="Explicitly disable TLS (plain HTTP).",
+    )
 
     p_route = sub.add_parser("route", help="Get a route decision.")
     p_route.add_argument("--risk", default="low", choices=["low", "medium", "high", "critical"])
@@ -4086,12 +4100,19 @@ def main() -> int:
             content=args.content,
         )
     if args.command == "serve-mobile":
+        # Resolve --tls / --no-tls into a tri-state: True, False, or None (auto)
+        _tls_flag: bool | None = None
+        if getattr(args, "tls", None):
+            _tls_flag = True
+        elif getattr(args, "no_tls", False):
+            _tls_flag = False
         return cmd_serve_mobile(
             host=args.host,
             port=args.port,
             token=args.token,
             signing_key=args.signing_key,
             allow_insecure_bind=args.allow_insecure_bind,
+            tls=_tls_flag,
         )
     if args.command == "route":
         return cmd_route(risk=args.risk, complexity=args.complexity)
