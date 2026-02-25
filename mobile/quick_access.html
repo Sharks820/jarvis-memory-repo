@@ -251,6 +251,7 @@
       <span id="badgeMemory" class="badge off">Memory: --</span>
       <span id="badgeSafe" class="badge off">Safe: --</span>
       <span id="badgeIntel" class="badge off">Intel: --</span>
+      <span id="lastRefresh" class="badge off" style="margin-left:auto;font-size:9px"></span>
     </div>
 
     <!-- Big Talk Button (primary action) -->
@@ -289,6 +290,7 @@
     <!-- What you can say -->
     <div class="help-tip" id="helpTip">
       <b>Try saying:</b> "search the web for..." | "what's my schedule" | "remind me to..." | "brain status" | "self heal"
+      <br/><span style="color:var(--muted);font-size:10px">Shortcuts: <b>Ctrl+Space</b> toggle panel | <b>Ctrl+Enter</b> send command</span>
     </div>
 
     <!-- Response Meta (model/provider info) -->
@@ -572,12 +574,18 @@
       } catch {
         // Health endpoint may not include intelligence data
       }
+      updateLastRefresh();
     }
 
     function updateBadge(id, text, color) {
       const el = $(id);
       el.textContent = text;
       el.className = `badge ${color}`;
+    }
+
+    function updateLastRefresh() {
+      const el = $("lastRefresh");
+      if (el) el.textContent = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
     }
 
     async function refreshProcesses() {
@@ -833,7 +841,8 @@
     loadCreds();
     write("Ready. Tap the talk button or type a command.");
     setTimeout(() => { refreshStatus().catch(() => {}); refreshProcesses().catch(() => {}); }, 500);
-    setInterval(() => { refreshProcesses().catch(() => {}); }, 10000);
+    // Auto-refresh status and processes every 10s
+    setInterval(() => { refreshStatus().catch(() => {}); refreshProcesses().catch(() => {}); }, 10000);
   </script>
 </body>
 </html>
