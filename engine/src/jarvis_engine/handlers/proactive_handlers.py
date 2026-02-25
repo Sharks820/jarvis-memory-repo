@@ -134,12 +134,15 @@ class WakeWordStartHandler:
                            text, result.backend, result.duration_seconds)
                 # Dispatch through voice-run pipeline
                 try:
-                    from jarvis_engine.main import _cmd_voice_run_impl
+                    from jarvis_engine.main import _cmd_voice_run_impl, repo_root
+                    _root = repo_root()
                     _cmd_voice_run_impl(
                         text=text,
                         execute=True,
                         approve_privileged=False,
                         speak=True,
+                        snapshot_path=_root / ".planning" / "ops_snapshot.live.json",
+                        actions_path=_root / ".planning" / "actions.json",
                         voice_user="conner",
                         voice_auth_wav="",
                         voice_threshold=0.82,
@@ -184,11 +187,15 @@ class CostReductionHandler:
         if self._cost_tracker is None:
             return CostReductionResult(message="Cost tracker not available.")
 
-        from jarvis_engine.proactive.cost_tracking import (
-            cost_reduction_snapshot,
-            cost_reduction_trend,
-            load_cost_history,
-        )
+        try:
+            from jarvis_engine.proactive.cost_tracking import (
+                cost_reduction_snapshot,
+                cost_reduction_trend,
+                load_cost_history,
+            )
+        except ImportError as exc:
+            logger.warning("cost_tracking module not available: %s", exc)
+            return CostReductionResult(message="Cost tracking module not available.")
 
         history_path = self._root / ".planning" / "brain" / "cost_history.jsonl"
 
@@ -225,7 +232,11 @@ class SelfTestHandler:
                 message="Memory engine or embedding service not available."
             )
 
-        from jarvis_engine.proactive.self_test import AdversarialSelfTest
+        try:
+            from jarvis_engine.proactive.self_test import AdversarialSelfTest
+        except ImportError as exc:
+            logger.warning("self_test module not available: %s", exc)
+            return SelfTestResult(message="Self-test module not available.")
 
         history_path = self._root / ".planning" / "brain" / "self_test_history.jsonl"
 

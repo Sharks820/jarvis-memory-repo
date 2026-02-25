@@ -30,7 +30,11 @@ class VoiceListHandler:
         self._root = root
 
     def handle(self, cmd: VoiceListCommand) -> VoiceListResult:
-        from jarvis_engine.voice import list_edge_voices, list_windows_voices
+        try:
+            from jarvis_engine.voice import list_edge_voices, list_windows_voices
+        except ImportError as exc:
+            logger.warning("voice module not available: %s", exc)
+            return VoiceListResult()
 
         voices = list_windows_voices()
         edge_voices = [name for name in list_edge_voices() if name.lower().startswith("en-gb-")]
@@ -42,7 +46,11 @@ class VoiceSayHandler:
         self._root = root
 
     def handle(self, cmd: VoiceSayCommand) -> VoiceSayResult:
-        from jarvis_engine.voice import speak_text
+        try:
+            from jarvis_engine.voice import speak_text
+        except ImportError as exc:
+            logger.warning("voice module not available: %s", exc)
+            return VoiceSayResult(message="error: voice module not available.")
 
         result = speak_text(
             text=cmd.text,
@@ -183,12 +191,16 @@ class PersonaComposeHandler:
         if self._gateway is None:
             return PersonaComposeResult(message="error: gateway not available")
 
-        from jarvis_engine.persona import (
-            _resolve_tone,
-            compose_persona_system_prompt,
-            load_persona_config,
-        )
-        from jarvis_engine.gateway.models import ModelGateway, GatewayResponse
+        try:
+            from jarvis_engine.persona import (
+                _resolve_tone,
+                compose_persona_system_prompt,
+                load_persona_config,
+            )
+            from jarvis_engine.gateway.models import ModelGateway, GatewayResponse
+        except ImportError as exc:
+            logger.warning("persona/gateway modules not available: %s", exc)
+            return PersonaComposeResult(message="error: persona modules not available.")
 
         gateway: ModelGateway = self._gateway  # type: ignore[assignment]
         cfg = load_persona_config(self._root)
