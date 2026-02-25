@@ -126,6 +126,7 @@ class DaemonRunHandler:
             run_missions=cmd.run_missions,
             sync_every_cycles=cmd.sync_every_cycles,
             self_heal_every_cycles=cmd.self_heal_every_cycles,
+            self_test_every_cycles=cmd.self_test_every_cycles,
         )
         return DaemonRunResult(return_code=rc)
 

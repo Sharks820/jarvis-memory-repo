@@ -487,6 +487,9 @@ class JarvisDesktopWidget(tk.Tk):
         self.orb_id = self.orb_canvas.create_oval(8, 8, 18, 18, fill=self.WARN, outline="")
         self.status_var = tk.StringVar(value="OFFLINE")
         tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT, padx=(6, 0))
+        self.intel_var = tk.StringVar(value="")
+        self.intel_label = tk.Label(status_row, textvariable=self.intel_var, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9, "bold"))
+        self.intel_label.pack(side=tk.RIGHT, padx=(0, 8))
         tk.Label(status_row, text="Hotword: say 'Jarvis'", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
         body = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
@@ -551,8 +554,8 @@ class JarvisDesktopWidget(tk.Tk):
         self.speak_var = tk.BooleanVar(value=False)
         self.auto_send_var = tk.BooleanVar(value=True)
         self.hotword_var = tk.BooleanVar(value=False)
-        self._check(flags, "Execute", self.execute_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Privileged", self.priv_var).pack(side=tk.LEFT, padx=(0, 10))
+        self._check(flags, "Allow PC Actions", self.execute_var).pack(side=tk.LEFT, padx=(0, 10))
+        self._check(flags, "Auto-Approve", self.priv_var).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Speak", self.speak_var).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Auto Send", self.auto_send_var).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed).pack(side=tk.LEFT)
@@ -991,11 +994,20 @@ class JarvisDesktopWidget(tk.Tk):
             url = f"{cfg.base_url.rstrip('/')}/health"
             resp = None
             ok = False
+            intel_data: dict[str, Any] | None = None
             for _attempt in range(2):
                 try:
                     req = Request(url=url, method="GET")
                     resp = urlopen(req, timeout=5)
                     ok = resp.status == 200
+                    if ok:
+                        try:
+                            body = resp.read().decode("utf-8")
+                            health_payload = json.loads(body)
+                            if isinstance(health_payload, dict) and "intelligence" in health_payload:
+                                intel_data = health_payload["intelligence"]
+                        except Exception:
+                            pass  # Parsing intelligence is best-effort
                     resp.close()
                     resp = None
                     if ok:
@@ -1015,7 +1027,7 @@ class JarvisDesktopWidget(tk.Tk):
                 time.sleep(0.2)
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._set_online, ok)
+                    self.after(0, self._set_online, ok, intel_data)
                 except Exception:
                     return  # Widget destroyed
             for _ in range(16):
@@ -1023,10 +1035,37 @@ class JarvisDesktopWidget(tk.Tk):
                     return
                 time.sleep(0.5)
 
-    def _set_online(self, value: bool) -> None:
+    def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None) -> None:
         """Update online state and refresh status — always call on main thread."""
         self.online = value
+        self._update_intelligence_label(intel_data)
         self._refresh_status_view()
+
+    def _update_intelligence_label(self, intel_data: dict[str, Any] | None) -> None:
+        """Update the intelligence score label from /health response data."""
+        if intel_data is None:
+            self.intel_var.set("")
+            self.intel_label.config(fg=self.MUTED)
+            return
+        try:
+            score = float(intel_data.get("score", 0.0))
+            regression = bool(intel_data.get("regression", False))
+            score_pct = round(score * 100)
+            if regression:
+                self.intel_var.set(f"Intel: {score_pct}% REGRESSION")
+                self.intel_label.config(fg=self.WARN)
+            elif score_pct >= 70:
+                self.intel_var.set(f"Intel: {score_pct}%")
+                self.intel_label.config(fg=self.ACCENT)
+            elif score_pct >= 50:
+                self.intel_var.set(f"Intel: {score_pct}%")
+                self.intel_label.config(fg="#eab308")  # yellow/warn
+            else:
+                self.intel_var.set(f"Intel: {score_pct}%")
+                self.intel_label.config(fg=self.WARN)
+        except (TypeError, ValueError):
+            self.intel_var.set("")
+            self.intel_label.config(fg=self.MUTED)
 
     def _refresh_status_view(self) -> None:
         self.status_var.set("ONLINE" if self.online else "OFFLINE")

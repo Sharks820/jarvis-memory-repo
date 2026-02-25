@@ -250,6 +250,7 @@
       <span id="badgeDaemon" class="badge off">Engine: --</span>
       <span id="badgeMemory" class="badge off">Memory: --</span>
       <span id="badgeSafe" class="badge off">Safe: --</span>
+      <span id="badgeIntel" class="badge off">Intel: --</span>
     </div>
 
     <!-- Big Talk Button (primary action) -->
@@ -555,6 +556,21 @@
         updateBadge("badgeMemory", `Memory: ${status}`, color);
       } catch {
         // Dashboard may not be available
+      }
+
+      // Intelligence regression detection from /health endpoint
+      try {
+        const c = creds();
+        const healthRes = await fetch(`${c.baseUrl}/health`);
+        const healthData = await healthRes.json();
+        const intel = healthData.intelligence || {};
+        const scorePct = Math.round((intel.score || 0) * 100);
+        const regression = intel.regression || false;
+        const intelColor = regression ? "red" : scorePct >= 70 ? "green" : scorePct >= 50 ? "yellow" : "red";
+        const label = regression ? `Intel: ${scorePct}% REGRESSION` : `Intel: ${scorePct}%`;
+        updateBadge("badgeIntel", label, intelColor);
+      } catch {
+        // Health endpoint may not include intelligence data
       }
     }
 
