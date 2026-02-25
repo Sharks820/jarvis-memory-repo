@@ -57,7 +57,7 @@ class HarvesterProvider:
                     "Install with: pip install openai>=1.0.0"
                 )
 
-            self._client = OpenAI(api_key=self._api_key, base_url=self.base_url)
+            self._client = OpenAI(api_key=self._api_key, base_url=self.base_url, timeout=60.0)
         return self._client
 
     def query(
@@ -226,7 +226,10 @@ class GeminiProvider:
                     "Install with: pip install google-genai>=1.0.0"
                 )
 
-            self._client = genai.Client(api_key=self._api_key)
+            self._client = genai.Client(
+                api_key=self._api_key,
+                http_options={"timeout": 60_000},  # 60s in milliseconds
+            )
         return self._client
 
     def query(

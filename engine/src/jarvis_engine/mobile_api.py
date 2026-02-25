@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -61,6 +62,58 @@ _API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
 _EXPENSIVE_PATHS = {"/command", "/self-heal"}
 
 
+def _ensure_tls_cert(security_dir: Path) -> tuple[str | None, str | None]:
+    """Generate a self-signed TLS certificate + key if they don't exist.
+
+    Uses ``openssl`` via subprocess.  Returns ``(cert_path, key_path)`` on
+    success or ``(None, None)`` when ``openssl`` is unavailable or the
+    generation fails.  Existing certs are reused without regeneration.
+
+    The cert and key files are stored inside *security_dir* which is
+    expected to be gitignored (e.g. ``.planning/security/``).
+    """
+    security_dir.mkdir(parents=True, exist_ok=True)
+    cert_path = security_dir / "tls_cert.pem"
+    key_path = security_dir / "tls_key.pem"
+
+    if cert_path.exists() and key_path.exists():
+        return str(cert_path), str(key_path)
+
+    # Attempt to generate using openssl
+    try:
+        subprocess.run(
+            [
+                "openssl", "req",
+                "-x509",
+                "-newkey", "rsa:2048",
+                "-keyout", str(key_path),
+                "-out", str(cert_path),
+                "-days", "365",
+                "-nodes",
+                "-subj", "/CN=jarvis-local",
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.warning("TLS cert generation failed (openssl not available?): %s", exc)
+        # Clean up partial files
+        for p in (cert_path, key_path):
+            try:
+                if p.exists():
+                    p.unlink()
+            except OSError:
+                pass
+        return None, None
+
+    if cert_path.exists() and key_path.exists():
+        logger.info("Generated self-signed TLS certificate: %s", cert_path)
+        return str(cert_path), str(key_path)
+
+    return None, None
+
+
 def _parse_bool(value: Any) -> bool:
     """Safely parse a boolean from JSON payload (handles string "false"/"true")."""
     if isinstance(value, bool):
@@ -86,10 +139,13 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.signing_key = signing_key
         self.pipeline = pipeline
         self.repo_root = repo_root
+        self.tls_active = False
         self._sync_engine: Any = None
         self._sync_transport: Any = None
         self._sync_init_attempted = False
         self._sync_init_lock = threading.Lock()
+        self._memory_engine: Any = None
+        self._memory_engine_init_lock = threading.Lock()
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
@@ -108,10 +164,27 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._master_pw_attempts: dict[str, list[float]] = {}
         self._master_pw_rate_lock = threading.Lock()
 
+    @staticmethod
+    def _prune_rate_dict(d: dict[str, list[float]], max_keys: int = 5000) -> None:
+        """Remove the oldest half of entries when the dict exceeds max_keys.
+
+        Prevents unbounded memory growth from unique IPs over time.
+        Each value is a list of timestamps; the 'oldest' entry is determined
+        by the maximum timestamp in each list (most recent activity).
+        """
+        if len(d) <= max_keys:
+            return
+        # Sort IPs by their most recent attempt timestamp, ascending
+        by_recency = sorted(d.keys(), key=lambda ip: max(d[ip]) if d[ip] else 0.0)
+        to_remove = len(d) // 2
+        for ip in by_recency[:to_remove]:
+            del d[ip]
+
     def check_bootstrap_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for bootstrap attempts."""
         now = time.time()
         with self._bootstrap_rate_lock:
+            self._prune_rate_dict(self._bootstrap_attempts)
             attempts = self._bootstrap_attempts.get(client_ip, [])
             # Prune attempts outside the sliding window
             cutoff = now - _BOOTSTRAP_RATE_LIMIT_WINDOW
@@ -133,6 +206,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         """Return True if this IP is rate-limited for master password attempts."""
         now = time.time()
         with self._master_pw_rate_lock:
+            self._prune_rate_dict(self._master_pw_attempts)
             attempts = self._master_pw_attempts.get(client_ip, [])
             cutoff = now - _MASTER_PW_RATE_LIMIT_WINDOW
             attempts = [ts for ts in attempts if ts > cutoff]
@@ -154,6 +228,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         limit = _API_RATE_LIMIT_EXPENSIVE if path in _EXPENSIVE_PATHS else _API_RATE_LIMIT_NORMAL
         now = time.time()
         with self._api_rate_lock:
+            self._prune_rate_dict(self._api_rate_attempts)
             attempts = self._api_rate_attempts.get(client_ip, [])
             cutoff = now - _API_RATE_LIMIT_WINDOW
             attempts = [ts for ts in attempts if ts > cutoff]
@@ -251,6 +326,28 @@ class MobileIngestServer(ThreadingHTTPServer):
             except Exception as exc:
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
             return self._sync_engine
+
+    def ensure_memory_engine(self) -> Any:
+        """Lazy-initialize a MemoryEngine for read-only metric queries.
+
+        Returns the MemoryEngine instance, or None if the DB doesn't exist
+        or initialization fails.
+        """
+        if self._memory_engine is not None:
+            return self._memory_engine
+        with self._memory_engine_init_lock:
+            if self._memory_engine is not None:
+                return self._memory_engine
+            db_path = self.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+            if not db_path.exists():
+                return None
+            try:
+                from jarvis_engine.memory.engine import MemoryEngine
+                self._memory_engine = MemoryEngine(db_path)
+                logger.info("MemoryEngine lazy-initialized for mobile API metrics")
+            except Exception as exc:
+                logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
+            return self._memory_engine
 
 
 class MobileIngestHandler(BaseHTTPRequestHandler):
@@ -791,8 +888,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         intelligence_status["score"] = latest.get("average_score", 0.0)
                         intelligence_status["last_test"] = latest.get("timestamp", "")
                         intelligence_status["regression"] = latest.get("below_threshold", False)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("self-test history parse failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
             return
         if path == "/settings":
@@ -970,10 +1067,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                                 metrics["growth_trend"] = "declining"
                             else:
                                 metrics["growth_trend"] = "stable"
-                except Exception:
-                    pass
-        except Exception:
-            logger.debug("Intelligence growth: KG metrics unavailable")
+                except Exception as exc:
+                    logger.debug("intelligence growth metric failed: %s", exc)
+        except Exception as exc:
+            logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
 
         # --- Activity feed: corrections and consolidations ---
         try:
@@ -991,28 +1088,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             try:
                 recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
                 metrics["corrections_last_7d"] = len(recent_events)
-            except Exception:
-                pass
-        except Exception:
-            logger.debug("Intelligence growth: activity feed unavailable")
+            except Exception as exc:
+                logger.debug("intelligence growth metric failed: %s", exc)
+        except Exception as exc:
+            logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
 
         # --- Memory engine: record count ---
         try:
-            db_path = root / ".planning" / "brain" / "jarvis_memory.db"
-            if db_path.exists():
-                import sqlite3 as _sqlite3
-                conn = _sqlite3.connect(str(db_path), timeout=5)
-                conn.execute("PRAGMA journal_mode=WAL")
-                try:
-                    row = conn.execute("SELECT COUNT(*) FROM records").fetchone()
-                    if row:
-                        metrics["memory_records"] = int(row[0])
-                except Exception:
-                    pass
-                finally:
-                    conn.close()
-        except Exception:
-            logger.debug("Intelligence growth: memory records unavailable")
+            server: MobileIngestServer = self.server  # type: ignore[assignment]
+            mem_engine = server.ensure_memory_engine()
+            if mem_engine is not None:
+                metrics["memory_records"] = mem_engine.count_records()
+        except Exception as exc:
+            logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         # --- Self-test score from growth tracker history ---
         try:
@@ -1023,8 +1111,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     latest_test = json.loads(lines[-1])
                     score = latest_test.get("average_score", 0.0)
                     metrics["last_self_test_score"] = round(float(score), 3)
-        except Exception:
-            logger.debug("Intelligence growth: self-test history unavailable")
+        except Exception as exc:
+            logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
 
         # --- Capability history for overall trend confirmation ---
         try:
@@ -1038,8 +1126,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     metrics["growth_trend"] = "increasing"
                 elif latest_score < prev_score:
                     metrics["growth_trend"] = "declining"
-        except Exception:
-            logger.debug("Intelligence growth: capability history unavailable")
+        except Exception as exc:
+            logger.debug("Intelligence growth: capability history unavailable: %s", exc)
 
         return {"ok": True, "metrics": metrics}
 
@@ -1110,7 +1198,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         bind_addr = s.getsockname()[0]
                 except OSError:
                     bind_addr = "127.0.0.1"
-            base_url = f"http://{bind_addr}:{port}"
+            _scheme = "https" if getattr(self.server, "tls_active", False) else "http"
+            base_url = f"{_scheme}://{bind_addr}:{port}"
             logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
             self._write_json(
                 HTTPStatus.OK,
@@ -1350,13 +1439,45 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         return
 
 
-def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, repo_root: Path) -> None:
+def run_mobile_server(
+    host: str,
+    port: int,
+    auth_token: str,
+    signing_key: str,
+    repo_root: Path,
+    *,
+    tls: bool | None = None,
+) -> None:
+    """Start the mobile API HTTP(S) server.
+
+    *tls* controls TLS behaviour:
+    - ``None``  (default): auto-detect; enable TLS if certs exist or can be
+      generated, fall back to HTTP otherwise.
+    - ``True``:  require TLS; generate certs if needed, raise on failure.
+    - ``False``: explicitly disable TLS (plain HTTP).
+    """
+    # --- Resolve TLS cert / key ---------------------------------------------------
+    security_dir = repo_root / ".planning" / "security"
+    tls_cert: str | None = None
+    tls_key: str | None = None
+
+    if tls is not False:
+        tls_cert, tls_key = _ensure_tls_cert(security_dir)
+        if tls is True and (tls_cert is None or tls_key is None):
+            raise RuntimeError(
+                "TLS was explicitly requested but certificate generation failed. "
+                "Install openssl or provide certs manually in .planning/security/"
+            )
+
+    tls_active = tls_cert is not None and tls_key is not None
+
+    # --- Non-loopback bind guard --------------------------------------------------
     allow_insecure_non_loopback = os.getenv("JARVIS_ALLOW_INSECURE_MOBILE_BIND", "").strip().lower() in {
         "1",
         "true",
         "yes",
     }
-    if host not in {"127.0.0.1", "localhost", "::1"} and not allow_insecure_non_loopback:
+    if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active and not allow_insecure_non_loopback:
         raise RuntimeError(
             "Refusing non-loopback mobile bind without TLS. "
             "Set JARVIS_ALLOW_INSECURE_MOBILE_BIND=true only for trusted local testing."
@@ -1412,8 +1533,19 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
         except OSError:
             pass
 
-    print(f"mobile_api_listening=http://{host}:{port}")
-    if host not in {"127.0.0.1", "localhost", "::1"}:
+    # --- Wrap server socket with TLS if certs are available ----------------------
+    if tls_active:
+        assert tls_cert is not None and tls_key is not None  # for type-checker
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(tls_cert, tls_key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        server.tls_active = True
+        logger.info("TLS enabled with cert=%s key=%s", tls_cert, tls_key)
+
+    scheme = "https" if tls_active else "http"
+    print(f"mobile_api_listening={scheme}://{host}:{port}")
+    print(f"tls={'enabled' if tls_active else 'disabled'}")
+    if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         print("warning=mobile_api_non_loopback_without_tls")
     print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     try:
@@ -1431,6 +1563,13 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
                     logger.info("Sync engine DB connection closed")
             except Exception as exc:
                 logger.warning("Failed to close sync engine DB: %s", exc)
+        # Close the MemoryEngine (lazy-initialized for metrics)
+        if server._memory_engine is not None:
+            try:
+                server._memory_engine.close()
+                logger.info("MemoryEngine connection closed")
+            except Exception as exc:
+                logger.warning("Failed to close MemoryEngine: %s", exc)
         # Close the MemoryStore (which holds its own SQLite connection)
         try:
             store.close()

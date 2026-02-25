@@ -3,6 +3,7 @@ package com.jarvis.assistant.ui.settings
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.api.JarvisApiClient
@@ -459,8 +460,8 @@ class SettingsViewModel @Inject constructor(
             medicationScheduler.rescheduleForMedication(id)
             try {
                 refillTracker.syncToDesktop(apiClient)
-            } catch (_: Exception) {
-                // Desktop sync is best-effort
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync medication to desktop", e)
             }
             loadTodayMedicationStatus()
         }
@@ -619,8 +620,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 learningSummary.value = notificationLearner.getLearningSummary()
-            } catch (_: Exception) {
-                // Silently fail -- no learning data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load learning summary", e)
             }
         }
     }
@@ -639,13 +640,14 @@ class SettingsViewModel @Inject constructor(
                         val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
                         val times: List<String> = gson.fromJson(med.scheduledTimes, type) ?: emptyList()
                         totalDoses += times.size
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to parse scheduled times JSON", e)
                         totalDoses += 1
                     }
                 }
                 todayDosesTotal.value = totalDoses
-            } catch (_: Exception) {
-                // No medication data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load today medication status", e)
             }
         }
     }
@@ -658,8 +660,8 @@ class SettingsViewModel @Inject constructor(
                     currentContextLabel.value = latest.context
                     currentContextConfidence.value = latest.confidence
                 }
-            } catch (_: Exception) {
-                // No context data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load latest context state", e)
             }
         }
     }
@@ -677,8 +679,8 @@ class SettingsViewModel @Inject constructor(
                 weekTransactionCount.value = transactions.size
                 weekTotalSpend.value = transactionDao.getTotalSpendInRange(weekStart, today) ?: 0.0
                 weekAnomalyCount.value = transactionDao.getAnomalyCountInRange(weekStart, today)
-            } catch (_: Exception) {
-                // No transaction data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load weekly financial stats", e)
             }
         }
     }
@@ -688,8 +690,8 @@ class SettingsViewModel @Inject constructor(
             try {
                 val unsynced = documentDao.getUnsyncedDocuments()
                 unsyncedDocCount.value = unsynced.size
-            } catch (_: Exception) {
-                // No document data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load unsynced document count", e)
             }
         }
     }
@@ -721,8 +723,8 @@ class SettingsViewModel @Inject constructor(
                 } else {
                     "No parking saved"
                 }
-            } catch (_: Exception) {
-                // No commute data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load commute status", e)
             }
         }
     }
@@ -751,8 +753,8 @@ class SettingsViewModel @Inject constructor(
 
                 val sleepPattern = habitDao.findByTypeAndLabel("built_in", BuiltInNudges.LABEL_SLEEP)
                 sleepReminderEnabled.value = sleepPattern?.isActive == true
-            } catch (_: Exception) {
-                // No habit data yet
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load habit status", e)
             }
         }
     }
@@ -776,6 +778,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     companion object {
+        private const val TAG = "SettingsViewModel"
         private const val KEY_PROACTIVE_ALERTS_ENABLED = "proactive_alerts_enabled"
         private const val KEY_EMERGENCY_CONTACTS = "emergency_contacts"
         private const val KEY_FINANCE_MONITORING_ENABLED = "finance_monitoring_enabled"

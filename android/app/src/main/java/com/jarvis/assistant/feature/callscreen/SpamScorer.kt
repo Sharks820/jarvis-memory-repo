@@ -1,6 +1,7 @@
 package com.jarvis.assistant.feature.callscreen
 
 import android.content.Context
+import android.util.Log
 import com.jarvis.assistant.data.dao.SpamDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -124,12 +125,14 @@ class SpamScorer @Inject constructor(
                 .split(",")
                 .map { it.trim().removeSurrounding("\"") }
                 .filter { it.isNotBlank() }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse spam reasons JSON", e)
             emptyList()
         }
     }
 
     companion object {
+        private const val TAG = "SpamScorer"
         /** SharedPreferences file used for call screening thresholds. */
         const val PREFS_NAME = "jarvis_secure_prefs"
 

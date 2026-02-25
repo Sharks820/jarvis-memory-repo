@@ -1,6 +1,7 @@
 package com.jarvis.assistant.ui.documents
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.data.dao.DocumentDao
@@ -53,8 +54,8 @@ class DocumentViewModel @Inject constructor(
                 // Attempt immediate sync
                 try {
                     syncManager.syncDocument(result)
-                } catch (_: Exception) {
-                    // Sync is best-effort; will retry in background
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to sync scanned document", e)
                 }
             } catch (e: Exception) {
                 scanError.value = e.message ?: "Scan failed"
@@ -70,7 +71,8 @@ class DocumentViewModel @Inject constructor(
             try {
                 val results = searchEngine.search(query, selectedCategory.value)
                 searchResults.value = results
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to search documents", e)
                 searchResults.value = emptyList()
             }
         }
@@ -98,8 +100,8 @@ class DocumentViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 syncManager.syncPending()
-            } catch (_: Exception) {
-                // Best-effort
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync pending documents", e)
             }
         }
     }
@@ -108,5 +110,9 @@ class DocumentViewModel @Inject constructor(
     fun clearScanResult() {
         scanResult.value = null
         scanError.value = null
+    }
+
+    companion object {
+        private const val TAG = "DocumentViewModel"
     }
 }

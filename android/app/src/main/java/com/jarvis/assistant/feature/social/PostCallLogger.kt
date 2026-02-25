@@ -320,8 +320,8 @@ class PostCallLogReceiver : BroadcastReceiver() {
                                         " about $notes",
                                 ),
                             )
-                        } catch (_: Exception) {
-                            // Desktop sync is best-effort
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to sync post-call notes to desktop", e)
                         }
 
                         Log.i(TAG, "Post-call notes saved for ${contactContext.contactName}")
@@ -353,7 +353,8 @@ class PostCallLogReceiver : BroadcastReceiver() {
         val existing = try {
             val type = object : TypeToken<List<String>>() {}.type
             Gson().fromJson<List<String>>(existingJson, type) ?: emptyList()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse existing topics JSON", e)
             emptyList()
         }
 

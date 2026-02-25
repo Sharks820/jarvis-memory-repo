@@ -1,5 +1,6 @@
 package com.jarvis.assistant.feature.scheduling
 
+import android.util.Log
 import java.security.MessageDigest
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -222,7 +223,9 @@ class SchedulingCueExtractor @Inject constructor() {
 
             try {
                 results.add(LocalDate.of(year, month, day))
-            } catch (_: Exception) { /* invalid date */ }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse month-day date: $monthName $day", e)
+            }
         }
 
         slashDatePattern.findAll(text).forEach { match ->
@@ -239,7 +242,9 @@ class SchedulingCueExtractor @Inject constructor() {
                 if (month in 1..12 && day in 1..31) {
                     results.add(LocalDate.of(year, month, day))
                 }
-            } catch (_: Exception) { /* invalid date */ }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse slash date: $month/$day/$yearStr", e)
+            }
         }
 
         isoDatePattern.findAll(text).forEach { match ->
@@ -367,6 +372,8 @@ class SchedulingCueExtractor @Inject constructor() {
     }
 
     companion object {
+        private const val TAG = "SchedulingCueExtractor"
+
         /** SHA-256 hash of source text for deduplication. */
         fun contentHash(text: String): String {
             val digest = MessageDigest.getInstance("SHA-256")

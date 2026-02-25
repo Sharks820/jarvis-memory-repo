@@ -137,6 +137,7 @@ class RefillTracker @Inject constructor(
             val type = object : TypeToken<List<String>>() {}.type
             gson.fromJson(scheduledTimes, type) ?: emptyList()
         } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse scheduled times JSON", e)
             emptyList()
         }
     }

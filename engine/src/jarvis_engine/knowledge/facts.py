@@ -1,14 +1,22 @@
-"""Fact extraction from text using domain-specific regex patterns.
+"""Fact extraction from text using domain-specific regex patterns and LLM.
 
 Extracts structured fact triples (subject, predicate, object_val, confidence)
-from ingested content.  Patterns cover health, schedule, preferences, family,
-location, and finance domains.
+from ingested content.  Regex patterns cover health, schedule, preferences,
+family, location, and finance domains.  An optional LLM-based extractor
+supplements regex extraction for richer, more diverse fact coverage.
+
+The hybrid extraction function runs regex first (fast/free), then LLM if a
+gateway is available, and deduplicates the combined results.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
-from typing import NamedTuple
+from typing import Any, NamedTuple
+
+logger = logging.getLogger(__name__)
 
 
 class FactTriple(NamedTuple):

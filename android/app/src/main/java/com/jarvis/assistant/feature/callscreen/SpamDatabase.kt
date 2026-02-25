@@ -115,8 +115,8 @@ class SpamDatabaseSync @Inject constructor(
             val listType = object : TypeToken<List<SpamCandidateDto>>() {}.type
             val parsed: List<SpamCandidateDto> = gson.fromJson(candidatesJson, listType)
             if (parsed.isNotEmpty()) return parsed
-        } catch (_: Exception) {
-            // Not a report-format JSON
+        } catch (e: Exception) {
+            Log.d(TAG, "Spam report not in report-format JSON", e)
         }
 
         // Try parsing each line as an individual candidate
@@ -129,8 +129,8 @@ class SpamDatabaseSync @Inject constructor(
                 if (candidate.number.isNotBlank()) {
                     candidates.add(candidate)
                 }
-            } catch (_: Exception) {
-                // Skip unparseable lines
+            } catch (e: Exception) {
+                Log.d(TAG, "Failed to parse spam candidate line", e)
             }
         }
 
@@ -140,8 +140,8 @@ class SpamDatabaseSync @Inject constructor(
                 val listType = object : TypeToken<List<SpamCandidateDto>>() {}.type
                 val parsed: List<SpamCandidateDto> = gson.fromJson(joined, listType)
                 if (parsed.isNotEmpty()) return parsed
-            } catch (_: Exception) {
-                // Not an array
+            } catch (e: Exception) {
+                Log.d(TAG, "Spam candidates not in JSON array format", e)
             }
         }
 

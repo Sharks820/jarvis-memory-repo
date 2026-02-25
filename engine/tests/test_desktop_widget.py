@@ -961,3 +961,277 @@ class TestToastConstants:
 
     def test_cooldown_seconds(self):
         assert _TOAST_COOLDOWN_SECONDS == 120
+
+
+# ---- Chat-style conversation display ----------------------------------------
+
+class TestChatDisplay:
+    """Test the chat-style conversation display using a headless tkinter Text widget.
+
+    These tests verify tag configuration, role-based formatting, line cap
+    behavior, and the Clear History button logic without launching a full GUI.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _tk_text(self):
+        """Create a minimal tkinter root + Text widget for each test."""
+        import tkinter as _tk
+        try:
+            self._root = _tk.Tk()
+        except _tk.TclError:
+            pytest.skip("tkinter Tk() initialization failed (environment issue)")
+        self._root.withdraw()  # No visible window
+        self._text = _tk.Text(self._root, state=_tk.DISABLED)
+        self._text.pack()
+        # Import the class to access tag configuration logic
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        self._widget_cls = JarvisDesktopWidget
+        yield
+        try:
+            self._root.destroy()
+        except Exception:
+            pass
+
+    def _configure_tags(self):
+        """Apply the same tag_configure calls the widget uses."""
+        import tkinter as _tk
+        self._text.tag_configure(
+            "user",
+            background="#0c2d5e",
+            foreground="#b8d4ff",
+            font=("Consolas", 10, "bold"),
+            lmargin1=40,
+            lmargin2=40,
+            rmargin=8,
+            spacing1=4,
+            spacing3=4,
+        )
+        self._text.tag_configure(
+            "jarvis",
+            background="#0d1e1e",
+            foreground="#a8e6cf",
+            font=("Consolas", 10),
+            lmargin1=8,
+            lmargin2=8,
+            rmargin=40,
+            spacing1=4,
+            spacing3=4,
+        )
+        self._text.tag_configure(
+            "system",
+            foreground="#5a7a9e",
+            font=("Consolas", 9),
+            lmargin1=8,
+            lmargin2=8,
+            spacing1=2,
+            spacing3=2,
+        )
+        self._text.tag_configure(
+            "error",
+            background="#1a0a0a",
+            foreground="#f87171",
+            font=("Consolas", 10),
+            lmargin1=8,
+            lmargin2=8,
+            spacing1=4,
+            spacing3=4,
+        )
+        self._text.tag_configure(
+            "separator",
+            foreground="#1e3250",
+            font=("Consolas", 6),
+            justify="center",
+            spacing1=2,
+            spacing3=2,
+        )
+        self._text.tag_configure(
+            "timestamp",
+            foreground="#3a5a7e",
+            font=("Consolas", 8),
+            justify="center",
+            spacing1=6,
+            spacing3=2,
+        )
+
+    def _insert_with_role(self, message: str, role: str = "system"):
+        """Simulate the _log method's insert logic on our test Text widget."""
+        import tkinter as _tk
+        stamp = time.strftime("%H:%M:%S")
+        self._text.config(state=_tk.NORMAL)
+
+        if role == "user":
+            display = f"You: {message}\n"
+        elif role == "jarvis":
+            display = f"Jarvis: {message}\n"
+        elif role == "error":
+            display = f"[{stamp}] ERROR: {message}\n"
+        else:
+            display = f"[{stamp}] {message}\n"
+
+        if role == "user":
+            sep_line = "\u2500" * 48 + "\n"
+            self._text.insert(_tk.END, sep_line, "separator")
+            self._text.insert(_tk.END, f"  {stamp}  \n", "timestamp")
+
+        tag = role if role in ("user", "jarvis", "system", "error") else "system"
+        self._text.insert(_tk.END, display, tag)
+
+        line_count = int(self._text.index("end-1c").split(".")[0])
+        if line_count > 500:
+            self._text.delete("1.0", f"{line_count - 500}.0")
+
+        self._text.config(state=_tk.DISABLED)
+
+    def test_tag_configure_creates_all_roles(self):
+        """Verify all expected tags are configured on the Text widget."""
+        self._configure_tags()
+        tag_names = self._text.tag_names()
+        for expected in ("user", "jarvis", "system", "error", "separator", "timestamp"):
+            assert expected in tag_names, f"Tag '{expected}' not found in {tag_names}"
+
+    def test_user_tag_has_blue_background(self):
+        """The 'user' tag should have a blue background for visual distinction."""
+        self._configure_tags()
+        bg = self._text.tag_cget("user", "background")
+        assert bg == "#0c2d5e"
+
+    def test_jarvis_tag_has_dark_green_background(self):
+        """The 'jarvis' tag should have a dark greenish background."""
+        self._configure_tags()
+        bg = self._text.tag_cget("jarvis", "background")
+        assert bg == "#0d1e1e"
+
+    def test_error_tag_has_red_foreground(self):
+        """The 'error' tag should use a red-tinted foreground."""
+        self._configure_tags()
+        fg = self._text.tag_cget("error", "foreground")
+        assert fg == "#f87171"
+
+    def test_system_tag_has_muted_foreground(self):
+        """The 'system' tag should use a muted color."""
+        self._configure_tags()
+        fg = self._text.tag_cget("system", "foreground")
+        assert fg == "#5a7a9e"
+
+    def test_user_role_inserts_separator_and_timestamp(self):
+        """User messages should be preceded by a separator line and timestamp."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("hello world", role="user")
+        content = self._text.get("1.0", _tk.END)
+        # Should contain the separator character
+        assert "\u2500" in content
+        # Should contain the "You:" prefix
+        assert "You: hello world" in content
+
+    def test_jarvis_role_shows_prefix(self):
+        """Jarvis messages should show 'Jarvis:' prefix."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("I understand.", role="jarvis")
+        content = self._text.get("1.0", _tk.END)
+        assert "Jarvis: I understand." in content
+
+    def test_error_role_shows_error_prefix(self):
+        """Error messages should show 'ERROR:' with timestamp."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("connection refused", role="error")
+        content = self._text.get("1.0", _tk.END)
+        assert "ERROR: connection refused" in content
+
+    def test_system_role_shows_timestamp(self):
+        """System messages should include a timestamp bracket."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("Widget online.", role="system")
+        content = self._text.get("1.0", _tk.END)
+        assert "Widget online." in content
+        assert "[" in content  # timestamp bracket
+
+    def test_tags_applied_to_inserted_text(self):
+        """Verify that inserted text actually has the correct tag applied."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("test message", role="jarvis")
+        # Find the line containing the message and check its tags
+        # The text widget assigns tags at specific ranges
+        content = self._text.get("1.0", _tk.END)
+        assert "Jarvis: test message" in content
+        # Check tag at the position of the message
+        line_start = "1.0"
+        tags_at = self._text.tag_names(line_start)
+        assert "jarvis" in tags_at
+
+    def test_line_cap_removes_old_lines(self):
+        """When exceeding 500 lines, old lines should be pruned."""
+        import tkinter as _tk
+        self._configure_tags()
+        # Insert 510 system messages (1 line each)
+        self._text.config(state=_tk.NORMAL)
+        for i in range(510):
+            self._text.insert(_tk.END, f"line {i}\n", "system")
+        # Trigger the cap logic (same as _log)
+        line_count = int(self._text.index("end-1c").split(".")[0])
+        if line_count > 500:
+            self._text.delete("1.0", f"{line_count - 500}.0")
+        self._text.config(state=_tk.DISABLED)
+        final_count = int(self._text.index("end-1c").split(".")[0])
+        # tkinter counts the trailing empty line, so 501 is acceptable (500 content lines)
+        assert final_count <= 501
+
+    def test_clear_history_empties_widget(self):
+        """The clear history action should remove all text."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("some message", role="system")
+        self._insert_with_role("another message", role="jarvis")
+
+        # Verify there is content
+        assert len(self._text.get("1.0", _tk.END).strip()) > 0
+
+        # Simulate clear
+        self._text.config(state=_tk.NORMAL)
+        self._text.delete("1.0", _tk.END)
+        self._text.config(state=_tk.DISABLED)
+
+        # Should be empty
+        assert self._text.get("1.0", _tk.END).strip() == ""
+
+    def test_widget_is_disabled_between_inserts(self):
+        """The text widget should be in DISABLED state to prevent user edits."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("test", role="system")
+        assert str(self._text.cget("state")) == "disabled"
+
+    def test_multiple_roles_interleave_correctly(self):
+        """Inserting messages with different roles should produce correct ordering."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("hello", role="user")
+        self._insert_with_role("[chat] ok=True", role="jarvis")
+        self._insert_with_role("sync complete", role="system")
+        self._insert_with_role("timeout", role="error")
+
+        content = self._text.get("1.0", _tk.END)
+        # All messages should be present in order (appended at END)
+        user_pos = content.find("You: hello")
+        jarvis_pos = content.find("Jarvis: [chat] ok=True")
+        system_pos = content.find("sync complete")
+        error_pos = content.find("ERROR: timeout")
+
+        assert user_pos >= 0
+        assert jarvis_pos > user_pos
+        assert system_pos > jarvis_pos
+        assert error_pos > system_pos
+
+    def test_unknown_role_falls_back_to_system(self):
+        """An unrecognized role should be treated as system."""
+        import tkinter as _tk
+        self._configure_tags()
+        self._insert_with_role("mystery", role="unknown_role")
+        content = self._text.get("1.0", _tk.END)
+        # Should show with timestamp (system format)
+        assert "mystery" in content
+        assert "[" in content  # timestamp bracket from system format

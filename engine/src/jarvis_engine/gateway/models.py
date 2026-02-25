@@ -133,7 +133,7 @@ class ModelGateway:
         )
         if anthropic_api_key is not None:
             if _HAS_ANTHROPIC:
-                self._anthropic: Anthropic | None = Anthropic(api_key=anthropic_api_key)
+                self._anthropic: Anthropic | None = Anthropic(api_key=anthropic_api_key, timeout=60.0)
             else:
                 self._anthropic = None
                 logger.warning(

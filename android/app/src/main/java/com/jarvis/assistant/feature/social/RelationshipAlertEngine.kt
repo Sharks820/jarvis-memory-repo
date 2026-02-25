@@ -213,8 +213,8 @@ class RelationshipAlertEngine @Inject constructor(
                 )
                 // Future: parse response to supplement local data
             }
-        } catch (_: Exception) {
-            // Desktop sync is best-effort
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to sync desktop social graph", e)
         }
     }
 
@@ -266,7 +266,10 @@ class RelationshipAlertEngine @Inject constructor(
                 }
                 else -> null
             }
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse date string: $dateStr", e)
+            null
+        }
     }
 
     private fun getTodayMMDD(): String {

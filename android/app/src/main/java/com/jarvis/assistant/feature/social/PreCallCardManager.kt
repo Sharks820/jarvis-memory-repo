@@ -113,7 +113,8 @@ class PreCallCardManager @Inject constructor(
                     null
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch desktop brain context for pre-call card", e)
             null
         }
 
@@ -207,7 +208,8 @@ class PreCallCardManager @Inject constructor(
             } finally {
                 cursor?.close()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to resolve contact name", e)
             null
         }
     }
@@ -228,7 +230,8 @@ class PreCallCardManager @Inject constructor(
                     .map { it.trim().removeSurrounding("\"") }
                     .filter { it.isNotBlank() }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse topics JSON", e)
             emptyList()
         }
     }

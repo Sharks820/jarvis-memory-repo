@@ -177,7 +177,8 @@ class NudgeEngine @Inject constructor(
             triggerDays.trim('[', ']')
                 .split(",")
                 .mapNotNull { it.trim().toIntOrNull() }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse trigger days: $triggerDays", e)
             emptyList()
         }
     }

@@ -96,13 +96,30 @@ class GatewayAudit:
             logger.warning("Failed to rotate audit log: %s", exc)
 
     def recent(self, n: int = 50) -> list[dict]:
-        """Return the last *n* audit records from the log file."""
+        """Return the last *n* audit records from the log file.
+
+        Reads only the tail of the file (estimated at ~200 bytes per line)
+        to avoid loading the entire audit log into memory.
+        """
         if not self._path.exists():
             return []
         try:
-            lines = self._path.read_text(encoding="utf-8").strip().splitlines()
+            with open(self._path, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                if size == 0:
+                    return []
+                # Estimate ~500 bytes per JSONL line; add 2x buffer for safety
+                read_size = min(size, 500 * n * 2)
+                f.seek(max(0, size - read_size))
+                tail = f.read().decode("utf-8", errors="replace")
         except OSError:
             return []
+        lines = tail.strip().splitlines()
+        # If we seeked into the middle of a line, the first line is partial;
+        # drop it unless we read from the very beginning of the file.
+        if size > read_size and lines:
+            lines = lines[1:]
         result: list[dict] = []
         for line in lines[-n:]:
             try:
