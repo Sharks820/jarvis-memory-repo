@@ -28,6 +28,10 @@ SERVICES = ("daemon", "mobile_api", "widget")
 # process creation time before we consider the PID reused by another process.
 _MAX_CREATION_DRIFT_S = 5.0
 
+# How long to wait for a graceful shutdown (seconds) before escalating
+# to a hard TerminateProcess / SIGKILL.
+_GRACEFUL_TIMEOUT_S = 5.0
+
 # ---------------------------------------------------------------------------
 # PID directory helpers
 # ---------------------------------------------------------------------------
@@ -261,8 +265,60 @@ def is_service_running(service: str, root: Path) -> bool:
     return read_pid_file(service, root) is not None
 
 
-def kill_service(service: str, root: Path) -> bool:
+def _graceful_shutdown(pid: int) -> bool:
+    """Attempt to gracefully stop *pid* and wait up to ``_GRACEFUL_TIMEOUT_S``.
+
+    On Windows, sends ``CTRL_C_EVENT`` via ``os.kill`` to trigger a
+    ``KeyboardInterrupt`` in the target Python process.  On POSIX, sends
+    ``SIGTERM``.
+
+    Returns True if the process exited within the timeout, False if it is
+    still alive and a hard kill is needed.
+
+    NOTE: ``signal.CTRL_C_EVENT`` on Windows is delivered to all processes
+    sharing the same console.  If the target runs in a separate console (the
+    normal case with ``Start-Process -WindowStyle Hidden``), the signal may
+    not reach it.  The caller should fall back to ``TerminateProcess`` when
+    this returns False.
+    """
+    try:
+        if sys.platform == "win32":
+            os.kill(pid, signal.CTRL_C_EVENT)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, PermissionError):
+        # Process already gone or inaccessible — treat as success.
+        return True
+
+    # Poll until the process exits or we run out of patience.
+    deadline = time.monotonic() + _GRACEFUL_TIMEOUT_S
+    while time.monotonic() < deadline:
+        if not _check_pid_alive(pid):
+            return True
+        time.sleep(0.25)
+    return not _check_pid_alive(pid)
+
+
+def _hard_kill(pid: int) -> None:
+    """Forcefully terminate *pid* (TerminateProcess on Windows, SIGKILL on POSIX)."""
+    if sys.platform == "win32":
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        PROCESS_TERMINATE = 0x0001
+        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+        if handle:
+            kernel32.TerminateProcess(handle, 1)
+            kernel32.CloseHandle(handle)
+    else:
+        os.kill(pid, signal.SIGKILL)
+
+
+def kill_service(service: str, root: Path, *, force: bool = False) -> bool:
     """Terminate *service* process and remove its PID file.  Returns True if killed.
+
+    By default attempts a graceful shutdown first (CTRL_C_EVENT / SIGTERM),
+    waiting up to ``_GRACEFUL_TIMEOUT_S`` seconds before escalating to a hard
+    kill.  Pass ``force=True`` to skip the graceful attempt and immediately
+    use TerminateProcess / SIGKILL.
 
     Verifies process identity (creation time) before sending the kill signal
     to avoid killing an unrelated process that reused the same PID.
@@ -283,15 +339,16 @@ def kill_service(service: str, root: Path) -> bool:
         remove_pid_file(service, root)
         return False
     try:
-        if sys.platform == "win32":
-            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-            PROCESS_TERMINATE = 0x0001
-            handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-            if handle:
-                kernel32.TerminateProcess(handle, 1)
-                kernel32.CloseHandle(handle)
+        if force:
+            _hard_kill(pid)
         else:
-            os.kill(pid, signal.SIGTERM)
+            exited = _graceful_shutdown(pid)
+            if not exited:
+                logger.info(
+                    "Graceful shutdown of %s (pid=%d) timed out, escalating to hard kill.",
+                    service, pid,
+                )
+                _hard_kill(pid)
     except (OSError, PermissionError) as exc:
         logger.warning("Failed to kill %s (pid=%d): %s", service, pid, exc)
         return False
@@ -332,3 +389,80 @@ def list_services(root: Path) -> list[dict[str, Any]]:
                 "python": "",
             })
     return results
+
+
+# ---------------------------------------------------------------------------
+# Service watchdog
+# ---------------------------------------------------------------------------
+
+def check_and_restart_services(
+    root: Path,
+    restart_callback: Any | None = None,
+) -> list[str]:
+    """Check for crashed services and optionally restart them.
+
+    Iterates all registered services looking for *stale* PID files — a PID
+    file exists on disk but the process behind it is dead.  For each such
+    service the stale PID file is cleaned up and, if *restart_callback* is
+    provided, ``restart_callback(service_name)`` is called so the caller
+    can decide how to bring the service back.
+
+    Returns the list of service names that were found dead (regardless of
+    whether the callback was called or succeeded).
+    """
+    dead_services: list[str] = []
+    for svc in SERVICES:
+        path = _pid_path(svc, root)
+        if not path.exists():
+            continue
+        # Try to read the raw JSON without the auto-cleanup side effect
+        # of read_pid_file so we can distinguish "file present but stale"
+        # from "file absent".
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            # Corrupt PID file — clean it up.
+            _remove_pid_file_path(path)
+            dead_services.append(svc)
+            logger.warning("Watchdog: corrupt PID file for %s, cleaned up.", svc)
+            if restart_callback is not None:
+                try:
+                    restart_callback(svc)
+                except Exception:  # noqa: BLE001
+                    logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
+            continue
+
+        pid = data.get("pid")
+        if not isinstance(pid, int):
+            _remove_pid_file_path(path)
+            dead_services.append(svc)
+            logger.warning("Watchdog: invalid PID in file for %s, cleaned up.", svc)
+            if restart_callback is not None:
+                try:
+                    restart_callback(svc)
+                except Exception:  # noqa: BLE001
+                    logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
+            continue
+
+        if _check_pid_alive(pid):
+            # Also verify identity (guards against PID reuse)
+            stored_create_ts = data.get("process_create_ts")
+            if _verify_pid_identity(pid, stored_create_ts):
+                continue  # Service is healthy.
+            # PID was reused by another process — treat as dead.
+            logger.warning(
+                "Watchdog: PID %d for %s is alive but identity mismatch (PID reuse). "
+                "Cleaning stale PID file.", pid, svc,
+            )
+
+        # Process is dead or PID was reused — clean up and notify.
+        _remove_pid_file_path(path)
+        dead_services.append(svc)
+        logger.warning("Watchdog: %s (pid=%s) found dead, cleaned stale PID file.", svc, pid)
+        if restart_callback is not None:
+            try:
+                restart_callback(svc)
+            except Exception:  # noqa: BLE001
+                logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
+
+    return dead_services

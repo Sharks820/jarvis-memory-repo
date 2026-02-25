@@ -669,3 +669,197 @@ class TestDaemonSubsystemIsolation:
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
         assert rc == 0
+
+
+class TestDaemonAutoHarvest:
+    """Tests for autonomous knowledge harvesting in the daemon cycle."""
+
+    def test_discover_harvest_topics_returns_topics_from_missions(
+        self, tmp_path: Path
+    ) -> None:
+        """_discover_harvest_topics should find topics from learning missions."""
+        import json
+        missions_path = tmp_path / ".planning" / "missions.json"
+        missions_path.parent.mkdir(parents=True, exist_ok=True)
+        missions_path.write_text(json.dumps([
+            {"mission_id": "m-1", "topic": "quantum computing", "status": "completed"},
+            {"mission_id": "m-2", "topic": "machine learning", "status": "done"},
+            {"mission_id": "m-3", "topic": "pending topic", "status": "pending"},
+        ]), encoding="utf-8")
+
+        with patch.object(main_mod, "load_missions", side_effect=lambda r: json.loads(
+            (r / ".planning" / "missions.json").read_text(encoding="utf-8")
+        )):
+            topics = main_mod._discover_harvest_topics(tmp_path)
+
+        assert len(topics) >= 1
+        assert len(topics) <= 2
+        # Should prefer completed/done missions, not pending
+        for t in topics:
+            assert t in ("quantum computing", "machine learning")
+
+    def test_discover_harvest_topics_returns_empty_on_no_data(
+        self, tmp_path: Path
+    ) -> None:
+        """_discover_harvest_topics should return [] when no data sources exist."""
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert isinstance(topics, list)
+        assert len(topics) <= 2
+
+    def test_discover_harvest_topics_from_kg_sparse_branches(
+        self, tmp_path: Path
+    ) -> None:
+        """_discover_harvest_topics should find sparse KG branches."""
+        import sqlite3
+
+        db_dir = tmp_path / ".planning" / "brain"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        db_path = db_dir / "jarvis_memory.db"
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS kg_nodes (
+                node_id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                node_type TEXT NOT NULL DEFAULT 'fact',
+                confidence REAL NOT NULL DEFAULT 0.5,
+                locked INTEGER NOT NULL DEFAULT 0,
+                sources TEXT NOT NULL DEFAULT '[]',
+                history TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+        # Insert sparse nodes (1-3 per topic word)
+        conn.execute("INSERT INTO kg_nodes (node_id, label, confidence) VALUES ('n1', 'Photosynthesis converts light', 0.8)")
+        conn.execute("INSERT INTO kg_nodes (node_id, label, confidence) VALUES ('n2', 'Mitochondria produces ATP', 0.7)")
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert isinstance(topics, list)
+        # Should have found sparse topic words from KG
+        assert len(topics) >= 1
+
+    def test_auto_harvest_runs_at_cycle_200(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Auto-harvest should trigger at cycle 200."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        harvest_calls: list[str] = []
+
+        mock_harvester = MagicMock()
+        mock_harvester.harvest.return_value = {
+            "topic": "test topic",
+            "results": [{"provider": "mock", "status": "ok", "records_created": 3, "cost_usd": 0.001}],
+        }
+
+        mock_provider = MagicMock()
+        mock_provider.is_available = True
+
+        with patch.object(main_mod, "_discover_harvest_topics", return_value=["test topic"]), \
+             patch(
+                 "jarvis_engine.harvesting.providers.MiniMaxProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiNvidiaProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.GeminiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.harvester.KnowledgeHarvester",
+                 return_value=mock_harvester,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.budget.BudgetManager",
+                 return_value=MagicMock(),
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=200)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "auto_harvest_topic=" in captured.out
+
+    def test_auto_harvest_does_not_run_before_cycle_200(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Auto-harvest should NOT trigger before cycle 200."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        rc = _run_daemon_impl(tmp_path, max_cycles=199)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "auto_harvest_topic=" not in captured.out
+        assert "auto_harvest_skipped=" not in captured.out
+
+    def test_auto_harvest_failure_does_not_crash_daemon(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Auto-harvest exceptions should be isolated from the daemon."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        # Force _discover_harvest_topics to raise
+        def exploding_discover(root):
+            raise RuntimeError("Discovery exploded")
+
+        monkeypatch.setattr(main_mod, "_discover_harvest_topics", exploding_discover)
+
+        rc = _run_daemon_impl(tmp_path, max_cycles=200)
+        assert rc == 0  # Daemon survives
+
+    def test_auto_harvest_skipped_when_no_topics(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """When no topics are discovered, auto-harvest should be skipped gracefully."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        with patch.object(main_mod, "_discover_harvest_topics", return_value=[]):
+            rc = _run_daemon_impl(tmp_path, max_cycles=200)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "auto_harvest_skipped=no_topics_discovered" in captured.out
+
+    def test_auto_harvest_skipped_when_no_providers(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """When no providers have API keys, auto-harvest should be skipped."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        mock_provider = MagicMock()
+        mock_provider.is_available = False
+
+        with patch.object(main_mod, "_discover_harvest_topics", return_value=["some topic"]), \
+             patch(
+                 "jarvis_engine.harvesting.providers.MiniMaxProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiNvidiaProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.GeminiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=200)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "auto_harvest_skipped=no_providers_available" in captured.out
