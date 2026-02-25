@@ -14,7 +14,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import Request, build_opener, HTTPSHandler, urlopen
+from urllib.request import build_opener, HTTPSHandler
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 

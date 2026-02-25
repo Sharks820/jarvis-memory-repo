@@ -17,9 +17,7 @@ from jarvis_engine.commands.harvest_commands import (
 )
 
 if TYPE_CHECKING:
-    from jarvis_engine.harvesting.budget import BudgetManager
     from jarvis_engine.harvesting.harvester import KnowledgeHarvester
-    from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 logger = logging.getLogger(__name__)
 

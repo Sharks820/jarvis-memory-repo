@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import difflib
 import logging
-import sqlite3
-import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING

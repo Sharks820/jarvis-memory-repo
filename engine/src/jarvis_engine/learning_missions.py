@@ -18,8 +18,6 @@ from jarvis_engine.web_fetch import (
     search_duckduckgo as _search_duckduckgo,
 )
 
-logger = logging.getLogger(__name__)
-
 MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
 _PAGE_CACHE: dict[tuple[str, int], tuple[float, str]] = {}
 _PAGE_CACHE_LOCK = threading.Lock()

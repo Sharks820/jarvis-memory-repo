@@ -40,7 +40,6 @@ class AdversarialSelfTest:
         """
         from jarvis_engine.growth_tracker import (
             DEFAULT_MEMORY_TASKS,
-            MemoryRecallTask,
             run_memory_eval,
         )
 

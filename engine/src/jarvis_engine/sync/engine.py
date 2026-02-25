@@ -16,7 +16,6 @@ from jarvis_engine.sync.changelog import (
     _TRACKED_TABLES,
     compute_diff,
     get_sync_cursor,
-    update_sync_cursor,
 )
 
 logger = logging.getLogger(__name__)

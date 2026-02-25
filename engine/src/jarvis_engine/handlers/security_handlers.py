@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 
 from jarvis_engine._shared import check_path_within_root as _check_path_within_root
