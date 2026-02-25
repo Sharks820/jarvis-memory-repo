@@ -63,6 +63,7 @@ class DaemonRunCommand:
     run_missions: bool = False
     sync_every_cycles: int = 5
     self_heal_every_cycles: int = 20
+    self_test_every_cycles: int = 20
 
 
 @dataclass

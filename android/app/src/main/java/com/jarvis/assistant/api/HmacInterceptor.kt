@@ -36,7 +36,7 @@ class HmacInterceptor(
             buffer.readUtf8()
         } ?: ""
 
-        val timestamp = (System.currentTimeMillis() / 1000.0).toString()
+        val timestamp = (System.currentTimeMillis() / 1000L).toString()
         val nonce = generateNonce()
         val signingMaterial = "$timestamp\n$nonce\n$body"
         val signature = hmacSha256(creds.signingKey, signingMaterial)

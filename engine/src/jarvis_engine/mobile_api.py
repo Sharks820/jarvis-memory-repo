@@ -86,11 +86,12 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._sync_transport: Any = None
         self._sync_init_attempted = False
         self._sync_init_lock = threading.Lock()
-        # TODO: persist nonces to disk for replay protection across restarts
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
         self.nonce_cleanup_interval_s = 30.0
+        self._nonce_cache_path = repo_root / ".planning" / "runtime" / "nonce_cache.jsonl"
+        self._load_nonces()
         # Bootstrap rate-limiter: {ip: [timestamp, ...]}
         self._bootstrap_attempts: dict[str, list[float]] = {}
         self._bootstrap_rate_lock = threading.Lock()
@@ -144,6 +145,49 @@ class MobileIngestServer(ThreadingHTTPServer):
             if pattern.match(origin):
                 return True
         return False
+
+    def _load_nonces(self) -> None:
+        """Restore nonces from disk for replay protection across restarts."""
+        try:
+            if not self._nonce_cache_path.exists():
+                return
+            now = time.time()
+            cutoff = now - REPLAY_WINDOW_SECONDS
+            with open(self._nonce_cache_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        nonce = str(entry.get("nonce", ""))
+                        ts = float(entry.get("ts", 0.0))
+                        if nonce and ts >= cutoff:
+                            self.nonce_seen[nonce] = ts
+                    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+                        continue
+        except OSError:
+            logger.warning("Failed to load nonce cache from disk")
+
+    def _persist_nonces(self) -> None:
+        """Persist current valid nonces to disk using atomic write pattern."""
+        try:
+            self._nonce_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            now = time.time()
+            cutoff = now - REPLAY_WINDOW_SECONDS
+            tmp = self._nonce_cache_path.with_suffix(".jsonl.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                for nonce, ts in self.nonce_seen.items():
+                    if ts >= cutoff:
+                        f.write(json.dumps({"nonce": nonce, "ts": ts}, ensure_ascii=True) + "\n")
+            os.replace(str(tmp), str(self._nonce_cache_path))
+        except OSError:
+            logger.warning("Failed to persist nonce cache to disk")
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
 
     def ensure_sync_engine(self) -> Any:
         """Lazy-initialize sync engine when DB becomes available.
@@ -603,6 +647,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             nonce_seen.clear()
             nonce_seen.update(valid_nonces)
             self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
+            self.server._persist_nonces()  # type: ignore[attr-defined]
 
     def _validate_auth(self, body: bytes) -> bool:
         if len(body) > MAX_AUTH_BODY_SIZE:
@@ -695,7 +740,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
             return
         if path == "/health":
-            self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy"})
+            # Include intelligence regression status from self-test history
+            self_test_history_path = self.server.repo_root / ".planning" / "runtime" / "self_test_history.jsonl"  # type: ignore[attr-defined]
+            intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
+            if self_test_history_path.exists():
+                try:
+                    lines = self_test_history_path.read_text(encoding="utf-8").strip().split("\n")
+                    if lines and lines[-1].strip():
+                        latest = json.loads(lines[-1])
+                        intelligence_status["score"] = latest.get("average_score", 0.0)
+                        intelligence_status["last_test"] = latest.get("timestamp", "")
+                        intelligence_status["regression"] = latest.get("below_threshold", False)
+                except Exception:
+                    pass
+            self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
             return
         if path == "/settings":
             if not self._validate_auth(b""):

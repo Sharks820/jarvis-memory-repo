@@ -499,6 +499,24 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
     if allow_insecure_bind:
         os.environ["JARVIS_ALLOW_INSECURE_MOBILE_BIND"] = "true"
 
+    # Token rotation warning: check config file age if loaded from file
+    if config_file:
+        try:
+            import json as _json_check
+            from datetime import datetime as _dt
+
+            _cfg_text = Path(config_file).read_text(encoding="utf-8")
+            _cfg_data = _json_check.loads(_cfg_text)
+            _created_utc = _cfg_data.get("created_utc", "")
+            if _created_utc:
+                _created_dt = _dt.fromisoformat(_created_utc.replace("Z", "+00:00"))
+                _now_utc = _dt.now(tz=_created_dt.tzinfo) if _created_dt.tzinfo else _dt.utcnow()
+                _age_days = (_now_utc - _created_dt).days
+                if _age_days > 90:
+                    print(f"warning: mobile API token is {_age_days} days old. Consider rotating via: delete {config_file} and restart")
+        except (ValueError, OSError, KeyError, TypeError):
+            pass  # Non-fatal: skip warning if config can't be parsed
+
     # Set descriptive process title for Task Manager visibility
     try:
         import setproctitle
@@ -1771,6 +1789,7 @@ def _cmd_daemon_run_impl(
     run_missions: bool,
     sync_every_cycles: int = 5,
     self_heal_every_cycles: int = 20,
+    self_test_every_cycles: int = 20,
 ) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
     # Set descriptive process title for Task Manager visibility
@@ -1896,6 +1915,27 @@ def _cmd_daemon_run_impl(
                     print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
                 except Exception as exc:  # noqa: BLE001
                     print(f"kg_metrics_error={exc}")
+            # --- Adversarial self-test: memory quiz + regression detection ---
+            if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
+                try:
+                    from jarvis_engine.proactive.self_test import AdversarialSelfTest
+                    bus = _get_bus()
+                    engine = getattr(bus, "_engine", None)
+                    embed_svc = getattr(bus, "_embed_service", None)
+                    if engine is not None and embed_svc is not None:
+                        tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
+                        quiz_result = tester.run_memory_quiz()
+                        quiz_history = root / ".planning" / "runtime" / "self_test_history.jsonl"
+                        tester.save_quiz_result(quiz_result, quiz_history)
+                        regression = tester.check_regression(quiz_history)
+                        print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
+                        print(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
+                        if regression.get("regression_detected"):
+                            print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
+                    else:
+                        print("self_test_skipped=engine_not_initialized")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"self_test_error={exc}")
             # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
             approve_cycle = approve_privileged and not safe_mode
@@ -1948,6 +1988,7 @@ def cmd_daemon_run(
     run_missions: bool,
     sync_every_cycles: int = 5,
     self_heal_every_cycles: int = 20,
+    self_test_every_cycles: int = 20,
 ) -> int:
     result = _get_bus().dispatch(DaemonRunCommand(
         interval_s=interval_s, snapshot_path=snapshot_path, actions_path=actions_path,
@@ -1956,6 +1997,7 @@ def cmd_daemon_run(
         idle_interval_s=idle_interval_s, idle_after_s=idle_after_s,
         run_missions=run_missions, sync_every_cycles=sync_every_cycles,
         self_heal_every_cycles=self_heal_every_cycles,
+        self_test_every_cycles=self_test_every_cycles,
     ))
     return result.return_code
 
