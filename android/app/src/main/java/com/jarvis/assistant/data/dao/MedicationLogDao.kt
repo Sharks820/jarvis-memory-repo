@@ -3,6 +3,7 @@ package com.jarvis.assistant.data.dao
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 import com.jarvis.assistant.data.entity.MedicationLogEntity
 
 @Dao
@@ -10,6 +11,9 @@ interface MedicationLogDao {
 
     @Insert
     suspend fun insert(log: MedicationLogEntity): Long
+
+    @Update
+    suspend fun update(log: MedicationLogEntity)
 
     @Query("SELECT * FROM medication_log WHERE date = :date ORDER BY scheduledTime")
     suspend fun getLogsForDate(date: String): List<MedicationLogEntity>

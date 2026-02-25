@@ -450,7 +450,12 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    with patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete):
+    mock_cls = type("MockClassifier", (), {
+        "classify": lambda self, q: ("routine", "mock-model", 0.9),
+    })
+    with patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
+         patch("jarvis_engine.main._build_smart_context", return_value=([], [], [])), \
+         patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
         code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
@@ -625,9 +630,19 @@ def test_api_rate_limiter_allows_normal_requests(mobile_server) -> None:
 def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
     """Exceeding _API_RATE_LIMIT_EXPENSIVE on /command should yield 429."""
     import unittest.mock as _mock
+    from jarvis_engine.gateway.models import GatewayResponse
 
+    def _mock_complete(self, messages, model="", max_tokens=1024, route_reason=""):
+        return GatewayResponse(text="hi", model=model, provider="mock")
+
+    mock_cls = type("MockClassifier", (), {
+        "classify": lambda self, q: ("routine", "mock-model", 0.9),
+    })
     # Temporarily lower the limit for testing
-    with _mock.patch.object(mobile_api, "_API_RATE_LIMIT_EXPENSIVE", 2):
+    with _mock.patch.object(mobile_api, "_API_RATE_LIMIT_EXPENSIVE", 2), \
+         _mock.patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
+         _mock.patch("jarvis_engine.main._build_smart_context", return_value=([], [], [])), \
+         _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
         # Clear any existing rate state for our IP
         mobile_server.server._api_rate_attempts.clear()
 
@@ -690,8 +705,9 @@ def test_audit_endpoint_returns_records(mobile_server) -> None:
 
 
 def test_processes_endpoint_returns_services(mobile_server) -> None:
-    """GET /processes returns service statuses without auth."""
-    code, body = http_request("GET", f"{mobile_server.base_url}/processes")
+    """GET /processes returns service statuses with auth."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/processes", headers=headers)
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -1537,3 +1553,129 @@ def test_parse_bool_non_string_non_bool() -> None:
     assert mobile_api._parse_bool(None) is False
     assert mobile_api._parse_bool([]) is False
     assert mobile_api._parse_bool([1]) is True
+
+
+# ---------------------------------------------------------------------------
+# Security Fix 2: /processes requires authentication
+# ---------------------------------------------------------------------------
+
+
+def test_processes_endpoint_requires_auth(mobile_server) -> None:
+    """GET /processes without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/processes")
+    assert code == 401
+
+
+def test_processes_endpoint_rejects_invalid_bearer(mobile_server) -> None:
+    """GET /processes with wrong bearer token should return 401."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    headers["Authorization"] = "Bearer wrong-token"
+    code, _ = http_request("GET", f"{mobile_server.base_url}/processes", headers=headers)
+    assert code == 401
+
+
+# ---------------------------------------------------------------------------
+# Security Fix 4: master password via env var (not CLI arg)
+# ---------------------------------------------------------------------------
+
+
+def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobile_server) -> None:
+    """The subprocess fallback path should NOT put master_password in cmd args."""
+    from unittest.mock import patch, MagicMock
+
+    captured_cmds: list[list[str]] = []
+    captured_envs: list[dict[str, str]] = []
+
+    def fake_run(cmd, **kwargs):
+        captured_cmds.append(list(cmd))
+        captured_envs.append(dict(kwargs.get("env", {})))
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = "intent=noop\nreason=test\nstatus_code=ok\n"
+        result.stderr = ""
+        return result
+
+    # Force the subprocess path by making the in-process import fail
+    with patch("jarvis_engine.mobile_api.subprocess.run", fake_run), \
+         patch.dict("sys.modules", {"jarvis_engine.main": None}):
+        handler = MobileIngestHandler.__new__(MobileIngestHandler)
+        handler.server = mobile_server.server
+
+        payload = {
+            "text": "test command",
+            "execute": False,
+            "approve_privileged": False,
+            "speak": False,
+            "master_password": "SuperSecret123!",
+        }
+        result = handler._run_voice_command(payload)
+
+    if captured_cmds:
+        # The --master-password flag should NOT appear in the command
+        cmd = captured_cmds[0]
+        assert "--master-password" not in cmd
+        assert "SuperSecret123!" not in cmd
+        # But the env var SHOULD be set
+        env = captured_envs[0]
+        assert env.get("JARVIS_MASTER_PASSWORD") == "SuperSecret123!"
+
+
+# ---------------------------------------------------------------------------
+# Security Fix 5: master password rate limiting
+# ---------------------------------------------------------------------------
+
+
+def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -> None:
+    """After 5 master password attempts, subsequent requests should be rate-limited."""
+    import unittest.mock as _mock
+
+    write_owner_guard(mobile_server.root, enabled=True, owner_user_id="conner")
+    set_master_password(mobile_server.root, "CorrectPassword123!")
+
+    # Clear any existing rate state
+    mobile_server.server._master_pw_attempts.clear()
+
+    # Temporarily lower the limit to 3 for testing
+    with _mock.patch.object(mobile_api, "_MASTER_PW_RATE_LIMIT_MAX", 3):
+        for i in range(5):
+            payload = {
+                "source": "user",
+                "kind": "semantic",
+                "task_id": f"rate-limit-{i}",
+                "content": "rate limit test",
+            }
+            raw = json.dumps(payload).encode("utf-8")
+            headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+            headers["X-Jarvis-Device-Id"] = f"untrusted_device_{i}"
+            headers["X-Jarvis-Master-Password"] = "CorrectPassword123!"
+            code, body = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+
+            if code == 429:
+                resp = json.loads(body.decode("utf-8"))
+                assert "master password" in resp["error"].lower()
+                break
+        else:
+            # If we didn't break, the rate limiter didn't fire
+            pytest.fail("Rate limiter did not fire after max attempts")
+
+
+def test_master_password_rate_limiter_allows_normal_usage(mobile_server) -> None:
+    """A single master password attempt should not be rate-limited."""
+    write_owner_guard(mobile_server.root, enabled=True, owner_user_id="conner")
+    set_master_password(mobile_server.root, "CorrectPassword123!")
+
+    # Clear any existing rate state
+    mobile_server.server._master_pw_attempts.clear()
+
+    payload = {
+        "source": "user",
+        "kind": "semantic",
+        "task_id": "rate-limit-ok",
+        "content": "should work",
+    }
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    headers["X-Jarvis-Device-Id"] = "new_device_rate_test"
+    headers["X-Jarvis-Master-Password"] = "CorrectPassword123!"
+    code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+    assert code == 201

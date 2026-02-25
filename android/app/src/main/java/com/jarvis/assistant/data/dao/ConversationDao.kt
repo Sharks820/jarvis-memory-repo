@@ -23,4 +23,8 @@ interface ConversationDao {
 
     @Query("SELECT COUNT(*) FROM conversations")
     suspend fun count(): Int
+
+    /** Delete entries older than the given timestamp to prevent unbounded table growth. */
+    @Query("DELETE FROM conversations WHERE created_at < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }

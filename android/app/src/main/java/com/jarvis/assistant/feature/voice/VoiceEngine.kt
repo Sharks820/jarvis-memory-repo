@@ -60,6 +60,10 @@ class VoiceEngine @Inject constructor(
             return
         }
 
+        // Destroy previous recognizer to prevent native resource leaks
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+
         val recognizer = SpeechRecognizer.createSpeechRecognizer(app).also {
             speechRecognizer = it
         }
@@ -120,6 +124,8 @@ class VoiceEngine @Inject constructor(
 
     fun stopListening() {
         speechRecognizer?.stopListening()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         if (_state.value is VoiceState.Listening || _state.value is VoiceState.Transcribing) {
             _state.value = VoiceState.Idle
         }

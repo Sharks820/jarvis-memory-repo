@@ -96,18 +96,45 @@ def encrypt_sync_payload(payload: dict[str, Any], fernet_key: bytes) -> bytes:
     return f.encrypt(compressed)
 
 
+MAX_DECOMPRESSED_SIZE = 16 * 1024 * 1024  # 16 MiB
+
+
 def decrypt_sync_payload(
     token: bytes, fernet_key: bytes, ttl: int = 3600,
 ) -> dict[str, Any]:
     """Decrypt and decompress a sync payload.
 
-    Pipeline: Fernet.decrypt(ttl) -> zlib.decompress -> json.loads.
+    Pipeline: Fernet.decrypt(ttl) -> zlib.decompress (size-limited) -> json.loads.
     The *ttl* parameter (seconds) rejects tokens older than the given window
     to prevent replay of captured encrypted payloads. Default: 1 hour.
+
+    Decompressed output is limited to ``MAX_DECOMPRESSED_SIZE`` (16 MiB) to
+    defend against decompression bomb attacks.
     """
     f = Fernet(fernet_key)
     compressed = f.decrypt(token, ttl=ttl)
-    raw = zlib.decompress(compressed)
+
+    decompressor = zlib.decompressobj()
+    chunks: list[bytes] = []
+    total_size = 0
+    # Feed compressed data in 64 KB blocks
+    block_size = 65536
+    offset = 0
+    while offset < len(compressed):
+        block = compressed[offset:offset + block_size]
+        chunk = decompressor.decompress(block, MAX_DECOMPRESSED_SIZE - total_size)
+        chunks.append(chunk)
+        total_size += len(chunk)
+        if total_size >= MAX_DECOMPRESSED_SIZE:
+            raise ValueError("Decompressed payload exceeds 16 MiB limit")
+        offset += block_size
+    # Flush remaining
+    chunk = decompressor.flush()
+    chunks.append(chunk)
+    total_size += len(chunk)
+    if total_size > MAX_DECOMPRESSED_SIZE:
+        raise ValueError("Decompressed payload exceeds 16 MiB limit")
+    raw = b"".join(chunks)
     return json.loads(raw)
 
 

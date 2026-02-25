@@ -422,10 +422,13 @@ class TaskOrchestrator:
         self._store.append(event_type="task_orchestrator", message=message)
 
 
-_SHELL_COMMAND_ALLOWLIST = {"python", "python3", "git", "pip", "pip3", "npm", "node", "pytest", "jarvis"}
+_SHELL_COMMAND_ALLOWLIST = {"git", "npm", "node", "pytest", "jarvis"}
+_PRIVILEGED_SHELL_ALLOWLIST = {"python", "python3", "pip", "pip3"}
 
 
-def run_shell_command(command: str, timeout_s: int = 60) -> tuple[int, str, str]:
+def run_shell_command(
+    command: str, timeout_s: int = 60, *, has_explicit_approval: bool = False,
+) -> tuple[int, str, str]:
     try:
         args = shlex.split(command, posix=False)
     except ValueError as exc:
@@ -433,8 +436,14 @@ def run_shell_command(command: str, timeout_s: int = 60) -> tuple[int, str, str]
     if not args:
         return 2, "", "Empty command."
     executable = Path(args[0]).stem.lower()
-    if executable not in _SHELL_COMMAND_ALLOWLIST:
-        return 2, "", f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST)}"
+    if executable in _PRIVILEGED_SHELL_ALLOWLIST:
+        if not has_explicit_approval:
+            return 2, "", (
+                f"Command '{args[0]}' requires explicit approval "
+                f"(privileged allowlist: {sorted(_PRIVILEGED_SHELL_ALLOWLIST)})"
+            )
+    elif executable not in _SHELL_COMMAND_ALLOWLIST:
+        return 2, "", f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST | _PRIVILEGED_SHELL_ALLOWLIST)}"
     try:
         proc = subprocess.run(
             args,

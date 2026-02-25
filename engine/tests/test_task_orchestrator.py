@@ -51,7 +51,9 @@ def test_run_shell_command_timeout_returns_124() -> None:
     try:
         script.write("import time\ntime.sleep(30)\n")
         script.close()
-        rc, stdout, stderr = run_shell_command(f"python {script.name}", timeout_s=1)
+        rc, stdout, stderr = run_shell_command(
+            f"python {script.name}", timeout_s=1, has_explicit_approval=True,
+        )
         assert rc == 124
         assert isinstance(stdout, str)
         assert "timed out" in stderr.lower()
@@ -100,6 +102,7 @@ from jarvis_engine.task_orchestrator import (
     run_shell_command,
     DEFAULT_FALLBACK_MODELS,
     _SHELL_COMMAND_ALLOWLIST,
+    _PRIVILEGED_SHELL_ALLOWLIST,
 )
 
 
@@ -670,7 +673,9 @@ class TestRunShellCommand:
         try:
             script.write("print('hello')\n")
             script.close()
-            rc, stdout, stderr = run_shell_command(f"python {script.name}")
+            rc, stdout, stderr = run_shell_command(
+                f"python {script.name}", has_explicit_approval=True,
+            )
             assert rc == 0
             assert "hello" in stdout
         finally:
@@ -683,8 +688,10 @@ class TestRunShellCommand:
         assert isinstance(rc, int)
 
     def test_all_allowlisted_commands_present(self):
-        expected = {"python", "python3", "git", "pip", "pip3", "npm", "node", "pytest", "jarvis"}
-        assert _SHELL_COMMAND_ALLOWLIST == expected
+        expected_standard = {"git", "npm", "node", "pytest", "jarvis"}
+        expected_privileged = {"python", "python3", "pip", "pip3"}
+        assert _SHELL_COMMAND_ALLOWLIST == expected_standard
+        assert _PRIVILEGED_SHELL_ALLOWLIST == expected_privileged
 
     def test_multiple_unlisted_commands(self):
         for cmd in ["rm -rf /", "curl http://evil.com", "wget http://evil.com", "bash -c ls"]:
@@ -754,3 +761,68 @@ class TestPromptBuilders:
         result = orch._python_fix_prompt("def foo(:", "expected ')'")
         assert "def foo(:" in result
         assert "expected ')'" in result
+
+
+# ---------------------------------------------------------------------------
+# Security: privileged shell allowlist tests
+# ---------------------------------------------------------------------------
+
+
+class TestPrivilegedShellAllowlist:
+    """Tests for the privileged shell allowlist (python/pip require approval)."""
+
+    def test_python_rejected_without_approval(self):
+        """python command is rejected when has_explicit_approval is False."""
+        rc, stdout, stderr = run_shell_command("python -c \"print('hello')\"")
+        assert rc == 2
+        assert "requires explicit approval" in stderr
+        assert "privileged" in stderr.lower()
+
+    def test_python3_rejected_without_approval(self):
+        """python3 command is rejected when has_explicit_approval is False."""
+        rc, stdout, stderr = run_shell_command("python3 --version")
+        assert rc == 2
+        assert "requires explicit approval" in stderr
+
+    def test_pip_rejected_without_approval(self):
+        """pip command is rejected when has_explicit_approval is False."""
+        rc, stdout, stderr = run_shell_command("pip --version")
+        assert rc == 2
+        assert "requires explicit approval" in stderr
+
+    def test_pip3_rejected_without_approval(self):
+        """pip3 command is rejected when has_explicit_approval is False."""
+        rc, stdout, stderr = run_shell_command("pip3 --version")
+        assert rc == 2
+        assert "requires explicit approval" in stderr
+
+    def test_python_allowed_with_approval(self):
+        """python command succeeds when has_explicit_approval is True."""
+        import tempfile
+        script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
+        try:
+            script.write("print('approved')\n")
+            script.close()
+            rc, stdout, stderr = run_shell_command(
+                f"python {script.name}", has_explicit_approval=True,
+            )
+            assert rc == 0
+            assert "approved" in stdout
+        finally:
+            os.unlink(script.name)
+
+    def test_git_does_not_require_approval(self):
+        """git (standard allowlist) works without explicit approval."""
+        rc, stdout, stderr = run_shell_command("git --version")
+        assert rc == 0
+        assert "git" in stdout.lower()
+
+    def test_python_not_in_standard_allowlist(self):
+        """python is NOT in the standard allowlist anymore."""
+        assert "python" not in _SHELL_COMMAND_ALLOWLIST
+        assert "pip" not in _SHELL_COMMAND_ALLOWLIST
+
+    def test_python_in_privileged_allowlist(self):
+        """python IS in the privileged allowlist."""
+        assert "python" in _PRIVILEGED_SHELL_ALLOWLIST
+        assert "pip" in _PRIVILEGED_SHELL_ALLOWLIST

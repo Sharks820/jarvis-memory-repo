@@ -12,7 +12,11 @@ import androidx.core.app.NotificationCompat
 import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
 import com.jarvis.assistant.data.CommandQueueProcessor
+import com.jarvis.assistant.data.dao.CallLogDao
 import com.jarvis.assistant.data.dao.ContextStateDao
+import com.jarvis.assistant.data.dao.ConversationDao
+import com.jarvis.assistant.data.dao.NotificationLogDao
+import com.jarvis.assistant.data.dao.NudgeLogDao
 import com.jarvis.assistant.data.entity.ContextStateEntity
 import com.jarvis.assistant.feature.callscreen.SpamDatabaseSync
 import com.jarvis.assistant.feature.context.ContextAdjuster
@@ -56,6 +60,10 @@ class JarvisService : Service() {
     @Inject lateinit var contextDetector: ContextDetector
     @Inject lateinit var contextAdjuster: ContextAdjuster
     @Inject lateinit var contextStateDao: ContextStateDao
+    @Inject lateinit var notificationLogDao: NotificationLogDao
+    @Inject lateinit var nudgeLogDao: NudgeLogDao
+    @Inject lateinit var callLogDao: CallLogDao
+    @Inject lateinit var conversationDao: ConversationDao
     @Inject lateinit var medicationScheduler: MedicationScheduler
     @Inject lateinit var refillTracker: RefillTracker
     @Inject lateinit var locationLearner: LocationLearner
@@ -80,7 +88,10 @@ class JarvisService : Service() {
     private var lastPatternDetectionMs = 0L
     private var lastNudgeCheckMs = 0L
     private var lastNudgeExpiryMs = 0L
+    private var lastCleanupMs = 0L
+    @Volatile
     private var currentContext: UserContext = UserContext.NORMAL
+    private val contextLock = Any()
 
     override fun onCreate() {
         super.onCreate()
@@ -150,17 +161,19 @@ class JarvisService : Service() {
                     lastContextCheckMs = contextNow
                     try {
                         val state = contextDetector.detectCurrentContext()
-                        if (state.context != currentContext) {
-                            currentContext = state.context
-                            contextAdjuster.applyContext(state)
-                            contextStateDao.insert(
-                                ContextStateEntity(
-                                    context = state.context.name,
-                                    confidence = state.confidence,
-                                    source = state.source,
-                                ),
-                            )
-                            Log.i(TAG, "Context changed to: ${state.context.label}")
+                        synchronized(contextLock) {
+                            if (state.context != currentContext) {
+                                currentContext = state.context
+                                contextAdjuster.applyContext(state)
+                                contextStateDao.insert(
+                                    ContextStateEntity(
+                                        context = state.context.name,
+                                        confidence = state.confidence,
+                                        source = state.source,
+                                    ),
+                                )
+                                Log.i(TAG, "Context changed to: ${state.context.label}")
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Context detection error: ${e.message}")
@@ -265,6 +278,23 @@ class JarvisService : Service() {
                     }
                 }
 
+                // Database cleanup: every 24 hours, delete records older than 90 days
+                val cleanupNow = System.currentTimeMillis()
+                if (cleanupNow - lastCleanupMs >= CLEANUP_INTERVAL_MS) {
+                    lastCleanupMs = cleanupNow
+                    try {
+                        val cutoff = cleanupNow - RETENTION_PERIOD_MS
+                        notificationLogDao.deleteOlderThan(cutoff)
+                        nudgeLogDao.deleteOlderThan(cutoff)
+                        callLogDao.deleteOlderThan(cutoff)
+                        conversationDao.deleteOlderThan(cutoff)
+                        contextStateDao.deleteOld(cutoff)
+                        Log.i(TAG, "Database cleanup completed (removed records older than 90 days)")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Database cleanup error: ${e.message}")
+                    }
+                }
+
                 delay(syncIntervalMs)
             }
         }
@@ -328,5 +358,7 @@ class JarvisService : Service() {
         private const val PATTERN_DETECTION_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val NUDGE_CHECK_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes
         private const val NUDGE_EXPIRY_INTERVAL_MS = 1L * 60 * 60 * 1000 // 1 hour
+        private const val CLEANUP_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
+        private const val RETENTION_PERIOD_MS = 90L * 24 * 60 * 60 * 1000 // 90 days
     }
 }

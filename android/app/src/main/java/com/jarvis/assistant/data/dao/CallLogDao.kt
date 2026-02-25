@@ -38,4 +38,8 @@ interface CallLogDao {
 
     @Query("SELECT * FROM call_interaction_log WHERE id = :id")
     suspend fun getById(id: Long): CallLogEntity?
+
+    /** Delete entries older than the given timestamp to prevent unbounded table growth. */
+    @Query("DELETE FROM call_interaction_log WHERE timestamp < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }
