@@ -251,8 +251,46 @@ def build_intelligence_dashboard(root: Path, *, last_runs: int = 20) -> dict[str
         "ranking": ranking,
         "etas": etas,
         "memory_regression": brain_regression_report(root),
+        "knowledge_graph": _safe_kg_metrics(root),
+        "gateway_audit": _safe_gateway_summary(root),
         "achievements": {
             "new": new_unlocks,
             "all": unlocked,
         },
     }
+
+
+def _safe_kg_metrics(root: Path) -> dict[str, Any]:
+    """Collect KG metrics safely (returns empty dict on failure)."""
+    try:
+        from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
+        history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
+        history = load_kg_history(history_path, limit=50)
+        if history:
+            latest = history[-1]
+            trend = kg_growth_trend(history)
+            return {
+                "node_count": latest.get("node_count", 0),
+                "edge_count": latest.get("edge_count", 0),
+                "cross_branch_edges": latest.get("cross_branch_edges", 0),
+                "avg_confidence": latest.get("avg_confidence", 0.0),
+                "locked_facts": latest.get("locked_facts", 0),
+                "branch_counts": latest.get("branch_counts", {}),
+                "trend": trend,
+            }
+    except Exception:
+        pass
+    return {}
+
+
+def _safe_gateway_summary(root: Path) -> dict[str, Any]:
+    """Summarize recent gateway decisions safely."""
+    try:
+        from jarvis_engine.gateway.audit import GatewayAudit
+        audit_path = root / ".planning" / "runtime" / "gateway_audit.jsonl"
+        if audit_path.exists():
+            audit = GatewayAudit(audit_path)
+            return audit.summary(hours=24)
+    except Exception:
+        pass
+    return {}

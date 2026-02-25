@@ -5,8 +5,8 @@ kg_contradictions).  Reconstructs a NetworkX DiGraph on demand for graph
 operations (traversal, hashing).  SQLite is the source of truth; NetworkX is
 the computation engine.
 
-Thread safety: all writes go through MemoryEngine._write_lock.  Reads are
-lock-free (WAL mode allows concurrent readers alongside a single writer).
+Thread safety: all writes go through MemoryEngine._write_lock.  Reads use
+_db_lock to prevent cursor interleaving on the shared connection.
 """
 
 from __future__ import annotations
@@ -32,12 +32,13 @@ class KnowledgeGraph:
         self._engine = engine
         self._db = engine._db
         self._write_lock = engine._write_lock
+        self._db_lock = engine._db_lock
         self._ensure_schema()
 
         # Initialize lock manager for auto-lock after fact updates
         from jarvis_engine.knowledge.locks import FactLockManager
 
-        self._lock_manager = FactLockManager(self._db, self._write_lock)
+        self._lock_manager = FactLockManager(self._db, self._write_lock, self._db_lock)
 
     # ------------------------------------------------------------------
     # Public accessors (for handlers -- avoids direct access to private attrs)
@@ -52,6 +53,11 @@ class KnowledgeGraph:
     def write_lock(self) -> "threading.Lock":
         """Public accessor for the shared write lock."""
         return self._write_lock
+
+    @property
+    def db_lock(self) -> "threading.Lock":
+        """Public accessor for the shared DB read lock."""
+        return self._db_lock
 
     # ------------------------------------------------------------------
     # Schema
@@ -132,16 +138,27 @@ class KnowledgeGraph:
 
         Returns a fresh DiGraph every call -- never cached (see research
         guidance on stale graph pitfall).
+        Thread-safe: acquires _write_lock to block concurrent writers,
+        ensuring a consistent snapshot of both nodes and edges.
         """
         import networkx as nx
 
         G = nx.DiGraph()
 
-        # Load nodes
-        cur = self._db.execute(
-            "SELECT node_id, label, node_type, confidence, locked FROM kg_nodes"
-        )
-        for row in cur.fetchall():
+        with self._write_lock:
+            # Load nodes
+            cur = self._db.execute(
+                "SELECT node_id, label, node_type, confidence, locked FROM kg_nodes"
+            )
+            nodes = cur.fetchall()
+
+            # Load edges
+            cur = self._db.execute(
+                "SELECT source_id, target_id, relation, confidence FROM kg_edges"
+            )
+            edges = cur.fetchall()
+
+        for row in nodes:
             G.add_node(
                 row[0],
                 label=row[1],
@@ -150,11 +167,7 @@ class KnowledgeGraph:
                 locked=bool(row[4]),
             )
 
-        # Load edges
-        cur = self._db.execute(
-            "SELECT source_id, target_id, relation, confidence FROM kg_edges"
-        )
-        for row in cur.fetchall():
+        for row in edges:
             G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
 
         return G
@@ -237,7 +250,7 @@ class KnowledgeGraph:
 
             self._db.commit()
 
-        # Auto-lock check (outside write_lock -- lock_fact acquires its own)
+        # Auto-lock check (outside write_lock -- check_and_auto_lock acquires its own)
         try:
             self._lock_manager.check_and_auto_lock(node_id)
         except Exception as exc:
@@ -308,32 +321,35 @@ class KnowledgeGraph:
         )
 
     # ------------------------------------------------------------------
-    # Read queries (no lock needed -- WAL allows concurrent reads)
+    # Read queries (protected by _db_lock for cursor interleaving safety)
     # ------------------------------------------------------------------
 
     def get_node(self, node_id: str) -> dict | None:
         """Fetch a single node by ID."""
-        cur = self._db.execute(
-            "SELECT * FROM kg_nodes WHERE node_id = ?", (node_id,)
-        )
-        row = cur.fetchone()
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT * FROM kg_nodes WHERE node_id = ?", (node_id,)
+            )
+            row = cur.fetchone()
         if row is None:
             return None
         return dict(row)
 
     def get_edges_from(self, node_id: str) -> list[dict]:
         """Fetch all outgoing edges from a node."""
-        cur = self._db.execute(
-            "SELECT * FROM kg_edges WHERE source_id = ?", (node_id,)
-        )
-        return [dict(row) for row in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT * FROM kg_edges WHERE source_id = ?", (node_id,)
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def get_edges_to(self, node_id: str) -> list[dict]:
         """Fetch all incoming edges to a node."""
-        cur = self._db.execute(
-            "SELECT * FROM kg_edges WHERE target_id = ?", (node_id,)
-        )
-        return [dict(row) for row in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT * FROM kg_edges WHERE target_id = ?", (node_id,)
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     # ------------------------------------------------------------------
     # Aggregate queries for status reporting
@@ -341,20 +357,24 @@ class KnowledgeGraph:
 
     def count_nodes(self) -> int:
         """Total number of fact nodes."""
-        return self._db.execute("SELECT COUNT(*) FROM kg_nodes").fetchone()[0]
+        with self._db_lock:
+            return self._db.execute("SELECT COUNT(*) FROM kg_nodes").fetchone()[0]
 
     def count_edges(self) -> int:
         """Total number of edges."""
-        return self._db.execute("SELECT COUNT(*) FROM kg_edges").fetchone()[0]
+        with self._db_lock:
+            return self._db.execute("SELECT COUNT(*) FROM kg_edges").fetchone()[0]
 
     def count_locked(self) -> int:
         """Number of locked (immutable) fact nodes."""
-        return self._db.execute(
-            "SELECT COUNT(*) FROM kg_nodes WHERE locked = 1"
-        ).fetchone()[0]
+        with self._db_lock:
+            return self._db.execute(
+                "SELECT COUNT(*) FROM kg_nodes WHERE locked = 1"
+            ).fetchone()[0]
 
     def count_pending_contradictions(self) -> int:
         """Number of unresolved contradictions."""
-        return self._db.execute(
-            "SELECT COUNT(*) FROM kg_contradictions WHERE status = 'pending'"
-        ).fetchone()[0]
+        with self._db_lock:
+            return self._db.execute(
+                "SELECT COUNT(*) FROM kg_contradictions WHERE status = 'pending'"
+            ).fetchone()[0]

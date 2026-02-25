@@ -111,17 +111,31 @@ if (-not $daemonRunning) {
     Start-Process -FilePath "powershell.exe" -ArgumentList $daemonArgs -WindowStyle Hidden
 }
 
-# Start mobile API if not already running from this repo/interpreter.
-$mobileRunning = @(
-    Get-CimInstance Win32_Process | Where-Object {
-        $_.Name -eq "python.exe" -and
-        $_.CommandLine -match "jarvis_engine\.main\s+serve-mobile" -and
-        [string]$_.CommandLine -like "*$repoRoot*"
-    }
-).Count -gt 0
+# Start mobile API if not already running (PID file check, then fallback to process scan).
+$pidDir = Join-Path $repoRoot ".planning\runtime\pids"
+New-Item -ItemType Directory -Path $pidDir -Force | Out-Null
+$mobilePid = Join-Path $pidDir "mobile_api.pid"
+$mobileRunning = $false
+if (Test-Path $mobilePid) {
+    try {
+        $pidData = Get-Content $mobilePid -Raw | ConvertFrom-Json
+        $proc = Get-Process -Id $pidData.pid -ErrorAction SilentlyContinue
+        if ($null -ne $proc -and -not $proc.HasExited) { $mobileRunning = $true }
+    } catch { }
+}
 if (-not $mobileRunning) {
-    # Pass auth and bind flags via CLI args (avoids env var propagation issues with Start-Process).
-    $mobileArgs = @("-m", "jarvis_engine.main", "serve-mobile", "--host", $BindHost, "--port", "$Port", "--token", $token, "--signing-key", $signingKey)
+    # Fallback: scan processes
+    $mobileRunning = @(
+        Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -eq "python.exe" -and
+            $_.CommandLine -match "jarvis_engine\.main\s+serve-mobile" -and
+            [string]$_.CommandLine -like "*$repoRoot*"
+        }
+    ).Count -gt 0
+}
+if (-not $mobileRunning) {
+    # Use --config-file to avoid exposing token/signing-key in process CommandLine
+    $mobileArgs = @("-m", "jarvis_engine.main", "serve-mobile", "--host", $BindHost, "--port", "$Port", "--config-file", $configPath)
     if ($BindHost -ne "127.0.0.1") {
         $mobileArgs += "--allow-insecure-bind"
     }

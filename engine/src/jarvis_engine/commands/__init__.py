@@ -10,11 +10,20 @@ from jarvis_engine.commands.memory_commands import (
     MemorySnapshotCommand,
 )
 from jarvis_engine.commands.voice_commands import (
+    PersonaComposeCommand,
+    PersonaComposeResult,
     VoiceEnrollCommand,
+    VoiceEnrollResult,
     VoiceListCommand,
+    VoiceListenCommand,
+    VoiceListenResult,
+    VoiceListResult,
     VoiceRunCommand,
+    VoiceRunResult,
     VoiceSayCommand,
+    VoiceSayResult,
     VoiceVerifyCommand,
+    VoiceVerifyResult,
 )
 from jarvis_engine.commands.system_commands import (
     DaemonRunCommand,
@@ -30,9 +39,14 @@ from jarvis_engine.commands.system_commands import (
     WeatherCommand,
 )
 from jarvis_engine.commands.task_commands import (
+    QueryCommand,
+    QueryResult,
     RouteCommand,
+    RouteResult,
     RunTaskCommand,
+    RunTaskResult,
     WebResearchCommand,
+    WebResearchResult,
 )
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
@@ -70,6 +84,32 @@ from jarvis_engine.commands.harvest_commands import (
     HarvestTopicCommand,
     IngestSessionCommand,
 )
+from jarvis_engine.commands.learning_commands import (
+    CrossBranchQueryCommand,
+    CrossBranchQueryResult,
+    FlagExpiredFactsCommand,
+    FlagExpiredFactsResult,
+    LearnInteractionCommand,
+    LearnInteractionResult,
+)
+from jarvis_engine.commands.sync_commands import (
+    SyncPullCommand,
+    SyncPullResult,
+    SyncPushCommand,
+    SyncPushResult,
+    SyncStatusCommand,
+    SyncStatusResult,
+)
+from jarvis_engine.commands.proactive_commands import (
+    CostReductionCommand,
+    CostReductionResult,
+    ProactiveCheckCommand,
+    ProactiveCheckResult,
+    SelfTestCommand,
+    SelfTestResult,
+    WakeWordStartCommand,
+    WakeWordStartResult,
+)
 
 __all__ = [
     # Memory
@@ -81,11 +121,20 @@ __all__ = [
     "MemoryMaintenanceCommand",
     "MemorySnapshotCommand",
     # Voice
+    "PersonaComposeCommand",
+    "PersonaComposeResult",
     "VoiceEnrollCommand",
+    "VoiceEnrollResult",
     "VoiceListCommand",
+    "VoiceListenCommand",
+    "VoiceListenResult",
+    "VoiceListResult",
     "VoiceRunCommand",
+    "VoiceRunResult",
     "VoiceSayCommand",
+    "VoiceSayResult",
     "VoiceVerifyCommand",
+    "VoiceVerifyResult",
     # System
     "DaemonRunCommand",
     "DesktopWidgetCommand",
@@ -99,9 +148,14 @@ __all__ = [
     "StatusCommand",
     "WeatherCommand",
     # Task
+    "QueryCommand",
+    "QueryResult",
     "RouteCommand",
+    "RouteResult",
     "RunTaskCommand",
+    "RunTaskResult",
     "WebResearchCommand",
+    "WebResearchResult",
     # Ops
     "AutomationRunCommand",
     "GrowthAuditCommand",
@@ -134,4 +188,27 @@ __all__ = [
     "HarvestBudgetCommand",
     "HarvestTopicCommand",
     "IngestSessionCommand",
+    # Learning
+    "CrossBranchQueryCommand",
+    "CrossBranchQueryResult",
+    "FlagExpiredFactsCommand",
+    "FlagExpiredFactsResult",
+    "LearnInteractionCommand",
+    "LearnInteractionResult",
+    # Sync
+    "SyncPullCommand",
+    "SyncPullResult",
+    "SyncPushCommand",
+    "SyncPushResult",
+    "SyncStatusCommand",
+    "SyncStatusResult",
+    # Proactive
+    "CostReductionCommand",
+    "CostReductionResult",
+    "ProactiveCheckCommand",
+    "ProactiveCheckResult",
+    "SelfTestCommand",
+    "SelfTestResult",
+    "WakeWordStartCommand",
+    "WakeWordStartResult",
 ]

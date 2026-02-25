@@ -50,6 +50,12 @@ _CORS_ALLOWED_ORIGIN_PATTERNS = [
 _BOOTSTRAP_RATE_LIMIT_WINDOW = 60.0
 _BOOTSTRAP_RATE_LIMIT_MAX = 5
 
+# Global API rate-limiter: per-IP sliding window.
+_API_RATE_LIMIT_WINDOW = 60.0        # 60-second window
+_API_RATE_LIMIT_NORMAL = 120          # 120 req/min for standard endpoints
+_API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
+_EXPENSIVE_PATHS = {"/command", "/self-heal"}
+
 
 def _parse_bool(value: Any) -> bool:
     """Safely parse a boolean from JSON payload (handles string "false"/"true")."""
@@ -90,6 +96,9 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._bootstrap_rate_lock = threading.Lock()
         # Dynamic CORS origins (populated at startup with LAN IP)
         self._extra_cors_origins: list[re.Pattern[str]] = []
+        # Global API rate-limiter: {ip: [timestamp, ...]}
+        self._api_rate_attempts: dict[str, list[float]] = {}
+        self._api_rate_lock = threading.Lock()
 
     def check_bootstrap_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for bootstrap attempts."""
@@ -111,6 +120,18 @@ class MobileIngestServer(ThreadingHTTPServer):
             attempts = [ts for ts in attempts if ts > cutoff]
             attempts.append(now)
             self._bootstrap_attempts[client_ip] = attempts
+
+    def check_api_rate(self, client_ip: str, path: str) -> bool:
+        """Return True if this IP exceeds the API rate limit for the given path."""
+        limit = _API_RATE_LIMIT_EXPENSIVE if path in _EXPENSIVE_PATHS else _API_RATE_LIMIT_NORMAL
+        now = time.time()
+        with self._api_rate_lock:
+            attempts = self._api_rate_attempts.get(client_ip, [])
+            cutoff = now - _API_RATE_LIMIT_WINDOW
+            attempts = [ts for ts in attempts if ts > cutoff]
+            attempts.append(now)
+            self._api_rate_attempts[client_ip] = attempts
+            return len(attempts) > limit
 
     def is_cors_origin_allowed(self, origin: str) -> bool:
         """Check if the given Origin is in the CORS whitelist."""
@@ -192,10 +213,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self._cors_headers()
         self.end_headers()
 
+    def _security_headers(self) -> None:
+        """Add security headers to every response."""
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-XSS-Protection", "1; mode=block")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store")
+
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:
         encoded = json.dumps(payload, ensure_ascii=True).encode("utf-8")
         self.send_response(status)
         self._cors_headers()
+        self._security_headers()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -205,6 +235,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         encoded = payload.encode("utf-8")
         self.send_response(status)
         self._cors_headers()
+        self._security_headers()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -653,6 +684,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        # Rate limit authenticated GET endpoints
+        if path not in ("/", "/quick", "/health", "/favicon.ico"):
+            if not self._check_rate_limit(path):
+                return
         if path == "/":
             self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
             return
@@ -676,6 +711,41 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 {"ok": True, "dashboard": build_intelligence_dashboard(root)},
             )
             return
+        if path == "/audit":
+            if not self._validate_auth(b""):
+                return
+            root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
+            audit_path = root_path / ".planning" / "runtime" / "gateway_audit.jsonl"
+            records: list[dict[str, Any]] = []
+            if audit_path.exists():
+                try:
+                    lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
+                    for line in lines[-50:]:
+                        try:
+                            records.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+                except OSError:
+                    pass
+            self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})
+            return
+        if path == "/processes":
+            from jarvis_engine.process_manager import list_services
+            root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
+            services = list_services(root_p)
+            control = {}
+            ctrl_path = root_p / ".planning" / "runtime" / "control.json"
+            if ctrl_path.exists():
+                try:
+                    control = json.loads(ctrl_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    pass
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "services": services,
+                "control": control,
+            })
+            return
         if path == "/sync/status":
             if not self._validate_auth(b""):
                 return
@@ -697,8 +767,22 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
 
+    def _check_rate_limit(self, path: str) -> bool:
+        """Check global API rate limit. Returns True if request should proceed."""
+        client_ip = str(self.client_address[0]).strip()
+        server: MobileIngestServer = self.server  # type: ignore[assignment]
+        if server.check_api_rate(client_ip, path):
+            self._write_json(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"ok": False, "error": "Rate limit exceeded. Try again later."},
+            )
+            return False
+        return True
+
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        if not self._check_rate_limit(path):
+            return
         if path == "/bootstrap":
             payload, _ = self._read_json_body_noauth(max_content_length=6_000)
             if payload is None:
@@ -769,6 +853,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     },
                 },
             )
+            return
+
+        if path == "/processes/kill":
+            payload, _ = self._read_json_body(max_content_length=1_000)
+            if payload is None:
+                return
+            service_name = str(payload.get("service", "")).strip()
+            from jarvis_engine.process_manager import SERVICES, kill_service
+            if service_name not in SERVICES:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Unknown service: {service_name}"})
+                return
+            root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
+            killed = kill_service(service_name, root_p)
+            self._write_json(HTTPStatus.OK, {"ok": True, "service": service_name, "killed": killed})
             return
 
         if path == "/ingest":

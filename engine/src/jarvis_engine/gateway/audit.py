@@ -1,0 +1,122 @@
+"""Gateway decision audit trail for transparency.
+
+Logs every LLM routing decision to a JSONL file so the user has full
+visibility into which provider was chosen, why, and how it performed.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from datetime import datetime
+from pathlib import Path
+
+from jarvis_engine._compat import UTC
+
+logger = logging.getLogger(__name__)
+
+
+class GatewayAudit:
+    """Logs every LLM routing decision to a JSONL file.
+
+    Thread-safe: uses a lock around file writes so concurrent gateway
+    calls from different threads don't corrupt the audit log.
+    """
+
+    def __init__(self, audit_path: Path) -> None:
+        self._path = audit_path
+        self._lock = threading.Lock()
+
+    def log_decision(
+        self,
+        *,
+        provider: str,
+        model: str,
+        reason: str,
+        latency_ms: float,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        success: bool,
+        fallback_from: str = "",
+        privacy_routed: bool = False,
+    ) -> None:
+        """Append a routing decision record to the JSONL audit log."""
+        record = {
+            "ts": datetime.now(UTC).isoformat(),
+            "provider": provider,
+            "model": model,
+            "reason": reason,
+            "latency_ms": round(latency_ms, 1),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": round(cost_usd, 6),
+            "success": success,
+            "fallback_from": fallback_from,
+            "privacy_routed": privacy_routed,
+        }
+        with self._lock:
+            try:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self._path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
+            except OSError:
+                logger.warning("Failed to write audit record to %s", self._path)
+
+    def recent(self, n: int = 50) -> list[dict]:
+        """Return the last *n* audit records from the log file."""
+        if not self._path.exists():
+            return []
+        try:
+            lines = self._path.read_text(encoding="utf-8").strip().splitlines()
+        except OSError:
+            return []
+        result: list[dict] = []
+        for line in lines[-n:]:
+            try:
+                result.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return result
+
+    def summary(self, hours: int = 24) -> dict:
+        """Summarize routing decisions over the last *hours* hours."""
+        records = self.recent(500)
+        cutoff = datetime.now(UTC).timestamp() - (hours * 3600)
+        recent: list[dict] = []
+        for r in records:
+            try:
+                ts = datetime.fromisoformat(r["ts"]).timestamp()
+                if ts >= cutoff:
+                    recent.append(r)
+            except (KeyError, ValueError):
+                continue
+
+        provider_counts: dict[str, int] = {}
+        total_cost = 0.0
+        total_latency = 0.0
+        failures = 0
+        privacy_count = 0
+
+        for r in recent:
+            p = r.get("provider", "unknown")
+            provider_counts[p] = provider_counts.get(p, 0) + 1
+            total_cost += r.get("cost_usd", 0.0)
+            total_latency += r.get("latency_ms", 0.0)
+            if not r.get("success", True):
+                failures += 1
+            if r.get("privacy_routed", False):
+                privacy_count += 1
+
+        count = len(recent)
+        return {
+            "period_hours": hours,
+            "total_decisions": count,
+            "provider_breakdown": provider_counts,
+            "total_cost_usd": round(total_cost, 4),
+            "avg_latency_ms": round(total_latency / count, 1) if count else 0.0,
+            "failure_count": failures,
+            "failure_rate_pct": round(failures / count * 100, 1) if count else 0.0,
+            "privacy_routed_count": privacy_count,
+        }

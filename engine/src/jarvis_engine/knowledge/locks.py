@@ -21,9 +21,15 @@ LOCK_THRESHOLD_SOURCES = 3
 class FactLockManager:
     """Manages fact locking: auto-lock thresholds and owner confirmation."""
 
-    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        write_lock: threading.Lock,
+        db_lock: threading.Lock | None = None,
+    ) -> None:
         self._db = db
         self._write_lock = write_lock
+        self._db_lock = db_lock or threading.Lock()
 
     # ------------------------------------------------------------------
     # Threshold check
@@ -110,20 +116,35 @@ class FactLockManager:
 
         Called after every add_fact that updates confidence or sources.
         Returns True if the node was auto-locked, False otherwise.
-        """
-        row = self._db.execute(
-            "SELECT node_id, confidence, sources, locked FROM kg_nodes WHERE node_id = ?",
-            (node_id,),
-        ).fetchone()
-        if row is None:
-            return False
-        if row["locked"]:
-            return False  # Already locked
 
-        node = {
-            "confidence": row["confidence"],
-            "sources": row["sources"],
-        }
-        if self.should_auto_lock(node):
-            return self.lock_fact(node_id, locked_by="auto")
+        NOTE: Acquires _write_lock once and performs the lock inline to avoid
+        deadlock -- calling lock_fact() would re-acquire _write_lock (a
+        non-reentrant Lock).  Also prevents TOCTOU race between read and lock.
+        """
+        with self._write_lock:
+            row = self._db.execute(
+                "SELECT node_id, confidence, sources, locked FROM kg_nodes WHERE node_id = ?",
+                (node_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            if row["locked"]:
+                return False  # Already locked
+
+            node = {
+                "confidence": row["confidence"],
+                "sources": row["sources"],
+            }
+            if self.should_auto_lock(node):
+                cur = self._db.execute(
+                    """UPDATE kg_nodes
+                       SET locked = 1, locked_at = datetime('now'), locked_by = ?
+                       WHERE node_id = ? AND locked = 0""",
+                    ("auto", node_id),
+                )
+                self._db.commit()
+                if cur.rowcount > 0:
+                    logger.info("Fact %s locked by auto", node_id)
+                    return True
+                return False
         return False

@@ -304,15 +304,24 @@
       <summary>Advanced Options</summary>
       <div style="margin-top:6px">
         <div class="row">
-          <label class="muted" style="display:flex;gap:6px;align-items:center" title="Allow Jarvis to run shell commands on your PC (needed for automation)"><input id="execute" type="checkbox" /> Allow Actions</label>
-          <label class="muted" style="display:flex;gap:6px;align-items:center" title="Skip confirmation prompts for owner-level operations"><input id="approve" type="checkbox" /> Skip Confirmations</label>
+          <label class="muted" style="display:flex;gap:6px;align-items:center" title="Allow Jarvis to run shell commands on your PC (needed for automation)"><input id="execute" type="checkbox" /> Allow PC Actions</label>
+          <label class="muted" style="display:flex;gap:6px;align-items:center" title="Skip confirmation prompts for owner-level operations"><input id="approve" type="checkbox" /> Auto-Approve</label>
         </div>
         <div class="section-label" style="margin-top:8px">Engine Controls</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          <button id="btnPause" class="warn" style="font-size:12px">Pause Engine</button>
-          <button id="btnResume" class="ghost" style="font-size:12px">Resume Engine</button>
-          <button id="btnSafeOn" class="ghost" style="font-size:12px">Safe Mode On</button>
-          <button id="btnSafeOff" class="ghost" style="font-size:12px">Safe Mode Off</button>
+          <button id="btnPause" class="warn" style="font-size:12px">Pause Jarvis</button>
+          <button id="btnResume" class="ghost" style="font-size:12px">Resume Jarvis</button>
+          <button id="btnSafeOn" class="ghost" style="font-size:12px">Safe Mode</button>
+          <button id="btnSafeOff" class="ghost" style="font-size:12px">Normal Mode</button>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Jarvis Services</summary>
+      <div id="svcPanel" style="margin-top:6px">
+        <div id="svcList" style="display:grid;grid-template-columns:1fr auto auto;gap:4px 8px;align-items:center;font-size:12px">
+          <span class="muted">Loading...</span>
         </div>
       </div>
     </details>
@@ -326,6 +335,18 @@
         <div class="row"><input id="deviceId" placeholder="Device ID (optional)" /></div>
         <div class="row"><input id="masterPassword" type="password" placeholder="Master password (first-time setup only)" /></div>
         <div class="row"><button id="btnSaveCreds" class="ghost" style="font-size:12px">Save</button><span class="muted" id="credState"></span></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>How Jarvis Works</summary>
+      <div style="margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5">
+        <p><b>Desktop Engine</b> runs on your PC as a daemon. It handles all intelligence: memory, knowledge graph, LLM routing, proactive analysis, and automation.</p>
+        <p><b>Android App</b> acts as your mobile interface: voice, notifications, calls, location, camera. It sends sensor data to the desktop brain and displays responses.</p>
+        <p><b>Intelligence Routing</b>: Commands are classified by intent, then routed to the best LLM provider (Anthropic, Groq, Mistral, Z.ai, or local Ollama) based on complexity and privacy needs. Privacy-sensitive queries always stay local.</p>
+        <p><b>Memory</b>: Everything Jarvis learns is stored in a local SQLite database with full-text search and vector embeddings. Knowledge is organized into branches (health, work, gaming, family, etc.) with confidence scores and contradiction detection.</p>
+        <p><b>Anti-Regression</b>: Golden tasks are periodically re-evaluated to ensure intelligence scores never decline. Memory health is monitored for duplicates and staleness.</p>
+        <p><b>Security</b>: All API calls use HMAC-SHA256 signing with nonce replay protection. Sync payloads are Fernet-encrypted. Master password required for sensitive operations.</p>
       </div>
     </details>
   </section>
@@ -543,6 +564,46 @@
       el.className = `badge ${color}`;
     }
 
+    async function refreshProcesses() {
+      try {
+        const c = creds();
+        const res = await fetch(`${c.baseUrl}/processes`);
+        const data = await res.json();
+        if (!data.ok) return;
+        const list = $("svcList");
+        const names = { daemon: "Daemon", mobile_api: "Mobile API", widget: "Widget" };
+        list.innerHTML = "";
+        for (const svc of data.services || []) {
+          const name = names[svc.service] || svc.service;
+          const dot = svc.running ? "\u2022" : "\u25CB";
+          const color = svc.running ? "var(--green)" : "var(--muted)";
+          const uptime = svc.running && svc.uptime_seconds > 0 ? formatUptime(svc.uptime_seconds) : "--";
+          list.innerHTML += `<span style="color:${color}">${dot} ${name}</span><span class="muted">${uptime}</span>`;
+          if (svc.running) {
+            list.innerHTML += `<button class="ghost" style="font-size:10px;padding:2px 6px" onclick="killService('${svc.service}')">Stop</button>`;
+          } else {
+            list.innerHTML += `<span></span>`;
+          }
+        }
+      } catch { /* silently fail if /processes unavailable */ }
+    }
+
+    function formatUptime(s) {
+      if (s < 60) return `${s}s`;
+      if (s < 3600) return `${Math.floor(s / 60)}m`;
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      return `${h}h ${m}m`;
+    }
+
+    async function killService(name) {
+      try {
+        await signedFetch("/processes/kill", "POST", { service: name }, 10000);
+        write(`Stopped ${name}`);
+        refreshProcesses();
+      } catch (err) { write(`Error stopping ${name}: ${err.message}`); }
+    }
+
     // ---- Dashboard (inline in quick commands) ----
     async function updateDashboard() {
       showThinking("Loading dashboard...");
@@ -568,6 +629,24 @@
           const eta = e.eta || {};
           lines.push(`${e.target_name}: ${eta.status}${eta.days ? " (~" + eta.days + " days)" : ""}`);
         });
+      }
+      const kg = d.knowledge_graph || {};
+      if (kg.node_count) {
+        lines.push("");
+        lines.push("--- Knowledge Graph ---");
+        lines.push(`Nodes: ${kg.node_count} | Edges: ${kg.edge_count} | Cross-Branch: ${kg.cross_branch_edges}`);
+        lines.push(`Avg Confidence: ${(kg.avg_confidence * 100).toFixed(1)}% | Locked Facts: ${kg.locked_facts}`);
+        if (kg.trend) lines.push(`Growth: ${kg.trend.trend} (${kg.trend.node_growth >= 0 ? "+" : ""}${kg.trend.node_growth} nodes)`);
+      }
+      const ga = d.gateway_audit || {};
+      if (ga.total_decisions) {
+        lines.push("");
+        lines.push("--- Gateway (24h) ---");
+        lines.push(`Decisions: ${ga.total_decisions} | Cost: $${(ga.total_cost_usd || 0).toFixed(4)} | Avg Latency: ${(ga.avg_latency_ms || 0).toFixed(0)}ms`);
+        if (ga.failure_count > 0) lines.push(`Failures: ${ga.failure_count} (${ga.failure_rate_pct}%)`);
+        const breakdown = ga.provider_breakdown || {};
+        const providers = Object.entries(breakdown).map(([k, v]) => `${k}: ${v}`).join(", ");
+        if (providers) lines.push(`Providers: ${providers}`);
       }
       dashboard.style.display = "block";
       dashboard.textContent = lines.join("\n");
@@ -737,7 +816,8 @@
     // ---- Init ----
     loadCreds();
     write("Ready. Tap the talk button or type a command.");
-    setTimeout(() => { refreshStatus().catch(() => {}); }, 500);
+    setTimeout(() => { refreshStatus().catch(() => {}); refreshProcesses().catch(() => {}); }, 500);
+    setInterval(() => { refreshProcesses().catch(() => {}); }, 10000);
   </script>
 </body>
 </html>
