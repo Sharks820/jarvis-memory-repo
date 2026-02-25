@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import queue
 import re
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,7 +78,7 @@ def list_windows_voices(refresh: bool = False) -> list[str]:
 def _preferred_voice_patterns(profile: str) -> list[str]:
     if profile == "jarvis_like":
         return [
-            # British butler voices first — refined, authoritative
+            # British butler voices first -- refined, authoritative
             "en-GB-RyanNeural",
             "en-GB-ThomasNeural",
             # Polished American male voices as fallback
@@ -310,13 +313,17 @@ def _speak_text_edge_streamed(
 
     worker = threading.Thread(target=producer, daemon=True)
     worker.start()
-    while True:
-        item = q.get()
-        if item is None:
-            break
-        if item == _ERROR_SENTINEL:
-            break  # Stop playback immediately on producer error
-        _play_audio_file(item)
+    try:
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            if item == _ERROR_SENTINEL:
+                break  # Stop playback immediately on producer error
+            _play_audio_file(item)
+    finally:
+        # Always join the producer thread to prevent thread leaks
+        worker.join(timeout=10)
     # Clean up streamed chunk files and temp directory
     try:
         for f in out_dir.glob("chunk_*.mp3"):
@@ -376,9 +383,10 @@ def speak_text(
                 output_wav=output_wav,
                 rate=rate,
             )
-        except Exception:
+        except Exception as exc:
             if engine_pref in {"edge", "edge_tts"}:
                 raise
+            logger.warning("edge-tts failed, falling back to Windows SAPI: %s", exc)
 
     voices = list_windows_voices(refresh=False)
     if not voices:

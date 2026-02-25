@@ -21,6 +21,10 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 logger = logging.getLogger(__name__)
 
+# Maximum raw (pre-compression) payload size to prevent memory exhaustion
+# during serialization and encryption.  16 MiB is generous for sync deltas.
+MAX_SYNC_PAYLOAD_BYTES = 16 * 1024 * 1024
+
 
 def derive_sync_key(signing_key: str, salt: bytes) -> bytes:
     """Derive a Fernet-compatible key from *signing_key* and *salt*.
@@ -75,9 +79,18 @@ def get_or_create_salt(salt_path: Path) -> bytes:
 def encrypt_sync_payload(payload: dict[str, Any], fernet_key: bytes) -> bytes:
     """Serialize, compress, and encrypt *payload*.
 
-    Pipeline: json.dumps -> zlib.compress(level=6) -> Fernet.encrypt.
+    Pipeline: json.dumps -> size check -> zlib.compress(level=6) -> Fernet.encrypt.
+
+    Raises ``ValueError`` if the serialized payload exceeds
+    ``MAX_SYNC_PAYLOAD_BYTES`` (16 MiB) to prevent memory exhaustion.
     """
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    if len(raw) > MAX_SYNC_PAYLOAD_BYTES:
+        raise ValueError(
+            f"Sync payload too large: {len(raw)} bytes exceeds "
+            f"limit of {MAX_SYNC_PAYLOAD_BYTES} bytes ({MAX_SYNC_PAYLOAD_BYTES // (1024 * 1024)} MiB). "
+            f"Split into smaller batches."
+        )
     compressed = zlib.compress(raw, level=6)
     f = Fernet(fernet_key)
     return f.encrypt(compressed)
