@@ -767,9 +767,9 @@ class JarvisDesktopWidget(tk.Tk):
 
         quick = tk.Frame(body, bg=self.PANEL)
         quick.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._btn(quick, "Pause", lambda: self._quick_phrase("Jarvis, pause daemon"), self.WARN).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(quick, "Resume", lambda: self._quick_phrase("Jarvis, resume daemon"), self.ACCENT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(quick, "Safe On", lambda: self._quick_phrase("Jarvis, enable safe mode"), self.ACCENT_2).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._btn(quick, "Pause Jarvis", lambda: self._quick_phrase("Jarvis, pause daemon"), self.WARN).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._btn(quick, "Resume Jarvis", lambda: self._quick_phrase("Jarvis, resume daemon"), self.ACCENT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._btn(quick, "Safe Mode", lambda: self._quick_phrase("Jarvis, enable safe mode"), self.ACCENT_2).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         fetch = tk.Frame(body, bg=self.PANEL)
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))

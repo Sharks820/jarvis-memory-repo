@@ -34,6 +34,7 @@ class TranscriptionResult:
     duration_seconds: float = 0.0
     backend: str = ""
     retried: bool = False
+    segments: list[dict] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -199,37 +200,37 @@ def transcribe_groq(
     text = data.get("text", "").strip()
     detected_lang = data.get("language", language)
 
-    # Compute real confidence from segment-level avg_logprob and no_speech_prob
-    segments = data.get("segments", [])
-    if segments and isinstance(segments, list):
+    # Compute real confidence from segment-level avg_logprob
+    raw_segments = data.get("segments", [])
+    parsed_segments: list[dict] | None = None
+    if raw_segments and isinstance(raw_segments, list):
         import math
 
         logprobs = []
-        no_speech_probs = []
-        for seg in segments:
+        parsed_segments = []
+        for seg in raw_segments:
             if isinstance(seg, dict):
                 alp = seg.get("avg_logprob")
                 if isinstance(alp, (int, float)) and math.isfinite(alp):
                     logprobs.append(alp)
-                nsp = seg.get("no_speech_prob")
-                if isinstance(nsp, (int, float)) and math.isfinite(nsp):
-                    no_speech_probs.append(nsp)
+                # Extract timing for segment-level timestamps
+                seg_start = seg.get("start")
+                seg_end = seg.get("end")
+                seg_text = seg.get("text", "")
+                if isinstance(seg_start, (int, float)) and isinstance(seg_end, (int, float)):
+                    parsed_segments.append({
+                        "start": float(seg_start),
+                        "end": float(seg_end),
+                        "text": str(seg_text).strip(),
+                    })
 
         if logprobs:
-            # avg_logprob is typically -1.0 to 0.0; exp() gives token probability
             avg_logprob = sum(logprobs) / len(logprobs)
-            token_prob = math.exp(max(-5.0, avg_logprob))  # clamp extreme negatives
-            # Penalize if high no-speech probability detected
-            avg_no_speech = (
-                sum(no_speech_probs) / len(no_speech_probs)
-                if no_speech_probs
-                else 0.0
-            )
-            confidence = round(token_prob * (1.0 - avg_no_speech * 0.5), 4)
+            confidence = round(min(1.0, max(0.0, 1.0 + avg_logprob)), 4)
         else:
-            confidence = 0.85  # fallback if segments lack logprobs
+            confidence = 0.90  # fallback if segments lack logprobs
     else:
-        confidence = 0.85  # fallback if no segments returned
+        confidence = 0.90  # fallback if no segments returned
 
     return TranscriptionResult(
         text=text,
@@ -237,6 +238,7 @@ def transcribe_groq(
         confidence=confidence,
         duration_seconds=round(elapsed, 3),
         backend="groq-whisper",
+        segments=parsed_segments if parsed_segments else None,
     )
 
 
@@ -315,8 +317,17 @@ class SpeechToText:
             vad_filter=vad_filter,
         )
         texts: list[str] = []
+        parsed_segments: list[dict] = []
         for segment in segments:
             texts.append(segment.text.strip())
+            seg_start = getattr(segment, "start", None)
+            seg_end = getattr(segment, "end", None)
+            if seg_start is not None and seg_end is not None:
+                parsed_segments.append({
+                    "start": float(seg_start),
+                    "end": float(seg_end),
+                    "text": segment.text.strip(),
+                })
         elapsed = time.monotonic() - t0
         full_text = " ".join(texts).strip()
         confidence = getattr(info, "language_probability", 0.0)
@@ -327,6 +338,7 @@ class SpeechToText:
             confidence=confidence,
             duration_seconds=round(elapsed, 3),
             backend="faster-whisper",
+            segments=parsed_segments if parsed_segments else None,
         )
 
 

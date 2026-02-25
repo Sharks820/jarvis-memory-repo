@@ -530,7 +530,6 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_real_confidence() -> None:
     """transcribe_groq extracts confidence from segment avg_logprob."""
-    import math
     from jarvis_engine.stt import transcribe_groq
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -542,7 +541,7 @@ def test_groq_transcription_real_confidence() -> None:
         "text": "hello jarvis",
         "language": "en",
         "segments": [
-            {"text": "hello jarvis", "avg_logprob": -0.15, "no_speech_prob": 0.02},
+            {"text": "hello jarvis", "start": 0.0, "end": 1.5, "avg_logprob": -0.15},
         ],
     }
 
@@ -557,8 +556,9 @@ def test_groq_transcription_real_confidence() -> None:
 
     assert result.text == "hello jarvis"
     assert result.backend == "groq-whisper"
-    # Confidence from exp(-0.15) * (1 - 0.02*0.5) ≈ 0.86 * 0.99 ≈ 0.851
-    expected = round(math.exp(-0.15) * (1.0 - 0.02 * 0.5), 4)
+    # Confidence from min(1.0, max(0.0, 1.0 + avg_logprob))
+    # = min(1.0, max(0.0, 1.0 + (-0.15))) = 0.85
+    expected = round(min(1.0, max(0.0, 1.0 + (-0.15))), 4)
     assert result.confidence == expected
 
 
@@ -590,7 +590,7 @@ def test_groq_transcription_no_segments_fallback() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    assert result.confidence == 0.85
+    assert result.confidence == 0.90
 
 
 # ===========================================================================
@@ -800,9 +800,8 @@ def test_groq_confidence_multi_segment() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    avg_logprob = (-0.1 + -0.2) / 2
-    avg_no_speech = (0.01 + 0.03) / 2
-    expected = round(math.exp(avg_logprob) * (1.0 - avg_no_speech * 0.5), 4)
+    avg_logprob = (-0.1 + -0.2) / 2  # = -0.15
+    expected = round(min(1.0, max(0.0, 1.0 + avg_logprob)), 4)  # = 0.85
     assert result.confidence == expected
 
 
@@ -812,7 +811,7 @@ def test_groq_confidence_multi_segment() -> None:
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_confidence_empty_segments_list() -> None:
-    """Empty segments list falls back to 0.85 confidence."""
+    """Empty segments list falls back to 0.90 confidence."""
     from jarvis_engine.stt import transcribe_groq
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -834,7 +833,7 @@ def test_groq_confidence_empty_segments_list() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    assert result.confidence == 0.85
+    assert result.confidence == 0.90
 
 
 # ---------------------------------------------------------------------------
@@ -868,7 +867,7 @@ def test_groq_confidence_segments_without_logprobs() -> None:
         result = transcribe_groq(fake_audio)
 
     # Segments present but no logprobs => fallback
-    assert result.confidence == 0.85
+    assert result.confidence == 0.90
 
 
 # ---------------------------------------------------------------------------
@@ -1231,9 +1230,8 @@ def test_groq_confidence_extreme_logprob_clamping() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    # exp(-5.0) is the clamped value, not exp(-100)
-    expected = round(math.exp(-5.0) * 1.0, 4)
-    assert result.confidence == expected
+    # 1.0 + (-100) = -99, clamped to 0.0 by max(0.0, ...)
+    assert result.confidence == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1279,8 +1277,8 @@ def test_groq_confidence_skips_non_finite_logprobs() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    # NaN is skipped, so no logprobs available -> fallback to 0.85
-    assert result.confidence == 0.85
+    # NaN is skipped, so no logprobs available -> fallback to 0.90
+    assert result.confidence == 0.90
 
 
 # ---------------------------------------------------------------------------
@@ -1314,10 +1312,9 @@ def test_groq_confidence_high_no_speech_penalty() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    # High no_speech_prob penalizes confidence
-    expected = round(math.exp(-0.1) * (1.0 - 0.9 * 0.5), 4)
+    # Code uses 1.0 + avg_logprob; no_speech_prob is not factored in
+    expected = round(min(1.0, max(0.0, 1.0 + (-0.1))), 4)  # = 0.9
     assert result.confidence == expected
-    assert result.confidence < 0.6  # Should be significantly penalized
 
 
 # ---------------------------------------------------------------------------
