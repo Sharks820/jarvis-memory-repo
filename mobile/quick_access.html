@@ -224,6 +224,22 @@
       margin-top: 6px;
     }
     .send-row button { flex: 1; }
+    .activity-row { padding: 3px 0; border-bottom: 1px solid var(--line); display: flex; gap: 6px; align-items: flex-start; }
+    .activity-row:last-child { border-bottom: none; }
+    .activity-ts { color: var(--muted); font-size: 10px; white-space: nowrap; min-width: 52px; }
+    .activity-cat {
+      font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 700;
+      text-transform: uppercase; white-space: nowrap; letter-spacing: .3px;
+    }
+    .activity-cat.cat-error, .activity-cat.cat-security { background: #3b1111; color: #fca5a5; }
+    .activity-cat.cat-llm_routing { background: #0c2340; color: #93c5fd; }
+    .activity-cat.cat-fact_extracted { background: #052e16; color: #86efac; }
+    .activity-cat.cat-proactive_trigger { background: #2a1f00; color: #fde68a; }
+    .activity-cat.cat-daemon_cycle { background: #1e293b; color: #94a3b8; }
+    .activity-cat.cat-harvest, .activity-cat.cat-web_research { background: #042f2e; color: #5eead4; }
+    .activity-cat.cat-voice { background: #1e1b4b; color: #c4b5fd; }
+    .activity-cat.cat-consolidation, .activity-cat.cat-regression_check, .activity-cat.cat-correction_applied { background: #1c1917; color: #d6d3d1; }
+    .activity-summary { flex: 1; word-break: break-word; }
     @media (max-width: 640px) {
       #panel { right: 10px; left: 10px; width: auto; bottom: 84px; }
       #fab { right: 12px; bottom: 14px; }
@@ -326,6 +342,15 @@
         <div id="svcList" style="display:grid;grid-template-columns:1fr auto auto;gap:4px 8px;align-items:center;font-size:12px">
           <span class="muted">Loading...</span>
         </div>
+      </div>
+    </details>
+
+    <details id="activityDetails">
+      <summary>Activity Feed</summary>
+      <div style="margin-top:6px">
+        <div id="activityStats" class="status-bar" style="margin-top:0;margin-bottom:6px;font-size:11px"></div>
+        <div id="activityList" style="max-height:260px;overflow:auto;font-size:12px;line-height:1.5"></div>
+        <div class="muted" style="font-size:10px;margin-top:4px">Auto-refreshes every 15s when open</div>
       </div>
     </details>
 
@@ -834,6 +859,52 @@
         showThinking("Jarvis is thinking...");
         try { await sendCommand(t); } catch (err) { write(`Error: ${err.message || err}`); }
         finally { isBusy = false; hideThinking(); }
+      }
+    });
+
+    // ---- Activity Feed ----
+    let activityTimer = null;
+
+    async function refreshActivity() {
+      try {
+        const data = await signedFetch("/activity?limit=20", "GET", null, 8000);
+        const events = data.events || [];
+        const stats = data.stats || {};
+
+        // Render stats summary
+        const statsEl = $("activityStats");
+        if (Object.keys(stats).length) {
+          statsEl.innerHTML = Object.entries(stats)
+            .map(([cat, cnt]) => `<span class="activity-cat cat-${cat}">${cat}: ${cnt}</span>`)
+            .join(" ");
+        } else {
+          statsEl.innerHTML = '<span class="muted">No events in last 24h</span>';
+        }
+
+        // Render event list
+        const listEl = $("activityList");
+        if (!events.length) {
+          listEl.innerHTML = '<span class="muted">No recent activity.</span>';
+          return;
+        }
+        listEl.innerHTML = events.map(evt => {
+          const ts = (evt.timestamp || "").slice(11, 19);
+          const cat = evt.category || "unknown";
+          const summary = evt.summary || "";
+          return `<div class="activity-row"><span class="activity-ts">${ts}</span><span class="activity-cat cat-${cat}">${cat}</span><span class="activity-summary">${summary}</span></div>`;
+        }).join("");
+      } catch {
+        // Silently fail if activity endpoint unavailable
+      }
+    }
+
+    // Start/stop auto-refresh when the details element is toggled
+    $("activityDetails").addEventListener("toggle", () => {
+      if ($("activityDetails").open) {
+        refreshActivity();
+        activityTimer = setInterval(() => refreshActivity(), 15000);
+      } else {
+        if (activityTimer) { clearInterval(activityTimer); activityTimer = null; }
       }
     });
 

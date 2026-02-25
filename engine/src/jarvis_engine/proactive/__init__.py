@@ -83,6 +83,18 @@ class ProactiveEngine:
                 with self._lock:
                     self._last_fired[rule.rule_id] = now
 
+        # Log to activity feed
+        if alerts:
+            try:
+                from jarvis_engine.activity_feed import log_activity
+                log_activity("proactive_trigger", f"Fired {len(alerts)} alerts", {
+                    "alerts": [a.rule_id for a in alerts],
+                })
+            except ImportError:
+                pass
+            except Exception:
+                pass  # Never break the proactive engine
+
         return alerts
 
     def reset_cooldowns(self) -> None:

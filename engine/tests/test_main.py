@@ -2554,3 +2554,392 @@ class TestDaemonSelfTest:
         cmd = DaemonRunCommand()
         assert hasattr(cmd, "self_test_every_cycles")
         assert cmd.self_test_every_cycles == 20
+
+
+# ===========================================================================
+# Conversation history buffer tests
+# ===========================================================================
+
+
+class TestConversationHistory:
+    """Tests for _conversation_history, _add_to_history, _get_history_messages."""
+
+    def setup_method(self):
+        """Reset module-level conversation history before each test."""
+        main_mod._conversation_history.clear()
+
+    def test_add_to_history_appends_message(self):
+        """_add_to_history appends a dict with role and content."""
+        main_mod._add_to_history("user", "Hello Jarvis")
+        hist = main_mod._get_history_messages()
+        assert len(hist) == 1
+        assert hist[0] == {"role": "user", "content": "Hello Jarvis"}
+
+    def test_add_to_history_multiple_messages(self):
+        """Multiple calls build up the history list."""
+        main_mod._add_to_history("user", "What is the weather?")
+        main_mod._add_to_history("assistant", "It is sunny.")
+        hist = main_mod._get_history_messages()
+        assert len(hist) == 2
+        assert hist[0]["role"] == "user"
+        assert hist[1]["role"] == "assistant"
+
+    def test_history_caps_at_max_turns_times_2(self):
+        """History is capped at _CONVERSATION_MAX_TURNS * 2 entries."""
+        max_entries = main_mod._CONVERSATION_MAX_TURNS * 2
+        # Add more than the cap
+        for i in range(max_entries + 6):
+            role = "user" if i % 2 == 0 else "assistant"
+            main_mod._add_to_history(role, f"message {i}")
+
+        hist = main_mod._get_history_messages()
+        assert len(hist) == max_entries
+        # Oldest messages should have been evicted; latest should be present
+        assert hist[-1]["content"] == f"message {max_entries + 5}"
+
+    def test_history_truncates_long_content(self):
+        """Content is truncated to 800 characters."""
+        long_msg = "x" * 2000
+        main_mod._add_to_history("user", long_msg)
+        hist = main_mod._get_history_messages()
+        assert len(hist[0]["content"]) == 800
+
+    def test_get_history_returns_copy(self):
+        """_get_history_messages returns a copy, not the original list."""
+        main_mod._add_to_history("user", "test")
+        hist = main_mod._get_history_messages()
+        hist.clear()
+        # Original should be unaffected
+        assert len(main_mod._get_history_messages()) == 1
+
+    def test_conversation_max_turns_is_5(self):
+        """_CONVERSATION_MAX_TURNS is set to 5."""
+        assert main_mod._CONVERSATION_MAX_TURNS == 5
+
+
+# ===========================================================================
+# _MAX_TOKENS_BY_ROUTE tests
+# ===========================================================================
+
+
+class TestMaxTokensByRoute:
+    """Tests for _MAX_TOKENS_BY_ROUTE configuration."""
+
+    def test_max_tokens_math_logic(self):
+        assert main_mod._MAX_TOKENS_BY_ROUTE["math_logic"] == 1024
+
+    def test_max_tokens_complex(self):
+        assert main_mod._MAX_TOKENS_BY_ROUTE["complex"] == 1024
+
+    def test_max_tokens_routine(self):
+        assert main_mod._MAX_TOKENS_BY_ROUTE["routine"] == 512
+
+    def test_max_tokens_simple_private(self):
+        assert main_mod._MAX_TOKENS_BY_ROUTE["simple_private"] == 384
+
+    def test_max_tokens_unknown_route_returns_none(self):
+        """Unknown routes are not in the dict (caller uses .get with default)."""
+        assert main_mod._MAX_TOKENS_BY_ROUTE.get("unknown_route") is None
+
+
+# ===========================================================================
+# _build_smart_context tests
+# ===========================================================================
+
+
+class TestBuildSmartContext:
+    """Tests for _build_smart_context function."""
+
+    def test_hybrid_search_path_when_engine_available(self, monkeypatch):
+        """When bus has _engine and _embed_service, uses hybrid_search."""
+        bus = MagicMock()
+        bus._engine = MagicMock()
+        bus._embed_service = MagicMock()
+        bus._embed_service.embed_query.return_value = [0.1, 0.2, 0.3]
+
+        fake_records = [
+            {"summary": "User likes hiking on weekends"},
+            {"summary": "User takes metformin daily"},
+        ]
+
+        with patch("jarvis_engine.main.hybrid_search", create=True) as mock_hs:
+            # hybrid_search is imported inside _build_smart_context, so patch the import target
+            with patch.dict("sys.modules", {}):
+                pass
+            # Patch at the location where it's imported inside the function
+            with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_records):
+                memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "health")
+
+        # Memory lines come from hybrid_search results
+        assert "User likes hiking on weekends" in memory_lines
+        assert "User takes metformin daily" in memory_lines
+
+    def test_legacy_fallback_when_no_engine(self, monkeypatch):
+        """When bus has no _engine, falls back to build_context_packet."""
+        bus = MagicMock(spec=[])  # empty spec - no attributes
+
+        fake_packet = {
+            "selected": [
+                {"summary": "Legacy memory entry 1"},
+                {"summary": "Legacy memory entry 2"},
+            ]
+        }
+
+        monkeypatch.setattr(
+            main_mod, "build_context_packet", lambda *a, **kw: fake_packet
+        )
+
+        memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "anything")
+        assert "Legacy memory entry 1" in memory_lines
+        assert "Legacy memory entry 2" in memory_lines
+
+    def test_legacy_fallback_when_hybrid_fails(self, monkeypatch):
+        """When hybrid_search raises, falls back to build_context_packet."""
+        bus = MagicMock()
+        bus._engine = MagicMock()
+        bus._embed_service = MagicMock()
+        bus._embed_service.embed_query.side_effect = RuntimeError("embed failed")
+
+        fake_packet = {
+            "selected": [{"summary": "Fallback memory"}]
+        }
+        monkeypatch.setattr(
+            main_mod, "build_context_packet", lambda *a, **kw: fake_packet
+        )
+
+        memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "test query")
+        assert "Fallback memory" in memory_lines
+
+    def test_kg_facts_injected_when_engine_available(self, monkeypatch, tmp_path):
+        """KG facts are queried and returned as fact_lines."""
+        bus = MagicMock(spec=[])  # No _engine attr initially — force fallback for memory
+        # But we need _engine to be not None for the KG section
+        bus._engine = MagicMock()
+        bus._embed_service = None  # No embed service — hybrid won't run
+
+        # Legacy path returns empty for memory
+        monkeypatch.setattr(
+            main_mod, "build_context_packet",
+            lambda *a, **kw: {"selected": []},
+        )
+
+        # Mock the KnowledgeGraph that's constructed inside _build_smart_context
+        mock_kg_instance = MagicMock()
+        mock_kg_instance.query_relevant_facts.return_value = [
+            {"label": "User is allergic to peanuts", "confidence": 0.9},
+            {"label": "User prefers window seat", "confidence": 0.7},
+        ]
+
+        with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
+            memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "tell me about allergies")
+
+        assert "User is allergic to peanuts" in fact_lines
+
+    def test_kg_facts_filtered_by_confidence(self, monkeypatch):
+        """KG facts with confidence < 0.5 are excluded from fact_lines."""
+        bus = MagicMock(spec=[])
+        bus._engine = MagicMock()
+        bus._embed_service = None
+
+        monkeypatch.setattr(
+            main_mod, "build_context_packet",
+            lambda *a, **kw: {"selected": []},
+        )
+
+        mock_kg_instance = MagicMock()
+        mock_kg_instance.query_relevant_facts.return_value = [
+            {"label": "High confidence fact", "confidence": 0.9},
+            {"label": "Low confidence fact", "confidence": 0.3},
+        ]
+
+        with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
+            memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "some query")
+
+        assert "High confidence fact" in fact_lines
+        assert "Low confidence fact" not in fact_lines
+
+    def test_returns_empty_when_everything_fails(self, monkeypatch):
+        """Returns ([], []) when both memory and KG queries fail."""
+        bus = MagicMock(spec=[])  # No _engine
+
+        monkeypatch.setattr(
+            main_mod, "build_context_packet",
+            MagicMock(side_effect=RuntimeError("DB broken")),
+        )
+
+        memory_lines, fact_lines, cross_branch_lines = main_mod._build_smart_context(bus, "broken query")
+        assert memory_lines == []
+        assert fact_lines == []
+        assert cross_branch_lines == []
+
+
+# ===========================================================================
+# QueryCommand.history field tests
+# ===========================================================================
+
+
+class TestQueryCommandHistory:
+    """Tests for the history field on QueryCommand."""
+
+    def test_query_command_has_history_field(self):
+        """QueryCommand has a history field defaulting to empty tuple."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        cmd = QueryCommand(query="test")
+        assert hasattr(cmd, "history")
+        assert cmd.history == ()
+
+    def test_query_command_history_accepts_tuples(self):
+        """QueryCommand.history can hold conversation turn tuples."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        history = (("user", "Hello"), ("assistant", "Hi there"))
+        cmd = QueryCommand(query="follow up", history=history)
+        assert cmd.history == history
+        assert len(cmd.history) == 2
+
+    def test_query_command_is_frozen(self):
+        """QueryCommand is a frozen dataclass (immutable)."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        cmd = QueryCommand(query="test")
+        with pytest.raises(AttributeError):
+            cmd.query = "changed"
+
+
+# ===========================================================================
+# QueryHandler with conversation history injection tests
+# ===========================================================================
+
+
+class TestQueryHandlerHistory:
+    """Tests for QueryHandler injecting history into LLM messages."""
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    def test_handler_injects_history_before_query(self):
+        """QueryHandler places history messages between system prompt and user query."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        from jarvis_engine.handlers.task_handlers import QueryHandler
+        from jarvis_engine.gateway.models import GatewayResponse
+
+        mock_gateway = MagicMock()
+        mock_gateway.complete.return_value = GatewayResponse(
+            text="response", model="test-model", provider="test"
+        )
+
+        handler = QueryHandler(gateway=mock_gateway)
+        cmd = QueryCommand(
+            query="What about my diet?",
+            system_prompt="You are Jarvis.",
+            history=(
+                ("user", "Tell me about my health"),
+                ("assistant", "You take metformin daily."),
+            ),
+        )
+
+        handler.handle(cmd)
+
+        # Inspect the messages passed to gateway.complete
+        call_kwargs = mock_gateway.complete.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages") or call_kwargs[0][0]
+        # If passed as positional, it'll be messages=...
+        if not isinstance(messages, list):
+            messages = call_kwargs.kwargs["messages"]
+
+        # Expected order: system, history user, history assistant, current user
+        assert messages[0] == {"role": "system", "content": "You are Jarvis."}
+        assert messages[1] == {"role": "user", "content": "Tell me about my health"}
+        assert messages[2] == {"role": "assistant", "content": "You take metformin daily."}
+        assert messages[3] == {"role": "user", "content": "What about my diet?"}
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    def test_handler_works_without_history(self):
+        """QueryHandler works correctly when history is empty (default)."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        from jarvis_engine.handlers.task_handlers import QueryHandler
+        from jarvis_engine.gateway.models import GatewayResponse
+
+        mock_gateway = MagicMock()
+        mock_gateway.complete.return_value = GatewayResponse(
+            text="answer", model="test-model", provider="test"
+        )
+
+        handler = QueryHandler(gateway=mock_gateway)
+        cmd = QueryCommand(
+            query="What time is it?",
+            system_prompt="You are helpful.",
+        )
+
+        handler.handle(cmd)
+
+        call_kwargs = mock_gateway.complete.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+
+        # Only system + user, no history
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == "What time is it?"
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    def test_handler_filters_invalid_history_roles(self):
+        """QueryHandler only injects 'user' and 'assistant' roles from history."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        from jarvis_engine.handlers.task_handlers import QueryHandler
+        from jarvis_engine.gateway.models import GatewayResponse
+
+        mock_gateway = MagicMock()
+        mock_gateway.complete.return_value = GatewayResponse(
+            text="ok", model="m", provider="p"
+        )
+
+        handler = QueryHandler(gateway=mock_gateway)
+        cmd = QueryCommand(
+            query="test",
+            history=(
+                ("user", "valid user msg"),
+                ("system", "injected system msg"),  # should be filtered
+                ("assistant", "valid assistant msg"),
+                ("admin", "injected admin msg"),  # should be filtered
+            ),
+        )
+
+        handler.handle(cmd)
+
+        call_kwargs = mock_gateway.complete.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+
+        roles = [m["role"] for m in messages]
+        assert "admin" not in roles
+        # system only appears if cmd.system_prompt was set (it's empty here)
+        # so the injected "system" from history should be filtered out
+        history_roles = [m["role"] for m in messages if m["content"] not in ("test",)]
+        assert "system" not in history_roles
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    def test_handler_skips_empty_content_in_history(self):
+        """QueryHandler skips history entries with empty content."""
+        from jarvis_engine.commands.task_commands import QueryCommand
+        from jarvis_engine.handlers.task_handlers import QueryHandler
+        from jarvis_engine.gateway.models import GatewayResponse
+
+        mock_gateway = MagicMock()
+        mock_gateway.complete.return_value = GatewayResponse(
+            text="ok", model="m", provider="p"
+        )
+
+        handler = QueryHandler(gateway=mock_gateway)
+        cmd = QueryCommand(
+            query="final question",
+            history=(
+                ("user", "first question"),
+                ("assistant", ""),  # empty - should be skipped
+                ("user", "second question"),
+            ),
+        )
+
+        handler.handle(cmd)
+
+        call_kwargs = mock_gateway.complete.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+
+        # Should have: first question, second question, final question (no empty assistant)
+        contents = [m["content"] for m in messages]
+        assert "" not in contents

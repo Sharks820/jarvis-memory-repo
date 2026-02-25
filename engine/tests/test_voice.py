@@ -777,3 +777,149 @@ class TestChunkTextExtended:
         chunks = _chunk_text_for_streaming(text, sentences_per_chunk=2)
         assert len(chunks) == 2
 
+
+# ===========================================================================
+# P2 voice pipeline fix tests
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Streaming error sentinel fix: only _ERROR_SENTINEL on error, not both
+# ---------------------------------------------------------------------------
+
+class TestStreamingErrorSentinel:
+    """Tests for the streaming error sentinel fix in _speak_text_edge_streamed."""
+
+    @patch("jarvis_engine.voice._play_audio_file")
+    @patch("jarvis_engine.voice.subprocess.run")
+    @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
+    @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
+    @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
+    def test_producer_error_puts_only_error_sentinel(
+        self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
+    ) -> None:
+        """When producer fails, only _ERROR_SENTINEL is put on queue (not None too)."""
+        import queue as queue_mod
+
+        # First chunk succeeds, second fails
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="synthesis error"),
+        ]
+
+        # We need to intercept queue operations to verify
+        items_put: list = []
+        original_queue_put = queue_mod.Queue.put
+
+        def tracking_put(self_q, item, *args, **kwargs):
+            items_put.append(item)
+            return original_queue_put(self_q, item, *args, **kwargs)
+
+        from jarvis_engine.voice import _speak_text_edge_streamed
+
+        with patch.object(queue_mod.Queue, "put", tracking_put):
+            with pytest.raises(RuntimeError, match="synthesis error"):
+                _speak_text_edge_streamed(
+                    "One sentence. Two sentence. Three sentence. Four sentence.",
+                    profile="jarvis_like",
+                    custom_voice_pattern="",
+                    rate=0,
+                )
+
+        # Verify _ERROR_SENTINEL was put but None was NOT put after error
+        sentinel_count = sum(1 for item in items_put if item == "__ERROR__")
+        none_count = sum(1 for item in items_put if item is None)
+        assert sentinel_count == 1, f"Expected exactly 1 error sentinel, got {sentinel_count}"
+        assert none_count == 0, f"Expected 0 None sentinels after error, got {none_count}"
+
+    @patch("jarvis_engine.voice._play_audio_file")
+    @patch("jarvis_engine.voice.subprocess.run")
+    @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
+    @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
+    @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
+    def test_producer_success_puts_none_sentinel(
+        self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
+    ) -> None:
+        """When producer succeeds, None sentinel is put at end."""
+        import queue as queue_mod
+
+        # All chunks succeed
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+
+        items_put: list = []
+        original_queue_put = queue_mod.Queue.put
+
+        def tracking_put(self_q, item, *args, **kwargs):
+            items_put.append(item)
+            return original_queue_put(self_q, item, *args, **kwargs)
+
+        from jarvis_engine.voice import _speak_text_edge_streamed
+
+        with patch.object(queue_mod.Queue, "put", tracking_put):
+            _speak_text_edge_streamed(
+                "One sentence. Two sentence. Three sentence. Four sentence.",
+                profile="jarvis_like",
+                custom_voice_pattern="",
+                rate=0,
+            )
+
+        # Verify None sentinel was put (success case)
+        none_count = sum(1 for item in items_put if item is None)
+        assert none_count == 1, f"Expected exactly 1 None sentinel, got {none_count}"
+        # Verify no error sentinel
+        sentinel_count = sum(1 for item in items_put if item == "__ERROR__")
+        assert sentinel_count == 0
+
+
+# ---------------------------------------------------------------------------
+# _play_audio_file return code check
+# ---------------------------------------------------------------------------
+
+class TestPlayAudioFileReturnCode:
+    """Tests for the _play_audio_file return code logging."""
+
+    @patch("jarvis_engine.voice._run_ps_encoded")
+    def test_play_audio_file_logs_warning_on_failure(self, mock_ps) -> None:
+        """Non-zero return code logs a warning."""
+        from jarvis_engine.voice import _play_audio_file
+
+        mock_ps.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="Playback device not found"
+        )
+        with patch("jarvis_engine.voice.logger") as mock_logger:
+            _play_audio_file("/tmp/test.wav")
+            mock_logger.warning.assert_called_once()
+            warning_args = mock_logger.warning.call_args[0]
+            assert "Audio playback failed" in warning_args[0]
+            assert warning_args[1] == 1  # returncode
+            assert "Playback device" in warning_args[2]
+
+    @patch("jarvis_engine.voice._run_ps_encoded")
+    def test_play_audio_file_no_warning_on_success(self, mock_ps) -> None:
+        """Zero return code does not log a warning."""
+        from jarvis_engine.voice import _play_audio_file
+
+        mock_ps.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        with patch("jarvis_engine.voice.logger") as mock_logger:
+            _play_audio_file("/tmp/test.wav")
+            mock_logger.warning.assert_not_called()
+
+    @patch("jarvis_engine.voice._run_ps_encoded")
+    def test_play_audio_file_truncates_long_stderr(self, mock_ps) -> None:
+        """Long stderr is truncated to 200 chars in the log."""
+        from jarvis_engine.voice import _play_audio_file
+
+        long_stderr = "E" * 500
+        mock_ps.return_value = subprocess.CompletedProcess(
+            args=[], returncode=2, stdout="", stderr=long_stderr
+        )
+        with patch("jarvis_engine.voice.logger") as mock_logger:
+            _play_audio_file("/tmp/test.wav")
+            warning_args = mock_logger.warning.call_args[0]
+            # The stderr arg should be truncated to 200 chars
+            assert len(warning_args[2]) == 200
+

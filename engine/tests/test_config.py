@@ -131,3 +131,45 @@ def test_load_config_survives_corrupt_json() -> None:
         with patch("jarvis_engine.config.repo_root", return_value=fake_root):
             cfg = load_config()
     assert cfg.profile == "balanced"  # defaults
+
+
+# ---------------------------------------------------------------------------
+# default_query_model field
+# ---------------------------------------------------------------------------
+
+def test_engine_config_default_query_model() -> None:
+    """EngineConfig has a default_query_model field with correct default."""
+    cfg = EngineConfig()
+    assert cfg.default_query_model == "claude-sonnet-4-5-20250929"
+
+
+def test_load_config_default_query_model_from_file() -> None:
+    """default_query_model can be set from config file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_root = Path(tmpdir)
+        (fake_root / "engine").mkdir()
+        config_dir = fake_root / ".planning"
+        config_dir.mkdir()
+        config_path = config_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "default_query_model": "llama3-70b",
+        }), encoding="utf-8")
+        with patch("jarvis_engine.config.repo_root", return_value=fake_root):
+            cfg = load_config()
+    assert cfg.default_query_model == "llama3-70b"
+
+
+def test_load_config_default_query_model_uses_default_when_absent() -> None:
+    """default_query_model uses its default when not in config file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_root = Path(tmpdir)
+        (fake_root / "engine").mkdir()
+        config_dir = fake_root / ".planning"
+        config_dir.mkdir()
+        config_path = config_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "profile": "balanced",
+        }), encoding="utf-8")
+        with patch("jarvis_engine.config.repo_root", return_value=fake_root):
+            cfg = load_config()
+    assert cfg.default_query_model == "claude-sonnet-4-5-20250929"

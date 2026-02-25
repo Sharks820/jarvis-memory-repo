@@ -21,6 +21,7 @@ class EngineConfig:
     access_channels: list[str] = field(default_factory=lambda: ["desktop"])
     regression_gate_enabled: bool = True
     capability_mode: str = "tiered_authorization"
+    default_query_model: str = "claude-sonnet-4-5-20250929"
     last_updated: str = ""
 
 

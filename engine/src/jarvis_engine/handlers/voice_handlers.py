@@ -167,7 +167,7 @@ class VoiceListenHandler:
             result = listen_and_transcribe(
                 max_duration_seconds=cmd.max_duration_seconds,
                 language=cmd.language,
-                model_size=cmd.model_size,
+                root_dir=self._root,
             )
         except Exception as exc:
             logger.debug("Voice listen failed: %s", exc)

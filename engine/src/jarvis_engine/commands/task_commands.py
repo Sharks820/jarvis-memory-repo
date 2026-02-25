@@ -49,6 +49,7 @@ class QueryCommand:
     model: str | None = None
     max_tokens: int = 1024
     system_prompt: str = ""
+    history: tuple[tuple[str, str], ...] = ()  # ((role, content), ...) for multi-turn
 
 
 @dataclass

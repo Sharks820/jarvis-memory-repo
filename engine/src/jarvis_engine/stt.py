@@ -43,7 +43,8 @@ class TranscriptionResult:
 
 _stt_metrics_lock = threading.Lock()
 
-CONFIDENCE_RETRY_THRESHOLD = 0.6
+CONFIDENCE_RETRY_THRESHOLD = float(os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6"))
+GROQ_STT_MODEL = os.environ.get("JARVIS_GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
 
 def _log_stt_metric(
@@ -109,7 +110,7 @@ def transcribe_groq(
     *,
     language: str = "en",
     prompt: str = "",
-) -> TranscriptionResult:
+) -> TranscriptionResult | None:
     """Transcribe audio using Groq's Whisper Turbo API.
 
     Parameters
@@ -126,6 +127,13 @@ def transcribe_groq(
     api_key = os.environ.get("GROQ_API_KEY", "")
     if not api_key:
         raise RuntimeError("GROQ_API_KEY not set")
+
+    # Minimum audio duration check: require at least 0.1s (1600 samples at 16kHz)
+    if isinstance(audio, np.ndarray) and len(audio) < 1600:
+        logger.debug(
+            "Audio too short for Groq API (%d samples)", len(audio)
+        )
+        return None
 
     t0 = time.monotonic()
 
@@ -146,23 +154,46 @@ def transcribe_groq(
             "pause daemon, resume daemon, safe mode"
         )
 
-    # Call Groq Whisper API (OpenAI-compatible)
+    # Call Groq Whisper API (OpenAI-compatible) with retry on transient errors
+    resp = None
     with httpx.Client(timeout=30.0) as client:
-        resp = client.post(
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            data={
-                "model": "whisper-large-v3-turbo",
-                "language": language,
-                "response_format": "verbose_json",
-                "temperature": "0.0",
-                "prompt": prompt[:224],  # Groq limit: 224 tokens
-            },
-            files={"file": (filename, audio_bytes, "audio/wav")},
-        )
+        for attempt in range(2):
+            try:
+                resp = client.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    data={
+                        "model": GROQ_STT_MODEL,
+                        "language": language,
+                        "response_format": "verbose_json",
+                        "temperature": "0.0",
+                        "prompt": prompt[:224],  # Groq limit: 224 tokens
+                    },
+                    files={"file": (filename, audio_bytes, "audio/wav")},
+                )
+                if resp.status_code >= 500:
+                    logger.warning("Groq API returned %d, attempt %d/2", resp.status_code, attempt + 1)
+                    if attempt < 1:
+                        time.sleep(1)
+                        continue
+                break
+            except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+                logger.warning("Groq API connection error: %s, attempt %d/2", exc, attempt + 1)
+                if attempt < 1:
+                    time.sleep(1)
+                    continue
+                return TranscriptionResult(
+                    text="",
+                    language=language,
+                    confidence=0.0,
+                    duration_seconds=round(time.monotonic() - t0, 3),
+                    backend="groq-whisper",
+                )
 
-    if resp.status_code != 200:
-        raise RuntimeError(f"Groq STT API error {resp.status_code}: {resp.text[:200]}")
+    if resp is None or resp.status_code != 200:
+        status = resp.status_code if resp is not None else 0
+        text = resp.text[:200] if resp is not None else "no response"
+        raise RuntimeError(f"Groq STT API error {status}: {text}")
 
     data = resp.json()
     elapsed = time.monotonic() - t0
@@ -315,13 +346,18 @@ def _try_groq(
         return None
 
 
+_local_stt_instance: SpeechToText | None = None
+
+
 def _try_local(
     audio: np.ndarray | str, *, language: str
 ) -> TranscriptionResult | None:
     """Attempt local faster-whisper transcription, returning *None* on failure."""
+    global _local_stt_instance
     try:
-        stt = SpeechToText()
-        return stt.transcribe_audio(audio, language=language)
+        if _local_stt_instance is None:
+            _local_stt_instance = SpeechToText()
+        return _local_stt_instance.transcribe_audio(audio, language=language)
     except Exception as exc:
         logger.warning("Local STT attempt failed: %s", exc)
         return None
@@ -491,8 +527,24 @@ def record_from_microphone(
     *,
     sample_rate: int = 16000,
     max_duration_seconds: float = 30.0,
+    silence_threshold: float = 0.01,
+    silence_duration: float = 2.0,
 ) -> np.ndarray:
-    """Record audio from the default microphone.
+    """Record audio from the default microphone with energy-based VAD.
+
+    Recording stops early when silence is detected after speech, avoiding
+    the need to wait for the full *max_duration_seconds*.
+
+    Parameters
+    ----------
+    sample_rate:
+        Audio sample rate in Hz (default 16000).
+    max_duration_seconds:
+        Maximum recording duration in seconds (default 30).
+    silence_threshold:
+        RMS energy threshold below which audio is considered silence (default 0.01).
+    silence_duration:
+        Seconds of continuous silence after speech before stopping (default 2.0).
 
     Returns a mono float32 numpy array at the given sample rate.
     Raises RuntimeError if sounddevice is not installed or no microphone
@@ -511,27 +563,52 @@ def record_from_microphone(
             max_duration_seconds,
             sample_rate,
         )
-        audio = sd.rec(
-            int(sample_rate * max_duration_seconds),
-            samplerate=sample_rate,
-            channels=1,
-            dtype="float32",
-        )
-        sd.wait()
+
+        frames: list[np.ndarray] = []
+        speech_detected = False
+        silence_frames = 0
+        chunk_duration = 0.1  # 100ms chunks
+        samples_per_chunk = int(sample_rate * chunk_duration)
+        max_silence_chunks = int(silence_duration / chunk_duration)
+        min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
+
+        with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:
+            max_chunks = int(max_duration_seconds / chunk_duration)
+            for i in range(max_chunks):
+                chunk, _ = stream.read(samples_per_chunk)
+                frames.append(chunk.copy())
+
+                rms = float(np.sqrt(np.mean(chunk ** 2)))
+                if rms > silence_threshold:
+                    speech_detected = True
+                    silence_frames = 0
+                elif speech_detected:
+                    silence_frames += 1
+                    if silence_frames >= max_silence_chunks and i >= min_recording_chunks:
+                        logger.debug(
+                            "Silence detected after speech, stopping recording "
+                            "(%.1f seconds recorded)",
+                            (i + 1) * chunk_duration,
+                        )
+                        break
+
     except Exception as exc:
         # PortAudioError or similar -- microphone not available
         raise RuntimeError(
             f"Microphone recording failed: {exc}. "
             "Check Windows microphone permissions in Settings > Privacy > Microphone."
         ) from exc
-    return audio.flatten()
+
+    if not frames:
+        return np.array([], dtype=np.float32)
+    return np.concatenate(frames, axis=0).flatten()
 
 
 def listen_and_transcribe(
     *,
     max_duration_seconds: float = 30.0,
     language: str = "en",
-    model_size: str = "small.en",
+    root_dir: Path | None = None,
 ) -> TranscriptionResult:
     """Record from microphone and transcribe in one call.
 
@@ -539,4 +616,4 @@ def listen_and_transcribe(
     otherwise falls back to local faster-whisper.
     """
     audio = record_from_microphone(max_duration_seconds=max_duration_seconds)
-    return transcribe_smart(audio, language=language)
+    return transcribe_smart(audio, language=language, root_dir=root_dir)

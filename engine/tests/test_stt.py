@@ -231,7 +231,6 @@ def test_voice_listen_command_defaults() -> None:
     cmd = VoiceListenCommand()
     assert cmd.max_duration_seconds == 30.0
     assert cmd.language == "en"
-    assert cmd.model_size == "small.en"
 
 
 # ---------------------------------------------------------------------------
@@ -1350,3 +1349,558 @@ def test_groq_transcription_detected_language() -> None:
         result = transcribe_groq(fake_audio, language="en")
 
     assert result.language == "fr"
+
+
+# ===========================================================================
+# NEW TESTS: Bug-fix verification for P1 voice/STT pipeline
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 52. Bug 4 fix: _try_local caches SpeechToText instance
+# ---------------------------------------------------------------------------
+
+def test_try_local_caches_stt_instance() -> None:
+    """_try_local reuses the same SpeechToText instance across calls."""
+    import jarvis_engine.stt as stt_mod
+
+    # Reset the cached instance
+    original_instance = stt_mod._local_stt_instance
+    stt_mod._local_stt_instance = None
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    mock_result = MagicMock()
+    mock_result.text = "hello"
+
+    try:
+        with patch.object(stt_mod.SpeechToText, "transcribe_audio", return_value=mock_result):
+            stt_mod._try_local(fake_audio, language="en")
+            first_instance = stt_mod._local_stt_instance
+
+            stt_mod._try_local(fake_audio, language="en")
+            second_instance = stt_mod._local_stt_instance
+
+        # Both calls should use the same instance
+        assert first_instance is not None
+        assert first_instance is second_instance
+    finally:
+        # Restore original state
+        stt_mod._local_stt_instance = original_instance
+
+
+def test_try_local_does_not_recreate_on_each_call() -> None:
+    """_try_local does not construct a new SpeechToText on every invocation."""
+    import jarvis_engine.stt as stt_mod
+
+    original_instance = stt_mod._local_stt_instance
+    stt_mod._local_stt_instance = None
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    try:
+        with patch("jarvis_engine.stt.SpeechToText") as mock_stt_cls:
+            mock_instance = MagicMock()
+            mock_instance.transcribe_audio.return_value = MagicMock(text="hi")
+            mock_stt_cls.return_value = mock_instance
+
+            stt_mod._try_local(fake_audio, language="en")
+            stt_mod._try_local(fake_audio, language="en")
+            stt_mod._try_local(fake_audio, language="en")
+
+            # SpeechToText() should only have been called once
+            mock_stt_cls.assert_called_once()
+    finally:
+        stt_mod._local_stt_instance = original_instance
+
+
+# ---------------------------------------------------------------------------
+# 53. Bug 5 fix: listen_and_transcribe forwards root_dir
+# ---------------------------------------------------------------------------
+
+def test_listen_and_transcribe_forwards_root_dir() -> None:
+    """listen_and_transcribe passes root_dir to transcribe_smart."""
+    from jarvis_engine.stt import TranscriptionResult, listen_and_transcribe
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    expected = TranscriptionResult(
+        text="hello", language="en", confidence=0.9,
+        duration_seconds=1.0, backend="faster-whisper",
+    )
+
+    with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio), \
+         patch("jarvis_engine.stt.transcribe_smart", return_value=expected) as mock_smart:
+        result = listen_and_transcribe(root_dir=Path("/tmp/test"))
+
+    mock_smart.assert_called_once_with(
+        fake_audio, language="en", root_dir=Path("/tmp/test")
+    )
+    assert result.text == "hello"
+
+
+def test_listen_and_transcribe_no_model_size_param() -> None:
+    """listen_and_transcribe no longer accepts model_size parameter."""
+    import inspect
+    from jarvis_engine.stt import listen_and_transcribe
+
+    sig = inspect.signature(listen_and_transcribe)
+    assert "model_size" not in sig.parameters
+    assert "root_dir" in sig.parameters
+
+
+def test_listen_and_transcribe_root_dir_defaults_to_none() -> None:
+    """listen_and_transcribe root_dir defaults to None."""
+    from jarvis_engine.stt import TranscriptionResult, listen_and_transcribe
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    expected = TranscriptionResult(
+        text="hello", language="en", confidence=0.9,
+        duration_seconds=1.0, backend="faster-whisper",
+    )
+
+    with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio), \
+         patch("jarvis_engine.stt.transcribe_smart", return_value=expected) as mock_smart:
+        listen_and_transcribe()
+
+    mock_smart.assert_called_once_with(
+        fake_audio, language="en", root_dir=None
+    )
+
+
+# ---------------------------------------------------------------------------
+# 54. Groq retry on 500 response
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_retry_on_500_response() -> None:
+    """transcribe_groq retries once on 5xx and succeeds on second attempt."""
+    from jarvis_engine.stt import transcribe_groq
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    mock_500_response = MagicMock()
+    mock_500_response.status_code = 500
+    mock_500_response.text = "Internal Server Error"
+
+    mock_ok_response = MagicMock()
+    mock_ok_response.status_code = 200
+    mock_ok_response.json.return_value = {
+        "text": "hello after retry",
+        "language": "en",
+        "segments": [],
+    }
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.side_effect = [mock_500_response, mock_ok_response]
+        mock_client_cls.return_value = mock_client
+
+        with patch("jarvis_engine.stt.time.sleep") as mock_sleep:
+            result = transcribe_groq(fake_audio)
+
+        assert result.text == "hello after retry"
+        assert mock_client.post.call_count == 2
+        mock_sleep.assert_called_once_with(1)
+
+
+# ---------------------------------------------------------------------------
+# 55. Groq retry on connection error
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_retry_on_connection_error() -> None:
+    """transcribe_groq retries once on ConnectError; returns None-like result after exhaustion."""
+    import httpx as _httpx
+    from jarvis_engine.stt import transcribe_groq
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.side_effect = _httpx.ConnectError("connection refused")
+        mock_client_cls.return_value = mock_client
+
+        with patch("jarvis_engine.stt.time.sleep") as mock_sleep:
+            result = transcribe_groq(fake_audio)
+
+        # After 2 failed attempts, returns empty TranscriptionResult
+        assert result is not None
+        assert result.text == ""
+        assert result.confidence == 0.0
+        assert result.backend == "groq-whisper"
+        assert mock_client.post.call_count == 2
+        mock_sleep.assert_called_once_with(1)
+
+
+# ---------------------------------------------------------------------------
+# 56. Groq retry on ReadTimeout
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_retry_on_read_timeout() -> None:
+    """transcribe_groq retries once on ReadTimeout; returns empty result after exhaustion."""
+    import httpx as _httpx
+    from jarvis_engine.stt import transcribe_groq
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.side_effect = _httpx.ReadTimeout("read timed out")
+        mock_client_cls.return_value = mock_client
+
+        with patch("jarvis_engine.stt.time.sleep") as mock_sleep:
+            result = transcribe_groq(fake_audio)
+
+        assert result is not None
+        assert result.text == ""
+        assert result.confidence == 0.0
+        assert mock_client.post.call_count == 2
+        mock_sleep.assert_called_once_with(1)
+
+
+# ---------------------------------------------------------------------------
+# 57. Groq connection error recovers on second attempt
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_connection_error_recovers_on_retry() -> None:
+    """First attempt gets ConnectError, second succeeds."""
+    import httpx as _httpx
+    from jarvis_engine.stt import transcribe_groq
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    mock_ok_response = MagicMock()
+    mock_ok_response.status_code = 200
+    mock_ok_response.json.return_value = {
+        "text": "recovered",
+        "language": "en",
+        "segments": [],
+    }
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.side_effect = [
+            _httpx.ConnectError("connection refused"),
+            mock_ok_response,
+        ]
+        mock_client_cls.return_value = mock_client
+
+        with patch("jarvis_engine.stt.time.sleep"):
+            result = transcribe_groq(fake_audio)
+
+        assert result.text == "recovered"
+        assert mock_client.post.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# 58. Env var for confidence threshold
+# ---------------------------------------------------------------------------
+
+def test_confidence_threshold_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JARVIS_STT_CONFIDENCE_THRESHOLD env var overrides default threshold."""
+    monkeypatch.setenv("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.8")
+    # Re-import to pick up the new env var value
+    import importlib
+    import jarvis_engine.stt as stt_mod
+    importlib.reload(stt_mod)
+    try:
+        assert stt_mod.CONFIDENCE_RETRY_THRESHOLD == 0.8
+    finally:
+        # Restore original value
+        monkeypatch.delenv("JARVIS_STT_CONFIDENCE_THRESHOLD", raising=False)
+        importlib.reload(stt_mod)
+
+
+# ---------------------------------------------------------------------------
+# 59. Env var for Groq model name
+# ---------------------------------------------------------------------------
+
+def test_groq_model_name_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JARVIS_GROQ_STT_MODEL env var overrides default model name."""
+    monkeypatch.setenv("JARVIS_GROQ_STT_MODEL", "whisper-large-v3")
+    import importlib
+    import jarvis_engine.stt as stt_mod
+    importlib.reload(stt_mod)
+    try:
+        assert stt_mod.GROQ_STT_MODEL == "whisper-large-v3"
+    finally:
+        monkeypatch.delenv("JARVIS_GROQ_STT_MODEL", raising=False)
+        importlib.reload(stt_mod)
+
+
+# ---------------------------------------------------------------------------
+# 60. Default Groq model name constant
+# ---------------------------------------------------------------------------
+
+def test_groq_model_name_default() -> None:
+    """GROQ_STT_MODEL defaults to whisper-large-v3-turbo."""
+    from jarvis_engine.stt import GROQ_STT_MODEL
+    # When env var is not set, default is used
+    if not os.environ.get("JARVIS_GROQ_STT_MODEL"):
+        assert GROQ_STT_MODEL == "whisper-large-v3-turbo"
+
+
+# ---------------------------------------------------------------------------
+# 61. Groq API uses GROQ_STT_MODEL constant in request
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_api_uses_model_constant() -> None:
+    """transcribe_groq sends the GROQ_STT_MODEL value in the API request."""
+    from jarvis_engine.stt import transcribe_groq, GROQ_STT_MODEL
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "text": "test", "language": "en", "segments": []
+    }
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        transcribe_groq(fake_audio)
+
+        data_arg = mock_client.post.call_args[1]["data"]
+        assert data_arg["model"] == GROQ_STT_MODEL
+
+
+# ===========================================================================
+# P2 voice pipeline fix tests
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 62. VAD: record_from_microphone stops early on silence after speech
+# ---------------------------------------------------------------------------
+
+def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
+    """record_from_microphone stops early when silence follows speech."""
+    from jarvis_engine.stt import record_from_microphone
+
+    call_count = [0]
+    # First 3 chunks: speech (RMS > threshold), next 25 chunks: silence
+    # With silence_duration=2.0 and chunk_duration=0.1, need 20 silence chunks
+    def mock_read(n):
+        call_count[0] += 1
+        if call_count[0] <= 3:
+            # Speech chunk (loud signal)
+            chunk = np.full((n, 1), 0.5, dtype=np.float32)
+        else:
+            # Silence chunk
+            chunk = np.zeros((n, 1), dtype=np.float32)
+        return chunk, False
+
+    mock_stream = MagicMock()
+    mock_stream.read = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+        audio = record_from_microphone(
+            max_duration_seconds=30.0,
+            silence_threshold=0.01,
+            silence_duration=2.0,
+        )
+
+    # 3 speech chunks + 20 silence chunks = 23 total (not 300 for 30s)
+    assert call_count[0] == 23
+    assert len(audio) > 0
+
+
+# ---------------------------------------------------------------------------
+# 63. VAD: record_from_microphone records full duration when no speech
+# ---------------------------------------------------------------------------
+
+def test_record_microphone_vad_no_speech_records_full() -> None:
+    """When no speech is detected, recording continues for max_duration."""
+    from jarvis_engine.stt import record_from_microphone
+
+    call_count = [0]
+    def mock_read(n):
+        call_count[0] += 1
+        chunk = np.zeros((n, 1), dtype=np.float32)
+        return chunk, False
+
+    mock_stream = MagicMock()
+    mock_stream.read = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+        audio = record_from_microphone(
+            max_duration_seconds=2.0,  # 2s = 20 chunks
+            silence_threshold=0.01,
+            silence_duration=1.0,
+        )
+
+    # No speech detected, so silence_frames never incremented -> records all 20 chunks
+    assert call_count[0] == 20
+
+
+# ---------------------------------------------------------------------------
+# 64. VAD: record_from_microphone honors minimum recording duration
+# ---------------------------------------------------------------------------
+
+def test_record_microphone_vad_minimum_recording() -> None:
+    """Recording always captures at least 0.5s even if silence detected immediately."""
+    from jarvis_engine.stt import record_from_microphone
+
+    call_count = [0]
+    def mock_read(n):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # One speech chunk
+            chunk = np.full((n, 1), 0.5, dtype=np.float32)
+        else:
+            chunk = np.zeros((n, 1), dtype=np.float32)
+        return chunk, False
+
+    mock_stream = MagicMock()
+    mock_stream.read = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+        audio = record_from_microphone(
+            max_duration_seconds=30.0,
+            silence_threshold=0.01,
+            silence_duration=0.3,  # 3 silence chunks before stop
+        )
+
+    # 1 speech + 3 silence = 4 chunks; min is 5 (0.5s), so at least 5 chunks
+    assert call_count[0] >= 5
+
+
+# ---------------------------------------------------------------------------
+# 65. VAD: record_from_microphone returns empty on no frames
+# ---------------------------------------------------------------------------
+
+def test_record_microphone_vad_returns_empty_array_on_zero_duration() -> None:
+    """record_from_microphone returns empty array when max_duration is 0."""
+    from jarvis_engine.stt import record_from_microphone
+
+    mock_stream = MagicMock()
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+        audio = record_from_microphone(
+            max_duration_seconds=0.0,
+            silence_threshold=0.01,
+            silence_duration=2.0,
+        )
+
+    assert len(audio) == 0
+    assert audio.dtype == np.float32
+
+
+# ---------------------------------------------------------------------------
+# 66. Minimum audio duration: transcribe_groq returns None for short audio
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_transcription_too_short_returns_none() -> None:
+    """Audio shorter than 0.1s (1600 samples) returns None without API call."""
+    from jarvis_engine.stt import transcribe_groq
+
+    short_audio = np.zeros(500, dtype=np.float32)
+
+    with patch("httpx.Client") as mock_client_cls:
+        result = transcribe_groq(short_audio)
+
+    assert result is None
+    # httpx.Client should NOT have been called
+    mock_client_cls.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 67. Minimum audio duration: exactly 1600 samples passes
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_transcription_exact_threshold_passes() -> None:
+    """Audio with exactly 1600 samples is sent to the API."""
+    from jarvis_engine.stt import transcribe_groq
+
+    audio = np.zeros(1600, dtype=np.float32)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "text": "short but valid", "language": "en", "segments": []
+    }
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = transcribe_groq(audio)
+
+    assert result is not None
+    assert result.text == "short but valid"
+
+
+# ---------------------------------------------------------------------------
+# 68. Minimum audio duration: file path input bypasses check
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_transcription_file_path_bypasses_duration_check() -> None:
+    """File path input is not subject to minimum duration check."""
+    from jarvis_engine.stt import transcribe_groq
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "text": "from file", "language": "en", "segments": []
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(b"fake wav data")
+        temp_path = f.name
+
+    try:
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = transcribe_groq(temp_path)
+
+        assert result is not None
+        assert result.text == "from file"
+    finally:
+        os.unlink(temp_path)

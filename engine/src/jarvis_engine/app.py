@@ -219,7 +219,7 @@ def create_app(root: Path) -> CommandBus:
             classifier = BranchClassifier(embed_service)
             kg = KnowledgeGraph(engine)
             pipeline = EnrichedIngestPipeline(
-                engine, embed_service, classifier, knowledge_graph=kg
+                engine, embed_service, classifier, knowledge_graph=kg,
             )
         except Exception as exc:
             # Graceful degradation: if SQLite engine fails, fall back to adapter shims
@@ -255,6 +255,10 @@ def create_app(root: Path) -> CommandBus:
         gateway = None
         intent_classifier = None
         cost_tracker = None
+
+    # Wire gateway into ingest pipeline for LLM fact extraction
+    if pipeline is not None and gateway is not None:
+        pipeline._gateway = gateway
 
     # -- Memory (dual-path: MemoryEngine or adapter shim) --
     bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine).handle)
@@ -472,8 +476,9 @@ def create_app(root: Path) -> CommandBus:
         SelfTestHandler(root, engine=engine, embed_service=embed_service).handle,
     )
 
-    # Expose subsystem references for daemon self-test access
+    # Expose subsystem references for daemon self-test and smart context access
     bus._engine = engine  # type: ignore[attr-defined]
     bus._embed_service = embed_service  # type: ignore[attr-defined]
+    bus._intent_classifier = intent_classifier  # type: ignore[attr-defined]
 
     return bus

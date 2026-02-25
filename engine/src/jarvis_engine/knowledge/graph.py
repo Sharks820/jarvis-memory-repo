@@ -378,3 +378,36 @@ class KnowledgeGraph:
             return self._db.execute(
                 "SELECT COUNT(*) FROM kg_contradictions WHERE status = 'pending'"
             ).fetchone()[0]
+
+    def query_relevant_facts(
+        self,
+        keywords: list[str],
+        *,
+        min_confidence: float = 0.4,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Find KG facts whose labels match any of the given keywords.
+
+        Uses SQL LIKE matching against node labels. Returns facts sorted by
+        confidence descending, limited to ``limit`` results.
+        """
+        if not keywords:
+            return []
+        # Build OR clause: label LIKE '%keyword%' for each keyword
+        clauses = []
+        params: list[object] = []
+        for kw in keywords[:20]:  # cap to prevent huge queries
+            sanitized = kw.replace("%", "\\%").replace("_", "\\_")
+            clauses.append("label LIKE ? ESCAPE '\\'")
+            params.append(f"%{sanitized}%")
+        params.append(min_confidence)
+        params.append(limit)
+        sql = (
+            "SELECT node_id, label, node_type, confidence, locked, updated_at "
+            "FROM kg_nodes WHERE (" + " OR ".join(clauses) + ") "
+            "AND confidence >= ? "
+            "ORDER BY confidence DESC LIMIT ?"
+        )
+        with self._db_lock:
+            cur = self._db.execute(sql, params)
+            return [dict(row) for row in cur.fetchall()]

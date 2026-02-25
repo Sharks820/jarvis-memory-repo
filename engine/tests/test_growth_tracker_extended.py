@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine.growth_tracker import (
+    BRANCH_TASK_MAP,
     DEFAULT_MEMORY_TASKS,
     EvalRun,
     GoldenTask,
@@ -22,6 +23,7 @@ from jarvis_engine.growth_tracker import (
     append_history,
     audit_run,
     compute_run_sha256,
+    eval_branch,
     evaluate_memory_recall,
     load_golden_tasks,
     read_history,
@@ -503,7 +505,7 @@ class TestMemoryRecall:
     """Tests for memory recall evaluation."""
 
     def test_default_memory_tasks_exist(self) -> None:
-        assert len(DEFAULT_MEMORY_TASKS) == 5
+        assert len(DEFAULT_MEMORY_TASKS) == 18
         for task in DEFAULT_MEMORY_TASKS:
             assert isinstance(task, MemoryRecallTask)
             assert task.task_id
@@ -871,3 +873,69 @@ class TestDataclasses:
         task = MemoryRecallTask("id", "query")
         with pytest.raises(AttributeError):
             task.task_id = "new_id"  # type: ignore[misc]
+
+
+# ===================================================================
+# Branch task map and eval_branch tests
+# ===================================================================
+
+class TestBranchTaskMap:
+    """Tests for BRANCH_TASK_MAP and eval_branch()."""
+
+    _EXPECTED_BRANCHES = [
+        "ops", "coding", "health", "finance", "security",
+        "learning", "family", "communications", "gaming",
+    ]
+
+    def test_all_branches_have_golden_tasks(self) -> None:
+        """Every expected branch must appear in BRANCH_TASK_MAP with 2 tasks."""
+        for branch in self._EXPECTED_BRANCHES:
+            assert branch in BRANCH_TASK_MAP, f"Missing branch: {branch}"
+            assert len(BRANCH_TASK_MAP[branch]) == 2, (
+                f"Branch {branch} should have exactly 2 tasks"
+            )
+
+    def test_branch_task_map_covers_all_branches(self) -> None:
+        """BRANCH_TASK_MAP keys should match exactly the 9 expected branches."""
+        assert set(BRANCH_TASK_MAP.keys()) == set(self._EXPECTED_BRANCHES)
+
+    def test_branch_task_map_ids_exist_in_default_tasks(self) -> None:
+        """All task IDs referenced in BRANCH_TASK_MAP should exist in DEFAULT_MEMORY_TASKS."""
+        all_task_ids = {t.task_id for t in DEFAULT_MEMORY_TASKS}
+        for branch, task_ids in BRANCH_TASK_MAP.items():
+            for tid in task_ids:
+                assert tid in all_task_ids, (
+                    f"Task ID {tid!r} in branch {branch!r} not found in DEFAULT_MEMORY_TASKS"
+                )
+
+    def test_eval_branch_returns_results(self) -> None:
+        """eval_branch should return a dict with branch, results, and avg_score."""
+        engine = MagicMock()
+        engine.search_vec.return_value = [("id1", 0.1)]
+        engine.get_records_batch.return_value = [
+            {"branch": "health", "summary": "daily medication routine"},
+        ]
+        embed = MagicMock()
+        embed.embed.return_value = [0.0] * 128
+
+        result = eval_branch("health", engine, embed)
+
+        assert result["branch"] == "health"
+        assert len(result["results"]) == 2
+        assert "avg_score" in result
+        assert isinstance(result["avg_score"], float)
+
+    def test_eval_branch_unknown_raises(self) -> None:
+        """eval_branch with an unknown branch should raise ValueError."""
+        with pytest.raises(ValueError, match="Unknown branch"):
+            eval_branch("nonexistent", MagicMock(), MagicMock())
+
+    def test_eval_branch_task_ids_match(self) -> None:
+        """eval_branch should return the correct task_ids for the branch."""
+        engine = MagicMock()
+        engine.search_vec.return_value = []
+        embed = MagicMock()
+        embed.embed.return_value = [0.0] * 128
+
+        result = eval_branch("ops", engine, embed)
+        assert result["task_ids"] == ["ops_recall", "ops_routine_recall"]
