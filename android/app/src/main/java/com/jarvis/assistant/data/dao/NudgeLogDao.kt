@@ -50,6 +50,9 @@ interface NudgeLogDao {
     )
     suspend fun expireOldNudges(cutoff: Long)
 
+    @Query("SELECT * FROM nudge_log WHERE id = :id")
+    suspend fun getById(id: Long): NudgeLogEntity?
+
     @Query("SELECT COUNT(*) FROM nudge_log")
     fun totalCountFlow(): Flow<Int>
 }

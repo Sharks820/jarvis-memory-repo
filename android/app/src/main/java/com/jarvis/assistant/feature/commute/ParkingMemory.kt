@@ -157,9 +157,8 @@ class ParkingMemory @Inject constructor(
             return
         }
 
-        // Deactivate previous parking and save new
-        commuteDao.deactivateAllParking()
-        commuteDao.insertParking(
+        // Atomically deactivate previous parking and save new
+        commuteDao.replaceActiveParking(
             ParkingEntity(
                 latitude = location.latitude,
                 longitude = location.longitude,

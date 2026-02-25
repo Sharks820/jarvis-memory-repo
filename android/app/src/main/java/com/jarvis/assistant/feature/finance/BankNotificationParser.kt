@@ -177,13 +177,13 @@ class BankNotificationParser @Inject constructor(
         /** Amount extraction regex patterns ordered by bank specificity. */
         private val AMOUNT_PATTERNS = listOf(
             // Chase: "purchase/charge/transaction ... $X.XX ... at Merchant"
-            Regex("""(?i)(?:purchase|charge|transaction).*?\$([\\d,]+\.\d{2})"""),
+            Regex("""(?i)(?:purchase|charge|transaction).*?\$([\d,]+\.\d{2})"""),
             // Bank of America: "charge/debit ... $X.XX ... at/from Merchant"
-            Regex("""(?i)(?:charge|debit).*?\$([\\d,]+\.\d{2})"""),
+            Regex("""(?i)(?:charge|debit).*?\$([\d,]+\.\d{2})"""),
             // Wells Fargo: "debit card/purchase ... $X.XX ... at/for Merchant"
-            Regex("""(?i)(?:debit card|purchase).*?\$([\\d,]+\.\d{2})"""),
+            Regex("""(?i)(?:debit card|purchase).*?\$([\d,]+\.\d{2})"""),
             // Generic fallback: any dollar amount
-            Regex("""\$([\\d,]+\.\d{2})"""),
+            Regex("""\$([\d,]+\.\d{2})"""),
         )
 
         /** Merchant extraction regex patterns. */

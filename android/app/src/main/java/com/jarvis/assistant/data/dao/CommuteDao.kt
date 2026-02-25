@@ -3,6 +3,7 @@ package com.jarvis.assistant.data.dao
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.jarvis.assistant.data.entity.CommuteLocationEntity
@@ -57,4 +58,14 @@ interface CommuteDao {
 
     @Query("SELECT * FROM parking_locations WHERE isActive = 1")
     fun getActiveParkingFlow(): Flow<ParkingEntity?>
+
+    /**
+     * Atomically deactivates all existing parking entries and inserts a new one.
+     * Ensures no window where zero or multiple entries are active.
+     */
+    @Transaction
+    suspend fun replaceActiveParking(parking: ParkingEntity): Long {
+        deactivateAllParking()
+        return insertParking(parking)
+    }
 }

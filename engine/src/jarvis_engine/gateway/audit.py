@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -16,12 +17,18 @@ from jarvis_engine._compat import UTC
 
 logger = logging.getLogger(__name__)
 
+# Maximum audit log size before rotation (5 MB)
+_MAX_AUDIT_LOG_BYTES = 5 * 1024 * 1024
+
 
 class GatewayAudit:
     """Logs every LLM routing decision to a JSONL file.
 
     Thread-safe: uses a lock around file writes so concurrent gateway
     calls from different threads don't corrupt the audit log.
+
+    Performs simple size-based rotation: when the log exceeds 5 MB,
+    the current file is renamed to .1 and a fresh log is started.
     """
 
     def __init__(self, audit_path: Path) -> None:
@@ -59,10 +66,34 @@ class GatewayAudit:
         with self._lock:
             try:
                 self._path.parent.mkdir(parents=True, exist_ok=True)
+                self._rotate_if_needed()
                 with open(self._path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
             except OSError:
                 logger.warning("Failed to write audit record to %s", self._path)
+
+    def _rotate_if_needed(self) -> None:
+        """Rotate the audit log if it exceeds the size limit.
+
+        Must be called with self._lock held.  Renames the current file
+        to ``<name>.1`` (overwriting any previous rotation) and lets the
+        next write create a fresh file.
+        """
+        try:
+            size = os.path.getsize(self._path)
+        except OSError:
+            return  # File doesn't exist yet — nothing to rotate
+        if size < _MAX_AUDIT_LOG_BYTES:
+            return
+        rotated = self._path.with_suffix(self._path.suffix + ".1")
+        try:
+            # Replace any existing rotated file
+            if rotated.exists():
+                rotated.unlink()
+            self._path.rename(rotated)
+            logger.info("Rotated audit log %s -> %s (%d bytes)", self._path, rotated, size)
+        except OSError as exc:
+            logger.warning("Failed to rotate audit log: %s", exc)
 
     def recent(self, n: int = 50) -> list[dict]:
         """Return the last *n* audit records from the log file."""

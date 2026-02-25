@@ -12,9 +12,12 @@ Low-confidence queries default to local (privacy-safe).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -115,7 +118,7 @@ class IntentClassifier:
                     vec = self._embed.embed(text, prefix="search_query")
                     embeddings.append(np.array(vec))
                 except Exception:
-                    pass
+                    logger.warning("Failed to embed exemplar for route %r: %s", route_name, text[:80])
             if embeddings:
                 centroid = np.mean(embeddings, axis=0)
                 centroids[route_name] = centroid

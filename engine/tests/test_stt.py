@@ -521,3 +521,73 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
         record = json.loads(lines[0])
         assert record["backend"] == "groq-whisper"
         assert record["confidence"] == 0.92
+
+
+# ---------------------------------------------------------------------------
+# 22. Groq transcription computes real confidence from segment logprobs
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_transcription_real_confidence() -> None:
+    """transcribe_groq extracts confidence from segment avg_logprob."""
+    import math
+    from jarvis_engine.stt import transcribe_groq
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    # Simulate a Groq verbose_json response with segments
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "text": "hello jarvis",
+        "language": "en",
+        "segments": [
+            {"text": "hello jarvis", "avg_logprob": -0.15, "no_speech_prob": 0.02},
+        ],
+    }
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = transcribe_groq(fake_audio)
+
+    assert result.text == "hello jarvis"
+    assert result.backend == "groq-whisper"
+    # Confidence from exp(-0.15) * (1 - 0.02*0.5) ≈ 0.86 * 0.99 ≈ 0.851
+    expected = round(math.exp(-0.15) * (1.0 - 0.02 * 0.5), 4)
+    assert result.confidence == expected
+
+
+# ---------------------------------------------------------------------------
+# 23. Groq transcription falls back when no segments returned
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_groq_transcription_no_segments_fallback() -> None:
+    """When Groq returns no segments, confidence falls back to 0.85."""
+    from jarvis_engine.stt import transcribe_groq
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "text": "hello",
+        "language": "en",
+        # No segments field
+    }
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = transcribe_groq(fake_audio)
+
+    assert result.confidence == 0.85

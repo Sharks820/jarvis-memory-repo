@@ -32,4 +32,7 @@ interface ExtractedEventDao {
 
     @Query("SELECT COUNT(*) FROM extracted_events")
     fun countFlow(): Flow<Int>
+
+    @Query("DELETE FROM extracted_events WHERE content_hash = :hash")
+    suspend fun deleteByHash(hash: String)
 }
