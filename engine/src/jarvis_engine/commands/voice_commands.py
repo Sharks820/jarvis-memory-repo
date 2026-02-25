@@ -69,7 +69,6 @@ class VoiceVerifyResult:
 class VoiceListenCommand:
     max_duration_seconds: float = 30.0
     language: str = "en"
-    model_size: str = "small.en"
 
 
 @dataclass

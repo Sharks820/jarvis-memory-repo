@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
@@ -154,6 +155,8 @@ from jarvis_engine.commands.proactive_commands import (
     WakeWordStartCommand,
 )
 
+logger = logging.getLogger(__name__)
+
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
 
@@ -174,6 +177,144 @@ def _get_bus() -> CommandBus:
 
 
 _auto_ingest_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Conversation history buffer for multi-turn context
+# ---------------------------------------------------------------------------
+_conversation_history: list[dict[str, str]] = []
+_CONVERSATION_MAX_TURNS = 5
+
+
+def _add_to_history(role: str, content: str) -> None:
+    """Append a message to the conversation history, capping at max turns."""
+    _conversation_history.append({"role": role, "content": content[:800]})
+    # Keep only the last N user/assistant pairs
+    while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
+        _conversation_history.pop(0)
+
+
+def _get_history_messages() -> list[dict[str, str]]:
+    """Return conversation history as message list for LLM context."""
+    return list(_conversation_history)
+
+
+# ---------------------------------------------------------------------------
+# Smart context builder — hybrid search + KG facts + conversation history
+# ---------------------------------------------------------------------------
+_MAX_TOKENS_BY_ROUTE: dict[str, int] = {
+    "math_logic": 1024,
+    "complex": 1024,
+    "routine": 512,
+    "simple_private": 384,
+}
+
+
+def _build_smart_context(
+    bus: "CommandBus",
+    query: str,
+    *,
+    max_memory_items: int = 8,
+    max_fact_items: int = 6,
+) -> tuple[list[str], list[str], list[str]]:
+    """Build context using best available retrieval method.
+
+    Returns (memory_lines, fact_lines, cross_branch_lines) for system prompt
+    injection.  Uses hybrid search (FTS5 + embeddings + RRF) when
+    MemoryEngine is available, falls back to legacy token-overlap otherwise.
+    """
+    memory_lines: list[str] = []
+    fact_lines: list[str] = []
+    cross_branch_lines: list[str] = []
+
+    engine = getattr(bus, "_engine", None)
+    embed_service = getattr(bus, "_embed_service", None)
+
+    # --- Path 1: Hybrid search (superior) ---
+    if engine is not None and embed_service is not None:
+        try:
+            from jarvis_engine.memory.search import hybrid_search
+
+            query_embedding = embed_service.embed_query(query)
+            results = hybrid_search(
+                engine, query, query_embedding, k=max_memory_items
+            )
+            for record in results:
+                summary = str(record.get("summary", "")).strip()
+                if summary:
+                    memory_lines.append(summary)
+        except Exception as exc:
+            logger.debug("Hybrid search failed, falling back to legacy: %s", exc)
+
+    # --- Path 2: Legacy token-overlap fallback ---
+    if not memory_lines:
+        try:
+            packet = build_context_packet(
+                repo_root(), query=query, max_items=max_memory_items, max_chars=1800
+            )
+            selected = packet.get("selected", [])
+            if isinstance(selected, list):
+                for row in selected:
+                    if isinstance(row, dict):
+                        summary = str(row.get("summary", "")).strip()
+                        if summary:
+                            memory_lines.append(summary)
+        except Exception:
+            pass
+
+    # --- KG facts: personal knowledge about the user ---
+    kg = None  # Retain reference for cross-branch query below
+    if engine is not None:
+        try:
+            from jarvis_engine.knowledge.graph import KnowledgeGraph
+
+            kg = KnowledgeGraph(engine)
+            # Extract keywords from query for fact lookup
+            import re as _re
+            _stop = {"the", "a", "an", "is", "are", "was", "were", "do", "does",
+                      "did", "will", "would", "can", "could", "should", "shall",
+                      "have", "has", "had", "be", "been", "being", "what", "when",
+                      "where", "how", "who", "which", "that", "this", "for", "with",
+                      "from", "about", "into", "and", "but", "or", "not", "if",
+                      "then", "than", "too", "very", "just", "my", "me", "i"}
+            words = [
+                w for w in _re.findall(r"[a-zA-Z]{3,}", query.lower())
+                if w not in _stop
+            ][:10]
+            if words:
+                facts = kg.query_relevant_facts(words, limit=max_fact_items)
+                for fact in facts:
+                    label = str(fact.get("label", "")).strip()
+                    conf = fact.get("confidence", 0.0)
+                    if label and conf >= 0.5:
+                        fact_lines.append(label)
+        except Exception as exc:
+            logger.debug("KG fact query failed: %s", exc)
+
+    # --- Cross-branch connections: link knowledge across life domains ---
+    if kg is not None and engine is not None and embed_service is not None:
+        try:
+            from jarvis_engine.learning.cross_branch import cross_branch_query
+
+            cb_result = cross_branch_query(
+                query=query,
+                engine=engine,
+                kg=kg,
+                embed_service=embed_service,
+                k=6,
+            )
+            for conn in cb_result.get("cross_branch_connections", []):
+                src = conn.get("source", "")
+                tgt = conn.get("target", "")
+                src_branch = conn.get("source_branch", "unknown")
+                tgt_branch = conn.get("target_branch", "unknown")
+                relation = conn.get("relation", "related")
+                cross_branch_lines.append(
+                    f"[{src_branch}] \"{src}\" relates to [{tgt_branch}] \"{tgt}\" via {relation}"
+                )
+        except Exception as exc:
+            logger.debug("Cross-branch query failed: %s", exc)
+
+    return memory_lines, fact_lines, cross_branch_lines
 
 
 def _auto_ingest_dedupe_path() -> Path:
@@ -2074,7 +2215,6 @@ def cmd_voice_listen(
         VoiceListenCommand(
             max_duration_seconds=duration,
             language=language,
-            model_size=model,
         )
     )
     if result.message.startswith("error:"):
@@ -2686,22 +2826,13 @@ def _cmd_voice_run_impl(
     else:
         # No keyword match -- route through LLM for a conversational response.
         intent = "llm_conversation"
-        # Build memory context so the LLM knows about the user
-        context_lines: list[str] = []
-        try:
-            packet = build_context_packet(repo_root(), query=text, max_items=5, max_chars=1200)
-            selected = packet.get("selected", [])
-            if isinstance(selected, list):
-                for row in selected:
-                    if not isinstance(row, dict):
-                        continue
-                    summary = str(row.get("summary", "")).strip()
-                    if summary:
-                        context_lines.append(summary)
-        except Exception:
-            pass
+        bus = _get_bus()
+
+        # --- Smart context: hybrid search + KG facts + cross-branch ---
+        memory_lines, fact_lines, cross_branch_lines = _build_smart_context(bus, text)
+
+        # --- Persona + structured context ---
         persona = load_persona_config(repo_root())
-        persona_desc = ""
         if persona.enabled:
             persona_desc = (
                 "You are Jarvis, an intelligent personal AI assistant. "
@@ -2711,20 +2842,48 @@ def _cmd_voice_run_impl(
             )
         else:
             persona_desc = "You are Jarvis, a helpful personal AI assistant. Keep responses concise."
-        system_prompt = persona_desc
-        if context_lines:
-            system_prompt += "\n\nRelevant memories about the user:\n" + "\n".join(f"- {line}" for line in context_lines[:5])
-        # Use intent classifier for smart routing (privacy detection, complexity
-        # routing) when available; otherwise pick first cloud provider or local.
+        system_parts = [persona_desc]
+        if fact_lines:
+            system_parts.append(
+                "Known facts about the user (use these to personalize your response):\n"
+                + "\n".join(f"- {line}" for line in fact_lines[:6])
+            )
+        if memory_lines:
+            system_parts.append(
+                "Relevant memories (recent interactions and context):\n"
+                + "\n".join(f"- {line}" for line in memory_lines[:8])
+            )
+        if cross_branch_lines:
+            system_parts.append(
+                "Cross-domain connections:\n"
+                + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
+            )
+        system_parts.append(
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "If you don't have relevant information, say so honestly."
+        )
+        system_prompt = "\n\n".join(system_parts)
+
+        # --- Intent classification + model routing (reuse bus classifier) ---
         _llm_model: str | None = None
-        try:
-            from jarvis_engine.gateway.classifier import IntentClassifier
-            from jarvis_engine.memory.embeddings import EmbeddingService
-            _cls = IntentClassifier(EmbeddingService())
-            _route, _llm_model, _conf = _cls.classify(text)
-            logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
-        except Exception:
-            pass  # Classifier unavailable — fall back below
+        _route: str = "routine"
+        _intent_cls = getattr(bus, "_intent_classifier", None)
+        if _intent_cls is not None:
+            try:
+                _route, _llm_model, _conf = _intent_cls.classify(text)
+                logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
+            except Exception:
+                _llm_model = None
+        if _llm_model is None:
+            try:
+                from jarvis_engine.gateway.classifier import IntentClassifier
+                from jarvis_engine.memory.embeddings import EmbeddingService
+                _cls = IntentClassifier(EmbeddingService())
+                _route, _llm_model, _conf = _cls.classify(text)
+                logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
+            except Exception:
+                pass
         if _llm_model is None:
             for _env_key, _model_alias in [
                 ("GROQ_API_KEY", "kimi-k2"),
@@ -2736,21 +2895,54 @@ def _cmd_voice_run_impl(
                     break
         if _llm_model is None:
             _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+
+        # --- Dynamic max_tokens based on query complexity ---
+        _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
+
+        # --- Build messages with conversation history ---
+        _hist = _get_history_messages()
+        # Don't include the current query in history (it goes as the main query)
+        _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
+        _add_to_history("user", text)
         try:
-            result: QueryResult = _get_bus().dispatch(QueryCommand(
+            result: QueryResult = bus.dispatch(QueryCommand(
                 query=text,
                 system_prompt=system_prompt,
-                max_tokens=512,
+                max_tokens=_max_tokens,
                 model=_llm_model,
+                history=_hist_tuples,
             ))
             if result.return_code != 0:
                 print(f"intent=llm_unavailable")
                 print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
                 rc = 1
             elif result.text.strip():
+                _add_to_history("assistant", result.text.strip())
                 print(f"response={result.text.strip()}")
                 print(f"model={result.model}")
                 print(f"provider={result.provider}")
+                # Auto-learn: ingest through enriched pipeline (embeddings + KG)
+                # when available, with legacy JSONL fallback
+                try:
+                    bus.dispatch(LearnInteractionCommand(
+                        user_message=text[:1000],
+                        assistant_response=result.text.strip()[:1000],
+                        task_id=f"conv-{_route}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                    ))
+                except Exception:
+                    # Fallback to legacy JSONL ingest
+                    try:
+                        _auto_ingest_memory(
+                            source="conversation",
+                            kind="episodic",
+                            task_id=f"conv-{_route}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                            content=(
+                                f"User asked: {text[:400]}\n"
+                                f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
+                            ),
+                        )
+                    except Exception:
+                        pass
                 if speak:
                     cmd_voice_say(
                         text=result.text.strip(),

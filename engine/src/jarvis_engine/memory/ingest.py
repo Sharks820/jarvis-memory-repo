@@ -41,12 +41,15 @@ class EnrichedIngestPipeline:
         embed_service: "EmbeddingService",
         classifier: "BranchClassifier",
         knowledge_graph: "KnowledgeGraph | None" = None,
+        gateway: "object | None" = None,
     ) -> None:
         self._engine = engine
         self._embed_service = embed_service
         self._classifier = classifier
         self._kg = knowledge_graph
+        self._gateway = gateway
         self._fact_extractor = None  # Lazy-initialized on first use
+        self._llm_extractor = None  # Lazy-initialized on first use
 
     def ingest(
         self,
@@ -150,7 +153,38 @@ class EnrichedIngestPipeline:
                             exc,
                         )
 
+                    # 4i: LLM-powered fact extraction (supplements regex extraction)
+                    try:
+                        llm_extractor = self._get_llm_extractor()
+                        if llm_extractor:
+                            llm_facts = llm_extractor.extract_facts(chunk, branch=branch)
+                            for fact in llm_facts:
+                                node_id = f"llm:{fact.entity}.{fact.relationship}.{fact.value}"[:64]
+                                self._kg.add_fact(
+                                    node_id=node_id,
+                                    label=f"{fact.entity}: {fact.value}",
+                                    confidence=fact.confidence,
+                                    source_record=record_id,
+                                    node_type=fact.category or "fact",
+                                )
+                    except Exception as exc:
+                        logger.warning("LLM fact extraction failed: %s", exc)
+
         return inserted_ids
+
+    def _get_llm_extractor(self) -> "object | None":
+        """Lazy-initialize the LLM fact extractor if a gateway is available."""
+        if self._llm_extractor is not None:
+            return self._llm_extractor
+        if self._gateway is None:
+            return None
+        try:
+            from jarvis_engine.knowledge.llm_extractor import LLMFactExtractor
+
+            self._llm_extractor = LLMFactExtractor(gateway=self._gateway)
+            return self._llm_extractor
+        except ImportError:
+            return None
 
     def _extract_facts(
         self,
@@ -180,6 +214,7 @@ class EnrichedIngestPipeline:
             node_type="provenance",
         )
 
+        created_fact_ids: list[str] = []
         for triple in triples:
             self._kg.add_fact(
                 node_id=triple.subject,
@@ -195,6 +230,18 @@ class EnrichedIngestPipeline:
                 confidence=triple.confidence,
                 source_record=record_id,
             )
+            created_fact_ids.append(triple.subject)
+
+        # Cross-branch edge creation: link new facts to related facts in other
+        # knowledge branches.  Wrapped in try/except so failures never break
+        # the ingest pipeline.
+        try:
+            from jarvis_engine.learning.cross_branch import create_cross_branch_edges
+
+            for fact_id in created_fact_ids:
+                create_cross_branch_edges(self._kg, fact_id, record_id)
+        except Exception as exc:
+            logger.debug("Cross-branch edge creation failed: %s", exc)
 
     def _sanitize(self, content: str) -> str:
         """Sanitize content: strip, truncate, redact credentials."""

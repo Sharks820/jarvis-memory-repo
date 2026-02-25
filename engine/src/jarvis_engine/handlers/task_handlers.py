@@ -187,14 +187,19 @@ class QueryHandler:
             route_reason = f"Intent: {route_name} (confidence={confidence:.2f})"
         else:
             # Fallback default model when no classifier is wired in.
-            # TODO: pull from config once gateway config is centralized.
-            model = "claude-sonnet-4-5-20250929"
+            from jarvis_engine.config import load_config
+            model = load_config().default_query_model
             route_reason = "Default: no classifier available"
 
-        # Build messages
+        # Build messages with optional conversation history
         messages: list[dict[str, str]] = []
         if cmd.system_prompt:
             messages.append({"role": "system", "content": cmd.system_prompt})
+        # Inject conversation history for multi-turn context
+        if cmd.history:
+            for role, content in cmd.history:
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": cmd.query})
 
         # Call gateway

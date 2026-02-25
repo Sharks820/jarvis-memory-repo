@@ -508,3 +508,40 @@ class TestWebResearchHandlerExtended:
             result = handler.handle(cmd)
         assert result.return_code == 0
         assert result.auto_ingest_record_id == ""
+
+
+# ---------------------------------------------------------------------------
+# QueryHandler: default_query_model from config
+# ---------------------------------------------------------------------------
+
+
+class TestQueryHandlerConfigModel:
+
+    def test_no_classifier_uses_config_default_model(self):
+        """QueryHandler uses config.default_query_model when no classifier is available."""
+        mock_gateway = MagicMock()
+        mock_gateway.complete.return_value = _gateway_response(
+            model="custom-model-from-config"
+        )
+
+        handler = QueryHandler(gateway=mock_gateway, classifier=None)
+        cmd = QueryCommand(query="what is the meaning of life")
+
+        with patch(
+            "jarvis_engine.config.load_config"
+        ) as mock_load_config:
+            mock_cfg = MagicMock()
+            mock_cfg.default_query_model = "custom-model-from-config"
+            mock_load_config.return_value = mock_cfg
+            result = handler.handle(cmd)
+
+        call_args = mock_gateway.complete.call_args
+        assert call_args.kwargs.get("model", call_args[1].get("model")) == "custom-model-from-config"
+        assert "Default" in result.route_reason
+
+    def test_no_classifier_default_model_is_claude_sonnet(self):
+        """Without config override, the default model should be claude-sonnet-4-5-20250929."""
+        from jarvis_engine.config import EngineConfig
+
+        cfg = EngineConfig()
+        assert cfg.default_query_model == "claude-sonnet-4-5-20250929"

@@ -446,14 +446,13 @@ class TestVoiceListenHandler:
                 VoiceListenCommand(
                     max_duration_seconds=10.0,
                     language="fr",
-                    model_size="large",
                 )
             )
 
         mock_stt.listen_and_transcribe.assert_called_once_with(
             max_duration_seconds=10.0,
             language="fr",
-            model_size="large",
+            root_dir=tmp_path,
         )
 
     def test_exception_during_listen(self, tmp_path: Path) -> None:

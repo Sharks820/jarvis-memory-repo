@@ -281,7 +281,8 @@ def load_task_items(repo_root: Path) -> list[dict]:
     if source == "todoist":
         return _load_todoist_tasks()
     if source == "google_tasks":
-        # TODO: Google Tasks requires OAuth2 -- deferred to future phase.
+        # NOTE: Google Tasks integration requires OAuth2 with tasks.readonly scope.
+        # Deferred -- see ROADMAP.md for future phase planning.
         return []
 
     # Default: local JSON file

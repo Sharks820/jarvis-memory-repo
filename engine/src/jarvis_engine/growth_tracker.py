@@ -48,12 +48,50 @@ class MemoryRecallResult:
 
 
 DEFAULT_MEMORY_TASKS = [
-    MemoryRecallTask("health_recall", "What medications does the owner take?", ["health"], 1, ["medication"]),
-    MemoryRecallTask("gaming_recall", "What games does the owner play?", ["gaming"], 1, ["game"]),
+    # ops (2)
     MemoryRecallTask("ops_recall", "What are the owner's upcoming tasks?", ["ops"], 1, ["task"]),
-    MemoryRecallTask("family_recall", "Tell me about the owner's family", ["family"], 1, ["family"]),
+    MemoryRecallTask("ops_routine_recall", "What does the owner's daily routine look like?", ["ops"], 1, ["routine"]),
+    # coding (2)
     MemoryRecallTask("coding_recall", "What programming projects is the owner working on?", ["coding"], 1, ["code"]),
+    MemoryRecallTask("coding_tools_recall", "What programming languages and tools does the owner use?", ["coding"], 1, ["language"]),
+    # health (2)
+    MemoryRecallTask("health_recall", "What medications does the owner take?", ["health"], 1, ["medication"]),
+    MemoryRecallTask("health_goals_recall", "What are the owner's health and fitness goals?", ["health"], 1, ["health"]),
+    # finance (2)
+    MemoryRecallTask("finance_expenses_recall", "What are my monthly expenses?", ["finance"], 1, ["expense"]),
+    MemoryRecallTask("finance_goals_recall", "What financial goals am I tracking?", ["finance"], 1, ["financial"]),
+    # security (2)
+    MemoryRecallTask("security_practices_recall", "What security practices do I follow?", ["security"], 1, ["security"]),
+    MemoryRecallTask("security_devices_recall", "What are my trusted devices?", ["security"], 1, ["device"]),
+    # learning (2)
+    MemoryRecallTask("learning_topics_recall", "What topics am I currently learning about?", ["learning"], 1, ["learning"]),
+    MemoryRecallTask("learning_missions_recall", "What learning missions are active?", ["learning"], 1, ["mission"]),
+    # family (2)
+    MemoryRecallTask("family_recall", "Tell me about the owner's family", ["family"], 1, ["family"]),
+    MemoryRecallTask("family_events_recall", "What family events are coming up?", ["family"], 1, ["event"]),
+    # communications (2)
+    MemoryRecallTask("comms_contacts_recall", "Who do I communicate with most?", ["communications"], 1, ["communicate"]),
+    MemoryRecallTask("comms_channels_recall", "What are my preferred communication channels?", ["communications"], 1, ["channel"]),
+    # gaming (2)
+    MemoryRecallTask("gaming_recall", "What games does the owner play?", ["gaming"], 1, ["game"]),
+    MemoryRecallTask("gaming_progress_recall", "What is my progress in current games?", ["gaming"], 1, ["progress"]),
 ]
+
+# Maps each branch name to its golden task IDs for per-branch evaluation.
+BRANCH_TASK_MAP: dict[str, list[str]] = {
+    "ops": ["ops_recall", "ops_routine_recall"],
+    "coding": ["coding_recall", "coding_tools_recall"],
+    "health": ["health_recall", "health_goals_recall"],
+    "finance": ["finance_expenses_recall", "finance_goals_recall"],
+    "security": ["security_practices_recall", "security_devices_recall"],
+    "learning": ["learning_topics_recall", "learning_missions_recall"],
+    "family": ["family_recall", "family_events_recall"],
+    "communications": ["comms_contacts_recall", "comms_channels_recall"],
+    "gaming": ["gaming_recall", "gaming_progress_recall"],
+}
+
+# Index DEFAULT_MEMORY_TASKS by task_id for fast lookup.
+_TASK_INDEX: dict[str, MemoryRecallTask] = {t.task_id: t for t in DEFAULT_MEMORY_TASKS}
 
 
 def evaluate_memory_recall(
@@ -150,6 +188,42 @@ def run_memory_eval(
             result = MemoryRecallResult(task_id=task.task_id, query=task.query)
         results.append(result)
     return results
+
+
+def eval_branch(
+    branch: str,
+    engine: Any,
+    embed_service: Any,
+) -> dict:
+    """Evaluate only the golden tasks for a specific branch.
+
+    Args:
+        branch: Branch name (must be a key in BRANCH_TASK_MAP).
+        engine: MemoryEngine instance.
+        embed_service: Embedding service instance.
+
+    Returns:
+        Dict with ``branch``, ``task_ids``, ``results`` list, and
+        ``avg_score`` (average overall_score across the branch's tasks).
+
+    Raises:
+        ValueError: If the branch is not found in BRANCH_TASK_MAP.
+    """
+    if branch not in BRANCH_TASK_MAP:
+        raise ValueError(
+            f"Unknown branch {branch!r}. Valid branches: {sorted(BRANCH_TASK_MAP)}"
+        )
+    task_ids = BRANCH_TASK_MAP[branch]
+    tasks = [_TASK_INDEX[tid] for tid in task_ids if tid in _TASK_INDEX]
+    results = run_memory_eval(tasks, engine, embed_service)
+    scores = [r.overall_score for r in results]
+    avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
+    return {
+        "branch": branch,
+        "task_ids": task_ids,
+        "results": results,
+        "avg_score": avg_score,
+    }
 
 
 @dataclass

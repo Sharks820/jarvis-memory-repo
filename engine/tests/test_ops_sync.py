@@ -1018,3 +1018,17 @@ class TestBuildLiveSnapshot:
         assert summary.connectors_ready == 2
         assert summary.connectors_pending == 1
         assert summary.connector_prompts == 2
+
+
+# ---------------------------------------------------------------------------
+# Google Tasks comment verification
+# ---------------------------------------------------------------------------
+
+def test_google_tasks_comment_is_note_not_todo() -> None:
+    """The Google Tasks branch should have a NOTE comment, not a TODO."""
+    import inspect
+    source = inspect.getsource(ops_sync.load_task_items)
+    assert "NOTE: Google Tasks integration requires OAuth2 with tasks.readonly scope." in source
+    assert "ROADMAP.md" in source
+    # The old TODO should be gone
+    assert "TODO: Google Tasks requires OAuth2" not in source

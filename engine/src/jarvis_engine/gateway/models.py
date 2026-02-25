@@ -303,6 +303,17 @@ class ModelGateway:
                 fallback_used=response.fallback_used,
             )
 
+        # Log routing decision to activity feed
+        try:
+            from jarvis_engine.activity_feed import log_activity
+            log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
+                "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
+            })
+        except ImportError:
+            pass
+        except Exception:
+            pass  # Never break the gateway
+
         return response
 
     def _audit_decision(self, **kwargs: object) -> None:

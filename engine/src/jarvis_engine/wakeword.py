@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Callable
 
 import numpy as np
@@ -14,9 +15,15 @@ logger = logging.getLogger(__name__)
 class WakeWordDetector:
     """Detect 'hey_jarvis' wake word using openwakeword with sounddevice input."""
 
-    def __init__(self, threshold: float = 0.5, model_name: str = "hey_jarvis") -> None:
+    def __init__(
+        self,
+        threshold: float = 0.5,
+        model_name: str = "hey_jarvis",
+        cooldown_seconds: float = 2.0,
+    ) -> None:
         self._threshold = threshold
         self._model_name = model_name
+        self._cooldown_seconds = cooldown_seconds
         self._model = None
         self._stop_event = threading.Event()
 
@@ -24,7 +31,7 @@ class WakeWordDetector:
         """Lazy-load the openwakeword model."""
         from openwakeword.model import Model  # type: ignore[import-untyped]
 
-        self._model = Model(inference_framework="onnx")
+        self._model = Model(wakeword_models=[self._model_name], inference_framework="onnx")
 
     def start(
         self,
@@ -83,7 +90,9 @@ class WakeWordDetector:
         try:
             while not self._stop_event.is_set():
                 if mic_lock is not None:
-                    mic_lock.acquire()
+                    if not mic_lock.acquire(timeout=60):
+                        logger.warning("Mic lock acquisition timed out")
+                        continue  # Skip this detection cycle
 
                 try:
                     audio_data, overflowed = stream.read(chunk_size)
@@ -95,21 +104,31 @@ class WakeWordDetector:
                     continue
 
                 # Convert float32 [-1,1] to int16 for openwakeword
-                audio_int16 = (audio_data[:, 0] * 32767).astype(np.int16)
+                audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
+
+                # Energy-based pre-filter: skip ML inference on silence
+                rms = float(np.sqrt(np.mean(audio_int16.astype(np.float32) ** 2)) / 32767.0)
+                if rms < 0.005:
+                    continue  # Silence, skip ML inference
 
                 self._model.predict(audio_int16)
 
-                # Check detection scores
-                for key in self._model.prediction_buffer.keys():
-                    scores = list(self._model.prediction_buffer[key])
-                    if scores and scores[-1] > self._threshold:
-                        logger.info("Wake word detected! (score=%.3f)", scores[-1])
+                # Only check the configured wake word model
+                target_key = self._model_name
+                if target_key in self._model.prediction_buffer:
+                    scores = list(self._model.prediction_buffer[target_key])
+                    # Score smoothing: require at least 3 frames and average
+                    # of last 3 above threshold to reduce false positives
+                    if len(scores) >= 3 and sum(scores[-3:]) / 3 > self._threshold:
+                        logger.info("Wake word detected! (avg_score=%.3f)", sum(scores[-3:]) / 3)
 
                         # Reset prediction buffer (no mic access needed)
                         self._model.reset()
 
                         on_detected()
-                        break
+
+                        # Cooldown to prevent rapid re-triggers
+                        time.sleep(self._cooldown_seconds)
         except Exception as exc:
             logger.error("Wake word detection error: %s", exc)
         finally:

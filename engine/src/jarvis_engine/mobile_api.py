@@ -818,6 +818,46 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 logger.error("sync/status failed: %s", exc)
                 self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync status query failed."})
             return
+        if path == "/activity":
+            if not self._validate_auth(b""):
+                return
+            try:
+                from jarvis_engine.activity_feed import get_activity_feed
+            except ImportError:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})
+                return
+            # Parse query params
+            import urllib.parse as _urlparse
+            qs = _urlparse.parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+            try:
+                limit = int(qs.get("limit", ["50"])[0])
+            except (TypeError, ValueError):
+                limit = 50
+            limit = max(1, min(limit, 500))
+            category = qs.get("category", [None])[0]
+            since = qs.get("since", [None])[0]
+            try:
+                feed = get_activity_feed()
+                events = feed.query(limit=limit, category=category, since=since)
+                stats = feed.stats()
+                self._write_json(HTTPStatus.OK, {
+                    "ok": True,
+                    "events": [
+                        {
+                            "event_id": e.event_id,
+                            "timestamp": e.timestamp,
+                            "category": e.category,
+                            "summary": e.summary,
+                            "details": e.details,
+                        }
+                        for e in events
+                    ],
+                    "stats": stats,
+                })
+            except Exception as exc:
+                logger.error("activity feed query failed: %s", exc)
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
+            return
         if path == "/favicon.ico":
             self.send_response(HTTPStatus.NO_CONTENT)
             self.end_headers()
@@ -1197,7 +1237,7 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
     print(f"mobile_api_listening=http://{host}:{port}")
     if host not in {"127.0.0.1", "localhost", "::1"}:
         print("warning=mobile_api_non_loopback_without_tls")
-    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

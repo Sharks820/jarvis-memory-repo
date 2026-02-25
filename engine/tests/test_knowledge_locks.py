@@ -441,3 +441,136 @@ class TestHandlerDegradation:
         result = handler.handle(KnowledgeRegressionCommand())
         assert result.report["status"] == "error"
         assert "not available" in result.report["message"]
+
+
+# ---------------------------------------------------------------------------
+# query_relevant_facts Tests
+# ---------------------------------------------------------------------------
+
+
+class TestQueryRelevantFacts:
+    """Tests for KnowledgeGraph.query_relevant_facts()."""
+
+    def test_matching_keyword_returns_facts(self, kg: KnowledgeGraph) -> None:
+        """Facts whose labels contain a keyword are returned."""
+        kg.add_fact("health.med.metformin", "Takes metformin 500mg daily", 0.9)
+        kg.add_fact("health.allergy.peanut", "Allergic to peanuts", 0.85)
+        kg.add_fact("pref.color", "Favourite colour is blue", 0.7)
+
+        results = kg.query_relevant_facts(["metformin"])
+        assert len(results) == 1
+        assert results[0]["node_id"] == "health.med.metformin"
+        assert results[0]["label"] == "Takes metformin 500mg daily"
+
+    def test_no_matching_keyword_returns_empty(self, kg: KnowledgeGraph) -> None:
+        """Keywords that match no labels return an empty list."""
+        kg.add_fact("pref.color", "Favourite colour is blue", 0.7)
+
+        results = kg.query_relevant_facts(["nonexistent"])
+        assert results == []
+
+    def test_empty_keywords_returns_empty(self, kg: KnowledgeGraph) -> None:
+        """Passing an empty keyword list returns an empty list immediately."""
+        kg.add_fact("pref.color", "Favourite colour is blue", 0.7)
+
+        results = kg.query_relevant_facts([])
+        assert results == []
+
+    def test_multiple_keywords_match_union(self, kg: KnowledgeGraph) -> None:
+        """Multiple keywords find all matching facts (OR semantics)."""
+        kg.add_fact("health.med.metformin", "Takes metformin 500mg daily", 0.9)
+        kg.add_fact("health.allergy.peanut", "Allergic to peanuts", 0.85)
+        kg.add_fact("pref.color", "Favourite colour is blue", 0.7)
+
+        results = kg.query_relevant_facts(["metformin", "peanuts"])
+        node_ids = {r["node_id"] for r in results}
+        assert "health.med.metformin" in node_ids
+        assert "health.allergy.peanut" in node_ids
+        assert "pref.color" not in node_ids
+
+    def test_min_confidence_filtering(self, kg: KnowledgeGraph) -> None:
+        """Facts below min_confidence are excluded."""
+        kg.add_fact("health.low", "Low confidence health fact", 0.3)
+        kg.add_fact("health.high", "High confidence health fact", 0.9)
+
+        results = kg.query_relevant_facts(["health"], min_confidence=0.5)
+        assert len(results) == 1
+        assert results[0]["node_id"] == "health.high"
+
+    def test_min_confidence_default_is_0_4(self, kg: KnowledgeGraph) -> None:
+        """Default min_confidence=0.4 filters out very low confidence facts."""
+        kg.add_fact("fact.low", "fact with 0.3 confidence", 0.3)
+        kg.add_fact("fact.ok", "fact with 0.5 confidence", 0.5)
+
+        results = kg.query_relevant_facts(["fact"])
+        # 0.3 < 0.4 default, so only the 0.5 fact should appear
+        assert len(results) == 1
+        assert results[0]["node_id"] == "fact.ok"
+
+    def test_limit_caps_results(self, kg: KnowledgeGraph) -> None:
+        """The limit parameter caps the number of results."""
+        for i in range(5):
+            kg.add_fact(f"fact.{i}", f"test fact number {i}", 0.8)
+
+        results = kg.query_relevant_facts(["fact"], limit=3)
+        assert len(results) == 3
+
+    def test_results_sorted_by_confidence_descending(self, kg: KnowledgeGraph) -> None:
+        """Results are ordered by confidence from highest to lowest."""
+        kg.add_fact("a", "alpha fact", 0.6)
+        kg.add_fact("b", "beta fact", 0.9)
+        kg.add_fact("c", "gamma fact", 0.75)
+
+        results = kg.query_relevant_facts(["fact"])
+        confidences = [r["confidence"] for r in results]
+        assert confidences == sorted(confidences, reverse=True)
+
+    def test_result_dict_shape(self, kg: KnowledgeGraph) -> None:
+        """Returned dicts have the expected keys."""
+        kg.add_fact("n1", "test label", 0.8)
+
+        results = kg.query_relevant_facts(["test"])
+        assert len(results) == 1
+        row = results[0]
+        expected_keys = {"node_id", "label", "node_type", "confidence", "locked", "updated_at"}
+        assert expected_keys == set(row.keys())
+
+    def test_sql_injection_safe_percent(self, kg: KnowledgeGraph) -> None:
+        """The % character in keywords is escaped and does not act as SQL wildcard."""
+        kg.add_fact("pct", "100% success rate", 0.8)
+        kg.add_fact("other", "total failure", 0.8)
+
+        # Searching for literal "%" should match "100% success rate" but not "total failure"
+        results = kg.query_relevant_facts(["%"])
+        node_ids = {r["node_id"] for r in results}
+        assert "pct" in node_ids
+        assert "other" not in node_ids
+
+    def test_sql_injection_safe_underscore(self, kg: KnowledgeGraph) -> None:
+        """The _ character in keywords is escaped and does not act as single-char wildcard."""
+        kg.add_fact("under", "uses snake_case naming", 0.8)
+        kg.add_fact("nounderscore", "uses camelCase naming", 0.8)
+
+        # Searching for "_" should match only the one with underscore
+        results = kg.query_relevant_facts(["_"])
+        node_ids = {r["node_id"] for r in results}
+        assert "under" in node_ids
+        assert "nounderscore" not in node_ids
+
+    def test_keywords_capped_at_20(self, kg: KnowledgeGraph) -> None:
+        """More than 20 keywords are silently truncated (no error)."""
+        kg.add_fact("n1", "keyword0 label", 0.8)
+        keywords = [f"keyword{i}" for i in range(30)]
+
+        # Should not raise and should still find the matching one
+        results = kg.query_relevant_facts(keywords)
+        assert len(results) >= 1
+        assert results[0]["node_id"] == "n1"
+
+    def test_case_insensitive_like_matching(self, kg: KnowledgeGraph) -> None:
+        """LIKE matching is case-insensitive for ASCII by default in SQLite."""
+        kg.add_fact("n1", "Metformin daily dose", 0.8)
+
+        results = kg.query_relevant_facts(["metformin"])
+        assert len(results) == 1
+        assert results[0]["node_id"] == "n1"

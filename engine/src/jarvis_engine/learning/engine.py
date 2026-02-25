@@ -50,12 +50,43 @@ class ConversationLearningEngine:
         as episodic memory and assistant responses as semantic memory.
 
         Returns:
-            Dict with 'records_created' count (and 'error' key on failure).
+            Dict with 'records_created' count, 'correction_detected' bool,
+            'correction_applied' bool (and 'error' key on failure).
         """
         if self._pipeline is None:
-            return {"records_created": 0, "error": "no pipeline"}
+            return {"records_created": 0, "correction_detected": False,
+                    "correction_applied": False, "error": "no pipeline"}
 
         records_created = 0
+        correction_detected = False
+        correction_applied = False
+
+        # Check for user corrections
+        try:
+            from jarvis_engine.learning.correction_detector import CorrectionDetector
+
+            detector = CorrectionDetector(kg=self._kg)
+            correction = detector.detect_correction(user_message)
+            if correction:
+                correction_detected = True
+                applied = detector.apply_correction(correction)
+                correction_applied = applied
+                try:
+                    from jarvis_engine.activity_feed import log_activity
+
+                    log_activity(
+                        "correction_applied",
+                        f"Corrected: {correction.new_claim[:80]}",
+                        {
+                            "old_claim": correction.old_claim,
+                            "new_claim": correction.new_claim,
+                            "applied": applied,
+                        },
+                    )
+                except ImportError:
+                    pass
+        except ImportError:
+            pass
 
         # Ingest user message if knowledge-bearing
         if self._is_knowledge_bearing(user_message):
@@ -85,7 +116,11 @@ class ConversationLearningEngine:
             except Exception as exc:
                 logger.warning("Failed to ingest assistant response: %s", exc)
 
-        return {"records_created": records_created}
+        return {
+            "records_created": records_created,
+            "correction_detected": correction_detected,
+            "correction_applied": correction_applied,
+        }
 
     @staticmethod
     def _is_knowledge_bearing(text: str) -> bool:

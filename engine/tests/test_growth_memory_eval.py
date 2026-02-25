@@ -60,8 +60,8 @@ def test_memory_recall_task_defaults():
     assert t.must_include_in_results == []
 
 
-def test_default_memory_tasks_has_five():
-    assert len(DEFAULT_MEMORY_TASKS) == 5
+def test_default_memory_tasks_has_eighteen():
+    assert len(DEFAULT_MEMORY_TASKS) == 18
     ids = {t.task_id for t in DEFAULT_MEMORY_TASKS}
     assert "health_recall" in ids
     assert "gaming_recall" in ids

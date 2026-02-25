@@ -166,7 +166,13 @@ def _play_audio_file(path: str) -> None:
         "  $player.Close(); "
         "}"
     )
-    _run_ps_encoded(script, env=env, timeout_s=180)
+    result = _run_ps_encoded(script, env=env, timeout_s=180)
+    if result.returncode != 0:
+        logger.warning(
+            "Audio playback failed (rc=%d): %s",
+            result.returncode,
+            (result.stderr or "").strip()[:200],
+        )
 
 
 def _speak_text_edge(
@@ -281,6 +287,7 @@ def _speak_text_edge_streamed(
     _ERROR_SENTINEL = "__ERROR__"
 
     def producer() -> None:
+        had_error = False
         try:
             for idx, chunk in enumerate(chunks):
                 media_path = out_dir / f"chunk_{idx:03}.mp3"
@@ -306,10 +313,12 @@ def _speak_text_edge_streamed(
                     raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
                 q.put(str(media_path))
         except Exception as exc:  # noqa: BLE001
+            had_error = True
             err.append(exc)
             q.put(_ERROR_SENTINEL)  # Signal error immediately instead of waiting
         finally:
-            q.put(None)
+            if not had_error:
+                q.put(None)
 
     worker = threading.Thread(target=producer, daemon=True)
     worker.start()

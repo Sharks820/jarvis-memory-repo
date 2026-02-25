@@ -212,7 +212,6 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
         result = listen_and_transcribe(
             max_duration_seconds=float(max(3, timeout_s)),
             language="en",
-            model_size=os.environ.get("JARVIS_STT_MODEL", "small.en"),
         )
         return result.text.strip()
     except RuntimeError:
@@ -575,7 +574,8 @@ class JarvisDesktopWidget(tk.Tk):
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._btn(fetch, "Refresh Settings", self._refresh_settings_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self._btn(fetch, "Refresh Dashboard", self._refresh_dashboard_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(fetch, "Self-Heal", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._btn(fetch, "Self-Heal", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._btn(fetch, "View Activity", self._view_activity_async, "#4a3570").pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Running Services section
         svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
@@ -879,6 +879,43 @@ class JarvisDesktopWidget(tk.Tk):
                 )
             except Exception as exc:  # noqa: BLE001
                 self._log_async(f"dashboard failed: {exc}")
+
+        self._thread(worker)
+
+    def _view_activity_async(self) -> None:
+        cfg = self._current_cfg()  # Read tkinter vars on main thread
+
+        # Category -> color map for output log
+        _CAT_COLORS = {
+            "error": "#ef4444",
+            "security": "#ef4444",
+            "llm_routing": "#3b82f6",
+            "fact_extracted": "#22c55e",
+            "proactive_trigger": "#eab308",
+            "daemon_cycle": "#8ea4c5",
+            "harvest": "#14b8a6",
+            "voice": "#a78bfa",
+        }
+
+        def worker() -> None:
+            try:
+                data = _http_json(cfg, "/activity?limit=20", method="GET")
+                events = data.get("events", [])
+                stats = data.get("stats", {})
+                if stats:
+                    parts = [f"{k}:{v}" for k, v in stats.items()]
+                    self._log_async(f"Activity (24h): {', '.join(parts)}")
+                if not events:
+                    self._log_async("No recent activity events.")
+                    return
+                for evt in reversed(events):
+                    ts_raw = str(evt.get("timestamp", ""))
+                    ts_short = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
+                    cat = str(evt.get("category", ""))
+                    summary = str(evt.get("summary", ""))
+                    self._log_async(f"[{ts_short}] [{cat.upper()}] {summary}")
+            except Exception as exc:  # noqa: BLE001
+                self._log_async(f"activity failed: {exc}")
 
         self._thread(worker)
 
