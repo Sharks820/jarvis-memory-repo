@@ -183,6 +183,99 @@ _auto_ingest_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 _daemon_kg_prev_metrics: dict | None = None
 
+
+# ---------------------------------------------------------------------------
+# Auto-harvest topic discovery for daemon cycle
+# ---------------------------------------------------------------------------
+
+def _discover_harvest_topics(root: Path) -> list[str]:
+    """Discover 1-2 topics for autonomous knowledge harvesting.
+
+    Topic sources (in priority order):
+    1. Recent harvest/fact-extraction activity feed entries (conversation topics)
+    2. KG branches with few facts (sparse areas needing growth)
+    3. Fallback: topics from completed learning missions
+
+    Returns up to 2 topic strings.  Never raises — returns [] on error.
+    """
+    topics: list[str] = []
+
+    # --- Source 1: Recent activity feed topics ---
+    try:
+        from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
+        feed_db = root / ".planning" / "brain" / "activity_feed.db"
+        if feed_db.exists():
+            feed = ActivityFeed(db_path=feed_db)
+            # Look at recent fact extractions and harvest events for topic ideas
+            events = feed.query(limit=20, category=ActivityCategory.FACT_EXTRACTED)
+            for ev in events:
+                summary = ev.summary or ""
+                # Extract topic-like phrases from fact extraction summaries
+                if len(summary) > 5:
+                    # Use the first substantial phrase as a topic candidate
+                    candidate = summary.split(":")[0].strip() if ":" in summary else summary.strip()
+                    candidate = candidate[:100]
+                    if len(candidate) > 3 and candidate not in topics:
+                        topics.append(candidate)
+                        if len(topics) >= 2:
+                            break
+    except Exception:
+        pass  # Activity feed is optional
+
+    if len(topics) >= 2:
+        return topics[:2]
+
+    # --- Source 2: KG sparse branches ---
+    try:
+        import sqlite3 as _sqlite3
+        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        if db_path.exists():
+            conn = _sqlite3.connect(str(db_path), timeout=5)
+            conn.row_factory = _sqlite3.Row
+            try:
+                # Find node_types or edge relations with few nodes (sparse branches)
+                # Group by first word of label to find underrepresented topic clusters
+                rows = conn.execute(
+                    """SELECT SUBSTR(label, 1, INSTR(label || ' ', ' ') - 1) AS topic_word,
+                              COUNT(*) AS cnt
+                       FROM kg_nodes
+                       WHERE confidence >= 0.3
+                       GROUP BY topic_word
+                       HAVING cnt BETWEEN 1 AND 3
+                       ORDER BY cnt ASC
+                       LIMIT 5"""
+                ).fetchall()
+                for row in rows:
+                    word = row["topic_word"]
+                    if word and len(word) > 2 and word not in topics:
+                        topics.append(word)
+                        if len(topics) >= 2:
+                            break
+            finally:
+                conn.close()
+    except Exception:
+        pass  # KG may not exist yet
+
+    if len(topics) >= 2:
+        return topics[:2]
+
+    # --- Source 3: Fallback — completed learning mission topics ---
+    try:
+        missions = load_missions(root)
+        for m in reversed(missions):
+            status = str(m.get("status", "")).lower()
+            if status in ("completed", "done", "running"):
+                topic = str(m.get("topic", "")).strip()
+                if topic and topic not in topics:
+                    topics.append(topic)
+                    if len(topics) >= 2:
+                        break
+    except Exception:
+        pass
+
+    return topics[:2]
+
+
 # ---------------------------------------------------------------------------
 # Conversation history buffer for multi-turn context
 # ---------------------------------------------------------------------------
@@ -1921,6 +2014,59 @@ def cmd_open_web(url: str) -> int:
     return 0
 
 
+def _restart_mobile_api(service_name: str) -> None:
+    """Watchdog callback: restart mobile_api if it crashed.
+
+    Only handles ``mobile_api`` — daemon restart is circular and widget is
+    optional, so those are intentionally ignored.
+    """
+    import sys as _sys
+
+    if service_name != "mobile_api":
+        return
+    root = repo_root()
+    config_path = root / ".planning" / "security" / "mobile_api.json"
+    if not config_path.exists():
+        logger.warning("Watchdog: cannot restart mobile_api — config file missing: %s", config_path)
+        return
+    python = _sys.executable
+    engine_src = str(root / "engine" / "src")
+    cmd = [
+        python, "-m", "jarvis_engine.main", "serve-mobile",
+        "--host", "127.0.0.1", "--port", "8787",
+        "--config-file", str(config_path),
+    ]
+    env = os.environ.copy()
+    # Ensure engine source is on PYTHONPATH
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = engine_src + (os.pathsep + existing_pp if existing_pp else "")
+    try:
+        if _sys.platform == "win32":
+            # Detach from parent console so it survives daemon restarts
+            subprocess.Popen(
+                cmd,
+                env=env,
+                cwd=str(root / "engine"),
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.Popen(
+                cmd,
+                env=env,
+                cwd=str(root / "engine"),
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        logger.info("Watchdog: restarted mobile_api via subprocess.")
+        print("watchdog_restart_mobile_api=ok")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Watchdog: failed to restart mobile_api: %s", exc)
+        print(f"watchdog_restart_mobile_api_error={exc}")
+
+
 def _cmd_daemon_run_impl(
     interval_s: int,
     snapshot_path: Path,
@@ -1936,6 +2082,7 @@ def _cmd_daemon_run_impl(
     sync_every_cycles: int = 5,
     self_heal_every_cycles: int = 20,
     self_test_every_cycles: int = 20,
+    watchdog_every_cycles: int = 5,
 ) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
     # Set descriptive process title for Task Manager visibility
@@ -2037,6 +2184,15 @@ def _cmd_daemon_run_impl(
                     print(f"sync_cycle_error={exc}")
                 else:
                     print(f"sync_cycle_rc={sync_rc}")
+            # --- Watchdog: check if mobile_api crashed and restart it ---
+            if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
+                try:
+                    from jarvis_engine.process_manager import check_and_restart_services
+                    dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
+                    if dead:
+                        print(f"watchdog_dead_services={','.join(dead)}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"watchdog_error={exc}")
             if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
                 try:
                     heal_rc = cmd_self_heal(
@@ -2212,6 +2368,52 @@ def _cmd_daemon_run_impl(
                         print("entity_resolve_skipped=kg_not_initialized")
                 except Exception as exc:  # noqa: BLE001
                     print(f"entity_resolve_error={exc}")
+            # --- Auto-harvest: autonomous knowledge growth (every 200 cycles) ---
+            if cycles % 200 == 0:
+                try:
+                    from jarvis_engine.harvesting.harvester import KnowledgeHarvester, HarvestCommand
+                    from jarvis_engine.harvesting.providers import (
+                        GeminiProvider,
+                        KimiNvidiaProvider,
+                        KimiProvider,
+                        MiniMaxProvider,
+                    )
+                    from jarvis_engine.harvesting.budget import BudgetManager
+                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
+                    harvest_topics = _discover_harvest_topics(root)
+                    if harvest_topics:
+                        # Build a lightweight harvester (same pattern as app.py)
+                        harvest_db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+                        h_budget = None
+                        if harvest_db_path.exists():
+                            h_budget = BudgetManager(harvest_db_path)
+                        h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
+                        h_available = [p for p in h_providers if p.is_available]
+                        if h_available:
+                            harvester = KnowledgeHarvester(
+                                providers=h_available,
+                                pipeline=None,  # Ingest through CLI; keep lightweight
+                                cost_tracker=None,
+                                budget_manager=h_budget,
+                            )
+                            total_records = 0
+                            for topic in harvest_topics:
+                                h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
+                                for entry in h_result.get("results", []):
+                                    total_records += entry.get("records_created", 0)
+                                print(f"auto_harvest_topic={topic} records={total_records}")
+                            log_activity(
+                                ActivityCategory.HARVEST,
+                                f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
+                                {"topics": harvest_topics, "total_records": total_records},
+                            )
+                        else:
+                            print("auto_harvest_skipped=no_providers_available")
+                    else:
+                        print("auto_harvest_skipped=no_topics_discovered")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"auto_harvest_error={exc}")
             # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
             approve_cycle = approve_privileged and not safe_mode

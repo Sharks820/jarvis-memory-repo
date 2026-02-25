@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import ctypes
+import ctypes.wintypes
 import hashlib
 import hmac
 import json
@@ -8,6 +11,7 @@ import math
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -18,6 +22,74 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# DPAPI helpers – Windows Data Protection API via ctypes
+# Encrypts/decrypts data tied to the current Windows user account.
+# ---------------------------------------------------------------------------
+
+_DPAPI_AVAILABLE = sys.platform == "win32"
+
+
+class _DATA_BLOB(ctypes.Structure):
+    _fields_ = [("cbData", ctypes.wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+
+def _dpapi_encrypt(plaintext: str) -> str:
+    """Encrypt *plaintext* via Windows DPAPI, return base64-encoded ciphertext.
+
+    Raises ``OSError`` if the DPAPI call fails.  On non-Windows platforms the
+    function raises ``RuntimeError``.
+    """
+    if not _DPAPI_AVAILABLE:
+        raise RuntimeError("DPAPI is only available on Windows")
+    data = plaintext.encode("utf-8")
+    input_blob = _DATA_BLOB(len(data), ctypes.create_string_buffer(data, len(data)))
+    output_blob = _DATA_BLOB()
+    if not ctypes.windll.crypt32.CryptProtectData(  # type: ignore[attr-defined]
+        ctypes.byref(input_blob),
+        None,   # description (optional)
+        None,   # optional entropy
+        None,   # reserved
+        None,   # prompt struct
+        0,      # flags
+        ctypes.byref(output_blob),
+    ):
+        raise OSError("CryptProtectData failed")
+    try:
+        encrypted = ctypes.string_at(output_blob.pbData, output_blob.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(output_blob.pbData)  # type: ignore[attr-defined]
+    return base64.b64encode(encrypted).decode("ascii")
+
+
+def _dpapi_decrypt(b64_cipher: str) -> str:
+    """Decrypt a base64-encoded DPAPI ciphertext, return plaintext string.
+
+    Raises ``OSError`` if the DPAPI call fails.  On non-Windows platforms the
+    function raises ``RuntimeError``.
+    """
+    if not _DPAPI_AVAILABLE:
+        raise RuntimeError("DPAPI is only available on Windows")
+    encrypted = base64.b64decode(b64_cipher)
+    input_blob = _DATA_BLOB(len(encrypted), ctypes.create_string_buffer(encrypted, len(encrypted)))
+    output_blob = _DATA_BLOB()
+    if not ctypes.windll.crypt32.CryptUnprotectData(  # type: ignore[attr-defined]
+        ctypes.byref(input_blob),
+        None,   # description out
+        None,   # optional entropy
+        None,   # reserved
+        None,   # prompt struct
+        0,      # flags
+        ctypes.byref(output_blob),
+    ):
+        raise OSError("CryptUnprotectData failed")
+    try:
+        decrypted = ctypes.string_at(output_blob.pbData, output_blob.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(output_blob.pbData)  # type: ignore[attr-defined]
+    return decrypted.decode("utf-8")
 
 import tkinter as tk
 
@@ -75,26 +147,59 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         except (json.JSONDecodeError, OSError):
             raw = {}
 
-    return WidgetConfig(
+    # --- Resolve master password (DPAPI-protected or plaintext legacy) ---
+    master_password = ""
+    needs_migration = False
+    if "master_password_protected" in raw:
+        b64 = str(raw["master_password_protected"])
+        try:
+            master_password = _dpapi_decrypt(b64)
+        except Exception:
+            logger.warning("Failed to decrypt master_password_protected via DPAPI; password unavailable")
+    elif "master_password" in raw:
+        master_password = str(raw["master_password"])
+        if master_password:
+            needs_migration = True
+
+    cfg = WidgetConfig(
         base_url=str(raw.get("base_url", "http://127.0.0.1:8787")).strip() or "http://127.0.0.1:8787",
         token=str(raw.get("token", "")).strip() or mobile.get("token", ""),
         signing_key=str(raw.get("signing_key", "")).strip() or mobile.get("signing_key", ""),
         device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip() or "galaxy_s25_primary",
-        master_password=str(raw.get("master_password", "")),
+        master_password=master_password,
     )
+
+    # Migrate plaintext master_password -> DPAPI-protected on load
+    if needs_migration:
+        try:
+            _save_widget_cfg(root, cfg)
+            logger.info("Migrated plaintext master_password to DPAPI-protected storage")
+        except Exception:
+            logger.warning("Failed to migrate plaintext master_password to DPAPI; will retry on next save")
+
+    return cfg
 
 
 def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
     from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
-    payload = {
+    payload: dict[str, Any] = {
         "base_url": cfg.base_url,
         "token": cfg.token,
         "signing_key": cfg.signing_key,
         "device_id": cfg.device_id,
-        "master_password": cfg.master_password,
         "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
+
+    # Encrypt master password via DPAPI; fall back to plaintext only on non-Windows
+    if cfg.master_password:
+        try:
+            payload["master_password_protected"] = _dpapi_encrypt(cfg.master_password)
+        except Exception:
+            logger.warning("DPAPI encryption unavailable; storing master_password in plaintext")
+            payload["master_password"] = cfg.master_password
+    # Never write the plaintext key when DPAPI succeeds (no "master_password" key at all)
+
     _atomic_write_json(_widget_cfg_path(root), payload)
 
 

@@ -13,13 +13,17 @@ import pytest
 
 from jarvis_engine.process_manager import (
     SERVICES,
+    _GRACEFUL_TIMEOUT_S,
     _MAX_CREATION_DRIFT_S,
     _check_pid_alive,
     _check_pid_alive_win32,
     _get_process_create_time,
+    _graceful_shutdown,
+    _hard_kill,
     _pid_path,
     _pids_dir,
     _verify_pid_identity,
+    check_and_restart_services,
     is_service_running,
     kill_service,
     list_services,
@@ -605,3 +609,221 @@ class TestConfigFileArg:
         call_kwargs = mock_server.call_args
         assert call_kwargs[1]["auth_token"] == "cli-token"
         assert call_kwargs[1]["signing_key"] == "cli-key"
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown (_graceful_shutdown / _hard_kill)
+# ---------------------------------------------------------------------------
+
+
+class TestGracefulShutdown:
+    """Tests for the two-phase graceful -> hard kill behaviour."""
+
+    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=False)
+    @patch("jarvis_engine.process_manager.os.kill")
+    def test_graceful_shutdown_succeeds_when_process_exits_quickly(
+        self, mock_kill: MagicMock, mock_alive: MagicMock,
+    ) -> None:
+        """_graceful_shutdown returns True when the target dies before timeout."""
+        result = _graceful_shutdown(12345)
+        assert result is True
+        mock_kill.assert_called_once()
+
+    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.process_manager.os.kill")
+    @patch("jarvis_engine.process_manager._GRACEFUL_TIMEOUT_S", 0.1)
+    def test_graceful_shutdown_returns_false_when_process_survives(
+        self, mock_kill: MagicMock, mock_alive: MagicMock,
+    ) -> None:
+        """_graceful_shutdown returns False when process refuses to die."""
+        result = _graceful_shutdown(12345)
+        assert result is False
+
+    @patch("jarvis_engine.process_manager.os.kill", side_effect=OSError("gone"))
+    def test_graceful_shutdown_returns_true_when_kill_raises(
+        self, mock_kill: MagicMock,
+    ) -> None:
+        """If os.kill raises (process already gone), treat as success."""
+        result = _graceful_shutdown(12345)
+        assert result is True
+
+    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.process_manager._graceful_shutdown", return_value=False)
+    @patch("jarvis_engine.process_manager._hard_kill")
+    def test_kill_service_escalates_to_hard_kill(
+        self,
+        mock_hard_kill: MagicMock,
+        mock_graceful: MagicMock,
+        mock_alive: MagicMock,
+        tmp_root: Path,
+    ) -> None:
+        """kill_service should escalate to _hard_kill when graceful fails."""
+        path = _pid_path("daemon", tmp_root)
+        path.write_text(
+            json.dumps({"pid": 12345, "service": "daemon", "started_utc": "", "python": ""})
+        )
+        result = kill_service("daemon", tmp_root)
+        assert result is True
+        mock_graceful.assert_called_once_with(12345)
+        mock_hard_kill.assert_called_once_with(12345)
+
+    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.process_manager._graceful_shutdown", return_value=True)
+    @patch("jarvis_engine.process_manager._hard_kill")
+    def test_kill_service_skips_hard_kill_when_graceful_succeeds(
+        self,
+        mock_hard_kill: MagicMock,
+        mock_graceful: MagicMock,
+        mock_alive: MagicMock,
+        tmp_root: Path,
+    ) -> None:
+        """kill_service should NOT call _hard_kill when graceful shutdown works."""
+        path = _pid_path("daemon", tmp_root)
+        path.write_text(
+            json.dumps({"pid": 12345, "service": "daemon", "started_utc": "", "python": ""})
+        )
+        result = kill_service("daemon", tmp_root)
+        assert result is True
+        mock_graceful.assert_called_once_with(12345)
+        mock_hard_kill.assert_not_called()
+
+    @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
+    @patch("jarvis_engine.process_manager._hard_kill")
+    @patch("jarvis_engine.process_manager._graceful_shutdown")
+    def test_kill_service_force_skips_graceful(
+        self,
+        mock_graceful: MagicMock,
+        mock_hard_kill: MagicMock,
+        mock_alive: MagicMock,
+        tmp_root: Path,
+    ) -> None:
+        """kill_service(force=True) should skip graceful and go straight to _hard_kill."""
+        path = _pid_path("daemon", tmp_root)
+        path.write_text(
+            json.dumps({"pid": 12345, "service": "daemon", "started_utc": "", "python": ""})
+        )
+        result = kill_service("daemon", tmp_root, force=True)
+        assert result is True
+        mock_graceful.assert_not_called()
+        mock_hard_kill.assert_called_once_with(12345)
+
+
+# ---------------------------------------------------------------------------
+# Watchdog (check_and_restart_services)
+# ---------------------------------------------------------------------------
+
+
+class TestWatchdog:
+    """Tests for the check_and_restart_services watchdog function."""
+
+    def test_returns_empty_when_no_pid_files(self, tmp_root: Path) -> None:
+        """No PID files means no dead services."""
+        dead = check_and_restart_services(tmp_root)
+        assert dead == []
+
+    def test_ignores_running_services(self, tmp_root: Path) -> None:
+        """Services with valid live PIDs should not be flagged."""
+        write_pid_file("daemon", tmp_root)
+        dead = check_and_restart_services(tmp_root)
+        assert dead == []
+        # PID file should still exist
+        assert _pid_path("daemon", tmp_root).exists()
+
+    def test_detects_dead_service(self, tmp_root: Path) -> None:
+        """A PID file for a dead process should be flagged and cleaned up."""
+        path = _pid_path("mobile_api", tmp_root)
+        path.write_text(
+            json.dumps({
+                "pid": 999999999,
+                "service": "mobile_api",
+                "started_utc": "",
+                "python": "",
+            })
+        )
+        dead = check_and_restart_services(tmp_root)
+        assert "mobile_api" in dead
+        # Stale PID file should be removed
+        assert not path.exists()
+
+    def test_cleans_corrupt_pid_file(self, tmp_root: Path) -> None:
+        """A corrupt PID file should be cleaned up and reported."""
+        path = _pid_path("widget", tmp_root)
+        path.write_text("not valid json!!")
+        dead = check_and_restart_services(tmp_root)
+        assert "widget" in dead
+        assert not path.exists()
+
+    def test_calls_restart_callback_for_dead_service(self, tmp_root: Path) -> None:
+        """restart_callback should be called with the dead service's name."""
+        path = _pid_path("mobile_api", tmp_root)
+        path.write_text(
+            json.dumps({
+                "pid": 999999999,
+                "service": "mobile_api",
+                "started_utc": "",
+                "python": "",
+            })
+        )
+        callback = MagicMock()
+        dead = check_and_restart_services(tmp_root, restart_callback=callback)
+        assert "mobile_api" in dead
+        callback.assert_called_once_with("mobile_api")
+
+    def test_does_not_call_callback_for_running_services(self, tmp_root: Path) -> None:
+        """Healthy services should not trigger the callback."""
+        write_pid_file("daemon", tmp_root)
+        callback = MagicMock()
+        dead = check_and_restart_services(tmp_root, restart_callback=callback)
+        assert dead == []
+        callback.assert_not_called()
+
+    def test_callback_exception_does_not_propagate(self, tmp_root: Path) -> None:
+        """If the callback raises, the watchdog should catch it and continue."""
+        path = _pid_path("mobile_api", tmp_root)
+        path.write_text(
+            json.dumps({
+                "pid": 999999999,
+                "service": "mobile_api",
+                "started_utc": "",
+                "python": "",
+            })
+        )
+        callback = MagicMock(side_effect=RuntimeError("restart failed"))
+        dead = check_and_restart_services(tmp_root, restart_callback=callback)
+        assert "mobile_api" in dead
+        callback.assert_called_once()
+
+    def test_detects_pid_reuse_as_dead(self, tmp_root: Path) -> None:
+        """A PID file whose process was replaced (PID reuse) should be flagged."""
+        path = _pid_path("daemon", tmp_root)
+        path.write_text(
+            json.dumps({
+                "pid": os.getpid(),
+                "service": "daemon",
+                "started_utc": "",
+                "python": "",
+                "process_create_ts": 1000000000.0,
+            })
+        )
+        with patch(
+            "jarvis_engine.process_manager._get_process_create_time",
+            return_value=1700000000.0,
+        ):
+            dead = check_and_restart_services(tmp_root)
+        assert "daemon" in dead
+        assert not path.exists()
+
+    def test_multiple_dead_services(self, tmp_root: Path) -> None:
+        """Multiple dead services should all be detected in one call."""
+        for svc in ("daemon", "mobile_api", "widget"):
+            path = _pid_path(svc, tmp_root)
+            path.write_text(
+                json.dumps({
+                    "pid": 999999999,
+                    "service": svc,
+                    "started_utc": "",
+                    "python": "",
+                })
+            )
+        dead = check_and_restart_services(tmp_root)
+        assert set(dead) == {"daemon", "mobile_api", "widget"}

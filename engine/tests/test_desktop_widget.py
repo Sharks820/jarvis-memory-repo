@@ -39,6 +39,9 @@ from jarvis_engine.desktop_widget import (
     _mobile_api_cfg_path,
     _widget_cfg_path,
     _repo_root,
+    _dpapi_encrypt,
+    _dpapi_decrypt,
+    _DPAPI_AVAILABLE,
 )
 
 
@@ -425,24 +428,42 @@ class TestHttpJsonBootstrap:
 
 class TestSaveWidgetCfg:
     @patch("jarvis_engine._shared.atomic_write_json")
-    def test_save_calls_atomic_write(self, mock_write):
+    def test_save_calls_atomic_write_with_dpapi(self, mock_write):
+        """On Windows, save should encrypt master_password via DPAPI."""
         from jarvis_engine.desktop_widget import _save_widget_cfg
         cfg = WidgetConfig("http://127.0.0.1:8787", "tok", "sk", "dev", "pw")
         root = Path("/fake/root")
         _save_widget_cfg(root, cfg)
         mock_write.assert_called_once()
         call_args = mock_write.call_args
-        # First arg is the path
         written_path = call_args[0][0]
         assert str(written_path).endswith("desktop_widget.json")
-        # Second arg is the payload dict
         payload = call_args[0][1]
         assert payload["base_url"] == "http://127.0.0.1:8787"
         assert payload["token"] == "tok"
         assert payload["signing_key"] == "sk"
         assert payload["device_id"] == "dev"
-        assert payload["master_password"] == "pw"
         assert "updated_utc" in payload
+        if _DPAPI_AVAILABLE:
+            # master_password_protected should be present; plaintext should NOT
+            assert "master_password_protected" in payload
+            assert "master_password" not in payload
+            # Verify round-trip: decrypt should recover original
+            assert _dpapi_decrypt(payload["master_password_protected"]) == "pw"
+        else:
+            # Fallback: plaintext stored when DPAPI unavailable
+            assert payload["master_password"] == "pw"
+
+    @patch("jarvis_engine._shared.atomic_write_json")
+    def test_save_empty_password_omits_both_keys(self, mock_write):
+        """When master_password is empty, neither key should be written."""
+        from jarvis_engine.desktop_widget import _save_widget_cfg
+        cfg = WidgetConfig("http://127.0.0.1:8787", "tok", "sk", "dev", "")
+        root = Path("/fake/root")
+        _save_widget_cfg(root, cfg)
+        payload = mock_write.call_args[0][1]
+        assert "master_password" not in payload
+        assert "master_password_protected" not in payload
 
 
 # ---- _detect_hotword_once ---------------------------------------------------
@@ -586,7 +607,8 @@ class TestLauncherAnimationMath:
 # ---- Integration: full config round-trip ------------------------------------
 
 class TestConfigRoundTrip:
-    def test_load_with_both_files_present(self, tmp_path):
+    @patch("jarvis_engine.desktop_widget._save_widget_cfg")
+    def test_load_with_both_files_present(self, mock_save, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "mobile_api.json").write_text(
@@ -610,3 +632,178 @@ class TestConfigRoundTrip:
         assert cfg.signing_key == "mob_sk"
         assert cfg.device_id == "my_phone"
         assert cfg.master_password == "pw123"
+        # Plaintext master_password should trigger migration save
+        mock_save.assert_called_once()
+
+
+# ---- DPAPI encrypt/decrypt --------------------------------------------------
+
+class TestDpapiEncryptDecrypt:
+    """Test DPAPI encryption/decryption round-trip (native on Windows)."""
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_round_trip_basic(self):
+        """Encrypt then decrypt should recover the original plaintext."""
+        original = "my_secret_password_123!"
+        encrypted = _dpapi_encrypt(original)
+        # Encrypted result must be a non-empty base64 string, different from plaintext
+        assert encrypted != original
+        assert len(encrypted) > 0
+        decrypted = _dpapi_decrypt(encrypted)
+        assert decrypted == original
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_round_trip_unicode(self):
+        """DPAPI should handle unicode passwords correctly."""
+        original = "p@ssw0rd-\u00e9\u00e8\u00ea-\u4e16\u754c"
+        encrypted = _dpapi_encrypt(original)
+        decrypted = _dpapi_decrypt(encrypted)
+        assert decrypted == original
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_round_trip_empty_string(self):
+        """DPAPI should handle empty string (edge case)."""
+        encrypted = _dpapi_encrypt("")
+        decrypted = _dpapi_decrypt(encrypted)
+        assert decrypted == ""
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_different_plaintexts_produce_different_ciphertexts(self):
+        """Different passwords should produce different encrypted blobs."""
+        enc_a = _dpapi_encrypt("password_a")
+        enc_b = _dpapi_encrypt("password_b")
+        assert enc_a != enc_b
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_decrypt_invalid_base64_raises(self):
+        """Decrypting garbage should raise an error."""
+        with pytest.raises(Exception):
+            _dpapi_decrypt("not-valid-base64!!!")
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_decrypt_wrong_data_raises(self):
+        """Decrypting valid base64 that is not DPAPI ciphertext should raise."""
+        import base64
+        fake = base64.b64encode(b"this is not encrypted data").decode("ascii")
+        with pytest.raises(OSError):
+            _dpapi_decrypt(fake)
+
+
+# ---- Config migration from plaintext to DPAPI-protected --------------------
+
+class TestConfigMigration:
+    """Test that loading a config with plaintext master_password migrates to DPAPI."""
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    @patch("jarvis_engine._shared.atomic_write_json")
+    def test_plaintext_password_migrated_on_load(self, mock_write, tmp_path):
+        """Loading config with plaintext master_password should auto-migrate."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password": "migrate_me",
+            }),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        # Password should be loaded correctly
+        assert cfg.master_password == "migrate_me"
+        # Migration should have triggered a save
+        mock_write.assert_called_once()
+        saved_payload = mock_write.call_args[0][1]
+        # The saved payload should have DPAPI-protected key, not plaintext
+        assert "master_password_protected" in saved_payload
+        assert "master_password" not in saved_payload
+        # Verify the protected value decrypts back to original
+        assert _dpapi_decrypt(saved_payload["master_password_protected"]) == "migrate_me"
+
+    @patch("jarvis_engine.desktop_widget._save_widget_cfg")
+    def test_empty_plaintext_password_no_migration(self, mock_save, tmp_path):
+        """Empty plaintext password should NOT trigger migration."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password": "",
+            }),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.master_password == ""
+        mock_save.assert_not_called()
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_protected_password_loads_without_migration(self, tmp_path):
+        """Config with master_password_protected should load without triggering migration."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        # Pre-encrypt the password
+        protected = _dpapi_encrypt("already_protected")
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password_protected": protected,
+            }),
+            encoding="utf-8",
+        )
+        with patch("jarvis_engine.desktop_widget._save_widget_cfg") as mock_save:
+            cfg = _load_widget_cfg(tmp_path)
+        assert cfg.master_password == "already_protected"
+        # No migration needed -- save should NOT be called
+        mock_save.assert_not_called()
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_protected_takes_precedence_over_plaintext(self, tmp_path):
+        """If both keys exist, master_password_protected wins."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        protected = _dpapi_encrypt("the_real_password")
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password": "stale_plaintext",
+                "master_password_protected": protected,
+            }),
+            encoding="utf-8",
+        )
+        with patch("jarvis_engine.desktop_widget._save_widget_cfg") as mock_save:
+            cfg = _load_widget_cfg(tmp_path)
+        assert cfg.master_password == "the_real_password"
+        mock_save.assert_not_called()
+
+
+# ---- Full save/load round-trip with DPAPI -----------------------------------
+
+class TestSaveLoadRoundTripDpapi:
+    """Integration: save config then load it back, verifying DPAPI protection."""
+
+    @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
+    def test_full_round_trip(self, tmp_path):
+        from jarvis_engine.desktop_widget import _save_widget_cfg
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+
+        cfg_orig = WidgetConfig(
+            base_url="http://127.0.0.1:8787",
+            token="tok_abc",
+            signing_key="sk_xyz",
+            device_id="dev1",
+            master_password="round_trip_secret",
+        )
+        _save_widget_cfg(tmp_path, cfg_orig)
+
+        # Verify the JSON on disk does NOT contain plaintext password
+        raw = json.loads((sec / "desktop_widget.json").read_text(encoding="utf-8"))
+        assert "master_password" not in raw, "Plaintext master_password should not be in saved config"
+        assert "master_password_protected" in raw
+
+        # Load it back
+        cfg_loaded = _load_widget_cfg(tmp_path)
+        assert cfg_loaded.master_password == "round_trip_secret"
+        assert cfg_loaded.base_url == "http://127.0.0.1:8787"
+        assert cfg_loaded.token == "tok_abc"
+        assert cfg_loaded.signing_key == "sk_xyz"
+        assert cfg_loaded.device_id == "dev1"
