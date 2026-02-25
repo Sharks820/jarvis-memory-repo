@@ -900,12 +900,148 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 logger.error("activity feed query failed: %s", exc)
                 self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
             return
+        if path == "/intelligence/growth":
+            if not self._validate_auth(b""):
+                return
+            self._write_json(HTTPStatus.OK, self._gather_intelligence_growth())
+            return
         if path == "/favicon.ico":
             self.send_response(HTTPStatus.NO_CONTENT)
             self.end_headers()
             return
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
+
+    def _gather_intelligence_growth(self) -> dict[str, Any]:
+        """Collect real intelligence growth metrics from all subsystems."""
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        metrics: dict[str, Any] = {
+            "facts_total": 0,
+            "facts_last_7d": 0,
+            "corrections_applied": 0,
+            "corrections_last_7d": 0,
+            "consolidations_run": 0,
+            "entities_merged": 0,
+            "kg_nodes": 0,
+            "kg_edges": 0,
+            "memory_records": 0,
+            "branches": {},
+            "growth_trend": "stable",
+            "last_self_test_score": 0.0,
+        }
+
+        # --- Knowledge graph metrics from KG history (same source as dashboard) ---
+        try:
+            from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
+            history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
+            history = load_kg_history(history_path, limit=50)
+            if history:
+                latest = history[-1]
+                metrics["kg_nodes"] = int(latest.get("node_count", 0))
+                metrics["kg_edges"] = int(latest.get("edge_count", 0))
+                metrics["facts_total"] = metrics["kg_nodes"]
+                branch_counts = latest.get("branch_counts", {})
+                if isinstance(branch_counts, dict):
+                    metrics["branches"] = {str(k): int(v) for k, v in branch_counts.items()}
+
+                # Count facts from last 7 days by comparing history entries
+                from datetime import datetime, timedelta
+                from jarvis_engine._compat import UTC
+                cutoff_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+                recent_entries = [
+                    e for e in history
+                    if str(e.get("ts", "")) >= cutoff_7d
+                ]
+                if recent_entries and len(history) > len(recent_entries):
+                    before_idx = len(history) - len(recent_entries) - 1
+                    if before_idx >= 0:
+                        old_count = int(history[before_idx].get("node_count", 0))
+                        metrics["facts_last_7d"] = max(0, metrics["kg_nodes"] - old_count)
+
+                # Growth trend from KG history
+                try:
+                    trend = kg_growth_trend(history)
+                    if isinstance(trend, dict):
+                        node_growth = trend.get("node_growth", 0)
+                        if isinstance(node_growth, (int, float)):
+                            if node_growth > 0:
+                                metrics["growth_trend"] = "increasing"
+                            elif node_growth < 0:
+                                metrics["growth_trend"] = "declining"
+                            else:
+                                metrics["growth_trend"] = "stable"
+                except Exception:
+                    pass
+        except Exception:
+            logger.debug("Intelligence growth: KG metrics unavailable")
+
+        # --- Activity feed: corrections and consolidations ---
+        try:
+            from jarvis_engine.activity_feed import get_activity_feed
+            feed = get_activity_feed()
+            stats = feed.stats()
+            if isinstance(stats, dict):
+                metrics["corrections_applied"] = int(stats.get("correction_applied", 0))
+                metrics["consolidations_run"] = int(stats.get("consolidation", 0))
+
+            # Count corrections in last 7 days from feed query
+            from datetime import datetime, timedelta
+            from jarvis_engine._compat import UTC
+            since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+            try:
+                recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
+                metrics["corrections_last_7d"] = len(recent_events)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("Intelligence growth: activity feed unavailable")
+
+        # --- Memory engine: record count ---
+        try:
+            db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+            if db_path.exists():
+                import sqlite3 as _sqlite3
+                conn = _sqlite3.connect(str(db_path), timeout=5)
+                conn.execute("PRAGMA journal_mode=WAL")
+                try:
+                    row = conn.execute("SELECT COUNT(*) FROM records").fetchone()
+                    if row:
+                        metrics["memory_records"] = int(row[0])
+                except Exception:
+                    pass
+                finally:
+                    conn.close()
+        except Exception:
+            logger.debug("Intelligence growth: memory records unavailable")
+
+        # --- Self-test score from growth tracker history ---
+        try:
+            self_test_path = root / ".planning" / "runtime" / "self_test_history.jsonl"
+            if self_test_path.exists():
+                lines = self_test_path.read_text(encoding="utf-8").strip().split("\n")
+                if lines and lines[-1].strip():
+                    latest_test = json.loads(lines[-1])
+                    score = latest_test.get("average_score", 0.0)
+                    metrics["last_self_test_score"] = round(float(score), 3)
+        except Exception:
+            logger.debug("Intelligence growth: self-test history unavailable")
+
+        # --- Capability history for overall trend confirmation ---
+        try:
+            from jarvis_engine.growth_tracker import read_history
+            cap_path = root / ".planning" / "capability_history.jsonl"
+            cap_rows = read_history(cap_path)
+            if len(cap_rows) >= 2:
+                latest_score = float(cap_rows[-1].get("score_pct", 0.0))
+                prev_score = float(cap_rows[-2].get("score_pct", 0.0))
+                if latest_score > prev_score:
+                    metrics["growth_trend"] = "increasing"
+                elif latest_score < prev_score:
+                    metrics["growth_trend"] = "declining"
+        except Exception:
+            logger.debug("Intelligence growth: capability history unavailable")
+
+        return {"ok": True, "metrics": metrics}
 
     def _check_rate_limit(self, path: str) -> bool:
         """Check global API rate limit. Returns True if request should proceed."""
@@ -1279,7 +1415,7 @@ def run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, r
     print(f"mobile_api_listening=http://{host}:{port}")
     if host not in {"127.0.0.1", "localhost", "::1"}:
         print("warning=mobile_api_non_loopback_without_tls")
-    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

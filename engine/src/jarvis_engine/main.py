@@ -179,6 +179,11 @@ def _get_bus() -> CommandBus:
 _auto_ingest_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
+# Daemon cycle state for KG regression tracking
+# ---------------------------------------------------------------------------
+_daemon_kg_prev_metrics: dict | None = None
+
+# ---------------------------------------------------------------------------
 # Conversation history buffer for multi-turn context
 # ---------------------------------------------------------------------------
 _conversation_history: list[dict[str, str]] = []
@@ -1974,7 +1979,18 @@ def _cmd_daemon_run_impl(
             gaming_mode_enabled = bool(gaming_state.get("enabled", False)) or auto_detect_hit
             daemon_paused = bool(control_state.get("daemon_paused", False))
             safe_mode = bool(control_state.get("safe_mode", False))
-            print(f"cycle={cycles} ts={datetime.now(UTC).isoformat()}")
+            cycle_start_ts = datetime.now(UTC).isoformat()
+            print(f"cycle={cycles} ts={cycle_start_ts}")
+            # --- Activity feed: log cycle start ---
+            try:
+                from jarvis_engine.activity_feed import log_activity, ActivityCategory
+                log_activity(
+                    ActivityCategory.DAEMON_CYCLE,
+                    f"Daemon cycle {cycles} started",
+                    {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
+                )
+            except Exception:  # noqa: BLE001
+                pass  # Activity feed is optional; never crash daemon
             print(f"daemon_paused={daemon_paused}")
             print(f"safe_mode={safe_mode}")
             print(f"gaming_mode={gaming_mode_enabled}")
@@ -2077,6 +2093,125 @@ def _cmd_daemon_run_impl(
                         print("self_test_skipped=engine_not_initialized")
                 except Exception as exc:  # noqa: BLE001
                     print(f"self_test_error={exc}")
+            # --- Knowledge graph regression check (every 10 cycles) ---
+            if cycles % 10 == 0:
+                try:
+                    from jarvis_engine.knowledge.regression import RegressionChecker
+                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
+                    bus = _get_bus()
+                    kg = getattr(bus, "_kg", None)
+                    if kg is not None:
+                        rc_checker = RegressionChecker(kg)
+                        current_metrics = rc_checker.capture_metrics()
+                        # Compare against previous snapshot stored in module state
+                        global _daemon_kg_prev_metrics
+                        prev_metrics = _daemon_kg_prev_metrics
+                        comparison = rc_checker.compare(prev_metrics, current_metrics)
+                        _daemon_kg_prev_metrics = current_metrics
+                        print(f"kg_regression_status={comparison.get('status', 'unknown')}")
+                        if comparison.get("status") in ("fail", "warn"):
+                            discrepancies = comparison.get("discrepancies", [])
+                            print(f"kg_regression_discrepancies={len(discrepancies)}")
+                            log_activity(
+                                ActivityCategory.REGRESSION_CHECK,
+                                f"KG regression detected: {comparison['status']}",
+                                {"status": comparison["status"], "discrepancies": discrepancies},
+                            )
+                            # Auto-restore from backup on failure
+                            if comparison["status"] == "fail":
+                                backup_dir = Path(".planning/runtime/kg_backups")
+                                if backup_dir.exists():
+                                    backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
+                                    if backups:
+                                        restored = rc_checker.restore_graph(backups[-1])
+                                        print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
+                                        log_activity(
+                                            ActivityCategory.REGRESSION_CHECK,
+                                            f"KG auto-restore {'succeeded' if restored else 'failed'}",
+                                            {"backup": str(backups[-1]), "restored": restored},
+                                        )
+                    else:
+                        print("kg_regression_skipped=kg_not_initialized")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"kg_regression_error={exc}")
+            # --- Memory consolidation (every 50 cycles) ---
+            if cycles % 50 == 0:
+                try:
+                    from jarvis_engine.learning.consolidator import MemoryConsolidator
+                    from jarvis_engine.knowledge.regression import RegressionChecker
+                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
+                    bus = _get_bus()
+                    engine = getattr(bus, "_engine", None)
+                    kg = getattr(bus, "_kg", None)
+                    gateway = getattr(bus, "_gateway", None)
+                    embed_svc = getattr(bus, "_embed_service", None)
+                    if engine is not None:
+                        # Backup KG state before consolidation
+                        if kg is not None:
+                            try:
+                                rc_checker = RegressionChecker(kg)
+                                rc_checker.backup_graph(tag="pre-consolidation")
+                                print("consolidation_kg_backup=ok")
+                            except Exception as exc:  # noqa: BLE001
+                                print(f"consolidation_kg_backup_error={exc}")
+                        consolidator = MemoryConsolidator(
+                            engine, gateway=gateway, embed_service=embed_svc,
+                        )
+                        result = consolidator.consolidate()
+                        print(f"consolidation_groups={result.groups_found}")
+                        print(f"consolidation_new_facts={result.new_facts_created}")
+                        if result.errors:
+                            print(f"consolidation_errors={len(result.errors)}")
+                        log_activity(
+                            ActivityCategory.CONSOLIDATION,
+                            f"Memory consolidation: {result.new_facts_created} facts from {result.groups_found} groups",
+                            {
+                                "groups_found": result.groups_found,
+                                "records_consolidated": result.records_consolidated,
+                                "new_facts_created": result.new_facts_created,
+                                "errors": result.errors,
+                            },
+                        )
+                    else:
+                        print("consolidation_skipped=engine_not_initialized")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"consolidation_error={exc}")
+            # --- Entity resolution (every 100 cycles) ---
+            if cycles % 100 == 0:
+                try:
+                    from jarvis_engine.knowledge.entity_resolver import EntityResolver
+                    from jarvis_engine.knowledge.regression import RegressionChecker
+                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
+                    bus = _get_bus()
+                    kg = getattr(bus, "_kg", None)
+                    embed_svc = getattr(bus, "_embed_service", None)
+                    if kg is not None:
+                        # Backup KG state before entity resolution
+                        try:
+                            rc_checker = RegressionChecker(kg)
+                            rc_checker.backup_graph(tag="pre-entity-resolve")
+                            print("entity_resolve_kg_backup=ok")
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"entity_resolve_kg_backup_error={exc}")
+                        resolver = EntityResolver(kg, embed_service=embed_svc)
+                        resolve_result = resolver.auto_resolve()
+                        print(f"entity_resolve_candidates={resolve_result.candidates_found}")
+                        print(f"entity_resolve_merges={resolve_result.merges_applied}")
+                        if resolve_result.errors:
+                            print(f"entity_resolve_errors={len(resolve_result.errors)}")
+                        log_activity(
+                            ActivityCategory.CONSOLIDATION,
+                            f"Entity resolution: {resolve_result.merges_applied} merges from {resolve_result.candidates_found} candidates",
+                            {
+                                "candidates_found": resolve_result.candidates_found,
+                                "merges_applied": resolve_result.merges_applied,
+                                "errors": resolve_result.errors,
+                            },
+                        )
+                    else:
+                        print("entity_resolve_skipped=kg_not_initialized")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"entity_resolve_error={exc}")
             # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
             approve_cycle = approve_privileged and not safe_mode
@@ -2094,6 +2229,16 @@ def _cmd_daemon_run_impl(
                 rc = 2
                 print(f"cycle_error={exc}")
             print(f"cycle_rc={rc}")
+            # --- Activity feed: log cycle end ---
+            try:
+                from jarvis_engine.activity_feed import log_activity, ActivityCategory
+                log_activity(
+                    ActivityCategory.DAEMON_CYCLE,
+                    f"Daemon cycle {cycles} ended (rc={rc})",
+                    {"cycle": cycles, "rc": rc, "phase": "end"},
+                )
+            except Exception:  # noqa: BLE001
+                pass  # Activity feed is optional; never crash daemon
             # Circuit breaker: only autopilot (rc) counts toward consecutive failures.
             # Mission, sync, and self-heal failures are logged but never trigger shutdown.
             if rc == 0:
