@@ -188,92 +188,307 @@ _daemon_kg_prev_metrics: dict | None = None
 # Auto-harvest topic discovery for daemon cycle
 # ---------------------------------------------------------------------------
 
-def _discover_harvest_topics(root: Path) -> list[str]:
-    """Discover 1-2 topics for autonomous knowledge harvesting.
+# Stop words for filtering out low-quality single-word topic fragments
+_HARVEST_STOP_WORDS = frozenset({
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "need", "must", "of", "in",
+    "to", "for", "with", "on", "at", "from", "by", "about", "as", "into",
+    "through", "during", "before", "after", "above", "below", "between",
+    "and", "but", "or", "nor", "not", "no", "so", "if", "then", "than",
+    "too", "very", "just", "also", "that", "this", "it", "its", "my",
+    "your", "his", "her", "our", "their", "what", "which", "who", "whom",
+    "how", "when", "where", "why", "all", "each", "every", "both", "few",
+    "more", "most", "other", "some", "such", "only", "own", "same", "new",
+    "old", "true", "false", "none", "null", "yes", "conner", "jarvis",
+})
 
-    Topic sources (in priority order):
-    1. Recent harvest/fact-extraction activity feed entries (conversation topics)
-    2. KG branches with few facts (sparse areas needing growth)
-    3. Fallback: topics from completed learning missions
 
-    Returns up to 2 topic strings.  Never raises — returns [] on error.
+def _extract_topic_phrases(text: str) -> list[str]:
+    """Extract multi-word topic phrases (2-5 words) from a text string.
+
+    Uses simple heuristics: splits on punctuation, filters stop words,
+    keeps capitalised/meaningful consecutive word runs of 2-5 words.
+    No NLP libraries required.
     """
-    topics: list[str] = []
+    import re as _re
+    # Split on sentence-level punctuation and common delimiters
+    fragments = _re.split(r'[.!?;:,\-\|/\(\)\[\]{}"\n]+', text)
+    phrases: list[str] = []
+    seen_lower: set[str] = set()
 
-    # --- Source 1: Recent activity feed topics ---
+    for frag in fragments:
+        words = frag.strip().split()
+        # Filter out stop words and very short tokens
+        meaningful = [w for w in words if w.lower() not in _HARVEST_STOP_WORDS and len(w) > 1]
+        if len(meaningful) < 2:
+            continue
+        # Take up to 5 consecutive meaningful words
+        phrase = " ".join(meaningful[:5])
+        # Normalise and dedup
+        phrase_lower = phrase.lower()
+        if phrase_lower not in seen_lower and 2 <= len(phrase.split()) <= 5:
+            phrases.append(phrase)
+            seen_lower.add(phrase_lower)
+
+    return phrases
+
+
+def _get_recently_harvested_topics(root: Path) -> set[str]:
+    """Return lowercase topic strings that were harvested in the last 14 days.
+
+    Reads the activity feed for HARVEST events and extracts topic names
+    so we can deduplicate against them.
+    """
+    recent: set[str] = set()
     try:
         from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
         feed_db = root / ".planning" / "brain" / "activity_feed.db"
-        if feed_db.exists():
-            feed = ActivityFeed(db_path=feed_db)
-            # Look at recent fact extractions and harvest events for topic ideas
-            events = feed.query(limit=20, category=ActivityCategory.FACT_EXTRACTED)
-            for ev in events:
-                summary = ev.summary or ""
-                # Extract topic-like phrases from fact extraction summaries
-                if len(summary) > 5:
-                    # Use the first substantial phrase as a topic candidate
-                    candidate = summary.split(":")[0].strip() if ":" in summary else summary.strip()
-                    candidate = candidate[:100]
-                    if len(candidate) > 3 and candidate not in topics:
-                        topics.append(candidate)
-                        if len(topics) >= 2:
-                            break
+        if not feed_db.exists():
+            return recent
+        feed = ActivityFeed(db_path=feed_db)
+        since = (datetime.now(UTC) - timedelta(days=14)).isoformat()
+        events = feed.query(limit=100, category=ActivityCategory.HARVEST, since=since)
+        for ev in events:
+            details = ev.details or {}
+            # The auto-harvest log_activity stores {"topics": [...], ...}
+            for t in details.get("topics", []):
+                recent.add(str(t).lower().strip())
+            # Also check the summary for "Auto-harvest: ..." patterns
+            summary = ev.summary or ""
+            if summary:
+                recent.add(summary.lower().strip())
     except Exception:
-        pass  # Activity feed is optional
+        pass
+    return recent
 
-    if len(topics) >= 2:
-        return topics[:2]
 
-    # --- Source 2: KG sparse branches ---
+def _discover_harvest_topics(root: Path) -> list[str]:
+    """Discover 2-3 topics for autonomous knowledge harvesting.
+
+    Topic sources (in priority order):
+    1. Conversation-derived: recent memory entries (last 7 days) — multi-word phrases
+    2. KG gap analysis: edge relation types with few instances or high-node/low-edge areas
+    3. Complementary topics: strong KG areas expanded with "best practices"/"advanced"
+    4. Activity feed: recent fact extraction summaries
+    5. Fallback: completed learning mission topics
+
+    All topics are 2-5 words.  Deduplicates against recently harvested topics.
+    Returns up to 3 topic strings.  Never raises — returns [] on error.
+    """
+    _MAX_TOPICS = 3
+    candidates: list[str] = []
+    seen_lower: set[str] = set()
+
+    # Load recently harvested topics for dedup
+    recently_harvested = _get_recently_harvested_topics(root)
+
+    def _add_candidate(topic: str) -> bool:
+        """Add a topic candidate if unique and not recently harvested.  Returns True if added."""
+        topic = topic.strip()
+        if not topic or len(topic) < 4:
+            return False
+        tl = topic.lower()
+        if tl in seen_lower or tl in recently_harvested:
+            return False
+        # Ensure 2-5 words
+        word_count = len(topic.split())
+        if word_count < 2 or word_count > 5:
+            return False
+        seen_lower.add(tl)
+        candidates.append(topic)
+        return len(candidates) >= _MAX_TOPICS
+
+    # --- Source 1: Conversation-derived topics from recent memories ---
     try:
         import sqlite3 as _sqlite3
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
         db_path = root / ".planning" / "brain" / "jarvis_memory.db"
         if db_path.exists():
             conn = _sqlite3.connect(str(db_path), timeout=5)
             conn.row_factory = _sqlite3.Row
             try:
-                # Find node_types or edge relations with few nodes (sparse branches)
-                # Group by first word of label to find underrepresented topic clusters
+                cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
                 rows = conn.execute(
-                    """SELECT SUBSTR(label, 1, INSTR(label || ' ', ' ') - 1) AS topic_word,
-                              COUNT(*) AS cnt
-                       FROM kg_nodes
-                       WHERE confidence >= 0.3
-                       GROUP BY topic_word
-                       HAVING cnt BETWEEN 1 AND 3
-                       ORDER BY cnt ASC
-                       LIMIT 5"""
+                    """SELECT summary FROM records
+                       WHERE ts >= ? AND source = 'user'
+                       ORDER BY ts DESC
+                       LIMIT 30""",
+                    (cutoff,),
                 ).fetchall()
                 for row in rows:
-                    word = row["topic_word"]
-                    if word and len(word) > 2 and word not in topics:
-                        topics.append(word)
-                        if len(topics) >= 2:
+                    summary = row["summary"] or ""
+                    phrases = _extract_topic_phrases(summary)
+                    for phrase in phrases:
+                        if _add_candidate(phrase):
+                            break
+                    if len(candidates) >= _MAX_TOPICS:
+                        break
+            finally:
+                conn.close()
+    except Exception:
+        pass  # Memory DB may not exist yet
+
+    if len(candidates) >= _MAX_TOPICS:
+        return candidates[:_MAX_TOPICS]
+
+    # --- Source 2: KG gap analysis — relation types with few edges + sparse areas ---
+    try:
+        import sqlite3 as _sqlite3
+
+        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        if db_path.exists():
+            conn = _sqlite3.connect(str(db_path), timeout=5)
+            conn.row_factory = _sqlite3.Row
+            try:
+                # 2a: Find nodes that have few outgoing edges (surface-level knowledge)
+                # These represent areas where we have facts but not much depth
+                sparse_rows = conn.execute(
+                    """SELECT n.label, COUNT(e.edge_id) AS edge_cnt
+                       FROM kg_nodes n
+                       LEFT JOIN kg_edges e ON n.node_id = e.source_id
+                       WHERE n.confidence >= 0.3
+                       GROUP BY n.node_id
+                       HAVING edge_cnt BETWEEN 0 AND 1
+                       ORDER BY n.updated_at DESC
+                       LIMIT 10""",
+                ).fetchall()
+                for row in sparse_rows:
+                    label = row["label"] or ""
+                    phrases = _extract_topic_phrases(label)
+                    for phrase in phrases:
+                        if _add_candidate(phrase):
+                            break
+                    if len(candidates) >= _MAX_TOPICS:
+                        break
+
+                # 2b: Find relation types with few instances — structural KG gaps
+                if len(candidates) < _MAX_TOPICS:
+                    rel_rows = conn.execute(
+                        """SELECT relation, COUNT(*) AS cnt
+                           FROM kg_edges
+                           GROUP BY relation
+                           HAVING cnt BETWEEN 1 AND 3
+                           ORDER BY cnt ASC
+                           LIMIT 5""",
+                    ).fetchall()
+                    for row in rel_rows:
+                        relation = row["relation"] or ""
+                        # Turn relation into a topic: "causes" -> look up nodes
+                        # Find a node connected by this rare relation for context
+                        node_row = conn.execute(
+                            """SELECT n.label FROM kg_nodes n
+                               JOIN kg_edges e ON n.node_id = e.source_id
+                               WHERE e.relation = ?
+                               LIMIT 1""",
+                            (relation,),
+                        ).fetchone()
+                        if node_row:
+                            label = node_row["label"] or ""
+                            phrases = _extract_topic_phrases(label)
+                            for phrase in phrases:
+                                if _add_candidate(phrase):
+                                    break
+                        if len(candidates) >= _MAX_TOPICS:
                             break
             finally:
                 conn.close()
     except Exception:
         pass  # KG may not exist yet
 
-    if len(topics) >= 2:
-        return topics[:2]
+    if len(candidates) >= _MAX_TOPICS:
+        return candidates[:_MAX_TOPICS]
 
-    # --- Source 3: Fallback — completed learning mission topics ---
+    # --- Source 3: Complementary topics — expand strong KG areas ---
+    try:
+        import sqlite3 as _sqlite3
+
+        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        if db_path.exists():
+            conn = _sqlite3.connect(str(db_path), timeout=5)
+            conn.row_factory = _sqlite3.Row
+            try:
+                # Find the most populated topic areas (first 2-3 words of node labels)
+                strong_rows = conn.execute(
+                    """SELECT
+                         CASE
+                           WHEN INSTR(SUBSTR(label, INSTR(label || ' ', ' ') + 1), ' ') > 0
+                           THEN SUBSTR(label, 1,
+                                  INSTR(label || ' ', ' ')
+                                  + INSTR(SUBSTR(label, INSTR(label || ' ', ' ') + 1) || ' ', ' ') - 1)
+                           ELSE SUBSTR(label, 1, INSTR(label || ' ', ' ') - 1)
+                         END AS topic_prefix,
+                         COUNT(*) AS cnt
+                       FROM kg_nodes
+                       WHERE confidence >= 0.5
+                       GROUP BY topic_prefix
+                       HAVING cnt >= 5 AND LENGTH(topic_prefix) > 3
+                       ORDER BY cnt DESC
+                       LIMIT 5""",
+                ).fetchall()
+                suffixes = ["best practices", "advanced techniques", "common patterns"]
+                suffix_idx = 0
+                for row in strong_rows:
+                    prefix = (row["topic_prefix"] or "").strip()
+                    if not prefix or len(prefix) < 3:
+                        continue
+                    expanded = f"{prefix} {suffixes[suffix_idx % len(suffixes)]}"
+                    suffix_idx += 1
+                    if _add_candidate(expanded):
+                        break
+                    if len(candidates) >= _MAX_TOPICS:
+                        break
+            finally:
+                conn.close()
+    except Exception:
+        pass
+
+    if len(candidates) >= _MAX_TOPICS:
+        return candidates[:_MAX_TOPICS]
+
+    # --- Source 4: Activity feed fact-extraction summaries ---
+    try:
+        from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
+        feed_db = root / ".planning" / "brain" / "activity_feed.db"
+        if feed_db.exists():
+            feed = ActivityFeed(db_path=feed_db)
+            events = feed.query(limit=20, category=ActivityCategory.FACT_EXTRACTED)
+            for ev in events:
+                summary = ev.summary or ""
+                if len(summary) > 5:
+                    phrases = _extract_topic_phrases(summary)
+                    for phrase in phrases:
+                        if _add_candidate(phrase):
+                            break
+                    if len(candidates) >= _MAX_TOPICS:
+                        break
+    except Exception:
+        pass  # Activity feed is optional
+
+    if len(candidates) >= _MAX_TOPICS:
+        return candidates[:_MAX_TOPICS]
+
+    # --- Source 5: Fallback — completed learning mission topics ---
     try:
         missions = load_missions(root)
         for m in reversed(missions):
             status = str(m.get("status", "")).lower()
             if status in ("completed", "done", "running"):
                 topic = str(m.get("topic", "")).strip()
-                if topic and topic not in topics:
-                    topics.append(topic)
-                    if len(topics) >= 2:
-                        break
+                if topic:
+                    # If it's already multi-word, use as-is; else skip (single words are poor)
+                    if len(topic.split()) >= 2:
+                        if _add_candidate(topic):
+                            break
     except Exception:
         pass
 
-    return topics[:2]
+    return candidates[:_MAX_TOPICS]
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
     is_safe_public_url as _is_safe_public_url,
     search_duckduckgo as _search_duckduckgo,
+    search_web as _search_web,
 )
 
 MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
@@ -211,7 +212,7 @@ def run_learning_mission(
 
     urls: list[str] = []
     for query in queries:
-        urls.extend(_search_duckduckgo(query, limit=max_search_results))
+        urls.extend(_search_web(query, limit=max_search_results))
     urls = list(dict.fromkeys(urls))
     candidate_rows: list[dict[str, str]] = []
     selected: list[tuple[str, str]] = []

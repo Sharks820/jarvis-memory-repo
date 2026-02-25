@@ -48,7 +48,7 @@ def test_learning_mission_create_and_run_with_verification(tmp_path: Path, monke
             "Separate scenes can help testing."
         )
 
-    monkeypatch.setattr(learning_missions, "_search_duckduckgo", fake_search)
+    monkeypatch.setattr(learning_missions, "_search_web", fake_search)
     monkeypatch.setattr(learning_missions, "_fetch_page_text", fake_fetch)
 
     report = learning_missions.run_learning_mission(tmp_path, mission_id=mission_id, max_search_results=4, max_pages=4)
@@ -261,7 +261,7 @@ def test_run_mission_not_found(tmp_path: Path) -> None:
 
 def test_run_mission_empty_search_results(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Obscure topic", objective="learn")
-    monkeypatch.setattr(learning_missions, "_search_duckduckgo", lambda query, limit: [])
+    monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     assert report["verified_count"] == 0
@@ -271,7 +271,7 @@ def test_run_mission_empty_search_results(tmp_path: Path, monkeypatch) -> None:
 def test_run_mission_fetch_returns_empty(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Some topic", objective="learn")
     monkeypatch.setattr(
-        learning_missions, "_search_duckduckgo",
+        learning_missions, "_search_web",
         lambda query, limit: ["https://example.com/page"],
     )
     monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
@@ -281,7 +281,7 @@ def test_run_mission_fetch_returns_empty(tmp_path: Path, monkeypatch) -> None:
 
 def test_run_mission_updates_status_to_completed(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Quick topic", objective="learn fast")
-    monkeypatch.setattr(learning_missions, "_search_duckduckgo", lambda query, limit: [])
+    monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     missions = load_missions(tmp_path)
@@ -292,7 +292,7 @@ def test_run_mission_updates_status_to_completed(tmp_path: Path, monkeypatch) ->
 
 def test_run_mission_writes_report_file(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Report test", objective="verify file")
-    monkeypatch.setattr(learning_missions, "_search_duckduckgo", lambda query, limit: [])
+    monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     mid = mission["mission_id"]

@@ -238,8 +238,8 @@ class TestLearningMissionPerformance:
 
         monkeypatch.setattr(learning_missions, "_fetch_page_text", mock_fetch)
         monkeypatch.setattr(
-            learning_missions, 
-            "_search_duckduckgo", 
+            learning_missions,
+            "_search_web",
             lambda q, limit: [f"https://example.com/{i}" for i in range(8)]
         )
 
@@ -682,9 +682,9 @@ class TestDaemonAutoHarvest:
         missions_path = tmp_path / ".planning" / "missions.json"
         missions_path.parent.mkdir(parents=True, exist_ok=True)
         missions_path.write_text(json.dumps([
-            {"mission_id": "m-1", "topic": "quantum computing", "status": "completed"},
-            {"mission_id": "m-2", "topic": "machine learning", "status": "done"},
-            {"mission_id": "m-3", "topic": "pending topic", "status": "pending"},
+            {"mission_id": "m-1", "topic": "quantum computing basics", "status": "completed"},
+            {"mission_id": "m-2", "topic": "machine learning fundamentals", "status": "done"},
+            {"mission_id": "m-3", "topic": "pending topic review", "status": "pending"},
         ]), encoding="utf-8")
 
         with patch.object(main_mod, "load_missions", side_effect=lambda r: json.loads(
@@ -693,10 +693,10 @@ class TestDaemonAutoHarvest:
             topics = main_mod._discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
-        assert len(topics) <= 2
+        assert len(topics) <= 3
         # Should prefer completed/done missions, not pending
         for t in topics:
-            assert t in ("quantum computing", "machine learning")
+            assert t in ("quantum computing basics", "machine learning fundamentals")
 
     def test_discover_harvest_topics_returns_empty_on_no_data(
         self, tmp_path: Path
@@ -704,12 +704,12 @@ class TestDaemonAutoHarvest:
         """_discover_harvest_topics should return [] when no data sources exist."""
         topics = main_mod._discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
-        assert len(topics) <= 2
+        assert len(topics) <= 3
 
     def test_discover_harvest_topics_from_kg_sparse_branches(
         self, tmp_path: Path
     ) -> None:
-        """_discover_harvest_topics should find sparse KG branches."""
+        """_discover_harvest_topics should find sparse KG branches with multi-word topics."""
         import sqlite3
 
         db_dir = tmp_path / ".planning" / "brain"
@@ -727,19 +727,58 @@ class TestDaemonAutoHarvest:
                 sources TEXT NOT NULL DEFAULT '[]',
                 history TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT,
-                updated_at TEXT
+                updated_at TEXT DEFAULT (datetime('now'))
             )
         """)
-        # Insert sparse nodes (1-3 per topic word)
-        conn.execute("INSERT INTO kg_nodes (node_id, label, confidence) VALUES ('n1', 'Photosynthesis converts light', 0.8)")
-        conn.execute("INSERT INTO kg_nodes (node_id, label, confidence) VALUES ('n2', 'Mitochondria produces ATP', 0.7)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS kg_edges (
+                edge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.5,
+                source_record TEXT DEFAULT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (source_id) REFERENCES kg_nodes(node_id),
+                FOREIGN KEY (target_id) REFERENCES kg_nodes(node_id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS records (
+                record_id TEXT PRIMARY KEY,
+                ts TEXT NOT NULL,
+                source TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                task_id TEXT NOT NULL DEFAULT '',
+                branch TEXT NOT NULL DEFAULT 'general',
+                tags TEXT NOT NULL DEFAULT '[]',
+                summary TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.72,
+                tier TEXT NOT NULL DEFAULT 'warm',
+                access_count INTEGER NOT NULL DEFAULT 0,
+                last_accessed TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        # Insert sparse nodes (no outgoing edges — surface-level facts)
+        conn.execute(
+            "INSERT INTO kg_nodes (node_id, label, confidence) VALUES "
+            "('n1', 'Photosynthesis converts light energy', 0.8)"
+        )
+        conn.execute(
+            "INSERT INTO kg_nodes (node_id, label, confidence) VALUES "
+            "('n2', 'Mitochondria produces ATP molecules', 0.7)"
+        )
         conn.commit()
         conn.close()
 
         topics = main_mod._discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
-        # Should have found sparse topic words from KG
+        # Should have found multi-word topics from sparse KG nodes
         assert len(topics) >= 1
+        for t in topics:
+            assert len(t.split()) >= 2, f"Topic should be multi-word, got: {t!r}"
 
     def test_auto_harvest_runs_at_cycle_200(
         self, tmp_path: Path, monkeypatch, capsys
@@ -863,3 +902,366 @@ class TestDaemonAutoHarvest:
         assert rc == 0
         captured = capsys.readouterr()
         assert "auto_harvest_skipped=no_providers_available" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Helper: create a mock memory DB with records and KG tables
+# ---------------------------------------------------------------------------
+
+def _create_mock_memory_db(tmp_path: Path) -> Path:
+    """Create a mock jarvis_memory.db with records, kg_nodes, and kg_edges tables."""
+    import sqlite3
+
+    db_dir = tmp_path / ".planning" / "brain"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_path = db_dir / "jarvis_memory.db"
+
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS records (
+            record_id TEXT PRIMARY KEY,
+            ts TEXT NOT NULL,
+            source TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            task_id TEXT NOT NULL DEFAULT '',
+            branch TEXT NOT NULL DEFAULT 'general',
+            tags TEXT NOT NULL DEFAULT '[]',
+            summary TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.72,
+            tier TEXT NOT NULL DEFAULT 'warm',
+            access_count INTEGER NOT NULL DEFAULT 0,
+            last_accessed TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS kg_nodes (
+            node_id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            node_type TEXT NOT NULL DEFAULT 'fact',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            locked INTEGER NOT NULL DEFAULT 0,
+            sources TEXT NOT NULL DEFAULT '[]',
+            history TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS kg_edges (
+            edge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.5,
+            source_record TEXT DEFAULT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (source_id) REFERENCES kg_nodes(node_id),
+            FOREIGN KEY (target_id) REFERENCES kg_nodes(node_id)
+        );
+    """)
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+class TestImprovedTopicDiscovery:
+    """Tests for the improved topic discovery heuristics."""
+
+    def test_conversation_derived_topics_from_recent_memories(
+        self, tmp_path: Path
+    ) -> None:
+        """Source 1: should extract multi-word topics from recent user memory entries."""
+        import sqlite3
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+
+        recent_ts = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+        conn.execute(
+            "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
+            "VALUES (?, ?, 'user', 'episodic', ?, ?)",
+            ("r1", recent_ts, "How do Python async patterns work with coroutines", "hash1"),
+        )
+        conn.execute(
+            "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
+            "VALUES (?, ?, 'user', 'episodic', ?, ?)",
+            ("r2", recent_ts, "Explain Kubernetes pod networking concepts", "hash2"),
+        )
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert len(topics) >= 1
+        assert len(topics) <= 3
+        for t in topics:
+            word_count = len(t.split())
+            assert 2 <= word_count <= 5, f"Topic must be 2-5 words, got {word_count}: {t!r}"
+
+    def test_topics_are_multi_word_not_single(
+        self, tmp_path: Path
+    ) -> None:
+        """All discovered topics should be multi-word (2-5 words), never single words."""
+        import sqlite3
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+
+        recent_ts = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+        # Even with short content, topics should still be multi-word
+        conn.execute(
+            "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
+            "VALUES (?, ?, 'user', 'episodic', ?, ?)",
+            ("r1", recent_ts, "Tell me about React state management hooks", "hash1"),
+        )
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        for t in topics:
+            assert len(t.split()) >= 2, f"Single-word topic not allowed: {t!r}"
+
+    def test_deduplication_against_recently_harvested(
+        self, tmp_path: Path
+    ) -> None:
+        """Topics that were recently harvested (last 14 days) should be skipped."""
+        import sqlite3
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        recent_ts = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+        conn.execute(
+            "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
+            "VALUES (?, ?, 'user', 'episodic', ?, ?)",
+            ("r1", recent_ts, "Python async patterns explanation", "hash1"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Mock _get_recently_harvested_topics to return the same topic
+        with patch.object(
+            main_mod, "_get_recently_harvested_topics",
+            return_value={"python async patterns"},
+        ):
+            topics = main_mod._discover_harvest_topics(tmp_path)
+
+        # The exact phrase "Python async patterns" should be deduplicated
+        for t in topics:
+            assert t.lower() != "python async patterns", \
+                f"Recently harvested topic should be skipped: {t!r}"
+
+    def test_kg_gap_analysis_finds_low_edge_nodes(
+        self, tmp_path: Path
+    ) -> None:
+        """Source 2: nodes with zero/one outgoing edges should be surfaced."""
+        import sqlite3
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        # Insert nodes — one with edges, one without
+        conn.execute(
+            "INSERT INTO kg_nodes (node_id, label, confidence) VALUES "
+            "('n1', 'Neural network training optimization', 0.8)"
+        )
+        conn.execute(
+            "INSERT INTO kg_nodes (node_id, label, confidence) VALUES "
+            "('n2', 'Gradient descent convergence rate', 0.7)"
+        )
+        conn.execute(
+            "INSERT INTO kg_nodes (node_id, label, confidence) VALUES "
+            "('n3', 'Dense fully connected node', 0.9)"
+        )
+        # n3 has many edges, n1 and n2 have none
+        conn.execute(
+            "INSERT INTO kg_edges (source_id, target_id, relation) VALUES "
+            "('n3', 'n1', 'related_to')"
+        )
+        conn.execute(
+            "INSERT INTO kg_edges (source_id, target_id, relation) VALUES "
+            "('n3', 'n2', 'causes')"
+        )
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert len(topics) >= 1
+        # All should be multi-word
+        for t in topics:
+            assert len(t.split()) >= 2
+
+    def test_complementary_topics_from_strong_kg_areas(
+        self, tmp_path: Path
+    ) -> None:
+        """Source 3: strong KG areas should be expanded with suffixes like 'best practices'."""
+        import sqlite3
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        # Create a strong topic cluster (>= 5 nodes with same prefix)
+        for i in range(6):
+            conn.execute(
+                "INSERT INTO kg_nodes (node_id, label, confidence) VALUES (?, ?, 0.8)",
+                (f"n{i}", f"Python testing {['frameworks', 'patterns', 'mocking', 'coverage', 'fixtures', 'assertions'][i]}", ),
+            )
+        # Give them all edges so they are NOT caught by source 2
+        for i in range(5):
+            conn.execute(
+                "INSERT INTO kg_edges (source_id, target_id, relation) VALUES (?, ?, 'related_to')",
+                (f"n{i}", f"n{i+1}"),
+            )
+            conn.execute(
+                "INSERT INTO kg_edges (source_id, target_id, relation) VALUES (?, ?, 'part_of')",
+                (f"n{i+1}", f"n{i}"),
+            )
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        # Should find at least one complementary topic with a suffix
+        found_expanded = False
+        for t in topics:
+            tl = t.lower()
+            if any(s in tl for s in ("best practices", "advanced techniques", "common patterns")):
+                found_expanded = True
+                break
+        assert found_expanded, f"Expected complementary expansion, got: {topics}"
+
+    def test_returns_up_to_three_topics(
+        self, tmp_path: Path
+    ) -> None:
+        """Should return at most 3 topics."""
+        import sqlite3
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+
+        # Insert many user records to get multiple candidate topics
+        recent_ts = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+        for i in range(10):
+            topics_list = [
+                "Python async patterns explained",
+                "Kubernetes pod networking overview",
+                "React state management hooks",
+                "Docker container security practices",
+                "GraphQL schema design patterns",
+                "PostgreSQL query optimization tips",
+                "Redis caching strategy overview",
+                "Terraform infrastructure provisioning guide",
+                "Prometheus monitoring alerting setup",
+                "gRPC service communication protocol",
+            ]
+            conn.execute(
+                "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
+                "VALUES (?, ?, 'user', 'episodic', ?, ?)",
+                (f"r{i}", recent_ts, topics_list[i], f"hash{i}"),
+            )
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert len(topics) <= 3, f"Expected at most 3 topics, got {len(topics)}: {topics}"
+        assert len(topics) >= 1, "Expected at least 1 topic from rich data"
+
+    def test_fallback_chain_all_sources_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """When all data sources are empty, should return [] without errors."""
+        # tmp_path has no brain directory, no missions, no activity feed
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert topics == []
+
+    def test_fallback_chain_only_missions_available(
+        self, tmp_path: Path
+    ) -> None:
+        """When only mission data exists, should fall through to source 5."""
+        import json
+
+        with patch.object(main_mod, "load_missions", return_value=[
+            {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},
+        ]):
+            topics = main_mod._discover_harvest_topics(tmp_path)
+
+        assert len(topics) >= 1
+        assert "quantum computing fundamentals" in topics
+
+    def test_old_memories_not_preferred_over_recent(
+        self, tmp_path: Path
+    ) -> None:
+        """Source 1 should only look at memories from the last 7 days."""
+        import sqlite3
+        from datetime import datetime, timedelta
+        from jarvis_engine._compat import UTC
+
+        db_path = _create_mock_memory_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+
+        # Insert an old record (30 days ago) — should NOT be picked
+        old_ts = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+        conn.execute(
+            "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
+            "VALUES (?, ?, 'user', 'episodic', ?, ?)",
+            ("r-old", old_ts, "Ancient Sumerian agriculture techniques", "hash-old"),
+        )
+        conn.commit()
+        conn.close()
+
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        # The old memory topic should not appear (it's beyond 7-day window)
+        for t in topics:
+            assert "sumerian" not in t.lower(), \
+                f"Old memory should not be selected: {t!r}"
+
+    def test_extract_topic_phrases_utility(self) -> None:
+        """_extract_topic_phrases should produce multi-word phrases from text."""
+        phrases = main_mod._extract_topic_phrases(
+            "How do Python async patterns work with coroutines and event loops"
+        )
+        assert len(phrases) >= 1
+        for p in phrases:
+            assert len(p.split()) >= 2
+            assert len(p.split()) <= 5
+
+    def test_extract_topic_phrases_filters_stopwords(self) -> None:
+        """_extract_topic_phrases should filter common stop words."""
+        phrases = main_mod._extract_topic_phrases("the is a an of in to for with on")
+        # All stop words — should produce no phrases
+        assert phrases == []
+
+    def test_extract_topic_phrases_handles_empty_input(self) -> None:
+        """_extract_topic_phrases should handle empty and whitespace input."""
+        assert main_mod._extract_topic_phrases("") == []
+        assert main_mod._extract_topic_phrases("   ") == []
+
+    def test_single_word_mission_topics_are_skipped(
+        self, tmp_path: Path
+    ) -> None:
+        """Source 5 should skip single-word mission topics (poor quality)."""
+        with patch.object(main_mod, "load_missions", return_value=[
+            {"mission_id": "m-1", "topic": "Python", "status": "completed"},
+            {"mission_id": "m-2", "topic": "AI", "status": "done"},
+        ]):
+            topics = main_mod._discover_harvest_topics(tmp_path)
+
+        # Single-word topics should be skipped
+        for t in topics:
+            assert t not in ("Python", "AI"), f"Single-word topic should be skipped: {t!r}"
+
+    def test_never_raises_on_corrupt_db(
+        self, tmp_path: Path
+    ) -> None:
+        """Should return [] without raising even if the DB file is corrupt."""
+        db_dir = tmp_path / ".planning" / "brain"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        db_path = db_dir / "jarvis_memory.db"
+        db_path.write_bytes(b"not a real sqlite database")
+
+        # Should NOT raise
+        topics = main_mod._discover_harvest_topics(tmp_path)
+        assert isinstance(topics, list)

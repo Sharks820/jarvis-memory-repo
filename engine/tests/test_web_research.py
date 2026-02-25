@@ -9,7 +9,7 @@ from jarvis_engine.web_research import _extract_snippet, _query_keywords
 def test_run_web_research_collects_findings(monkeypatch) -> None:
     monkeypatch.setattr(
         web_research,
-        "_search_duckduckgo",
+        "_search_web",
         lambda query, limit: [
             "https://example.com/a",
             "https://docs.example.org/b",
@@ -112,7 +112,7 @@ def test_extract_snippet_max_sentences_limit() -> None:
 # ── run_web_research extended tests ───────────────────────────────────────
 
 def test_run_web_research_empty_search_results(monkeypatch) -> None:
-    monkeypatch.setattr(web_research, "_search_duckduckgo", lambda query, limit: [])
+    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
     report = web_research.run_web_research("obscure topic nobody writes about")
     assert report["finding_count"] == 0
@@ -122,7 +122,7 @@ def test_run_web_research_empty_search_results(monkeypatch) -> None:
 
 def test_run_web_research_fetch_returns_empty(monkeypatch) -> None:
     monkeypatch.setattr(
-        web_research, "_search_duckduckgo",
+        web_research, "_search_web",
         lambda query, limit: ["https://example.com/page1", "https://example.com/page2"],
     )
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
@@ -133,7 +133,7 @@ def test_run_web_research_fetch_returns_empty(monkeypatch) -> None:
 
 def test_run_web_research_deduplicates_findings(monkeypatch) -> None:
     monkeypatch.setattr(
-        web_research, "_search_duckduckgo",
+        web_research, "_search_web",
         lambda query, limit: ["https://a.com/1", "https://b.com/2"],
     )
     # Both pages return identical relevant content
@@ -147,7 +147,7 @@ def test_run_web_research_deduplicates_findings(monkeypatch) -> None:
 
 
 def test_run_web_research_query_truncation(monkeypatch) -> None:
-    monkeypatch.setattr(web_research, "_search_duckduckgo", lambda query, limit: [])
+    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
     long_query = "x" * 500
     report = web_research.run_web_research(long_query)
@@ -156,7 +156,7 @@ def test_run_web_research_query_truncation(monkeypatch) -> None:
 
 def test_run_web_research_malformed_url_no_domain(monkeypatch) -> None:
     monkeypatch.setattr(
-        web_research, "_search_duckduckgo",
+        web_research, "_search_web",
         lambda query, limit: ["not-a-valid-url", "https://valid.com/page"],
     )
     monkeypatch.setattr(
@@ -175,7 +175,7 @@ def test_run_web_research_max_results_clamped(monkeypatch) -> None:
         called_limits.append(limit)
         return []
 
-    monkeypatch.setattr(web_research, "_search_duckduckgo", capture_search)
+    monkeypatch.setattr(web_research, "_search_web", capture_search)
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
     web_research.run_web_research("test", max_results=100)
     assert called_limits[0] <= 20  # Should be clamped to 20 max
@@ -188,7 +188,7 @@ def test_run_web_research_max_results_min_two(monkeypatch) -> None:
         called_limits.append(limit)
         return []
 
-    monkeypatch.setattr(web_research, "_search_duckduckgo", capture_search)
+    monkeypatch.setattr(web_research, "_search_web", capture_search)
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
     web_research.run_web_research("test", max_results=0)
     assert called_limits[0] >= 2  # Should be at least 2
@@ -196,7 +196,7 @@ def test_run_web_research_max_results_min_two(monkeypatch) -> None:
 
 def test_run_web_research_no_snippet_match(monkeypatch) -> None:
     monkeypatch.setattr(
-        web_research, "_search_duckduckgo",
+        web_research, "_search_web",
         lambda query, limit: ["https://example.com/page"],
     )
     monkeypatch.setattr(
@@ -208,7 +208,7 @@ def test_run_web_research_no_snippet_match(monkeypatch) -> None:
 
 
 def test_run_web_research_report_has_generated_utc(monkeypatch) -> None:
-    monkeypatch.setattr(web_research, "_search_duckduckgo", lambda query, limit: [])
+    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
     report = web_research.run_web_research("any topic")
     assert "generated_utc" in report
@@ -218,7 +218,7 @@ def test_run_web_research_report_has_generated_utc(monkeypatch) -> None:
 
 def test_run_web_research_findings_have_domain(monkeypatch) -> None:
     monkeypatch.setattr(
-        web_research, "_search_duckduckgo",
+        web_research, "_search_web",
         lambda query, limit: ["https://docs.python.org/tutorial"],
     )
     monkeypatch.setattr(

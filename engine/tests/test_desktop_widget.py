@@ -42,6 +42,11 @@ from jarvis_engine.desktop_widget import (
     _dpapi_encrypt,
     _dpapi_decrypt,
     _DPAPI_AVAILABLE,
+    _show_toast,
+    _TOAST_COOLDOWN_SECONDS,
+    _TOAST_MAX_TITLE,
+    _TOAST_MAX_MESSAGE,
+    _TOAST_ICON_TYPES,
 )
 
 
@@ -807,3 +812,152 @@ class TestSaveLoadRoundTripDpapi:
         assert cfg_loaded.token == "tok_abc"
         assert cfg_loaded.signing_key == "sk_xyz"
         assert cfg_loaded.device_id == "dev1"
+
+
+# ---- Toast notification function --------------------------------------------
+
+class TestShowToast:
+    """Test _show_toast without actually launching PowerShell."""
+
+    def _reset_throttle(self):
+        """Reset the module-level toast throttle state for test isolation."""
+        import jarvis_engine.desktop_widget as dw
+        dw._last_toast_time = 0.0
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_basic_toast_launches_powershell(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("Hello", "World", "Info")
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args
+        cmd_list = args[0][0]
+        assert cmd_list[0] == "powershell"
+        assert "-NoProfile" in cmd_list
+        # The script should contain our title and message
+        script = cmd_list[-1]
+        assert "Hello" in script
+        assert "World" in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_title_truncated_to_max(self, mock_popen):
+        self._reset_throttle()
+        long_title = "A" * 200
+        _show_toast(long_title, "msg")
+        script = mock_popen.call_args[0][0][-1]
+        # Title in script should be truncated to _TOAST_MAX_TITLE chars
+        assert "A" * _TOAST_MAX_TITLE in script
+        assert "A" * (_TOAST_MAX_TITLE + 1) not in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_message_truncated_to_max(self, mock_popen):
+        self._reset_throttle()
+        long_msg = "B" * 500
+        _show_toast("title", long_msg)
+        script = mock_popen.call_args[0][0][-1]
+        assert "B" * _TOAST_MAX_MESSAGE in script
+        assert "B" * (_TOAST_MAX_MESSAGE + 1) not in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_invalid_icon_defaults_to_info(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("title", "msg", "BogusIcon")
+        script = mock_popen.call_args[0][0][-1]
+        assert "::Info" in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_warning_icon(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("title", "msg", "Warning")
+        script = mock_popen.call_args[0][0][-1]
+        assert "::Warning" in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_error_icon(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("title", "msg", "Error")
+        script = mock_popen.call_args[0][0][-1]
+        assert "::Error" in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_single_quotes_escaped_in_title_and_message(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("It's", "don't panic")
+        script = mock_popen.call_args[0][0][-1]
+        # PowerShell escaping: ' -> ''
+        assert "It''s" in script
+        assert "don''t panic" in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_empty_title_defaults_to_jarvis(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("", "msg")
+        script = mock_popen.call_args[0][0][-1]
+        assert "Jarvis" in script
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_popen_exception_does_not_raise(self, mock_popen):
+        self._reset_throttle()
+        mock_popen.side_effect = OSError("powershell not found")
+        # Should not raise
+        _show_toast("title", "msg")
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_fire_and_forget_uses_popen_not_run(self, mock_popen):
+        """Verify Popen is used (non-blocking) rather than subprocess.run."""
+        self._reset_throttle()
+        _show_toast("title", "msg")
+        mock_popen.assert_called_once()
+        # stdout/stderr should be DEVNULL (fire-and-forget)
+        kwargs = mock_popen.call_args[1]
+        import subprocess as _sp
+        assert kwargs.get("stdout") == _sp.DEVNULL
+        assert kwargs.get("stderr") == _sp.DEVNULL
+
+
+class TestToastThrottle:
+    """Test the toast notification throttle (max 1 per cooldown period)."""
+
+    def _reset_throttle(self):
+        import jarvis_engine.desktop_widget as dw
+        dw._last_toast_time = 0.0
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_second_toast_within_cooldown_is_throttled(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("First", "msg")
+        assert mock_popen.call_count == 1
+        # Second call within cooldown should be throttled
+        _show_toast("Second", "msg")
+        assert mock_popen.call_count == 1  # Still 1 -- second was suppressed
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_toast_after_cooldown_expires(self, mock_popen):
+        self._reset_throttle()
+        _show_toast("First", "msg")
+        assert mock_popen.call_count == 1
+        # Simulate time passing beyond cooldown
+        import jarvis_engine.desktop_widget as dw
+        dw._last_toast_time = time.time() - _TOAST_COOLDOWN_SECONDS - 1
+        _show_toast("Second", "msg")
+        assert mock_popen.call_count == 2
+
+    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    def test_cooldown_is_120_seconds(self, mock_popen):
+        """Verify the cooldown constant is 2 minutes (120 seconds)."""
+        assert _TOAST_COOLDOWN_SECONDS == 120
+
+
+class TestToastConstants:
+    """Verify toast notification constants."""
+
+    def test_max_title_length(self):
+        assert _TOAST_MAX_TITLE == 64
+
+    def test_max_message_length(self):
+        assert _TOAST_MAX_MESSAGE == 256
+
+    def test_valid_icon_types(self):
+        assert _TOAST_ICON_TYPES == {"Info", "Warning", "Error"}
+
+    def test_cooldown_seconds(self):
+        assert _TOAST_COOLDOWN_SECONDS == 120
