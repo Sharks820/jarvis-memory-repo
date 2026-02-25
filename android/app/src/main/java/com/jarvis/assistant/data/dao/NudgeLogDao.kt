@@ -55,4 +55,8 @@ interface NudgeLogDao {
 
     @Query("SELECT COUNT(*) FROM nudge_log")
     fun totalCountFlow(): Flow<Int>
+
+    /** Delete entries older than the given timestamp to prevent unbounded table growth. */
+    @Query("DELETE FROM nudge_log WHERE deliveredAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }

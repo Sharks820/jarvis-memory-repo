@@ -1,10 +1,9 @@
 package com.jarvis.assistant.data.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.jarvis.assistant.data.entity.ContactContextEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -38,7 +37,7 @@ interface ContactContextDao {
     @Query("SELECT * FROM contact_context WHERE anniversary != '' ORDER BY anniversary")
     suspend fun getContactsWithAnniversaries(): List<ContactContextEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(contact: ContactContextEntity): Long
 
     @Update

@@ -42,4 +42,8 @@ interface NotificationLogDao {
     /** Delete all entries (used by "Reset Learning Data" button). */
     @Query("DELETE FROM notification_log")
     suspend fun deleteAll()
+
+    /** Delete entries older than the given timestamp to prevent unbounded table growth. */
+    @Query("DELETE FROM notification_log WHERE createdAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }

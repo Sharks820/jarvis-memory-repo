@@ -243,16 +243,11 @@ class DoseActionReceiver : BroadcastReceiver() {
                 }
 
                 if (pendingLog != null) {
-                    // Update the pending entry -- Room doesn't have a direct update-by-field,
-                    // so we insert a new corrected entry (the pending one stays but is superseded)
-                    logDao.insert(
-                        MedicationLogEntity(
-                            medicationId = medicationId,
-                            medicationName = medicationName,
-                            scheduledTime = scheduledTime,
+                    // Update the existing pending entry in-place (preserves its primary key)
+                    logDao.update(
+                        pendingLog.copy(
                             takenAt = if (isTaken) System.currentTimeMillis() else 0L,
                             status = status,
-                            date = todayDate,
                         ),
                     )
                 } else {

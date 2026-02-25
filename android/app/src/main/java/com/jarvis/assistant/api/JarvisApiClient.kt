@@ -41,14 +41,19 @@ class JarvisApiClient @Inject constructor(
             .build()
     }
 
-    /** Lazily build Retrofit using the current base URL from encrypted prefs. */
-    fun api(): JarvisApi {
+    private val retrofit: Retrofit by lazy {
         val baseUrl = crypto.getBaseUrl().ifBlank { "http://127.0.0.1:8787" }
-        return Retrofit.Builder()
+        Retrofit.Builder()
             .baseUrl(baseUrl.trimEnd('/') + "/")
             .client(okHttp)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(JarvisApi::class.java)
     }
+
+    private val apiInstance: JarvisApi by lazy {
+        retrofit.create(JarvisApi::class.java)
+    }
+
+    /** Returns a cached [JarvisApi] Retrofit proxy. */
+    fun api(): JarvisApi = apiInstance
 }

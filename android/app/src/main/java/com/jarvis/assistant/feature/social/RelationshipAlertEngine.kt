@@ -73,7 +73,8 @@ class RelationshipAlertEngine @Inject constructor(
             val alertKey = "birthday_alerted_${contact.id}_$year"
             if (prefs.getBoolean(alertKey, false)) continue
 
-            val when_ = when (contact.birthday) {
+            val birthdayMMDD = extractMMDD(contact.birthday) ?: continue
+            val when_ = when (birthdayMMDD) {
                 today -> "today"
                 tomorrow -> "tomorrow"
                 else -> continue
@@ -113,7 +114,8 @@ class RelationshipAlertEngine @Inject constructor(
             val alertKey = "anniversary_alerted_${contact.id}_$year"
             if (prefs.getBoolean(alertKey, false)) continue
 
-            val when_ = when (contact.anniversary) {
+            val anniversaryMMDD = extractMMDD(contact.anniversary) ?: continue
+            val when_ = when (anniversaryMMDD) {
                 today -> "today"
                 tomorrow -> "tomorrow"
                 else -> continue
@@ -241,6 +243,30 @@ class RelationshipAlertEngine @Inject constructor(
         val recency = (1.0f - daysSinceLastCall / 90.0f).coerceIn(0.0f, 1.0f)
 
         return (callFrequency * 0.4f + recency * 0.6f).coerceIn(0.0f, 1.0f)
+    }
+
+    /**
+     * Extract MM-dd from various date formats stored in contact records.
+     * Handles: "MM-dd", "yyyy-MM-dd", "MM/dd/yyyy", "MM/dd".
+     * Returns null if the format is unrecognised.
+     */
+    private fun extractMMDD(dateStr: String): String? {
+        return try {
+            when {
+                dateStr.matches(Regex("\\d{2}-\\d{2}")) -> dateStr // Already MM-dd
+                dateStr.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) -> dateStr.substring(5) // yyyy-MM-dd -> MM-dd
+                dateStr.matches(Regex("\\d{2}/\\d{2}/\\d{4}")) -> {
+                    // MM/dd/yyyy -> MM-dd
+                    val parts = dateStr.split("/")
+                    "${parts[0]}-${parts[1]}"
+                }
+                dateStr.matches(Regex("\\d{2}/\\d{2}")) -> {
+                    // MM/dd -> MM-dd
+                    dateStr.replace("/", "-")
+                }
+                else -> null
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun getTodayMMDD(): String {

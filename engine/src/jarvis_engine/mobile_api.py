@@ -50,6 +50,10 @@ _CORS_ALLOWED_ORIGIN_PATTERNS = [
 _BOOTSTRAP_RATE_LIMIT_WINDOW = 60.0
 _BOOTSTRAP_RATE_LIMIT_MAX = 5
 
+# Master password rate-limiter: max 5 attempts per IP within 60s window.
+_MASTER_PW_RATE_LIMIT_WINDOW = 60.0
+_MASTER_PW_RATE_LIMIT_MAX = 5
+
 # Global API rate-limiter: per-IP sliding window.
 _API_RATE_LIMIT_WINDOW = 60.0        # 60-second window
 _API_RATE_LIMIT_NORMAL = 120          # 120 req/min for standard endpoints
@@ -100,6 +104,9 @@ class MobileIngestServer(ThreadingHTTPServer):
         # Global API rate-limiter: {ip: [timestamp, ...]}
         self._api_rate_attempts: dict[str, list[float]] = {}
         self._api_rate_lock = threading.Lock()
+        # Master password rate-limiter: {ip: [timestamp, ...]}
+        self._master_pw_attempts: dict[str, list[float]] = {}
+        self._master_pw_rate_lock = threading.Lock()
 
     def check_bootstrap_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for bootstrap attempts."""
@@ -121,6 +128,26 @@ class MobileIngestServer(ThreadingHTTPServer):
             attempts = [ts for ts in attempts if ts > cutoff]
             attempts.append(now)
             self._bootstrap_attempts[client_ip] = attempts
+
+    def check_master_pw_rate(self, client_ip: str) -> bool:
+        """Return True if this IP is rate-limited for master password attempts."""
+        now = time.time()
+        with self._master_pw_rate_lock:
+            attempts = self._master_pw_attempts.get(client_ip, [])
+            cutoff = now - _MASTER_PW_RATE_LIMIT_WINDOW
+            attempts = [ts for ts in attempts if ts > cutoff]
+            self._master_pw_attempts[client_ip] = attempts
+            return len(attempts) >= _MASTER_PW_RATE_LIMIT_MAX
+
+    def record_master_pw_attempt(self, client_ip: str) -> None:
+        """Record a master password attempt for rate limiting."""
+        now = time.time()
+        with self._master_pw_rate_lock:
+            attempts = self._master_pw_attempts.get(client_ip, [])
+            cutoff = now - _MASTER_PW_RATE_LIMIT_WINDOW
+            attempts = [ts for ts in attempts if ts > cutoff]
+            attempts.append(now)
+            self._master_pw_attempts[client_ip] = attempts
 
     def check_api_rate(self, client_ip: str, path: str) -> bool:
         """Return True if this IP exceeds the API rate limit for the given path."""
@@ -404,13 +431,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             cmd.append("--speak")
         if voice_auth_wav:
             cmd.extend(["--voice-auth-wav", voice_auth_wav])
-        if master_password:
-            cmd.extend(["--master-password", master_password])
 
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         engine_dir = root / "engine"
         env = os.environ.copy()
         env["PYTHONPATH"] = "src"
+        if master_password:
+            env["JARVIS_MASTER_PASSWORD"] = master_password
         try:
             result = subprocess.run(
                 cmd,
@@ -719,8 +746,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return False
             if device_id not in trusted:
                 master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
-                if master_password and verify_master_password(self.server.repo_root, master_password):  # type: ignore[attr-defined]
-                    trust_mobile_device(self.server.repo_root, device_id)  # type: ignore[attr-defined]
+                if master_password:
+                    client_ip = str(self.client_address[0]).strip()
+                    server: MobileIngestServer = self.server  # type: ignore[assignment]
+                    if server.check_master_pw_rate(client_ip):
+                        self._write_json(
+                            HTTPStatus.TOO_MANY_REQUESTS,
+                            {"ok": False, "error": "Too many master password attempts. Try again later."},
+                        )
+                        return False
+                    server.record_master_pw_attempt(client_ip)
+                    if verify_master_password(self.server.repo_root, master_password):  # type: ignore[attr-defined]
+                        trust_mobile_device(self.server.repo_root, device_id)  # type: ignore[attr-defined]
+                    else:
+                        self._unauthorized("Untrusted mobile device.")
+                        return False
                 else:
                     self._unauthorized("Untrusted mobile device.")
                     return False
@@ -788,6 +828,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})
             return
         if path == "/processes":
+            if not self._validate_auth(b""):
+                return
             from jarvis_engine.process_manager import list_services
             root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
             services = list_services(root_p)

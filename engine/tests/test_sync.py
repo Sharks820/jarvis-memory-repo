@@ -1063,3 +1063,80 @@ class TestTransportEdgeCases:
             encrypted = transport.encrypt(payload)
             decrypted = transport.decrypt(encrypted)
             assert decrypted == payload
+
+
+# ===========================================================================
+# Security Fix 3: Decompression bomb protection tests
+# ===========================================================================
+
+
+class TestDecompressionBombProtection:
+    """Tests for size-limited decompression in decrypt_sync_payload."""
+
+    def test_normal_payload_decrypts_successfully(self):
+        """A normal-sized payload should decrypt and decompress fine."""
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+        payload = {"changes": {"records": [{"id": "r1"}]}, "cursors": {"records": 1}}
+        encrypted = encrypt_sync_payload(payload, key)
+        decrypted = decrypt_sync_payload(encrypted, key)
+        assert decrypted == payload
+
+    def test_decompression_limit_constant_exists(self):
+        """MAX_DECOMPRESSED_SIZE should be 16 MiB."""
+        from jarvis_engine.sync.transport import MAX_DECOMPRESSED_SIZE
+
+        assert MAX_DECOMPRESSED_SIZE == 16 * 1024 * 1024
+
+    def test_decompression_bomb_raises_value_error(self):
+        """A payload that decompresses to more than 16 MiB should raise ValueError."""
+        import zlib
+        from cryptography.fernet import Fernet
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            MAX_DECOMPRESSED_SIZE,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        # Create a payload that is small when compressed but huge when decompressed.
+        # A string of zeros compresses extremely well.
+        huge_data = b"\x00" * (MAX_DECOMPRESSED_SIZE + 1024)
+        compressed = zlib.compress(huge_data, level=9)
+        # Compress ratio should be very high (bombs rely on this)
+        assert len(compressed) < MAX_DECOMPRESSED_SIZE // 100
+
+        # Encrypt the compressed bomb directly using Fernet
+        f = Fernet(key)
+        token = f.encrypt(compressed)
+
+        with pytest.raises(ValueError, match="16 MiB"):
+            decrypt_sync_payload(token, key)
+
+    def test_payload_just_under_limit_succeeds(self):
+        """A payload just under 16 MiB should decompress successfully."""
+        from jarvis_engine.sync.transport import (
+            decrypt_sync_payload,
+            derive_sync_key,
+            encrypt_sync_payload,
+            MAX_DECOMPRESSED_SIZE,
+        )
+
+        salt = b"0123456789abcdef"
+        key = derive_sync_key("test-key", salt)
+
+        # Create a payload whose JSON is safely under the limit.
+        # JSON overhead for {"d":"..."} with separators is small.
+        # Use 1 MiB of data (well under 16 MiB)
+        payload = {"d": "A" * (1024 * 1024)}
+        encrypted = encrypt_sync_payload(payload, key)
+        decrypted = decrypt_sync_payload(encrypted, key)
+        assert decrypted == payload

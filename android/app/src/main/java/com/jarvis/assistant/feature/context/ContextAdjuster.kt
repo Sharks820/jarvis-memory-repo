@@ -29,12 +29,27 @@ class ContextAdjuster @Inject constructor(
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
 
-    /** Saved ringer mode before Jarvis overrides it, so we can restore on NORMAL. */
-    private var savedRingerMode: Int? = null
-
     private val prefs by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
+
+    /**
+     * Saved ringer mode before Jarvis overrides it, so we can restore on NORMAL.
+     * Persisted in SharedPreferences to survive process death.
+     * A value of -1 means "no saved mode" (equivalent to the old null).
+     */
+    private var savedRingerMode: Int?
+        get() {
+            val stored = prefs.getInt(KEY_SAVED_RINGER_MODE, -1)
+            return if (stored == -1) null else stored
+        }
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove(KEY_SAVED_RINGER_MODE).apply()
+            } else {
+                prefs.edit().putInt(KEY_SAVED_RINGER_MODE, value).apply()
+            }
+        }
 
     /**
      * Apply system-wide behaviour adjustments for the detected context.
@@ -155,5 +170,8 @@ class ContextAdjuster @Inject constructor(
 
         /** Voice volume override key, read by VoiceEngine. */
         const val KEY_VOICE_VOLUME = "context_voice_volume"
+
+        /** Persisted ringer mode key, survives process death. */
+        private const val KEY_SAVED_RINGER_MODE = "context_saved_ringer_mode"
     }
 }

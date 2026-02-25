@@ -58,39 +58,15 @@ class CallStateReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         var asyncHandled = false
 
-        when (stateStr) {
-            TelephonyManager.EXTRA_STATE_RINGING -> {
-                // Incoming call ringing
-                if (!incomingNumber.isNullOrBlank()) {
-                    currentNumber = incomingNumber
-                }
-                wasIncoming = true
-                Log.i(TAG, "RINGING: $currentNumber")
-
-                if (currentNumber.isNotBlank()) {
-                    asyncHandled = true
-                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                        try {
-                            preCallCardManager.showPreCallCard(currentNumber)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Pre-call card error: ${e.message}")
-                        } finally {
-                            pendingResult.finish()
-                        }
-                    }
-                }
-            }
-
-            TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                // Call answered or outgoing call started
-                callStartTime = System.currentTimeMillis()
-
-                if (lastState == TelephonyManager.EXTRA_STATE_IDLE) {
-                    // Outgoing call -- try to get number
-                    wasIncoming = false
+        synchronized(lock) {
+            when (stateStr) {
+                TelephonyManager.EXTRA_STATE_RINGING -> {
+                    // Incoming call ringing
                     if (!incomingNumber.isNullOrBlank()) {
                         currentNumber = incomingNumber
                     }
+                    wasIncoming = true
+                    Log.i(TAG, "RINGING: $currentNumber")
 
                     if (currentNumber.isNotBlank()) {
                         asyncHandled = true
@@ -105,59 +81,86 @@ class CallStateReceiver : BroadcastReceiver() {
                         }
                     }
                 }
-                Log.i(TAG, "OFFHOOK: $currentNumber")
-            }
 
-            TelephonyManager.EXTRA_STATE_IDLE -> {
-                // Call ended
-                if (lastState == TelephonyManager.EXTRA_STATE_OFFHOOK && currentNumber.isNotBlank()) {
-                    val durationSec = if (callStartTime > 0) {
-                        ((System.currentTimeMillis() - callStartTime) / 1000).toInt()
-                    } else {
-                        0
-                    }
-                    val direction = if (wasIncoming) "incoming" else "outgoing"
+                TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                    // Call answered or outgoing call started
+                    callStartTime = System.currentTimeMillis()
 
-                    Log.i(
-                        TAG,
-                        "IDLE: Call ended. Duration: ${durationSec}s, " +
-                            "Direction: $direction, Number: $currentNumber",
-                    )
+                    if (lastState == TelephonyManager.EXTRA_STATE_IDLE) {
+                        // Outgoing call -- try to get number
+                        wasIncoming = false
+                        if (!incomingNumber.isNullOrBlank()) {
+                            currentNumber = incomingNumber
+                        }
 
-                    val numberToLog = currentNumber
-                    asyncHandled = true
-                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                        try {
-                            postCallLogger.promptForContext(
-                                numberToLog,
-                                durationSec,
-                                direction,
-                            )
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Post-call logger error: ${e.message}")
-                        } finally {
-                            pendingResult.finish()
+                        if (currentNumber.isNotBlank()) {
+                            asyncHandled = true
+                            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                                try {
+                                    preCallCardManager.showPreCallCard(currentNumber)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Pre-call card error: ${e.message}")
+                                } finally {
+                                    pendingResult.finish()
+                                }
+                            }
                         }
                     }
+                    Log.i(TAG, "OFFHOOK: $currentNumber")
                 }
 
-                // Reset tracking
-                callStartTime = 0L
-                currentNumber = ""
-                wasIncoming = false
+                TelephonyManager.EXTRA_STATE_IDLE -> {
+                    // Call ended
+                    if (lastState == TelephonyManager.EXTRA_STATE_OFFHOOK && currentNumber.isNotBlank()) {
+                        val durationSec = if (callStartTime > 0) {
+                            ((System.currentTimeMillis() - callStartTime) / 1000).toInt()
+                        } else {
+                            0
+                        }
+                        val direction = if (wasIncoming) "incoming" else "outgoing"
+
+                        Log.i(
+                            TAG,
+                            "IDLE: Call ended. Duration: ${durationSec}s, " +
+                                "Direction: $direction, Number: $currentNumber",
+                        )
+
+                        val numberToLog = currentNumber
+                        asyncHandled = true
+                        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                            try {
+                                postCallLogger.promptForContext(
+                                    numberToLog,
+                                    durationSec,
+                                    direction,
+                                )
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Post-call logger error: ${e.message}")
+                            } finally {
+                                pendingResult.finish()
+                            }
+                        }
+                    }
+
+                    // Reset tracking
+                    callStartTime = 0L
+                    currentNumber = ""
+                    wasIncoming = false
+                }
             }
-        }
 
-        // If no coroutine was launched, finish the pending result synchronously
-        if (!asyncHandled) {
-            pendingResult.finish()
-        }
+            // If no coroutine was launched, finish the pending result synchronously
+            if (!asyncHandled) {
+                pendingResult.finish()
+            }
 
-        lastState = stateStr
+            lastState = stateStr
+        }
     }
 
     companion object {
         private const val TAG = "CallStateReceiver"
+        private val lock = Any()
 
         // Track call state transitions across receiver invocations
         @Volatile
