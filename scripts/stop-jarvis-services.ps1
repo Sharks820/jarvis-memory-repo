@@ -23,13 +23,14 @@ foreach ($svc in @("daemon", "mobile_api", "widget")) {
     }
 }
 
-# Fallback: scan for any remaining jarvis processes not covered by PID files
+# Fallback: scan for any remaining jarvis processes from THIS repo not covered by PID files
+$repoRootNorm = $repoRoot.ToLowerInvariant()
 $targets = @(Get-CimInstance Win32_Process | Where-Object {
     ($_.Name -eq "python.exe" -or $_.Name -eq "pythonw.exe") -and (
         $_.CommandLine -match "jarvis_engine\.main\s+daemon-run" -or
         $_.CommandLine -match "jarvis_engine\.main\s+serve-mobile" -or
         $_.CommandLine -match "jarvis_engine\.main\s+desktop-widget"
-    )
+    ) -and ([string]$_.CommandLine).ToLowerInvariant() -like "*$repoRootNorm*"
 })
 foreach ($proc in $targets) {
     Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
