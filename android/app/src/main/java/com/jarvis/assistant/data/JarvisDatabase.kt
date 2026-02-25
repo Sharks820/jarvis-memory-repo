@@ -59,7 +59,7 @@ import net.sqlcipher.database.SupportFactory
         NudgeLogEntity::class,
     ],
     version = 10,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class JarvisDatabase : RoomDatabase() {
 
@@ -86,16 +86,16 @@ abstract class JarvisDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    CREATE TABLE IF NOT EXISTS  (
-                         TEXT NOT NULL,
-                         REAL NOT NULL,
-                         INTEGER NOT NULL,
-                         REAL NOT NULL,
-                         REAL NOT NULL,
-                         TEXT NOT NULL,
-                         INTEGER NOT NULL,
-                         TEXT NOT NULL DEFAULT 'auto',
-                        PRIMARY KEY()
+                    CREATE TABLE IF NOT EXISTS `spam_numbers` (
+                        `number` TEXT NOT NULL,
+                        `score` REAL NOT NULL,
+                        `calls` INTEGER NOT NULL,
+                        `missed_ratio` REAL NOT NULL,
+                        `avg_duration_s` REAL NOT NULL,
+                        `reasons` TEXT NOT NULL,
+                        `last_synced` INTEGER NOT NULL,
+                        `user_action` TEXT NOT NULL DEFAULT 'auto',
+                        PRIMARY KEY(`number`)
                     )
                     """.trimIndent()
                 )
@@ -107,18 +107,18 @@ abstract class JarvisDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    CREATE TABLE IF NOT EXISTS  (
-                         TEXT NOT NULL,
-                         TEXT NOT NULL,
-                         INTEGER NOT NULL,
-                         INTEGER NOT NULL,
-                         TEXT NOT NULL,
-                         TEXT NOT NULL,
-                         INTEGER NOT NULL DEFAULT 0,
-                         INTEGER NOT NULL DEFAULT 0,
-                         INTEGER NOT NULL DEFAULT 0,
-                         INTEGER NOT NULL,
-                        PRIMARY KEY()
+                    CREATE TABLE IF NOT EXISTS `extracted_events` (
+                        `content_hash` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `date_time_ms` INTEGER NOT NULL,
+                        `end_date_time_ms` INTEGER NOT NULL,
+                        `location` TEXT NOT NULL,
+                        `source_package` TEXT NOT NULL,
+                        `calendar_event_id` INTEGER NOT NULL DEFAULT 0,
+                        `desktop_notified` INTEGER NOT NULL DEFAULT 0,
+                        `conflict_detected` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`content_hash`)
                     )
                     """.trimIndent()
                 )
@@ -130,15 +130,15 @@ abstract class JarvisDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    CREATE TABLE IF NOT EXISTS  (
-                        uid=197612(Conner) gid=197121 groups=197121 INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                         INTEGER NOT NULL,
-                         TEXT NOT NULL,
-                         TEXT NOT NULL,
-                         TEXT NOT NULL,
-                         TEXT NOT NULL,
-                         INTEGER NOT NULL,
-                         INTEGER NOT NULL
+                    CREATE TABLE IF NOT EXISTS `notification_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `notificationId` INTEGER NOT NULL,
+                        `alertType` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `channelId` TEXT NOT NULL,
+                        `action` TEXT NOT NULL,
+                        `actionDelayMs` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL
                     )
                     """.trimIndent()
                 )
@@ -150,12 +150,12 @@ abstract class JarvisDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     """
-                    CREATE TABLE IF NOT EXISTS  (
-                        uid=197612(Conner) gid=197121 groups=197121 INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                         TEXT NOT NULL,
-                         REAL NOT NULL,
-                         TEXT NOT NULL,
-                         INTEGER NOT NULL
+                    CREATE TABLE IF NOT EXISTS `context_state_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `context` TEXT NOT NULL,
+                        `confidence` REAL NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL
                     )
                     """.trimIndent()
                 )
