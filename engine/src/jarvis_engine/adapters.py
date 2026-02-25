@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import subprocess
@@ -10,6 +11,8 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 TaskType = Literal["image", "video", "model3d"]
 
@@ -72,7 +75,15 @@ class ImageAdapter(AdapterBase):
 
         out = output_path or str(self.repo_root / "output" / "imagegen" / _timestamped_name("image", ".png"))
         out_path = Path(out)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return AdapterResult(
+                ok=False,
+                provider=self.provider,
+                plan=self.plan(prompt),
+                reason=f"Failed to create output directory: {exc}",
+            )
 
         quality, size = _image_quality_size(prompt, quality_profile)
         cmd = [
@@ -157,7 +168,15 @@ class VideoAdapter(AdapterBase):
 
         out = output_path or str(self.repo_root / "output" / "video" / _timestamped_name("video", ".mp4"))
         out_path = Path(out)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return AdapterResult(
+                ok=False,
+                provider=self.provider,
+                plan=self.plan(prompt),
+                reason=f"Failed to create output directory: {exc}",
+            )
         json_out = out_path.with_suffix(".json")
 
         model, seconds, size = _video_profile(prompt, quality_profile)
@@ -221,10 +240,26 @@ class Model3DAdapter(AdapterBase):
     def execute(self, prompt: str, output_path: str | None, quality_profile: str) -> AdapterResult:
         out = output_path or str(self.repo_root / "output" / "model3d" / _timestamped_name("model", ".obj"))
         out_path = Path(out)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return AdapterResult(
+                ok=False,
+                provider=self.provider,
+                plan=self.plan(prompt),
+                reason=f"Failed to create output directory: {exc}",
+            )
         mesh_kind = _mesh_kind(prompt)
-        obj, vertices, faces = _build_mesh_obj(prompt, quality_profile, mesh_kind)
-        out_path.write_text(obj, encoding="utf-8")
+        try:
+            obj, vertices, faces = _build_mesh_obj(prompt, quality_profile, mesh_kind)
+            out_path.write_text(obj, encoding="utf-8")
+        except OSError as exc:
+            return AdapterResult(
+                ok=False,
+                provider=self.provider,
+                plan=self.plan(prompt),
+                reason=f"Failed to write mesh file: {exc}",
+            )
         meta_path = out_path.with_suffix(".json")
         metadata = {
             "prompt": prompt,
@@ -235,7 +270,10 @@ class Model3DAdapter(AdapterBase):
             "faces": faces,
             "created_utc": datetime.now(UTC).isoformat(),
         }
-        meta_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
+        try:
+            meta_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Failed to write mesh metadata to %s: %s", meta_path, exc)
         return AdapterResult(
             ok=True,
             provider=self.provider,

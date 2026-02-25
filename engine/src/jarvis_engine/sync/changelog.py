@@ -3,6 +3,10 @@
 Tracks INSERT/UPDATE/DELETE on records, kg_nodes, kg_edges via SQLite triggers.
 Each changelog entry has a monotonically increasing __version per table for
 cursor-based diff computation.
+
+Version sequencing uses a dedicated ``_sync_version_seq`` table with atomic
+UPDATE ... SET next_version = next_version + 1 to prevent race conditions
+when concurrent triggers fire on the same table.
 """
 
 from __future__ import annotations
@@ -79,6 +83,13 @@ CREATE TABLE IF NOT EXISTS _sync_cursor (
 );
 """
 
+_VERSION_SEQ_DDL = """\
+CREATE TABLE IF NOT EXISTS _sync_version_seq (
+    table_name    TEXT PRIMARY KEY,
+    next_version  INTEGER NOT NULL DEFAULT 1
+);
+"""
+
 _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_changelog_version ON _sync_changelog (table_name, __version);",
     "CREATE INDEX IF NOT EXISTS idx_changelog_device ON _sync_changelog (device_id);",
@@ -100,12 +111,15 @@ def _build_insert_trigger(table: str, pk: str, fields: list[str], device_id: str
         )
         + " || '}'"
     )
-    version_expr = "(SELECT COALESCE(MAX(__version), 0) + 1 FROM _sync_changelog WHERE table_name = '" + table + "')"
+    # Atomic version increment via UPDATE on the sequence table, then read
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
     return (
         "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_insert "
         "AFTER INSERT ON " + table + " "
         "BEGIN "
-        "INSERT INTO _sync_changelog "
+        + version_update
+        + "INSERT INTO _sync_changelog "
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
@@ -202,13 +216,16 @@ def _build_update_trigger(
         + " || '}'"
     )
     new_values_expr = _clean_json_obj_sql(raw_new_values)
-    version_expr = "(SELECT COALESCE(MAX(__version), 0) + 1 FROM _sync_changelog WHERE table_name = '" + table + "')"
+    # Atomic version increment via UPDATE on the sequence table, then read
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
     return (
         "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_update "
         "AFTER UPDATE ON " + table + " "
         + when_clause
         + "BEGIN "
-        "INSERT INTO _sync_changelog "
+        + version_update
+        + "INSERT INTO _sync_changelog "
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
@@ -233,12 +250,15 @@ def _build_delete_trigger(table: str, pk: str, fields: list[str], device_id: str
         )
         + " || '}'"
     )
-    version_expr = "(SELECT COALESCE(MAX(__version), 0) + 1 FROM _sync_changelog WHERE table_name = '" + table + "')"
+    # Atomic version increment via UPDATE on the sequence table, then read
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
     return (
         "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_delete "
         "AFTER DELETE ON " + table + " "
         "BEGIN "
-        "INSERT INTO _sync_changelog "
+        + version_update
+        + "INSERT INTO _sync_changelog "
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
@@ -268,6 +288,7 @@ def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop
     cur = db.cursor()
     cur.execute(_CHANGELOG_DDL)
     cur.execute(_CURSOR_DDL)
+    cur.execute(_VERSION_SEQ_DDL)
     for idx_sql in _INDEXES:
         cur.execute(idx_sql)
 
@@ -275,6 +296,14 @@ def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop
         pk = spec["pk"]
         fields = spec["fields"]
         noise_fields = spec.get("noise_fields", [])
+
+        # Seed version sequence row if not already present
+        cur.execute(
+            "INSERT OR IGNORE INTO _sync_version_seq (table_name, next_version) "
+            "VALUES (?, COALESCE("
+            "(SELECT MAX(__version) + 1 FROM _sync_changelog WHERE table_name = ?), 1))",
+            (table, table),
+        )
 
         cur.execute(_build_insert_trigger(table, pk, fields, device_id))
         cur.execute(_build_update_trigger(table, pk, fields, noise_fields, device_id))
@@ -354,12 +383,17 @@ def compact_changelog(
     """Delete changelog entries older than *retention_days* that all devices have synced past.
 
     Returns the number of entries deleted.
+
+    Uses a two-step approach (SELECT ids then DELETE by id) to avoid race
+    conditions where new rows could match the DELETE criteria between
+    evaluation and execution.
     """
     if retention_days < 0:
         retention_days = 0
     with write_lock:
+        # First, collect the changelog_ids that are safe to delete
         cur = db.execute(
-            "DELETE FROM _sync_changelog "
+            "SELECT changelog_id FROM _sync_changelog "
             "WHERE ts < datetime('now', ? || ' days') "
             "AND __version <= ("
             "  SELECT COALESCE(MIN(last_version), 0) "
@@ -367,6 +401,15 @@ def compact_changelog(
             "  WHERE _sync_cursor.table_name = _sync_changelog.table_name"
             ")",
             (str(-retention_days),),
+        )
+        ids_to_delete = [row[0] for row in cur.fetchall()]
+        if not ids_to_delete:
+            return 0
+        # Delete only those specific rows by id
+        placeholders = ",".join("?" for _ in ids_to_delete)
+        cur = db.execute(
+            f"DELETE FROM _sync_changelog WHERE changelog_id IN ({placeholders})",
+            ids_to_delete,
         )
         db.commit()
         return cur.rowcount

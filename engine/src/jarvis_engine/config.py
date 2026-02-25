@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -24,18 +25,69 @@ class EngineConfig:
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    """Return the repository root directory.
+
+    Resolution order:
+    1. JARVIS_REPO_ROOT environment variable (explicit override).
+    2. Walk up from this file looking for a directory that contains engine/.
+    3. Fall back to Path(__file__).resolve().parents[3] (legacy default).
+
+    Raises RuntimeError if none of the above yield a valid repo root.
+    """
+    # 1. Environment variable override
+    env_root = os.getenv("JARVIS_REPO_ROOT", "").strip()
+    if env_root:
+        candidate = Path(env_root).resolve()
+        if (candidate / "engine").is_dir():
+            return candidate
+        logger.warning(
+            "JARVIS_REPO_ROOT=%s does not contain engine/ directory; ignoring",
+            env_root,
+        )
+
+    # 2. Walk up from this file
+    current = Path(__file__).resolve().parent
+    for _ in range(8):  # safety limit
+        if (current / "engine").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break  # hit filesystem root
+        current = parent
+
+    # 3. Legacy fallback
+    fallback = Path(__file__).resolve().parents[3]
+    if (fallback / "engine").is_dir():
+        return fallback
+
+    raise RuntimeError(
+        "Cannot determine repo root: no ancestor of "
+        f"{Path(__file__).resolve()} contains an engine/ directory. "
+        "Set JARVIS_REPO_ROOT environment variable to the repo root."
+    )
 
 
 def load_config() -> EngineConfig:
+    """Load engine configuration from .planning/config.json.
+
+    Falls back to defaults on missing file, JSON errors, or OS-level read errors.
+    The JARVIS_ENGINE_PROFILE environment variable, if set, overrides the
+    profile field from the config file.
+    """
     config_path = repo_root() / ".planning" / "config.json"
     try:
         data: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to load config from %s: %s; using defaults", config_path, exc)
         return EngineConfig()
 
     # Keep startup resilient if new keys are added to config.json later.
     allowed = {f.name for f in fields(EngineConfig)}
     filtered = {k: v for k, v in data.items() if k in allowed}
-    return EngineConfig(**filtered)
+    cfg = EngineConfig(**filtered)
+
+    # Allow environment variable override for the profile
+    env_profile = os.getenv("JARVIS_ENGINE_PROFILE", "").strip()
+    if env_profile:
+        cfg.profile = env_profile
+    return cfg
