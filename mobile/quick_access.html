@@ -240,6 +240,20 @@
     .activity-cat.cat-voice { background: #1e1b4b; color: #c4b5fd; }
     .activity-cat.cat-consolidation, .activity-cat.cat-regression_check, .activity-cat.cat-correction_applied { background: #1c1917; color: #d6d3d1; }
     .activity-summary { flex: 1; word-break: break-word; }
+    /* Intelligence Growth */
+    .growth-stat { display: flex; justify-content: space-between; padding: 2px 0; }
+    .growth-stat .label { color: var(--muted); }
+    .growth-stat .value { color: var(--txt); font-weight: 600; }
+    .growth-trend { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 8px; }
+    .growth-trend.increasing { color: var(--green); background: #052e16; }
+    .growth-trend.stable { color: var(--yellow); background: #2a1f00; }
+    .growth-trend.declining { color: var(--danger); background: #3b1111; }
+    .branch-bar-container { margin-top: 4px; }
+    .branch-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-size: 11px; }
+    .branch-bar-label { min-width: 60px; color: var(--muted); text-transform: capitalize; }
+    .branch-bar-track { flex: 1; height: 10px; background: #0a1020; border-radius: 5px; overflow: hidden; border: 1px solid var(--line); }
+    .branch-bar-fill { height: 100%; border-radius: 5px; transition: width 0.4s ease; }
+    .branch-bar-count { min-width: 30px; text-align: right; color: var(--txt); font-weight: 600; }
     @media (max-width: 640px) {
       #panel { right: 10px; left: 10px; width: auto; bottom: 84px; }
       #fab { right: 12px; bottom: 14px; }
@@ -351,6 +365,18 @@
         <div id="activityStats" class="status-bar" style="margin-top:0;margin-bottom:6px;font-size:11px"></div>
         <div id="activityList" style="max-height:260px;overflow:auto;font-size:12px;line-height:1.5"></div>
         <div class="muted" style="font-size:10px;margin-top:4px">Auto-refreshes every 15s when open</div>
+      </div>
+    </details>
+
+    <details id="growthDetails">
+      <summary>Intelligence Growth</summary>
+      <div style="margin-top:6px">
+        <div id="growthSummary" class="status-bar" style="margin-top:0;margin-bottom:6px;font-size:11px">
+          <span class="muted">Loading growth metrics...</span>
+        </div>
+        <div id="growthMetrics" style="font-size:12px;line-height:1.6"></div>
+        <div id="growthBranches" style="margin-top:6px"></div>
+        <div class="muted" style="font-size:10px;margin-top:4px">Auto-refreshes every 30s when open</div>
       </div>
     </details>
 
@@ -905,6 +931,89 @@
         activityTimer = setInterval(() => refreshActivity(), 15000);
       } else {
         if (activityTimer) { clearInterval(activityTimer); activityTimer = null; }
+      }
+    });
+
+    // ---- Intelligence Growth ----
+    let growthTimer = null;
+
+    const BRANCH_COLORS = {
+      health: "#22c55e", finance: "#eab308", coding: "#3b82f6",
+      gaming: "#a855f7", family: "#ec4899", ops: "#14b8a6",
+      social: "#f97316", work: "#06b6d4", learning: "#8b5cf6",
+    };
+
+    function branchColor(name) {
+      const key = (name || "").toLowerCase();
+      return BRANCH_COLORS[key] || "#64748b";
+    }
+
+    function trendArrow(trend) {
+      if (trend === "increasing") return "\u25B2";
+      if (trend === "declining") return "\u25BC";
+      return "\u25C6";
+    }
+
+    async function refreshGrowth() {
+      try {
+        const data = await signedFetch("/intelligence/growth", "GET", null, 10000);
+        const m = data.metrics || {};
+
+        // Summary badges
+        const summaryEl = $("growthSummary");
+        const trendClass = m.growth_trend || "stable";
+        summaryEl.innerHTML =
+          `<span class="growth-trend ${trendClass}">${trendArrow(trendClass)} ${trendClass}</span>` +
+          `<span class="badge green">Facts: ${m.facts_total || 0}</span>` +
+          `<span class="badge green">KG: ${m.kg_nodes || 0}n/${m.kg_edges || 0}e</span>` +
+          `<span class="badge off">Mem: ${m.memory_records || 0}</span>`;
+
+        // Detailed metrics
+        const metricsEl = $("growthMetrics");
+        const score = m.last_self_test_score || 0;
+        const scorePct = Math.round(score * 100);
+        metricsEl.innerHTML = [
+          `<div class="growth-stat"><span class="label">Total Facts</span><span class="value">${m.facts_total || 0} (+${m.facts_last_7d || 0} this week)</span></div>`,
+          `<div class="growth-stat"><span class="label">Knowledge Graph</span><span class="value">${m.kg_nodes || 0} nodes, ${m.kg_edges || 0} edges</span></div>`,
+          `<div class="growth-stat"><span class="label">Memory Records</span><span class="value">${m.memory_records || 0}</span></div>`,
+          `<div class="growth-stat"><span class="label">Corrections</span><span class="value">${m.corrections_applied || 0} total (+${m.corrections_last_7d || 0} this week)</span></div>`,
+          `<div class="growth-stat"><span class="label">Consolidations</span><span class="value">${m.consolidations_run || 0}</span></div>`,
+          `<div class="growth-stat"><span class="label">Self-Test Score</span><span class="value">${scorePct}%</span></div>`,
+        ].join("");
+
+        // Branch breakdown bars
+        const branchesEl = $("growthBranches");
+        const branches = m.branches || {};
+        const branchNames = Object.keys(branches).sort((a, b) => branches[b] - branches[a]);
+        if (!branchNames.length) {
+          branchesEl.innerHTML = '<span class="muted" style="font-size:11px">No branch data yet.</span>';
+          return;
+        }
+        const maxCount = Math.max(...branchNames.map(k => branches[k]), 1);
+        branchesEl.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600">Knowledge Branches</div>' +
+          '<div class="branch-bar-container">' +
+          branchNames.map(name => {
+            const count = branches[name];
+            const pct = Math.round((count / maxCount) * 100);
+            const color = branchColor(name);
+            return `<div class="branch-bar-row">` +
+              `<span class="branch-bar-label">${name}</span>` +
+              `<div class="branch-bar-track"><div class="branch-bar-fill" style="width:${pct}%;background:${color}"></div></div>` +
+              `<span class="branch-bar-count">${count}</span>` +
+              `</div>`;
+          }).join("") +
+          '</div>';
+      } catch {
+        // Silently fail if endpoint unavailable
+      }
+    }
+
+    $("growthDetails").addEventListener("toggle", () => {
+      if ($("growthDetails").open) {
+        refreshGrowth();
+        growthTimer = setInterval(() => refreshGrowth(), 30000);
+      } else {
+        if (growthTimer) { clearInterval(growthTimer); growthTimer = null; }
       }
     });
 

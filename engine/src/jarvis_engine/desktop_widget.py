@@ -592,6 +592,24 @@ class JarvisDesktopWidget(tk.Tk):
             self._svc_labels[svc_name] = (dot, uptime_lbl)
         self._refresh_services()
 
+        # Brain Growth section
+        growth_frame = tk.LabelFrame(body, text="Brain Growth", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        growth_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
+        self._growth_labels: dict[str, tk.Label] = {}
+        for key, display in [
+            ("facts", "Facts"),
+            ("kg", "KG Size"),
+            ("memory", "Memory"),
+            ("score", "Self-Test"),
+            ("trend", "Trend"),
+        ]:
+            row_f = tk.Frame(growth_frame, bg=self.PANEL)
+            row_f.pack(fill=tk.X, padx=6, pady=1)
+            tk.Label(row_f, text=display, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9), width=10, anchor="w").pack(side=tk.LEFT)
+            val = tk.Label(row_f, text="--", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 9, "bold"), anchor="w")
+            val.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
+            self._growth_labels[key] = val
+
         tk.Label(body, text="Output", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=10, pady=(10, 0))
         self.output = tk.Text(
             body,
@@ -1062,9 +1080,16 @@ class JarvisDesktopWidget(tk.Tk):
                 if self.stop_event.is_set():
                     break
                 time.sleep(0.2)
+            # Fetch intelligence growth data (piggyback on health poll)
+            growth_data: dict[str, Any] | None = None
+            if ok and cfg.token and cfg.signing_key:
+                try:
+                    growth_data = _http_json(cfg, "/intelligence/growth", method="GET")
+                except Exception:
+                    pass  # Growth data is best-effort
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._set_online, ok, intel_data)
+                    self.after(0, self._set_online, ok, intel_data, growth_data)
                 except Exception:
                     return  # Widget destroyed
             for _ in range(16):
@@ -1072,11 +1097,48 @@ class JarvisDesktopWidget(tk.Tk):
                     return
                 time.sleep(0.5)
 
-    def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None) -> None:
+    def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None, growth_data: dict[str, Any] | None = None) -> None:
         """Update online state and refresh status — always call on main thread."""
         self.online = value
         self._update_intelligence_label(intel_data)
+        self._update_growth_labels(growth_data)
         self._refresh_status_view()
+
+    def _update_growth_labels(self, growth_data: dict[str, Any] | None) -> None:
+        """Update Brain Growth labels from /intelligence/growth metrics."""
+        if growth_data is None or not isinstance(growth_data, dict):
+            for lbl in self._growth_labels.values():
+                lbl.config(text="--", fg=self.MUTED)
+            return
+        try:
+            m = growth_data.get("metrics", growth_data)
+            facts_total = int(m.get("facts_total", 0))
+            facts_7d = int(m.get("facts_last_7d", 0))
+            kg_nodes = int(m.get("kg_nodes", 0))
+            kg_edges = int(m.get("kg_edges", 0))
+            mem_records = int(m.get("memory_records", 0))
+            score = float(m.get("last_self_test_score", 0.0))
+            trend = str(m.get("growth_trend", "stable"))
+
+            self._growth_labels["facts"].config(
+                text=f"{facts_total} (+{facts_7d} 7d)", fg=self.TEXT)
+            self._growth_labels["kg"].config(
+                text=f"{kg_nodes} nodes / {kg_edges} edges", fg=self.TEXT)
+            self._growth_labels["memory"].config(
+                text=f"{mem_records} records", fg=self.TEXT)
+
+            score_pct = round(score * 100)
+            score_color = self.ACCENT if score_pct >= 70 else "#eab308" if score_pct >= 50 else self.WARN
+            self._growth_labels["score"].config(
+                text=f"{score_pct}%", fg=score_color)
+
+            trend_symbol = "\u25B2" if trend == "increasing" else "\u25BC" if trend == "declining" else "\u25C6"
+            trend_color = "#22c55e" if trend == "increasing" else self.WARN if trend == "declining" else "#eab308"
+            self._growth_labels["trend"].config(
+                text=f"{trend_symbol} {trend}", fg=trend_color)
+        except (TypeError, ValueError, KeyError):
+            for lbl in self._growth_labels.values():
+                lbl.config(text="--", fg=self.MUTED)
 
     def _update_intelligence_label(self, intel_data: dict[str, Any] | None) -> None:
         """Update the intelligence score label from /health response data."""

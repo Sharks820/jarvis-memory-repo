@@ -1679,3 +1679,119 @@ def test_master_password_rate_limiter_allows_normal_usage(mobile_server) -> None
     headers["X-Jarvis-Master-Password"] = "CorrectPassword123!"
     code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
     assert code == 201
+
+
+# ---------------------------------------------------------------------------
+# /intelligence/growth endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_intelligence_growth_requires_auth(mobile_server) -> None:
+    """GET /intelligence/growth without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/intelligence/growth")
+    assert code == 401
+
+
+def test_intelligence_growth_returns_metrics_structure(mobile_server) -> None:
+    """GET /intelligence/growth with auth returns expected JSON structure."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "metrics" in resp
+    m = resp["metrics"]
+    # Verify all expected keys are present
+    assert "facts_total" in m
+    assert "facts_last_7d" in m
+    assert "corrections_applied" in m
+    assert "corrections_last_7d" in m
+    assert "consolidations_run" in m
+    assert "entities_merged" in m
+    assert "kg_nodes" in m
+    assert "kg_edges" in m
+    assert "memory_records" in m
+    assert "branches" in m
+    assert "growth_trend" in m
+    assert "last_self_test_score" in m
+    # Verify types
+    assert isinstance(m["facts_total"], int)
+    assert isinstance(m["kg_nodes"], int)
+    assert isinstance(m["kg_edges"], int)
+    assert isinstance(m["memory_records"], int)
+    assert isinstance(m["branches"], dict)
+    assert m["growth_trend"] in ("increasing", "stable", "declining")
+    assert isinstance(m["last_self_test_score"], (int, float))
+
+
+def test_intelligence_growth_reads_self_test_score(mobile_server) -> None:
+    """GET /intelligence/growth reads self-test score from history file."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    history_path = runtime_dir / "self_test_history.jsonl"
+    record = json.dumps({
+        "average_score": 0.78,
+        "timestamp": "2026-02-25T12:00:00Z",
+        "below_threshold": False,
+    })
+    history_path.write_text(record + "\n", encoding="utf-8")
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["metrics"]["last_self_test_score"] == 0.78
+
+
+def test_intelligence_growth_reads_kg_history(mobile_server) -> None:
+    """GET /intelligence/growth reads KG metrics from kg_metrics.jsonl."""
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    kg_path = runtime_dir / "kg_metrics.jsonl"
+    record = json.dumps({
+        "ts": "2026-02-25T12:00:00Z",
+        "node_count": 142,
+        "edge_count": 312,
+        "branch_counts": {"health": 45, "finance": 32, "coding": 65},
+        "cross_branch_edges": 12,
+        "avg_confidence": 0.82,
+        "locked_facts": 7,
+    })
+    kg_path.write_text(record + "\n", encoding="utf-8")
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    m = resp["metrics"]
+    assert m["kg_nodes"] == 142
+    assert m["kg_edges"] == 312
+    assert m["facts_total"] == 142
+    assert m["branches"]["health"] == 45
+    assert m["branches"]["finance"] == 32
+    assert m["branches"]["coding"] == 65
+
+
+def test_intelligence_growth_handles_missing_data_gracefully(mobile_server) -> None:
+    """GET /intelligence/growth returns defaults when no data files exist."""
+    # Ensure no data files exist
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    for f in ["kg_metrics.jsonl", "self_test_history.jsonl"]:
+        p = runtime_dir / f
+        if p.exists():
+            p.unlink()
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    m = resp["metrics"]
+    # Should return defaults without errors
+    assert m["facts_total"] == 0
+    assert m["kg_nodes"] == 0
+    assert m["kg_edges"] == 0
+    assert m["memory_records"] == 0
+    assert m["last_self_test_score"] == 0.0
+    assert m["growth_trend"] in ("stable", "increasing", "declining")

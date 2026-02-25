@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from unittest.mock import MagicMock, patch, call
 
 import pytest
 
@@ -269,18 +270,402 @@ class TestLearningMissionPerformance:
         from jarvis_engine import learning_missions
 
         fetch_count = 0
-        
+
         def counting_fetch(url: str, *, max_bytes: int) -> str:
             nonlocal fetch_count
             fetch_count += 1
             return f"Content {fetch_count}"
 
         monkeypatch.setattr(learning_missions, "_fetch_page_text", counting_fetch)
-        
+
         # First call
         result1 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)
         # Second call (should use cache)
         result2 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)
-        
+
         assert fetch_count == 1, f"Expected 1 fetch, got {fetch_count}"
         assert result1 == result2
+
+
+# ---------------------------------------------------------------------------
+# Helpers for daemon integration tests
+# ---------------------------------------------------------------------------
+
+def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
+    """Apply the standard monkeypatches needed by every daemon test."""
+    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 10.0)
+    monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
+    monkeypatch.setattr(main_mod.time, "sleep", lambda s: None)
+    # Reset module-level KG regression state so tests are isolated
+    monkeypatch.setattr(main_mod, "_daemon_kg_prev_metrics", None)
+
+
+def _run_daemon_impl(tmp_path: Path, **kwargs) -> int:
+    """Call _cmd_daemon_run_impl directly, bypassing the command bus dispatch.
+
+    This allows tests to mock _get_bus() (used by subsystems inside the loop)
+    without breaking the bus dispatch that cmd_daemon_run() depends on.
+    """
+    defaults = dict(
+        interval_s=120,
+        snapshot_path=tmp_path / "snap.json",
+        actions_path=tmp_path / "actions.json",
+        execute=False,
+        approve_privileged=False,
+        auto_open_connectors=False,
+        max_cycles=2,
+        idle_interval_s=900,
+        idle_after_s=300,
+        run_missions=False,
+        sync_every_cycles=0,
+        self_heal_every_cycles=0,
+        self_test_every_cycles=0,
+    )
+    defaults.update(kwargs)
+    return main_mod._cmd_daemon_run_impl(**defaults)
+
+
+class TestDaemonActivityLogging:
+    """Tests for activity feed integration in daemon cycle."""
+
+    def test_activity_log_called_on_cycle_start_and_end(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Activity feed should receive start and end events for each cycle."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        log_calls: list[tuple[str, str, dict]] = []
+
+        def mock_log_activity(category: str, summary: str, details: dict | None = None) -> str:
+            log_calls.append((category, summary, details or {}))
+            return "mock-event-id"
+
+        with patch(
+            "jarvis_engine.activity_feed.log_activity", mock_log_activity
+        ):
+            rc = _run_daemon_impl(tmp_path, max_cycles=2)
+
+        assert rc == 0
+        # Each cycle produces a start and end event => 4 total for 2 cycles
+        start_events = [c for c in log_calls if c[2].get("phase") == "start"]
+        end_events = [c for c in log_calls if c[2].get("phase") == "end"]
+        assert len(start_events) == 2, f"Expected 2 start events, got {len(start_events)}"
+        assert len(end_events) == 2, f"Expected 2 end events, got {len(end_events)}"
+        # Verify cycle numbers are correct
+        assert start_events[0][2]["cycle"] == 1
+        assert start_events[1][2]["cycle"] == 2
+        assert end_events[0][2]["cycle"] == 1
+        assert end_events[1][2]["cycle"] == 2
+
+    def test_activity_log_exception_does_not_crash_daemon(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """If log_activity raises, the daemon should continue unaffected."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        def exploding_log(*args, **kwargs):
+            raise RuntimeError("Activity feed DB corrupt")
+
+        with patch(
+            "jarvis_engine.activity_feed.log_activity", exploding_log
+        ):
+            rc = _run_daemon_impl(tmp_path, max_cycles=3)
+
+        assert rc == 0  # Daemon completes normally despite activity feed errors
+
+
+class TestDaemonRegressionCheck:
+    """Tests for KG regression checking in the daemon cycle."""
+
+    def test_regression_check_runs_every_10_cycles(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """KG regression check should run on multiples of 10."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        capture_calls: list[int] = []
+        mock_bus = MagicMock()
+        mock_kg = MagicMock()
+        mock_bus._kg = mock_kg
+
+        def mock_capture(*a, **kw):
+            capture_calls.append(1)
+            return {
+                "node_count": 10,
+                "edge_count": 5,
+                "locked_count": 2,
+                "graph_hash": "abc123",
+                "node_labels": {},
+                "captured_at": "2026-01-01T00:00:00",
+            }
+
+        mock_checker = MagicMock()
+        mock_checker.capture_metrics = mock_capture
+        mock_checker.compare.return_value = {"status": "pass", "discrepancies": []}
+
+        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 return_value=mock_checker,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=25)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        # Cycles 10 and 20 should have regression checks (25 cycles, % 10)
+        assert captured.out.count("kg_regression_status=") == 2
+
+    def test_regression_failure_triggers_auto_restore(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """When regression status is 'fail', daemon should auto-restore from backup."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        # Create a fake backup file
+        backup_dir = Path(".planning/runtime/kg_backups")
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_file = backup_dir / "20260101T000000_test.db"
+        backup_file.write_bytes(b"fake_backup_data")
+
+        mock_bus = MagicMock()
+        mock_kg = MagicMock()
+        mock_bus._kg = mock_kg
+
+        mock_checker = MagicMock()
+        mock_checker.capture_metrics.return_value = {
+            "node_count": 3,
+            "edge_count": 1,
+            "locked_count": 0,
+            "graph_hash": "changed",
+            "node_labels": {},
+            "captured_at": "2026-01-01T00:00:00",
+        }
+        # First call sets baseline (status=baseline), second call detects regression
+        mock_checker.compare.side_effect = [
+            {"status": "baseline", "discrepancies": [], "current": {}, "previous": None},
+            {
+                "status": "fail",
+                "discrepancies": [{"type": "node_loss", "severity": "fail"}],
+                "current": {},
+                "previous": {},
+            },
+        ]
+        mock_checker.restore_graph.return_value = True
+
+        try:
+            with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+                 patch(
+                     "jarvis_engine.knowledge.regression.RegressionChecker",
+                     return_value=mock_checker,
+                 ), \
+                 patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+                rc = _run_daemon_impl(tmp_path, max_cycles=20)
+
+            assert rc == 0
+            captured = capsys.readouterr()
+            assert "kg_regression_auto_restore=ok" in captured.out
+            mock_checker.restore_graph.assert_called_once()
+        finally:
+            # Clean up the fake backup directory
+            import shutil
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+
+    def test_regression_check_exception_does_not_crash_daemon(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Regression check exception should be caught; daemon keeps running."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        def exploding_get_bus():
+            bus = MagicMock()
+            bus._kg = MagicMock()
+            return bus
+
+        with patch.object(main_mod, "_get_bus", side_effect=exploding_get_bus), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 side_effect=RuntimeError("RegressionChecker init failed"),
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=10)
+
+        assert rc == 0  # Daemon survives the error
+
+
+class TestDaemonConsolidation:
+    """Tests for memory consolidation in the daemon cycle."""
+
+    def test_consolidation_runs_every_50_cycles(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Memory consolidation should run on multiples of 50."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        mock_bus = MagicMock()
+        mock_engine = MagicMock()
+        mock_kg = MagicMock()
+        mock_bus._engine = mock_engine
+        mock_bus._kg = mock_kg
+        mock_bus._gateway = None
+        mock_bus._embed_service = None
+
+        mock_consolidation_result = MagicMock()
+        mock_consolidation_result.groups_found = 3
+        mock_consolidation_result.records_consolidated = 9
+        mock_consolidation_result.new_facts_created = 2
+        mock_consolidation_result.errors = []
+
+        mock_consolidator = MagicMock()
+        mock_consolidator.consolidate.return_value = mock_consolidation_result
+
+        mock_rc_checker = MagicMock()
+
+        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+             patch(
+                 "jarvis_engine.learning.consolidator.MemoryConsolidator",
+                 return_value=mock_consolidator,
+             ), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 return_value=mock_rc_checker,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=50)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "consolidation_groups=3" in captured.out
+        assert "consolidation_new_facts=2" in captured.out
+        # Should have backed up KG before consolidation
+        mock_rc_checker.backup_graph.assert_called_with(tag="pre-consolidation")
+
+    def test_consolidation_exception_does_not_crash_daemon(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Consolidation failure should not crash the daemon."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        with patch.object(main_mod, "_get_bus", side_effect=RuntimeError("bus down")), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=50)
+
+        assert rc == 0
+
+    def test_consolidation_skipped_when_engine_not_initialized(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """When engine is None on the bus, consolidation should be skipped."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        mock_bus = MagicMock(spec=[])  # No attributes at all
+        mock_bus._engine = None  # explicitly None
+        mock_bus._kg = None
+
+        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=50)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "consolidation_skipped=engine_not_initialized" in captured.out
+
+
+class TestDaemonEntityResolution:
+    """Tests for entity resolution in the daemon cycle."""
+
+    def test_entity_resolution_runs_every_100_cycles(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """Entity resolution should run on multiples of 100."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        mock_bus = MagicMock()
+        mock_kg = MagicMock()
+        mock_bus._kg = mock_kg
+        mock_bus._embed_service = None
+
+        mock_resolve_result = MagicMock()
+        mock_resolve_result.candidates_found = 5
+        mock_resolve_result.merges_applied = 2
+        mock_resolve_result.errors = []
+
+        mock_resolver = MagicMock()
+        mock_resolver.auto_resolve.return_value = mock_resolve_result
+
+        mock_rc_checker = MagicMock()
+
+        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+             patch(
+                 "jarvis_engine.knowledge.entity_resolver.EntityResolver",
+                 return_value=mock_resolver,
+             ), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 return_value=mock_rc_checker,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=100)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "entity_resolve_candidates=5" in captured.out
+        assert "entity_resolve_merges=2" in captured.out
+        # Should have backed up KG before entity resolution
+        mock_rc_checker.backup_graph.assert_called_with(tag="pre-entity-resolve")
+
+    def test_entity_resolution_exception_does_not_crash_daemon(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Entity resolution failure should not crash the daemon."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        with patch.object(
+            main_mod, "_get_bus", side_effect=RuntimeError("bus broken")
+        ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=100)
+
+        assert rc == 0
+
+    def test_entity_resolution_skipped_when_kg_not_initialized(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """When KG is None on the bus, entity resolution should be skipped."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        mock_bus = MagicMock(spec=[])
+        mock_bus._kg = None
+
+        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            rc = _run_daemon_impl(tmp_path, max_cycles=100)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "entity_resolve_skipped=kg_not_initialized" in captured.out
+
+
+class TestDaemonSubsystemIsolation:
+    """Tests verifying that all new subsystems are fully isolated from each other."""
+
+    def test_all_new_subsystems_fail_daemon_still_completes(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """When all new subsystems raise, daemon completes normally."""
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        # Make every lazy import blow up
+        def bomb(*a, **kw):
+            raise RuntimeError("Subsystem exploded")
+
+        with patch(
+            "jarvis_engine.activity_feed.log_activity", side_effect=bomb
+        ), \
+             patch.object(main_mod, "_get_bus", side_effect=bomb):
+            rc = _run_daemon_impl(tmp_path, max_cycles=100)
+
+        assert rc == 0
