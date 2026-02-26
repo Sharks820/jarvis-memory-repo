@@ -31,9 +31,11 @@ import pytest
 from jarvis_engine.desktop_widget import (
     WidgetConfig,
     _is_safe_widget_base_url,
+    _is_position_on_screen,
     _load_mobile_api_cfg,
     _load_widget_cfg,
     _signed_headers,
+    _snap_to_edge,
     _http_error_details,
     _security_dir,
     _mobile_api_cfg_path,
@@ -1355,3 +1357,197 @@ class TestWidgetStateMachine:
         JarvisDesktopWidget._dictate_async(widget)
 
         widget._set_state.assert_called_once_with("listening")
+
+
+# ---- Position Persistence & Edge Snapping -----------------------------------
+
+class TestSnapToEdge:
+    """Test edge-snapping logic (no tkinter display required)."""
+
+    def _make_tk_root(self, screen_w: int = 1920, screen_h: int = 1080):
+        """Create a mock tkinter root with screen dimensions."""
+        root = MagicMock()
+        root.winfo_screenwidth.return_value = screen_w
+        root.winfo_screenheight.return_value = screen_h
+        return root
+
+    def test_no_snap_when_far_from_edges(self):
+        root = self._make_tk_root()
+        x, y = _snap_to_edge(100, 100, 470, 840, root, snap_dist=20)
+        assert x == 100
+        assert y == 100
+
+    def test_snap_left_edge(self):
+        root = self._make_tk_root()
+        x, y = _snap_to_edge(15, 100, 470, 840, root, snap_dist=20)
+        assert x == 0
+        assert y == 100
+
+    def test_snap_top_edge(self):
+        root = self._make_tk_root()
+        x, y = _snap_to_edge(100, 10, 470, 840, root, snap_dist=20)
+        assert x == 100
+        assert y == 0
+
+    def test_snap_right_edge(self):
+        """Window right edge near screen right should snap."""
+        root = self._make_tk_root(1920, 1080)
+        # Window at x=1445 with width=470 -> right edge = 1915, within 20px of 1920
+        x, y = _snap_to_edge(1445, 100, 470, 840, root, snap_dist=20)
+        assert x == 1920 - 470  # snapped to right
+        assert y == 100
+
+    def test_snap_bottom_edge(self):
+        """Window bottom near screen bottom (with taskbar margin) should snap."""
+        root = self._make_tk_root(1920, 1080)
+        # Window at y=195 with height=840 -> bottom = 1035, near 1080-40=1040
+        x, y = _snap_to_edge(100, 195, 470, 840, root, snap_dist=20)
+        assert x == 100
+        assert y == 1080 - 40 - 840  # snapped to bottom with taskbar margin
+
+    def test_snap_corner(self):
+        """Both edges near screen corner should snap both axes."""
+        root = self._make_tk_root(1920, 1080)
+        x, y = _snap_to_edge(5, 8, 470, 200, root, snap_dist=20)
+        assert x == 0
+        assert y == 0
+
+    def test_exact_edge_no_snap(self):
+        """At x=0 already, should remain at 0."""
+        root = self._make_tk_root()
+        x, y = _snap_to_edge(0, 0, 470, 840, root, snap_dist=20)
+        assert x == 0
+        assert y == 0
+
+    def test_negative_position_no_snap(self):
+        """Positions outside snap range should not snap."""
+        root = self._make_tk_root()
+        x, y = _snap_to_edge(-50, -50, 470, 840, root, snap_dist=20)
+        assert x == -50
+        assert y == -50
+
+
+class TestIsPositionOnScreen:
+    """Test on-screen position validation."""
+
+    def _make_tk_root(self, screen_w: int = 1920, screen_h: int = 1080):
+        root = MagicMock()
+        root.winfo_screenwidth.return_value = screen_w
+        root.winfo_screenheight.return_value = screen_h
+        return root
+
+    def test_valid_position(self):
+        root = self._make_tk_root()
+        assert _is_position_on_screen(100, 100, root) is True
+
+    def test_origin(self):
+        root = self._make_tk_root()
+        assert _is_position_on_screen(0, 0, root) is True
+
+    def test_far_offscreen_left(self):
+        root = self._make_tk_root()
+        assert _is_position_on_screen(-200, 100, root) is False
+
+    def test_far_offscreen_right(self):
+        root = self._make_tk_root()
+        assert _is_position_on_screen(2000, 100, root) is False
+
+    def test_slightly_offscreen_allowed(self):
+        """Positions slightly off-screen (within -100px tolerance) should be OK."""
+        root = self._make_tk_root()
+        assert _is_position_on_screen(-50, -50, root) is True
+
+    def test_screen_edge(self):
+        root = self._make_tk_root(1920, 1080)
+        assert _is_position_on_screen(1920, 1080, root) is True
+
+
+class TestPositionPersistence:
+    """Test position fields in config load/save."""
+
+    def test_config_defaults_no_position(self, tmp_path):
+        """Config without position fields should have None positions."""
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.panel_x is None
+        assert cfg.panel_y is None
+        assert cfg.launcher_x is None
+        assert cfg.launcher_y is None
+
+    def test_config_loads_position_fields(self, tmp_path):
+        """Config with position fields should load them."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "panel_x": 200,
+                "panel_y": 100,
+                "launcher_x": 1800,
+                "launcher_y": 950,
+            }),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.panel_x == 200
+        assert cfg.panel_y == 100
+        assert cfg.launcher_x == 1800
+        assert cfg.launcher_y == 950
+
+    def test_config_invalid_position_returns_none(self, tmp_path):
+        """Non-integer position values should be treated as None."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "panel_x": "not_a_number",
+                "panel_y": None,
+            }),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.panel_x is None
+        assert cfg.panel_y is None
+
+    @patch("jarvis_engine._shared.atomic_write_json")
+    def test_save_includes_position_fields(self, mock_write):
+        """Save should include position fields when set."""
+        from jarvis_engine.desktop_widget import _save_widget_cfg
+        cfg = WidgetConfig("http://127.0.0.1:8787", "t", "k", "d", "",
+                          panel_x=300, panel_y=150, launcher_x=1800, launcher_y=950)
+        _save_widget_cfg(Path("/fake"), cfg)
+        payload = mock_write.call_args[0][1]
+        assert payload["panel_x"] == 300
+        assert payload["panel_y"] == 150
+        assert payload["launcher_x"] == 1800
+        assert payload["launcher_y"] == 950
+
+    @patch("jarvis_engine._shared.atomic_write_json")
+    def test_save_omits_none_positions(self, mock_write):
+        """Save should not include position fields when None."""
+        from jarvis_engine.desktop_widget import _save_widget_cfg
+        cfg = WidgetConfig("http://127.0.0.1:8787", "t", "k", "d", "")
+        _save_widget_cfg(Path("/fake"), cfg)
+        payload = mock_write.call_args[0][1]
+        assert "panel_x" not in payload
+        assert "panel_y" not in payload
+        assert "launcher_x" not in payload
+        assert "launcher_y" not in payload
+
+    def test_widget_config_backward_compatible(self, tmp_path):
+        """Old config files without position fields should load fine."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "token": "old_tok",
+                "signing_key": "old_sk",
+                "device_id": "old_dev",
+            }),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.token == "old_tok"
+        assert cfg.panel_x is None
+        assert cfg.launcher_x is None

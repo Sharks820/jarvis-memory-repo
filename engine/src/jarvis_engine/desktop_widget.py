@@ -102,6 +102,10 @@ class WidgetConfig:
     signing_key: str
     device_id: str
     master_password: str
+    panel_x: int | None = None
+    panel_y: int | None = None
+    launcher_x: int | None = None
+    launcher_y: int | None = None
 
 
 def _repo_root() -> Path:
@@ -162,12 +166,26 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         if master_password:
             needs_migration = True
 
+    # --- Position fields (backward-compatible: absent = None) ---
+    def _int_or_none(key: str) -> int | None:
+        v = raw.get(key)
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
     cfg = WidgetConfig(
         base_url=str(raw.get("base_url", "http://127.0.0.1:8787")).strip() or "http://127.0.0.1:8787",
         token=str(raw.get("token", "")).strip() or mobile.get("token", ""),
         signing_key=str(raw.get("signing_key", "")).strip() or mobile.get("signing_key", ""),
         device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip() or "galaxy_s25_primary",
         master_password=master_password,
+        panel_x=_int_or_none("panel_x"),
+        panel_y=_int_or_none("panel_y"),
+        launcher_x=_int_or_none("launcher_x"),
+        launcher_y=_int_or_none("launcher_y"),
     )
 
     # Migrate plaintext master_password -> DPAPI-protected on load
@@ -191,6 +209,16 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         "device_id": cfg.device_id,
         "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
+
+    # Persist window positions if set
+    if cfg.panel_x is not None:
+        payload["panel_x"] = cfg.panel_x
+    if cfg.panel_y is not None:
+        payload["panel_y"] = cfg.panel_y
+    if cfg.launcher_x is not None:
+        payload["launcher_x"] = cfg.launcher_x
+    if cfg.launcher_y is not None:
+        payload["launcher_y"] = cfg.launcher_y
 
     # Encrypt master password via DPAPI; fall back to plaintext only on non-Windows
     if cfg.master_password:
@@ -482,6 +510,47 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         logger.debug("Failed to launch toast notification", exc_info=True)
 
 
+def _snap_to_edge(
+    x: int, y: int, w: int, h: int, tk_root: tk.Misc, snap_dist: int = 20
+) -> tuple[int, int]:
+    """Snap coordinates to screen edges if within *snap_dist* pixels.
+
+    Works with any tkinter widget to query screen dimensions.
+    Returns the (possibly adjusted) (x, y) tuple.
+    """
+    try:
+        screen_w = tk_root.winfo_screenwidth()
+        screen_h = tk_root.winfo_screenheight()
+    except Exception:
+        return x, y
+    # Left edge
+    if 0 <= x <= snap_dist:
+        x = 0
+    # Right edge
+    right = x + w
+    if screen_w - snap_dist <= right <= screen_w + snap_dist:
+        x = screen_w - w
+    # Top edge
+    if 0 <= y <= snap_dist:
+        y = 0
+    # Bottom edge (leave ~40px for taskbar)
+    taskbar_margin = 40
+    bottom = y + h
+    if screen_h - taskbar_margin - snap_dist <= bottom <= screen_h:
+        y = screen_h - taskbar_margin - h
+    return x, y
+
+
+def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
+    """Return True if (x, y) is within the visible screen area."""
+    try:
+        screen_w = tk_root.winfo_screenwidth()
+        screen_h = tk_root.winfo_screenheight()
+    except Exception:
+        return False
+    return -100 <= x <= screen_w and -100 <= y <= screen_h
+
+
 class JarvisDesktopWidget(tk.Tk):
     BG = "#070d1a"
     PANEL = "#0d1628"
@@ -516,9 +585,16 @@ class JarvisDesktopWidget(tk.Tk):
         self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
         self._widget_state: str = "idle"  # idle | listening | processing | error
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
+        self._position_save_id: str | None = None  # debounce timer for position save
+        self._SNAP_DISTANCE = 20  # pixels from screen edge to trigger snap
 
         self.title("Jarvis Unlimited")
-        self.geometry("470x840+40+60")
+        # Restore saved panel position if available and on-screen
+        _px, _py = self.cfg.panel_x, self.cfg.panel_y
+        if _px is not None and _py is not None:
+            self.geometry(f"470x840+{_px}+{_py}")
+        else:
+            self.geometry("470x840+40+60")
         self.minsize(420, 620)
         self.configure(bg=self.BG)
         self.attributes("-topmost", True)
@@ -585,6 +661,7 @@ class JarvisDesktopWidget(tk.Tk):
         self.bind("<Escape>", lambda _e: self._toggle_min())
         self.bind("<Control-Return>", lambda _e: self._send_command_async())
         self.bind("<Control-Shift-Q>", lambda _e: self._shutdown())
+        self.bind("<Configure>", self._on_panel_configure)
 
     def _toggle_min(self) -> None:
         if self.state() in {"withdrawn", "iconic"}:
@@ -593,6 +670,10 @@ class JarvisDesktopWidget(tk.Tk):
             self._hide_panel()
 
     def _show_panel(self) -> None:
+        # Restore saved position if valid
+        px, py = self.cfg.panel_x, self.cfg.panel_y
+        if px is not None and py is not None and _is_position_on_screen(px, py, self):
+            self.geometry(f"+{px}+{py}")
         self.deiconify()
         self.lift()
         self.focus_force()
@@ -605,6 +686,60 @@ class JarvisDesktopWidget(tk.Tk):
             self.launcher_win.deiconify()
             self.launcher_win.lift()
 
+    def _on_panel_configure(self, event) -> None:  # type: ignore[no-untyped-def]
+        """Handle panel move/resize -- debounce position save and snap to edge."""
+        # Only process events from the root window itself, not child widgets
+        if event.widget is not self:
+            return
+        # Debounce: cancel previous timer, schedule a new save in 300ms
+        if self._position_save_id is not None:
+            try:
+                self.after_cancel(self._position_save_id)
+            except Exception:
+                pass
+        self._position_save_id = self.after(300, self._save_panel_position)
+
+    def _save_panel_position(self) -> None:
+        """Save the current panel position to config (with edge snap)."""
+        try:
+            x = self.winfo_x()
+            y = self.winfo_y()
+        except Exception:
+            return
+        x, y = _snap_to_edge(x, y, self.winfo_width(), self.winfo_height(), self)
+        # Apply snapped position
+        try:
+            self.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+        self.cfg.panel_x = x
+        self.cfg.panel_y = y
+        try:
+            _save_widget_cfg(self.root_path, self.cfg)
+        except Exception:
+            logger.debug("Failed to save widget position to config")
+
+    def _save_launcher_position(self) -> None:
+        """Save the current launcher orb position to config."""
+        if self.launcher_win is None:
+            return
+        try:
+            x = self.launcher_win.winfo_x()
+            y = self.launcher_win.winfo_y()
+        except Exception:
+            return
+        x, y = _snap_to_edge(x, y, self._launcher_size, self._launcher_size, self)
+        try:
+            self.launcher_win.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+        self.cfg.launcher_x = x
+        self.cfg.launcher_y = y
+        try:
+            _save_widget_cfg(self.root_path, self.cfg)
+        except Exception:
+            logger.debug("Failed to save launcher position to config")
+
     def _build_launcher(self) -> None:
         launcher = tk.Toplevel(self)
         launcher.overrideredirect(True)
@@ -615,10 +750,15 @@ class JarvisDesktopWidget(tk.Tk):
         except Exception as exc:
             logger.debug("Failed to set launcher transparent color attribute: %s", exc)
         size = self._launcher_size
-        screen_w = launcher.winfo_screenwidth()
-        screen_h = launcher.winfo_screenheight()
-        x = max(8, screen_w - size - 24)
-        y = max(8, screen_h - size - 96)
+        # Restore saved launcher position or default to bottom-right
+        lx, ly = self.cfg.launcher_x, self.cfg.launcher_y
+        if lx is not None and ly is not None and _is_position_on_screen(lx, ly, launcher):
+            x, y = lx, ly
+        else:
+            screen_w = launcher.winfo_screenwidth()
+            screen_h = launcher.winfo_screenheight()
+            x = max(8, screen_w - size - 24)
+            y = max(8, screen_h - size - 96)
         launcher.geometry(f"{size}x{size}+{x}+{y}")
 
         canvas = tk.Canvas(
@@ -661,7 +801,9 @@ class JarvisDesktopWidget(tk.Tk):
         self.launcher_win.geometry(f"+{x}+{y}")
 
     def _launcher_release(self, _event):  # type: ignore[no-untyped-def]
-        if not self._launcher_dragged:
+        if self._launcher_dragged:
+            self._save_launcher_position()
+        else:
             self._show_panel()
 
     def _build_ui(self) -> None:
