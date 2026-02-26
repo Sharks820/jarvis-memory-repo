@@ -158,8 +158,9 @@ class VoiceRunHandler:
 class VoiceListenHandler:
     """Capture microphone audio and transcribe via faster-whisper."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, gateway: object | None = None) -> None:
         self._root = root
+        self._gateway = gateway
 
     def handle(self, cmd: VoiceListenCommand) -> VoiceListenResult:
         try:
@@ -172,6 +173,7 @@ class VoiceListenHandler:
                 max_duration_seconds=cmd.max_duration_seconds,
                 language=cmd.language,
                 root_dir=self._root,
+                gateway=self._gateway,
             )
         except Exception as exc:
             logger.debug("Voice listen failed: %s", exc)

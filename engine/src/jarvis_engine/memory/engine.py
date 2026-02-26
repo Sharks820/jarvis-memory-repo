@@ -54,6 +54,9 @@ class MemoryEngine:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
         self._db.execute("PRAGMA foreign_keys=ON")
+        self._db.execute("PRAGMA synchronous=NORMAL")
+        self._db.execute("PRAGMA cache_size=-64000")       # 64 MB
+        self._db.execute("PRAGMA mmap_size=268435456")     # 256 MB
 
         # Load sqlite-vec extension (graceful degradation)
         try:
@@ -458,6 +461,65 @@ class MemoryEngine:
             logger.warning("Vec search failed: %s", exc)
             return []
 
+    def search_vec_filtered(
+        self,
+        query_embedding: list[float],
+        limit: int = 30,
+        tier: str | None = None,
+        source: str | None = None,
+        since: str | None = None,
+    ) -> list[tuple[str, float]]:
+        """sqlite-vec KNN search with metadata pre-filtering.
+
+        Pre-filtering by tier/source/date reduces scan space significantly
+        for large memory stores.
+        """
+        if not self._vec_available:
+            return []
+        try:
+            blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
+            conditions: list[str] = []
+            params: list = []
+
+            if tier:
+                conditions.append("r.tier = ?")
+                params.append(tier)
+            if source:
+                conditions.append("r.source LIKE ?")
+                params.append(f"%{source}%")
+            if since:
+                conditions.append("r.ts >= ?")
+                params.append(since)
+
+            if conditions:
+                where_clause = " AND ".join(conditions)
+                query = f"""
+                    SELECT v.record_id, v.distance
+                    FROM vec_records v
+                    INNER JOIN records r ON v.record_id = r.record_id
+                    WHERE {where_clause}
+                    AND v.embedding MATCH ?
+                    ORDER BY v.distance
+                    LIMIT ?
+                """
+                params.extend([blob, limit])
+            else:
+                query = """
+                    SELECT record_id, distance
+                    FROM vec_records
+                    WHERE embedding MATCH ?
+                    ORDER BY distance
+                    LIMIT ?
+                """
+                params = [blob, limit]
+
+            with self._db_lock:
+                cur = self._db.execute(query, params)
+                return [(row[0], row[1]) for row in cur.fetchall()]
+        except Exception as exc:
+            logger.warning("Filtered vec search failed: %s", exc)
+            return []
+
     def update_access(self, record_id: str) -> bool:
         """Increment access_count and set last_accessed to now.
 
@@ -549,6 +611,19 @@ class MemoryEngine:
         with self._db_lock:
             cur = self._db.execute("SELECT COUNT(*) FROM records")
             return cur.fetchone()[0]
+
+    def wal_checkpoint(self) -> None:
+        """Run a passive WAL checkpoint to prevent unbounded WAL growth.
+
+        Safe to call periodically from the daemon loop.  PASSIVE mode
+        does not block concurrent readers.
+        """
+        try:
+            with self._write_lock:
+                self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                logger.debug("WAL checkpoint completed")
+        except Exception as exc:
+            logger.warning("WAL checkpoint failed: %s", exc)
 
     def close(self) -> None:
         """Close the database connection (idempotent).

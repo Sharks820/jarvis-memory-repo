@@ -82,8 +82,9 @@ class ProactiveCheckHandler:
 class WakeWordStartHandler:
     """Start wake word detection in a daemon thread."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, gateway: object | None = None) -> None:
         self._root = root
+        self._gateway = gateway
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
 
@@ -116,7 +117,7 @@ class WakeWordStartHandler:
                 # Acquire mic lock so wake word pauses during recording
                 with mic_lock:
                     audio = record_from_microphone(max_duration_seconds=8.0)
-                result = transcribe_smart(audio, language="en")
+                result = transcribe_smart(audio, language="en", gateway=self._gateway)
                 text = result.text.strip()
                 if not text:
                     logger.info("No speech detected after wake word.")

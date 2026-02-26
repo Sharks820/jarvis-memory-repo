@@ -453,6 +453,7 @@ class TestVoiceListenHandler:
             max_duration_seconds=10.0,
             language="fr",
             root_dir=tmp_path,
+            gateway=None,
         )
 
     def test_exception_during_listen(self, tmp_path: Path) -> None:

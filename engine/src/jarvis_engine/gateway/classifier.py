@@ -33,6 +33,16 @@ class IntentClassifier:
             "calculate the eigenvalues of this 3x3 matrix",
             "explain the logical proof for Godel's incompleteness theorem",
             "what is the probability of drawing two aces from a shuffled deck",
+            "what is the expected value of this probability distribution",
+            "optimize this linear programming problem with constraints",
+            "calculate the compound interest over 10 years at 5% APR",
+            "what's the time complexity of merge sort vs quicksort",
+            "derive the formula for gravitational potential energy",
+            "compute the standard deviation of this dataset",
+            "find the derivative of this multivariable function",
+            "calculate the Fourier transform of this signal",
+            "solve this system of linear equations using Gaussian elimination",
+            "what is the integral of e to the power of negative x squared",
         ],
         "complex": [
             "write a Python script that implements a binary search tree with balancing",
@@ -40,6 +50,16 @@ class IntentClassifier:
             "help me debug this race condition in my threading code",
             "explain the tradeoffs between CQRS and event sourcing",
             "review this security policy and identify vulnerabilities",
+            "design a microservices architecture for this e-commerce system",
+            "explain the memory leak in this Python code and how to fix it",
+            "compare Redis vs Memcached for session storage in my use case",
+            "refactor this monolithic function into clean modular components",
+            "write unit tests for this complex state machine implementation",
+            "set up a CI/CD pipeline with Docker and GitHub Actions",
+            "implement a rate limiter using the token bucket algorithm",
+            "explain how to scale this database for millions of concurrent users",
+            "design a distributed caching strategy for this web application",
+            "analyze the security implications of this authentication flow",
         ],
         "routine": [
             "summarize this article for me",
@@ -47,6 +67,16 @@ class IntentClassifier:
             "what are the key points from this meeting transcript",
             "translate this text to French",
             "format this data as a markdown table",
+            "draft a professional email declining this meeting invitation",
+            "create a grocery list based on this recipe",
+            "what is the capital of France",
+            "convert this JSON to YAML format",
+            "fix the grammar and spelling in this paragraph",
+            "write a brief thank you note for a gift",
+            "list the main differences between Python and JavaScript",
+            "explain what REST API means in simple terms",
+            "generate a bullet point summary of these meeting notes",
+            "reformat this CSV data into a readable table",
         ],
         "simple_private": [
             "what's on my calendar today",
@@ -54,6 +84,33 @@ class IntentClassifier:
             "remind me about my doctor appointment",
             "what did I have for dinner yesterday",
             "show me my recent bills",
+            "what time is my next meeting",
+            "how much did I spend on groceries last month",
+            "when is my wife's birthday",
+            "what's my home WiFi password",
+            "what tasks do I have due this week",
+            "where did I park my car",
+            "when was my last oil change",
+            "what's my morning routine",
+            "show me my prescription refill schedule",
+            "what did Jarvis learn about me today",
+        ],
+        "creative": [
+            "write a short story about a robot learning to paint",
+            "brainstorm 10 startup ideas in the health tech space",
+            "help me write a toast for my friend's wedding",
+            "come up with creative names for my new app",
+            "write a poem about autumn",
+            "create a fictional dialogue between two historical figures",
+            "help me write a compelling product description",
+            "generate an outline for a science fiction novel",
+            "write a motivational speech about overcoming challenges",
+            "come up with metaphors to explain machine learning to kids",
+            "write song lyrics about a rainy day in the city",
+            "create a funny script for a two-minute comedy sketch",
+            "brainstorm unique gift ideas for someone who has everything",
+            "write an engaging introduction for my blog post",
+            "help me craft a personal mission statement",
         ],
     }
 
@@ -61,6 +118,7 @@ class IntentClassifier:
         "math_logic": "claude-opus-4-0-20250514",  # Best reasoning for math/logic (Anthropic)
         "complex": "kimi-k2",        # Best code quality via Groq (free, 200+ t/s)
         "routine": "kimi-k2",        # Same fast cloud model for routine tasks
+        "creative": "claude-opus-4-0-20250514",  # Claude excels at creative tasks
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 

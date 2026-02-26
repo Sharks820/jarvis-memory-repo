@@ -275,7 +275,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(VoiceEnrollCommand, VoiceEnrollHandler(root).handle)
     bus.register(VoiceVerifyCommand, VoiceVerifyHandler(root).handle)
     bus.register(VoiceRunCommand, VoiceRunHandler(root).handle)
-    bus.register(VoiceListenCommand, VoiceListenHandler(root).handle)
+    bus.register(VoiceListenCommand, VoiceListenHandler(root, gateway=engine).handle)
 
     # -- System --
     bus.register(StatusCommand, StatusHandler(root).handle)
@@ -464,7 +464,7 @@ def create_app(root: Path) -> CommandBus:
         logger.warning("Failed to initialize Proactive subsystem, continuing without: %s", exc)
         bus.register(ProactiveCheckCommand, ProactiveCheckHandler(root).handle)
 
-    bus.register(WakeWordStartCommand, WakeWordStartHandler(root).handle)
+    bus.register(WakeWordStartCommand, WakeWordStartHandler(root, gateway=engine).handle)
 
     # -- Cost Reduction & Self-Testing --
     bus.register(

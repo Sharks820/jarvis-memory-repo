@@ -34,13 +34,42 @@ _ROUTINE_DIR[2] = 1.0
 _PRIVATE_DIR = np.zeros(_DIM)
 _PRIVATE_DIR[3] = 1.0
 
+_CREATIVE_DIR = np.zeros(_DIM)
+_CREATIVE_DIR[4] = 1.0
+
 # Neutral vector -- low similarity with all directions
 _NEUTRAL_DIR = np.ones(_DIM) / np.sqrt(_DIM)
 
-_MATH_KEYWORDS = {"differential equation", "eigenvalues", "irrational", "probability", "logical proof", "incompleteness"}
-_COMPLEX_KEYWORDS = {"debug", "binary search", "architectural", "race condition", "cqrs", "vulnerabilities", "threading code"}
-_ROUTINE_KEYWORDS = {"summarize", "rewrite", "translate", "format", "key points", "concise", "markdown table", "transcript"}
-_PRIVATE_KEYWORDS = {"calendar", "medication", "bill", "dinner", "appointment", "medications", "bills", "doctor"}
+_MATH_KEYWORDS = {
+    "differential equation", "eigenvalues", "irrational", "probability", "logical proof",
+    "incompleteness", "expected value", "linear programming", "compound interest",
+    "time complexity", "gravitational", "standard deviation", "derivative",
+    "fourier transform", "gaussian elimination", "integral",
+}
+_COMPLEX_KEYWORDS = {
+    "debug", "binary search", "architectural", "race condition", "cqrs", "vulnerabilities",
+    "threading code", "microservices", "memory leak", "redis vs memcached",
+    "refactor", "unit tests", "ci/cd", "rate limiter", "distributed caching",
+    "authentication flow",
+}
+_ROUTINE_KEYWORDS = {
+    "summarize", "rewrite", "translate", "format", "key points", "concise",
+    "markdown table", "transcript", "draft a professional email", "grocery list",
+    "capital of", "json to yaml", "grammar", "thank you note", "csv",
+    "bullet point",
+}
+_PRIVATE_KEYWORDS = {
+    "calendar", "medication", "bill", "dinner", "appointment", "medications",
+    "bills", "doctor", "next meeting", "groceries last month", "birthday",
+    "wifi password", "tasks due", "parking", "oil change", "morning routine",
+    "prescription refill", "jarvis learn",
+}
+_CREATIVE_KEYWORDS = {
+    "short story", "brainstorm", "toast for", "creative names", "poem",
+    "fictional dialogue", "product description", "science fiction",
+    "motivational speech", "metaphors", "song lyrics", "comedy sketch",
+    "gift ideas", "blog post", "mission statement",
+}
 
 
 def _match_direction(text: str) -> np.ndarray:
@@ -58,6 +87,9 @@ def _match_direction(text: str) -> np.ndarray:
     for kw in _PRIVATE_KEYWORDS:
         if kw in lower:
             return _PRIVATE_DIR.copy()
+    for kw in _CREATIVE_KEYWORDS:
+        if kw in lower:
+            return _CREATIVE_DIR.copy()
     return _NEUTRAL_DIR.copy()
 
 
@@ -119,6 +151,13 @@ class TestIntentClassifierRouting:
         # Privacy keyword triggers, so route is simple_private
         assert route == "simple_private"
 
+    def test_classify_creative_query(self, classifier):
+        route, model, confidence = classifier.classify(
+            "write a short story about a robot learning to paint"
+        )
+        assert route == "creative"
+        assert model == "claude-opus-4-0-20250514"
+
 
 # ---------------------------------------------------------------------------
 # Privacy keyword tests
@@ -151,6 +190,7 @@ class TestEdgeCases:
         """Nonsensical query produces low similarity, defaults to local."""
         route, model, confidence = classifier.classify("xyzzy plugh")
         assert route == "simple_private"
+        assert confidence < 0.5, f"Nonsensical query should have low confidence, got {confidence}"
 
     def test_classify_returns_confidence(self, classifier):
         """Third tuple element is a float between 0 and 1."""
