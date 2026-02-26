@@ -510,6 +510,35 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         logger.debug("Failed to launch toast notification", exc_info=True)
 
 
+def _create_tray_icon_image():
+    """Create a 64x64 PIL Image with a blue background and white 'J' for the tray icon."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return None
+    size = 64
+    image = Image.new("RGBA", (size, size), (18, 163, 255, 255))  # ACCENT_2 blue
+    draw = ImageDraw.Draw(image)
+    # Draw circle background
+    draw.ellipse([0, 0, size - 1, size - 1], fill=(18, 163, 255, 255))
+    # Draw "J" text centered
+    try:
+        font = ImageFont.truetype("segoeui.ttf", 38)
+    except (IOError, OSError):
+        try:
+            font = ImageFont.truetype("arial.ttf", 38)
+        except (IOError, OSError):
+            font = ImageFont.load_default()
+    # Get text bounding box for centering
+    bbox = draw.textbbox((0, 0), "J", font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (size - text_w) // 2 - bbox[0]
+    y = (size - text_h) // 2 - bbox[1]
+    draw.text((x, y), "J", fill=(255, 255, 255, 255), font=font)
+    return image
+
+
 def _snap_to_edge(
     x: int, y: int, w: int, h: int, tk_root: tk.Misc, snap_dist: int = 20
 ) -> tuple[int, int]:
@@ -587,6 +616,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
         self._position_save_id: str | None = None  # debounce timer for position save
         self._SNAP_DISTANCE = 20  # pixels from screen edge to trigger snap
+        self._tray_icon: Any = None  # pystray.Icon instance (or None if unavailable)
 
         self.title("Jarvis Unlimited")
         # Restore saved panel position if available and on-screen
@@ -602,6 +632,7 @@ class JarvisDesktopWidget(tk.Tk):
 
         self._build_ui()
         self._build_launcher()
+        self._build_tray_icon()
         self._bind_shortcuts()
         self._start_status_workers()
         self._animate_orb()
@@ -631,6 +662,7 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _shutdown(self) -> None:
         self.stop_event.set()
+        self._stop_tray_icon()
         # Cancel pending animation callbacks to prevent post-destroy TclError
         if self._orb_after_id is not None:
             try:
@@ -682,9 +714,15 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _hide_panel(self) -> None:
         self.withdraw()
-        if self.launcher_win is not None:
-            self.launcher_win.deiconify()
-            self.launcher_win.lift()
+        if self._tray_icon is not None:
+            # Tray icon is the primary minimized indicator; hide the launcher orb
+            if self.launcher_win is not None:
+                self.launcher_win.withdraw()
+        else:
+            # No tray icon available; fall back to launcher orb
+            if self.launcher_win is not None:
+                self.launcher_win.deiconify()
+                self.launcher_win.lift()
 
     def _on_panel_configure(self, event) -> None:  # type: ignore[no-untyped-def]
         """Handle panel move/resize -- debounce position save and snap to edge."""
@@ -805,6 +843,75 @@ class JarvisDesktopWidget(tk.Tk):
             self._save_launcher_position()
         else:
             self._show_panel()
+
+    # ------------------------------------------------------------------
+    # System tray icon (pystray)
+    # ------------------------------------------------------------------
+
+    def _build_tray_icon(self) -> None:
+        """Create a system tray icon using pystray. Runs in a daemon thread."""
+        try:
+            import pystray
+            from PIL import Image, ImageDraw, ImageFont
+        except ImportError:
+            logger.info("pystray or Pillow not installed; system tray icon disabled")
+            return
+
+        # Create a 64x64 icon: blue circle with white "J"
+        image = _create_tray_icon_image()
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Show Widget", self._tray_show_widget, default=True),
+            pystray.MenuItem("Voice Dictate", self._tray_voice_dictate),
+            pystray.MenuItem("Ops Brief", self._tray_ops_brief),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", self._tray_quit),
+        )
+
+        icon = pystray.Icon("jarvis", image, "Jarvis Unlimited", menu)
+        self._tray_icon = icon
+        # pystray.Icon.run() blocks, so run in a daemon thread
+        tray_thread = threading.Thread(target=icon.run, daemon=True)
+        tray_thread.start()
+
+    def _tray_show_widget(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+        """Tray menu: Show Widget (also handles double-click)."""
+        try:
+            self.after(0, self._show_panel)
+        except Exception:
+            pass
+
+    def _tray_voice_dictate(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+        """Tray menu: Voice Dictate."""
+        try:
+            self.after(0, self._show_panel)
+            self.after(100, self._voice_dictate)
+        except Exception:
+            pass
+
+    def _tray_ops_brief(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+        """Tray menu: Ops Brief."""
+        try:
+            self.after(0, self._show_panel)
+            self.after(100, lambda: self._send_text("ops brief"))
+        except Exception:
+            pass
+
+    def _tray_quit(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+        """Tray menu: Quit."""
+        try:
+            self.after(0, self._shutdown)
+        except Exception:
+            pass
+
+    def _stop_tray_icon(self) -> None:
+        """Stop the tray icon cleanly."""
+        if self._tray_icon is not None:
+            try:
+                self._tray_icon.stop()
+            except Exception as exc:
+                logger.debug("Failed to stop tray icon: %s", exc)
+            self._tray_icon = None
 
     def _build_ui(self) -> None:
         shell = tk.Frame(self, bg=self.BG, bd=0)
