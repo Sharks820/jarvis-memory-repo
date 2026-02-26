@@ -104,15 +104,8 @@ def preprocess_audio(
 # Stage 2: Hallucination Detection
 # ---------------------------------------------------------------------------
 
-HALLUCINATION_PHRASES: set[str] = {
-    "thanks for watching",
-    "thank you for watching",
-    "please subscribe",
-    "subscribe and like",
-    "like and subscribe",
-    "click the bell",
-    "hit the like button",
-    "leave a comment",
+# Phrases that are hallucinations only when they ARE the entire transcription
+_EXACT_HALLUCINATION_PHRASES: set[str] = {
     "[music]",
     "[applause]",
     "[laughter]",
@@ -121,6 +114,19 @@ HALLUCINATION_PHRASES: set[str] = {
     "...",
     "the end",
     "bye bye",
+    "bye",
+}
+
+# Phrases that indicate hallucination when found anywhere in the text (substring)
+_SUBSTRING_HALLUCINATION_PHRASES: set[str] = {
+    "thanks for watching",
+    "thank you for watching",
+    "please subscribe",
+    "subscribe and like",
+    "like and subscribe",
+    "click the bell",
+    "hit the like button",
+    "leave a comment",
     "subtitles by",
     "copyright",
 }
@@ -130,7 +136,7 @@ def detect_hallucination(text: str) -> bool:
     """Detect Whisper hallucinations in transcribed text.
 
     Checks:
-    1. Known hallucination phrases
+    1. Known hallucination phrases (exact match for short, substring for long)
     2. Repeated 3+ word sequences
     3. Compression ratio > 2.4 (highly repetitive)
     4. Empty/whitespace-only text
@@ -143,8 +149,12 @@ def detect_hallucination(text: str) -> bool:
 
     lower = stripped.lower()
 
-    # Check known phrases
-    for phrase in HALLUCINATION_PHRASES:
+    # Exact match: text IS the hallucination phrase
+    if lower in _EXACT_HALLUCINATION_PHRASES:
+        return True
+
+    # Substring match: phrase appears anywhere in text
+    for phrase in _SUBSTRING_HALLUCINATION_PHRASES:
         if phrase in lower:
             return True
 
@@ -162,15 +172,18 @@ def detect_hallucination(text: str) -> bool:
             else:
                 run_count = 1
 
-    # Multi-word sequence repetition (3+ word sequences repeated)
-    if len(words) >= 6:
-        for n in range(3, len(words) // 2 + 1):
-            for i in range(len(words) - 2 * n + 1):
-                seq = tuple(words[i : i + n])
-                rest = words[i + n :]
-                for j in range(len(rest) - n + 1):
-                    if tuple(rest[j : j + n]) == seq:
-                        return True
+    # Multi-word sequence repetition (3+ word n-grams repeated)
+    # Hash-based O(n * max_n) approach with cap to avoid abuse on long inputs
+    _MAX_WORDS = 200  # Cap for performance on very long transcripts
+    capped = words[:_MAX_WORDS] if len(words) > _MAX_WORDS else words
+    if len(capped) >= 6:
+        for n in range(3, min(len(capped) // 2 + 1, 10)):
+            seen: set[tuple[str, ...]] = set()
+            for i in range(len(capped) - n + 1):
+                ngram = tuple(capped[i : i + n])
+                if ngram in seen:
+                    return True
+                seen.add(ngram)
 
     # Check compression ratio
     encoded = stripped.encode("utf-8")
