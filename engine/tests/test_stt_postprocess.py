@@ -90,6 +90,33 @@ def test_detect_hallucination_clean_text() -> None:
     assert detect_hallucination("Remind me to buy groceries") is False
 
 
+def test_detect_hallucination_you_not_false_positive() -> None:
+    """'you' in normal speech must NOT trigger hallucination detection."""
+    from jarvis_engine.stt_postprocess import detect_hallucination
+
+    assert detect_hallucination("Can you help me") is False
+    assert detect_hallucination("Thank you") is False
+    assert detect_hallucination("What do you think") is False
+    assert detect_hallucination("Tell me about your features") is False
+    # But standalone "you" IS a hallucination (Whisper artifact)
+    assert detect_hallucination("you") is True
+
+
+def test_detect_hallucination_exact_vs_substring() -> None:
+    """Exact-match phrases only trigger when they ARE the full text."""
+    from jarvis_engine.stt_postprocess import detect_hallucination
+
+    # Exact match: these are hallucinations when standalone
+    assert detect_hallucination("the end") is True
+    assert detect_hallucination("bye bye") is True
+    assert detect_hallucination("...") is True
+    # But NOT when embedded in longer speech
+    assert detect_hallucination("That's the end of my question") is False
+    assert detect_hallucination("Bye bye see you later") is False
+    # Substring phrases still trigger inside longer text
+    assert detect_hallucination("He said thanks for watching the game") is True
+
+
 def test_detect_hallucination_repeated_sequences() -> None:
     """Repeated 3+ word sequences are flagged."""
     from jarvis_engine.stt_postprocess import detect_hallucination

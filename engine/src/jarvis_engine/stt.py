@@ -81,8 +81,8 @@ def _log_stt_metric(
             metrics_path.parent.mkdir(parents=True, exist_ok=True)
             with open(metrics_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Failed to write STT metric: %s", exc)
 
 
 # ---------------------------------------------------------------------------

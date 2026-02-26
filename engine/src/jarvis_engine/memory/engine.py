@@ -50,6 +50,11 @@ class MemoryEngine:
         self._closed = False
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
+
+    def _check_open(self) -> None:
+        """Raise RuntimeError if the engine has been closed."""
+        if self._closed:
+            raise RuntimeError("MemoryEngine is closed")
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
@@ -222,6 +227,7 @@ class MemoryEngine:
         Uses INSERT OR IGNORE for dedup via UNIQUE constraint on content_hash.
         All three inserts (records, FTS5, vec) happen in a single transaction.
         """
+        self._check_open()
         # Normalize tags to JSON string
         raw_tags = record.get("tags", "[]")
         if isinstance(raw_tags, list):
@@ -296,6 +302,7 @@ class MemoryEngine:
         All three deletes happen in a single transaction so the tables stay
         consistent even if the process is interrupted.
         """
+        self._check_open()
         with self._write_lock:
             cur = self._db.cursor()
             try:
@@ -372,6 +379,7 @@ class MemoryEngine:
 
     def get_record(self, record_id: str) -> dict | None:
         """Fetch a single record by ID."""
+        self._check_open()
         with self._db_lock:
             cur = self._db.execute(
                 "SELECT * FROM records WHERE record_id = ?",
@@ -412,6 +420,7 @@ class MemoryEngine:
         Rank is negative (more negative = more relevant in FTS5).
         The query is sanitized to prevent FTS5 syntax injection.
         """
+        self._check_open()
         safe_query = self._sanitize_fts_query(query)
         if not safe_query:
             return []
@@ -441,6 +450,7 @@ class MemoryEngine:
 
         Returns empty list if sqlite-vec is unavailable (graceful degradation).
         """
+        self._check_open()
         if not self._vec_available:
             return []
         try:
