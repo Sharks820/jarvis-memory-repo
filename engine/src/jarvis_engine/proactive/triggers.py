@@ -79,7 +79,8 @@ def check_calendar_prep(snapshot_data: dict) -> list[str]:
     """Check calendar_events for prep_needed=true within next 2 hours."""
     alerts: list[str] = []
     events = snapshot_data.get("calendar_events", [])
-    now = datetime.now(timezone.utc)
+    # Use local time: calendar events are typically stored in local time
+    now = datetime.now().astimezone()
 
     for event in events:
         if not event.get("prep_needed", False):
@@ -90,11 +91,13 @@ def check_calendar_prep(snapshot_data: dict) -> list[str]:
         try:
             start_dt = datetime.fromisoformat(start_str)
             if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=timezone.utc)
+                # Treat naive timestamps as local time (not UTC)
+                start_dt = start_dt.astimezone()
             diff_hours = (start_dt - now).total_seconds() / 3600.0
             if 0 <= diff_hours <= 2:
                 title = event.get("title", "event")
-                alerts.append(f"Calendar prep: {title} starts in {int(diff_hours * 60)} minutes")
+                minutes = max(1, int(diff_hours * 60))
+                alerts.append(f"Calendar prep: {title} starts in {minutes} minutes")
         except (ValueError, TypeError):
             continue
 

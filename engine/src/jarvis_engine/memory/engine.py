@@ -563,8 +563,8 @@ class MemoryEngine:
                 self._closed = True
                 try:
                     self._db.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to close MemoryEngine database connection: %s", exc)
 
     def __enter__(self) -> "MemoryEngine":
         return self
@@ -575,5 +575,5 @@ class MemoryEngine:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("MemoryEngine __del__ cleanup failed: %s", exc)

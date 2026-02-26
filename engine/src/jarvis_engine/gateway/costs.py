@@ -200,15 +200,15 @@ class CostTracker:
         try:
             with self._write_lock:
                 self._db.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to close CostTracker database connection: %s", exc)
 
     def __del__(self) -> None:
         """Best-effort close on garbage collection."""
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("CostTracker __del__ cleanup failed: %s", exc)
 
     def __enter__(self) -> "CostTracker":
         return self

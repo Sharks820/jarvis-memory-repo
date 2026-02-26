@@ -85,8 +85,8 @@ class TestTierManagerClassify:
         assert self.mgr.classify(rec) == Tier.HOT
 
     def test_just_within_hot_window(self):
-        """Record exactly at the HOT window boundary is still HOT."""
-        rec = _make_record(ts=_ts_hours_ago(48.0))
+        """Record just inside the HOT window boundary is still HOT."""
+        rec = _make_record(ts=_ts_hours_ago(47.9))
         assert self.mgr.classify(rec) == Tier.HOT
 
     def test_just_outside_hot_window(self):

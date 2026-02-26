@@ -11,10 +11,9 @@ gateway is available, and deduplicates the combined results.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 

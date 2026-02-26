@@ -45,8 +45,8 @@ class VoiceEngine @Inject constructor(
     val state: StateFlow<VoiceState> = _state
 
     private var speechRecognizer: SpeechRecognizer? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
+    @Volatile private var tts: TextToSpeech? = null
+    @Volatile private var ttsReady = false
     var ttsSpeed: Float = 1.0f
         set(value) { field = value.coerceIn(0.5f, 2.0f) }
 
@@ -214,10 +214,11 @@ class VoiceEngine @Inject constructor(
         supervisorJob.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
-        // Capture local ref before nulling to avoid race with ensureTts callback
+        // Mark not ready first so ensureTts fast-path is blocked
+        ttsReady = false
         val ttsRef = tts
         tts = null
-        ttsReady = false
+        ttsRef?.stop()
         ttsRef?.shutdown()
     }
 

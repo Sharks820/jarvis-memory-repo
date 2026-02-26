@@ -14,10 +14,10 @@ from urllib.parse import urlparse
 
 from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
-    is_safe_public_url as _is_safe_public_url,
-    search_duckduckgo as _search_duckduckgo,
     search_web as _search_web,
 )
+
+logger = logging.getLogger(__name__)
 
 MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
 _PAGE_CACHE: dict[tuple[str, int], tuple[float, str]] = {}

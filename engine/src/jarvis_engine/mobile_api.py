@@ -314,11 +314,15 @@ class MobileIngestServer(ThreadingHTTPServer):
                 import sqlite3 as _sqlite3
 
                 sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
-                sync_db.execute("PRAGMA journal_mode=WAL")
-                sync_db.execute("PRAGMA busy_timeout=5000")
-                sync_lock = threading.Lock()
-                install_changelog_triggers(sync_db, device_id="desktop")
-                self._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+                try:
+                    sync_db.execute("PRAGMA journal_mode=WAL")
+                    sync_db.execute("PRAGMA busy_timeout=5000")
+                    sync_lock = threading.Lock()
+                    install_changelog_triggers(sync_db, device_id="desktop")
+                    self._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+                except Exception:
+                    sync_db.close()
+                    raise
                 if self.signing_key:
                     salt_path = self.repo_root / ".planning" / "brain" / "sync_salt.bin"
                     self._sync_transport = SyncTransport(self.signing_key, salt_path)
@@ -1506,11 +1510,15 @@ def run_mobile_server(
             import threading as _threading
 
             sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
-            sync_db.execute("PRAGMA journal_mode=WAL")
-            sync_db.execute("PRAGMA busy_timeout=5000")
-            sync_lock = _threading.Lock()
-            install_changelog_triggers(sync_db, device_id="desktop")
-            server._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+            try:
+                sync_db.execute("PRAGMA journal_mode=WAL")
+                sync_db.execute("PRAGMA busy_timeout=5000")
+                sync_lock = _threading.Lock()
+                install_changelog_triggers(sync_db, device_id="desktop")
+                server._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+            except Exception:
+                sync_db.close()
+                raise
 
             if signing_key:
                 salt_path = repo_root / ".planning" / "brain" / "sync_salt.bin"
@@ -1543,11 +1551,11 @@ def run_mobile_server(
         logger.info("TLS enabled with cert=%s key=%s", tls_cert, tls_key)
 
     scheme = "https" if tls_active else "http"
-    print(f"mobile_api_listening={scheme}://{host}:{port}")
-    print(f"tls={'enabled' if tls_active else 'disabled'}")
+    logger.info("mobile_api_listening=%s://%s:%s", scheme, host, port)
+    logger.info("tls=%s", "enabled" if tls_active else "disabled")
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
-        print("warning=mobile_api_non_loopback_without_tls")
-    print("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+        logger.warning("mobile_api_non_loopback_without_tls")
+    logger.info("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
