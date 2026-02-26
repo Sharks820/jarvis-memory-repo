@@ -46,6 +46,14 @@ _stt_metrics_lock = threading.Lock()
 CONFIDENCE_RETRY_THRESHOLD = float(os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6"))
 GROQ_STT_MODEL = os.environ.get("JARVIS_GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
+# Default prompt biases local Whisper toward Jarvis-specific vocabulary
+JARVIS_DEFAULT_PROMPT = (
+    "Jarvis is Conner's AI assistant. Common terms: Jarvis, "
+    "ops brief, knowledge graph, proactive engine, Ollama, "
+    "Groq, Anthropic, SQLite, Kotlin, Jetpack Compose, "
+    "brain status, daily brief, self heal, daemon, safe mode."
+)
+
 
 def _log_stt_metric(
     root_dir: Path | None,
@@ -292,6 +300,7 @@ class SpeechToText:
         *,
         language: str = "en",
         vad_filter: bool = True,
+        prompt: str = "",
     ) -> TranscriptionResult:
         """Transcribe audio from a numpy array or file path.
 
@@ -304,6 +313,8 @@ class SpeechToText:
             Language code hint (default ``"en"``).
         vad_filter:
             Enable Voice Activity Detection filtering (default ``True``).
+        prompt:
+            Optional initial prompt to bias recognition toward expected vocabulary.
 
         Returns
         -------
@@ -311,11 +322,25 @@ class SpeechToText:
         """
         self._ensure_model()
         t0 = time.monotonic()
-        segments, info = self._model.transcribe(
+        initial_prompt = prompt or JARVIS_DEFAULT_PROMPT
+        segments_gen, info = self._model.transcribe(
             audio,
             language=language,
             vad_filter=vad_filter,
+            initial_prompt=initial_prompt,
+            beam_size=5,
+            condition_on_previous_text=False,
+            no_repeat_ngram_size=3,
+            hallucination_silence_threshold=0.2,
+            word_timestamps=True,
+            vad_parameters=dict(
+                threshold=0.5,
+                min_silence_duration_ms=500,
+                speech_pad_ms=200,
+                min_speech_duration_ms=250,
+            ),
         )
+        segments = list(segments_gen)
         texts: list[str] = []
         parsed_segments: list[dict] = []
         for segment in segments:
@@ -330,7 +355,13 @@ class SpeechToText:
                 })
         elapsed = time.monotonic() - t0
         full_text = " ".join(texts).strip()
-        confidence = getattr(info, "language_probability", 0.0)
+        # Compute confidence from segment avg_logprob (not language_probability which is always ~1.0 for English)
+        logprobs = [seg.avg_logprob for seg in segments if hasattr(seg, 'avg_logprob')]
+        if logprobs:
+            avg_logprob = sum(logprobs) / len(logprobs)
+            confidence = min(1.0, max(0.0, 1.0 + avg_logprob))
+        else:
+            confidence = getattr(info, "language_probability", 0.0)
         detected_lang = getattr(info, "language", language)
         return TranscriptionResult(
             text=full_text,
@@ -447,6 +478,8 @@ def transcribe_smart(
     language: str = "en",
     prompt: str = "",
     root_dir: Path | None = None,
+    gateway: object | None = None,
+    entity_list: list[str] | None = None,
 ) -> TranscriptionResult:
     """Transcribe using the best available backend.
 
@@ -462,8 +495,31 @@ def transcribe_smart(
     ``CONFIDENCE_RETRY_THRESHOLD`` (0.6), an automatic retry using the
     alternative backend is attempted.  The result with higher confidence
     is returned.
+
+    When *gateway* and/or *entity_list* are provided, post-processing
+    (filler removal, LLM correction, NER entity correction) is applied
+    to the final transcription text.
     """
     backend = os.environ.get("JARVIS_STT_BACKEND", "auto").lower()
+
+    # Audio preprocessing (only for numpy arrays, not file paths)
+    if isinstance(audio, np.ndarray) and len(audio) > 0:
+        try:
+            from jarvis_engine.stt_postprocess import preprocess_audio
+            audio = preprocess_audio(audio)
+            if len(audio) == 0:
+                logger.info("Audio was pure silence after preprocessing")
+                return TranscriptionResult(
+                    text="",
+                    language=language,
+                    confidence=0.0,
+                    duration_seconds=0.0,
+                    backend="preprocessed-silence",
+                )
+        except Exception as exc:
+            logger.warning("Audio preprocessing failed, using raw audio: %s", exc)
+
+    final: TranscriptionResult | None = None
 
     if backend == "groq":
         result = transcribe_groq(audio, language=language, prompt=prompt)
@@ -474,11 +530,11 @@ def transcribe_smart(
             latency_ms=result.duration_seconds * 1000,
             text_length=len(result.text),
         )
-        return _confidence_retry(
+        final = _confidence_retry(
             result, audio, language=language, prompt=prompt, root_dir=root_dir,
         )
 
-    if backend == "local":
+    elif backend == "local":
         stt = SpeechToText()
         result = stt.transcribe_audio(audio, language=language)
         _log_stt_metric(
@@ -488,46 +544,68 @@ def transcribe_smart(
             latency_ms=result.duration_seconds * 1000,
             text_length=len(result.text),
         )
-        return _confidence_retry(
+        final = _confidence_retry(
             result, audio, language=language, prompt=prompt, root_dir=root_dir,
         )
 
-    # Auto mode: try Groq first, fall back to local
-    result: TranscriptionResult | None = None
-    if os.environ.get("GROQ_API_KEY", ""):
-        result = _try_groq(audio, language=language, prompt=prompt)
-        if result is not None:
-            logger.info("Groq STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
+    else:
+        # Auto mode: try Groq first, fall back to local
+        result: TranscriptionResult | None = None
+        if os.environ.get("GROQ_API_KEY", ""):
+            result = _try_groq(audio, language=language, prompt=prompt)
+            if result is not None:
+                logger.info("Groq STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
 
-    if result is None:
-        # Fall back to local faster-whisper
-        result = _try_local(audio, language=language)
-        if result is not None:
-            logger.info("Local STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
+        if result is None:
+            result = _try_local(audio, language=language)
+            if result is not None:
+                logger.info("Local STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
 
-    if result is None:
-        logger.error("All STT backends failed")
-        return TranscriptionResult(
-            text="",
-            language=language,
-            confidence=0.0,
-            duration_seconds=0.0,
-            backend="none",
+        if result is None:
+            logger.error("All STT backends failed")
+            return TranscriptionResult(
+                text="",
+                language=language,
+                confidence=0.0,
+                duration_seconds=0.0,
+                backend="none",
+            )
+
+        _log_stt_metric(
+            root_dir,
+            backend=result.backend,
+            confidence=result.confidence,
+            latency_ms=result.duration_seconds * 1000,
+            text_length=len(result.text),
         )
 
-    # Log primary attempt metrics
-    _log_stt_metric(
-        root_dir,
-        backend=result.backend,
-        confidence=result.confidence,
-        latency_ms=result.duration_seconds * 1000,
-        text_length=len(result.text),
-    )
+        final = _confidence_retry(
+            result, audio, language=language, prompt=prompt, root_dir=root_dir,
+        )
 
-    # Confidence retry with alternative backend
-    return _confidence_retry(
-        result, audio, language=language, prompt=prompt, root_dir=root_dir,
-    )
+    # Post-process transcription text
+    if final.text.strip():
+        try:
+            from jarvis_engine.stt_postprocess import postprocess_transcription
+            processed = postprocess_transcription(
+                final.text,
+                final.confidence,
+                gateway=gateway,
+                entity_list=entity_list,
+            )
+            final = TranscriptionResult(
+                text=processed,
+                language=final.language,
+                confidence=final.confidence,
+                duration_seconds=final.duration_seconds,
+                backend=final.backend,
+                segments=final.segments,
+                retried=final.retried,
+            )
+        except Exception as exc:
+            logger.warning("Post-processing failed, using raw text: %s", exc)
+
+    return final
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +698,8 @@ def listen_and_transcribe(
     max_duration_seconds: float = 30.0,
     language: str = "en",
     root_dir: Path | None = None,
+    gateway: object | None = None,
+    entity_list: list[str] | None = None,
 ) -> TranscriptionResult:
     """Record from microphone and transcribe in one call.
 
@@ -627,4 +707,7 @@ def listen_and_transcribe(
     otherwise falls back to local faster-whisper.
     """
     audio = record_from_microphone(max_duration_seconds=max_duration_seconds)
-    return transcribe_smart(audio, language=language, root_dir=root_dir)
+    return transcribe_smart(
+        audio, language=language, root_dir=root_dir,
+        gateway=gateway, entity_list=entity_list,
+    )

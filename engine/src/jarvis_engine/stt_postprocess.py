@@ -351,7 +351,7 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
 # Stage 6: Full Pipeline Orchestration
 # ---------------------------------------------------------------------------
 
-_COMMAND_PATTERNS: set[str] = {
+COMMAND_PATTERNS: set[str] = {
     "brain status",
     "ops brief",
     "daily brief",
@@ -381,7 +381,8 @@ def postprocess_transcription(
     3. LLM post-correction (skipped for short high-confidence commands)
     4. NER entity correction (skipped for short high-confidence commands)
 
-    The skip path triggers when text is < 5 words and confidence > 0.95.
+    The skip path triggers when text is < 5 words and confidence > 0.95,
+    or when text matches a known command pattern.
     """
     if not text or not text.strip():
         return ""
@@ -397,9 +398,10 @@ def postprocess_transcription(
     if not text.strip():
         return ""
 
-    # Skip path: short high-confidence commands
+    # Skip path: short high-confidence commands or known command patterns
     word_count = len(text.split())
-    is_short_command = word_count < 5 and confidence > 0.95
+    is_known_command = text.strip().lower() in COMMAND_PATTERNS
+    is_short_command = (word_count < 5 and confidence > 0.95) or is_known_command
 
     if is_short_command:
         logger.debug("Skip path: short high-confidence command (%d words, %.2f conf)", word_count, confidence)
