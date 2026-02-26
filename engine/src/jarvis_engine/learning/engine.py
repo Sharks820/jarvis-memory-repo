@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
     from jarvis_engine.learning.feedback import ResponseFeedbackTracker
     from jarvis_engine.learning.preferences import PreferenceTracker
+    from jarvis_engine.learning.usage_patterns import UsagePatternTracker
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 logger = logging.getLogger(__name__)
@@ -38,11 +39,13 @@ class ConversationLearningEngine:
         kg: "KnowledgeGraph | None" = None,
         preference_tracker: "PreferenceTracker | None" = None,
         feedback_tracker: "ResponseFeedbackTracker | None" = None,
+        usage_tracker: "UsagePatternTracker | None" = None,
     ) -> None:
         self._pipeline = pipeline
         self._kg = kg
         self._preference_tracker = preference_tracker
         self._feedback_tracker = feedback_tracker
+        self._usage_tracker = usage_tracker
 
     def learn_from_interaction(
         self,
@@ -109,6 +112,13 @@ class ConversationLearningEngine:
                 feedback_detected = self._feedback_tracker.record_feedback(user_message)
             except Exception as exc:
                 logger.warning("Failed to record feedback: %s", exc)
+
+        # Record usage pattern if tracker is available
+        if self._usage_tracker is not None:
+            try:
+                self._usage_tracker.record_interaction()
+            except Exception as exc:
+                logger.warning("Failed to record usage pattern: %s", exc)
 
         # Ingest user message if knowledge-bearing
         if self._is_knowledge_bearing(user_message):

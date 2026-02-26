@@ -346,12 +346,14 @@ def create_app(root: Path) -> CommandBus:
         from jarvis_engine.learning.engine import ConversationLearningEngine
         from jarvis_engine.learning.feedback import ResponseFeedbackTracker
         from jarvis_engine.learning.preferences import PreferenceTracker
+        from jarvis_engine.learning.usage_patterns import UsagePatternTracker
 
         pref_tracker = PreferenceTracker(db=engine._db)
         feedback_tracker = ResponseFeedbackTracker(db=engine._db)
+        usage_tracker = UsagePatternTracker(db=engine._db)
         learning_engine = ConversationLearningEngine(
             pipeline=pipeline, kg=kg, preference_tracker=pref_tracker,
-            feedback_tracker=feedback_tracker,
+            feedback_tracker=feedback_tracker, usage_tracker=usage_tracker,
         )
 
         bus.register(
