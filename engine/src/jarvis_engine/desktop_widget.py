@@ -514,6 +514,8 @@ class JarvisDesktopWidget(tk.Tk):
         self._orb_after_id: str | None = None
         self._launcher_after_id: str | None = None
         self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
+        self._widget_state: str = "idle"  # idle | listening | processing | error
+        self._error_clear_id: str | None = None  # after() id for auto-clearing error state
 
         self.title("Jarvis Unlimited")
         self.geometry("470x840+40+60")
@@ -1182,6 +1184,7 @@ class JarvisDesktopWidget(tk.Tk):
             return
         # Log the user's command with the "user" role
         self._log(text, role="user")
+        self._set_state("processing")
         # Read all tkinter vars on the main thread before spawning background thread
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())
@@ -1204,17 +1207,34 @@ class JarvisDesktopWidget(tk.Tk):
                 lines = data.get("stdout_tail", [])
                 if isinstance(lines, list) and lines:
                     self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
+                if not ok:
+                    self._set_error_briefly_async()
+                else:
+                    self._set_state_async("idle")
             except HTTPError as exc:
                 self._log_async(f"Command failed: {_http_error_details(exc)}", role="error")
+                self._set_error_briefly_async()
             except URLError:
                 self._log_async("Cannot connect to Jarvis services.", role="error")
                 self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+                self._set_error_briefly_async()
             except (RuntimeError, TimeoutError) as exc:
                 self._log_async(f"Command failed: {exc}", role="error")
+                self._set_error_briefly_async()
             except Exception as exc:  # noqa: BLE001
                 self._log_async(f"Command failed: {exc}", role="error")
+                self._set_error_briefly_async()
 
         self._thread(worker)
+
+    def _send_text(self, text: str) -> None:
+        """Set the command text and send it -- convenience for programmatic use."""
+        self._set_command_text(text)
+        self._send_command_async()
+
+    def _voice_dictate(self) -> None:
+        """Convenience alias for tray menu / external callers."""
+        self._dictate_async()
 
     def _quick_phrase(self, text: str) -> None:
         self._set_command_text(text)
@@ -1317,19 +1337,25 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _dictate_async(self) -> None:
         auto_send = bool(self.auto_send_var.get())
+        self._set_state("listening")
 
         def worker() -> None:
             try:
                 text = _voice_dictate_once(timeout_s=8)
                 if not text:
                     self._log_async("No speech recognized.", role="system")
+                    self._set_state_async("idle")
                     return
+                self._set_state_async("processing")
                 self._set_command_text_async(text)
                 self._log_async(f"dictated: {text}", role="system")
                 if auto_send:
                     self.after(0, self._send_command_async)
+                else:
+                    self._set_state_async("idle")
             except Exception as exc:  # noqa: BLE001
                 self._log_async(f"dictation failed: {exc}", role="error")
+                self._set_error_briefly_async()
 
         self._thread(worker)
 
@@ -1557,13 +1583,72 @@ class JarvisDesktopWidget(tk.Tk):
             self.intel_var.set("")
             self.intel_label.config(fg=self.MUTED)
 
+    def _set_state(self, state: str) -> None:
+        """Update the visual state machine: idle | listening | processing | error."""
+        if state not in ("idle", "listening", "processing", "error"):
+            state = "idle"
+        self._widget_state = state
+        self._refresh_status_view()
+
+    def _set_state_async(self, state: str) -> None:
+        """Schedule state change on the main tkinter thread."""
+        if self.stop_event.is_set():
+            return
+        try:
+            self.after(0, self._set_state, state)
+        except Exception:
+            pass  # Widget destroyed
+
+    def _set_error_briefly(self) -> None:
+        """Set error state for 2 seconds, then revert to idle."""
+        self._set_state("error")
+        # Cancel any previous error-clear timer
+        if self._error_clear_id is not None:
+            try:
+                self.after_cancel(self._error_clear_id)
+            except Exception:
+                pass
+        self._error_clear_id = self.after(2000, self._set_state, "idle")
+
+    def _set_error_briefly_async(self) -> None:
+        """Schedule brief error state on the main tkinter thread."""
+        if self.stop_event.is_set():
+            return
+        try:
+            self.after(0, self._set_error_briefly)
+        except Exception:
+            pass
+
     def _refresh_status_view(self) -> None:
-        if self.online:
-            self.status_var.set("ONLINE")
+        state = self._widget_state
+        if state == "listening":
+            self.status_var.set("LISTENING...")
+            self.status_label.config(fg=self.ACCENT_2)
+        elif state == "processing":
+            label = "ONLINE - Processing..." if self.online else "OFFLINE - Processing..."
+            self.status_var.set(label)
+            self.status_label.config(fg="#ff9f43")
+        elif state == "error":
+            self.status_var.set("ERROR")
+            self.status_label.config(fg=self.WARN)
+        elif self.online:
+            self.status_var.set("ONLINE - Idle")
             self.status_label.config(fg=self.ACCENT)
         else:
             self.status_var.set("OFFLINE")
             self.status_label.config(fg="#f87171")
+
+    def _orb_color(self) -> str:
+        """Return the current orb color based on widget state."""
+        state = self._widget_state
+        if state == "listening":
+            return self.ACCENT_2  # blue
+        if state == "processing":
+            return "#ff9f43"  # orange
+        if state == "error":
+            return self.WARN  # red
+        # idle: color depends on online status
+        return self.ACCENT if self.online else self.WARN
 
     def _animate_orb(self) -> None:
         if self.stop_event.is_set():
@@ -1575,7 +1660,7 @@ class JarvisDesktopWidget(tk.Tk):
         y0 = cy - pulse
         x1 = cx + pulse
         y1 = cy + pulse
-        color = self.ACCENT if self.online else self.WARN
+        color = self._orb_color()
         try:
             self.orb_canvas.coords(self.orb_id, x0, y0, x1, y1)
             self.orb_canvas.itemconfig(self.orb_id, fill=color)
