@@ -1235,3 +1235,123 @@ class TestChatDisplay:
         # Should show with timestamp (system format)
         assert "mystery" in content
         assert "[" in content  # timestamp bracket from system format
+
+
+# ---- Visual State Machine ---------------------------------------------------
+
+class TestWidgetStateMachine:
+    """Test the widget visual state machine logic (no tkinter required)."""
+
+    def test_orb_color_idle_online(self):
+        """Idle + online should return ACCENT (teal)."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.ACCENT = "#12c9b1"
+        widget.ACCENT_2 = "#1aa3ff"
+        widget.WARN = "#d15a5a"
+        widget._widget_state = "idle"
+        widget.online = True
+        color = JarvisDesktopWidget._orb_color(widget)
+        assert color == "#12c9b1"
+
+    def test_orb_color_idle_offline(self):
+        """Idle + offline should return WARN (red)."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.ACCENT = "#12c9b1"
+        widget.ACCENT_2 = "#1aa3ff"
+        widget.WARN = "#d15a5a"
+        widget._widget_state = "idle"
+        widget.online = False
+        color = JarvisDesktopWidget._orb_color(widget)
+        assert color == "#d15a5a"
+
+    def test_orb_color_listening(self):
+        """Listening should return ACCENT_2 (blue)."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.ACCENT = "#12c9b1"
+        widget.ACCENT_2 = "#1aa3ff"
+        widget.WARN = "#d15a5a"
+        widget._widget_state = "listening"
+        widget.online = True
+        color = JarvisDesktopWidget._orb_color(widget)
+        assert color == "#1aa3ff"
+
+    def test_orb_color_processing(self):
+        """Processing should return orange."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.ACCENT = "#12c9b1"
+        widget.ACCENT_2 = "#1aa3ff"
+        widget.WARN = "#d15a5a"
+        widget._widget_state = "processing"
+        widget.online = True
+        color = JarvisDesktopWidget._orb_color(widget)
+        assert color == "#ff9f43"
+
+    def test_orb_color_error(self):
+        """Error should return WARN (red)."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.ACCENT = "#12c9b1"
+        widget.ACCENT_2 = "#1aa3ff"
+        widget.WARN = "#d15a5a"
+        widget._widget_state = "error"
+        widget.online = True
+        color = JarvisDesktopWidget._orb_color(widget)
+        assert color == "#d15a5a"
+
+    def test_set_state_rejects_invalid_state(self):
+        """_set_state with invalid state should default to idle."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._widget_state = "processing"
+        widget._refresh_status_view = MagicMock()
+        JarvisDesktopWidget._set_state(widget, "bogus")
+        assert widget._widget_state == "idle"
+        widget._refresh_status_view.assert_called_once()
+
+    def test_set_state_valid_states(self):
+        """_set_state should accept all valid states."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        for state in ("idle", "listening", "processing", "error"):
+            widget = MagicMock(spec=JarvisDesktopWidget)
+            widget._refresh_status_view = MagicMock()
+            JarvisDesktopWidget._set_state(widget, state)
+            assert widget._widget_state == state
+
+    def test_send_command_sets_processing_state(self):
+        """_send_command_async should set processing state before HTTP call."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.command_text = MagicMock()
+        widget.command_text.get.return_value = "hello\n"
+        widget._log = MagicMock()
+        widget._set_state = MagicMock()
+        widget._current_cfg = MagicMock(return_value=WidgetConfig(
+            "http://127.0.0.1:8787", "t", "k", "d", "p"))
+        widget.execute_var = MagicMock()
+        widget.execute_var.get.return_value = False
+        widget.priv_var = MagicMock()
+        widget.priv_var.get.return_value = False
+        widget.speak_var = MagicMock()
+        widget.speak_var.get.return_value = False
+        widget._thread = MagicMock()
+
+        JarvisDesktopWidget._send_command_async(widget)
+
+        widget._set_state.assert_called_once_with("processing")
+
+    def test_dictate_sets_listening_state(self):
+        """_dictate_async should set listening state before dictation."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.auto_send_var = MagicMock()
+        widget.auto_send_var.get.return_value = False
+        widget._set_state = MagicMock()
+        widget._thread = MagicMock()
+
+        JarvisDesktopWidget._dictate_async(widget)
+
+        widget._set_state.assert_called_once_with("listening")
