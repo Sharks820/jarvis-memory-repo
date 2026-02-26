@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
     from jarvis_engine.learning.preferences import PreferenceTracker
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
@@ -36,10 +37,12 @@ class ConversationLearningEngine:
         pipeline: "EnrichedIngestPipeline | None",
         kg: "KnowledgeGraph | None" = None,
         preference_tracker: "PreferenceTracker | None" = None,
+        feedback_tracker: "ResponseFeedbackTracker | None" = None,
     ) -> None:
         self._pipeline = pipeline
         self._kg = kg
         self._preference_tracker = preference_tracker
+        self._feedback_tracker = feedback_tracker
 
     def learn_from_interaction(
         self,
@@ -99,6 +102,14 @@ class ConversationLearningEngine:
             except Exception as exc:
                 logger.warning("Failed to observe preferences: %s", exc)
 
+        # Detect implicit feedback if tracker is available
+        feedback_detected = "neutral"
+        if self._feedback_tracker is not None:
+            try:
+                feedback_detected = self._feedback_tracker.record_feedback(user_message)
+            except Exception as exc:
+                logger.warning("Failed to record feedback: %s", exc)
+
         # Ingest user message if knowledge-bearing
         if self._is_knowledge_bearing(user_message):
             try:
@@ -132,6 +143,7 @@ class ConversationLearningEngine:
             "correction_detected": correction_detected,
             "correction_applied": correction_applied,
             "preferences_detected": preferences_detected,
+            "feedback_detected": feedback_detected,
         }
 
     @staticmethod
