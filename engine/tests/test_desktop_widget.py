@@ -1551,3 +1551,117 @@ class TestPositionPersistence:
         assert cfg.token == "old_tok"
         assert cfg.panel_x is None
         assert cfg.launcher_x is None
+
+
+# ---- System Tray Icon -------------------------------------------------------
+
+class TestCreateTrayIconImage:
+    """Test the tray icon image generation (requires PIL)."""
+
+    def test_creates_64x64_image(self):
+        from jarvis_engine.desktop_widget import _create_tray_icon_image
+        img = _create_tray_icon_image()
+        assert img is not None
+        assert img.size == (64, 64)
+        assert img.mode == "RGBA"
+
+    def test_image_has_blue_pixel(self):
+        """The icon should contain blue pixels (from the background)."""
+        from jarvis_engine.desktop_widget import _create_tray_icon_image
+        img = _create_tray_icon_image()
+        assert img is not None
+        # Sample the edge -- should be blue (18, 163, 255, 255)
+        pixel = img.getpixel((5, 32))
+        # Blue channel should be dominant
+        assert pixel[2] > 200  # B channel
+
+    def test_image_has_white_text_area(self):
+        """The center area should contain white pixels from the 'J' text."""
+        from jarvis_engine.desktop_widget import _create_tray_icon_image
+        img = _create_tray_icon_image()
+        assert img is not None
+        # Sample center area -- should have some white pixels
+        center_pixels = [img.getpixel((32, y)) for y in range(20, 44)]
+        has_white = any(p[0] > 200 and p[1] > 200 and p[2] > 200 for p in center_pixels)
+        assert has_white, "Expected white 'J' text in center of tray icon"
+
+
+class TestTrayMenuCallbacks:
+    """Test tray menu callbacks route to correct widget methods."""
+
+    def test_tray_show_widget_calls_show_panel(self):
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.after = MagicMock()
+        widget._show_panel = MagicMock()
+        JarvisDesktopWidget._tray_show_widget(widget)
+        widget.after.assert_called_once_with(0, widget._show_panel)
+
+    def test_tray_voice_dictate_shows_panel_then_dictates(self):
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.after = MagicMock()
+        widget._show_panel = MagicMock()
+        widget._voice_dictate = MagicMock()
+        JarvisDesktopWidget._tray_voice_dictate(widget)
+        calls = widget.after.call_args_list
+        assert len(calls) == 2
+        assert calls[0] == ((0, widget._show_panel),)
+        assert calls[1][0][0] == 100  # 100ms delay before dictation
+
+    def test_tray_quit_calls_shutdown(self):
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.after = MagicMock()
+        widget._shutdown = MagicMock()
+        JarvisDesktopWidget._tray_quit(widget)
+        widget.after.assert_called_once_with(0, widget._shutdown)
+
+    def test_stop_tray_icon_cleans_up(self):
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        mock_icon = MagicMock()
+        widget._tray_icon = mock_icon
+        JarvisDesktopWidget._stop_tray_icon(widget)
+        mock_icon.stop.assert_called_once()
+        assert widget._tray_icon is None
+
+    def test_stop_tray_icon_none_is_noop(self):
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._tray_icon = None
+        JarvisDesktopWidget._stop_tray_icon(widget)
+        # Should not raise
+
+    def test_hide_panel_with_tray_hides_launcher(self):
+        """When tray icon is present, hide_panel should hide the launcher orb."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._tray_icon = MagicMock()  # Tray icon present
+        widget.launcher_win = MagicMock()
+        JarvisDesktopWidget._hide_panel(widget)
+        widget.withdraw.assert_called_once()
+        widget.launcher_win.withdraw.assert_called_once()
+
+    def test_hide_panel_without_tray_shows_launcher(self):
+        """Without tray icon, hide_panel should show the launcher orb."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._tray_icon = None  # No tray icon
+        widget.launcher_win = MagicMock()
+        JarvisDesktopWidget._hide_panel(widget)
+        widget.withdraw.assert_called_once()
+        widget.launcher_win.deiconify.assert_called_once()
+        widget.launcher_win.lift.assert_called_once()
+
+    def test_shutdown_stops_tray_icon(self):
+        """_shutdown should stop the tray icon."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.stop_event = threading.Event()
+        widget._stop_tray_icon = MagicMock()
+        widget._orb_after_id = None
+        widget._launcher_after_id = None
+        widget.launcher_win = None
+        JarvisDesktopWidget._shutdown(widget)
+        widget._stop_tray_icon.assert_called_once()
