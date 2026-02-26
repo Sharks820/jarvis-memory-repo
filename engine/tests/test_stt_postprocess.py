@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+_HAS_LIBROSA = bool(importlib.util.find_spec("librosa"))
+_HAS_JELLYFISH = bool(importlib.util.find_spec("jellyfish"))
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +37,7 @@ def test_preprocess_audio_normalizes_peak() -> None:
     assert peak <= 1.0, f"Peak {peak} exceeds 1.0"
 
 
+@pytest.mark.skipif(not _HAS_LIBROSA, reason="librosa not installed")
 def test_preprocess_audio_trims_silence() -> None:
     """Leading and trailing silence is trimmed."""
     from jarvis_engine.stt_postprocess import preprocess_audio
@@ -44,6 +49,7 @@ def test_preprocess_audio_trims_silence() -> None:
     assert len(result) < len(audio), f"Expected trimming: {len(result)} >= {len(audio)}"
 
 
+@pytest.mark.skipif(not _HAS_LIBROSA, reason="librosa not installed")
 def test_preprocess_audio_handles_pure_silence() -> None:
     """Pure silence returns an empty or near-empty array without error."""
     from jarvis_engine.stt_postprocess import preprocess_audio
@@ -204,6 +210,7 @@ def test_correct_with_llm_skips_when_no_gateway() -> None:
 # 5. correct_entities
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_exact_match() -> None:
     """Exact case-insensitive matches are corrected."""
     from jarvis_engine.stt_postprocess import correct_entities
@@ -212,6 +219,7 @@ def test_correct_entities_exact_match() -> None:
     assert result == "ask Jarvis about it"
 
 
+@pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_phonetic_match() -> None:
     """Phonetically similar names are corrected."""
     from jarvis_engine.stt_postprocess import correct_entities
@@ -220,6 +228,7 @@ def test_correct_entities_phonetic_match() -> None:
     assert "Conner" in result
 
 
+@pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_no_match() -> None:
     """Text without entity matches passes through unchanged."""
     from jarvis_engine.stt_postprocess import correct_entities
@@ -228,6 +237,7 @@ def test_correct_entities_no_match() -> None:
     assert result == "the weather is nice"
 
 
+@pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_multiple_entities() -> None:
     """Multiple entities in one sentence are all corrected."""
     from jarvis_engine.stt_postprocess import correct_entities
@@ -295,6 +305,7 @@ def test_postprocess_hallucination_returns_empty() -> None:
     assert result == ""
 
 
+@pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_postprocess_no_gateway_still_cleans() -> None:
     """Without gateway, filler removal and entity correction still run."""
     from jarvis_engine.stt_postprocess import postprocess_transcription
@@ -308,3 +319,44 @@ def test_postprocess_no_gateway_still_cleans() -> None:
     assert "um" not in result
     assert "uh" not in result
     assert "Jarvis" in result
+
+
+# ---------------------------------------------------------------------------
+# 7. Integration: full pipeline end-to-end
+# ---------------------------------------------------------------------------
+
+def test_end_to_end_pipeline_with_noisy_input() -> None:
+    """Full pipeline: preprocess noisy audio -> postprocess transcription."""
+    from jarvis_engine.stt_postprocess import postprocess_transcription, preprocess_audio
+
+    # Simulate noisy audio
+    speech = np.random.randn(16000).astype(np.float32) * 0.3
+    noise = np.random.randn(16000).astype(np.float32) * 0.05
+    audio = speech + noise
+
+    # Preprocess should not error
+    processed = preprocess_audio(audio)
+    assert isinstance(processed, np.ndarray)
+    assert len(processed) > 0
+
+    # Postprocess with mock gateway
+    mock_gateway = MagicMock()
+    mock_gateway.complete.return_value = MagicMock(text="Hello, Jarvis!")
+
+    result = postprocess_transcription(
+        text="um hello jarvis",
+        confidence=0.85,
+        gateway=mock_gateway,
+        entity_list=["Jarvis", "Conner"],
+    )
+    assert "um" not in result
+    assert result  # Non-empty
+
+
+def test_end_to_end_pipeline_pure_noise() -> None:
+    """Pure noise audio preprocesses without error."""
+    from jarvis_engine.stt_postprocess import preprocess_audio
+
+    noise = np.random.randn(16000).astype(np.float32) * 0.001
+    result = preprocess_audio(noise)
+    assert isinstance(result, np.ndarray)

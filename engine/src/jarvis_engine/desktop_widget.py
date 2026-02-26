@@ -516,7 +516,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
 
         self.title("Jarvis Unlimited")
-        self.geometry("470x760+40+60")
+        self.geometry("470x840+40+60")
         self.minsize(420, 620)
         self.configure(bg=self.BG)
         self.attributes("-topmost", True)
@@ -529,7 +529,22 @@ class JarvisDesktopWidget(tk.Tk):
         self._animate_orb()
         self._animate_launcher()
         self._hide_panel()
-        self._log("Widget online. Enter sends command, Shift+Enter inserts newline.")
+        self._log("Jarvis Widget started. Checking connection...", role="system")
+        self._log("Enter sends command, Shift+Enter inserts newline.", role="system")
+        # Show initial connection status after first health check
+        self._thread(self._startup_status_check)
+
+    def _startup_status_check(self) -> None:
+        """Quick connection check on startup so user sees status immediately."""
+        time.sleep(1.5)  # Give health loop a moment to poll
+        if self.stop_event.is_set():
+            return
+        if self.online:
+            self._log_async("Connected to Jarvis services.", role="jarvis")
+        else:
+            self._log_async("OFFLINE - Cannot reach Jarvis services.", role="error")
+            self._log_async("Start services with: jarvis-engine daemon", role="system")
+            self._log_async("Then click Connect to authenticate.", role="system")
 
     def _on_close(self) -> None:
         """Handle window close: minimize to launcher orb (tray-app pattern).
@@ -684,7 +699,8 @@ class JarvisDesktopWidget(tk.Tk):
         self.orb_canvas.pack(side=tk.LEFT)
         self.orb_id = self.orb_canvas.create_oval(8, 8, 18, 18, fill=self.WARN, outline="")
         self.status_var = tk.StringVar(value="OFFLINE")
-        tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT, padx=(6, 0))
+        self.status_label = tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg="#f87171", font=("Segoe UI", 10, "bold"))
+        self.status_label.pack(side=tk.LEFT, padx=(6, 0))
         self.intel_var = tk.StringVar(value="")
         self.intel_label = tk.Label(status_row, textvariable=self.intel_var, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9, "bold"))
         self.intel_label.pack(side=tk.RIGHT, padx=(0, 8))
@@ -703,24 +719,44 @@ class JarvisDesktopWidget(tk.Tk):
         self.master_var = tk.StringVar(value=self.cfg.master_password)
 
         self._entry(sec, "Base URL", self.base_var)
-        self._entry(sec, "Bearer token", self.token_var)
-        self._entry(sec, "Signing key", self.key_var)
-        self._entry(sec, "Device ID", self.device_var)
         self._entry(sec, "Master password", self.master_var, show="*")
 
-        sec_buttons = tk.Frame(sec, bg=self.PANEL)
-        sec_buttons.pack(fill=tk.X, padx=6, pady=(4, 8))
+        # Advanced fields (hidden by default)
+        self._adv_visible = tk.BooleanVar(value=False)
+        adv_toggle = tk.Frame(sec, bg=self.PANEL)
+        adv_toggle.pack(fill=tk.X, padx=6, pady=(2, 0))
+        self._adv_toggle_btn = tk.Button(
+            adv_toggle,
+            text="\u25B6 Advanced",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            activebackground=self.PANEL,
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8),
+            cursor="hand2",
+            command=self._toggle_advanced,
+        )
+        self._adv_toggle_btn.pack(side=tk.LEFT)
+        self._adv_frame = tk.Frame(sec, bg=self.PANEL)
+        self._entry(self._adv_frame, "Bearer token", self.token_var)
+        self._entry(self._adv_frame, "Signing key", self.key_var)
+        self._entry(self._adv_frame, "Device ID", self.device_var)
+        # Advanced frame hidden by default (not packed)
+
+        self._sec_buttons = tk.Frame(sec, bg=self.PANEL)
+        self._sec_buttons.pack(fill=tk.X, padx=6, pady=(4, 8))
         tk.Button(
-            sec_buttons,
-            text="Save on Device",
+            self._sec_buttons,
+            text="Save",
             bg="#133d70",
             fg="#eaf3ff",
             relief=tk.FLAT,
             command=self._save_session,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
         tk.Button(
-            sec_buttons,
-            text="Bootstrap",
+            self._sec_buttons,
+            text="Connect",
             bg="#0f766e",
             fg="#ecfeff",
             relief=tk.FLAT,
@@ -773,16 +809,15 @@ class JarvisDesktopWidget(tk.Tk):
 
         fetch = tk.Frame(body, bg=self.PANEL)
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._btn(fetch, "Refresh Settings", self._refresh_settings_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(fetch, "Refresh Dashboard", self._refresh_dashboard_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(fetch, "Self-Heal", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._btn(fetch, "Refresh", self._refresh_dashboard_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._btn(fetch, "Diagnose & Repair", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self._btn(fetch, "View Activity", self._view_activity_async, "#4a3570").pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Running Services section
         svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
         svc_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._svc_labels: dict[str, tuple[tk.Label, tk.Label]] = {}
-        for svc_name, display_name in [("daemon", "Daemon"), ("mobile_api", "Mobile API"), ("widget", "Widget")]:
+        for svc_name, display_name in [("daemon", "Assistant"), ("mobile_api", "Mobile API"), ("widget", "Widget")]:
             row_f = tk.Frame(svc_frame, bg=self.PANEL)
             row_f.pack(fill=tk.X, padx=6, pady=2)
             dot = tk.Label(row_f, text="\u25CB", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10))
@@ -813,7 +848,7 @@ class JarvisDesktopWidget(tk.Tk):
 
         output_header = tk.Frame(body, bg=self.PANEL)
         output_header.pack(fill=tk.X, padx=10, pady=(10, 0))
-        tk.Label(output_header, text="Conversation", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
+        tk.Label(output_header, text="Conversation", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
         tk.Button(
             output_header,
             text="Clear",
@@ -828,15 +863,15 @@ class JarvisDesktopWidget(tk.Tk):
         ).pack(side=tk.RIGHT)
         self.output = tk.Text(
             body,
-            height=12,
+            height=16,
             wrap=tk.WORD,
             bg="#081127",
             fg="#d6e4ff",
             insertbackground="#d6e4ff",
             relief=tk.FLAT,
-            highlightbackground="#2a4368",
-            highlightthickness=1,
-            font=("Consolas", 10),
+            highlightbackground="#3a5a8a",
+            highlightthickness=2,
+            font=("Consolas", 11),
             state=tk.DISABLED,
         )
         self.output.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 10))
@@ -848,7 +883,7 @@ class JarvisDesktopWidget(tk.Tk):
             "user",
             background="#0c2d5e",
             foreground="#b8d4ff",
-            font=("Consolas", 10, "bold"),
+            font=("Consolas", 11, "bold"),
             lmargin1=40,
             lmargin2=40,
             rmargin=8,
@@ -859,7 +894,7 @@ class JarvisDesktopWidget(tk.Tk):
             "jarvis",
             background="#0d1e1e",
             foreground="#a8e6cf",
-            font=("Consolas", 10),
+            font=("Consolas", 11),
             lmargin1=8,
             lmargin2=8,
             rmargin=40,
@@ -868,8 +903,8 @@ class JarvisDesktopWidget(tk.Tk):
         )
         self.output.tag_configure(
             "system",
-            foreground="#5a7a9e",
-            font=("Consolas", 9),
+            foreground="#7a9abe",
+            font=("Consolas", 10),
             lmargin1=8,
             lmargin2=8,
             spacing1=2,
@@ -877,9 +912,9 @@ class JarvisDesktopWidget(tk.Tk):
         )
         self.output.tag_configure(
             "error",
-            background="#1a0a0a",
-            foreground="#f87171",
-            font=("Consolas", 10),
+            background="#2a0a0a",
+            foreground="#ff6b6b",
+            font=("Consolas", 11, "bold"),
             lmargin1=8,
             lmargin2=8,
             spacing1=4,
@@ -907,6 +942,17 @@ class JarvisDesktopWidget(tk.Tk):
         self.output.config(state=tk.NORMAL)
         self.output.delete("1.0", tk.END)
         self.output.config(state=tk.DISABLED)
+
+    def _toggle_advanced(self) -> None:
+        """Show/hide advanced session fields (token, signing key, device ID)."""
+        if self._adv_visible.get():
+            self._adv_frame.pack_forget()
+            self._adv_visible.set(False)
+            self._adv_toggle_btn.config(text="\u25B6 Advanced")
+        else:
+            self._adv_frame.pack(fill=tk.X, padx=0, pady=(0, 0), before=self._sec_buttons)
+            self._adv_visible.set(True)
+            self._adv_toggle_btn.config(text="\u25BC Advanced")
 
     def _entry(self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None) -> None:
         tk.Label(parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=6, pady=(4, 0))
@@ -1067,11 +1113,14 @@ class JarvisDesktopWidget(tk.Tk):
                 trusted = bool(session.get("trusted_device", False))
                 self._log_async(f"Bootstrap complete. trusted_device={trusted}", role="jarvis")
             except HTTPError as exc:
-                self._log_async(f"bootstrap failed: {_http_error_details(exc)}", role="error")
-            except (URLError, RuntimeError, TimeoutError) as exc:
-                self._log_async(f"bootstrap failed: {exc}", role="error")
+                self._log_async(f"Connect failed: {_http_error_details(exc)}", role="error")
+            except URLError:
+                self._log_async("Cannot reach Jarvis server.", role="error")
+                self._log_async("Make sure the Mobile API is running and the Base URL is correct.", role="error")
+            except (RuntimeError, TimeoutError) as exc:
+                self._log_async(f"Connect failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"bootstrap failed: {exc}", role="error")
+                self._log_async(f"Connect failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1080,15 +1129,15 @@ class JarvisDesktopWidget(tk.Tk):
 
         def worker() -> None:
             try:
-                self._log_async("Running sync checks...", role="system")
+                self._log_async("Checking connection...", role="system")
                 sync_data = _http_json(cfg, "/sync/status", method="GET")
                 sync_ok = bool(sync_data.get("ok", False))
-                self._log_async(f"sync ok={sync_ok}", role="jarvis")
+                self._log_async(f"Connection: {'OK' if sync_ok else 'issues detected'}", role="jarvis")
                 last_sync = sync_data.get("last_sync_utc", "")
                 if last_sync:
-                    self._log_async(f"last sync: {last_sync}", role="jarvis")
+                    self._log_async(f"Last sync: {last_sync}", role="jarvis")
 
-                self._log_async("Running self-heal...", role="system")
+                self._log_async("Running diagnostics...", role="system")
                 heal_data = _http_json(
                     cfg,
                     "/self-heal",
@@ -1101,22 +1150,25 @@ class JarvisDesktopWidget(tk.Tk):
                 )
                 heal_ok = bool(heal_data.get("ok", False))
                 heal_exit = int(heal_data.get("command_exit_code", -1))
-                self._log_async(f"self-heal ok={heal_ok} exit={heal_exit}", role="jarvis")
+                self._log_async(f"Repair {'completed successfully' if heal_ok else 'finished with issues (exit=' + str(heal_exit) + ')'}", role="jarvis")
                 heal_lines = heal_data.get("stdout_tail", [])
                 if isinstance(heal_lines, list) and heal_lines:
                     self._log_async(" | ".join(str(x) for x in heal_lines[-4:]), role="jarvis")
                 if sync_ok and heal_ok:
-                    self._log_async("Self-Heal completed.", role="jarvis")
+                    self._log_async("All systems healthy.", role="jarvis")
                 elif not heal_ok:
                     self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
             except HTTPError as exc:
-                self._log_async(f"diagnose failed: {_http_error_details(exc)}", role="error")
-                self._notify_toast("Jarvis Self-Heal", "Self-heal failed to complete", "Error")
-            except (URLError, RuntimeError, TimeoutError) as exc:
-                self._log_async(f"diagnose failed: {exc}", role="error")
-                self._notify_toast("Jarvis Self-Heal", "Self-heal failed to complete", "Error")
+                self._log_async(f"Diagnose failed: {_http_error_details(exc)}", role="error")
+                self._notify_toast("Jarvis", "Diagnose & Repair failed", "Error")
+            except URLError:
+                self._log_async("Cannot connect to Jarvis services.", role="error")
+                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+                self._log_async("Start with: jarvis-engine daemon", role="system")
+            except (RuntimeError, TimeoutError) as exc:
+                self._log_async(f"Diagnose failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"diagnose failed: {exc}", role="error")
+                self._log_async(f"Diagnose failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1153,11 +1205,14 @@ class JarvisDesktopWidget(tk.Tk):
                 if isinstance(lines, list) and lines:
                     self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
             except HTTPError as exc:
-                self._log_async(f"command failed: {_http_error_details(exc)}", role="error")
-            except (URLError, RuntimeError, TimeoutError) as exc:
-                self._log_async(f"command failed: {exc}", role="error")
+                self._log_async(f"Command failed: {_http_error_details(exc)}", role="error")
+            except URLError:
+                self._log_async("Cannot connect to Jarvis services.", role="error")
+                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+            except (RuntimeError, TimeoutError) as exc:
+                self._log_async(f"Command failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"command failed: {exc}", role="error")
+                self._log_async(f"Command failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1197,19 +1252,6 @@ class JarvisDesktopWidget(tk.Tk):
         # Re-schedule every 10 seconds
         self.after(10000, self._refresh_services)
 
-    def _refresh_settings_async(self) -> None:
-        cfg = self._current_cfg()  # Read tkinter vars on main thread
-
-        def worker() -> None:
-            try:
-                data = _http_json(cfg, "/settings", method="GET")
-                settings = data.get("settings", {})
-                self._log_async(json.dumps(settings, ensure_ascii=True)[:600], role="jarvis")
-            except Exception as exc:  # noqa: BLE001
-                self._log_async(f"settings failed: {exc}", role="error")
-
-        self._thread(worker)
-
     def _refresh_dashboard_async(self) -> None:
         cfg = self._current_cfg()  # Read tkinter vars on main thread
 
@@ -1224,8 +1266,11 @@ class JarvisDesktopWidget(tk.Tk):
                     f"memory={mem.get('status', 'unknown')}",
                     role="jarvis",
                 )
+            except URLError:
+                self._log_async("Cannot connect to Jarvis services.", role="error")
+                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"dashboard failed: {exc}", role="error")
+                self._log_async(f"Dashboard failed: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1262,8 +1307,11 @@ class JarvisDesktopWidget(tk.Tk):
                     summary = str(evt.get("summary", ""))
                     role = "error" if cat == "error" else "jarvis"
                     self._log_async(f"[{ts_short}] [{cat.upper()}] {summary}", role=role)
+            except URLError:
+                self._log_async("Cannot connect to Jarvis services.", role="error")
+                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
             except Exception as exc:  # noqa: BLE001
-                self._log_async(f"activity failed: {exc}", role="error")
+                self._log_async(f"Could not load activity: {exc}", role="error")
 
         self._thread(worker)
 
@@ -1510,7 +1558,12 @@ class JarvisDesktopWidget(tk.Tk):
             self.intel_label.config(fg=self.MUTED)
 
     def _refresh_status_view(self) -> None:
-        self.status_var.set("ONLINE" if self.online else "OFFLINE")
+        if self.online:
+            self.status_var.set("ONLINE")
+            self.status_label.config(fg=self.ACCENT)
+        else:
+            self.status_var.set("OFFLINE")
+            self.status_label.config(fg="#f87171")
 
     def _animate_orb(self) -> None:
         if self.stop_event.is_set():
