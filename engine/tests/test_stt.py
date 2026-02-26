@@ -287,7 +287,9 @@ def test_confidence_retry_triggers_on_low_confidence() -> None:
     )
 
     with patch("jarvis_engine.stt.transcribe_groq", return_value=low_conf_result), \
-         patch("jarvis_engine.stt._try_local", return_value=high_conf_result):
+         patch("jarvis_engine.stt._try_local", return_value=high_conf_result), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello jarvis"
@@ -325,7 +327,9 @@ def test_confidence_retry_keeps_higher_confidence() -> None:
     )
 
     with patch("jarvis_engine.stt.transcribe_groq", return_value=primary), \
-         patch("jarvis_engine.stt._try_local", return_value=retry):
+         patch("jarvis_engine.stt._try_local", return_value=retry), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Original primary should be kept (higher confidence)
@@ -355,7 +359,9 @@ def test_no_retry_when_confidence_sufficient() -> None:
     )
 
     with patch("jarvis_engine.stt.transcribe_groq", return_value=good_result) as mock_groq, \
-         patch("jarvis_engine.stt._try_local") as mock_local:
+         patch("jarvis_engine.stt._try_local") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "turn on lights"
@@ -450,7 +456,9 @@ def test_confidence_retry_graceful_on_failure() -> None:
     )
 
     with patch("jarvis_engine.stt.transcribe_groq", return_value=low_conf), \
-         patch("jarvis_engine.stt._try_local", return_value=None):
+         patch("jarvis_engine.stt._try_local", return_value=None), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     # Original result returned even though confidence is low
@@ -479,7 +487,9 @@ def test_local_primary_no_retry_without_groq_key() -> None:
     )
 
     with patch("jarvis_engine.stt._try_groq") as mock_groq, \
-         patch("jarvis_engine.stt._try_local", return_value=local_result):
+         patch("jarvis_engine.stt._try_local", return_value=local_result), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "maybe hello"
@@ -509,7 +519,9 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        with patch("jarvis_engine.stt.transcribe_groq", return_value=good_result):
+        with patch("jarvis_engine.stt.transcribe_groq", return_value=good_result), \
+             patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+             patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
             result = transcribe_smart(fake_audio, root_dir=root)
 
         assert result.text == "turn on lights"
@@ -887,7 +899,9 @@ def test_transcribe_smart_forced_groq() -> None:
     )
 
     with patch("jarvis_engine.stt.transcribe_groq", return_value=groq_result) as mock_groq, \
-         patch("jarvis_engine.stt._try_local") as mock_local:
+         patch("jarvis_engine.stt._try_local") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello"
@@ -913,7 +927,9 @@ def test_transcribe_smart_forced_local() -> None:
     )
 
     with patch("jarvis_engine.stt.SpeechToText.transcribe_audio", return_value=local_result), \
-         patch("jarvis_engine.stt._try_groq") as mock_groq:
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.backend == "faster-whisper"
@@ -932,7 +948,8 @@ def test_transcribe_smart_all_backends_fail() -> None:
     fake_audio = np.zeros(16000, dtype=np.float32)
 
     with patch("jarvis_engine.stt._try_groq", return_value=None), \
-         patch("jarvis_engine.stt._try_local", return_value=None):
+         patch("jarvis_engine.stt._try_local", return_value=None), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
         result = transcribe_smart(fake_audio)
 
     assert result.text == ""
@@ -1051,7 +1068,7 @@ def test_ensure_model_idempotent() -> None:
 
 def test_transcribe_audio_vad_filter_passed() -> None:
     """vad_filter parameter is passed to the underlying model."""
-    from jarvis_engine.stt import SpeechToText
+    from jarvis_engine.stt import JARVIS_DEFAULT_PROMPT, SpeechToText
 
     stt = SpeechToText()
     mock_model = MagicMock()
@@ -1061,7 +1078,23 @@ def test_transcribe_audio_vad_filter_passed() -> None:
     audio = np.zeros(16000, dtype=np.float32)
     stt.transcribe_audio(audio, vad_filter=False)
 
-    mock_model.transcribe.assert_called_once_with(audio, language="en", vad_filter=False)
+    mock_model.transcribe.assert_called_once_with(
+        audio,
+        language="en",
+        vad_filter=False,
+        initial_prompt=JARVIS_DEFAULT_PROMPT,
+        beam_size=5,
+        condition_on_previous_text=False,
+        no_repeat_ngram_size=3,
+        hallucination_silence_threshold=0.2,
+        word_timestamps=True,
+        vad_parameters=dict(
+            threshold=0.5,
+            min_silence_duration_ms=500,
+            speech_pad_ms=200,
+            min_speech_duration_ms=250,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1070,19 +1103,65 @@ def test_transcribe_audio_vad_filter_passed() -> None:
 
 def test_transcribe_audio_accepts_file_path() -> None:
     """transcribe_audio can accept a string file path."""
-    from jarvis_engine.stt import SpeechToText
+    from jarvis_engine.stt import JARVIS_DEFAULT_PROMPT, SpeechToText
 
     stt = SpeechToText()
     mock_model = MagicMock()
     mock_model.transcribe.return_value = (
-        [SimpleNamespace(text=" from file ")],
+        [SimpleNamespace(text=" from file ", avg_logprob=-0.12, start=0.0, end=1.0)],
         SimpleNamespace(language="en", language_probability=0.88),
     )
     stt._model = mock_model
 
     result = stt.transcribe_audio("/tmp/audio.wav")
     assert result.text == "from file"
-    mock_model.transcribe.assert_called_once_with("/tmp/audio.wav", language="en", vad_filter=True)
+    mock_model.transcribe.assert_called_once_with(
+        "/tmp/audio.wav",
+        language="en",
+        vad_filter=True,
+        initial_prompt=JARVIS_DEFAULT_PROMPT,
+        beam_size=5,
+        condition_on_previous_text=False,
+        no_repeat_ngram_size=3,
+        hallucination_silence_threshold=0.2,
+        word_timestamps=True,
+        vad_parameters=dict(
+            threshold=0.5,
+            min_silence_duration_ms=500,
+            speech_pad_ms=200,
+            min_speech_duration_ms=250,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 42b. Local confidence uses segment avg_logprob
+# ---------------------------------------------------------------------------
+
+def test_local_confidence_uses_logprobs() -> None:
+    """Confidence is computed from segment avg_logprob, not language_probability."""
+    from jarvis_engine.stt import SpeechToText
+
+    stt = SpeechToText()
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = (
+        [
+            SimpleNamespace(text=" hello ", avg_logprob=-0.3, start=0.0, end=0.5),
+            SimpleNamespace(text=" world ", avg_logprob=-0.5, start=0.5, end=1.0),
+        ],
+        SimpleNamespace(language="en", language_probability=0.99),
+    )
+    stt._model = mock_model
+
+    audio = np.zeros(16000, dtype=np.float32)
+    result = stt.transcribe_audio(audio)
+
+    # avg_logprob = (-0.3 + -0.5) / 2 = -0.4
+    # confidence = 1.0 + (-0.4) = 0.6
+    expected_confidence = 0.6
+    assert abs(result.confidence - expected_confidence) < 0.01, f"Expected {expected_confidence}, got {result.confidence}"
+    # Should NOT use language_probability (which would give 0.99)
+    assert result.confidence != 0.99
 
 
 # ---------------------------------------------------------------------------
@@ -1430,7 +1509,8 @@ def test_listen_and_transcribe_forwards_root_dir() -> None:
         result = listen_and_transcribe(root_dir=Path("/tmp/test"))
 
     mock_smart.assert_called_once_with(
-        fake_audio, language="en", root_dir=Path("/tmp/test")
+        fake_audio, language="en", root_dir=Path("/tmp/test"),
+        gateway=None, entity_list=None,
     )
     assert result.text == "hello"
 
@@ -1460,7 +1540,8 @@ def test_listen_and_transcribe_root_dir_defaults_to_none() -> None:
         listen_and_transcribe()
 
     mock_smart.assert_called_once_with(
-        fake_audio, language="en", root_dir=None
+        fake_audio, language="en", root_dir=None,
+        gateway=None, entity_list=None,
     )
 
 
@@ -1901,3 +1982,80 @@ def test_groq_transcription_file_path_bypasses_duration_check() -> None:
         assert result.text == "from file"
     finally:
         os.unlink(temp_path)
+
+
+# ---------------------------------------------------------------------------
+# XX. transcribe_smart calls preprocess_audio
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_transcribe_smart_calls_preprocess() -> None:
+    """transcribe_smart calls preprocess_audio on numpy audio."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    mock_result = TranscriptionResult(
+        text="hello world",
+        language="en",
+        confidence=0.9,
+        duration_seconds=0.5,
+        backend="groq",
+    )
+
+    with patch("jarvis_engine.stt._try_groq", return_value=mock_result), \
+         patch("jarvis_engine.stt._confidence_retry", return_value=mock_result), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio) as mock_preprocess, \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="hello world"):
+        result = transcribe_smart(fake_audio)
+        mock_preprocess.assert_called_once()
+
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+def test_transcribe_smart_calls_postprocess() -> None:
+    """transcribe_smart calls postprocess_transcription on result text."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    mock_result = TranscriptionResult(
+        text="um hello conner",
+        language="en",
+        confidence=0.8,
+        duration_seconds=0.5,
+        backend="groq",
+    )
+
+    with patch("jarvis_engine.stt._try_groq", return_value=mock_result), \
+         patch("jarvis_engine.stt._confidence_retry", return_value=mock_result), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="Hello, Conner!") as mock_post:
+        mock_gateway = MagicMock()
+        result = transcribe_smart(fake_audio, gateway=mock_gateway, entity_list=["Conner"])
+        mock_post.assert_called_once_with(
+            "um hello conner",
+            0.8,
+            gateway=mock_gateway,
+            entity_list=["Conner"],
+        )
+        assert result.text == "Hello, Conner!"
+
+
+def test_transcribe_smart_skips_preprocess_for_file_path() -> None:
+    """transcribe_smart does NOT preprocess when audio is a file path string."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    mock_result = TranscriptionResult(
+        text="hello world",
+        language="en",
+        confidence=0.9,
+        duration_seconds=0.5,
+        backend="local",
+    )
+
+    with patch.dict("os.environ", {"JARVIS_STT_BACKEND": "local"}), \
+         patch("jarvis_engine.stt.SpeechToText") as MockSTT, \
+         patch("jarvis_engine.stt._confidence_retry", return_value=mock_result), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio") as mock_preprocess, \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="hello world"):
+        MockSTT.return_value.transcribe_audio.return_value = mock_result
+        result = transcribe_smart("/tmp/audio.wav")
+        mock_preprocess.assert_not_called()
