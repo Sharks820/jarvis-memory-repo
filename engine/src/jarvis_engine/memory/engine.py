@@ -50,11 +50,6 @@ class MemoryEngine:
         self._closed = False
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
-
-    def _check_open(self) -> None:
-        """Raise RuntimeError if the engine has been closed."""
-        if self._closed:
-            raise RuntimeError("MemoryEngine is closed")
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA busy_timeout=5000")
@@ -77,6 +72,11 @@ class MemoryEngine:
             logger.warning("sqlite-vec unavailable, falling back to FTS5-only search: %s", exc)
 
         self._init_schema()
+
+    def _check_open(self) -> None:
+        """Raise RuntimeError if the engine has been closed."""
+        if self._closed:
+            raise RuntimeError("MemoryEngine is closed")
 
     def _init_schema(self) -> None:
         """Create tables and virtual tables if they don't exist."""
