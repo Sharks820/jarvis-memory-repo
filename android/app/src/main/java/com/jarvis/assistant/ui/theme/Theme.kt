@@ -34,6 +34,7 @@ fun JarvisTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = colorScheme,
         typography = JarvisTypography,
+        shapes = JarvisShapes,
         content = content,
     )
 }
