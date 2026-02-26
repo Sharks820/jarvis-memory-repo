@@ -153,8 +153,8 @@ class TestMissionSecurity:
 
     def test_mission_url_safety_check_blocks_private_ips(self) -> None:
         """Mission should block private IP URLs."""
-        from jarvis_engine import learning_missions
-        
+        from jarvis_engine.web_fetch import is_safe_public_url
+
         # Private IP addresses should be blocked
         private_urls = [
             "http://192.168.1.1/admin",
@@ -163,26 +163,26 @@ class TestMissionSecurity:
             "http://172.16.0.1/data",
             "http://localhost/internal",
         ]
-        
+
         for url in private_urls:
-            assert not learning_missions._is_safe_public_url(url), \
+            assert not is_safe_public_url(url), \
                 f"Private URL should be blocked: {url}"
 
     def test_mission_url_safety_allows_public_domains(self) -> None:
         """Mission should allow public domain URLs."""
-        from jarvis_engine import learning_missions
-        
+        from jarvis_engine.web_fetch import is_safe_public_url
+
         # Public URLs should be allowed
         public_urls = [
             "https://docs.python.org/3/",
             "https://github.com/example/repo",
             "https://stackoverflow.com/questions",
         ]
-        
+
         for url in public_urls:
             # Note: This requires network to resolve, may fail in isolated tests
             # Just verify the parsing logic
-            result = learning_missions._is_safe_public_url(url)
+            result = is_safe_public_url(url)
             # Result depends on DNS resolution, just verify no exception
             assert isinstance(result, bool)
 

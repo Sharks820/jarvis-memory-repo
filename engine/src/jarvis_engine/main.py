@@ -261,8 +261,8 @@ def _get_recently_harvested_topics(root: Path) -> set[str]:
             summary = ev.summary or ""
             if summary:
                 recent.add(summary.lower().strip())
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to read recent harvest topics from activity feed: %s", exc)
     return recent
 
 
@@ -445,8 +445,8 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                         break
             finally:
                 conn.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to discover harvest topics from knowledge graph: %s", exc)
 
     if len(candidates) >= _MAX_TOPICS:
         return candidates[:_MAX_TOPICS]
@@ -467,8 +467,8 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                             break
                     if len(candidates) >= _MAX_TOPICS:
                         break
-    except Exception:
-        pass  # Activity feed is optional
+    except Exception as exc:
+        logger.debug("Failed to extract harvest topics from activity feed fact summaries: %s", exc)
 
     if len(candidates) >= _MAX_TOPICS:
         return candidates[:_MAX_TOPICS]
@@ -485,8 +485,8 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                     if len(topic.split()) >= 2:
                         if _add_candidate(topic):
                             break
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to discover harvest topics from learning missions: %s", exc)
 
     return candidates[:_MAX_TOPICS]
 
@@ -571,8 +571,8 @@ def _build_smart_context(
                         summary = str(row.get("summary", "")).strip()
                         if summary:
                             memory_lines.append(summary)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Legacy context packet fallback failed: %s", exc)
 
     # --- KG facts: personal knowledge about the user ---
     kg = None  # Retain reference for cross-branch query below
@@ -3445,8 +3445,8 @@ def _cmd_voice_run_impl(
                 _cls = IntentClassifier(EmbeddingService())
                 _route, _llm_model, _conf = _cls.classify(text)
                 logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Fallback IntentClassifier creation/classification failed: %s", exc)
         if _llm_model is None:
             for _env_key, _model_alias in [
                 ("GROQ_API_KEY", "kimi-k2"),
@@ -3504,8 +3504,8 @@ def _cmd_voice_run_impl(
                                 f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
                             ),
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Legacy JSONL auto-ingest fallback failed for conversation: %s", exc)
                 if speak:
                     cmd_voice_say(
                         text=result.text.strip(),
@@ -3546,8 +3546,8 @@ def _cmd_voice_run_impl(
         )
         if auto_id:
             print(f"auto_ingest_record_id={auto_id}")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Auto-ingest of voice command memory failed: %s", exc)
     if speak:
         persona = load_persona_config(repo_root())
         persona_line = compose_persona_reply(

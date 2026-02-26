@@ -211,8 +211,8 @@ class ActivityFeed:
             self._closed = True
             try:
                 self._db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to close activity feed database connection: %s", exc)
 
     # ------------------------------------------------------------------
     # Internals

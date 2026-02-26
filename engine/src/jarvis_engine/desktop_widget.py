@@ -542,13 +542,13 @@ class JarvisDesktopWidget(tk.Tk):
         if self._orb_after_id is not None:
             try:
                 self.after_cancel(self._orb_after_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to cancel orb animation callback: %s", exc)
         if self._launcher_after_id is not None:
             try:
                 self.after_cancel(self._launcher_after_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to cancel launcher animation callback: %s", exc)
         # Wait briefly for background threads to finish
         for t in threading.enumerate():
             if t.daemon and t.is_alive() and t is not threading.current_thread():
@@ -556,12 +556,12 @@ class JarvisDesktopWidget(tk.Tk):
         if self.launcher_win is not None:
             try:
                 self.launcher_win.destroy()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to destroy launcher window during shutdown: %s", exc)
         try:
             self.destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to destroy main widget window during shutdown: %s", exc)
 
     def _bind_shortcuts(self) -> None:
         self.bind("<Control-space>", lambda _e: self._toggle_min())
@@ -595,8 +595,8 @@ class JarvisDesktopWidget(tk.Tk):
         launcher.configure(bg=self.LAUNCHER_TRANSPARENT)
         try:
             launcher.wm_attributes("-transparentcolor", self.LAUNCHER_TRANSPARENT)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to set launcher transparent color attribute: %s", exc)
         size = self._launcher_size
         screen_w = launcher.winfo_screenwidth()
         screen_h = launcher.winfo_screenheight()
@@ -1404,8 +1404,8 @@ class JarvisDesktopWidget(tk.Tk):
                     if resp is not None:
                         try:
                             resp.close()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Failed to close health poll HTTP response: %s", exc)
                         resp = None
                 if self.stop_event.is_set():
                     break
@@ -1415,8 +1415,8 @@ class JarvisDesktopWidget(tk.Tk):
             if ok and cfg.token and cfg.signing_key:
                 try:
                     growth_data = _http_json(cfg, "/intelligence/growth", method="GET")
-                except Exception:
-                    pass  # Growth data is best-effort
+                except Exception as exc:
+                    logger.debug("Failed to fetch intelligence growth data: %s", exc)
             # Fetch proactive alerts and send toast notifications
             if ok and cfg.token and cfg.signing_key:
                 try:
