@@ -13,7 +13,7 @@ Both milestones are complete: v1.0 Desktop Engine (phases 1-9) and v2.0 Android 
 ```bash
 # Activate venv and run tests
 .venv/Scripts/activate
-python -m pytest engine/tests/ -x -q    # 476 tests, ~100s
+python -m pytest engine/tests/ -x -q    # 3272 tests, ~5min
 
 # Run the engine
 jarvis-engine daemon                     # Daemon mode (primary)
@@ -67,7 +67,7 @@ engine/src/jarvis_engine/       # Python desktop engine (35 modules)
   sync/                         # Changelog-based encrypted mobile-desktop sync
   handlers/                     # CQRS command handlers (8 handler files)
   commands/                     # Command dataclasses
-engine/tests/                   # 476 tests
+engine/tests/                   # 3272 tests
 android/app/src/main/java/com/jarvis/assistant/
   data/                         # Room entities, DAOs, database (v10, 16 entities)
   di/                           # Hilt AppModule (15 DAOs)
@@ -87,7 +87,7 @@ python -m pytest engine/tests/test_main.py -x -q   # CLI tests only
 python -m pytest engine/tests/ -k "memory" -q       # Memory tests only
 ```
 
-One test is always skipped (requires live Ollama). All others should pass.
+9 tests skipped (1 live Ollama + optional deps). All others should pass.
 
 ## Security
 
