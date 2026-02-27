@@ -19,6 +19,9 @@ interface ContactContextDao {
     @Query("SELECT * FROM contact_context WHERE phoneNumber = :number LIMIT 1")
     suspend fun getByPhoneNumber(number: String): ContactContextEntity?
 
+    @Query("SELECT * FROM contact_context WHERE id = :contactId LIMIT 1")
+    suspend fun getById(contactId: Long): ContactContextEntity?
+
     @Query("SELECT * FROM contact_context ORDER BY lastCallTimestamp DESC")
     fun getAllFlow(): Flow<List<ContactContextEntity>>
 

@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.commands.harvest_commands import (
     HarvestBudgetCommand,

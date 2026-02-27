@@ -6,7 +6,6 @@ environment variable checks, fallback files, and prompt generation.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -23,7 +22,6 @@ from jarvis_engine.connectors import (
     evaluate_connector_statuses,
     grant_connector_permission,
     load_connector_permissions,
-    save_connector_permissions,
     serialize_statuses,
 )
 

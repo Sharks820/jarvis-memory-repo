@@ -181,11 +181,8 @@ def test_web_research_handler_empty_query() -> None:
 # Expanded test coverage below
 # ===========================================================================
 
-import pytest
-from unittest.mock import patch, MagicMock
 from jarvis_engine.commands.task_commands import (
     RunTaskCommand,
-    RunTaskResult,
 )
 from jarvis_engine.handlers.task_handlers import RunTaskHandler
 

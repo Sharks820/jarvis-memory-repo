@@ -4,6 +4,7 @@
 .planning/*.tmp
 .venv/
 __pycache__/
+.cache/
 *.pyc
 *.pyo
 *.pyd
@@ -13,9 +14,10 @@ dist/
 build/
 backups/
 tmp/
-nul
-=0.1.6
 .planning/security/
 .planning/brain/
 .planning/logs/
 .planning/runtime/*.tmp
+.planning/runtime/pids/
+.planning/runtime/auto_ingest_dedupe.json
+.planning/events.jsonl

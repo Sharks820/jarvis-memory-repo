@@ -13,7 +13,7 @@ Both milestones are complete: v1.0 Desktop Engine (phases 1-9) and v2.0 Android 
 ```bash
 # Activate venv and run tests
 .venv/Scripts/activate
-python -m pytest engine/tests/ -x -q    # 3272 tests, ~5min
+python -m pytest engine/tests/ -x -q    # 3758 tests, ~4min
 
 # Run the engine
 jarvis-engine daemon                     # Daemon mode (primary)
@@ -57,17 +57,18 @@ powershell scripts/start-jarvis-services.ps1
 ## File Layout
 
 ```
-engine/src/jarvis_engine/       # Python desktop engine (35 modules)
+engine/src/jarvis_engine/       # Python desktop engine (35+ modules)
   memory/                       # SQLite + FTS5 + sqlite-vec
   knowledge/                    # Fact graph with locks and contradictions
   gateway/                      # LLM routing (Ollama/Anthropic/Groq/Gemini)
   learning/                     # Conversation learning + cross-branch reasoning
   harvesting/                   # Multi-provider knowledge harvesting
   proactive/                    # Triggers, notifications, cost tracking, self-test
+  security/                     # Threat detection, forensic logging, containment, AI defense
   sync/                         # Changelog-based encrypted mobile-desktop sync
   handlers/                     # CQRS command handlers (8 handler files)
   commands/                     # Command dataclasses
-engine/tests/                   # 3272 tests
+engine/tests/                   # 3758 tests
 android/app/src/main/java/com/jarvis/assistant/
   data/                         # Room entities, DAOs, database (v10, 16 entities)
   di/                           # Hilt AppModule (15 DAOs)
@@ -87,16 +88,25 @@ python -m pytest engine/tests/test_main.py -x -q   # CLI tests only
 python -m pytest engine/tests/ -k "memory" -q       # Memory tests only
 ```
 
-9 tests skipped (1 live Ollama + optional deps). All others should pass.
+7 tests skipped (1 live Ollama + optional deps). All others should pass.
 
 ## Security
 
 - `.planning/security/` contains signing keys and tokens — gitignored, never commit
 - `.planning/brain/` contains memory data — gitignored
 - Owner guard with device trust (galaxy_s25_primary registered)
-- HMAC-SHA256 with nonce replay protection on mobile API
+- HMAC-SHA256 with nonce replay protection (120s window) on mobile API
 - Fernet encryption with PBKDF2HMAC for sync payloads
+- DPAPI encryption for token, signing_key, and master_password in widget config
 - Master password required for sensitive Android operations (prescriptions, finance, documents)
+- **Security module** (`engine/src/jarvis_engine/security/`): 17 modules, 482 tests
+  - Threat detection (8 rule types), forensic hash-chain logging, IP auto-escalation blocklist
+  - 3-layer prompt injection firewall (regex + structural + semantic)
+  - Attack pattern memory (learns forever), output scanner (manipulation + exfil detection)
+  - Identity monitor, honeypot endpoints, session hijack detection
+  - 5-level autonomous containment (throttle → full kill), graduated alert chain
+  - Adaptive defense (auto-rule generation), memory provenance (trust levels + quarantine)
+  - CQRS defense commands (security status, threat report, export forensics, etc.)
 
 ## Common Gotchas
 

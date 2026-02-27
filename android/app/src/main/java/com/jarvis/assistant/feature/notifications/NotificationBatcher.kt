@@ -1,7 +1,5 @@
 package com.jarvis.assistant.feature.notifications
 
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,7 +23,7 @@ data class BatchedNotification(
 @Singleton
 class NotificationBatcher @Inject constructor() {
 
-    private val buffer = ConcurrentHashMap<String, MutableList<ProactiveAlert>>()
+    private val buffer = HashMap<String, MutableList<ProactiveAlert>>()
 
     /**
      * Add an alert to the batch buffer. Flushes any groups that have reached
@@ -34,9 +32,7 @@ class NotificationBatcher @Inject constructor() {
      */
     @Synchronized
     fun addAndFlush(alert: ProactiveAlert): List<BatchedNotification> {
-        buffer.getOrPut(alert.groupKey) {
-            Collections.synchronizedList(mutableListOf())
-        }.add(alert)
+        buffer.getOrPut(alert.groupKey) { mutableListOf() }.add(alert)
 
         val results = mutableListOf<BatchedNotification>()
         val now = System.currentTimeMillis()

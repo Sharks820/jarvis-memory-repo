@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
-from jarvis_engine.learning.consolidator import ConsolidationResult, MemoryConsolidator
+from jarvis_engine.learning.consolidator import MemoryConsolidator
 
 
 # ---------------------------------------------------------------------------

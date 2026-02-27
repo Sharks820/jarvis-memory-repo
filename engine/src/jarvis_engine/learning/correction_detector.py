@@ -211,17 +211,14 @@ class CorrectionDetector:
         )
 
         # Add superseded edge if both old and new exist as separate nodes
+        # Capture old node BEFORE the update above changed its label
         if correction.old_claim:
-            old_keywords = _extract_keywords(correction.old_claim)
+            old_id = node_id  # This was the node we just updated
             new_keywords = _extract_keywords(correction.new_claim)
-            old_matches = self._kg.query_relevant_facts(
-                old_keywords, min_confidence=0.0, limit=1,
-            )
             new_matches = self._kg.query_relevant_facts(
                 new_keywords, min_confidence=0.0, limit=1,
             )
-            if old_matches and new_matches:
-                old_id = old_matches[0]["node_id"]
+            if new_matches:
                 new_id = new_matches[0]["node_id"]
                 if old_id != new_id:
                     self._kg.add_edge(

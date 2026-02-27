@@ -170,7 +170,6 @@ def compose_persona_reply(
     success: bool,
     reason: str = "",
 ) -> str:
-    style_value = str(getattr(cfg, "style", "historically_witty_secret_agent"))
     intent_label = intent.replace("_", " ").strip() or "that operation"
     if not cfg.enabled:
         if success:
@@ -207,7 +206,7 @@ def compose_persona_reply(
         f"I'm afraid {intent_label} was blocked.",
         f"Unfortunately, {intent_label} couldn't proceed.",
         f"{intent_label.capitalize()} was not permitted.",
-        f"That request was blocked.",
+        "That request was blocked.",
     ]
 
     if success:

@@ -17,7 +17,6 @@ import pytest
 
 from jarvis_engine.knowledge.entity_resolver import (
     EntityResolver,
-    MergeCandidate,
     ResolutionResult,
 )
 from jarvis_engine.knowledge.graph import KnowledgeGraph

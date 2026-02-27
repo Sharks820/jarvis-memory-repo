@@ -5,9 +5,8 @@ from __future__ import annotations
 import sqlite3
 import threading
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine._compat import UTC
 from jarvis_engine.learning.temporal import (

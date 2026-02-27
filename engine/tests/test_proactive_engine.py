@@ -8,10 +8,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.proactive import ProactiveEngine
-from jarvis_engine.proactive.triggers import TriggerAlert, TriggerRule
+from jarvis_engine.proactive.triggers import TriggerRule
 from jarvis_engine.proactive.notifications import Notifier
 from jarvis_engine.proactive.self_test import AdversarialSelfTest
 from jarvis_engine.proactive.kg_metrics import (

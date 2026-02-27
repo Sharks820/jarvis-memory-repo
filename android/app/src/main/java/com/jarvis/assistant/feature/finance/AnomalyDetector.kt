@@ -144,7 +144,7 @@ class AnomalyDetector @Inject constructor(
 
             notificationManager.notify(
                 NOTIFICATION_TAG,
-                System.currentTimeMillis().toInt(),
+                System.currentTimeMillis().rem(Int.MAX_VALUE).toInt(),
                 notification,
             )
         } catch (e: Exception) {

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import sqlite3
 import tempfile
 import threading
@@ -847,7 +846,7 @@ class TestTransportEdgeCases:
         """A token encrypted more than ttl seconds ago must be rejected."""
         import struct
         import time
-        from cryptography.fernet import Fernet, InvalidToken
+        from cryptography.fernet import InvalidToken
         from jarvis_engine.sync.transport import (
             decrypt_sync_payload,
             derive_sync_key,
@@ -1127,7 +1126,6 @@ class TestDecompressionBombProtection:
             decrypt_sync_payload,
             derive_sync_key,
             encrypt_sync_payload,
-            MAX_DECOMPRESSED_SIZE,
         )
 
         salt = b"0123456789abcdef"

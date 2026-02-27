@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.gateway.models import GatewayResponse
 from jarvis_engine.knowledge.llm_extractor import (

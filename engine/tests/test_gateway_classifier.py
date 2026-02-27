@@ -6,7 +6,6 @@ vectors based on keyword matching, avoiding the 10+ second real model load.
 
 from __future__ import annotations
 
-import os
 
 import numpy as np
 import pytest

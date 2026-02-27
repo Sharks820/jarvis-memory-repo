@@ -12,23 +12,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.commands.voice_commands import (
     PersonaComposeCommand,
-    PersonaComposeResult,
     VoiceEnrollCommand,
-    VoiceEnrollResult,
     VoiceListCommand,
     VoiceListenCommand,
-    VoiceListenResult,
-    VoiceListResult,
     VoiceRunCommand,
-    VoiceRunResult,
     VoiceSayCommand,
-    VoiceSayResult,
     VoiceVerifyCommand,
-    VoiceVerifyResult,
 )
 from jarvis_engine.handlers.voice_handlers import (
     PersonaComposeHandler,

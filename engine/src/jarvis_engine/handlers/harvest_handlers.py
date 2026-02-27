@@ -17,7 +17,7 @@ from jarvis_engine.commands.harvest_commands import (
 )
 
 if TYPE_CHECKING:
-    from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+    pass
 
 logger = logging.getLogger(__name__)
 
