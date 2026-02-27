@@ -620,14 +620,17 @@ class JarvisDesktopWidget(tk.Tk):
         self.cfg = _load_widget_cfg(root_path)
         self.stop_event = threading.Event()
         self.online = False
-        self._pulse_phase = 0.0
-        self._launcher_phase = 0.0
-        self._launcher_size = 84
+        self._anim_t0: float = time.monotonic()
+        self._launcher_size = 96
         self.launcher_win: tk.Toplevel | None = None
         self.launcher_canvas: tk.Canvas | None = None
-        self._launcher_outer_id: int | None = None
-        self._launcher_inner_id: int | None = None
-        self._launcher_ring_2_id: int | None = None
+        self._l_arc1: int | None = None
+        self._l_arc2: int | None = None
+        self._l_arc3: int | None = None
+        self._l_core: int | None = None
+        self._l_glow: int | None = None
+        self._l_particles: list[int] = []
+        self._orb_sweep: int | None = None
         self._drag_offset_x = 0
         self._drag_offset_y = 0
         self._launcher_dragged = False
@@ -832,10 +835,37 @@ class JarvisDesktopWidget(tk.Tk):
             cursor="hand2",
         )
         canvas.pack(fill=tk.BOTH, expand=True)
-        self._launcher_outer_id = canvas.create_oval(5, 5, size - 5, size - 5, outline="#2dd4bf", width=2)
-        self._launcher_ring_2_id = canvas.create_oval(9, 9, size - 9, size - 9, outline="#0ea5e9", width=1)
-        self._launcher_inner_id = canvas.create_oval(16, 16, size - 16, size - 16, fill="#0f766e", outline="")
-        canvas.create_text(size / 2, size / 2, text="J", fill="#ecfeff", font=("Segoe UI", 16, "bold"))
+        cx, cy = size / 2, size / 2
+        # Outer glow halo (breathing)
+        self._l_glow = canvas.create_oval(3, 3, size - 3, size - 3, outline="#0d3d36", width=2)
+        # Rotating arc 1: outer ring, 240deg extent
+        self._l_arc1 = canvas.create_arc(
+            6, 6, size - 6, size - 6, start=0, extent=240,
+            style=tk.ARC, outline="#2dd4bf", width=2,
+        )
+        # Rotating arc 2: mid ring, 160deg extent (counter-rotating)
+        self._l_arc2 = canvas.create_arc(
+            13, 13, size - 13, size - 13, start=120, extent=160,
+            style=tk.ARC, outline="#0ea5e9", width=2,
+        )
+        # Rotating arc 3: inner fast ring, 90deg (processing indicator, hidden by default)
+        self._l_arc3 = canvas.create_arc(
+            20, 20, size - 20, size - 20, start=0, extent=90,
+            style=tk.ARC, outline="#f59e0b", width=2, state=tk.HIDDEN,
+        )
+        # Core circle (breathing)
+        core_pad = 24
+        self._l_core = canvas.create_oval(
+            core_pad, core_pad, size - core_pad, size - core_pad,
+            fill="#0f766e", outline="",
+        )
+        # Orbiting particles (3 dots at different orbit radii)
+        self._l_particles = []
+        for _ in range(3):
+            pid = canvas.create_oval(0, 0, 4, 4, fill="#5eead4", outline="")
+            self._l_particles.append(pid)
+        # Center letter
+        canvas.create_text(cx, cy, text="J", fill="#ecfeff", font=("Segoe UI", 18, "bold"))
 
         canvas.bind("<ButtonPress-1>", self._launcher_start_drag)
         canvas.bind("<B1-Motion>", self._launcher_drag)
@@ -968,9 +998,13 @@ class JarvisDesktopWidget(tk.Tk):
 
         status_row = tk.Frame(header, bg=self.PANEL)
         status_row.pack(fill=tk.X, padx=10, pady=(0, 8))
-        self.orb_canvas = tk.Canvas(status_row, width=26, height=26, bg=self.PANEL, highlightthickness=0)
+        self.orb_canvas = tk.Canvas(status_row, width=30, height=30, bg=self.PANEL, highlightthickness=0)
         self.orb_canvas.pack(side=tk.LEFT)
-        self.orb_id = self.orb_canvas.create_oval(8, 8, 18, 18, fill=self.WARN, outline="")
+        self._orb_sweep = self.orb_canvas.create_arc(
+            2, 2, 28, 28, start=0, extent=90,
+            style=tk.ARC, outline=self.ACCENT, width=1,
+        )
+        self.orb_id = self.orb_canvas.create_oval(9, 9, 21, 21, fill=self.WARN, outline="")
         self.status_var = tk.StringVar(value="OFFLINE")
         self.status_label = tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg="#f87171", font=("Segoe UI", 10, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=(6, 0))
@@ -1924,18 +1958,20 @@ class JarvisDesktopWidget(tk.Tk):
     def _animate_orb(self) -> None:
         if self.stop_event.is_set():
             return
-        self._pulse_phase = (self._pulse_phase + 0.22) % (2 * math.pi * 100)
-        pulse = 5.0 + (math.sin(self._pulse_phase) * 1.8)
-        cx, cy = 13.0, 13.0
-        x0 = cx - pulse
-        y0 = cy - pulse
-        x1 = cx + pulse
-        y1 = cy + pulse
+        t = time.monotonic() - self._anim_t0
         color = self._orb_color()
+        # Smooth breathing pulse (time-based, ~30fps)
+        breath = math.sin(t * 3.0)
+        pulse = 6.0 + breath * 1.5
+        cx, cy = 15.0, 15.0
+        # Scanning sweep rotation
+        sweep_angle = (t * 120) % 360
         try:
-            self.orb_canvas.coords(self.orb_id, x0, y0, x1, y1)
+            self.orb_canvas.coords(self.orb_id, cx - pulse, cy - pulse, cx + pulse, cy + pulse)
             self.orb_canvas.itemconfig(self.orb_id, fill=color)
-            self._orb_after_id = self.after(120, self._animate_orb)
+            if self._orb_sweep is not None:
+                self.orb_canvas.itemconfig(self._orb_sweep, start=sweep_angle, outline=color)
+            self._orb_after_id = self.after(33, self._animate_orb)
         except Exception:
             return
 
@@ -1943,25 +1979,86 @@ class JarvisDesktopWidget(tk.Tk):
         if self.stop_event.is_set():
             return
         try:
-            if self.launcher_canvas is not None and self._launcher_outer_id is not None and self._launcher_inner_id is not None:
-                size = self._launcher_size
-                self._launcher_phase = (self._launcher_phase + 0.18) % (2 * math.pi * 100)
-                pulse = 1.0 + (math.sin(self._launcher_phase) * 1.2)
-                outer_pad = 4.0 + pulse
-                mid_pad = 8.0 + (pulse * 0.8)
-                inner_pad = 15.0 + (pulse * 0.7)
-                glow = "#2dd4bf" if self.online else "#93c5fd"
-                ring = "#0ea5e9" if self.online else "#60a5fa"
-                core = "#0f766e" if self.online else "#1e3a8a"
-                self.launcher_canvas.coords(self._launcher_outer_id, outer_pad, outer_pad, size - outer_pad, size - outer_pad)
-                if self._launcher_ring_2_id is not None:
-                    self.launcher_canvas.coords(self._launcher_ring_2_id, mid_pad, mid_pad, size - mid_pad, size - mid_pad)
-                self.launcher_canvas.coords(self._launcher_inner_id, inner_pad, inner_pad, size - inner_pad, size - inner_pad)
-                self.launcher_canvas.itemconfig(self._launcher_outer_id, outline=glow)
-                if self._launcher_ring_2_id is not None:
-                    self.launcher_canvas.itemconfig(self._launcher_ring_2_id, outline=ring)
-                self.launcher_canvas.itemconfig(self._launcher_inner_id, fill=core)
-            self._launcher_after_id = self.after(70, self._animate_launcher)
+            if self.launcher_canvas is None:
+                return
+            t = time.monotonic() - self._anim_t0
+            size = self._launcher_size
+            cx, cy = size / 2, size / 2
+
+            # State-dependent speed multiplier
+            state = self._widget_state
+            if state == "processing":
+                speed = 2.5
+            elif state == "listening":
+                speed = 1.6
+            elif state == "error":
+                speed = 0.3
+            else:
+                speed = 1.0
+
+            # Rotate arc 1: outer, clockwise (~90 deg/sec base)
+            if self._l_arc1 is not None:
+                a1 = (t * 90 * speed) % 360
+                self.launcher_canvas.itemconfig(self._l_arc1, start=a1)
+            # Rotate arc 2: mid, counter-clockwise (~60 deg/sec base)
+            if self._l_arc2 is not None:
+                a2 = (360 - (t * 60 * speed) % 360) % 360
+                self.launcher_canvas.itemconfig(self._l_arc2, start=a2)
+            # Arc 3: fast inner ring, only visible during processing
+            if self._l_arc3 is not None:
+                if state == "processing":
+                    a3 = (t * 180 * speed) % 360
+                    self.launcher_canvas.itemconfig(self._l_arc3, start=a3, state=tk.NORMAL)
+                else:
+                    self.launcher_canvas.itemconfig(self._l_arc3, state=tk.HIDDEN)
+
+            # Core circle breathing
+            if self._l_core is not None:
+                breath = math.sin(t * 2.5 * speed)
+                pad = 24 + breath * 2
+                self.launcher_canvas.coords(self._l_core, pad, pad, size - pad, size - pad)
+
+            # Orbiting particles at different radii and speeds
+            for i, pid in enumerate(self._l_particles):
+                orbit_r = 34 - i * 5
+                orbit_speed = (45 + i * 25) * speed
+                angle = math.radians((t * orbit_speed) % 360 + i * 120)
+                px = cx + orbit_r * math.cos(angle) - 2
+                py = cy + orbit_r * math.sin(angle) - 2
+                self.launcher_canvas.coords(pid, px, py, px + 4, py + 4)
+
+            # Glow halo breathing
+            if self._l_glow is not None:
+                glow_pulse = 0.5 + 0.5 * math.sin(t * 1.5)
+                gpad = 2 + glow_pulse * 2
+                self.launcher_canvas.coords(self._l_glow, gpad, gpad, size - gpad, size - gpad)
+
+            # State-reactive color palette: (arc1, arc2, core, particles, glow)
+            online = self.online
+            if state == "listening":
+                colors = ("#3b82f6", "#60a5fa", "#1e3a8a", "#93c5fd", "#1e3a5e")
+            elif state == "processing":
+                colors = ("#f59e0b", "#fbbf24", "#78350f", "#fde68a", "#3d2800")
+            elif state == "error":
+                colors = ("#ef4444", "#f87171", "#7f1d1d", "#fca5a5", "#3d0d0d")
+            elif online:
+                colors = ("#2dd4bf", "#0ea5e9", "#0f766e", "#5eead4", "#0d3d36")
+            else:
+                colors = ("#64748b", "#475569", "#334155", "#94a3b8", "#1e293b")
+
+            arc1_c, arc2_c, core_c, particle_c, glow_c = colors
+            if self._l_arc1 is not None:
+                self.launcher_canvas.itemconfig(self._l_arc1, outline=arc1_c)
+            if self._l_arc2 is not None:
+                self.launcher_canvas.itemconfig(self._l_arc2, outline=arc2_c)
+            if self._l_core is not None:
+                self.launcher_canvas.itemconfig(self._l_core, fill=core_c)
+            for pid in self._l_particles:
+                self.launcher_canvas.itemconfig(pid, fill=particle_c)
+            if self._l_glow is not None:
+                self.launcher_canvas.itemconfig(self._l_glow, outline=glow_c)
+
+            self._launcher_after_id = self.after(33, self._animate_launcher)
         except Exception:
             return
 
