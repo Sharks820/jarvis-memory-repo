@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 from jarvis_engine.memory_snapshots import (
-    SnapshotVerification,
     create_signed_snapshot,
     ensure_snapshot_key,
     run_memory_maintenance,

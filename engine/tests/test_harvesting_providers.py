@@ -19,7 +19,6 @@ from jarvis_engine.harvesting.harvester import (
 )
 from jarvis_engine.harvesting.providers import (
     GeminiProvider,
-    HarvesterProvider,
     KimiNvidiaProvider,
     KimiProvider,
     MiniMaxProvider,

@@ -74,10 +74,30 @@ class LocationLearner @Inject constructor(
             // Update existing location
             val newVisitCount = nearby.visitCount + 1
             val newConfidence = (newVisitCount / 20.0f).coerceAtMost(1.0f)
-            val newAvgArrival = runningAverage(nearby.avgArrivalHour, currentHour, newVisitCount)
-            val newAvgDeparture = runningAverage(
-                nearby.avgDepartureHour, currentHour, newVisitCount,
-            )
+
+            // Track arrival (first observation at this location in a session) and
+            // departure (current observation) separately.  Only update the departure
+            // average when the session has been going for at least 30 minutes, so
+            // brief visits don't pollute the departure estimate.
+            val sessionMinutes = if (nearby.lastVisited > 0) {
+                (System.currentTimeMillis() - nearby.lastVisited) / 60_000.0
+            } else {
+                0.0
+            }
+
+            // If it's been > 60 minutes since last visit, this is a new session
+            // so treat this observation as an arrival.
+            val isNewSession = sessionMinutes > 60.0
+            val newAvgArrival = if (isNewSession) {
+                runningAverage(nearby.avgArrivalHour, currentHour, newVisitCount)
+            } else {
+                nearby.avgArrivalHour
+            }
+            val newAvgDeparture = if (!isNewSession && sessionMinutes >= 30.0) {
+                runningAverage(nearby.avgDepartureHour, currentHour, newVisitCount)
+            } else {
+                nearby.avgDepartureHour
+            }
 
             var updatedLabel = nearby.label
             if (newVisitCount >= CLASSIFY_THRESHOLD && nearby.label == "frequent") {

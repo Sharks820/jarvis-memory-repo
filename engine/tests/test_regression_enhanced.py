@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
 import sqlite3
 import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine.knowledge.regression import RegressionChecker, _MAX_BACKUPS
 

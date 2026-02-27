@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from jarvis_engine.router import ModelRouter, RouteDecision
 

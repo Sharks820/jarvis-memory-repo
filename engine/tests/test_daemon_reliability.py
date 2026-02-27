@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -305,7 +305,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
 def _run_daemon_impl(tmp_path: Path, **kwargs) -> int:
     """Call _cmd_daemon_run_impl directly, bypassing the command bus dispatch.
 
-    This allows tests to mock _get_bus() (used by subsystems inside the loop)
+    This allows tests to mock _get_daemon_bus() (used by subsystems inside the loop)
     without breaking the bus dispatch that cmd_daemon_run() depends on.
     """
     defaults = dict(
@@ -405,7 +405,7 @@ class TestDaemonRegressionCheck:
         mock_checker.capture_metrics = mock_capture
         mock_checker.compare.return_value = {"status": "pass", "discrepancies": []}
 
-        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+        with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.knowledge.regression.RegressionChecker",
                  return_value=mock_checker,
@@ -456,7 +456,7 @@ class TestDaemonRegressionCheck:
         mock_checker.restore_graph.return_value = True
 
         try:
-            with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+            with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
                  patch(
                      "jarvis_engine.knowledge.regression.RegressionChecker",
                      return_value=mock_checker,
@@ -485,7 +485,7 @@ class TestDaemonRegressionCheck:
             bus._kg = MagicMock()
             return bus
 
-        with patch.object(main_mod, "_get_bus", side_effect=exploding_get_bus), \
+        with patch.object(main_mod, "_get_daemon_bus", side_effect=exploding_get_bus), \
              patch(
                  "jarvis_engine.knowledge.regression.RegressionChecker",
                  side_effect=RuntimeError("RegressionChecker init failed"),
@@ -524,7 +524,7 @@ class TestDaemonConsolidation:
 
         mock_rc_checker = MagicMock()
 
-        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+        with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.learning.consolidator.MemoryConsolidator",
                  return_value=mock_consolidator,
@@ -549,7 +549,7 @@ class TestDaemonConsolidation:
         """Consolidation failure should not crash the daemon."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        with patch.object(main_mod, "_get_bus", side_effect=RuntimeError("bus down")), \
+        with patch.object(main_mod, "_get_daemon_bus", side_effect=RuntimeError("bus down")), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
@@ -565,7 +565,7 @@ class TestDaemonConsolidation:
         mock_bus._engine = None  # explicitly None
         mock_bus._kg = None
 
-        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+        with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
@@ -598,7 +598,7 @@ class TestDaemonEntityResolution:
 
         mock_rc_checker = MagicMock()
 
-        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+        with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.knowledge.entity_resolver.EntityResolver",
                  return_value=mock_resolver,
@@ -624,7 +624,7 @@ class TestDaemonEntityResolution:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
         with patch.object(
-            main_mod, "_get_bus", side_effect=RuntimeError("bus broken")
+            main_mod, "_get_daemon_bus", side_effect=RuntimeError("bus broken")
         ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
@@ -640,7 +640,7 @@ class TestDaemonEntityResolution:
         mock_bus = MagicMock(spec=[])
         mock_bus._kg = None
 
-        with patch.object(main_mod, "_get_bus", return_value=mock_bus), \
+        with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
@@ -665,7 +665,7 @@ class TestDaemonSubsystemIsolation:
         with patch(
             "jarvis_engine.activity_feed.log_activity", side_effect=bomb
         ), \
-             patch.object(main_mod, "_get_bus", side_effect=bomb):
+             patch.object(main_mod, "_get_daemon_bus", side_effect=bomb):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
         assert rc == 0
@@ -1181,7 +1181,6 @@ class TestImprovedTopicDiscovery:
         self, tmp_path: Path
     ) -> None:
         """When only mission data exists, should fall through to source 5."""
-        import json
 
         with patch.object(main_mod, "load_missions", return_value=[
             {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},

@@ -218,6 +218,12 @@ def create_app(root: Path) -> CommandBus:
             engine = MemoryEngine(db_path, embed_service=embed_service)
             classifier = BranchClassifier(embed_service)
             kg = KnowledgeGraph(engine)
+            # Run temporal metadata migration (idempotent)
+            try:
+                from jarvis_engine.learning.temporal import migrate_temporal_metadata
+                migrate_temporal_metadata(engine._db, engine._write_lock)
+            except Exception as exc_tm:
+                logger.warning("Temporal metadata migration skipped: %s", exc_tm)
             pipeline = EnrichedIngestPipeline(
                 engine, embed_service, classifier, knowledge_graph=kg,
             )

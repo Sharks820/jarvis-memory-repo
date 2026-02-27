@@ -2,6 +2,7 @@ package com.jarvis.assistant.api
 
 import okhttp3.Interceptor
 import okhttp3.Response
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
 import java.security.SecureRandom
 import javax.crypto.Mac
@@ -30,7 +31,7 @@ class HmacInterceptor(
         }
 
         val original = chain.request()
-        val body = original.body?.let { body ->
+        val bodyStr = original.body?.let { body ->
             val buffer = Buffer()
             body.writeTo(buffer)
             buffer.readUtf8()
@@ -38,10 +39,12 @@ class HmacInterceptor(
 
         val timestamp = (System.currentTimeMillis() / 1000L).toString()
         val nonce = generateNonce()
-        val signingMaterial = "$timestamp\n$nonce\n$body"
+        val signingMaterial = "$timestamp\n$nonce\n$bodyStr"
         val signature = hmacSha256(creds.signingKey, signingMaterial)
 
-        val signed = original.newBuilder()
+        // Rebuild request with a fresh body (the original was consumed by writeTo)
+        val newRequest = original.newBuilder()
+            .method(original.method, bodyStr.toRequestBody(original.body?.contentType()))
             .header("Authorization", "Bearer ${creds.token}")
             .header("X-Jarvis-Timestamp", timestamp)
             .header("X-Jarvis-Nonce", nonce)
@@ -53,7 +56,7 @@ class HmacInterceptor(
             }
             .build()
 
-        return chain.proceed(signed)
+        return chain.proceed(newRequest)
     }
 
     private fun hmacSha256(key: String, message: String): String {
@@ -65,7 +68,11 @@ class HmacInterceptor(
 
     private fun generateNonce(): String {
         val bytes = ByteArray(16)
-        SecureRandom().nextBytes(bytes)
+        SECURE_RANDOM.nextBytes(bytes)
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    companion object {
+        private val SECURE_RANDOM = SecureRandom()
     }
 }

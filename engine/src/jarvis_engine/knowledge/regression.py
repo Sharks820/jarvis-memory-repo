@@ -129,9 +129,18 @@ class RegressionChecker:
 
         dst_path = Path(self._kg._engine._db_path)
         try:
-            shutil.copy2(str(backup_path), str(dst_path))
-            # Reinitialize schema on the live connection
-            self._kg._ensure_schema()
+            with self._kg.write_lock:
+                # Close the live connection before overwriting the file
+                self._kg._engine._db.close()
+                shutil.copy2(str(backup_path), str(dst_path))
+                # Reopen the DB connection
+                import sqlite3
+                self._kg._engine._db = sqlite3.connect(
+                    str(dst_path), check_same_thread=False,
+                )
+                self._kg._engine._db.row_factory = sqlite3.Row
+                # Reinitialize schema on the fresh connection
+                self._kg._ensure_schema()
             logger.info("Knowledge graph restored from %s", backup_path)
             return True
         except Exception as exc:

@@ -7,9 +7,8 @@ import threading
 from datetime import datetime, timedelta
 from jarvis_engine._compat import UTC
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # ConversationLearningEngine tests

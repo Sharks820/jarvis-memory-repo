@@ -36,11 +36,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): JarvisDatabase {
+    fun provideDatabase(@ApplicationContext context: Context, crypto: CryptoHelper): JarvisDatabase {
         // Derive a stable passphrase from the Android Keystore-backed signing key.
-        // On first launch (before bootstrap) we use a fallback so the DB can still be created.
-        val crypto = CryptoHelper(context)
-        val seed = crypto.getSigningKey().ifBlank { "jarvis-default-seed" }
+        // On first launch (before bootstrap) we use a SecureRandom-generated fallback
+        // stored in EncryptedSharedPreferences so the DB can still be created.
+        val seed = crypto.getSigningKey().ifBlank { crypto.getOrCreateFallbackPassphrase() }
         return JarvisDatabase.create(context, seed.toByteArray(Charsets.UTF_8))
     }
 

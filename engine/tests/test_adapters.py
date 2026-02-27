@@ -1,7 +1,6 @@
 """Tests for the media adapters module (Image/Video/3D)."""
 from __future__ import annotations
 
-import math
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch

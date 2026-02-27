@@ -6,9 +6,8 @@ error handling, and temporal distribution.
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine.learning.metrics import capture_knowledge_metrics
 

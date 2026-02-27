@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 from jarvis_engine._compat import UTC

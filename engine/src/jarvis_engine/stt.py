@@ -523,6 +523,12 @@ def transcribe_smart(
 
     if backend == "groq":
         result = transcribe_groq(audio, language=language, prompt=prompt)
+        if result is None:
+            logger.warning("Groq transcription returned None in forced groq mode")
+            return TranscriptionResult(
+                text="", language=language or "en",
+                confidence=0.0, duration_seconds=0.0, backend="groq-failed",
+            )
         _log_stt_metric(
             root_dir,
             backend=result.backend,

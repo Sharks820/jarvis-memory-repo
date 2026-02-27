@@ -12,19 +12,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.commands.knowledge_commands import (
     ContradictionListCommand,
-    ContradictionListResult,
     ContradictionResolveCommand,
-    ContradictionResolveResult,
     FactLockCommand,
-    FactLockResult,
     KnowledgeRegressionCommand,
-    KnowledgeRegressionResult,
     KnowledgeStatusCommand,
-    KnowledgeStatusResult,
 )
 from jarvis_engine.handlers.knowledge_handlers import (
     ContradictionListHandler,

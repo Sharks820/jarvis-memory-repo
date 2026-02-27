@@ -5,6 +5,8 @@ import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from pathlib import Path
 
 from conftest import http_request, signed_headers
@@ -1018,7 +1020,8 @@ def test_is_cors_origin_allowed_patterns(mobile_server) -> None:
     assert server.is_cors_origin_allowed("http://127.0.0.1:8787") is True
     assert server.is_cors_origin_allowed("http://[::1]") is True
     assert server.is_cors_origin_allowed("http://[::1]:8080") is True
-    assert server.is_cors_origin_allowed("file:///home/user/page.html") is True
+    assert server.is_cors_origin_allowed("file:///C:/Users/test/page.html") is True
+    assert server.is_cors_origin_allowed("file:///home/user/page.html") is False  # Unix path rejected
     assert server.is_cors_origin_allowed("https://evil.com") is False
     assert server.is_cors_origin_allowed("http://192.168.1.100") is False
     assert server.is_cors_origin_allowed("") is False
@@ -1440,8 +1443,8 @@ class TestNoncePersistence:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         entries = [
             json.dumps({"nonce": "still_valid", "ts": fake_now - 50}),
-            json.dumps({"nonce": "barely_valid", "ts": fake_now - 299}),
-            json.dumps({"nonce": "just_expired", "ts": fake_now - 361}),
+            json.dumps({"nonce": "barely_valid", "ts": fake_now - 119}),
+            json.dumps({"nonce": "just_expired", "ts": fake_now - 181}),
             json.dumps({"nonce": "way_too_old", "ts": fake_now - 999}),
         ]
         cache_path.write_text("\n".join(entries) + "\n", encoding="utf-8")

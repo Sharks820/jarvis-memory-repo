@@ -95,9 +95,10 @@ class ResponseFeedbackTracker:
         Returns dict with positive_count, negative_count, total, satisfaction_rate.
         """
         cur = self._db.execute(
-            "SELECT feedback, COUNT(*) as cnt FROM response_feedback "
-            "WHERE route = ? GROUP BY feedback "
-            "ORDER BY rowid DESC LIMIT ?",
+            "SELECT feedback, COUNT(*) as cnt FROM "
+            "(SELECT feedback FROM response_feedback "
+            "WHERE route = ? ORDER BY rowid DESC LIMIT ?) "
+            "GROUP BY feedback",
             (route, last_n),
         )
         counts = {"positive": 0, "negative": 0}

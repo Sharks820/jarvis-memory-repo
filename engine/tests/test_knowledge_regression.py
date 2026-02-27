@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.knowledge.regression import RegressionChecker, _EMPTY_GRAPH_HASH
 

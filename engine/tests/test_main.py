@@ -585,7 +585,7 @@ def test_cmd_mobile_desktop_sync_and_self_heal(tmp_path: Path, monkeypatch) -> N
 # Expanded test coverage — 100+ new tests for untested CLI command paths
 # ---------------------------------------------------------------------------
 
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 import pytest
 
 
@@ -2481,7 +2481,7 @@ class TestDaemonSelfTest:
         mock_bus = MagicMock()
         mock_bus._engine = MagicMock()
         mock_bus._embed_service = MagicMock()
-        monkeypatch.setattr(main_mod, "_get_bus", lambda: mock_bus)
+        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",
                     return_value=mock_tester) as mock_cls:
@@ -2503,7 +2503,7 @@ class TestDaemonSelfTest:
         mock_bus = MagicMock()
         mock_bus._engine = MagicMock()
         mock_bus._embed_service = MagicMock()
-        monkeypatch.setattr(main_mod, "_get_bus", lambda: mock_bus)
+        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
             rc = self._run_daemon_impl(tmp_path, monkeypatch,
@@ -2520,7 +2520,7 @@ class TestDaemonSelfTest:
         mock_bus = MagicMock()
         mock_bus._engine = None
         mock_bus._embed_service = None
-        monkeypatch.setattr(main_mod, "_get_bus", lambda: mock_bus)
+        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
             rc = self._run_daemon_impl(tmp_path, monkeypatch,
@@ -2536,7 +2536,7 @@ class TestDaemonSelfTest:
         mock_bus = MagicMock()
         mock_bus._engine = MagicMock()
         mock_bus._embed_service = MagicMock()
-        monkeypatch.setattr(main_mod, "_get_bus", lambda: mock_bus)
+        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",
                     side_effect=RuntimeError("quiz DB corrupt")):

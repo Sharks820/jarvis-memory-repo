@@ -10,7 +10,6 @@ and Ollama Python client with:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
@@ -177,6 +176,11 @@ class ModelGateway:
     def close(self) -> None:
         """Release httpx connection pool and other resources."""
         self._http.close()
+        if hasattr(self, "_anthropic") and self._anthropic is not None:
+            try:
+                self._anthropic.close()
+            except Exception:
+                pass
 
     def __enter__(self) -> "ModelGateway":
         return self

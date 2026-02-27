@@ -9,9 +9,8 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Task 1 tests: cross-branch edges wired into _extract_facts

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 from jarvis_engine.intelligence_dashboard import (
     _estimate_eta,
@@ -15,7 +14,6 @@ from jarvis_engine.intelligence_dashboard import (
     _score_slope_per_run,
     build_intelligence_dashboard,
     DEFAULT_TARGETS,
-    MILESTONES,
 )
 
 

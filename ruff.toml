@@ -1,0 +1,9 @@
+# Ruff configuration for Jarvis Engine
+[lint]
+# E402: lazy imports in handlers are by design (handler pattern)
+# E741: single-char vars (l, I, O) used in math/embedding code
+# F841: unused variables in tests (fixtures, intentional captures)
+ignore = ["E402", "E741"]
+
+[lint.per-file-ignores]
+"engine/tests/*" = ["F841"]

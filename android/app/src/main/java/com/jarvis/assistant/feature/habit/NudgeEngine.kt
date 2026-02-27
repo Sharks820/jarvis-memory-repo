@@ -215,7 +215,7 @@ class NudgeEngine @Inject constructor(
         const val ACTION_NUDGE_DISMISSED = "com.jarvis.assistant.NUDGE_DISMISSED"
         const val EXTRA_NUDGE_LOG_ID = "nudge_log_id"
         const val EXTRA_PATTERN_ID = "pattern_id"
-        const val NOTIFICATION_ID_OFFSET = 20000
+        const val NOTIFICATION_ID_OFFSET = 30000
         private const val TIME_WINDOW_MINUTES = 15
         private const val MIN_NUDGE_CONFIDENCE = 0.6f
     }

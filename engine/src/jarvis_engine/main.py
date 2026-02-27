@@ -14,60 +14,21 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
 
-from jarvis_engine.automation import AutomationExecutor, load_actions
 from jarvis_engine.brain_memory import (
-    brain_compact,
-    brain_regression_report,
-    brain_status,
     build_context_packet,
     ingest_brain_record,
 )
-from jarvis_engine.config import load_config, repo_root
-from jarvis_engine.connectors import (
-    build_connector_prompts,
-    evaluate_connector_statuses,
-    grant_connector_permission,
-)
-from jarvis_engine.growth_tracker import (
-    audit_run,
-    append_history,
-    load_golden_tasks,
-    read_history,
-    run_eval,
-    summarize_history,
-)
-from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
-from jarvis_engine.ingest import IngestionPipeline, MemoryKind, SourceType
-from jarvis_engine.learning_missions import create_learning_mission, load_missions, run_learning_mission
-from jarvis_engine.life_ops import build_daily_brief, export_actions_json, load_snapshot, suggest_actions
+from jarvis_engine.config import repo_root
+from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.learning_missions import load_missions
 from jarvis_engine.memory_store import MemoryStore
-from jarvis_engine.memory_snapshots import create_signed_snapshot, run_memory_maintenance, verify_signed_snapshot
 from jarvis_engine.mobile_api import run_mobile_server
-from jarvis_engine.ops_sync import build_live_snapshot
 from jarvis_engine.owner_guard import (
-    clear_master_password,
     read_owner_guard,
-    revoke_mobile_device,
-    set_master_password,
-    trust_mobile_device,
     verify_master_password,
-    write_owner_guard,
 )
-from jarvis_engine.phone_guard import (
-    append_phone_actions,
-    build_phone_action,
-    build_spam_block_actions,
-    detect_spam_candidates,
-    load_call_log,
-    write_spam_report,
-)
-from jarvis_engine.persona import compose_persona_reply, load_persona_config, save_persona_config
-from jarvis_engine.resilience import run_mobile_desktop_sync, run_self_heal
-from jarvis_engine.router import ModelRouter
-from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
-from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest
-from jarvis_engine.voice import list_edge_voices, list_windows_voices, speak_text
-from jarvis_engine.web_research import run_web_research
+from jarvis_engine.persona import compose_persona_reply, load_persona_config
+from jarvis_engine.runtime_control import read_control_state
 
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.memory_commands import (
@@ -96,7 +57,6 @@ from jarvis_engine.commands.system_commands import (
     MobileDesktopSyncCommand,
     OpenWebCommand,
     SelfHealCommand,
-    ServeMobileCommand,
     StatusCommand,
     WeatherCommand,
 )
@@ -177,6 +137,20 @@ def _get_bus() -> CommandBus:
 
 
 _auto_ingest_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Daemon-scoped bus cache (avoids recreating MemoryEngine per periodic task)
+# ---------------------------------------------------------------------------
+_daemon_bus: CommandBus | None = None
+
+
+def _get_daemon_bus() -> CommandBus:
+    """Return cached daemon bus, creating once on first call."""
+    global _daemon_bus
+    if _daemon_bus is None:
+        _daemon_bus = _get_bus()
+    return _daemon_bus
+
 
 # ---------------------------------------------------------------------------
 # Daemon cycle state for KG regression tracking
@@ -1281,7 +1255,7 @@ def cmd_contradiction_resolve(contradiction_id: int, resolution: str, merge_valu
         print(f"resolved=true node_id={result.node_id} resolution={result.resolution}")
         print(result.message)
     else:
-        print(f"resolved=false")
+        print("resolved=false")
         print(result.message)
         return 1
     return 0
@@ -1844,7 +1818,7 @@ def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_inges
             if snippet:
                 summary_parts.append(f"{snippet} ({domain})" if domain else snippet)
     if summary_parts:
-        print(f"response=Here's what I found: " + " | ".join(summary_parts))
+        print("response=Here's what I found: " + " | ".join(summary_parts))
     else:
         print(f"response=I searched the web for '{report.get('query', '')}' but couldn't find clear results.")
 
@@ -2004,7 +1978,6 @@ def cmd_memory_eval() -> int:
         run_memory_eval,
     )
 
-    from jarvis_engine.app import create_app
     from jarvis_engine.config import repo_root as _repo_root
 
     root = _repo_root()
@@ -2448,7 +2421,7 @@ def _cmd_daemon_run_impl(
             if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
                 try:
                     from jarvis_engine.proactive.self_test import AdversarialSelfTest
-                    bus = _get_bus()
+                    bus = _get_daemon_bus()
                     engine = getattr(bus, "_engine", None)
                     embed_svc = getattr(bus, "_embed_service", None)
                     if engine is not None and embed_svc is not None:
@@ -2470,7 +2443,7 @@ def _cmd_daemon_run_impl(
                 try:
                     from jarvis_engine.knowledge.regression import RegressionChecker
                     from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                    bus = _get_bus()
+                    bus = _get_daemon_bus()
                     kg = getattr(bus, "_kg", None)
                     if kg is not None:
                         rc_checker = RegressionChecker(kg)
@@ -2512,7 +2485,7 @@ def _cmd_daemon_run_impl(
                     from jarvis_engine.learning.consolidator import MemoryConsolidator
                     from jarvis_engine.knowledge.regression import RegressionChecker
                     from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                    bus = _get_bus()
+                    bus = _get_daemon_bus()
                     engine = getattr(bus, "_engine", None)
                     kg = getattr(bus, "_kg", None)
                     gateway = getattr(bus, "_gateway", None)
@@ -2554,7 +2527,7 @@ def _cmd_daemon_run_impl(
                     from jarvis_engine.knowledge.entity_resolver import EntityResolver
                     from jarvis_engine.knowledge.regression import RegressionChecker
                     from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                    bus = _get_bus()
+                    bus = _get_daemon_bus()
                     kg = getattr(bus, "_kg", None)
                     embed_svc = getattr(bus, "_embed_service", None)
                     if kg is not None:
@@ -3476,7 +3449,7 @@ def _cmd_voice_run_impl(
                 history=_hist_tuples,
             ))
             if result.return_code != 0:
-                print(f"intent=llm_unavailable")
+                print("intent=llm_unavailable")
                 print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
                 rc = 1
             elif result.text.strip():
@@ -3520,7 +3493,7 @@ def _cmd_voice_run_impl(
                 print("reason=LLM returned empty response.")
                 rc = 1
         except Exception as exc:
-            print(f"intent=llm_error")
+            print("intent=llm_error")
             print(f"reason={exc}")
             if speak:
                 cmd_voice_say(

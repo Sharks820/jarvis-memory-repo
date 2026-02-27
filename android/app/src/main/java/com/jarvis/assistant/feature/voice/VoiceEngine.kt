@@ -47,7 +47,7 @@ class VoiceEngine @Inject constructor(
     private var speechRecognizer: SpeechRecognizer? = null
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
-    var ttsSpeed: Float = 1.0f
+    @Volatile var ttsSpeed: Float = 1.0f
         set(value) { field = value.coerceIn(0.5f, 2.0f) }
 
     // ── STT ────────────────────────────────────────────────────────────

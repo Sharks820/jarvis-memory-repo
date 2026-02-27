@@ -20,8 +20,8 @@ import javax.inject.Singleton
 @Singleton
 class JarvisApiClient @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val crypto: CryptoHelper,
 ) {
-    private val crypto by lazy { CryptoHelper(context) }
 
     private val okHttp by lazy {
         OkHttpClient.Builder()

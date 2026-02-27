@@ -6,10 +6,8 @@ narrative brief with gateway, export, and edge cases.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.life_ops import (
     OpsSnapshot,
