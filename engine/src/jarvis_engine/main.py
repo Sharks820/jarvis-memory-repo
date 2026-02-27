@@ -3876,6 +3876,7 @@ def main() -> int:
     p_daemon.add_argument("--skip-missions", action="store_true", help="Disable background learning mission execution.")
     p_daemon.add_argument("--sync-every-cycles", type=int, default=5)
     p_daemon.add_argument("--self-heal-every-cycles", type=int, default=20)
+    p_daemon.add_argument("--self-test-every-cycles", type=int, default=20)
 
     p_mission_create = sub.add_parser("mission-create", help="Create a learning mission.")
     p_mission_create.add_argument("--topic", required=True)
@@ -4257,6 +4258,7 @@ def main() -> int:
             run_missions=not args.skip_missions,
             sync_every_cycles=args.sync_every_cycles,
             self_heal_every_cycles=args.self_heal_every_cycles,
+            self_test_every_cycles=args.self_test_every_cycles,
         )
     if args.command == "mission-create":
         return cmd_mission_create(

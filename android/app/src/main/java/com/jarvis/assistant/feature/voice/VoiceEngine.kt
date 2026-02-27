@@ -123,9 +123,8 @@ class VoiceEngine @Inject constructor(
     }
 
     fun stopListening() {
-        speechRecognizer?.stopListening()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+        try { speechRecognizer?.destroy() } finally { speechRecognizer = null }
         if (_state.value is VoiceState.Listening || _state.value is VoiceState.Transcribing) {
             _state.value = VoiceState.Idle
         }
@@ -212,14 +211,13 @@ class VoiceEngine @Inject constructor(
 
     fun destroy() {
         supervisorJob.cancel()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        try { speechRecognizer?.destroy() } finally { speechRecognizer = null }
         // Mark not ready first so ensureTts fast-path is blocked
         ttsReady = false
         val ttsRef = tts
         tts = null
-        ttsRef?.stop()
-        ttsRef?.shutdown()
+        try { ttsRef?.stop() } catch (_: Exception) {}
+        try { ttsRef?.shutdown() } catch (_: Exception) {}
     }
 
     companion object {
