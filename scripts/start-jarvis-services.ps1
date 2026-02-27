@@ -76,14 +76,14 @@ foreach ($proc in $mobileTargets) {
 # If anything still holds our configured API port and is not our current repo runtime, stop it.
 $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 foreach ($entry in $listeners) {
-    $pid = [int]$entry.OwningProcess
-    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $pid" -ErrorAction SilentlyContinue
+    $procId = [int]$entry.OwningProcess
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
     if ($null -eq $proc) { continue }
     $cmd = [string]$proc.CommandLine
     $cmdNorm = $cmd.ToLowerInvariant()
     if ($proc.Name -eq "python.exe" -and $cmd -match "jarvis_engine\.main\s+serve-mobile") {
         if ($cmdNorm -notlike "*$repoRootNorm*") {
-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
         }
     }
 }
