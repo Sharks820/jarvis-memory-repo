@@ -3643,6 +3643,10 @@ def main() -> int:
         help="HMAC signing key. Falls back to JARVIS_MOBILE_SIGNING_KEY env var.",
     )
     p_mobile.add_argument(
+        "--config-file",
+        help="JSON config file with token and signing_key (avoids exposing secrets in process command line).",
+    )
+    p_mobile.add_argument(
         "--allow-insecure-bind",
         action="store_true",
         help="Allow non-loopback HTTP bind (for trusted LAN). Falls back to JARVIS_ALLOW_INSECURE_MOBILE_BIND env var.",
@@ -4085,6 +4089,7 @@ def main() -> int:
             token=args.token,
             signing_key=args.signing_key,
             allow_insecure_bind=args.allow_insecure_bind,
+            config_file=args.config_file,
             tls=_tls_flag,
         )
     if args.command == "route":
