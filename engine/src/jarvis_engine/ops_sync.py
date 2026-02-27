@@ -433,11 +433,17 @@ def _is_safe_calendar_url(url: str) -> bool:
                     or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
     except ValueError:
         pass
+    old_timeout = socket.getdefaulttimeout()
     try:
+        socket.setdefaulttimeout(10)
         resolved = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
+    except (socket.gaierror, OSError):
         return False
+    finally:
+        socket.setdefaulttimeout(old_timeout)
     for item in resolved:
+        if not item[4]:
+            continue
         raw_ip = item[4][0]
         try:
             ip = ip_address(raw_ip)
