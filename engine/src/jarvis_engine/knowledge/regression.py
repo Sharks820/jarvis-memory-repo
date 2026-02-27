@@ -135,10 +135,34 @@ class RegressionChecker:
                 shutil.copy2(str(backup_path), str(dst_path))
                 # Reopen the DB connection
                 import sqlite3
-                self._kg._engine._db = sqlite3.connect(
+                new_db = sqlite3.connect(
                     str(dst_path), check_same_thread=False,
                 )
-                self._kg._engine._db.row_factory = sqlite3.Row
+                new_db.row_factory = sqlite3.Row
+                # Re-apply PRAGMAs (match MemoryEngine.__init__)
+                new_db.execute("PRAGMA journal_mode=WAL")
+                new_db.execute("PRAGMA busy_timeout=5000")
+                new_db.execute("PRAGMA foreign_keys=ON")
+                new_db.execute("PRAGMA synchronous=NORMAL")
+                new_db.execute("PRAGMA cache_size=-64000")
+                new_db.execute("PRAGMA mmap_size=268435456")
+                # Reload sqlite-vec
+                try:
+                    import sqlite_vec
+                    new_db.enable_load_extension(True)
+                    try:
+                        sqlite_vec.load(new_db)
+                    finally:
+                        new_db.enable_load_extension(False)
+                except Exception:
+                    pass
+                # Update ALL references (engine, KG, lock manager)
+                self._kg._engine._db = new_db
+                self._kg._db = new_db
+                self._kg._lock_manager._db = new_db
+                # Invalidate NetworkX cache
+                self._kg._mutation_counter += 1
+                self._kg._cached_graph = None
                 # Reinitialize schema on the fresh connection
                 self._kg._ensure_schema()
             logger.info("Knowledge graph restored from %s", backup_path)

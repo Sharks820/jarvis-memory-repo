@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel
+from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel, _hash_password
 
 
 # ---------------------------------------------------------------
@@ -56,8 +56,7 @@ class TestContainmentLevels:
         eng = _make_engine()
         result = eng.contain("10.0.0.4", ContainmentLevel.LOCKDOWN, "breach detected")
         assert result["level"] == 4
-        assert "new_signing_key" in result
-        assert len(result["new_signing_key"]) == 64  # 32 bytes hex
+        assert result.get("credentials_rotated") is True
         status = eng.get_containment_status()
         assert status["lockdown_active"] is True
 
@@ -93,18 +92,17 @@ class TestContainmentLevels:
 
 
 class TestCredentialRotation:
-    def test_rotation_returns_new_key(self) -> None:
+    def test_rotation_sets_flag(self) -> None:
         eng = _make_engine()
         result = eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test rotation")
-        key = result["new_signing_key"]
-        assert isinstance(key, str)
-        assert len(key) == 64
+        assert result.get("credentials_rotated") is True
 
-    def test_rotation_produces_different_keys(self) -> None:
+    def test_no_rotation_flag_on_low_levels(self) -> None:
         eng = _make_engine()
-        r1 = eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "first")
-        r2 = eng.contain("10.0.0.2", ContainmentLevel.LOCKDOWN, "second")
-        assert r1["new_signing_key"] != r2["new_signing_key"]
+        r1 = eng.contain("10.0.0.1", ContainmentLevel.THROTTLE, "minor")
+        assert "credentials_rotated" not in r1
+        r2 = eng.contain("10.0.0.2", ContainmentLevel.BLOCK, "medium")
+        assert "credentials_rotated" not in r2
 
 
 # ---------------------------------------------------------------
@@ -151,9 +149,12 @@ class TestRecovery:
         result = eng.recover(ContainmentLevel.FULL_KILL)
         assert result["recovered"] is False
 
-    @patch.dict("os.environ", {}, clear=False)
+    @patch.dict(
+        "os.environ",
+        {"JARVIS_MASTER_PASSWORD_HASH": _hash_password("owner123")},
+        clear=False,
+    )
     def test_recover_level_4_with_password_succeeds(self) -> None:
-        # No env hash configured -> any non-empty password accepted
         eng = _make_engine()
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
         result = eng.recover(ContainmentLevel.LOCKDOWN, master_password="owner123")
@@ -161,7 +162,11 @@ class TestRecovery:
         status = eng.get_containment_status()
         assert status["lockdown_active"] is False
 
-    @patch.dict("os.environ", {}, clear=False)
+    @patch.dict(
+        "os.environ",
+        {"JARVIS_MASTER_PASSWORD_HASH": _hash_password("owner123")},
+        clear=False,
+    )
     def test_recover_level_5_with_password_succeeds(self) -> None:
         eng = _make_engine()
         eng.contain("10.0.0.1", ContainmentLevel.FULL_KILL, "test")
@@ -171,6 +176,16 @@ class TestRecovery:
         assert status["killed"] is False
         assert status["lockdown_active"] is False
         assert status["current_level"] == 0
+
+    @patch.dict("os.environ", {}, clear=False)
+    def test_recover_level_4_no_env_hash_denied(self) -> None:
+        """Without JARVIS_MASTER_PASSWORD_HASH set, recovery is denied."""
+        import os
+        os.environ.pop("JARVIS_MASTER_PASSWORD_HASH", None)
+        eng = _make_engine()
+        eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
+        result = eng.recover(ContainmentLevel.LOCKDOWN, master_password="anything")
+        assert result["recovered"] is False
 
     def test_recover_invalid_level_raises(self) -> None:
         eng = _make_engine()

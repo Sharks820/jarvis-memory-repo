@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -145,6 +146,7 @@ class ThreatDetector:
     ) -> None:
         self._ip_tracker = ip_tracker
         self._nonce_ttl = nonce_ttl
+        self._lock = threading.Lock()
         # nonce -> timestamp last seen
         self._nonce_cache: dict[str, float] = {}
         # ip -> list of request timestamps (for rate anomaly detection)
@@ -313,19 +315,20 @@ class ThreatDetector:
             return None
 
         now = time.monotonic()
-        # Prune expired entries
-        expired = [k for k, v in self._nonce_cache.items() if now - v > self._nonce_ttl]
-        for k in expired:
-            del self._nonce_cache[k]
+        with self._lock:
+            # Prune expired entries
+            expired = [k for k, v in self._nonce_cache.items() if now - v > self._nonce_ttl]
+            for k in expired:
+                del self._nonce_cache[k]
 
-        if nonce in self._nonce_cache:
-            return ThreatSignal(
-                severity="HIGH",
-                category="replay_attack",
-                confidence=0.95,
-                evidence={"nonce": nonce, "first_seen_ago_s": round(now - self._nonce_cache[nonce], 1)},
-            )
-        self._nonce_cache[nonce] = now
+            if nonce in self._nonce_cache:
+                return ThreatSignal(
+                    severity="HIGH",
+                    category="replay_attack",
+                    confidence=0.95,
+                    evidence={"nonce": nonce, "first_seen_ago_s": round(now - self._nonce_cache[nonce], 1)},
+                )
+            self._nonce_cache[nonce] = now
         return None
 
     def _rule_rate_anomaly(self, ctx: dict) -> ThreatSignal | None:
@@ -336,20 +339,23 @@ class ThreatDetector:
 
         now = time.monotonic()
         window = 60.0  # 1 minute
-        log = self._request_log[ip]
-        log.append(now)
+        with self._lock:
+            log = self._request_log[ip]
+            log.append(now)
 
-        # Prune entries outside the window
-        cutoff = now - window
-        while log and log[0] < cutoff:
-            log.pop(0)
+            # Prune entries outside the window
+            cutoff = now - window
+            while log and log[0] < cutoff:
+                log.pop(0)
 
-        if len(log) > 60:
+            count = len(log)
+
+        if count > 60:
             return ThreatSignal(
                 severity="MEDIUM",
                 category="rate_anomaly",
                 confidence=0.75,
-                evidence={"ip": ip, "requests_per_minute": len(log)},
+                evidence={"ip": ip, "requests_per_minute": count},
             )
         return None
 
