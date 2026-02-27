@@ -1,6 +1,7 @@
 package com.jarvis.assistant.data.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -10,7 +11,10 @@ import androidx.room.PrimaryKey
  * response (acted, dismissed, or expired). The response rate per pattern
  * drives adaptive suppression via [NudgeResponseTracker].
  */
-@Entity(tableName = "nudge_log")
+@Entity(
+    tableName = "nudge_log",
+    indices = [Index(value = ["patternId"])],
+)
 data class NudgeLogEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
