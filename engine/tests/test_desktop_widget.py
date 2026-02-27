@@ -580,37 +580,58 @@ class TestServiceUptimeFormatting:
 # ---- Widget orb animation math (extracted) ----------------------------------
 
 class TestOrbAnimationMath:
-    """Test the pulse math from _animate_orb without tkinter."""
+    """Test the time-based pulse math from _animate_orb."""
 
     def test_pulse_range(self):
-        """Verify the orb pulse stays within expected bounds."""
-        for phase in [0, 0.5, 1.0, 1.5, math.pi, 2 * math.pi]:
-            pulse = 5.0 + (math.sin(phase) * 1.8)
-            assert 3.2 <= pulse <= 6.8, f"pulse {pulse} out of range at phase {phase}"
+        """Verify the orb pulse stays within expected bounds (4.5 to 7.5)."""
+        for t in [0, 0.5, 1.0, 1.5, math.pi, 2 * math.pi, 10.0]:
+            breath = math.sin(t * 3.0)
+            pulse = 6.0 + breath * 1.5
+            assert 4.5 <= pulse <= 7.5, f"pulse {pulse} out of range at t={t}"
 
-    def test_phase_increment_wraps(self):
-        """Verify the phase wrapping formula doesn't grow unbounded."""
-        phase = 0.0
-        for _ in range(10000):
-            phase = (phase + 0.22) % (2 * math.pi * 100)
-        assert 0 <= phase < 2 * math.pi * 100
+    def test_sweep_angle_wraps(self):
+        """Verify the sweep angle stays in [0, 360) range."""
+        for t in [0, 1.0, 3.0, 100.0, 99999.0]:
+            sweep = (t * 120) % 360
+            assert 0 <= sweep < 360
 
 
 # ---- Launcher animation math -----------------------------------------------
 
 class TestLauncherAnimationMath:
-    def test_launcher_pulse_bounds(self):
-        for phase in [0, 0.5, 1.0, math.pi, 2 * math.pi]:
-            pulse = 1.0 + (math.sin(phase) * 1.2)
-            outer_pad = 4.0 + pulse
-            mid_pad = 8.0 + (pulse * 0.8)
-            inner_pad = 15.0 + (pulse * 0.7)
-            # All padding values should be positive
-            assert outer_pad > 0
-            assert mid_pad > 0
-            assert inner_pad > 0
-            # inner_pad should always be larger than outer_pad
-            assert inner_pad > outer_pad
+    def test_launcher_core_breathing_bounds(self):
+        """Core padding stays positive and within canvas (size=96)."""
+        size = 96
+        for t in [0, 0.5, 1.0, math.pi, 2 * math.pi, 10.0]:
+            for speed in [0.3, 1.0, 1.6, 2.5]:
+                breath = math.sin(t * 2.5 * speed)
+                pad = 24 + breath * 2
+                assert pad > 0, f"pad {pad} not positive at t={t}"
+                assert pad < size / 2, f"pad {pad} >= half size at t={t}"
+
+    def test_launcher_arc_angles_bounded(self):
+        """Arc rotation angles stay in [0, 360)."""
+        for t in [0, 1.0, 5.0, 100.0]:
+            for speed in [0.3, 1.0, 2.5]:
+                a1 = (t * 90 * speed) % 360
+                a2 = (360 - (t * 60 * speed) % 360) % 360
+                assert 0 <= a1 < 360
+                assert 0 <= a2 <= 360
+
+    def test_launcher_particle_orbits(self):
+        """Particle positions stay within launcher canvas bounds."""
+        size = 96
+        cx, cy = size / 2, size / 2
+        for t in [0, 0.5, 1.0, 3.0, 10.0]:
+            for i in range(3):
+                orbit_r = 34 - i * 5
+                orbit_speed = (45 + i * 25)
+                angle = math.radians((t * orbit_speed) % 360 + i * 120)
+                px = cx + orbit_r * math.cos(angle) - 2
+                py = cy + orbit_r * math.sin(angle) - 2
+                # Particle center should be within canvas
+                assert -5 < px < size + 5
+                assert -5 < py < size + 5
 
 
 # ---- Integration: full config round-trip ------------------------------------
