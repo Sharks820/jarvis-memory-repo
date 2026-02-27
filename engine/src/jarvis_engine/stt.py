@@ -389,6 +389,7 @@ def _try_groq(
 
 
 _local_stt_instance: SpeechToText | None = None
+_local_stt_lock = threading.Lock()
 
 
 def _try_local(
@@ -398,7 +399,9 @@ def _try_local(
     global _local_stt_instance
     try:
         if _local_stt_instance is None:
-            _local_stt_instance = SpeechToText()
+            with _local_stt_lock:
+                if _local_stt_instance is None:
+                    _local_stt_instance = SpeechToText()
         return _local_stt_instance.transcribe_audio(audio, language=language)
     except Exception as exc:
         logger.warning("Local STT attempt failed: %s", exc)

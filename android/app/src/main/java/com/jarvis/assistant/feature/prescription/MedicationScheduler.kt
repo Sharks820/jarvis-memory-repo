@@ -67,7 +67,7 @@ class MedicationScheduler @Inject constructor(
                     dosage = medication.dosage,
                     scheduledTime = time,
                 )
-                val requestCode = (medication.id * 100 + index).toInt()
+                val requestCode = ((medication.id * 100 + index) and 0x7FFFFFFF).toInt()
                 val pendingIntent = PendingIntent.getBroadcast(
                     context,
                     requestCode,
@@ -151,7 +151,7 @@ class MedicationScheduler @Inject constructor(
             .setAutoCancel(true)
             .build()
 
-        val notificationId = (medication.id * 100 + MISSED_DOSE_NOTIFICATION_OFFSET).toInt()
+        val notificationId = ((medication.id * 100 + MISSED_DOSE_NOTIFICATION_OFFSET) and 0x7FFFFFFF).toInt()
         notificationManager.notify(notificationId, notification)
     }
 
@@ -190,7 +190,7 @@ class MedicationScheduler @Inject constructor(
         for (medication in medications) {
             val times = parseTimes(medication.scheduledTimes)
             times.forEachIndexed { index, time ->
-                val requestCode = (medication.id * 100 + index).toInt()
+                val requestCode = ((medication.id * 100 + index) and 0x7FFFFFFF).toInt()
                 val intent = buildAlarmIntent(
                     medicationId = medication.id,
                     medicationName = medication.name,
@@ -218,7 +218,7 @@ class MedicationScheduler @Inject constructor(
 
         // Cancel existing
         times.forEachIndexed { index, time ->
-            val requestCode = (medication.id * 100 + index).toInt()
+            val requestCode = ((medication.id * 100 + index) and 0x7FFFFFFF).toInt()
             val intent = buildAlarmIntent(
                 medicationId = medication.id,
                 medicationName = medication.name,
@@ -238,7 +238,7 @@ class MedicationScheduler @Inject constructor(
         if (medication.isActive && canScheduleExactAlarms()) {
             times.forEachIndexed { index, time ->
                 val triggerMs = getNextAlarmTimeMs(time)
-                val requestCode = (medication.id * 100 + index).toInt()
+                val requestCode = ((medication.id * 100 + index) and 0x7FFFFFFF).toInt()
                 val intent = buildAlarmIntent(
                     medicationId = medication.id,
                     medicationName = medication.name,
