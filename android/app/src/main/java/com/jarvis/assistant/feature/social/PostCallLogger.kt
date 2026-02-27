@@ -121,7 +121,7 @@ class PostCallLogger @Inject constructor(
         direction: String,
         callLogId: Long,
     ) {
-        val notifId = (normalizedNumber.hashCode() and 0x7FFFFFFF) + NOTIFICATION_ID_OFFSET
+        val notifId = ((normalizedNumber.hashCode() + NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF)
 
         // RemoteInput for inline reply
         val remoteInput = RemoteInput.Builder(REMOTE_INPUT_KEY)

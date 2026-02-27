@@ -71,10 +71,10 @@ class MainActivity : FragmentActivity() {
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (authError != null) {
+                            authError?.let { error ->
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = authError!!,
+                                    text = error,
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyLarge,
                                 )

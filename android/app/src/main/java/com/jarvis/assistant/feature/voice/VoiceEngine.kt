@@ -112,6 +112,9 @@ class VoiceEngine @Inject constructor(
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
                     else -> "Recognition error (code $error)"
                 }
+                // Release native SpeechRecognizer resources to prevent leak
+                try { speechRecognizer?.destroy() } catch (_: Exception) {}
+                speechRecognizer = null
                 _state.value = VoiceState.Error(msg)
             }
 

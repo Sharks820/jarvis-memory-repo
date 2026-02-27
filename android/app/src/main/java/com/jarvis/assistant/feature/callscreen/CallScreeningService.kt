@@ -49,7 +49,13 @@ class JarvisCallScreeningService : CallScreeningService() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onScreenCall(callDetails: Call.Details) {
-        val number = callDetails.handle?.schemeSpecificPart ?: ""
+        val number = try {
+            callDetails.handle?.schemeSpecificPart ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting phone number: ${e.message}")
+            respondToCall(callDetails, CallResponse.Builder().build())
+            return
+        }
         if (number.isBlank()) {
             respondToCall(callDetails, CallResponse.Builder().build())
             return

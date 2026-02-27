@@ -142,13 +142,16 @@ _auto_ingest_lock = threading.Lock()
 # Daemon-scoped bus cache (avoids recreating MemoryEngine per periodic task)
 # ---------------------------------------------------------------------------
 _daemon_bus: CommandBus | None = None
+_daemon_bus_lock = threading.Lock()
 
 
 def _get_daemon_bus() -> CommandBus:
-    """Return cached daemon bus, creating once on first call."""
+    """Return cached daemon bus, creating once on first call (thread-safe)."""
     global _daemon_bus
     if _daemon_bus is None:
-        _daemon_bus = _get_bus()
+        with _daemon_bus_lock:
+            if _daemon_bus is None:
+                _daemon_bus = _get_bus()
     return _daemon_bus
 
 
@@ -469,20 +472,23 @@ def _discover_harvest_topics(root: Path) -> list[str]:
 # Conversation history buffer for multi-turn context
 # ---------------------------------------------------------------------------
 _conversation_history: list[dict[str, str]] = []
+_conversation_history_lock = threading.Lock()
 _CONVERSATION_MAX_TURNS = 5
 
 
 def _add_to_history(role: str, content: str) -> None:
     """Append a message to the conversation history, capping at max turns."""
-    _conversation_history.append({"role": role, "content": content[:800]})
-    # Keep only the last N user/assistant pairs
-    while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
-        _conversation_history.pop(0)
+    with _conversation_history_lock:
+        _conversation_history.append({"role": role, "content": content[:800]})
+        # Keep only the last N user/assistant pairs
+        while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
+            _conversation_history.pop(0)
 
 
 def _get_history_messages() -> list[dict[str, str]]:
     """Return conversation history as message list for LLM context."""
-    return list(_conversation_history)
+    with _conversation_history_lock:
+        return list(_conversation_history)
 
 
 # ---------------------------------------------------------------------------

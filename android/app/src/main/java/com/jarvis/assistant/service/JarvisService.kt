@@ -98,8 +98,16 @@ class JarvisService : Service() {
         createNotificationChannel()
         channelManager.createChannels()
         startForeground(NOTIF_ID, buildNotification())
-        parkingMemory.registerBluetoothReceiver()
-        SpendSummaryWorker.enqueue(applicationContext)
+        try {
+            parkingMemory.registerBluetoothReceiver()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register Bluetooth receiver: ${e.message}")
+        }
+        try {
+            SpendSummaryWorker.enqueue(applicationContext)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to enqueue spend summary worker: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
