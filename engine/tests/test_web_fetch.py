@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import json
 import socket
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.web_fetch import (
     SafeRedirectHandler,

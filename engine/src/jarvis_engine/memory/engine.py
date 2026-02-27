@@ -392,6 +392,7 @@ class MemoryEngine:
 
     def get_record_by_hash(self, content_hash: str) -> dict | None:
         """Fetch a single record by content_hash."""
+        self._check_open()
         with self._db_lock:
             cur = self._db.execute(
                 "SELECT * FROM records WHERE content_hash = ?",
@@ -484,6 +485,7 @@ class MemoryEngine:
         Pre-filtering by tier/source/date reduces scan space significantly
         for large memory stores.
         """
+        self._check_open()
         if not self._vec_available:
             return []
         try:

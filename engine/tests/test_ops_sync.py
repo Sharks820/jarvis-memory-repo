@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import imaplib
 import json
-import os
 import socket
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, patch as _patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 

@@ -8,7 +8,6 @@ import hmac
 import json
 import logging
 import math
-import os
 import re
 import ssl
 import subprocess
@@ -176,10 +175,27 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         except (TypeError, ValueError):
             return None
 
+    # --- Resolve token and signing_key (DPAPI-protected or plaintext legacy) ---
+    def _resolve_dpapi_field(field: str, fallback: str = "") -> str:
+        protected_key = f"{field}_protected"
+        if protected_key in raw:
+            try:
+                return _dpapi_decrypt(str(raw[protected_key]))
+            except Exception:
+                logger.warning("Failed to decrypt %s via DPAPI", protected_key)
+        val = str(raw.get(field, "")).strip()
+        if val:
+            needs_migration_fields.append(field)
+        return val or fallback
+
+    needs_migration_fields: list[str] = []
+    resolved_token = _resolve_dpapi_field("token", mobile.get("token", ""))
+    resolved_signing_key = _resolve_dpapi_field("signing_key", mobile.get("signing_key", ""))
+
     cfg = WidgetConfig(
         base_url=str(raw.get("base_url", "http://127.0.0.1:8787")).strip() or "http://127.0.0.1:8787",
-        token=str(raw.get("token", "")).strip() or mobile.get("token", ""),
-        signing_key=str(raw.get("signing_key", "")).strip() or mobile.get("signing_key", ""),
+        token=resolved_token,
+        signing_key=resolved_signing_key,
         device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip() or "galaxy_s25_primary",
         master_password=master_password,
         panel_x=_int_or_none("panel_x"),
@@ -188,8 +204,8 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         launcher_y=_int_or_none("launcher_y"),
     )
 
-    # Migrate plaintext master_password -> DPAPI-protected on load
-    if needs_migration:
+    # Migrate plaintext secrets (master_password, token, signing_key) -> DPAPI-protected
+    if needs_migration or needs_migration_fields:
         try:
             _save_widget_cfg(root, cfg)
             logger.info("Migrated plaintext master_password to DPAPI-protected storage")
@@ -204,11 +220,18 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
 
     payload: dict[str, Any] = {
         "base_url": cfg.base_url,
-        "token": cfg.token,
-        "signing_key": cfg.signing_key,
         "device_id": cfg.device_id,
         "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
+
+    # Encrypt token and signing_key via DPAPI; fall back to plaintext on non-Windows
+    for field in ("token", "signing_key"):
+        value = getattr(cfg, field, "")
+        if value:
+            try:
+                payload[f"{field}_protected"] = _dpapi_encrypt(value)
+            except Exception:
+                payload[field] = value
 
     # Persist window positions if set
     if cfg.panel_x is not None:
@@ -851,8 +874,7 @@ class JarvisDesktopWidget(tk.Tk):
     def _build_tray_icon(self) -> None:
         """Create a system tray icon using pystray. Runs in a daemon thread."""
         try:
-            import pystray
-            from PIL import Image, ImageDraw, ImageFont
+            import pystray  # noqa: E402
         except ImportError:
             logger.info("pystray or Pillow not installed; system tray icon disabled")
             return

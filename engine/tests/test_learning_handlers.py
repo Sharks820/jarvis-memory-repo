@@ -10,15 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.commands.learning_commands import (
     CrossBranchQueryCommand,
-    CrossBranchQueryResult,
     FlagExpiredFactsCommand,
-    FlagExpiredFactsResult,
     LearnInteractionCommand,
-    LearnInteractionResult,
 )
 from jarvis_engine.handlers.learning_handlers import (
     CrossBranchQueryHandler,

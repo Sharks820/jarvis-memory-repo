@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -787,7 +786,6 @@ def test_groq_transcription_custom_prompt() -> None:
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_confidence_multi_segment() -> None:
     """Confidence is averaged across multiple segments."""
-    import math
     from jarvis_engine.stt import transcribe_groq
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -1285,7 +1283,6 @@ def test_listen_and_transcribe_uses_transcribe_smart() -> None:
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_confidence_extreme_logprob_clamping() -> None:
     """Very negative avg_logprob is clamped to -5.0 before exp()."""
-    import math
     from jarvis_engine.stt import transcribe_groq
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -1367,7 +1364,6 @@ def test_groq_confidence_skips_non_finite_logprobs() -> None:
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_confidence_high_no_speech_penalty() -> None:
     """High no_speech_prob reduces confidence."""
-    import math
     from jarvis_engine.stt import transcribe_groq
 
     fake_audio = np.zeros(16000, dtype=np.float32)

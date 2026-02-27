@@ -10,13 +10,11 @@ import hashlib
 import hmac
 import json
 import math
-import os
 import threading
 import time
-import uuid
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -447,19 +445,25 @@ class TestSaveWidgetCfg:
         assert str(written_path).endswith("desktop_widget.json")
         payload = call_args[0][1]
         assert payload["base_url"] == "http://127.0.0.1:8787"
-        assert payload["token"] == "tok"
-        assert payload["signing_key"] == "sk"
         assert payload["device_id"] == "dev"
         assert "updated_utc" in payload
         if _DPAPI_AVAILABLE:
-            # master_password_protected should be present; plaintext should NOT
+            # Secrets should be DPAPI-encrypted; plaintext should NOT be present
             assert "master_password_protected" in payload
             assert "master_password" not in payload
+            assert "token_protected" in payload
+            assert "token" not in payload
+            assert "signing_key_protected" in payload
+            assert "signing_key" not in payload
             # Verify round-trip: decrypt should recover original
             assert _dpapi_decrypt(payload["master_password_protected"]) == "pw"
+            assert _dpapi_decrypt(payload["token_protected"]) == "tok"
+            assert _dpapi_decrypt(payload["signing_key_protected"]) == "sk"
         else:
             # Fallback: plaintext stored when DPAPI unavailable
             assert payload["master_password"] == "pw"
+            assert payload["token"] == "tok"
+            assert payload["signing_key"] == "sk"
 
     @patch("jarvis_engine._shared.atomic_write_json")
     def test_save_empty_password_omits_both_keys(self, mock_write):
@@ -521,7 +525,6 @@ class TestVoiceDictateOnce:
     @patch("jarvis_engine.desktop_widget.listen_and_transcribe", create=True)
     def test_whisper_stt_success(self, mock_listen):
         # Need to patch the import inside the function
-        from jarvis_engine.desktop_widget import _voice_dictate_once
         mock_result = SimpleNamespace(text="hello world")
         with patch.dict("sys.modules", {"jarvis_engine.stt": MagicMock(listen_and_transcribe=MagicMock(return_value=mock_result))}):
             with patch("jarvis_engine.desktop_widget.listen_and_transcribe", mock_listen, create=True):
@@ -537,7 +540,6 @@ class TestVoiceDictateOnce:
         mock_fallback.return_value = "fallback text"
         with patch.dict("sys.modules", {}):
             # Make the stt import raise RuntimeError
-            import sys
             stt_mod = MagicMock()
             stt_mod.listen_and_transcribe = MagicMock(side_effect=RuntimeError("no device"))
             with patch.dict("sys.modules", {"jarvis_engine.stt": stt_mod}):
@@ -996,7 +998,6 @@ class TestChatDisplay:
 
     def _configure_tags(self):
         """Apply the same tag_configure calls the widget uses."""
-        import tkinter as _tk
         self._text.tag_configure(
             "user",
             background="#0c2d5e",
@@ -1202,7 +1203,6 @@ class TestChatDisplay:
 
     def test_widget_is_disabled_between_inserts(self):
         """The text widget should be in DISABLED state to prevent user edits."""
-        import tkinter as _tk
         self._configure_tags()
         self._insert_with_role("test", role="system")
         assert str(self._text.cget("state")) == "disabled"

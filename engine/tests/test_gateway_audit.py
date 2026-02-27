@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from jarvis_engine._compat import UTC
 from jarvis_engine.gateway.audit import GatewayAudit, _MAX_AUDIT_LOG_BYTES
 
 

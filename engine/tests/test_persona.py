@@ -10,8 +10,6 @@ from jarvis_engine.persona import (
     compose_persona_system_prompt,
     load_persona_config,
     save_persona_config,
-    PERSONA_BASE_PROMPT,
-    TONE_PROFILES,
 )
 from jarvis_engine.commands.voice_commands import PersonaComposeCommand, PersonaComposeResult
 from jarvis_engine.handlers.voice_handlers import PersonaComposeHandler

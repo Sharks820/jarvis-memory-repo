@@ -33,6 +33,9 @@ class KnowledgeGraph:
         self._db = engine._db
         self._write_lock = engine._write_lock
         self._db_lock = engine._db_lock
+        self._mutation_counter = 0
+        self._cached_graph: "nx.DiGraph | None" = None
+        self._cached_gen = -1
         self._ensure_schema()
 
         # Initialize lock manager for auto-lock after fact updates
@@ -136,11 +139,15 @@ class KnowledgeGraph:
     def to_networkx(self) -> "nx.DiGraph":
         """Reconstruct full NetworkX DiGraph from SQLite tables.
 
-        Returns a fresh DiGraph every call -- never cached (see research
-        guidance on stale graph pitfall).
+        Uses generation-based caching: returns cached graph if no mutations
+        have occurred since last build.  Invalidated by add_fact/add_edge/
+        update_node via _mutation_counter.
         Thread-safe: acquires _write_lock to block concurrent writers,
         ensuring a consistent snapshot of both nodes and edges.
         """
+        if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
+            return self._cached_graph
+
         import networkx as nx
 
         G = nx.DiGraph()
@@ -158,6 +165,8 @@ class KnowledgeGraph:
             )
             edges = cur.fetchall()
 
+            gen = self._mutation_counter
+
         for row in nodes:
             G.add_node(
                 row[0],
@@ -170,6 +179,8 @@ class KnowledgeGraph:
         for row in edges:
             G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
 
+        self._cached_graph = G
+        self._cached_gen = gen
         return G
 
     # ------------------------------------------------------------------
@@ -249,6 +260,7 @@ class KnowledgeGraph:
                 )
 
             self._db.commit()
+            self._mutation_counter += 1
 
         # Auto-lock check (outside write_lock -- check_and_auto_lock acquires its own)
         try:
@@ -278,7 +290,10 @@ class KnowledgeGraph:
                 (source_id, target_id, relation, confidence, source_record),
             )
             self._db.commit()
-            return cur.rowcount > 0
+            inserted = cur.rowcount > 0
+            if inserted:
+                self._mutation_counter += 1
+            return inserted
 
     # ------------------------------------------------------------------
     # Contradiction quarantine

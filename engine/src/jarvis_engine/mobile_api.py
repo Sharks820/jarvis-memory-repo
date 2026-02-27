@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
-REPLAY_WINDOW_SECONDS = 300.0
+REPLAY_WINDOW_SECONDS = 120.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 1_048_576  # 1 MB
 
@@ -44,7 +44,7 @@ _CORS_ALLOWED_ORIGIN_PATTERNS = [
     re.compile(r"^https?://localhost(:\d+)?$"),
     re.compile(r"^https?://127\.0\.0\.1(:\d+)?$"),
     re.compile(r"^https?://\[::1\](:\d+)?$"),
-    re.compile(r"^file://"),
+    re.compile(r"^file:///[A-Za-z]:/"),  # Only local file:// URIs with drive letter
 ]
 
 # Bootstrap rate-limiter: max 5 failed attempts per IP within 60s window.

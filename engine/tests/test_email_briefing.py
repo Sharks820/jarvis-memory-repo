@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine.life_ops import (
     OpsSnapshot,

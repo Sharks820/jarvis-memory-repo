@@ -13,7 +13,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine._compat import UTC
 from jarvis_engine.memory.tiers import Tier, TierManager

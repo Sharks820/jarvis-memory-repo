@@ -131,6 +131,8 @@ class JarvisService : Service() {
             }
 
             while (isActive) {
+                val now = System.currentTimeMillis()
+
                 try {
                     processor.flushPending()
                 } catch (e: Exception) {
@@ -138,7 +140,6 @@ class JarvisService : Service() {
                 }
 
                 // Spam DB sync: run at most every 10 minutes
-                val now = System.currentTimeMillis()
                 if (now - lastSpamSyncMs >= SPAM_SYNC_INTERVAL_MS) {
                     try {
                         spamDatabaseSync.syncFromDesktop()
@@ -156,9 +157,8 @@ class JarvisService : Service() {
                 }
 
                 // Context detection: every 2 minutes
-                val contextNow = System.currentTimeMillis()
-                if (contextNow - lastContextCheckMs > CONTEXT_CHECK_INTERVAL_MS) {
-                    lastContextCheckMs = contextNow
+                if (now - lastContextCheckMs > CONTEXT_CHECK_INTERVAL_MS) {
+                    lastContextCheckMs = now
                     try {
                         val state = contextDetector.detectCurrentContext()
                         synchronized(contextLock) {
@@ -181,9 +181,8 @@ class JarvisService : Service() {
                 }
 
                 // Refill check: every 6 hours
-                val refillNow = System.currentTimeMillis()
-                if (refillNow - lastRefillCheckMs >= REFILL_CHECK_INTERVAL_MS) {
-                    lastRefillCheckMs = refillNow
+                if (now - lastRefillCheckMs >= REFILL_CHECK_INTERVAL_MS) {
+                    lastRefillCheckMs = now
                     try {
                         refillTracker.checkRefills()
                     } catch (e: Exception) {
@@ -192,9 +191,8 @@ class JarvisService : Service() {
                 }
 
                 // Location recording: every 15 minutes
-                val locationNow = System.currentTimeMillis()
-                if (locationNow - lastLocationRecordMs >= LOCATION_RECORD_INTERVAL_MS) {
-                    lastLocationRecordMs = locationNow
+                if (now - lastLocationRecordMs >= LOCATION_RECORD_INTERVAL_MS) {
+                    lastLocationRecordMs = now
                     try {
                         locationLearner.recordLocation()
                     } catch (e: Exception) {
@@ -203,9 +201,8 @@ class JarvisService : Service() {
                 }
 
                 // Traffic check: every 30 minutes
-                val trafficNow = System.currentTimeMillis()
-                if (trafficNow - lastTrafficCheckMs >= TRAFFIC_CHECK_INTERVAL_MS) {
-                    lastTrafficCheckMs = trafficNow
+                if (now - lastTrafficCheckMs >= TRAFFIC_CHECK_INTERVAL_MS) {
+                    lastTrafficCheckMs = now
                     try {
                         trafficChecker.checkPreDeparture()
                     } catch (e: Exception) {
@@ -214,9 +211,8 @@ class JarvisService : Service() {
                 }
 
                 // Document sync: every 5 minutes (if auto-sync enabled)
-                val docSyncNow = System.currentTimeMillis()
-                if (docSyncNow - lastDocSyncMs >= DOC_SYNC_INTERVAL_MS) {
-                    lastDocSyncMs = docSyncNow
+                if (now - lastDocSyncMs >= DOC_SYNC_INTERVAL_MS) {
+                    lastDocSyncMs = now
                     val docAutoSync = getSharedPreferences(
                         "jarvis_prefs", MODE_PRIVATE,
                     ).getBoolean("doc_auto_sync", true)
@@ -230,9 +226,8 @@ class JarvisService : Service() {
                 }
 
                 // Relationship alerts: once per day
-                val relationshipNow = System.currentTimeMillis()
-                if (relationshipNow - lastRelationshipCheckMs >= RELATIONSHIP_CHECK_INTERVAL_MS) {
-                    lastRelationshipCheckMs = relationshipNow
+                if (now - lastRelationshipCheckMs >= RELATIONSHIP_CHECK_INTERVAL_MS) {
+                    lastRelationshipCheckMs = now
                     try {
                         relationshipAlertEngine.checkRelationshipAlerts()
                     } catch (e: Exception) {
@@ -241,9 +236,8 @@ class JarvisService : Service() {
                 }
 
                 // Pattern detection: once per day (habit engine)
-                val patternNow = System.currentTimeMillis()
-                if (patternNow - lastPatternDetectionMs >= PATTERN_DETECTION_INTERVAL_MS) {
-                    lastPatternDetectionMs = patternNow
+                if (now - lastPatternDetectionMs >= PATTERN_DETECTION_INTERVAL_MS) {
+                    lastPatternDetectionMs = now
                     try {
                         patternDetector.detectPatterns()
                     } catch (e: Exception) {
@@ -252,9 +246,8 @@ class JarvisService : Service() {
                 }
 
                 // Nudge check: every 5 minutes (habit engine)
-                val nudgeNow = System.currentTimeMillis()
-                if (nudgeNow - lastNudgeCheckMs >= NUDGE_CHECK_INTERVAL_MS) {
-                    lastNudgeCheckMs = nudgeNow
+                if (now - lastNudgeCheckMs >= NUDGE_CHECK_INTERVAL_MS) {
+                    lastNudgeCheckMs = now
                     val nudgesEnabled = getSharedPreferences(
                         "jarvis_prefs", MODE_PRIVATE,
                     ).getBoolean("habit_nudges_enabled", true)
@@ -268,9 +261,8 @@ class JarvisService : Service() {
                 }
 
                 // Expire stale nudges: every hour (habit engine)
-                val expiryNow = System.currentTimeMillis()
-                if (expiryNow - lastNudgeExpiryMs >= NUDGE_EXPIRY_INTERVAL_MS) {
-                    lastNudgeExpiryMs = expiryNow
+                if (now - lastNudgeExpiryMs >= NUDGE_EXPIRY_INTERVAL_MS) {
+                    lastNudgeExpiryMs = now
                     try {
                         nudgeResponseTracker.expireStaleNudges()
                     } catch (e: Exception) {
@@ -279,11 +271,10 @@ class JarvisService : Service() {
                 }
 
                 // Database cleanup: every 24 hours, delete records older than 90 days
-                val cleanupNow = System.currentTimeMillis()
-                if (cleanupNow - lastCleanupMs >= CLEANUP_INTERVAL_MS) {
-                    lastCleanupMs = cleanupNow
+                if (now - lastCleanupMs >= CLEANUP_INTERVAL_MS) {
+                    lastCleanupMs = now
                     try {
-                        val cutoff = cleanupNow - RETENTION_PERIOD_MS
+                        val cutoff = now - RETENTION_PERIOD_MS
                         notificationLogDao.deleteOlderThan(cutoff)
                         nudgeLogDao.deleteOlderThan(cutoff)
                         callLogDao.deleteOlderThan(cutoff)

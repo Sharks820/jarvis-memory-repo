@@ -201,7 +201,7 @@ class CostReductionHandler:
         history_path = self._root / ".planning" / "brain" / "cost_history.jsonl"
 
         summary = self._cost_tracker.local_vs_cloud_summary(days=cmd.days)
-        snapshot = cost_reduction_snapshot(self._cost_tracker, history_path)
+        cost_reduction_snapshot(self._cost_tracker, history_path)  # side-effect: writes snapshot
 
         history = load_cost_history(history_path)
         trend_info = cost_reduction_trend(history)

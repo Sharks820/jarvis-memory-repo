@@ -9,7 +9,6 @@ Covers:
 
 from __future__ import annotations
 
-import pytest
 
 from jarvis_engine.knowledge.facts import FactExtractor, FactTriple, _normalize
 

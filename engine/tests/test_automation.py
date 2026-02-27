@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine.automation import (
-    ActionOutcome,
     AutomationExecutor,
     PlannedAction,
     load_actions,

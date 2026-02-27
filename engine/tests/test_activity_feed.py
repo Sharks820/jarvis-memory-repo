@@ -12,7 +12,6 @@ import pytest
 from jarvis_engine._compat import UTC
 from jarvis_engine.activity_feed import (
     ActivityCategory,
-    ActivityEvent,
     ActivityFeed,
 )
 
