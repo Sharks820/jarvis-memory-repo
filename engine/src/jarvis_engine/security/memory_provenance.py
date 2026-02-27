@@ -1,0 +1,181 @@
+"""Memory provenance tracking -- Wave 13 security hardening.
+
+Ensures memory integrity by attaching provenance metadata to every
+memory record: source, trust level, ingestion timestamp, and
+verification status.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+# ---------------------------------------------------------------------------
+# Trust level constants
+# ---------------------------------------------------------------------------
+
+OWNER_INPUT = "OWNER_INPUT"
+VERIFIED_EXTERNAL = "VERIFIED_EXTERNAL"
+UNVERIFIED_EXTERNAL = "UNVERIFIED_EXTERNAL"
+QUARANTINED = "QUARANTINED"
+
+_VALID_TRUST_LEVELS = {OWNER_INPUT, VERIFIED_EXTERNAL, UNVERIFIED_EXTERNAL, QUARANTINED}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class MemoryProvenance:
+    """In-memory provenance tracker for memory records.
+
+    Every memory record gets a provenance tag with:
+    - ``source``: where the data came from
+    - ``trust_level``: one of ``OWNER_INPUT``, ``VERIFIED_EXTERNAL``,
+      ``UNVERIFIED_EXTERNAL``, or ``QUARANTINED``
+    - ``ingestion_timestamp``: ISO-8601 UTC timestamp
+    - ``verification_status``: ``"pending"`` or ``"verified"``
+    - ``quarantine_reason``: reason string (only for quarantined records)
+
+    New memories from LLM interactions start as ``UNVERIFIED_EXTERNAL``
+    and are promoted to ``VERIFIED_EXTERNAL`` after owner confirmation.
+    ``QUARANTINED`` records are those flagged for contradictions,
+    injection payloads, or output scanner alerts.
+    """
+
+    def __init__(self) -> None:
+        # record_hash -> provenance dict
+        self._records: dict[str, dict[str, Any]] = {}
+
+    # ------------------------------------------------------------------
+    # Tagging
+    # ------------------------------------------------------------------
+
+    def tag_record(
+        self,
+        record_hash: str,
+        source: str,
+        trust_level: str = UNVERIFIED_EXTERNAL,
+    ) -> dict[str, Any]:
+        """Add or update provenance for a memory record.
+
+        Parameters
+        ----------
+        record_hash:
+            Unique identifier (hash) of the memory record.
+        source:
+            Description of where the data came from.
+        trust_level:
+            One of the module-level trust constants.
+
+        Returns
+        -------
+        The provenance dict stored for *record_hash*.
+        """
+        if trust_level not in _VALID_TRUST_LEVELS:
+            raise ValueError(
+                f"Invalid trust_level {trust_level!r}. "
+                f"Must be one of {_VALID_TRUST_LEVELS}"
+            )
+
+        verification = (
+            "verified"
+            if trust_level in (OWNER_INPUT, VERIFIED_EXTERNAL)
+            else "pending"
+        )
+
+        prov: dict[str, Any] = {
+            "record_hash": record_hash,
+            "source": source,
+            "trust_level": trust_level,
+            "ingestion_timestamp": _now_iso(),
+            "verification_status": verification,
+            "quarantine_reason": "",
+        }
+        self._records[record_hash] = prov
+        return prov
+
+    # ------------------------------------------------------------------
+    # Retrieval
+    # ------------------------------------------------------------------
+
+    def get_provenance(self, record_hash: str) -> dict[str, Any] | None:
+        """Return the provenance dict for *record_hash*, or ``None``."""
+        return self._records.get(record_hash)
+
+    # ------------------------------------------------------------------
+    # Lifecycle transitions
+    # ------------------------------------------------------------------
+
+    def promote(self, record_hash: str) -> bool:
+        """Promote a record from ``UNVERIFIED_EXTERNAL`` to ``VERIFIED_EXTERNAL``.
+
+        Returns ``True`` if promotion succeeded, ``False`` if the record
+        does not exist or is not in the promotable state.
+        """
+        prov = self._records.get(record_hash)
+        if prov is None:
+            return False
+        if prov["trust_level"] != UNVERIFIED_EXTERNAL:
+            return False
+        prov["trust_level"] = VERIFIED_EXTERNAL
+        prov["verification_status"] = "verified"
+        return True
+
+    def quarantine(self, record_hash: str, reason: str) -> bool:
+        """Move a record to ``QUARANTINED`` with the given *reason*.
+
+        Returns ``True`` if quarantine succeeded, ``False`` if the record
+        does not exist.
+        """
+        prov = self._records.get(record_hash)
+        if prov is None:
+            return False
+        prov["trust_level"] = QUARANTINED
+        prov["verification_status"] = "pending"
+        prov["quarantine_reason"] = reason
+        return True
+
+    # ------------------------------------------------------------------
+    # Quarantine management
+    # ------------------------------------------------------------------
+
+    def get_quarantined(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Return up to *limit* quarantined records."""
+        results: list[dict[str, Any]] = []
+        for prov in self._records.values():
+            if prov["trust_level"] == QUARANTINED:
+                results.append(prov)
+                if len(results) >= limit:
+                    break
+        return results
+
+    def purge_quarantined(self, record_hash: str) -> bool:
+        """Remove a quarantined record entirely.
+
+        Returns ``True`` if the record was quarantined and removed,
+        ``False`` otherwise.
+        """
+        prov = self._records.get(record_hash)
+        if prov is None:
+            return False
+        if prov["trust_level"] != QUARANTINED:
+            return False
+        del self._records[record_hash]
+        return True
+
+    def approve_quarantined(self, record_hash: str) -> bool:
+        """Move a quarantined record to ``VERIFIED_EXTERNAL``.
+
+        Returns ``True`` if approval succeeded, ``False`` if the record
+        does not exist or is not quarantined.
+        """
+        prov = self._records.get(record_hash)
+        if prov is None:
+            return False
+        if prov["trust_level"] != QUARANTINED:
+            return False
+        prov["trust_level"] = VERIFIED_EXTERNAL
+        prov["verification_status"] = "verified"
+        prov["quarantine_reason"] = ""
+        return True
