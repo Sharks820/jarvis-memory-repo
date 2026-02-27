@@ -436,6 +436,9 @@ def create_app(root: Path) -> CommandBus:
     except BaseException as exc:
         # NOTE: BaseException needed because cryptography's pyo3 bindings can
         # raise PanicException (a BaseException subclass) on ABI mismatch.
+        # Always re-raise signal-level exceptions so Ctrl+C / sys.exit() work.
+        if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+            raise
         logger.warning("Failed to initialize Sync subsystem, continuing without: %s", exc)
         bus.register(SyncPullCommand, SyncPullHandler(root).handle)
         bus.register(SyncPushCommand, SyncPushHandler(root).handle)
