@@ -46,7 +46,8 @@ def test_run_shell_command_empty_rejected() -> None:
 
 def test_run_shell_command_timeout_returns_124() -> None:
     # Use a script file approach that works with shlex.split(posix=False) on Windows
-    import tempfile, os
+    import tempfile
+    import os
     script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
     try:
         script.write("import time\ntime.sleep(30)\n")
@@ -91,15 +92,10 @@ def test_task_orchestrator_rejects_output_path_outside_repo(tmp_path) -> None:
 import json
 import os
 import pytest
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 from jarvis_engine.task_orchestrator import (
-    TaskOrchestrator,
-    TaskRequest,
     TaskResult,
-    run_shell_command,
     DEFAULT_FALLBACK_MODELS,
     _SHELL_COMMAND_ALLOWLIST,
     _PRIVILEGED_SHELL_ALLOWLIST,

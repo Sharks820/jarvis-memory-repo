@@ -8,8 +8,6 @@ from urllib.parse import urlparse
 
 from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
-    is_safe_public_url as _is_safe_public_url,
-    search_duckduckgo as _search_duckduckgo,
     search_web as _search_web,
 )
 

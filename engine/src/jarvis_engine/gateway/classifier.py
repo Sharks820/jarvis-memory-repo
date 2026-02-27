@@ -165,8 +165,33 @@ class IntentClassifier:
         self._centroids = self._precompute_routes()
 
     def _precompute_routes(self) -> "dict[str, np.ndarray]":
-        """Compute centroid embeddings for each route's exemplars."""
+        """Compute centroid embeddings for each route's exemplars.
+
+        Caches centroids to disk keyed by a hash of all exemplar texts.
+        On subsequent loads, skips re-embedding if cache is valid.
+        """
+        import hashlib
         import numpy as np
+
+        # Build hash of all exemplar texts + embed service class to detect changes
+        hasher = hashlib.sha256()
+        hasher.update(type(self._embed).__qualname__.encode())
+        for route_name in sorted(self.ROUTES):
+            for text in self.ROUTES[route_name]:
+                hasher.update(f"{route_name}:{text}".encode())
+        exemplar_hash = hasher.hexdigest()[:16]
+
+        # Try loading from disk cache
+        cache_dir = os.path.join(os.path.dirname(__file__), ".cache")
+        cache_path = os.path.join(cache_dir, f"centroids_{exemplar_hash}.npz")
+        try:
+            if os.path.exists(cache_path):
+                data = np.load(cache_path)
+                centroids = {k: data[k] for k in data.files}
+                logger.debug("Loaded cached centroids from %s", cache_path)
+                return centroids
+        except Exception:
+            logger.debug("Failed to load centroid cache, recomputing")
 
         centroids: dict[str, np.ndarray] = {}
         for route_name, exemplars in self.ROUTES.items():
@@ -180,6 +205,15 @@ class IntentClassifier:
             if embeddings:
                 centroid = np.mean(embeddings, axis=0)
                 centroids[route_name] = centroid
+
+        # Save to disk cache
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            np.savez(cache_path, **centroids)
+            logger.debug("Saved centroid cache to %s", cache_path)
+        except Exception:
+            logger.debug("Failed to save centroid cache")
+
         return centroids
 
     def _check_privacy(self, query: str) -> bool:

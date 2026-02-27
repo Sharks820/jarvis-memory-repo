@@ -120,7 +120,6 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
-        voiceEngine.destroy()
         super.onDestroy()
     }
 

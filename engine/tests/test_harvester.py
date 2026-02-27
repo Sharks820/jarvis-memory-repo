@@ -15,8 +15,7 @@ Tests cover:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 

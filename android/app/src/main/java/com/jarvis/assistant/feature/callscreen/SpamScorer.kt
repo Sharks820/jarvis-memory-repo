@@ -134,7 +134,7 @@ class SpamScorer @Inject constructor(
     companion object {
         private const val TAG = "SpamScorer"
         /** SharedPreferences file used for call screening thresholds. */
-        const val PREFS_NAME = "jarvis_secure_prefs"
+        const val PREFS_NAME = "spam_thresholds"
 
         const val KEY_BLOCK_THRESHOLD = "call_screen_block_threshold"
         const val KEY_SILENCE_THRESHOLD = "call_screen_silence_threshold"

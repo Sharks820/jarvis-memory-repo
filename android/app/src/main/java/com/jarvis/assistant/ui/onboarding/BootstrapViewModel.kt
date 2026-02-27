@@ -15,7 +15,7 @@ class BootstrapViewModel @Inject constructor(
     private val crypto: CryptoHelper,
 ) : ViewModel() {
 
-    val desktopUrl = MutableStateFlow("http://192.168.1.100:8787")
+    val desktopUrl = MutableStateFlow("https://192.168.1.100:8787")
     val masterPassword = MutableStateFlow("")
     val isConnecting = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)

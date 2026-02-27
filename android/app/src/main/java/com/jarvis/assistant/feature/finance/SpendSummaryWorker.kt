@@ -127,8 +127,8 @@ class SpendSummaryWorker @AssistedInject constructor(
          * Calculate milliseconds until next Sunday at 10:00 AM.
          */
         fun calculateDelayToNextSunday(): Long {
-            val now = Calendar.getInstance()
-            val target = Calendar.getInstance().apply {
+            val now = Calendar.getInstance(Locale.US)
+            val target = Calendar.getInstance(Locale.US).apply {
                 set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
                 set(Calendar.HOUR_OF_DAY, 10)
                 set(Calendar.MINUTE, 0)

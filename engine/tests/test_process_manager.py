@@ -5,21 +5,18 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from jarvis_engine.process_manager import (
     SERVICES,
-    _GRACEFUL_TIMEOUT_S,
     _MAX_CREATION_DRIFT_S,
     _check_pid_alive,
     _check_pid_alive_win32,
     _get_process_create_time,
     _graceful_shutdown,
-    _hard_kill,
     _pid_path,
     _pids_dir,
     _verify_pid_identity,

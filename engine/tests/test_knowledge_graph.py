@@ -17,7 +17,7 @@ import pytest
 
 from conftest import MockEmbeddingService
 from jarvis_engine.knowledge.graph import KnowledgeGraph
-from jarvis_engine.knowledge.facts import FactExtractor, FactTriple, _normalize
+from jarvis_engine.knowledge.facts import FactExtractor, _normalize
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 

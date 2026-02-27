@@ -8,22 +8,16 @@ behaviour when dependencies are unavailable.
 from __future__ import annotations
 
 import json
-import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.commands.proactive_commands import (
     CostReductionCommand,
-    CostReductionResult,
     ProactiveCheckCommand,
-    ProactiveCheckResult,
     SelfTestCommand,
-    SelfTestResult,
     WakeWordStartCommand,
-    WakeWordStartResult,
 )
 from jarvis_engine.handlers.proactive_handlers import (
     CostReductionHandler,

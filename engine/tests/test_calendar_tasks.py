@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import sys
-import types
 from datetime import date
 from pathlib import Path
 
 import pytest
 
-from jarvis_engine import ops_sync
 from jarvis_engine.ops_sync import (
     _parse_ics,
     _parse_ics_fallback,

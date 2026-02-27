@@ -69,18 +69,19 @@ class EntityResolver:
 
     def _ensure_merge_history(self) -> None:
         """Create kg_merge_history table if it does not exist (idempotent)."""
-        self._kg.db.executescript("""
-            CREATE TABLE IF NOT EXISTS kg_merge_history (
-                merge_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                keep_id TEXT NOT NULL,
-                remove_id TEXT NOT NULL,
-                keep_label TEXT NOT NULL,
-                remove_label TEXT NOT NULL,
-                canonical_label TEXT DEFAULT NULL,
-                edges_transferred INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-        """)
+        with self._kg.write_lock:
+            self._kg.db.executescript("""
+                CREATE TABLE IF NOT EXISTS kg_merge_history (
+                    merge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    keep_id TEXT NOT NULL,
+                    remove_id TEXT NOT NULL,
+                    keep_label TEXT NOT NULL,
+                    remove_label TEXT NOT NULL,
+                    canonical_label TEXT DEFAULT NULL,
+                    edges_transferred INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+            """)
 
     # ------------------------------------------------------------------
     # Duplicate detection

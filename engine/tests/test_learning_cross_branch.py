@@ -5,9 +5,8 @@ and cross-branch edge creation.
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine.learning.cross_branch import (
     _extract_branch,

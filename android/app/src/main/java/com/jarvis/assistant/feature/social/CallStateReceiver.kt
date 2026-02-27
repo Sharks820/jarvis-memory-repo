@@ -70,7 +70,7 @@ class CallStateReceiver : BroadcastReceiver() {
 
                     if (currentNumber.isNotBlank()) {
                         asyncHandled = true
-                        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        scope.launch {
                             try {
                                 preCallCardManager.showPreCallCard(currentNumber)
                             } catch (e: Exception) {
@@ -95,7 +95,7 @@ class CallStateReceiver : BroadcastReceiver() {
 
                         if (currentNumber.isNotBlank()) {
                             asyncHandled = true
-                            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                            scope.launch {
                                 try {
                                     preCallCardManager.showPreCallCard(currentNumber)
                                 } catch (e: Exception) {
@@ -127,7 +127,7 @@ class CallStateReceiver : BroadcastReceiver() {
 
                         val numberToLog = currentNumber
                         asyncHandled = true
-                        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        scope.launch {
                             try {
                                 postCallLogger.promptForContext(
                                     numberToLog,
@@ -161,6 +161,7 @@ class CallStateReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "CallStateReceiver"
         private val lock = Any()
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         // Track call state transitions across receiver invocations
         @Volatile

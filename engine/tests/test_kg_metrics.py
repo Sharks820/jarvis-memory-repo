@@ -1,7 +1,6 @@
 """Tests for KG integrity and growth metrics (proactive/kg_metrics.py)."""
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, PropertyMock

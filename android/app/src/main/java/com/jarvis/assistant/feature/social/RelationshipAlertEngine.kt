@@ -222,10 +222,7 @@ class RelationshipAlertEngine @Inject constructor(
      * Calculate importance based on call frequency and recency.
      */
     suspend fun calculateImportance(contactId: Long): Float {
-        val contact = contactContextDao.getByPhoneNumber("") // unused fallback
-        // Get by ID is not in DAO, so we use getAll and filter
-        val allContacts = contactContextDao.getAll()
-        val contactEntity = allContacts.firstOrNull { it.id == contactId } ?: return 0.0f
+        val contactEntity = contactContextDao.getById(contactId) ?: return 0.0f
 
         val monthsSinceCreated = maxOf(
             1.0f,
