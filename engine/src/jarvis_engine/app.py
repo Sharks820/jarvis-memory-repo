@@ -495,5 +495,7 @@ def create_app(root: Path) -> CommandBus:
     bus._engine = engine  # type: ignore[attr-defined]
     bus._embed_service = embed_service  # type: ignore[attr-defined]
     bus._intent_classifier = intent_classifier  # type: ignore[attr-defined]
+    bus._kg = kg  # type: ignore[attr-defined]
+    bus._gateway = gateway  # type: ignore[attr-defined]
 
     return bus

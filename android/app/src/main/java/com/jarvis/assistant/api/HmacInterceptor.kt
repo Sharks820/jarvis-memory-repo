@@ -43,8 +43,9 @@ class HmacInterceptor(
         val signature = hmacSha256(creds.signingKey, signingMaterial)
 
         // Rebuild request with a fresh body (the original was consumed by writeTo)
+        val newBody = if (original.body != null) bodyStr.toRequestBody(original.body?.contentType()) else null
         val newRequest = original.newBuilder()
-            .method(original.method, bodyStr.toRequestBody(original.body?.contentType()))
+            .method(original.method, newBody)
             .header("Authorization", "Bearer ${creds.token}")
             .header("X-Jarvis-Timestamp", timestamp)
             .header("X-Jarvis-Nonce", nonce)

@@ -208,16 +208,16 @@ class TestForensicLogger:
         self, engine_with_logger: HoneypotEngine, mock_logger: MagicMock
     ) -> None:
         engine_with_logger.record_hit("/admin", "10.0.0.1", {"X-Test": "1"})
-        mock_logger.log.assert_called_once()
-        call_args = mock_logger.log.call_args
-        assert call_args[0][0] == "honeypot_hit"
-        assert call_args[0][1]["path"] == "/admin"
-        assert call_args[0][1]["source_ip"] == "10.0.0.1"
+        mock_logger.log_event.assert_called_once()
+        event = mock_logger.log_event.call_args[0][0]
+        assert event["event_type"] == "honeypot_hit"
+        assert event["path"] == "/admin"
+        assert event["source_ip"] == "10.0.0.1"
 
     def test_logger_exception_does_not_crash(
         self, engine_with_logger: HoneypotEngine, mock_logger: MagicMock
     ) -> None:
-        mock_logger.log.side_effect = RuntimeError("logger broken")
+        mock_logger.log_event.side_effect = RuntimeError("logger broken")
         # Should not raise
         result = engine_with_logger.record_hit("/admin", "10.0.0.1")
         assert result["total_hits"] == 1

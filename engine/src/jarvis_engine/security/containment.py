@@ -32,8 +32,15 @@ class ContainmentLevel(IntEnum):
 _MASTER_PASSWORD_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
 
 
+_PBKDF2_SALT = b"jarvis-containment-recovery-v1"  # fixed salt (env-hash comparison)
+_PBKDF2_ITERATIONS = 600_000
+
+
 def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    dk = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), _PBKDF2_SALT, _PBKDF2_ITERATIONS,
+    )
+    return dk.hex()
 
 
 class ContainmentEngine:
@@ -85,7 +92,7 @@ class ContainmentEngine:
             raise ValueError(f"Invalid containment level: {level}")
 
         actions: list[str] = []
-        new_key: str | None = None
+        credentials_rotated = False
 
         # Level 1+: THROTTLE
         if level >= ContainmentLevel.THROTTLE:
@@ -111,7 +118,8 @@ class ContainmentEngine:
             self._lockdown_active = True
             if self._session_manager is not None:
                 self._session_manager.terminate_all_sessions()
-            new_key = self._rotate_credentials()
+            self._rotate_credentials()
+            credentials_rotated = True
             actions.append("LOCKDOWN: mobile API shut down, credentials rotated")
             actions.append("LOCKDOWN: all sessions invalidated")
 
@@ -134,8 +142,8 @@ class ContainmentEngine:
             "actions": actions,
             "timestamp": time.time(),
         }
-        if new_key is not None:
-            result["new_signing_key"] = new_key
+        if credentials_rotated:
+            result["credentials_rotated"] = True
 
         self._containment_history.append(result)
 
@@ -264,15 +272,13 @@ class ContainmentEngine:
         Returns the new key as a hex string.  In production this would
         persist to secure storage and invalidate old keys.
         """
-        new_key = os.urandom(32).hex()
+        os.urandom(32).hex()  # key generated; persist to secure storage in production
         self._log_forensic(
             "credential_rotation",
             severity="CRITICAL",
             action="HMAC signing key rotated",
-            key_prefix=new_key[:8] + "...",
         )
-        logger.warning("HMAC signing key rotated (prefix: %s...)", new_key[:8])
-        return new_key
+        logger.warning("HMAC signing key rotated")
 
     # ------------------------------------------------------------------
     # Internals
@@ -282,9 +288,11 @@ class ContainmentEngine:
         """Check *password* against the stored master password hash."""
         stored_hash = os.environ.get(_MASTER_PASSWORD_HASH_ENV)
         if stored_hash is None:
-            # If no hash is configured, accept any non-empty password
-            # (dev/test convenience; production MUST set the env var)
-            return bool(password)
+            logger.critical(
+                "%s not set — denying recovery (set env var to enable)",
+                _MASTER_PASSWORD_HASH_ENV,
+            )
+            return False
         return _hash_password(password) == stored_hash
 
     def _log_forensic(self, event_type: str, **kwargs: object) -> None:

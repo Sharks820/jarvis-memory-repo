@@ -8,6 +8,7 @@ and produces dashboards and briefings.
 from __future__ import annotations
 
 import logging
+import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
@@ -49,6 +50,7 @@ class AdaptiveDefenseEngine:
     ) -> None:
         self._attack_memory = attack_memory
         self._ip_tracker = ip_tracker
+        self._lock = threading.Lock()
 
         # Detection event log: list of dicts
         self._events: list[dict[str, Any]] = []
@@ -98,13 +100,14 @@ class AdaptiveDefenseEngine:
             "blocked": blocked,
             "timestamp": _now_iso(),
         }
-        self._events.append(event)
-        self._total_attacks += 1
-        if blocked:
-            self._total_blocked += 1
-        if source_ip:
-            self._unique_ips.add(source_ip)
-        self._category_counts[category] += 1
+        with self._lock:
+            self._events.append(event)
+            self._total_attacks += 1
+            if blocked:
+                self._total_blocked += 1
+            if source_ip:
+                self._unique_ips.add(source_ip)
+            self._category_counts[category] += 1
 
     # ------------------------------------------------------------------
     # Auto-rule generation
@@ -120,28 +123,29 @@ class AdaptiveDefenseEngine:
         Returns the new rule dict, or ``None`` if threshold not met or
         rule already exists.
         """
-        count = self._category_counts.get(category, 0)
-        if count < _AUTO_RULE_THRESHOLD:
-            return None
-        if category in self._ruled_categories:
-            return None
+        with self._lock:
+            count = self._category_counts.get(category, 0)
+            if count < _AUTO_RULE_THRESHOLD:
+                return None
+            if category in self._ruled_categories:
+                return None
 
-        # Gather payload hashes that triggered this category
-        triggered_by = [
-            e["payload_hash"]
-            for e in self._events
-            if e["category"] == category
-        ]
+            # Gather payload hashes that triggered this category
+            triggered_by = [
+                e["payload_hash"]
+                for e in self._events
+                if e["category"] == category
+            ]
 
-        rule: dict[str, Any] = {
-            "pattern": f"auto_rule_{category}",
-            "category": category,
-            "created_at": _now_iso(),
-            "triggered_by": triggered_by,
-            "detection_count": count,
-        }
-        self._rules.append(rule)
-        self._ruled_categories.add(category)
+            rule: dict[str, Any] = {
+                "pattern": f"auto_rule_{category}",
+                "category": category,
+                "created_at": _now_iso(),
+                "triggered_by": triggered_by,
+                "detection_count": count,
+            }
+            self._rules.append(rule)
+            self._ruled_categories.add(category)
         logger.info("Auto-generated defense rule for category %r (%d detections)", category, count)
         return rule
 
@@ -155,25 +159,27 @@ class AdaptiveDefenseEngine:
         Keys: ``total_attacks``, ``total_blocked``, ``rules_generated``,
         ``unique_ips``, ``effectiveness_pct``, ``top_categories``.
         """
-        if self._total_attacks > 0:
-            effectiveness = round(
-                (self._total_blocked / self._total_attacks) * 100, 2
+        with self._lock:
+            total = self._total_attacks
+            blocked = self._total_blocked
+            rules_count = len(self._rules)
+            unique_count = len(self._unique_ips)
+            top = sorted(
+                self._category_counts.items(),
+                key=lambda kv: kv[1],
+                reverse=True,
             )
+
+        if total > 0:
+            effectiveness = round((blocked / total) * 100, 2)
         else:
             effectiveness = 100.0
 
-        # Top categories sorted by count descending
-        top = sorted(
-            self._category_counts.items(),
-            key=lambda kv: kv[1],
-            reverse=True,
-        )
-
         return {
-            "total_attacks": self._total_attacks,
-            "total_blocked": self._total_blocked,
-            "rules_generated": len(self._rules),
-            "unique_ips": len(self._unique_ips),
+            "total_attacks": total,
+            "total_blocked": blocked,
+            "rules_generated": rules_count,
+            "unique_ips": unique_count,
             "effectiveness_pct": effectiveness,
             "top_categories": [
                 {"category": cat, "count": cnt} for cat, cnt in top
@@ -214,4 +220,5 @@ class AdaptiveDefenseEngine:
 
     def get_rules(self) -> list[dict[str, Any]]:
         """Return the list of auto-generated defense rules."""
-        return list(self._rules)
+        with self._lock:
+            return list(self._rules)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -74,6 +75,7 @@ class SessionManager:
         self._max_sessions = max_sessions
         self._idle_timeout_s = idle_timeout_s
         self._absolute_timeout_s = absolute_timeout_s
+        self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
 
     # ------------------------------------------------------------------
@@ -86,34 +88,35 @@ class SessionManager:
         If the maximum number of concurrent sessions has been reached the
         oldest session (by ``created_at``) is evicted first.
         """
-        # Purge expired sessions first
-        self._purge_expired()
+        with self._lock:
+            # Purge expired sessions first
+            self._purge_expired()
 
-        # Evict oldest if at capacity
-        while len(self._sessions) >= self._max_sessions:
-            oldest_id = min(
-                self._sessions, key=lambda k: self._sessions[k].created_at
+            # Evict oldest if at capacity
+            while len(self._sessions) >= self._max_sessions:
+                oldest_id = min(
+                    self._sessions, key=lambda k: self._sessions[k].created_at
+                )
+                logger.info("Evicting oldest session %s to make room", oldest_id)
+                del self._sessions[oldest_id]
+
+            now = time.time()
+            session_id = uuid.uuid4().hex
+            fingerprint = _compute_fingerprint(ip, user_agent)
+            session = Session(
+                session_id=session_id,
+                device_id=device_id,
+                ip=ip,
+                user_agent=user_agent,
+                created_at=now,
+                last_active=now,
+                fingerprint=fingerprint,
             )
-            logger.info("Evicting oldest session %s to make room", oldest_id)
-            del self._sessions[oldest_id]
-
-        now = time.time()
-        session_id = uuid.uuid4().hex
-        fingerprint = _compute_fingerprint(ip, user_agent)
-        session = Session(
-            session_id=session_id,
-            device_id=device_id,
-            ip=ip,
-            user_agent=user_agent,
-            created_at=now,
-            last_active=now,
-            fingerprint=fingerprint,
-        )
-        self._sessions[session_id] = session
-        logger.info(
-            "Created session %s for device %s from %s", session_id[:8], device_id, ip
-        )
-        return session_id
+            self._sessions[session_id] = session
+            logger.info(
+                "Created session %s for device %s from %s", session_id[:8], device_id, ip
+            )
+            return session_id
 
     def validate_session(
         self, session_id: str, ip: str, user_agent: str = ""
@@ -133,65 +136,69 @@ class SessionManager:
         - ``HIJACK_DETECTED`` — fingerprint mismatch triggers immediate
           session termination.
         """
-        session = self._sessions.get(session_id)
-        if session is None:
-            return (False, "SESSION_NOT_FOUND")
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                return (False, "SESSION_NOT_FOUND")
 
-        now = time.time()
+            now = time.time()
 
-        # Check absolute timeout
-        if now - session.created_at > self._absolute_timeout_s:
-            self.terminate_session(session_id)
-            return (False, "ABSOLUTE_TIMEOUT")
+            # Check absolute timeout
+            if now - session.created_at > self._absolute_timeout_s:
+                self._sessions.pop(session_id, None)
+                return (False, "ABSOLUTE_TIMEOUT")
 
-        # Check idle timeout
-        if now - session.last_active > self._idle_timeout_s:
-            self.terminate_session(session_id)
-            return (False, "IDLE_TIMEOUT")
+            # Check idle timeout
+            if now - session.last_active > self._idle_timeout_s:
+                self._sessions.pop(session_id, None)
+                return (False, "IDLE_TIMEOUT")
 
-        # Check fingerprint
-        current_fingerprint = _compute_fingerprint(ip, user_agent)
-        if current_fingerprint != session.fingerprint:
-            logger.warning(
-                "HIJACK DETECTED on session %s: fingerprint changed (device=%s)",
-                session_id[:8],
-                session.device_id,
-            )
-            self.terminate_session(session_id)
-            return (False, "HIJACK_DETECTED")
+            # Check fingerprint
+            current_fingerprint = _compute_fingerprint(ip, user_agent)
+            if current_fingerprint != session.fingerprint:
+                logger.warning(
+                    "HIJACK DETECTED on session %s: fingerprint changed (device=%s)",
+                    session_id[:8],
+                    session.device_id,
+                )
+                self._sessions.pop(session_id, None)
+                return (False, "HIJACK_DETECTED")
 
-        # All checks passed — update last_active
-        session.last_active = now
-        return (True, "VALID")
+            # All checks passed — update last_active
+            session.last_active = now
+            return (True, "VALID")
 
     def terminate_session(self, session_id: str) -> None:
         """Remove a single session."""
-        removed = self._sessions.pop(session_id, None)
+        with self._lock:
+            removed = self._sessions.pop(session_id, None)
         if removed is not None:
             logger.info("Terminated session %s", session_id[:8])
 
     def terminate_all_sessions(self) -> None:
         """Nuclear option — remove all active sessions (breach response)."""
-        count = len(self._sessions)
-        self._sessions.clear()
+        with self._lock:
+            count = len(self._sessions)
+            self._sessions.clear()
         logger.warning("Terminated all %d sessions (breach response)", count)
 
     def get_active_sessions(self) -> list[dict]:
         """Return a list of all active (non-expired) sessions."""
-        self._purge_expired()
-        result: list[dict] = []
-        for s in self._sessions.values():
-            result.append(
-                {
-                    "session_id": s.session_id,
-                    "device_id": s.device_id,
-                    "ip": s.ip,
-                    "user_agent": s.user_agent,
-                    "created_at": s.created_at,
-                    "last_active": s.last_active,
-                }
-            )
-        return result
+        with self._lock:
+            self._purge_expired()
+            result: list[dict] = []
+            for s in self._sessions.values():
+                result.append(
+                    {
+                        "session_id": s.session_id,
+                        "device_id": s.device_id,
+                        "ip": s.ip,
+                        "user_agent": s.user_agent,
+                        "created_at": s.created_at,
+                        "last_active": s.last_active,
+                    }
+                )
+            return result
 
     # ------------------------------------------------------------------
     # Internal helpers

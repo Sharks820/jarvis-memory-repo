@@ -182,6 +182,14 @@ class CorrectionDetector:
         best = matches[0]
         node_id = best["node_id"]
 
+        # Pre-capture: find node matching new_claim BEFORE we update the old one
+        pre_new_matches: list = []
+        if correction.old_claim:
+            new_keywords = _extract_keywords(correction.new_claim)
+            pre_new_matches = self._kg.query_relevant_facts(
+                new_keywords, min_confidence=0.0, limit=1,
+            )
+
         with self._kg._write_lock:
             # Read current confidence
             row = self._kg._db.execute(
@@ -202,6 +210,8 @@ class CorrectionDetector:
                 (correction.new_claim, new_confidence, node_id),
             )
             self._kg._db.commit()
+            # Invalidate NetworkX cache (bypassed add_fact)
+            self._kg._mutation_counter += 1
 
         logger.info(
             "Correction applied: node %s updated to %r (confidence %.2f)",
@@ -210,24 +220,17 @@ class CorrectionDetector:
             new_confidence,
         )
 
-        # Add superseded edge if both old and new exist as separate nodes
-        # Capture old node BEFORE the update above changed its label
-        if correction.old_claim:
-            old_id = node_id  # This was the node we just updated
-            new_keywords = _extract_keywords(correction.new_claim)
-            new_matches = self._kg.query_relevant_facts(
-                new_keywords, min_confidence=0.0, limit=1,
-            )
-            if new_matches:
-                new_id = new_matches[0]["node_id"]
-                if old_id != new_id:
-                    self._kg.add_edge(
-                        source_id=old_id,
-                        target_id=new_id,
-                        relation="superseded",
-                        confidence=correction.confidence,
-                        source_record="correction_detector",
-                    )
+        # Add superseded edge using pre-captured matches
+        if correction.old_claim and pre_new_matches:
+            new_id = pre_new_matches[0]["node_id"]
+            if node_id != new_id:
+                self._kg.add_edge(
+                    source_id=node_id,
+                    target_id=new_id,
+                    relation="superseded",
+                    confidence=correction.confidence,
+                    source_record="correction_detector",
+                )
 
         return True
 

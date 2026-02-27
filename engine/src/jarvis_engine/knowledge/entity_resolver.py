@@ -286,6 +286,8 @@ class EntityResolver:
             )
 
             self._kg.db.commit()
+            # Invalidate NetworkX cache (bypassed add_fact/add_edge)
+            self._kg._mutation_counter += 1
 
         logger.info(
             "Merged node %s into %s (edges transferred: %d)",

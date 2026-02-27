@@ -8,6 +8,7 @@ repeat alerts from the same source IP within a 5-minute window.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class AlertChain:
 
     def __init__(self, forensic_logger: object | None = None) -> None:
         self._forensic_logger = forensic_logger
+        self._lock = threading.Lock()
         self._alerts: list[dict] = []
         # Dedup tracking: (source_ip, level) -> last_alert_timestamp
         self._dedup_cache: dict[tuple[str | None, int], float] = {}
@@ -61,30 +63,32 @@ class AlertChain:
         channel = _LEVEL_CHANNELS[level]
         now = time.time()
 
-        # Check dedup
-        deduped = self._should_dedup(source_ip, level)
+        with self._lock:
+            # Check dedup
+            deduped = self._should_dedup(source_ip, level)
 
-        alert_record = {
-            "timestamp": now,
-            "level": level,
-            "channel": channel,
-            "summary": summary,
-            "evidence": evidence,
-            "containment_action": containment_action,
-            "source_ip": source_ip,
-            "deduped": deduped,
-        }
+            alert_record = {
+                "timestamp": now,
+                "level": level,
+                "channel": channel,
+                "summary": summary,
+                "evidence": evidence,
+                "containment_action": containment_action,
+                "source_ip": source_ip,
+                "deduped": deduped,
+            }
 
-        self._alerts.append(alert_record)
+            self._alerts.append(alert_record)
+
+            if not deduped:
+                # Update dedup cache
+                self._dedup_cache[(source_ip, level)] = now
 
         if deduped:
             logger.debug(
                 "Alert deduped (level=%d, ip=%s): %s", level, source_ip, summary
             )
             return alert_record
-
-        # Update dedup cache
-        self._dedup_cache[(source_ip, level)] = now
 
         # Dispatch based on level
         self._dispatch(level, channel, summary, evidence, containment_action)
@@ -111,7 +115,8 @@ class AlertChain:
 
     def get_alert_history(self, limit: int = 50) -> list[dict]:
         """Return the most recent *limit* alerts (newest first)."""
-        return list(reversed(self._alerts[-limit:]))
+        with self._lock:
+            return list(reversed(self._alerts[-limit:]))
 
     # ------------------------------------------------------------------
     # Dedup logic

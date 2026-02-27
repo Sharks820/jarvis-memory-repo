@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -209,6 +210,7 @@ class HoneypotEngine:
 
     def __init__(self, forensic_logger: object | None = None) -> None:
         self._forensic_logger = forensic_logger
+        self._lock = threading.Lock()
         self._hits: dict[str, list[_HitRecord]] = defaultdict(list)
         self._unique_ips: set[str] = set()
 
@@ -259,24 +261,23 @@ class HoneypotEngine:
             source_ip=source_ip,
             headers=headers or {},
         )
-        self._hits[path].append(record)
-        self._unique_ips.add(source_ip)
+        with self._lock:
+            self._hits[path].append(record)
+            self._unique_ips.add(source_ip)
+            path_hits = list(self._hits[path])
 
         if self._forensic_logger is not None:
             try:
-                self._forensic_logger.log(
-                    "honeypot_hit",
-                    {
-                        "path": path,
-                        "source_ip": source_ip,
-                        "headers": headers or {},
-                        "timestamp": record.timestamp,
-                    },
-                )
+                self._forensic_logger.log_event({
+                    "event_type": "honeypot_hit",
+                    "path": path,
+                    "source_ip": source_ip,
+                    "headers": headers or {},
+                    "timestamp": record.timestamp,
+                })
             except Exception:
                 logger.debug("Failed to forward hit to forensic logger", exc_info=True)
 
-        path_hits = self._hits[path]
         return {
             "path": path,
             "total_hits": len(path_hits),
@@ -285,16 +286,19 @@ class HoneypotEngine:
 
     def get_honeypot_stats(self) -> dict:
         """Return aggregate honeypot statistics."""
-        total_hits = sum(len(recs) for recs in self._hits.values())
-        hits_per_path: dict[str, int] = {
-            path: len(recs) for path, recs in self._hits.items()
-        }
+        with self._lock:
+            total_hits = sum(len(recs) for recs in self._hits.values())
+            hits_per_path: dict[str, int] = {
+                path: len(recs) for path, recs in self._hits.items()
+            }
 
-        # Count hits per IP across all paths
-        ip_counts: dict[str, int] = defaultdict(int)
-        for recs in self._hits.values():
-            for rec in recs:
-                ip_counts[rec.source_ip] += 1
+            # Count hits per IP across all paths
+            ip_counts: dict[str, int] = defaultdict(int)
+            for recs in self._hits.values():
+                for rec in recs:
+                    ip_counts[rec.source_ip] += 1
+
+            unique_count = len(self._unique_ips)
 
         # Top attackers — sorted descending by hit count
         top_attackers = sorted(ip_counts.items(), key=lambda x: x[1], reverse=True)[
@@ -304,7 +308,7 @@ class HoneypotEngine:
         return {
             "total_hits": total_hits,
             "hits_per_path": hits_per_path,
-            "unique_ips": len(self._unique_ips),
+            "unique_ips": unique_count,
             "top_attackers": [
                 {"ip": ip, "hits": count} for ip, count in top_attackers
             ],

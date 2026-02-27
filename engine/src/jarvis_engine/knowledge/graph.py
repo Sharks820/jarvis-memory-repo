@@ -146,7 +146,7 @@ class KnowledgeGraph:
         ensuring a consistent snapshot of both nodes and edges.
         """
         if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
-            return self._cached_graph
+            return self._cached_graph.copy()
 
         import networkx as nx
 
