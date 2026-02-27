@@ -188,7 +188,8 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
     try:
         cal = Calendar.from_ical(text)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Calendar parsing failed, using fallback: %s", exc)
         return _parse_ics_fallback(text, target_date)
 
     if target_date is None:
@@ -198,7 +199,8 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
     try:
         expanded = recurring_ical_events.of(cal).between(start, end)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Recurring event expansion failed, using fallback: %s", exc)
         return _parse_ics_fallback(text, target_date)
 
     events: list[dict] = []

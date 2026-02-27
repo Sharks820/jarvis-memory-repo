@@ -150,7 +150,10 @@ class ContextDetector @Inject constructor(
                 if (it.moveToFirst()) {
                     val startIdx = it.getColumnIndex(CalendarContract.Instances.BEGIN)
                     val endIdx = it.getColumnIndex(CalendarContract.Instances.END)
-                    if (startIdx < 0 || endIdx < 0) return null
+                    if (startIdx < 0 || endIdx < 0) {
+                        Log.d(TAG, "Calendar columns missing (startIdx=$startIdx, endIdx=$endIdx)")
+                        return null
+                    }
                     val dtStart = it.getLong(startIdx)
                     val dtEnd = it.getLong(endIdx)
 

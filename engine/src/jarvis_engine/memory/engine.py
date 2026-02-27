@@ -345,6 +345,7 @@ class MemoryEngine:
         All deletes happen in a single transaction for consistency.  Vec
         failures roll back the entire batch to prevent partial state.
         """
+        self._check_open()
         if not record_ids:
             return 0
 
@@ -537,6 +538,7 @@ class MemoryEngine:
 
         Returns True if the record existed and was updated, False otherwise.
         """
+        self._check_open()
         now = datetime.now(UTC).isoformat()
         with self._write_lock:
             cur = self._db.execute(
@@ -553,6 +555,7 @@ class MemoryEngine:
 
     def update_access_batch(self, record_ids: list[str]) -> None:
         """Batch-increment access_count for multiple records in one transaction."""
+        self._check_open()
         if not record_ids:
             return
         now = datetime.now(UTC).isoformat()
@@ -570,6 +573,7 @@ class MemoryEngine:
 
     def update_tier(self, record_id: str, tier: str) -> None:
         """Update the tier column for a record."""
+        self._check_open()
         with self._write_lock:
             self._db.execute(
                 "UPDATE records SET tier = ? WHERE record_id = ?",
@@ -583,6 +587,7 @@ class MemoryEngine:
         Each tuple is (record_id, new_tier).  The comprehension swaps the order
         to match the SQL parameter order (SET tier=? WHERE record_id=?).
         """
+        self._check_open()
         if not updates:
             return
         with self._write_lock:

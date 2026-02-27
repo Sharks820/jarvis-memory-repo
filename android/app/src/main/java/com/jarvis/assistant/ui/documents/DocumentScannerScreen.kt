@@ -184,8 +184,7 @@ fun DocumentScannerScreen(
         }
 
         // Scan result dialog
-        if (scanResult != null) {
-            val doc = scanResult!!
+        scanResult?.let { doc ->
             var editedTitle by remember(doc.id) { mutableStateOf(doc.title) }
             var editedCategory by remember(doc.id) { mutableStateOf(doc.category) }
 

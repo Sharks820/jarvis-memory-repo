@@ -129,7 +129,7 @@ class NudgeEngine @Inject constructor(
         }
         val donePending = PendingIntent.getBroadcast(
             context,
-            ((patternId * 100 + 1) and 0x7FFFFFFF).toInt(),
+            ((patternId.toInt() * 100 + 1) and 0x7FFFFFFF),
             doneIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -142,7 +142,7 @@ class NudgeEngine @Inject constructor(
         }
         val dismissPending = PendingIntent.getBroadcast(
             context,
-            ((patternId * 100 + 2) and 0x7FFFFFFF).toInt(),
+            ((patternId.toInt() * 100 + 2) and 0x7FFFFFFF),
             dismissIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -167,7 +167,7 @@ class NudgeEngine @Inject constructor(
             )
             .build()
 
-        val notificationId = ((patternId + NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF).toInt()
+        val notificationId = ((patternId.toInt() + NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF)
         notificationManager.notify(notificationId, notification)
         Log.i(TAG, "Delivered nudge: $label (logId=$logId)")
     }
@@ -253,7 +253,7 @@ class NudgeActionReceiver : BroadcastReceiver() {
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (patternId >= 0) {
-            notificationManager.cancel(((patternId + NudgeEngine.NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF).toInt())
+            notificationManager.cancel(((patternId.toInt() + NudgeEngine.NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF))
         }
 
         // Record response asynchronously
