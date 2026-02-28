@@ -368,7 +368,8 @@ class ThreatDetector:
             return None
         try:
             report = self._ip_tracker.get_threat_report(ip)
-        except Exception:
+        except Exception as exc:
+            logger.debug("IP tracker threat report failed for %s: %s", ip, exc)
             return None
         if report is None:
             return None
@@ -404,6 +405,7 @@ class ThreatDetector:
                     confidence=1.0,
                     evidence={"ip": ip, "status": "blocked"},
                 )
-        except Exception:
+        except Exception as exc:
+            logger.debug("IP tracker blocked check failed for %s: %s", ip, exc)
             return None
         return None

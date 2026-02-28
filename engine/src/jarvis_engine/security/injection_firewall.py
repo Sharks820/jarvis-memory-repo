@@ -232,8 +232,8 @@ def _detect_encoded_payloads(text: str) -> list[str]:
             # Check if decoded text contains injection keywords
             if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override", "instructions")):
                 findings.append(f"base64_decoded_injection:{segment[:30]}...")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to decode base64 segment: %s", exc)
 
     # URL-encoded blocks
     for match in re.finditer(r"((%[0-9a-fA-F]{2}){4,})", text):
@@ -243,8 +243,8 @@ def _detect_encoded_payloads(text: str) -> list[str]:
             decoded = unquote(segment)
             if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override")):
                 findings.append(f"url_decoded_injection:{segment[:30]}...")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to decode URL segment: %s", exc)
 
     return findings
 

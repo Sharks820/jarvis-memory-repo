@@ -175,12 +175,21 @@ class ModelGateway:
 
     def close(self) -> None:
         """Release httpx connection pool and other resources."""
-        self._http.close()
+        try:
+            self._http.close()
+        except Exception:
+            pass
         if hasattr(self, "_anthropic") and self._anthropic is not None:
             try:
                 self._anthropic.close()
             except Exception:
                 pass
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def __enter__(self) -> "ModelGateway":
         return self

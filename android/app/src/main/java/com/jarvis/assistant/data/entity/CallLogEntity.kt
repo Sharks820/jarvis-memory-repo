@@ -1,6 +1,7 @@
 package com.jarvis.assistant.data.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -9,7 +10,10 @@ import androidx.room.PrimaryKey
  * Each phone call produces one entry with user's post-call notes
  * about what was discussed and extracted topic keywords.
  */
-@Entity(tableName = "call_interaction_log")
+@Entity(
+    tableName = "call_interaction_log",
+    indices = [Index(value = ["contactContextId"])],
+)
 data class CallLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** Foreign key reference to contact_context.id. */

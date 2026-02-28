@@ -80,7 +80,7 @@ class RelationshipAlertEngine @Inject constructor(
                 else -> continue
             }
 
-            val notifId = (contact.id.toInt() and 0x7FFFFFFF) + BIRTHDAY_NOTIFICATION_OFFSET
+            val notifId = ((contact.id.toInt() + BIRTHDAY_NOTIFICATION_OFFSET) and 0x7FFFFFFF)
 
             val notification = NotificationCompat.Builder(
                 context,
@@ -121,7 +121,7 @@ class RelationshipAlertEngine @Inject constructor(
                 else -> continue
             }
 
-            val notifId = (contact.id.toInt() and 0x7FFFFFFF) + ANNIVERSARY_NOTIFICATION_OFFSET
+            val notifId = ((contact.id.toInt() + ANNIVERSARY_NOTIFICATION_OFFSET) and 0x7FFFFFFF)
 
             val notification = NotificationCompat.Builder(
                 context,
@@ -169,7 +169,7 @@ class RelationshipAlertEngine @Inject constructor(
                 thresholdDays
             }
 
-            val notifId = (contact.id.toInt() and 0x7FFFFFFF) + NEGLECTED_NOTIFICATION_OFFSET
+            val notifId = ((contact.id.toInt() + NEGLECTED_NOTIFICATION_OFFSET) and 0x7FFFFFFF)
 
             val notification = NotificationCompat.Builder(
                 context,

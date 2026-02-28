@@ -199,8 +199,14 @@ def create_app(root: Path) -> CommandBus:
     """
     bus = CommandBus()
 
+    # -- Ensure required directories exist --
+    brain_dir = root / ".planning" / "brain"
+    brain_dir.mkdir(parents=True, exist_ok=True)
+    (root / ".planning" / "runtime" / "pids").mkdir(parents=True, exist_ok=True)
+    (root / ".planning" / "logs").mkdir(parents=True, exist_ok=True)
+
     # -- Check for SQLite memory engine --
-    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+    db_path = brain_dir / "jarvis_memory.db"
     engine = None
     embed_service = None
     pipeline = None
@@ -349,6 +355,9 @@ def create_app(root: Path) -> CommandBus:
 
     # -- Learning --
     try:
+        if engine is None:
+            raise RuntimeError("MemoryEngine not available — skipping Learning subsystem")
+
         from jarvis_engine.learning.engine import ConversationLearningEngine
         from jarvis_engine.learning.feedback import ResponseFeedbackTracker
         from jarvis_engine.learning.preferences import PreferenceTracker
@@ -395,7 +404,6 @@ def create_app(root: Path) -> CommandBus:
     try:
         from jarvis_engine.sync.changelog import install_changelog_triggers
         from jarvis_engine.sync.engine import SyncEngine
-        from jarvis_engine.sync.transport import SyncTransport
 
         sync_engine = None
         sync_transport = None
@@ -406,6 +414,10 @@ def create_app(root: Path) -> CommandBus:
 
             signing_key = os.environ.get("JARVIS_SIGNING_KEY", "")
             if signing_key:
+                # Lazy import: cryptography may crash with pyo3 ABI mismatch on
+                # some systems.  Deferring the import keeps the rest of the bus
+                # functional even when the crypto library is broken.
+                from jarvis_engine.sync.transport import SyncTransport
                 salt_path = root / ".planning" / "brain" / "sync_salt.bin"
                 sync_transport = SyncTransport(signing_key, salt_path)
 
@@ -421,7 +433,12 @@ def create_app(root: Path) -> CommandBus:
             SyncStatusCommand,
             SyncStatusHandler(root, sync_engine=sync_engine).handle,
         )
-    except Exception as exc:
+    except BaseException as exc:
+        # NOTE: BaseException needed because cryptography's pyo3 bindings can
+        # raise PanicException (a BaseException subclass) on ABI mismatch.
+        # Always re-raise signal-level exceptions so Ctrl+C / sys.exit() work.
+        if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+            raise
         logger.warning("Failed to initialize Sync subsystem, continuing without: %s", exc)
         bus.register(SyncPullCommand, SyncPullHandler(root).handle)
         bus.register(SyncPushCommand, SyncPushHandler(root).handle)

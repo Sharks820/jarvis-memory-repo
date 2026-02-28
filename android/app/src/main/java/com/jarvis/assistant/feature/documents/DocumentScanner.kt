@@ -91,19 +91,25 @@ class DocumentScanner @Inject constructor(
         val thumbFile = File(thumbDir, "$timestamp.jpg")
         withContext(Dispatchers.IO) {
             val original = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return@withContext
-            val maxDim = 200
-            val ratio = minOf(
-                maxDim.toFloat() / original.width,
-                maxDim.toFloat() / original.height,
-            )
-            val width = (original.width * ratio).toInt().coerceAtLeast(1)
-            val height = (original.height * ratio).toInt().coerceAtLeast(1)
-            val thumbnail = Bitmap.createScaledBitmap(original, width, height, true)
-            FileOutputStream(thumbFile).use { out ->
-                thumbnail.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, out)
+            try {
+                val maxDim = 200
+                val ratio = minOf(
+                    maxDim.toFloat() / original.width,
+                    maxDim.toFloat() / original.height,
+                )
+                val width = (original.width * ratio).toInt().coerceAtLeast(1)
+                val height = (original.height * ratio).toInt().coerceAtLeast(1)
+                val thumbnail = Bitmap.createScaledBitmap(original, width, height, true)
+                try {
+                    FileOutputStream(thumbFile).use { out ->
+                        thumbnail.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, out)
+                    }
+                } finally {
+                    if (thumbnail !== original) thumbnail.recycle()
+                }
+            } finally {
+                original.recycle()
             }
-            if (thumbnail != original) thumbnail.recycle()
-            original.recycle()
         }
 
         // 7. Auto-generate title

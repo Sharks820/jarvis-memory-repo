@@ -1,6 +1,7 @@
 package com.jarvis.assistant.data.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -9,7 +10,10 @@ import androidx.room.PrimaryKey
  * [status] is one of: "taken", "skipped", "missed".
  * [date] is formatted as YYYY-MM-DD for easy date-based queries.
  */
-@Entity(tableName = "medication_log")
+@Entity(
+    tableName = "medication_log",
+    indices = [Index(value = ["medicationId"])],
+)
 data class MedicationLogEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

@@ -58,7 +58,7 @@ import net.sqlcipher.database.SupportFactory
         HabitPatternEntity::class,
         NudgeLogEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -344,6 +344,24 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        /** v10 -> v11: Add missing indices on foreign key columns for query performance. */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_call_interaction_log_contactContextId` " +
+                        "ON `call_interaction_log` (`contactContextId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_medication_log_medicationId` " +
+                        "ON `medication_log` (`medicationId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_nudge_log_patternId` " +
+                        "ON `nudge_log` (`patternId`)",
+                )
+            }
+        }
+
         /** v7 -> v8: Add scanned_documents table. */
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -386,6 +404,7 @@ abstract class JarvisDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
                 )
                 .build()
         }

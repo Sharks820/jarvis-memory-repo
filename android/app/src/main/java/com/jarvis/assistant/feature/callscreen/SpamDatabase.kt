@@ -111,10 +111,13 @@ class SpamDatabaseSync @Inject constructor(
         try {
             val reportType = object : TypeToken<Map<String, Any>>() {}.type
             val report: Map<String, Any> = gson.fromJson(joined, reportType)
-            val candidatesJson = gson.toJson(report["candidates"])
-            val listType = object : TypeToken<List<SpamCandidateDto>>() {}.type
-            val parsed: List<SpamCandidateDto> = gson.fromJson(candidatesJson, listType)
-            if (parsed.isNotEmpty()) return parsed
+            val candidatesRaw = report["candidates"]
+            if (candidatesRaw != null) {
+                val candidatesJson = gson.toJson(candidatesRaw)
+                val listType = object : TypeToken<List<SpamCandidateDto>>() {}.type
+                val parsed: List<SpamCandidateDto> = gson.fromJson(candidatesJson, listType)
+                if (parsed.isNotEmpty()) return parsed
+            }
         } catch (e: Exception) {
             Log.d(TAG, "Spam report not in report-format JSON", e)
         }

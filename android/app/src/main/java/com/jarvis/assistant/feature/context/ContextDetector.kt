@@ -137,7 +137,7 @@ class ContextDetector @Inject constructor(
             // Bug 6 fix: Use Instances table with time range instead of Events table.
             // Events.CONTENT_URI does not expand recurring events; Instances does.
             val startMs = now
-            val endMs = now + 1 // Query for instances overlapping "now"
+            val endMs = now + 60_000L // 1-minute window to reliably catch overlapping events
             val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
             ContentUris.appendId(builder, startMs)
             ContentUris.appendId(builder, endMs)
@@ -150,7 +150,10 @@ class ContextDetector @Inject constructor(
                 if (it.moveToFirst()) {
                     val startIdx = it.getColumnIndex(CalendarContract.Instances.BEGIN)
                     val endIdx = it.getColumnIndex(CalendarContract.Instances.END)
-                    if (startIdx < 0 || endIdx < 0) return null
+                    if (startIdx < 0 || endIdx < 0) {
+                        Log.d(TAG, "Calendar columns missing (startIdx=$startIdx, endIdx=$endIdx)")
+                        return null
+                    }
                     val dtStart = it.getLong(startIdx)
                     val dtEnd = it.getLong(endIdx)
 

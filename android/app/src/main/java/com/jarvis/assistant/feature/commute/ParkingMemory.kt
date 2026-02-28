@@ -46,7 +46,7 @@ class ParkingMemory @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var receiver: BroadcastReceiver? = null
 
@@ -56,7 +56,6 @@ class ParkingMemory @Inject constructor(
      */
     fun registerBluetoothReceiver() {
         if (receiver != null) return // already registered
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {

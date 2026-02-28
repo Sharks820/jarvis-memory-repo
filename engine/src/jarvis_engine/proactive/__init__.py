@@ -92,8 +92,8 @@ class ProactiveEngine:
                 })
             except ImportError:
                 pass
-            except Exception:
-                pass  # Never break the proactive engine
+            except Exception as exc:
+                logger.debug("Proactive activity feed logging failed: %s", exc)
 
         return alerts
 

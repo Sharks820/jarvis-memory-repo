@@ -65,7 +65,7 @@ fun MemoryScreen(viewModel: MemoryViewModel = hiltViewModel()) {
             errorMessage != null -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        errorMessage!!,
+                        errorMessage ?: "",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

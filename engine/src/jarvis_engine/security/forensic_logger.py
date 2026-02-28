@@ -53,11 +53,12 @@ class ForensicLogger:
 
             line = json.dumps(entry, separators=(",", ":"), sort_keys=True)
             current_hash = hashlib.sha256(line.encode("utf-8")).hexdigest()
-            self._prev_hash = current_hash
 
             try:
                 with open(self._path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
+                # Only advance hash chain after successful write
+                self._prev_hash = current_hash
             except OSError:
                 logger.warning("Failed to write forensic log entry to %s", self._path)
 
