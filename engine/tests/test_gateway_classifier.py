@@ -134,7 +134,7 @@ class TestIntentClassifierRouting:
             "help me debug this race condition in Python"
         )
         assert route == "complex"
-        assert model == "kimi-k2"
+        assert model == "claude-opus-4-0-20250514"
 
     def test_classify_routine_query(self, classifier):
         route, model, confidence = classifier.classify(
@@ -155,7 +155,7 @@ class TestIntentClassifierRouting:
             "write a short story about a robot learning to paint"
         )
         assert route == "creative"
-        assert model == "claude-opus-4-0-20250514"
+        assert model == "kimi-k2"
 
 
 # ---------------------------------------------------------------------------

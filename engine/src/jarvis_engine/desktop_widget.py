@@ -690,6 +690,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._l_arc1: int | None = None
         self._l_arc2: int | None = None
         self._l_arc3: int | None = None
+        self._l_arc4: int | None = None
         self._l_core: int | None = None
         self._l_glow: int | None = None
         self._l_particles: list[int] = []

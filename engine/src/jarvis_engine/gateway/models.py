@@ -226,7 +226,7 @@ class ModelGateway:
     def complete(
         self,
         messages: list[dict[str, str]],
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "kimi-k2",
         max_tokens: int = 1024,
         route_reason: str = "",
         privacy_routed: bool = False,
@@ -237,6 +237,13 @@ class ModelGateway:
         Logs cost to CostTracker if one is configured.
         Logs routing decision to GatewayAudit if one is configured.
         """
+        # If Claude requested but Anthropic unavailable, remap to best cloud model
+        if model.startswith("claude-") and self._anthropic is None:
+            best = self._best_cloud_model()
+            if best:
+                logger.info("Anthropic unavailable, routing %s -> %s", model, best)
+                model = best
+
         provider = self._resolve_provider(model)
         t0 = time.perf_counter()
 
@@ -287,6 +294,13 @@ class ModelGateway:
         else:
             response = self._call_ollama(messages, model, max_tokens)
             audit_reason = route_reason or "primary:ollama"
+            # If Ollama failed and cloud providers are available, try them
+            if response.provider == "none" and self._cloud_keys:
+                t0 = time.perf_counter()
+                response = self._fallback_chain(
+                    messages, max_tokens, response.fallback_reason or "ollama_failed"
+                )
+                audit_reason = f"fallback:ollama_failed"
 
         latency_ms = (time.perf_counter() - t0) * 1000
 
