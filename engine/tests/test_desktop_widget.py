@@ -204,15 +204,16 @@ class TestLoadMobileApiCfg:
         assert result == {}
 
 
+@patch("jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests"))
 class TestLoadWidgetCfg:
-    def test_defaults_when_no_files(self, tmp_path):
+    def test_defaults_when_no_files(self, _mock_urlopen, tmp_path):
         cfg = _load_widget_cfg(tmp_path)
         assert cfg.base_url == "http://127.0.0.1:8787"
         assert cfg.device_id == "galaxy_s25_primary"
         assert cfg.token == ""
         assert cfg.signing_key == ""
 
-    def test_widget_cfg_overrides_mobile_api(self, tmp_path):
+    def test_widget_cfg_overrides_mobile_api(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "mobile_api.json").write_text(
@@ -227,7 +228,7 @@ class TestLoadWidgetCfg:
         assert cfg.token == "widget_tok"
         assert cfg.signing_key == "widget_sk"
 
-    def test_falls_back_to_mobile_api_values(self, tmp_path):
+    def test_falls_back_to_mobile_api_values(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "mobile_api.json").write_text(
@@ -244,7 +245,7 @@ class TestLoadWidgetCfg:
         assert cfg.token == "mobile_tok"
         assert cfg.signing_key == "mobile_sk"
 
-    def test_auto_upgrade_http_to_https_when_tls_certs_exist(self, tmp_path):
+    def test_auto_upgrade_http_to_https_when_tls_certs_exist(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         # Create TLS cert files to trigger auto-upgrade
@@ -255,9 +256,10 @@ class TestLoadWidgetCfg:
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
+        # Both probe and localhost fail → keeps the saved (upgraded) URL
         assert cfg.base_url == "https://100.112.0.32:8787"
 
-    def test_default_https_when_tls_certs_exist(self, tmp_path):
+    def test_default_https_when_tls_certs_exist(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "tls_cert.pem").write_text("cert", encoding="utf-8")
@@ -265,7 +267,7 @@ class TestLoadWidgetCfg:
         cfg = _load_widget_cfg(tmp_path)
         assert cfg.base_url == "https://127.0.0.1:8787"
 
-    def test_no_upgrade_when_already_https(self, tmp_path):
+    def test_no_upgrade_when_already_https(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "tls_cert.pem").write_text("cert", encoding="utf-8")
@@ -277,7 +279,7 @@ class TestLoadWidgetCfg:
         cfg = _load_widget_cfg(tmp_path)
         assert cfg.base_url == "https://192.168.1.50:8787"
 
-    def test_no_upgrade_without_tls_certs(self, tmp_path):
+    def test_no_upgrade_without_tls_certs(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text(
@@ -287,12 +289,58 @@ class TestLoadWidgetCfg:
         cfg = _load_widget_cfg(tmp_path)
         assert cfg.base_url == "http://10.0.0.1:8787"
 
-    def test_invalid_widget_json_uses_defaults(self, tmp_path):
+    def test_invalid_widget_json_uses_defaults(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text("{invalid", encoding="utf-8")
         cfg = _load_widget_cfg(tmp_path)
         assert cfg.base_url == "http://127.0.0.1:8787"
+
+    def test_auto_heal_stale_ip_to_localhost(self, _mock_urlopen, tmp_path):
+        """When saved URL is unreachable but localhost works, auto-heal to localhost."""
+        from io import BytesIO
+        from http.client import HTTPResponse
+
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({"base_url": "http://10.99.99.99:8787"}),
+            encoding="utf-8",
+        )
+        # First call (probe saved IP) fails, second call (localhost) succeeds
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        _mock_urlopen.side_effect = [OSError("unreachable"), mock_resp]
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "http://127.0.0.1:8787"
+
+    def test_no_auto_heal_when_both_fail(self, _mock_urlopen, tmp_path):
+        """When both saved URL and localhost fail, keep saved URL."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({"base_url": "http://10.99.99.99:8787"}),
+            encoding="utf-8",
+        )
+        # Both fail
+        _mock_urlopen.side_effect = OSError("unreachable")
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "http://10.99.99.99:8787"
+
+    def test_no_auto_heal_for_localhost(self, _mock_urlopen, tmp_path):
+        """Localhost URLs should not trigger any probing."""
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({"base_url": "http://127.0.0.1:8787"}),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "http://127.0.0.1:8787"
+        # urlopen should not be called for localhost URLs (no probing needed)
+        _mock_urlopen.assert_not_called()
 
 
 # ---- Path helpers -----------------------------------------------------------
@@ -685,8 +733,9 @@ class TestLauncherAnimationMath:
 # ---- Integration: full config round-trip ------------------------------------
 
 class TestConfigRoundTrip:
+    @patch("jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests"))
     @patch("jarvis_engine.desktop_widget._save_widget_cfg")
-    def test_load_with_both_files_present(self, mock_save, tmp_path):
+    def test_load_with_both_files_present(self, mock_save, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "mobile_api.json").write_text(
