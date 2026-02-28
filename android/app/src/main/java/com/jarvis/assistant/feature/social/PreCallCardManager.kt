@@ -123,7 +123,7 @@ class PreCallCardManager @Inject constructor(
         }
 
         val bodyText = bodyParts.joinToString("\n")
-        val notifId = (normalizedNumber.hashCode() and 0x7FFFFFFF) + NOTIFICATION_ID_OFFSET
+        val notifId = ((normalizedNumber.hashCode() + NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF)
 
         val notification = NotificationCompat.Builder(
             context,
@@ -148,7 +148,7 @@ class PreCallCardManager @Inject constructor(
      */
     private suspend fun postNewContactCard(normalizedNumber: String) {
         val contactName = resolveContactName(normalizedNumber) ?: normalizedNumber
-        val notifId = (normalizedNumber.hashCode() and 0x7FFFFFFF) + NOTIFICATION_ID_OFFSET
+        val notifId = ((normalizedNumber.hashCode() + NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF)
 
         val notification = NotificationCompat.Builder(
             context,

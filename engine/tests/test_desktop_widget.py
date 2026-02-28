@@ -151,6 +151,11 @@ class TestIsSafeWidgetBaseUrl:
         assert _is_safe_widget_base_url("http://192.168.1.100:8787") is True
         assert _is_safe_widget_base_url("http://10.0.0.5:8787") is True
 
+    def test_cgnat_tailscale_http_safe(self):
+        assert _is_safe_widget_base_url("http://100.112.0.32:8787") is True
+        assert _is_safe_widget_base_url("http://100.64.0.1:8787") is True
+        assert _is_safe_widget_base_url("http://100.127.255.254:8787") is True
+
     def test_public_ip_http_unsafe(self):
         assert _is_safe_widget_base_url("http://8.8.8.8:8787") is False
 
@@ -238,6 +243,49 @@ class TestLoadWidgetCfg:
         assert cfg.base_url == "http://10.0.0.1:9000"
         assert cfg.token == "mobile_tok"
         assert cfg.signing_key == "mobile_sk"
+
+    def test_auto_upgrade_http_to_https_when_tls_certs_exist(self, tmp_path):
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        # Create TLS cert files to trigger auto-upgrade
+        (sec / "tls_cert.pem").write_text("cert", encoding="utf-8")
+        (sec / "tls_key.pem").write_text("key", encoding="utf-8")
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({"base_url": "http://100.112.0.32:8787"}),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "https://100.112.0.32:8787"
+
+    def test_default_https_when_tls_certs_exist(self, tmp_path):
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "tls_cert.pem").write_text("cert", encoding="utf-8")
+        (sec / "tls_key.pem").write_text("key", encoding="utf-8")
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "https://127.0.0.1:8787"
+
+    def test_no_upgrade_when_already_https(self, tmp_path):
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "tls_cert.pem").write_text("cert", encoding="utf-8")
+        (sec / "tls_key.pem").write_text("key", encoding="utf-8")
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({"base_url": "https://192.168.1.50:8787"}),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "https://192.168.1.50:8787"
+
+    def test_no_upgrade_without_tls_certs(self, tmp_path):
+        sec = tmp_path / ".planning" / "security"
+        sec.mkdir(parents=True)
+        (sec / "desktop_widget.json").write_text(
+            json.dumps({"base_url": "http://10.0.0.1:8787"}),
+            encoding="utf-8",
+        )
+        cfg = _load_widget_cfg(tmp_path)
+        assert cfg.base_url == "http://10.0.0.1:8787"
 
     def test_invalid_widget_json_uses_defaults(self, tmp_path):
         sec = tmp_path / ".planning" / "security"
@@ -1654,15 +1702,17 @@ class TestTrayMenuCallbacks:
         JarvisDesktopWidget._stop_tray_icon(widget)
         # Should not raise
 
-    def test_hide_panel_with_tray_hides_launcher(self):
-        """When tray icon is present, hide_panel should hide the launcher orb."""
+    def test_hide_panel_with_tray_shows_launcher(self):
+        """When tray icon is present, hide_panel should still show the launcher orb."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._tray_icon = MagicMock()  # Tray icon present
         widget.launcher_win = MagicMock()
         JarvisDesktopWidget._hide_panel(widget)
         widget.withdraw.assert_called_once()
-        widget.launcher_win.withdraw.assert_called_once()
+        # Launcher orb must always be visible — tray icon is supplementary
+        widget.launcher_win.deiconify.assert_called_once()
+        widget.launcher_win.lift.assert_called_once()
 
     def test_hide_panel_without_tray_shows_launcher(self):
         """Without tray icon, hide_panel should show the launcher orb."""

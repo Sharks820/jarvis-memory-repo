@@ -117,7 +117,7 @@ class ParkingMemory @Inject constructor(
      * Unregister the BroadcastReceiver. Call from [JarvisService.onDestroy].
      */
     fun unregisterBluetoothReceiver() {
-        scope.cancel()
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancelChildren()
         receiver?.let {
             try {
                 context.unregisterReceiver(it)

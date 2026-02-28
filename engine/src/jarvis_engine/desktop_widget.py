@@ -192,8 +192,19 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     resolved_token = _resolve_dpapi_field("token", mobile.get("token", ""))
     resolved_signing_key = _resolve_dpapi_field("signing_key", mobile.get("signing_key", ""))
 
+    # Auto-detect scheme: use HTTPS when TLS certs exist (matches server auto-detection).
+    _tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (_security_dir(root) / "tls_key.pem").exists()
+    _default_scheme = "https" if _tls_available else "http"
+    _default_base = f"{_default_scheme}://127.0.0.1:8787"
+
+    # Auto-upgrade saved http:// base_url to https:// when TLS certs exist.
+    _saved_url = str(raw.get("base_url", "")).strip()
+    if _saved_url and _tls_available and _saved_url.startswith("http://"):
+        _saved_url = "https://" + _saved_url[len("http://"):]
+    _base_url = _saved_url or _default_base
+
     cfg = WidgetConfig(
-        base_url=str(raw.get("base_url", "http://127.0.0.1:8787")).strip() or "http://127.0.0.1:8787",
+        base_url=_base_url,
         token=resolved_token,
         signing_key=resolved_signing_key,
         device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip() or "galaxy_s25_primary",
@@ -280,10 +291,16 @@ def _is_safe_widget_base_url(url: str) -> bool:
         return True
     if host in {"127.0.0.1", "localhost", "::1"}:
         return True
-    # Allow HTTP for private/LAN IPs (trusted local network)
+    # Allow HTTP for private/LAN IPs and CGNAT/Tailscale (trusted local network)
     try:
         addr = ipaddress.ip_address(host)
         if addr.is_private:
+            return True
+        # Tailscale and carrier-grade NAT use 100.64.0.0/10 (RFC 6598 shared
+        # address space).  Python's is_private excludes this range, but it is
+        # not publicly routable and Tailscale treats it as a private mesh.
+        _CGNAT = ipaddress.ip_network("100.64.0.0/10")
+        if addr in _CGNAT:
             return True
     except ValueError:
         pass
@@ -740,15 +757,12 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _hide_panel(self) -> None:
         self.withdraw()
-        if self._tray_icon is not None:
-            # Tray icon is the primary minimized indicator; hide the launcher orb
-            if self.launcher_win is not None:
-                self.launcher_win.withdraw()
-        else:
-            # No tray icon available; fall back to launcher orb
-            if self.launcher_win is not None:
-                self.launcher_win.deiconify()
-                self.launcher_win.lift()
+        # Always show the launcher orb so the user has a visible click target.
+        # The system tray icon (if available) is a supplementary access method,
+        # not a replacement — it may be hidden in the Windows 11 overflow area.
+        if self.launcher_win is not None:
+            self.launcher_win.deiconify()
+            self.launcher_win.lift()
 
     def _on_panel_configure(self, event) -> None:  # type: ignore[no-untyped-def]
         """Handle panel move/resize -- debounce position save and snap to edge."""
@@ -1118,7 +1132,7 @@ class JarvisDesktopWidget(tk.Tk):
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._btn(fetch, "Refresh", self._refresh_dashboard_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self._btn(fetch, "Diagnose & Repair", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(fetch, "View Activity", self._view_activity_async, "#4a3570").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._btn_lg(fetch, "\u2630  View Activity", self._view_activity_async, "#4a3570").pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Running Services section
         svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
@@ -1155,7 +1169,7 @@ class JarvisDesktopWidget(tk.Tk):
 
         output_header = tk.Frame(body, bg=self.PANEL)
         output_header.pack(fill=tk.X, padx=10, pady=(10, 0))
-        tk.Label(output_header, text="Conversation", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        tk.Label(output_header, text="\U0001F4AC  Conversation", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 13, "bold")).pack(side=tk.LEFT)
         tk.Button(
             output_header,
             text="Clear",
@@ -1164,9 +1178,25 @@ class JarvisDesktopWidget(tk.Tk):
             activebackground="#2a3752",
             activeforeground=self.TEXT,
             relief=tk.FLAT,
-            font=("Segoe UI", 8),
+            font=("Segoe UI", 9),
             command=self._clear_history,
             cursor="hand2",
+            padx=6,
+            pady=2,
+        ).pack(side=tk.RIGHT, padx=(4, 0))
+        tk.Button(
+            output_header,
+            text="\u2197 Pop Out",
+            bg="#2a3f5f",
+            fg=self.TEXT,
+            activebackground="#3a5070",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            command=self._pop_out_conversation,
+            cursor="hand2",
+            padx=6,
+            pady=2,
         ).pack(side=tk.RIGHT)
         self.output = tk.Text(
             body,
@@ -1250,6 +1280,78 @@ class JarvisDesktopWidget(tk.Tk):
         self.output.delete("1.0", tk.END)
         self.output.config(state=tk.DISABLED)
 
+    def _pop_out_conversation(self) -> None:
+        """Open conversation in a separate resizable window."""
+        if hasattr(self, "_popout_win") and self._popout_win is not None:
+            try:
+                self._popout_win.lift()
+                self._popout_win.focus_force()
+                return
+            except tk.TclError:
+                self._popout_win = None
+
+        win = tk.Toplevel(self)
+        win.title("Jarvis — Conversation")
+        win.geometry("700x500")
+        win.minsize(400, 300)
+        win.configure(bg=self.PANEL)
+        win.attributes("-topmost", True)
+        self._popout_win = win
+
+        # Copy current conversation content into the pop-out window
+        popout_text = tk.Text(
+            win,
+            wrap=tk.WORD,
+            bg="#081127",
+            fg="#d6e4ff",
+            insertbackground="#d6e4ff",
+            relief=tk.FLAT,
+            highlightbackground="#3a5a8a",
+            highlightthickness=2,
+            font=("Consolas", 12),
+            state=tk.DISABLED,
+        )
+        scrollbar = tk.Scrollbar(win, command=popout_text.yview, bg="#0a1a3a")
+        popout_text.config(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        popout_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        # Configure the same chat tags on the pop-out widget
+        for tag in ("user", "jarvis", "system", "error", "separator", "timestamp"):
+            tag_opts = self.output.tag_configure(tag)
+            if tag_opts:
+                resolved = {k: v[-1] for k, v in tag_opts.items() if v and v[-1]}
+                if resolved:
+                    popout_text.tag_configure(tag, **resolved)
+
+        # Copy content preserving tags
+        popout_text.config(state=tk.NORMAL)
+        content = self.output.get("1.0", tk.END)
+        if content.strip():
+            # Reconstruct tagged text from the main output
+            idx = "1.0"
+            while True:
+                tags = self.output.tag_names(idx)
+                next_idx = self.output.index(f"{idx}+1c")
+                if self.output.compare(next_idx, ">=", tk.END):
+                    break
+                char = self.output.get(idx, next_idx)
+                tag = tags[0] if tags else None
+                if tag and tag != "sel":
+                    popout_text.insert(tk.END, char, tag)
+                else:
+                    popout_text.insert(tk.END, char)
+                idx = next_idx
+        popout_text.config(state=tk.DISABLED)
+        self._popout_text = popout_text
+
+        def _on_close() -> None:
+            self._popout_win = None
+            self._popout_text = None
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", _on_close)
+
     def _toggle_advanced(self) -> None:
         """Show/hide advanced session fields (token, signing key, device ID)."""
         if self._adv_visible.get():
@@ -1306,6 +1408,23 @@ class JarvisDesktopWidget(tk.Tk):
             cursor="hand2",
         )
 
+    def _btn_lg(self, parent: tk.Widget, text: str, command, color: str):  # type: ignore[no-untyped-def]
+        """Larger variant of _btn for primary action buttons."""
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=color,
+            fg="#eef8ff",
+            activebackground=color,
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            padx=12,
+            pady=8,
+            font=("Segoe UI", 12, "bold"),
+            cursor="hand2",
+        )
+
     def _on_command_enter(self, event):  # type: ignore[no-untyped-def]
         if event.state & 0x0001:  # Shift key pressed
             return None
@@ -1348,6 +1467,21 @@ class JarvisDesktopWidget(tk.Tk):
 
         self.output.config(state=tk.DISABLED)
 
+        # Mirror to pop-out conversation window if open
+        popout = getattr(self, "_popout_text", None)
+        if popout is not None:
+            try:
+                popout.config(state=tk.NORMAL)
+                if role == "user":
+                    sep_line = "\u2500" * 48 + "\n"
+                    popout.insert(tk.END, sep_line, "separator")
+                    popout.insert(tk.END, f"  {stamp}  \n", "timestamp")
+                popout.insert(tk.END, display, tag)
+                popout.see(tk.END)
+                popout.config(state=tk.DISABLED)
+            except tk.TclError:
+                self._popout_text = None
+
     def _log_async(self, message: str, role: str = "system") -> None:
         if self.stop_event.is_set():
             return
@@ -1372,8 +1506,9 @@ class JarvisDesktopWidget(tk.Tk):
         self.after(0, self._set_command_text, value)
 
     def _current_cfg(self) -> WidgetConfig:
+        _fallback = f"{'https' if (_security_dir(self.root_path) / 'tls_cert.pem').exists() else 'http'}://127.0.0.1:8787"
         return WidgetConfig(
-            base_url=self.base_var.get().strip() or "http://127.0.0.1:8787",
+            base_url=self.base_var.get().strip() or _fallback,
             token=self.token_var.get().strip(),
             signing_key=self.key_var.get().strip(),
             device_id=self.device_var.get().strip(),
@@ -1756,13 +1891,14 @@ class JarvisDesktopWidget(tk.Tk):
                     time.sleep(0.5)
                 continue
             url = f"{cfg.base_url.rstrip('/')}/health"
+            ssl_ctx = _get_ssl_context(cfg.base_url)
             resp = None
             ok = False
             intel_data: dict[str, Any] | None = None
             for _attempt in range(2):
                 try:
                     req = Request(url=url, method="GET")
-                    resp = urlopen(req, timeout=5)
+                    resp = urlopen(req, timeout=5, context=ssl_ctx)
                     ok = resp.status == 200
                     if ok:
                         try:
