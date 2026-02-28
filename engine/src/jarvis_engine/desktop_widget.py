@@ -340,22 +340,38 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
     if payload is not None:
         headers["Content-Type"] = "application/json"
-    req = Request(url=f"{cfg.base_url.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
-    ssl_ctx = _get_ssl_context(cfg.base_url)
-    try:
-        with urlopen(req, timeout=35, context=ssl_ctx) as resp:
-            raw = resp.read().decode("utf-8")
-    except HTTPError as exc:
-        raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
-    except (URLError, TimeoutError, OSError) as exc:
-        raise RuntimeError(f"HTTP request failed: {exc}") from exc
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid JSON response: {exc}") from exc
-    if not isinstance(parsed, dict):
-        raise RuntimeError("Invalid response payload")
-    return parsed
+
+    # Try configured URL first, then auto-fallback to localhost if it fails
+    # (handles stale Tailscale/VPN IPs gracefully)
+    from urllib.parse import urlparse
+    _parsed_url = urlparse(cfg.base_url)
+    _is_localhost = _parsed_url.hostname in ("127.0.0.1", "localhost", "::1")
+    _urls_to_try = [cfg.base_url]
+    if not _is_localhost:
+        _fallback = f"{_parsed_url.scheme}://127.0.0.1:{_parsed_url.port or 8787}"
+        _urls_to_try.append(_fallback)
+
+    last_exc: Exception | None = None
+    for base in _urls_to_try:
+        req = Request(url=f"{base.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
+        ssl_ctx = _get_ssl_context(base)
+        try:
+            with urlopen(req, timeout=10, context=ssl_ctx) as resp:
+                raw = resp.read().decode("utf-8")
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid JSON response: {exc}") from exc
+            if not isinstance(parsed, dict):
+                raise RuntimeError("Invalid response payload")
+            return parsed
+        except HTTPError as exc:
+            last_exc = RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}")
+        except (URLError, TimeoutError, OSError) as exc:
+            last_exc = RuntimeError(f"HTTP request failed: {exc}")
+            if base != _urls_to_try[-1]:
+                logger.info("Primary URL %s unreachable, trying localhost fallback", base)
+    raise last_exc or RuntimeError("HTTP request failed")
 
 
 def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) -> dict[str, Any]:
@@ -849,36 +865,41 @@ class JarvisDesktopWidget(tk.Tk):
         )
         canvas.pack(fill=tk.BOTH, expand=True)
         cx, cy = size / 2, size / 2
-        # Outer glow halo (breathing)
-        self._l_glow = canvas.create_oval(3, 3, size - 3, size - 3, outline="#0d3d36", width=2)
-        # Rotating arc 1: outer ring, 240deg extent
+        # Outer glow halo (breathing) — thicker for visibility
+        self._l_glow = canvas.create_oval(2, 2, size - 2, size - 2, outline="#0d3d36", width=3)
+        # Arc 4: outermost decorative ring, thin, slow counter-rotate
+        self._l_arc4 = canvas.create_arc(
+            1, 1, size - 1, size - 1, start=0, extent=60,
+            style=tk.ARC, outline="#2dd4bf", width=1,
+        )
+        # Rotating arc 1: outer ring, 240deg extent — thicker
         self._l_arc1 = canvas.create_arc(
             6, 6, size - 6, size - 6, start=0, extent=240,
-            style=tk.ARC, outline="#2dd4bf", width=2,
+            style=tk.ARC, outline="#2dd4bf", width=3,
         )
         # Rotating arc 2: mid ring, 160deg extent (counter-rotating)
         self._l_arc2 = canvas.create_arc(
-            13, 13, size - 13, size - 13, start=120, extent=160,
+            14, 14, size - 14, size - 14, start=120, extent=160,
             style=tk.ARC, outline="#0ea5e9", width=2,
         )
         # Rotating arc 3: inner fast ring, 90deg (processing indicator, hidden by default)
         self._l_arc3 = canvas.create_arc(
-            20, 20, size - 20, size - 20, start=0, extent=90,
+            21, 21, size - 21, size - 21, start=0, extent=90,
             style=tk.ARC, outline="#f59e0b", width=2, state=tk.HIDDEN,
         )
-        # Core circle (breathing)
+        # Core circle (breathing) with outline ring
         core_pad = 24
         self._l_core = canvas.create_oval(
             core_pad, core_pad, size - core_pad, size - core_pad,
-            fill="#0f766e", outline="",
+            fill="#0f766e", outline="#2dd4bf", width=1,
         )
-        # Orbiting particles (3 dots at different orbit radii)
+        # Orbiting particles (5 dots at different orbit radii for richer effect)
         self._l_particles = []
-        for _ in range(3):
-            pid = canvas.create_oval(0, 0, 4, 4, fill="#5eead4", outline="")
+        for _ in range(5):
+            pid = canvas.create_oval(0, 0, 5, 5, fill="#5eead4", outline="")
             self._l_particles.append(pid)
-        # Center letter
-        canvas.create_text(cx, cy, text="J", fill="#ecfeff", font=("Segoe UI", 18, "bold"))
+        # Center letter — larger, bolder
+        canvas.create_text(cx, cy, text="J", fill="#ecfeff", font=("Segoe UI", 20, "bold"))
 
         canvas.bind("<ButtonPress-1>", self._launcher_start_drag)
         canvas.bind("<B1-Motion>", self._launcher_drag)
@@ -1017,9 +1038,9 @@ class JarvisDesktopWidget(tk.Tk):
             2, 2, 28, 28, start=0, extent=90,
             style=tk.ARC, outline=self.ACCENT, width=1,
         )
-        self.orb_id = self.orb_canvas.create_oval(9, 9, 21, 21, fill=self.WARN, outline="")
-        self.status_var = tk.StringVar(value="OFFLINE")
-        self.status_label = tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg="#f87171", font=("Segoe UI", 10, "bold"))
+        self.orb_id = self.orb_canvas.create_oval(9, 9, 21, 21, fill="#6366f1", outline="")
+        self.status_var = tk.StringVar(value="CONNECTING...")
+        self.status_label = tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg="#a5b4fc", font=("Segoe UI", 10, "bold"))
         self.status_label.pack(side=tk.LEFT, padx=(6, 0))
         self.intel_var = tk.StringVar(value="")
         self.intel_label = tk.Label(status_row, textvariable=self.intel_var, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9, "bold"))
@@ -1280,7 +1301,7 @@ class JarvisDesktopWidget(tk.Tk):
         self.output.config(state=tk.DISABLED)
 
     def _pop_out_conversation(self) -> None:
-        """Open conversation in a separate resizable window."""
+        """Open conversation in a separate resizable window with command input."""
         if hasattr(self, "_popout_win") and self._popout_win is not None:
             try:
                 self._popout_win.lift()
@@ -1291,15 +1312,18 @@ class JarvisDesktopWidget(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("Jarvis — Conversation")
-        win.geometry("700x500")
-        win.minsize(400, 300)
-        win.configure(bg=self.PANEL)
+        win.geometry("750x600")
+        win.minsize(500, 400)
+        win.configure(bg=self.BG)
         win.attributes("-topmost", True)
         self._popout_win = win
 
-        # Copy current conversation content into the pop-out window
+        # --- Conversation display (top, expandable) ---
+        chat_frame = tk.Frame(win, bg=self.BG)
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(8, 0))
+
         popout_text = tk.Text(
-            win,
+            chat_frame,
             wrap=tk.WORD,
             bg="#081127",
             fg="#d6e4ff",
@@ -1310,10 +1334,11 @@ class JarvisDesktopWidget(tk.Tk):
             font=("Consolas", 12),
             state=tk.DISABLED,
         )
-        scrollbar = tk.Scrollbar(win, command=popout_text.yview, bg="#0a1a3a")
+        scrollbar = tk.Scrollbar(chat_frame, command=popout_text.yview, bg="#0a1a3a",
+                                 troughcolor="#0d1628", activebackground="#1e3250")
         popout_text.config(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        popout_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+        popout_text.pack(fill=tk.BOTH, expand=True)
 
         # Configure the same chat tags on the pop-out widget
         for tag in ("user", "jarvis", "system", "error", "separator", "timestamp"):
@@ -1327,7 +1352,6 @@ class JarvisDesktopWidget(tk.Tk):
         popout_text.config(state=tk.NORMAL)
         content = self.output.get("1.0", tk.END)
         if content.strip():
-            # Reconstruct tagged text from the main output
             idx = "1.0"
             while True:
                 tags = self.output.tag_names(idx)
@@ -1343,6 +1367,68 @@ class JarvisDesktopWidget(tk.Tk):
                 idx = next_idx
         popout_text.config(state=tk.DISABLED)
         self._popout_text = popout_text
+
+        # --- Command input area (bottom, fixed) ---
+        input_frame = tk.Frame(win, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
+        input_frame.pack(fill=tk.X, padx=8, pady=8)
+
+        # Accent bar at top of input area
+        tk.Frame(input_frame, bg=self.ACCENT, height=2).pack(fill=tk.X)
+
+        input_inner = tk.Frame(input_frame, bg=self.PANEL)
+        input_inner.pack(fill=tk.X, padx=8, pady=8)
+
+        popout_cmd = tk.Text(
+            input_inner,
+            height=3,
+            wrap=tk.WORD,
+            bg="#081127",
+            fg=self.TEXT,
+            insertbackground=self.TEXT,
+            relief=tk.FLAT,
+            highlightbackground="#2a4368",
+            highlightthickness=1,
+            font=("Consolas", 12),
+        )
+        popout_cmd.pack(fill=tk.X, side=tk.LEFT, expand=True, padx=(0, 8))
+
+        btn_frame = tk.Frame(input_inner, bg=self.PANEL)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
+
+        send_btn = tk.Button(
+            btn_frame,
+            text="\u25B6 Send",
+            bg=self.ACCENT,
+            fg="#000000",
+            activebackground="#0ea5a0",
+            activeforeground="#000000",
+            relief=tk.FLAT,
+            font=("Segoe UI", 11, "bold"),
+            cursor="hand2",
+            padx=16,
+            pady=6,
+        )
+        send_btn.pack(fill=tk.BOTH, expand=True)
+
+        def _popout_send(event: Any = None) -> None:
+            text = popout_cmd.get("1.0", tk.END).strip()
+            if not text:
+                return
+            popout_cmd.delete("1.0", tk.END)
+            # Mirror to main command box and send
+            self._set_command_text(text)
+            self._send_command_async()
+            return "break"
+
+        def _popout_key(event: Any) -> str | None:
+            if event.keysym == "Return" and not event.state & 0x1:  # Enter without Shift
+                _popout_send()
+                return "break"
+            return None
+
+        popout_cmd.bind("<Key>", _popout_key)
+        send_btn.config(command=_popout_send)
+        popout_cmd.focus_set()
 
         def _on_close() -> None:
             self._popout_win = None
@@ -1889,41 +1975,49 @@ class JarvisDesktopWidget(tk.Tk):
                         return
                     time.sleep(0.5)
                 continue
-            url = f"{cfg.base_url.rstrip('/')}/health"
-            ssl_ctx = _get_ssl_context(cfg.base_url)
+            # Build list of URLs to try (configured + localhost fallback)
+            from urllib.parse import urlparse as _urlparse
+            _pu = _urlparse(cfg.base_url)
+            _health_urls = [f"{cfg.base_url.rstrip('/')}/health"]
+            if _pu.hostname not in ("127.0.0.1", "localhost", "::1"):
+                _health_urls.append(f"{_pu.scheme}://127.0.0.1:{_pu.port or 8787}/health")
+
             resp = None
             ok = False
             intel_data: dict[str, Any] | None = None
-            for _attempt in range(2):
-                try:
-                    req = Request(url=url, method="GET")
-                    resp = urlopen(req, timeout=5, context=ssl_ctx)
-                    ok = resp.status == 200
-                    if ok:
-                        try:
-                            body = resp.read().decode("utf-8")
-                            health_payload = json.loads(body)
-                            if isinstance(health_payload, dict) and "intelligence" in health_payload:
-                                intel_data = health_payload["intelligence"]
-                        except Exception:
-                            pass  # Parsing intelligence is best-effort
-                    resp.close()
-                    resp = None
-                    if ok:
-                        break
-                except Exception:
-                    ok = False
-                finally:
-                    # Ensure the response is always closed to prevent leaks
-                    if resp is not None:
-                        try:
-                            resp.close()
-                        except Exception as exc:
-                            logger.debug("Failed to close health poll HTTP response: %s", exc)
+            for url in _health_urls:
+                ssl_ctx = _get_ssl_context(url)
+                for _attempt in range(2):
+                    try:
+                        req = Request(url=url, method="GET")
+                        resp = urlopen(req, timeout=5, context=ssl_ctx)
+                        ok = resp.status == 200
+                        if ok:
+                            try:
+                                body = resp.read().decode("utf-8")
+                                health_payload = json.loads(body)
+                                if isinstance(health_payload, dict) and "intelligence" in health_payload:
+                                    intel_data = health_payload["intelligence"]
+                            except Exception:
+                                pass  # Parsing intelligence is best-effort
+                        resp.close()
                         resp = None
-                if self.stop_event.is_set():
+                        if ok:
+                            break
+                    except Exception:
+                        ok = False
+                    finally:
+                        if resp is not None:
+                            try:
+                                resp.close()
+                            except Exception as exc:
+                                logger.debug("Failed to close health poll HTTP response: %s", exc)
+                            resp = None
+                    if self.stop_event.is_set():
+                        break
+                    time.sleep(0.2)
+                if ok or self.stop_event.is_set():
                     break
-                time.sleep(0.2)
             # Fetch growth + alerts in ONE request via /widget-status
             growth_data: dict[str, Any] | None = None
             if ok and cfg.token and cfg.signing_key:
@@ -2071,7 +2165,7 @@ class JarvisDesktopWidget(tk.Tk):
             self.status_label.config(fg=self.ACCENT)
         else:
             self.status_var.set("OFFLINE")
-            self.status_label.config(fg="#f87171")
+            self.status_label.config(fg="#a5b4fc")
 
     def _orb_color(self) -> str:
         """Return the current orb color based on widget state."""
@@ -2083,7 +2177,7 @@ class JarvisDesktopWidget(tk.Tk):
         if state == "error":
             return self.WARN  # red
         # idle: color depends on online status
-        return self.ACCENT if self.online else self.WARN
+        return self.ACCENT if self.online else "#6366f1"
 
     def _animate_orb(self) -> None:
         if self.stop_event.is_set():
@@ -2126,19 +2220,31 @@ class JarvisDesktopWidget(tk.Tk):
             else:
                 speed = 1.0
 
-            # Rotate arc 1: outer, clockwise (~90 deg/sec base)
+            # Arc 4: outermost decorative ring, slow counter-rotate with breathing extent
+            if self._l_arc4 is not None:
+                a4 = (360 - (t * 30 * speed) % 360) % 360
+                ext4 = 50 + 20 * math.sin(t * 1.2 * speed)
+                self.launcher_canvas.itemconfig(self._l_arc4, start=a4, extent=ext4)
+            # Rotate arc 1: outer, clockwise with breathing extent
             if self._l_arc1 is not None:
                 a1 = (t * 90 * speed) % 360
-                self.launcher_canvas.itemconfig(self._l_arc1, start=a1)
-            # Rotate arc 2: mid, counter-clockwise (~60 deg/sec base)
+                ext1 = 220 + 40 * math.sin(t * 0.8 * speed)
+                self.launcher_canvas.itemconfig(self._l_arc1, start=a1, extent=ext1)
+            # Rotate arc 2: mid, counter-clockwise with breathing extent
             if self._l_arc2 is not None:
                 a2 = (360 - (t * 60 * speed) % 360) % 360
-                self.launcher_canvas.itemconfig(self._l_arc2, start=a2)
+                ext2 = 140 + 30 * math.sin(t * 1.4 * speed + 1.0)
+                self.launcher_canvas.itemconfig(self._l_arc2, start=a2, extent=ext2)
             # Arc 3: fast inner ring, only visible during processing
             if self._l_arc3 is not None:
                 if state == "processing":
                     a3 = (t * 180 * speed) % 360
-                    self.launcher_canvas.itemconfig(self._l_arc3, start=a3, state=tk.NORMAL)
+                    ext3 = 70 + 30 * math.sin(t * 3.0 * speed)
+                    self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=ext3, state=tk.NORMAL)
+                elif state == "listening":
+                    # Show subtle inner ring while listening too
+                    a3 = (t * 80 * speed) % 360
+                    self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=60, state=tk.NORMAL)
                 else:
                     self.launcher_canvas.itemconfig(self._l_arc3, state=tk.HIDDEN)
 
@@ -2148,41 +2254,46 @@ class JarvisDesktopWidget(tk.Tk):
                 pad = 24 + breath * 2
                 self.launcher_canvas.coords(self._l_core, pad, pad, size - pad, size - pad)
 
-            # Orbiting particles at different radii and speeds
+            # Orbiting particles at different radii, speeds, and pulsing sizes
             for i, pid in enumerate(self._l_particles):
-                orbit_r = 34 - i * 5
-                orbit_speed = (45 + i * 25) * speed
-                angle = math.radians((t * orbit_speed) % 360 + i * 120)
-                px = cx + orbit_r * math.cos(angle) - 2
-                py = cy + orbit_r * math.sin(angle) - 2
-                self.launcher_canvas.coords(pid, px, py, px + 4, py + 4)
+                orbit_r = 38 - i * 4
+                orbit_speed = (35 + i * 18) * speed
+                phase_offset = i * (360.0 / len(self._l_particles))
+                angle = math.radians((t * orbit_speed) % 360 + phase_offset)
+                # Pulsing particle size
+                p_size = 3 + 1.5 * math.sin(t * (3.0 + i * 0.5) * speed + i)
+                px = cx + orbit_r * math.cos(angle) - p_size / 2
+                py = cy + orbit_r * math.sin(angle) - p_size / 2
+                self.launcher_canvas.coords(pid, px, py, px + p_size, py + p_size)
 
-            # Glow halo breathing
+            # Glow halo breathing — more pronounced
             if self._l_glow is not None:
-                glow_pulse = 0.5 + 0.5 * math.sin(t * 1.5)
-                gpad = 2 + glow_pulse * 2
+                glow_pulse = 0.5 + 0.5 * math.sin(t * 1.5 * speed)
+                gpad = 1 + glow_pulse * 3
                 self.launcher_canvas.coords(self._l_glow, gpad, gpad, size - gpad, size - gpad)
 
-            # State-reactive color palette: (arc1, arc2, core, particles, glow)
+            # State-reactive color palette: (arc1, arc2, core, particles, glow, arc4)
             online = self.online
             if state == "listening":
-                colors = ("#3b82f6", "#60a5fa", "#1e3a8a", "#93c5fd", "#1e3a5e")
+                colors = ("#3b82f6", "#60a5fa", "#1e3a8a", "#93c5fd", "#1e3a5e", "#2563eb")
             elif state == "processing":
-                colors = ("#f59e0b", "#fbbf24", "#78350f", "#fde68a", "#3d2800")
+                colors = ("#f59e0b", "#fbbf24", "#78350f", "#fde68a", "#3d2800", "#d97706")
             elif state == "error":
-                colors = ("#ef4444", "#f87171", "#7f1d1d", "#fca5a5", "#3d0d0d")
+                colors = ("#ef4444", "#f87171", "#7f1d1d", "#fca5a5", "#3d0d0d", "#dc2626")
             elif online:
-                colors = ("#2dd4bf", "#0ea5e9", "#0f766e", "#5eead4", "#0d3d36")
+                colors = ("#2dd4bf", "#0ea5e9", "#0f766e", "#5eead4", "#0d3d36", "#14b8a6")
             else:
-                colors = ("#64748b", "#475569", "#334155", "#94a3b8", "#1e293b")
+                colors = ("#6366f1", "#818cf8", "#312e81", "#a5b4fc", "#1e1b4b", "#7c3aed")
 
-            arc1_c, arc2_c, core_c, particle_c, glow_c = colors
+            arc1_c, arc2_c, core_c, particle_c, glow_c, arc4_c = colors
             if self._l_arc1 is not None:
                 self.launcher_canvas.itemconfig(self._l_arc1, outline=arc1_c)
             if self._l_arc2 is not None:
                 self.launcher_canvas.itemconfig(self._l_arc2, outline=arc2_c)
+            if self._l_arc4 is not None:
+                self.launcher_canvas.itemconfig(self._l_arc4, outline=arc4_c)
             if self._l_core is not None:
-                self.launcher_canvas.itemconfig(self._l_core, fill=core_c)
+                self.launcher_canvas.itemconfig(self._l_core, fill=core_c, outline=arc1_c)
             for pid in self._l_particles:
                 self.launcher_canvas.itemconfig(pid, fill=particle_c)
             if self._l_glow is not None:
