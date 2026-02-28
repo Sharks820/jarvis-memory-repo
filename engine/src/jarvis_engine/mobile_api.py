@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import gzip as _gzip_mod
 import hashlib
 import hmac
 import io
@@ -157,8 +158,10 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._bootstrap_rate_lock = threading.Lock()
         # Dynamic CORS origins (populated at startup with LAN IP)
         self._extra_cors_origins: list[re.Pattern[str]] = []
-        # Global API rate-limiter: {ip: [timestamp, ...]}
-        self._api_rate_attempts: dict[str, list[float]] = {}
+        # Global API rate-limiter: separate counters per tier to prevent
+        # widget polling (~33 req/min) from blocking /command (10 req/min limit).
+        self._api_rate_normal: dict[str, list[float]] = {}
+        self._api_rate_expensive: dict[str, list[float]] = {}
         self._api_rate_lock = threading.Lock()
         # Master password rate-limiter: {ip: [timestamp, ...]}
         self._master_pw_attempts: dict[str, list[float]] = {}
@@ -224,16 +227,23 @@ class MobileIngestServer(ThreadingHTTPServer):
             self._master_pw_attempts[client_ip] = attempts
 
     def check_api_rate(self, client_ip: str, path: str) -> bool:
-        """Return True if this IP exceeds the API rate limit for the given path."""
-        limit = _API_RATE_LIMIT_EXPENSIVE if path in _EXPENSIVE_PATHS else _API_RATE_LIMIT_NORMAL
+        """Return True if this IP exceeds the API rate limit for the given path.
+
+        Uses **separate** counters for expensive paths (/command, /self-heal)
+        vs normal paths so that widget polling doesn't consume the expensive
+        tier's budget.
+        """
+        is_expensive = path in _EXPENSIVE_PATHS
+        limit = _API_RATE_LIMIT_EXPENSIVE if is_expensive else _API_RATE_LIMIT_NORMAL
+        bucket = self._api_rate_expensive if is_expensive else self._api_rate_normal
         now = time.time()
         with self._api_rate_lock:
-            self._prune_rate_dict(self._api_rate_attempts)
-            attempts = self._api_rate_attempts.get(client_ip, [])
+            self._prune_rate_dict(bucket)
+            attempts = bucket.get(client_ip, [])
             cutoff = now - _API_RATE_LIMIT_WINDOW
             attempts = [ts for ts in attempts if ts > cutoff]
             attempts.append(now)
-            self._api_rate_attempts[client_ip] = attempts
+            bucket[client_ip] = attempts
             return len(attempts) > limit
 
     def is_cors_origin_allowed(self, origin: str) -> bool:
@@ -394,10 +404,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
 
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:
-        encoded = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+        raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+        accept_enc = self.headers.get("Accept-Encoding", "") if hasattr(self, "headers") and self.headers else ""
+        use_gzip = "gzip" in accept_enc and len(raw) > 256
+        encoded = _gzip_mod.compress(raw, compresslevel=6) if use_gzip else raw
         self.send_response(status)
         self._cors_headers()
         self._security_headers()
+        if use_gzip:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -1000,6 +1015,24 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 logger.error("activity feed query failed: %s", exc)
                 self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
+            return
+        if path == "/widget-status":
+            # Combined endpoint: health + growth + dashboard alerts in ONE request.
+            # Replaces 3 separate calls per widget poll cycle.
+            if not self._validate_auth(b""):
+                return
+            root_ws: Path = self.server.repo_root  # type: ignore[attr-defined]
+            combined: dict[str, Any] = {"ok": True}
+            try:
+                combined["growth"] = self._gather_intelligence_growth()
+            except Exception:
+                combined["growth"] = {}
+            try:
+                dash = build_intelligence_dashboard(root_ws)
+                combined["alerts"] = dash.get("proactive_alerts", [])
+            except Exception:
+                combined["alerts"] = []
+            self._write_json(HTTPStatus.OK, combined)
             return
         if path == "/intelligence/growth":
             if not self._validate_auth(b""):

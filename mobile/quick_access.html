@@ -640,9 +640,7 @@
 
     async function refreshProcesses() {
       try {
-        const c = creds();
-        const res = await fetch(`${c.baseUrl}/processes`);
-        const data = await res.json();
+        const data = await signedFetch("/processes", "GET", null, 8000);
         if (!data.ok) return;
         const list = $("svcList");
         const names = { daemon: "Daemon", mobile_api: "Mobile API", widget: "Widget" };

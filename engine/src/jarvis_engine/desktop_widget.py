@@ -1924,26 +1924,21 @@ class JarvisDesktopWidget(tk.Tk):
                 if self.stop_event.is_set():
                     break
                 time.sleep(0.2)
-            # Fetch intelligence growth data (piggyback on health poll)
+            # Fetch growth + alerts in ONE request via /widget-status
             growth_data: dict[str, Any] | None = None
             if ok and cfg.token and cfg.signing_key:
                 try:
-                    growth_data = _http_json(cfg, "/intelligence/growth", method="GET")
-                except Exception as exc:
-                    logger.debug("Failed to fetch intelligence growth data: %s", exc)
-            # Fetch proactive alerts and send toast notifications
-            if ok and cfg.token and cfg.signing_key:
-                try:
-                    dash = _http_json(cfg, "/dashboard", method="GET")
-                    alerts = dash.get("dashboard", {}).get("proactive_alerts", [])
+                    ws = _http_json(cfg, "/widget-status", method="GET")
+                    growth_data = ws.get("growth") if isinstance(ws, dict) else None
+                    alerts = ws.get("alerts", []) if isinstance(ws, dict) else []
                     if isinstance(alerts, list):
                         for alert in alerts:
                             msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
                             if msg:
                                 self._notify_toast("Jarvis Alert", msg, "Warning")
-                                break  # One toast per poll cycle (throttle handles the rest)
-                except Exception:
-                    pass  # Proactive alerts are best-effort
+                                break  # One toast per poll cycle
+                except Exception as exc:
+                    logger.debug("Failed to fetch widget-status: %s", exc)
             if not self.stop_event.is_set():
                 try:
                     self.after(0, self._set_online, ok, intel_data, growth_data)
