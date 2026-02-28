@@ -26,6 +26,8 @@ class WakeWordDetector:
         self._cooldown_seconds = cooldown_seconds
         self._model = None
         self._stop_event = threading.Event()
+        self._stream = None  # Active mic stream (for pause/resume)
+        self._stream_lock = threading.Lock()
 
     def _load_model(self) -> None:
         """Lazy-load the openwakeword model."""
@@ -72,19 +74,26 @@ class WakeWordDetector:
 
         chunk_size = 1280  # frames at 16kHz
 
-        stream = None
         try:
-            stream = sd.InputStream(
-                samplerate=16000,
-                channels=1,
-                dtype="float32",
-                blocksize=chunk_size,
-            )
-            stream.start()
+            with self._stream_lock:
+                self._stream = sd.InputStream(
+                    samplerate=16000,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=chunk_size,
+                )
+                self._stream.start()
             logger.info("Wake word detection started (model=%s, threshold=%.2f)",
                          self._model_name, self._threshold)
 
             while not self._stop_event.is_set():
+                with self._stream_lock:
+                    stream = self._stream
+                if stream is None:
+                    # Stream paused (STT recording in progress) — wait briefly
+                    time.sleep(0.1)
+                    continue
+
                 if mic_lock is not None:
                     if not mic_lock.acquire(timeout=60):
                         logger.warning("Mic lock acquisition timed out")
@@ -128,13 +137,51 @@ class WakeWordDetector:
         except Exception as exc:
             logger.error("Wake word detection error: %s", exc)
         finally:
-            if stream is not None:
-                try:
-                    stream.stop()
-                    stream.close()
-                except Exception:
-                    pass
+            with self._stream_lock:
+                if self._stream is not None:
+                    try:
+                        self._stream.stop()
+                        self._stream.close()
+                    except Exception:
+                        pass
+                    self._stream = None
             logger.info("Wake word detection stopped.")
+
+    def pause(self) -> None:
+        """Stop the mic stream so another consumer (STT recording) can use it.
+
+        Must be called before opening a second mic stream to avoid dual-stream
+        conflicts on Windows WASAPI.  Call ``resume()`` afterwards.
+        """
+        with self._stream_lock:
+            if self._stream is not None:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                    logger.debug("Wake word mic stream paused")
+                except Exception as exc:
+                    logger.debug("Error pausing wake word stream: %s", exc)
+                self._stream = None
+
+    def resume(self, sd: object | None = None) -> None:
+        """Re-open the mic stream after STT recording completes.
+
+        *sd* must be the ``sounddevice`` module (passed in to avoid a
+        top-level import).
+        """
+        with self._stream_lock:
+            if self._stream is not None:
+                return  # Already running
+            if sd is None:
+                try:
+                    import sounddevice as sd  # type: ignore[import-untyped]
+                except ImportError:
+                    return
+            self._stream = sd.InputStream(
+                samplerate=16000, channels=1, dtype="float32", blocksize=1280,
+            )
+            self._stream.start()
+            logger.debug("Wake word mic stream resumed")
 
     def stop(self) -> None:
         """Signal the detection loop to stop."""

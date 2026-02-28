@@ -114,10 +114,24 @@ class WakeWordStartHandler:
             logger.info("Wake word detected! Listening for command...")
             try:
                 from jarvis_engine.stt import record_from_microphone, transcribe_smart
-                # Acquire mic lock so wake word pauses during recording
-                with mic_lock:
-                    audio = record_from_microphone(max_duration_seconds=8.0)
-                result = transcribe_smart(audio, language="en", gateway=self._gateway)
+                # Pause wake word mic stream to avoid dual-stream conflicts,
+                # then record on a fresh stream with buffer drain.
+                detector.pause()
+                _time.sleep(0.15)  # Let OS audio driver release mic fully
+                try:
+                    audio = record_from_microphone(
+                        max_duration_seconds=8.0,
+                        drain_seconds=0.3,
+                    )
+                finally:
+                    detector.resume()
+                # Load personal vocab for NER entity correction
+                from jarvis_engine.stt_postprocess import _load_personal_vocab
+                _entities = _load_personal_vocab()
+                result = transcribe_smart(
+                    audio, language="en", gateway=self._gateway,
+                    entity_list=_entities if _entities else None,
+                )
                 text = result.text.strip()
                 if not text:
                     logger.info("No speech detected after wake word.")
