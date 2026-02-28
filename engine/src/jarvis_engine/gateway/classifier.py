@@ -1,11 +1,14 @@
 """IntentClassifier: embedding-based query routing with privacy keyword detection.
 
 Routes queries to the optimal model:
-- Math/logic reasoning -> Claude Opus (cloud, best reasoning)
-- Complex coding/architecture -> Kimi K2 via Groq (fast, great code quality)
-- Routine summarization/formatting -> Kimi K2 via Groq (fast cloud)
+- Math/logic reasoning -> Claude Opus (Anthropic, deep reasoning)
+- Complex coding/architecture -> Claude Opus (Anthropic, coding)
+- Routine summarization/formatting -> Kimi K2 via Groq (primary, fast)
+- Creative writing/brainstorming -> Kimi K2 via Groq (primary, fast)
 - Private/personal data -> Local Ollama (never leaves device)
 
+Primary model: Kimi K2 (Groq) for most queries.
+Anthropic (Opus) only for coding and deep reasoning tasks.
 Privacy keywords force local routing regardless of embedding similarity.
 Low-confidence queries default to local (privacy-safe).
 """
@@ -115,10 +118,10 @@ class IntentClassifier:
     }
 
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "claude-opus-4-0-20250514",  # Best reasoning for math/logic (Anthropic)
-        "complex": "kimi-k2",        # Best code quality via Groq (free, 200+ t/s)
-        "routine": "kimi-k2",        # Same fast cloud model for routine tasks
-        "creative": "claude-opus-4-0-20250514",  # Claude excels at creative tasks
+        "math_logic": "claude-opus-4-0-20250514",  # Deep reasoning (Anthropic Opus)
+        "complex": "claude-opus-4-0-20250514",      # Coding/architecture (Anthropic Opus)
+        "routine": "kimi-k2",                        # Primary: fast cloud (Groq)
+        "creative": "kimi-k2",                       # Primary: fast cloud (Groq)
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 

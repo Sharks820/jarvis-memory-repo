@@ -210,11 +210,12 @@ class TestModelGateway:
         assert resp.text == "fallback answer"
         assert "APIConnectionError" in resp.fallback_reason
 
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_local_only_mode(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
-        """With no API key, claude-* models fall through to Ollama."""
+        """With no API key and no cloud keys, claude-* models fall through to Ollama."""
         mock_ollama = MagicMock()
         mock_ollama.chat.return_value = _mock_ollama_response("local only")
         mock_ollama_cls.return_value = mock_ollama
