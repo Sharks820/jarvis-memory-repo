@@ -34,6 +34,11 @@ def test_cmd_serve_mobile_uses_env_values(monkeypatch) -> None:
     monkeypatch.setenv("JARVIS_MOBILE_TOKEN", "env-auth")
     monkeypatch.setenv("JARVIS_MOBILE_SIGNING_KEY", "env-sign")
     monkeypatch.setattr(main_mod, "run_mobile_server", fake_run_mobile_server)
+    # Bypass PID-based duplicate detection when mobile API is already running
+    import jarvis_engine.process_manager as pm_mod
+    monkeypatch.setattr(pm_mod, "is_service_running", lambda *a, **kw: False)
+    monkeypatch.setattr(pm_mod, "write_pid_file", lambda *a, **kw: None)
+    monkeypatch.setattr(pm_mod, "remove_pid_file", lambda *a, **kw: None)
 
     rc = main_mod.cmd_serve_mobile(host="127.0.0.1", port=9001, token=None, signing_key=None)
     assert rc == 0
