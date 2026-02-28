@@ -1326,7 +1326,7 @@ class TestWidgetStateMachine:
         assert color == "#12c9b1"
 
     def test_orb_color_idle_offline(self):
-        """Idle + offline should return WARN (red)."""
+        """Idle + offline should return indigo (cool offline color)."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.ACCENT = "#12c9b1"
@@ -1335,7 +1335,7 @@ class TestWidgetStateMachine:
         widget._widget_state = "idle"
         widget.online = False
         color = JarvisDesktopWidget._orb_color(widget)
-        assert color == "#d15a5a"
+        assert color == "#6366f1"
 
     def test_orb_color_listening(self):
         """Listening should return ACCENT_2 (blue)."""
