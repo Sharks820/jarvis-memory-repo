@@ -144,9 +144,10 @@ class IPTracker:
 
     def is_blocked(self, ip: str) -> bool:
         """Return True if *ip* is currently blocked."""
-        row = self._db.execute(
-            "SELECT blocked_until FROM threat_ips WHERE ip = ?", (ip,)
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT blocked_until FROM threat_ips WHERE ip = ?", (ip,)
+            ).fetchone()
         if row is None or row[0] is None:
             return False
         blocked_until = row[0]
@@ -163,14 +164,15 @@ class IPTracker:
 
     def get_threat_report(self, ip: str) -> dict | None:
         """Return full threat history for *ip*, or None if not tracked."""
-        row = self._db.execute(
-            """
-            SELECT ip, first_seen, last_seen, total_attempts, attack_types,
-                   threat_score, blocked_until, notes
-            FROM threat_ips WHERE ip = ?
-            """,
-            (ip,),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                """
+                SELECT ip, first_seen, last_seen, total_attempts, attack_types,
+                       threat_score, blocked_until, notes
+                FROM threat_ips WHERE ip = ?
+                """,
+                (ip,),
+            ).fetchone()
         if row is None:
             return None
         try:
@@ -190,15 +192,16 @@ class IPTracker:
 
     def get_all_threats(self, min_score: float = 0.0) -> list[dict]:
         """Return all tracked IPs with threat_score >= *min_score*."""
-        rows = self._db.execute(
-            """
-            SELECT ip, first_seen, last_seen, total_attempts, attack_types,
-                   threat_score, blocked_until, notes
-            FROM threat_ips WHERE threat_score >= ?
-            ORDER BY threat_score DESC
-            """,
-            (min_score,),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                """
+                SELECT ip, first_seen, last_seen, total_attempts, attack_types,
+                       threat_score, blocked_until, notes
+                FROM threat_ips WHERE threat_score >= ?
+                ORDER BY threat_score DESC
+                """,
+                (min_score,),
+            ).fetchall()
         result = []
         for row in rows:
             try:

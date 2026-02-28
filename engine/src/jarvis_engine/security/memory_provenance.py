@@ -7,6 +7,7 @@ verification status.
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -44,6 +45,7 @@ class MemoryProvenance:
     """
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         # record_hash -> provenance dict
         self._records: dict[str, dict[str, Any]] = {}
 
@@ -92,7 +94,8 @@ class MemoryProvenance:
             "verification_status": verification,
             "quarantine_reason": "",
         }
-        self._records[record_hash] = prov
+        with self._lock:
+            self._records[record_hash] = prov
         return prov
 
     # ------------------------------------------------------------------
@@ -101,7 +104,8 @@ class MemoryProvenance:
 
     def get_provenance(self, record_hash: str) -> dict[str, Any] | None:
         """Return the provenance dict for *record_hash*, or ``None``."""
-        return self._records.get(record_hash)
+        with self._lock:
+            return self._records.get(record_hash)
 
     # ------------------------------------------------------------------
     # Lifecycle transitions
@@ -113,14 +117,15 @@ class MemoryProvenance:
         Returns ``True`` if promotion succeeded, ``False`` if the record
         does not exist or is not in the promotable state.
         """
-        prov = self._records.get(record_hash)
-        if prov is None:
-            return False
-        if prov["trust_level"] != UNVERIFIED_EXTERNAL:
-            return False
-        prov["trust_level"] = VERIFIED_EXTERNAL
-        prov["verification_status"] = "verified"
-        return True
+        with self._lock:
+            prov = self._records.get(record_hash)
+            if prov is None:
+                return False
+            if prov["trust_level"] != UNVERIFIED_EXTERNAL:
+                return False
+            prov["trust_level"] = VERIFIED_EXTERNAL
+            prov["verification_status"] = "verified"
+            return True
 
     def quarantine(self, record_hash: str, reason: str) -> bool:
         """Move a record to ``QUARANTINED`` with the given *reason*.
@@ -128,13 +133,14 @@ class MemoryProvenance:
         Returns ``True`` if quarantine succeeded, ``False`` if the record
         does not exist.
         """
-        prov = self._records.get(record_hash)
-        if prov is None:
-            return False
-        prov["trust_level"] = QUARANTINED
-        prov["verification_status"] = "pending"
-        prov["quarantine_reason"] = reason
-        return True
+        with self._lock:
+            prov = self._records.get(record_hash)
+            if prov is None:
+                return False
+            prov["trust_level"] = QUARANTINED
+            prov["verification_status"] = "pending"
+            prov["quarantine_reason"] = reason
+            return True
 
     # ------------------------------------------------------------------
     # Quarantine management
@@ -143,11 +149,12 @@ class MemoryProvenance:
     def get_quarantined(self, limit: int = 50) -> list[dict[str, Any]]:
         """Return up to *limit* quarantined records."""
         results: list[dict[str, Any]] = []
-        for prov in self._records.values():
-            if prov["trust_level"] == QUARANTINED:
-                results.append(prov)
-                if len(results) >= limit:
-                    break
+        with self._lock:
+            for prov in self._records.values():
+                if prov["trust_level"] == QUARANTINED:
+                    results.append(prov)
+                    if len(results) >= limit:
+                        break
         return results
 
     def purge_quarantined(self, record_hash: str) -> bool:
@@ -156,13 +163,14 @@ class MemoryProvenance:
         Returns ``True`` if the record was quarantined and removed,
         ``False`` otherwise.
         """
-        prov = self._records.get(record_hash)
-        if prov is None:
-            return False
-        if prov["trust_level"] != QUARANTINED:
-            return False
-        del self._records[record_hash]
-        return True
+        with self._lock:
+            prov = self._records.get(record_hash)
+            if prov is None:
+                return False
+            if prov["trust_level"] != QUARANTINED:
+                return False
+            del self._records[record_hash]
+            return True
 
     def approve_quarantined(self, record_hash: str) -> bool:
         """Move a quarantined record to ``VERIFIED_EXTERNAL``.
@@ -170,12 +178,13 @@ class MemoryProvenance:
         Returns ``True`` if approval succeeded, ``False`` if the record
         does not exist or is not quarantined.
         """
-        prov = self._records.get(record_hash)
-        if prov is None:
-            return False
-        if prov["trust_level"] != QUARANTINED:
-            return False
-        prov["trust_level"] = VERIFIED_EXTERNAL
-        prov["verification_status"] = "verified"
-        prov["quarantine_reason"] = ""
-        return True
+        with self._lock:
+            prov = self._records.get(record_hash)
+            if prov is None:
+                return False
+            if prov["trust_level"] != QUARANTINED:
+                return False
+            prov["trust_level"] = VERIFIED_EXTERNAL
+            prov["verification_status"] = "verified"
+            prov["quarantine_reason"] = ""
+            return True

@@ -9,11 +9,14 @@ Multi-layer detection of prompt injection attacks:
 from __future__ import annotations
 
 import base64
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

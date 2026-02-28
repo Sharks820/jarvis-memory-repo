@@ -181,7 +181,7 @@ class ForensicLogger:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("forensic_log.jsonl", "\n".join(entries) + "\n" if entries else "")
+            zf.writestr("forensic_log.jsonl", ("\n".join(entries) + "\n") if entries else "")
             zf.writestr("summary.txt", "\n".join(summary_lines) + "\n")
 
     # ------------------------------------------------------------------

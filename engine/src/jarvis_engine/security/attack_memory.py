@@ -158,9 +158,11 @@ class AttackPatternMemory:
         target_tokens = _tokenize(payload)
         results: list[dict[str, Any]] = []
 
-        cur = self._db.cursor()
-        cur.execute("SELECT pattern_id, category, payload_signature, detection_method, first_seen, last_seen, frequency, source_ips, notes FROM attack_patterns")
-        for row in cur.fetchall():
+        with self._lock:
+            cur = self._db.cursor()
+            cur.execute("SELECT pattern_id, category, payload_signature, detection_method, first_seen, last_seen, frequency, source_ips, notes FROM attack_patterns")
+            rows = cur.fetchall()
+        for row in rows:
             pid, cat, sig, det, first, last, freq, ips, notes = row
             sim = _jaccard(target_tokens, _tokenize(sig))
             if sim >= threshold:
@@ -184,49 +186,50 @@ class AttackPatternMemory:
 
     def get_attack_intelligence(self) -> dict[str, Any]:
         """Return summary statistics for stored attack patterns."""
-        cur = self._db.cursor()
+        with self._lock:
+            cur = self._db.cursor()
 
-        # Total patterns
-        cur.execute("SELECT COUNT(*) FROM attack_patterns")
-        total = cur.fetchone()[0]
+            # Total patterns
+            cur.execute("SELECT COUNT(*) FROM attack_patterns")
+            total = cur.fetchone()[0]
 
-        # Top categories by frequency
-        cur.execute(
-            """SELECT category, SUM(frequency) AS total_freq
-               FROM attack_patterns
-               GROUP BY category
-               ORDER BY total_freq DESC
-               LIMIT 10"""
-        )
-        top_categories = [{"category": r[0], "total_frequency": r[1]} for r in cur.fetchall()]
+            # Top categories by frequency
+            cur.execute(
+                """SELECT category, SUM(frequency) AS total_freq
+                   FROM attack_patterns
+                   GROUP BY category
+                   ORDER BY total_freq DESC
+                   LIMIT 10"""
+            )
+            top_categories = [{"category": r[0], "total_frequency": r[1]} for r in cur.fetchall()]
 
-        # Recent attacks (last 20)
-        cur.execute(
-            """SELECT pattern_id, category, payload_signature, last_seen, frequency
-               FROM attack_patterns
-               ORDER BY last_seen DESC
-               LIMIT 20"""
-        )
-        recent = [
-            {
-                "pattern_id": r[0],
-                "category": r[1],
-                "payload_signature": r[2][:100],
-                "last_seen": r[3],
-                "frequency": r[4],
-            }
-            for r in cur.fetchall()
-        ]
+            # Recent attacks (last 20)
+            cur.execute(
+                """SELECT pattern_id, category, payload_signature, last_seen, frequency
+                   FROM attack_patterns
+                   ORDER BY last_seen DESC
+                   LIMIT 20"""
+            )
+            recent = [
+                {
+                    "pattern_id": r[0],
+                    "category": r[1],
+                    "payload_signature": r[2][:100],
+                    "last_seen": r[3],
+                    "frequency": r[4],
+                }
+                for r in cur.fetchall()
+            ]
 
-        # Frequency trends (patterns seen more than once)
-        cur.execute(
-            """SELECT COUNT(*) FROM attack_patterns WHERE frequency > 1"""
-        )
-        recurring = cur.fetchone()[0]
+            # Frequency trends (patterns seen more than once)
+            cur.execute(
+                """SELECT COUNT(*) FROM attack_patterns WHERE frequency > 1"""
+            )
+            recurring = cur.fetchone()[0]
 
-        # Total frequency sum
-        cur.execute("SELECT COALESCE(SUM(frequency), 0) FROM attack_patterns")
-        total_events = cur.fetchone()[0]
+            # Total frequency sum
+            cur.execute("SELECT COALESCE(SUM(frequency), 0) FROM attack_patterns")
+            total_events = cur.fetchone()[0]
 
         return {
             "total_patterns": total,
@@ -240,15 +243,17 @@ class AttackPatternMemory:
 
     def get_patterns_by_category(self, category: str) -> list[dict[str, Any]]:
         """Return all attack patterns in a given category."""
-        cur = self._db.cursor()
-        cur.execute(
-            """SELECT pattern_id, category, payload_signature, detection_method,
-                      first_seen, last_seen, frequency, source_ips, notes
-               FROM attack_patterns
-               WHERE category = ?
-               ORDER BY last_seen DESC""",
-            (category,),
-        )
+        with self._lock:
+            cur = self._db.cursor()
+            cur.execute(
+                """SELECT pattern_id, category, payload_signature, detection_method,
+                          first_seen, last_seen, frequency, source_ips, notes
+                   FROM attack_patterns
+                   WHERE category = ?
+                   ORDER BY last_seen DESC""",
+                (category,),
+            )
+            rows = cur.fetchall()
         return [
             {
                 "pattern_id": r[0],
@@ -261,5 +266,5 @@ class AttackPatternMemory:
                 "source_ips": json.loads(r[7]) if r[7] else [],
                 "notes": r[8],
             }
-            for r in cur.fetchall()
+            for r in rows
         ]

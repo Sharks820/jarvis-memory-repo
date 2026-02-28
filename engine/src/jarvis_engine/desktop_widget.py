@@ -393,8 +393,7 @@ from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_su
 
 def _http_error_details(exc: HTTPError) -> str:
     try:
-        with exc:
-            raw = exc.read().decode("utf-8", errors="replace").strip()
+        raw = exc.read().decode("utf-8", errors="replace").strip()
     except Exception:
         raw = ""
     if raw:

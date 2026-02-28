@@ -8,6 +8,7 @@ that requires owner master password for high-severity containment.
 from __future__ import annotations
 
 import hashlib
+import hmac as _hmac_module
 import logging
 import os
 import time
@@ -77,6 +78,7 @@ class ContainmentEngine:
         self._killed: bool = False
         self._current_level: int = 0  # 0 = no containment active
         self._containment_history: list[dict] = []
+        self._current_hmac_key: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -267,12 +269,13 @@ class ContainmentEngine:
     # ------------------------------------------------------------------
 
     def _rotate_credentials(self) -> str:
-        """Generate a new HMAC signing key.
+        """Generate a new HMAC signing key and store it on the instance.
 
         Returns the new key as a hex string.  In production this would
         persist to secure storage and invalidate old keys.
         """
         new_key = os.urandom(32).hex()
+        self._current_hmac_key = new_key
         self._log_forensic(
             "credential_rotation",
             severity="CRITICAL",
@@ -294,7 +297,7 @@ class ContainmentEngine:
                 _MASTER_PASSWORD_HASH_ENV,
             )
             return False
-        return _hash_password(password) == stored_hash
+        return _hmac_module.compare_digest(_hash_password(password), stored_hash)
 
     def _log_forensic(self, event_type: str, **kwargs: object) -> None:
         """Write to forensic logger if available."""

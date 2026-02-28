@@ -11,7 +11,7 @@ import logging
 import re
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -149,8 +149,8 @@ class ThreatDetector:
         self._lock = threading.Lock()
         # nonce -> timestamp last seen
         self._nonce_cache: dict[str, float] = {}
-        # ip -> list of request timestamps (for rate anomaly detection)
-        self._request_log: dict[str, list[float]] = defaultdict(list)
+        # ip -> deque of request timestamps (for rate anomaly detection)
+        self._request_log: dict[str, deque[float]] = defaultdict(deque)
 
     # ------------------------------------------------------------------
     # Public API
@@ -201,12 +201,9 @@ class ThreatDetector:
         for s in signals:
             counts[s.severity] += 1
 
-        # Determine threat level
+        # Determine threat level — any CRITICAL signal means CRITICAL
         if counts["CRITICAL"] >= 1:
-            if counts["CRITICAL"] >= 2 or counts["HIGH"] >= 1:
-                level = "CRITICAL"
-            else:
-                level = "CRITICAL"
+            level = "CRITICAL"
         elif counts["HIGH"] >= 2:
             level = "CRITICAL"
         elif counts["HIGH"] >= 1:
@@ -343,12 +340,16 @@ class ThreatDetector:
             log = self._request_log[ip]
             log.append(now)
 
-            # Prune entries outside the window
+            # Prune entries outside the window — O(1) per pop with deque
             cutoff = now - window
             while log and log[0] < cutoff:
-                log.pop(0)
+                log.popleft()
 
             count = len(log)
+
+            # Clean up IPs with no recent activity to prevent unbounded growth
+            if count == 0:
+                del self._request_log[ip]
 
         if count > 60:
             return ThreatSignal(
