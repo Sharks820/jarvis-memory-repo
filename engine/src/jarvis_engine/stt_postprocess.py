@@ -31,12 +31,15 @@ def preprocess_audio(
     sample_rate: int = 16000,
     target_dbfs: float = -3.0,
     silence_threshold_db: float = -30.0,
+    skip_hpss: bool = False,
 ) -> np.ndarray:
     """Preprocess audio for optimal Whisper transcription.
 
     Pipeline:
     1. Peak normalize to target_dbfs
-    2. HPSS: separate speech harmonics from percussive noise
+    2. HPSS: separate speech harmonics from percussive noise (skipped
+       for short voice commands where consonant destruction hurts more
+       than background noise)
     3. Spectral noise reduction
     4. Trim leading/trailing silence
     """
@@ -44,6 +47,7 @@ def preprocess_audio(
         return audio.astype(np.float32)
 
     audio = audio.astype(np.float32)
+    duration_s = len(audio) / sample_rate
 
     # 1. Peak normalize
     peak = np.max(np.abs(audio))
@@ -52,17 +56,22 @@ def preprocess_audio(
         audio = audio * (target_amplitude / peak)
 
     # 2. HPSS: keep harmonic (speech), discard percussive (clicks, keyboard)
-    try:
-        import librosa
+    # Skip for short voice commands (<5s) — HPSS destroys plosive/fricative
+    # consonants (p, t, k, s, f, v) that are critical for short utterances.
+    if skip_hpss or duration_s < 5.0:
+        logger.debug("Skipping HPSS (duration=%.1fs, skip_hpss=%s)", duration_s, skip_hpss)
+    else:
+        try:
+            import librosa
 
-        stft = librosa.stft(audio)
-        harmonic, _ = librosa.decompose.hpss(stft)
-        audio = librosa.istft(harmonic, length=len(audio))
-        audio = audio.astype(np.float32)
-    except ImportError:
-        logger.warning("librosa not installed, skipping HPSS")
-    except Exception as exc:
-        logger.warning("HPSS failed, skipping: %s", exc)
+            stft = librosa.stft(audio)
+            harmonic, _ = librosa.decompose.hpss(stft, margin=3.0)
+            audio = librosa.istft(harmonic, length=len(audio))
+            audio = audio.astype(np.float32)
+        except ImportError:
+            logger.warning("librosa not installed, skipping HPSS")
+        except Exception as exc:
+            logger.warning("HPSS failed, skipping: %s", exc)
 
     # 3. Spectral noise reduction
     try:
@@ -131,6 +140,18 @@ _SUBSTRING_HALLUCINATION_PHRASES: set[str] = {
     "copyright",
 }
 
+# Foreign-language artifacts that Whisper hallucinates from corrupted audio
+# at segment boundaries.  Checked only at the START of a transcription.
+_FOREIGN_HALLUCINATION_PREFIXES: set[str] = {
+    "essen", "untertitel", "untertitelung", "vielen dank",
+    "sous-titres", "sous titres", "merci", "bonjour",
+    "gracias", "hola", "buenos",
+    "arigato", "konichiwa", "konnichiwa",
+    "danke", "bitte", "guten",
+    "spasibo", "privet",
+    "xie xie", "ni hao",
+}
+
 
 def detect_hallucination(text: str) -> bool:
     """Detect Whisper hallucinations in transcribed text.
@@ -194,6 +215,27 @@ def detect_hallucination(text: str) -> bool:
             return True
 
     return False
+
+
+def strip_foreign_prefix(text: str) -> str:
+    """Remove foreign-language hallucination artifacts from the start of text.
+
+    Whisper sometimes hallucinates foreign words (e.g. "Essen") from
+    corrupted audio at the beginning of a recording.  When such a word
+    appears before a recognisable English body, strip it rather than
+    discarding the entire transcription.
+    """
+    lower = text.lower().strip()
+    if not lower:
+        return text
+
+    for prefix in _FOREIGN_HALLUCINATION_PREFIXES:
+        if lower.startswith(prefix):
+            rest = text.strip()[len(prefix):].strip().lstrip(",").strip()
+            if rest:
+                logger.info("Stripped foreign hallucination prefix %r from transcription", prefix)
+                return rest
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +445,11 @@ def postprocess_transcription(
     # Stage 1: Hallucination detection
     if detect_hallucination(text):
         logger.info("Hallucination detected, discarding: %r", text[:80])
+        return ""
+
+    # Stage 1b: Strip foreign-language hallucination prefixes
+    text = strip_foreign_prefix(text)
+    if not text.strip():
         return ""
 
     # Stage 2: Filler removal

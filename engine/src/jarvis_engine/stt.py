@@ -154,12 +154,15 @@ def transcribe_groq(
         audio_bytes = _numpy_to_wav_bytes(audio)
         filename = "recording.wav"
 
-    # Default prompt biases recognition toward Jarvis commands
+    # Default prompt biases recognition toward Jarvis commands.
+    # Format as example utterances starting with "Jarvis" so Whisper
+    # expects "Jarvis" at the beginning of the current transcription.
     if not prompt:
         prompt = (
-            "Jarvis, set a timer, add a task, check my schedule, "
-            "brain status, ops brief, daily brief, self heal, "
-            "pause daemon, resume daemon, safe mode"
+            "Jarvis, what's on my schedule today? "
+            "Jarvis, run the ops brief. "
+            "Jarvis, check brain status. "
+            "Jarvis, add a task. Jarvis, self heal."
         )
 
     # Call Groq Whisper API (OpenAI-compatible) with retry on transient errors
@@ -627,6 +630,7 @@ def record_from_microphone(
     max_duration_seconds: float = 30.0,
     silence_threshold: float = 0.01,
     silence_duration: float = 2.0,
+    drain_seconds: float = 0.0,
 ) -> np.ndarray:
     """Record audio from the default microphone with energy-based VAD.
 
@@ -643,6 +647,10 @@ def record_from_microphone(
         RMS energy threshold below which audio is considered silence (default 0.01).
     silence_duration:
         Seconds of continuous silence after speech before stopping (default 2.0).
+    drain_seconds:
+        Seconds of audio to read and discard when opening the stream.  This
+        flushes stale audio left in the OS audio buffer (e.g. wake word
+        remnants) before the actual recording begins.
 
     Returns a mono float32 numpy array at the given sample rate.
     Raises RuntimeError if sounddevice is not installed or no microphone
@@ -671,6 +679,12 @@ def record_from_microphone(
         min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
 
         with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:
+            # Drain stale audio from OS buffer (e.g. wake word remnants)
+            if drain_seconds > 0:
+                drain_samples = int(sample_rate * drain_seconds)
+                stream.read(drain_samples)
+                logger.debug("Drained %.0fms of stale audio", drain_seconds * 1000)
+
             max_chunks = int(max_duration_seconds / chunk_duration)
             for i in range(max_chunks):
                 chunk, _ = stream.read(samples_per_chunk)
