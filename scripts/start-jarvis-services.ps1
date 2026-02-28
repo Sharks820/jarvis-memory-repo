@@ -48,100 +48,62 @@ if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($signi
     throw "Invalid mobile API config: $configPath"
 }
 
-# Cull stale daemon/mobile processes from other repos/interpreters first.
-$repoRootNorm = $repoRoot.ToLowerInvariant()
-
-$daemonTargets = @(Get-CimInstance Win32_Process | Where-Object {
-    $_.Name -eq "python.exe" -and $_.CommandLine -match "jarvis_engine\.main\s+daemon-run"
+# Kill ALL existing Jarvis processes (any Python interpreter) for a clean start.
+# This prevents stale/duplicate processes from different Python installs or
+# previous sessions from causing port conflicts and connection errors.
+$allJarvis = @(Get-CimInstance Win32_Process | Where-Object {
+    ($_.Name -eq "python.exe" -or $_.Name -eq "pythonw.exe") -and
+    $_.CommandLine -match "jarvis_engine\.main\s+(daemon-run|serve-mobile|desktop-widget)"
 })
-foreach ($proc in $daemonTargets) {
-    $cmd = [string]$proc.CommandLine
-    $cmdNorm = $cmd.ToLowerInvariant()
-    if ($cmdNorm -notlike "*$repoRootNorm*") {
-        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
-    }
+foreach ($proc in $allJarvis) {
+    Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
-$mobileTargets = @(Get-CimInstance Win32_Process | Where-Object {
-    $_.Name -eq "python.exe" -and $_.CommandLine -match "jarvis_engine\.main\s+serve-mobile"
-})
-foreach ($proc in $mobileTargets) {
-    $cmd = [string]$proc.CommandLine
-    $cmdNorm = $cmd.ToLowerInvariant()
-    if ($cmdNorm -notlike "*$repoRootNorm*") {
-        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
-    }
-}
-
-# If anything still holds our configured API port and is not our current repo runtime, stop it.
+# Also kill anything holding our API port (leftover from crashed processes).
 $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 foreach ($entry in $listeners) {
     $procId = [int]$entry.OwningProcess
-    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
-    if ($null -eq $proc) { continue }
-    $cmd = [string]$proc.CommandLine
-    $cmdNorm = $cmd.ToLowerInvariant()
-    if ($proc.Name -eq "python.exe" -and $cmd -match "jarvis_engine\.main\s+serve-mobile") {
-        if ($cmdNorm -notlike "*$repoRootNorm*") {
-            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-        }
-    }
+    Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
 }
 
-# Start daemon if not already running from this repo/interpreter.
-$daemonRunning = @(
-    Get-CimInstance Win32_Process | Where-Object {
-        $_.Name -eq "python.exe" -and
-        $_.CommandLine -match "jarvis_engine\.main\s+daemon-run" -and
-        [string]$_.CommandLine -like "*$repoRoot*"
-    }
-).Count -gt 0
-if (-not $daemonRunning) {
-    $daemonArgs = @(
-        "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-        "-File", (Join-Path $scriptDir "start-jarvis-daemon.ps1"),
-        "-IntervalSeconds", "$IntervalSeconds",
-        "-IdleIntervalSeconds", "$IdleIntervalSeconds",
-        "-IdleAfterSeconds", "$IdleAfterSeconds"
-    )
-    if ($Execute) { $daemonArgs += "-Execute" }
-    if ($ApprovePrivileged) { $daemonArgs += "-ApprovePrivileged" }
-    if ($AutoOpenConnectors) { $daemonArgs += "-AutoOpenConnectors" }
-    if ($SkipMissions) { $daemonArgs += "-SkipMissions" }
-    Start-Process -FilePath "powershell.exe" -ArgumentList $daemonArgs -WindowStyle Hidden
-}
-
-# Start mobile API if not already running (PID file check, then fallback to process scan).
+# Clean stale PID files.
 $pidDir = Join-Path $repoRoot ".planning\runtime\pids"
 New-Item -ItemType Directory -Path $pidDir -Force | Out-Null
-$mobilePid = Join-Path $pidDir "mobile_api.pid"
+Remove-Item -Path (Join-Path $pidDir "*.pid") -Force -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $pidDir "*.lock") -Force -ErrorAction SilentlyContinue
+
+# Brief pause for port release after kills.
+if ($allJarvis.Count -gt 0 -or $listeners.Count -gt 0) {
+    Start-Sleep -Milliseconds 500
+}
+
+# Start daemon (always fresh — we killed everything above).
+$daemonArgs = @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+    "-File", (Join-Path $scriptDir "start-jarvis-daemon.ps1"),
+    "-IntervalSeconds", "$IntervalSeconds",
+    "-IdleIntervalSeconds", "$IdleIntervalSeconds",
+    "-IdleAfterSeconds", "$IdleAfterSeconds"
+)
+if ($Execute) { $daemonArgs += "-Execute" }
+if ($ApprovePrivileged) { $daemonArgs += "-ApprovePrivileged" }
+if ($AutoOpenConnectors) { $daemonArgs += "-AutoOpenConnectors" }
+if ($SkipMissions) { $daemonArgs += "-SkipMissions" }
+Start-Process -FilePath "powershell.exe" -ArgumentList $daemonArgs -WindowStyle Hidden
+
+# Start mobile API (always fresh — we killed everything above).
 $mobileRunning = $false
-if (Test-Path $mobilePid) {
-    try {
-        $pidData = Get-Content $mobilePid -Raw | ConvertFrom-Json
-        $proc = Get-Process -Id $pidData.pid -ErrorAction SilentlyContinue
-        if ($null -ne $proc -and -not $proc.HasExited) { $mobileRunning = $true }
-    } catch { }
+$mobileArgs = @("-m", "jarvis_engine.main", "serve-mobile", "--host", $BindHost, "--port", "$Port", "--config-file", $configPath)
+if ($BindHost -ne "127.0.0.1") {
+    $mobileArgs += "--allow-insecure-bind"
 }
-if (-not $mobileRunning) {
-    # Fallback: scan processes
-    $mobileRunning = @(
-        Get-CimInstance Win32_Process | Where-Object {
-            $_.Name -eq "python.exe" -and
-            $_.CommandLine -match "jarvis_engine\.main\s+serve-mobile" -and
-            [string]$_.CommandLine -like "*$repoRoot*"
-        }
-    ).Count -gt 0
-}
-if (-not $mobileRunning) {
-    # Use --config-file to avoid exposing token/signing-key in process CommandLine
-    $mobileArgs = @("-m", "jarvis_engine.main", "serve-mobile", "--host", $BindHost, "--port", "$Port", "--config-file", $configPath)
-    if ($BindHost -ne "127.0.0.1") {
-        $mobileArgs += "--allow-insecure-bind"
-    }
-    $env:PYTHONPATH = Join-Path $engineDir "src"
-    Start-Process -FilePath $python -ArgumentList $mobileArgs -WorkingDirectory $engineDir -RedirectStandardOutput $mobileLogPath -RedirectStandardError $mobileErrPath -WindowStyle Hidden
-}
+$env:PYTHONPATH = Join-Path $engineDir "src"
+Start-Process -FilePath $python -ArgumentList $mobileArgs -WorkingDirectory $engineDir -RedirectStandardOutput $mobileLogPath -RedirectStandardError $mobileErrPath -WindowStyle Hidden
+
+# Determine scheme based on whether TLS certs exist (server auto-detects the same way).
+$tlsCert = Join-Path $securityDir "tls_cert.pem"
+$tlsKey = Join-Path $securityDir "tls_key.pem"
+$scheme = if ((Test-Path $tlsCert) -and (Test-Path $tlsKey)) { "https" } else { "http" }
 
 if ($StartWidget) {
     $widgetScript = Join-Path $scriptDir "start-jarvis-widget.ps1"
@@ -150,10 +112,11 @@ if ($StartWidget) {
     }
 }
 
-Write-Output "daemon_running=$daemonRunning"
-Write-Output "mobile_running=$mobileRunning"
-Write-Output "mobile_api_url=http://$BindHost`:$Port"
-Write-Output "quick_panel=http://$BindHost`:$Port/quick"
+Write-Output "daemon_started=True"
+Write-Output "mobile_started=True"
+Write-Output "mobile_api_url=$scheme`://$BindHost`:$Port"
+Write-Output "quick_panel=$scheme`://$BindHost`:$Port/quick"
+Write-Output "tls=$($scheme -eq 'https')"
 Write-Output "mobile_config=$configPath"
 Write-Output "mobile_log=$mobileLogPath"
 Write-Output "mobile_err_log=$mobileErrPath"
