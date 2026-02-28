@@ -127,14 +127,14 @@ class TestIntentClassifierRouting:
             "solve this differential equation step by step"
         )
         assert route == "math_logic"
-        assert model == "claude-opus-4-0-20250514"
+        assert model == "kimi-k2"
 
     def test_classify_complex_query(self, classifier):
         route, model, confidence = classifier.classify(
             "help me debug this race condition in Python"
         )
         assert route == "complex"
-        assert model == "claude-opus-4-0-20250514"
+        assert model == "kimi-k2"
 
     def test_classify_routine_query(self, classifier):
         route, model, confidence = classifier.classify(

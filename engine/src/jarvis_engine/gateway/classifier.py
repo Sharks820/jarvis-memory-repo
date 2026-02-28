@@ -118,10 +118,10 @@ class IntentClassifier:
     }
 
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "claude-opus-4-0-20250514",  # Deep reasoning (Anthropic Opus)
-        "complex": "claude-opus-4-0-20250514",      # Coding/architecture (Anthropic Opus)
-        "routine": "kimi-k2",                        # Primary: fast cloud (Groq)
-        "creative": "kimi-k2",                       # Primary: fast cloud (Groq)
+        "math_logic": "kimi-k2",   # Primary: Kimi K2 via Groq
+        "complex": "kimi-k2",      # Primary: Kimi K2 via Groq
+        "routine": "kimi-k2",      # Primary: Kimi K2 via Groq
+        "creative": "kimi-k2",     # Primary: Kimi K2 via Groq
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 
