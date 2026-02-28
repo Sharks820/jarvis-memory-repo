@@ -211,6 +211,11 @@ class SyncEngine:
         new_values = entry.get("new_values", {})
         fields_changed = [f for f in entry.get("fields_changed", []) if f]
 
+        # Defense-in-depth: table_name must be in _TRACKED_TABLES (validated
+        # by the caller) and must be a simple identifier — never user input.
+        assert table_name in _TRACKED_TABLES, f"Unknown table: {table_name}"
+        assert table_name.isidentifier(), f"Invalid table name: {table_name}"
+
         # Validate all field/column names against the known schema to prevent
         # SQL injection via crafted sync payloads.
         allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
