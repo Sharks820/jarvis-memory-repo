@@ -203,6 +203,32 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         _saved_url = "https://" + _saved_url[len("http://"):]
     _base_url = _saved_url or _default_base
 
+    # --- Auto-heal stale IPs on startup ---
+    # If the saved URL points to a non-localhost address, probe it.
+    # If unreachable but localhost works, silently switch and persist the fix.
+    from urllib.parse import urlparse as _ul_parse
+    _parsed = _ul_parse(_base_url)
+    if _parsed.hostname not in ("127.0.0.1", "localhost", "::1", None):
+        _probe_url = f"{_base_url.rstrip('/')}/health"
+        _local_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or 8787}/health"
+        _stale = False
+        try:
+            _ctx = _make_ssl_context_for_self_signed() if _parsed.scheme == "https" else None
+            with urlopen(Request(url=_probe_url, method="GET"), timeout=3, context=_ctx):
+                pass  # Saved URL works fine
+        except Exception:
+            # Saved URL unreachable — try localhost
+            try:
+                _ctx_l = _make_ssl_context_for_self_signed() if _default_scheme == "https" else None
+                with urlopen(Request(url=_local_url, method="GET"), timeout=3, context=_ctx_l):
+                    _stale = True  # localhost works, saved URL is stale
+            except Exception:
+                pass  # Neither works — keep saved URL, user will see OFFLINE
+        if _stale:
+            _old_url = _base_url
+            _base_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or 8787}"
+            logger.info("Auto-healed stale base_url %s → %s", _old_url, _base_url)
+
     cfg = WidgetConfig(
         base_url=_base_url,
         token=resolved_token,
@@ -216,12 +242,17 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     )
 
     # Migrate plaintext secrets (master_password, token, signing_key) -> DPAPI-protected
-    if needs_migration or needs_migration_fields:
+    # Also persist auto-healed base_url so stale IP is permanently fixed
+    _url_healed = (_base_url != (_saved_url or _default_base))
+    if needs_migration or needs_migration_fields or _url_healed:
         try:
             _save_widget_cfg(root, cfg)
-            logger.info("Migrated plaintext master_password to DPAPI-protected storage")
+            if _url_healed:
+                logger.info("Persisted auto-healed base_url to config")
+            if needs_migration or needs_migration_fields:
+                logger.info("Migrated plaintext secrets to DPAPI-protected storage")
         except Exception:
-            logger.warning("Failed to migrate plaintext master_password to DPAPI; will retry on next save")
+            logger.warning("Failed to save config migration; will retry on next save")
 
     return cfg
 
