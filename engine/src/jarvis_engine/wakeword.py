@@ -72,6 +72,7 @@ class WakeWordDetector:
 
         chunk_size = 1280  # frames at 16kHz
 
+        stream = None
         try:
             stream = sd.InputStream(
                 samplerate=16000,
@@ -79,15 +80,10 @@ class WakeWordDetector:
                 dtype="float32",
                 blocksize=chunk_size,
             )
-        except Exception as exc:
-            logger.error("Failed to open audio stream: %s", exc)
-            return
+            stream.start()
+            logger.info("Wake word detection started (model=%s, threshold=%.2f)",
+                         self._model_name, self._threshold)
 
-        stream.start()
-        logger.info("Wake word detection started (model=%s, threshold=%.2f)",
-                     self._model_name, self._threshold)
-
-        try:
             while not self._stop_event.is_set():
                 if mic_lock is not None:
                     if not mic_lock.acquire(timeout=60):
@@ -132,8 +128,12 @@ class WakeWordDetector:
         except Exception as exc:
             logger.error("Wake word detection error: %s", exc)
         finally:
-            stream.stop()
-            stream.close()
+            if stream is not None:
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:
+                    pass
             logger.info("Wake word detection stopped.")
 
     def stop(self) -> None:

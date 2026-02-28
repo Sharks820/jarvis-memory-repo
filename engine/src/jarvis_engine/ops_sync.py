@@ -188,7 +188,8 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
     try:
         cal = Calendar.from_ical(text)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Calendar parsing failed, using fallback: %s", exc)
         return _parse_ics_fallback(text, target_date)
 
     if target_date is None:
@@ -198,7 +199,8 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
     try:
         expanded = recurring_ical_events.of(cal).between(start, end)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Recurring event expansion failed, using fallback: %s", exc)
         return _parse_ics_fallback(text, target_date)
 
     events: list[dict] = []
@@ -431,11 +433,17 @@ def _is_safe_calendar_url(url: str) -> bool:
                     or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
     except ValueError:
         pass
+    old_timeout = socket.getdefaulttimeout()
     try:
+        socket.setdefaulttimeout(10)
         resolved = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
+    except (socket.gaierror, OSError):
         return False
+    finally:
+        socket.setdefaulttimeout(old_timeout)
     for item in resolved:
+        if not item[4]:
+            continue
         raw_ip = item[4][0]
         try:
             ip = ip_address(raw_ip)

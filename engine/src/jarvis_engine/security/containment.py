@@ -272,13 +272,14 @@ class ContainmentEngine:
         Returns the new key as a hex string.  In production this would
         persist to secure storage and invalidate old keys.
         """
-        os.urandom(32).hex()  # key generated; persist to secure storage in production
+        new_key = os.urandom(32).hex()
         self._log_forensic(
             "credential_rotation",
             severity="CRITICAL",
             action="HMAC signing key rotated",
         )
         logger.warning("HMAC signing key rotated")
+        return new_key
 
     # ------------------------------------------------------------------
     # Internals
