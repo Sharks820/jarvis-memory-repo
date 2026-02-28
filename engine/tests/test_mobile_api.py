@@ -300,7 +300,8 @@ def test_ingest_rejects_invalid_content_length_header(mobile_server) -> None:
 
 def test_concurrent_ingest_writes_are_jsonl_safe(mobile_server) -> None:
     # Clear rate limiter state so 80 concurrent requests aren't rate-limited
-    mobile_server.server._api_rate_attempts.clear()
+    mobile_server.server._api_rate_normal.clear()
+    mobile_server.server._api_rate_expensive.clear()
 
     def worker(i: int) -> int:
         payload = {
@@ -646,7 +647,8 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
          _mock.patch("jarvis_engine.main._build_smart_context", return_value=([], [], [])), \
          _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
         # Clear any existing rate state for our IP
-        mobile_server.server._api_rate_attempts.clear()
+        mobile_server.server._api_rate_normal.clear()
+        mobile_server.server._api_rate_expensive.clear()
 
         payload = {"text": "hello jarvis"}
         raw = json.dumps(payload).encode("utf-8")
