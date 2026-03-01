@@ -223,7 +223,7 @@ def create_app(root: Path) -> CommandBus:
             embed_service = EmbeddingService()
             engine = MemoryEngine(db_path, embed_service=embed_service)
             classifier = BranchClassifier(embed_service)
-            kg = KnowledgeGraph(engine)
+            kg = KnowledgeGraph(engine, embed_service=embed_service)
             # Run temporal metadata migration (idempotent)
             try:
                 from jarvis_engine.learning.temporal import migrate_temporal_metadata

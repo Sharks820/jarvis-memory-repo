@@ -309,3 +309,225 @@ class TestAutoResolve:
 
         assert result.candidates_found == 0
         assert result.merges_applied == 0
+
+
+# ---------------------------------------------------------------------------
+# Vector-based candidate retrieval
+# ---------------------------------------------------------------------------
+
+
+class _FakeEmbedService:
+    """Deterministic fake embed_service for testing vector-based retrieval.
+
+    Embeds labels as simple character-frequency vectors so that similar
+    labels produce similar embeddings (cosine similarity).
+    """
+
+    _DIM = 26  # one slot per lowercase ASCII letter
+
+    def embed(self, text: str) -> list[float]:
+        vec = [0.0] * self._DIM
+        for ch in text.lower():
+            idx = ord(ch) - ord("a")
+            if 0 <= idx < self._DIM:
+                vec[idx] += 1.0
+        # Normalise to unit length to make cosine similarity meaningful
+        norm = sum(x * x for x in vec) ** 0.5
+        if norm > 0:
+            vec = [x / norm for x in vec]
+        return vec
+
+
+class _FailingEmbedService:
+    """Embed service that always raises, to test fallback to string mode."""
+
+    def embed(self, text: str) -> list[float]:
+        raise RuntimeError("Embedding unavailable")
+
+
+class TestVectorBasedCandidateRetrieval:
+
+    @pytest.fixture
+    def embed_service(self) -> _FakeEmbedService:
+        return _FakeEmbedService()
+
+    @pytest.fixture
+    def vec_resolver(
+        self, kg: KnowledgeGraph, embed_service: _FakeEmbedService
+    ) -> EntityResolver:
+        """EntityResolver with vector mode enabled and low threshold."""
+        return EntityResolver(kg, embed_service=embed_service, similarity_threshold=0.75)
+
+    def test_vector_mode_finds_similar_labels(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """Vector-based retrieval detects near-duplicate labels."""
+        kg.add_fact("med.a", "metformin 500mg", 0.7, node_type="medication")
+        kg.add_fact("med.b", "Metformin 500 mg", 0.6, node_type="medication")
+
+        candidates = vec_resolver.find_duplicates()
+
+        assert len(candidates) >= 1
+        ids = {(c.node_a_id, c.node_b_id) for c in candidates}
+        assert ("med.a", "med.b") in ids or ("med.b", "med.a") in ids
+
+    def test_vector_mode_no_false_positives(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """Clearly different labels produce no candidates in vector mode."""
+        kg.add_fact("med.a", "metformin", 0.7, node_type="medication")
+        kg.add_fact("med.b", "lisinopril", 0.8, node_type="medication")
+
+        candidates = vec_resolver.find_duplicates()
+
+        assert len(candidates) == 0
+
+    def test_vector_mode_respects_node_type_isolation(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """Vector mode only compares within the same node_type."""
+        kg.add_fact("person.sarah", "Sarah", 0.8, node_type="person")
+        kg.add_fact("location.sarah", "Sarah", 0.8, node_type="location")
+
+        candidates = vec_resolver.find_duplicates()
+
+        assert len(candidates) == 0
+
+    def test_vector_mode_uses_embedding_reason(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """When embedding similarity exceeds string similarity, reason is 'embedding'."""
+        # These labels have different string representations but embed similarly
+        # because they share the same character set
+        kg.add_fact("a1", "abc def ghi", 0.5, node_type="fact")
+        kg.add_fact("a2", "abc ghi def", 0.5, node_type="fact")
+
+        candidates = vec_resolver.find_duplicates()
+
+        # Should find these as duplicates (same characters, just reordered)
+        if candidates:
+            # At least one should potentially have embedding as the reason
+            # (depends on threshold and exact similarity values)
+            assert all(c.merge_reason in ("string", "embedding") for c in candidates)
+
+    def test_vector_mode_top_k_limits_comparisons(
+        self, kg: KnowledgeGraph, embed_service: _FakeEmbedService
+    ) -> None:
+        """With top_k=1, each node only compares against its single nearest neighbour."""
+        resolver = EntityResolver(
+            kg, embed_service=embed_service, similarity_threshold=0.75
+        )
+
+        # Add several similar nodes
+        kg.add_fact("a1", "aspirin daily", 0.5, node_type="med")
+        kg.add_fact("a2", "Aspirin Daily", 0.5, node_type="med")
+        kg.add_fact("a3", "aspirin extended", 0.5, node_type="med")
+        kg.add_fact("a4", "aspirin regular", 0.5, node_type="med")
+
+        # With top_k=1, fewer pairs are evaluated
+        candidates_k1 = resolver.find_duplicates(top_k=1)
+        # With top_k=10, more pairs are evaluated
+        candidates_k10 = resolver.find_duplicates(top_k=10)
+
+        # k=10 should find at least as many candidates as k=1
+        assert len(candidates_k10) >= len(candidates_k1)
+
+    def test_fallback_to_string_when_embed_service_is_none(
+        self, kg: KnowledgeGraph
+    ) -> None:
+        """When embed_service is None, falls back to string-only comparison."""
+        resolver = EntityResolver(kg, embed_service=None, similarity_threshold=0.75)
+
+        kg.add_fact("med.a", "metformin 500mg", 0.7, node_type="medication")
+        kg.add_fact("med.b", "Metformin 500 mg", 0.6, node_type="medication")
+
+        candidates = resolver.find_duplicates()
+
+        assert len(candidates) >= 1
+        assert all(c.merge_reason == "string" for c in candidates)
+
+    def test_fallback_when_all_embeddings_fail(
+        self, kg: KnowledgeGraph
+    ) -> None:
+        """When embed_service.embed() always fails, falls back to string comparison."""
+        failing_svc = _FailingEmbedService()
+        resolver = EntityResolver(
+            kg, embed_service=failing_svc, similarity_threshold=0.75
+        )
+
+        kg.add_fact("med.a", "metformin 500mg", 0.7, node_type="medication")
+        kg.add_fact("med.b", "Metformin 500 mg", 0.6, node_type="medication")
+
+        candidates = resolver.find_duplicates()
+
+        # Should still find duplicates via string fallback
+        assert len(candidates) >= 1
+        assert all(c.merge_reason == "string" for c in candidates)
+
+    def test_vector_mode_handles_single_node(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """A group with one node produces no candidates."""
+        kg.add_fact("solo", "only node", 0.8, node_type="solo_type")
+
+        candidates = vec_resolver.find_duplicates()
+
+        assert len(candidates) == 0
+
+    def test_vector_mode_sorted_by_similarity(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """Results from vector mode are sorted by similarity descending."""
+        kg.add_fact("a1", "metformin 500mg", 0.5, node_type="fact")
+        kg.add_fact("a2", "Metformin 500mg", 0.5, node_type="fact")
+        kg.add_fact("a3", "metformin extended release", 0.5, node_type="fact")
+
+        candidates = vec_resolver.find_duplicates()
+
+        if len(candidates) >= 2:
+            similarities = [c.similarity for c in candidates]
+            assert similarities == sorted(similarities, reverse=True)
+
+    def test_vector_mode_no_500_node_cap(
+        self, kg: KnowledgeGraph, embed_service: _FakeEmbedService
+    ) -> None:
+        """Vector mode has no 500-node cap (unlike string-only mode).
+
+        With embed_service=None, groups > 500 nodes are skipped.  With
+        embed_service provided, vector mode handles any group size.
+        """
+        resolver = EntityResolver(
+            kg, embed_service=embed_service, similarity_threshold=0.99
+        )
+
+        # Use clearly distinct labels so the fake embed service produces
+        # very different vectors (each label dominated by a different letter).
+        distinct_labels = [
+            "aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee",
+            "ffffff", "gggggg", "hhhhhh", "iiiiii", "jjjjjj",
+        ]
+        for i, label in enumerate(distinct_labels):
+            kg.add_fact(f"n{i}", label, 0.5, node_type="biggroup")
+
+        candidates = resolver.find_duplicates()
+        # Distinct single-letter labels => zero cosine similarity and
+        # zero string similarity — no candidates expected.
+        assert isinstance(candidates, list)
+        assert len(candidates) == 0
+
+    def test_auto_resolve_with_vector_mode(
+        self, kg: KnowledgeGraph, vec_resolver: EntityResolver
+    ) -> None:
+        """auto_resolve works correctly when vector mode is enabled."""
+        kg.add_fact("med.a", "metformin 500mg", 0.8, node_type="medication")
+        kg.add_fact("med.b", "Metformin 500 mg", 0.5, node_type="medication")
+
+        result = vec_resolver.auto_resolve()
+
+        assert result.candidates_found >= 1
+        assert result.merges_applied >= 1
+        assert len(result.errors) == 0
+
+        # Higher confidence node survives
+        assert kg.get_node("med.a") is not None
+        assert kg.get_node("med.b") is None

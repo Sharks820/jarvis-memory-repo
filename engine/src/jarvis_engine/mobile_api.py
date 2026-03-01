@@ -66,12 +66,98 @@ _API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
 _EXPENSIVE_PATHS = {"/command", "/self-heal"}
 
 
-def _ensure_tls_cert(security_dir: Path) -> tuple[str | None, str | None]:
+def _detect_lan_ips() -> list[str]:
+    """Detect local LAN IP addresses for SAN entries."""
+    ips: list[str] = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            lan_ip = s.getsockname()[0]
+            if lan_ip and lan_ip not in ips:
+                ips.append(lan_ip)
+    except OSError:
+        pass
+    # Always include loopback
+    if "127.0.0.1" not in ips:
+        ips.append("127.0.0.1")
+    return ips
+
+
+def _build_san_string(extra_ips: list[str] | None = None) -> str:
+    """Build a subjectAltName string with DNS and IP entries.
+
+    Includes localhost, 127.0.0.1, and any detected LAN IPs plus
+    any extra IPs passed explicitly.
+    """
+    entries: list[str] = ["DNS:localhost", "IP:127.0.0.1"]
+    seen_ips = {"127.0.0.1"}
+    lan_ips = _detect_lan_ips()
+    for ip in lan_ips:
+        if ip not in seen_ips:
+            entries.append(f"IP:{ip}")
+            seen_ips.add(ip)
+    if extra_ips:
+        for ip in extra_ips:
+            if ip not in seen_ips:
+                entries.append(f"IP:{ip}")
+                seen_ips.add(ip)
+    return ",".join(entries)
+
+
+def _get_cert_fingerprint(cert_path: str) -> str | None:
+    """Return the SHA-256 fingerprint of a PEM certificate file.
+
+    Returns the fingerprint as a colon-separated hex string (e.g.
+    ``AA:BB:CC:...``) or ``None`` on failure.
+    """
+    try:
+        result = subprocess.run(
+            ["openssl", "x509", "-in", cert_path, "-noout", "-fingerprint", "-sha256"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            # Output: "sha256 Fingerprint=AA:BB:CC:..."
+            for line in result.stdout.strip().splitlines():
+                if "=" in line:
+                    return line.split("=", 1)[1].strip()
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        pass
+    # Fallback: compute from PEM bytes directly
+    try:
+        import base64 as _b64
+        pem_text = Path(cert_path).read_text(encoding="utf-8")
+        # Extract DER bytes from PEM
+        der_lines: list[str] = []
+        in_cert = False
+        for line in pem_text.splitlines():
+            if "BEGIN CERTIFICATE" in line:
+                in_cert = True
+                continue
+            if "END CERTIFICATE" in line:
+                break
+            if in_cert:
+                der_lines.append(line.strip())
+        if der_lines:
+            der_bytes = _b64.b64decode("".join(der_lines))
+            digest = hashlib.sha256(der_bytes).hexdigest().upper()
+            return ":".join(digest[i:i + 2] for i in range(0, len(digest), 2))
+    except Exception:
+        pass
+    return None
+
+
+def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) -> tuple[str | None, str | None]:
     """Generate a self-signed TLS certificate + key if they don't exist.
 
     Uses ``openssl`` via subprocess.  Returns ``(cert_path, key_path)`` on
     success or ``(None, None)`` when ``openssl`` is unavailable or the
     generation fails.  Existing certs are reused without regeneration.
+
+    The certificate includes Subject Alternative Name (SAN) entries for
+    localhost, 127.0.0.1, and any detected LAN IP addresses.  This fixes
+    hostname verification failures when Android connects by IP.
 
     The cert and key files are stored inside *security_dir* which is
     expected to be gitignored (e.g. ``.planning/security/``).
@@ -83,8 +169,27 @@ def _ensure_tls_cert(security_dir: Path) -> tuple[str | None, str | None]:
     if cert_path.exists() and key_path.exists():
         return str(cert_path), str(key_path)
 
+    # Build SAN extension config
+    san_string = _build_san_string(extra_ips)
+    ext_file = security_dir / "tls_ext.cnf"
+    ext_content = (
+        "[req]\n"
+        "distinguished_name = req_distinguished_name\n"
+        "x509_extensions = v3_req\n"
+        "prompt = no\n"
+        "\n"
+        "[req_distinguished_name]\n"
+        "CN = jarvis-local\n"
+        "\n"
+        "[v3_req]\n"
+        "keyUsage = digitalSignature, keyEncipherment\n"
+        "extendedKeyUsage = serverAuth\n"
+        f"subjectAltName = {san_string}\n"
+    )
+
     # Attempt to generate using openssl
     try:
+        ext_file.write_text(ext_content, encoding="utf-8")
         subprocess.run(
             [
                 "openssl", "req",
@@ -94,7 +199,8 @@ def _ensure_tls_cert(security_dir: Path) -> tuple[str | None, str | None]:
                 "-out", str(cert_path),
                 "-days", "365",
                 "-nodes",
-                "-subj", "/CN=jarvis-local",
+                "-config", str(ext_file),
+                "-extensions", "v3_req",
             ],
             check=True,
             capture_output=True,
@@ -103,16 +209,23 @@ def _ensure_tls_cert(security_dir: Path) -> tuple[str | None, str | None]:
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("TLS cert generation failed (openssl not available?): %s", exc)
         # Clean up partial files
-        for p in (cert_path, key_path):
+        for p in (cert_path, key_path, ext_file):
             try:
                 if p.exists():
                     p.unlink()
             except OSError:
                 pass
         return None, None
+    finally:
+        # Clean up the temporary extension file
+        try:
+            if ext_file.exists():
+                ext_file.unlink()
+        except OSError:
+            pass
 
     if cert_path.exists() and key_path.exists():
-        logger.info("Generated self-signed TLS certificate: %s", cert_path)
+        logger.info("Generated self-signed TLS certificate with SAN=%s: %s", san_string, cert_path)
         return str(cert_path), str(key_path)
 
     return None, None
@@ -938,7 +1051,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         # Rate limit authenticated GET endpoints
-        if path not in ("/", "/quick", "/health", "/favicon.ico"):
+        if path not in ("/", "/quick", "/health", "/cert-fingerprint", "/favicon.ico"):
             if not self._check_rate_limit(path):
                 return
         if path == "/":
@@ -962,6 +1075,25 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     logger.debug("self-test history parse failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
+            return
+        if path == "/cert-fingerprint":
+            # Public endpoint (no auth) — returns TLS cert SHA-256 fingerprint
+            # for trust-on-first-use (TOFU) cert pinning
+            server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+            security_dir = server_obj.repo_root / ".planning" / "security"
+            cert_path_str = str(security_dir / "tls_cert.pem")
+            if not (security_dir / "tls_cert.pem").exists():
+                self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "No TLS certificate found."})
+                return
+            fingerprint = _get_cert_fingerprint(cert_path_str)
+            if fingerprint is None:
+                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to compute fingerprint."})
+                return
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "fingerprint": fingerprint,
+                "algorithm": "sha256",
+            })
             return
         if path == "/settings":
             if not self._validate_auth(b""):
@@ -1652,7 +1784,7 @@ def run_mobile_server(
     logger.info("tls=%s", "enabled" if tls_active else "disabled")
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         logger.warning("mobile_api_non_loopback_without_tls")
-    logger.info("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     # Pre-warm the CommandBus so the first user request doesn't pay cold start cost
     def _prewarm() -> None:
         try:

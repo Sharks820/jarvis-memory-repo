@@ -132,6 +132,15 @@ data class ProactiveAlertDto(
     @SerializedName("group_key") val groupKey: String = "",
 )
 
+// ── TLS Certificate ─────────────────────────────────────────────────
+
+/** Response from GET /cert-fingerprint for TOFU cert pinning. */
+data class CertFingerprintResponse(
+    val ok: Boolean = false,
+    val fingerprint: String = "",
+    val algorithm: String = "sha256",
+)
+
 // ── Scheduling / Conflict Detection ─────────────────────────────────
 
 /** Response model for calendar conflict checking (future desktop endpoint). */

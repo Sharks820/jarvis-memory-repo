@@ -1,6 +1,7 @@
 package com.jarvis.assistant
 
 import androidx.lifecycle.ViewModel
+import com.jarvis.assistant.security.CryptoHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,15 @@ class MainViewModel @Inject constructor() : ViewModel() {
     private val _authError = MutableStateFlow<String?>(null)
     val authError: StateFlow<String?> = _authError
 
+    private val _showPasswordPrompt = MutableStateFlow(false)
+    val showPasswordPrompt: StateFlow<Boolean> = _showPasswordPrompt
+
+    private val _passwordInput = MutableStateFlow("")
+    val passwordInput: StateFlow<String> = _passwordInput
+
+    private val _noAuthWarning = MutableStateFlow<String?>(null)
+    val noAuthWarning: StateFlow<String?> = _noAuthWarning
+
     fun setAuthenticated(value: Boolean) {
         _isAuthenticated.value = value
     }
@@ -34,9 +44,42 @@ class MainViewModel @Inject constructor() : ViewModel() {
     fun onAuthSuccess() {
         _isAuthenticated.value = true
         _authError.value = null
+        _noAuthWarning.value = null
+        _showPasswordPrompt.value = false
     }
 
     fun onAuthError(error: String) {
         _authError.value = error
+    }
+
+    fun showPasswordPrompt(show: Boolean) {
+        _showPasswordPrompt.value = show
+    }
+
+    fun onPasswordChanged(password: String) {
+        _passwordInput.value = password
+    }
+
+    fun showNoAuthWarning(warning: String) {
+        _noAuthWarning.value = warning
+    }
+
+    /**
+     * Verify the entered master password against the stored value.
+     * If correct, authenticate the user.
+     */
+    fun verifyMasterPassword(crypto: CryptoHelper) {
+        val entered = _passwordInput.value
+        if (entered.isBlank()) {
+            _authError.value = "Password cannot be empty"
+            return
+        }
+        val stored = crypto.getMasterPassword()
+        if (entered == stored) {
+            onAuthSuccess()
+        } else {
+            _authError.value = "Incorrect master password"
+            _passwordInput.value = ""
+        }
     }
 }

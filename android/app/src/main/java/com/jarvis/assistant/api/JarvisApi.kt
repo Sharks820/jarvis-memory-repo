@@ -1,6 +1,7 @@
 package com.jarvis.assistant.api
 
 import com.jarvis.assistant.api.models.BootstrapResponse
+import com.jarvis.assistant.api.models.CertFingerprintResponse
 import com.jarvis.assistant.api.models.CommandRequest
 import com.jarvis.assistant.api.models.CommandResponse
 import com.jarvis.assistant.api.models.DashboardResponse
@@ -17,6 +18,10 @@ interface JarvisApi {
 
     @GET("/health")
     suspend fun health(): HealthResponse
+
+    /** Get TLS certificate SHA-256 fingerprint for TOFU cert pinning. */
+    @GET("/cert-fingerprint")
+    suspend fun getCertFingerprint(): CertFingerprintResponse
 
     @POST("/bootstrap")
     suspend fun bootstrap(

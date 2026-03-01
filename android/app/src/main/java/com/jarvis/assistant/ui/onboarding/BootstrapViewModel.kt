@@ -15,11 +15,33 @@ class BootstrapViewModel @Inject constructor(
     private val crypto: CryptoHelper,
 ) : ViewModel() {
 
-    val desktopUrl = MutableStateFlow("http://192.168.1.100:8787")
+    val desktopUrl = MutableStateFlow("https://192.168.1.100:8787")
     val masterPassword = MutableStateFlow("")
     val isConnecting = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
     val testResult = MutableStateFlow<Boolean?>(null)
+    val httpWarning = MutableStateFlow<String?>(null)
+
+    /**
+     * Returns true if the given URL uses plain http:// on a non-localhost address.
+     * Localhost/127.0.0.1 are exempt because traffic never leaves the device.
+     */
+    private fun isInsecureRemoteUrl(url: String): Boolean {
+        val trimmed = url.trim().lowercase()
+        if (!trimmed.startsWith("http://")) return false
+        // Allow plain HTTP for localhost and 127.0.0.1 only
+        val localhostPatterns = listOf("http://localhost", "http://127.0.0.1")
+        return localhostPatterns.none { trimmed.startsWith(it) }
+    }
+
+    fun onUrlChanged(url: String) {
+        desktopUrl.value = url
+        httpWarning.value = if (isInsecureRemoteUrl(url)) {
+            "Warning: Using plain HTTP exposes credentials on the network. Use https:// for remote connections."
+        } else {
+            null
+        }
+    }
 
     fun testConnection() {
         error.value = null

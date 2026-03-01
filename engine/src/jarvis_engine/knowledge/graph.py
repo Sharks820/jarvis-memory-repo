@@ -7,32 +7,51 @@ the computation engine.
 
 Thread safety: all writes go through MemoryEngine._write_lock.  Reads use
 _db_lock to prevent cursor interleaving on the shared connection.
+
+FTS5 index (fts_kg_nodes) accelerates keyword search in query_relevant_facts.
+sqlite-vec index (vec_kg_nodes) enables semantic similarity search when an
+EmbeddingService is available.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
+import struct
 import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import networkx as nx
 
+    from jarvis_engine.memory.embeddings import EmbeddingService
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+_EMBEDDING_DIM = 768
+
+# FTS5 special characters that must be escaped in user queries.
+_FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
+_FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
 
 
 class KnowledgeGraph:
     """SQLite-backed knowledge graph with NetworkX bridge."""
 
-    def __init__(self, engine: "MemoryEngine") -> None:
+    def __init__(
+        self,
+        engine: "MemoryEngine",
+        embed_service: "EmbeddingService | None" = None,
+    ) -> None:
         self._engine = engine
         self._db = engine._db
         self._write_lock = engine._write_lock
         self._db_lock = engine._db_lock
+        self._embed_service = embed_service
+        self._vec_available = getattr(engine, "_vec_available", False)
         self._mutation_counter = 0
         self._cached_graph: "nx.DiGraph | None" = None
         self._cached_gen = -1
@@ -65,6 +84,14 @@ class KnowledgeGraph:
     # ------------------------------------------------------------------
     # Schema
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sanitize_fts_query(query: str) -> str:
+        """Sanitize a user query for FTS5 MATCH to prevent injection."""
+        sanitized = _FTS5_SPECIAL_RE.sub(" ", query)
+        tokens = sanitized.split()
+        tokens = [t for t in tokens if t.upper() not in _FTS5_KEYWORDS]
+        return " ".join(tokens).strip()
 
     def _ensure_schema(self) -> None:
         """Create kg tables if they don't exist (idempotent)."""
@@ -124,7 +151,23 @@ class KnowledgeGraph:
                 ON kg_contradictions(status);
             CREATE INDEX IF NOT EXISTS idx_kg_contradictions_node
                 ON kg_contradictions(node_id);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS fts_kg_nodes
+                USING fts5(node_id, label);
         """)
+
+        # vec0 virtual table must be created separately (not in executescript)
+        if self._vec_available:
+            try:
+                self._db.execute(
+                    f"""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_kg_nodes
+                        USING vec0(node_id TEXT PRIMARY KEY, embedding float[{_EMBEDDING_DIM}])
+                    """
+                )
+            except Exception as exc:
+                self._vec_available = False
+                logger.warning("Failed to create vec_kg_nodes table: %s", exc)
 
         # Bump schema version to 2
         self._db.execute(
@@ -202,6 +245,9 @@ class KnowledgeGraph:
         - If node exists AND locked AND label matches: no-op, return True.
         - If node exists AND unlocked: update with MAX(confidence), append source.
         - If node does not exist: INSERT new node.
+
+        Maintains FTS5 index (fts_kg_nodes) and vec index (vec_kg_nodes) on
+        every insert/update.
         """
         with self._write_lock:
             existing = self._db.execute(
@@ -250,6 +296,14 @@ class KnowledgeGraph:
                         node_id,
                     ),
                 )
+                # Update FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
+                self._db.execute(
+                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+                )
+                self._db.execute(
+                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                    (node_id, label),
+                )
             else:
                 # New node
                 sources = [source_record] if source_record else []
@@ -259,6 +313,28 @@ class KnowledgeGraph:
                        VALUES (?, ?, ?, ?, ?)""",
                     (node_id, label, node_type, confidence, json.dumps(sources)),
                 )
+                # Insert into FTS5 index
+                self._db.execute(
+                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                    (node_id, label),
+                )
+
+            # Insert/update vec embedding if embed_service is available
+            if self._embed_service is not None and self._vec_available:
+                try:
+                    embedding = self._embed_service.embed(label, prefix="search_document")
+                    if len(embedding) == _EMBEDDING_DIM:
+                        blob = struct.pack(f"{len(embedding)}f", *embedding)
+                        # DELETE + INSERT for idempotent upsert (vec0 has no REPLACE)
+                        self._db.execute(
+                            "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                        )
+                        self._db.execute(
+                            "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                            (node_id, blob),
+                        )
+                except Exception as exc:
+                    logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
 
             self._db.commit()
             self._mutation_counter += 1
@@ -404,15 +480,51 @@ class KnowledgeGraph:
     ) -> list[dict]:
         """Find KG facts whose labels match any of the given keywords.
 
-        Uses SQL LIKE matching against node labels. Returns facts sorted by
-        confidence descending, limited to ``limit`` results.
+        Uses FTS5 MATCH for fast full-text search on fts_kg_nodes.  Falls back
+        to SQL LIKE matching if FTS5 returns no results (handles partial matches
+        that FTS5 misses, e.g. substrings within tokens).
+
+        Returns facts sorted by confidence descending, limited to ``limit`` results.
         """
         if not keywords:
             return []
-        # Build OR clause: label LIKE '%keyword%' for each keyword
+
+        # --- FTS5 path ---
+        fts_query_parts = []
+        for kw in keywords[:20]:
+            sanitized = self._sanitize_fts_query(kw)
+            if sanitized:
+                fts_query_parts.append(sanitized)
+
+        fts_results: list[dict] = []
+        if fts_query_parts:
+            fts_query = " OR ".join(fts_query_parts)
+            try:
+                with self._db_lock:
+                    cur = self._db.execute(
+                        """
+                        SELECT n.node_id, n.label, n.node_type, n.confidence,
+                               n.locked, n.updated_at
+                        FROM fts_kg_nodes f
+                        JOIN kg_nodes n ON n.node_id = f.node_id
+                        WHERE fts_kg_nodes MATCH ?
+                          AND n.confidence >= ?
+                        ORDER BY n.confidence DESC
+                        LIMIT ?
+                        """,
+                        (fts_query, min_confidence, limit),
+                    )
+                    fts_results = [dict(row) for row in cur.fetchall()]
+            except Exception as exc:
+                logger.debug("FTS5 KG search failed, falling back to LIKE: %s", exc)
+
+        if fts_results:
+            return fts_results
+
+        # --- LIKE fallback (handles partial/substring matches FTS5 misses) ---
         clauses = []
         params: list[object] = []
-        for kw in keywords[:20]:  # cap to prevent huge queries
+        for kw in keywords[:20]:
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("label LIKE ? ESCAPE '\\'")
             params.append(f"%{sanitized}%")
@@ -428,10 +540,93 @@ class KnowledgeGraph:
             cur = self._db.execute(sql, params)
             return [dict(row) for row in cur.fetchall()]
 
+    def query_relevant_facts_semantic(
+        self,
+        query: str,
+        embed_service: "EmbeddingService | None" = None,
+        *,
+        limit: int = 10,
+        min_confidence: float = 0.4,
+    ) -> list[dict]:
+        """Find KG facts by semantic similarity using sqlite-vec KNN search.
+
+        Embeds the query using the provided embed_service (or the instance's
+        default), performs KNN search on vec_kg_nodes, and returns facts
+        sorted by similarity.  Filters out retracted facts (confidence=0).
+
+        Returns empty list if sqlite-vec or embed_service is unavailable.
+        """
+        svc = embed_service or self._embed_service
+        if svc is None or not self._vec_available:
+            return []
+
+        try:
+            query_embedding = svc.embed(query, prefix="search_query")
+            if len(query_embedding) != _EMBEDDING_DIM:
+                logger.warning(
+                    "KG semantic search dimension mismatch: got %d, expected %d",
+                    len(query_embedding), _EMBEDDING_DIM,
+                )
+                return []
+
+            blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
+            # Oversample to allow post-filtering of retracted facts
+            oversample = min(limit * 3, 200)
+
+            with self._db_lock:
+                cur = self._db.execute(
+                    """
+                    SELECT node_id, distance
+                    FROM vec_kg_nodes
+                    WHERE embedding MATCH ?
+                    ORDER BY distance
+                    LIMIT ?
+                    """,
+                    (blob, oversample),
+                )
+                knn_results = cur.fetchall()
+
+                if not knn_results:
+                    return []
+
+                candidate_ids = [r[0] for r in knn_results]
+                dist_map = {r[0]: r[1] for r in knn_results}
+
+                # Filter out retracted facts and apply min_confidence
+                placeholders = ",".join("?" for _ in candidate_ids)
+                cur2 = self._db.execute(
+                    f"""
+                    SELECT node_id, label, node_type, confidence, locked, updated_at
+                    FROM kg_nodes
+                    WHERE node_id IN ({placeholders})
+                      AND confidence >= ?
+                    """,
+                    candidate_ids + [min_confidence],
+                )
+                rows = cur2.fetchall()
+
+            # Sort by distance (closest first), preserving KNN order
+            result_map = {dict(row)["node_id"]: dict(row) for row in rows}
+            results = []
+            for nid in candidate_ids:
+                if nid in result_map:
+                    fact = result_map[nid]
+                    fact["distance"] = dist_map[nid]
+                    results.append(fact)
+                    if len(results) >= limit:
+                        break
+
+            return results
+
+        except Exception as exc:
+            logger.warning("KG semantic search failed: %s", exc)
+            return []
+
     def retract_facts(self, keywords: list[str]) -> int:
         """Soft-retract KG facts matching keywords by setting confidence to 0.
 
         Does not retract locked facts. Returns the number of facts retracted.
+        Also removes retracted nodes from FTS5 and vec indexes.
         """
         if not keywords:
             return 0
@@ -443,15 +638,47 @@ class KnowledgeGraph:
             like_params.append(f"%{sanitized}%")
         from datetime import datetime, UTC
         now = datetime.now(UTC).isoformat()
-        sql = (
-            "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
-            "WHERE (" + " OR ".join(clauses) + ") AND confidence > 0 AND locked = 0"
-        )
-        all_params: list[object] = [now] + like_params
+
+        where_clause = " OR ".join(clauses)
+
         with self._write_lock:
-            cur = self._db.execute(sql, all_params)
-            self._db.commit()
+            # Collect node_ids that will be retracted (for FTS5/vec cleanup)
+            select_sql = (
+                "SELECT node_id FROM kg_nodes "
+                "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
+            )
+            cur = self._db.execute(select_sql, like_params)
+            retracted_ids = [row[0] for row in cur.fetchall()]
+
+            if not retracted_ids:
+                return 0
+
+            # Update confidence to 0
+            update_sql = (
+                "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
+                "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
+            )
+            all_params: list[object] = [now] + like_params
+            cur = self._db.execute(update_sql, all_params)
             retracted = cur.rowcount
+
+            # Remove retracted nodes from FTS5 index
+            for nid in retracted_ids:
+                self._db.execute(
+                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (nid,)
+                )
+
+            # Remove retracted nodes from vec index
+            if self._vec_available:
+                for nid in retracted_ids:
+                    try:
+                        self._db.execute(
+                            "DELETE FROM vec_kg_nodes WHERE node_id = ?", (nid,)
+                        )
+                    except Exception:
+                        pass
+
+            self._db.commit()
             if retracted > 0:
                 self._mutation_counter += 1
             return retracted

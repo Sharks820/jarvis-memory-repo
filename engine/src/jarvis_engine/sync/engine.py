@@ -56,6 +56,10 @@ class SyncEngine:
     def apply_incoming(self, changes: dict[str, Any], source_device_id: str) -> dict[str, Any]:
         """Apply remote changes within a single transaction.
 
+        Only successfully applied operations are counted.  Cursors are only
+        advanced to the max ``__version`` among *successfully* applied ops
+        per table, so unrecognized operations are never skipped permanently.
+
         Returns ``{"applied": N, "conflicts_resolved": N, "errors": []}``.
         """
         applied = 0
@@ -66,6 +70,10 @@ class SyncEngine:
         incoming_cursors = changes.get("cursors", {})
 
         desktop_is_local = self._device_id == "desktop"
+
+        # Track the max successfully applied __version per table so cursors
+        # are only advanced for ops that actually succeeded.
+        success_max_version: dict[str, int] = {}
 
         with self._write_lock:
             try:
@@ -98,24 +106,55 @@ class SyncEngine:
                             resolved = self._resolve_conflict(
                                 local_conflict, entry, desktop_is_local,
                             )
-                            self._apply_single_change(table_name, pk, resolved)
-                            conflicts_resolved += 1
+                            ok = self._apply_single_change(table_name, pk, resolved)
+                            if ok:
+                                conflicts_resolved += 1
                         else:
-                            self._apply_single_change(table_name, pk, entry)
+                            ok = self._apply_single_change(table_name, pk, entry)
 
-                        applied += 1
+                        if ok:
+                            applied += 1
+                            # Track max version of successfully applied ops
+                            entry_version = entry.get("__version")
+                            if entry_version is not None:
+                                cur_max = success_max_version.get(table_name)
+                                if cur_max is None or entry_version > cur_max:
+                                    success_max_version[table_name] = entry_version
+                        else:
+                            op = entry.get("operation", "<missing>")
+                            errors.append(
+                                f"Skipped unknown operation {op!r} for "
+                                f"{table_name} row {row_id}"
+                            )
 
-                # Update cursors for source device
+                # Update cursors for source device — only advance to the max
+                # version of successfully applied ops.  If an incoming cursor
+                # is provided but no ops for that table succeeded, fall back
+                # to the incoming cursor value (all ops were valid table-level
+                # entries that passed the _TRACKED_TABLES check).
                 for table_name, version in incoming_cursors.items():
-                    if table_name in _TRACKED_TABLES:
-                        # Use a no-op lock since we already hold _write_lock
-                        self._db.execute(
-                            "INSERT INTO _sync_cursor (device_id, table_name, last_version, last_sync_ts) "
-                            "VALUES (?, ?, ?, datetime('now')) "
-                            "ON CONFLICT(device_id, table_name) DO UPDATE SET "
-                            "last_version = excluded.last_version, last_sync_ts = excluded.last_sync_ts",
-                            (source_device_id, table_name, version),
-                        )
+                    if table_name not in _TRACKED_TABLES:
+                        continue
+                    # Use success_max_version if we have it, otherwise use the
+                    # incoming cursor only when ALL ops for that table succeeded
+                    # (i.e. the table had no entries or had no failures).
+                    effective_version = success_max_version.get(table_name)
+                    if effective_version is None:
+                        # No ops applied for this table — check if the table
+                        # had entries at all; if not, use the incoming cursor.
+                        if table_name not in incoming_changes:
+                            effective_version = version
+                        else:
+                            # Table had entries but none succeeded — do NOT
+                            # advance the cursor.
+                            continue
+                    self._db.execute(
+                        "INSERT INTO _sync_cursor (device_id, table_name, last_version, last_sync_ts) "
+                        "VALUES (?, ?, ?, datetime('now')) "
+                        "ON CONFLICT(device_id, table_name) DO UPDATE SET "
+                        "last_version = excluded.last_version, last_sync_ts = excluded.last_sync_ts",
+                        (source_device_id, table_name, effective_version),
+                    )
 
                 self._db.commit()
             except Exception as exc:
@@ -206,8 +245,12 @@ class SyncEngine:
 
     def _apply_single_change(
         self, table_name: str, pk: str, entry: dict[str, Any],
-    ) -> None:
-        """Execute INSERT/UPDATE/DELETE based on *entry* operation."""
+    ) -> bool:
+        """Execute INSERT/UPDATE/DELETE based on *entry* operation.
+
+        Returns True if the operation was recognized and applied, False if the
+        operation type is unknown.
+        """
         operation = entry.get("operation", "").upper()
         row_id = entry.get("row_id", "")
         new_values = entry.get("new_values", {})
@@ -227,11 +270,11 @@ class SyncEngine:
 
         if operation == "INSERT":
             if not new_values:
-                return
+                return True
             # Filter to only allowed columns
             safe_values = {k: v for k, v in new_values.items() if k in allowed_fields}
             if not safe_values:
-                return
+                return True
             cols = [pk] + [k for k in safe_values if k != pk]
             placeholders = ", ".join(["?"] * len(cols))
             col_names = ", ".join(cols)
@@ -244,7 +287,7 @@ class SyncEngine:
 
         elif operation == "UPDATE":
             if not fields_changed or not new_values:
-                return
+                return True
             set_parts = []
             values = []
             for field in fields_changed:
@@ -254,7 +297,7 @@ class SyncEngine:
                     set_parts.append(field + " = ?")
                     values.append(new_values[field])
             if not set_parts:
-                return
+                return True
             values.append(row_id)
             self._db.execute(
                 "UPDATE " + table_name + " SET "
@@ -268,6 +311,15 @@ class SyncEngine:
                 "DELETE FROM " + table_name + " WHERE " + pk + " = ?",
                 (row_id,),
             )
+
+        else:
+            logger.warning(
+                "Unknown sync operation %r for table %s row %s — skipping",
+                operation, table_name, row_id,
+            )
+            return False
+
+        return True
 
     def sync_status(self) -> dict[str, Any]:
         """Return cursors for all devices/tables and total changelog size."""

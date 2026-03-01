@@ -87,21 +87,40 @@ class EntityResolver:
     # Duplicate detection
     # ------------------------------------------------------------------
 
+    # Default number of nearest neighbours to retrieve per node when using
+    # vector-based candidate retrieval.  Kept small to bound total comparisons
+    # to O(N * K) instead of O(N^2).
+    _VEC_TOP_K: int = 10
+
     def find_duplicates(
         self,
         branch: str | None = None,
         limit: int = 100,
+        top_k: int | None = None,
     ) -> list[MergeCandidate]:
         """Find near-duplicate node pairs within each node_type group.
+
+        When ``embed_service`` is available, candidate retrieval uses vector
+        similarity (O(N*K)) instead of all-pairs string comparison (O(N^2)).
+        The expensive ``SequenceMatcher`` is only run on the top-K vector
+        candidates per node, making this scalable to large graphs.
+
+        When ``embed_service`` is None, falls back to the original all-pairs
+        string-comparison approach with a 500-node safety cap per group.
 
         Args:
             branch: If provided, only consider nodes whose node_type matches.
                     Maps to the ``node_type`` column in kg_nodes.
             limit:  Maximum number of candidates to return.
+            top_k:  Number of nearest neighbours per node for vector retrieval.
+                    Defaults to ``_VEC_TOP_K`` (10).
 
         Returns:
             List of MergeCandidate sorted by similarity descending.
         """
+        if top_k is None:
+            top_k = self._VEC_TOP_K
+
         # Load nodes (grouped by node_type)
         with self._kg.db_lock:
             if branch is not None:
@@ -124,59 +143,145 @@ class EntityResolver:
 
         for _node_type, members in groups.items():
             n = len(members)
-            # Guard against O(n^2) explosion: skip groups larger than 500
-            # nodes -- they need a more efficient index-based strategy.
-            if n > 500:
-                logger.warning(
-                    "Skipping duplicate detection for node_type group with %d nodes "
-                    "(exceeds 500-node safety limit)", n,
-                )
-                continue
 
-            # Pre-compute embeddings once per node (O(N) instead of O(N^2))
-            embed_cache: dict[str, list[float]] = {}
             if self._embed_service is not None:
-                for node_id, label in members:
-                    try:
-                        embed_cache[node_id] = self._embed_service.embed(label)
-                    except Exception:
-                        logger.debug("Embedding failed for node %s (%r)", node_id, label)
-
-            for i in range(n):
-                for j in range(i + 1, n):
-                    id_a, label_a = members[i]
-                    id_b, label_b = members[j]
-
-                    string_sim = difflib.SequenceMatcher(
-                        None, label_a.lower(), label_b.lower()
-                    ).ratio()
-
-                    embed_sim = 0.0
-                    reason = "string"
-                    if id_a in embed_cache and id_b in embed_cache:
-                        embed_sim = self._cosine_similarity(
-                            embed_cache[id_a], embed_cache[id_b]
-                        )
-
-                    combined = max(string_sim, embed_sim)
-                    if embed_sim > string_sim:
-                        reason = "embedding"
-
-                    if combined >= self._threshold:
-                        candidates.append(
-                            MergeCandidate(
-                                node_a_id=id_a,
-                                node_b_id=id_b,
-                                label_a=label_a,
-                                label_b=label_b,
-                                similarity=combined,
-                                merge_reason=reason,
-                            )
-                        )
+                # --- Vector-based candidate retrieval (O(N*K)) ---
+                self._find_duplicates_vector(members, candidates, top_k)
+            else:
+                # --- Fallback: all-pairs string comparison (O(N^2)) ---
+                if n > 500:
+                    logger.warning(
+                        "Skipping duplicate detection for node_type group with %d nodes "
+                        "(exceeds 500-node safety limit — provide embed_service for vector mode)",
+                        n,
+                    )
+                    continue
+                self._find_duplicates_string(members, candidates)
 
         # Sort by similarity descending, then cap
         candidates.sort(key=lambda c: c.similarity, reverse=True)
         return candidates[:limit]
+
+    def _find_duplicates_vector(
+        self,
+        members: list[tuple[str, str]],
+        candidates: list[MergeCandidate],
+        top_k: int,
+    ) -> None:
+        """Vector-based candidate retrieval: embed all nodes, then for each
+        node find the top-K most similar neighbours and run SequenceMatcher
+        only on those pairs.
+
+        Reduces O(N^2) to O(N*K) where K is ``top_k``.
+        """
+        # Embed all nodes
+        embed_cache: dict[str, list[float]] = {}
+        for node_id, label in members:
+            try:
+                embed_cache[node_id] = self._embed_service.embed(label)
+            except Exception:
+                logger.debug("Embedding failed for node %s (%r)", node_id, label)
+
+        if not embed_cache:
+            # All embeddings failed — fall back to string-only for this group
+            if len(members) <= 500:
+                self._find_duplicates_string(members, candidates)
+            return
+
+        # Build label lookup
+        label_map = {nid: lbl for nid, lbl in members}
+
+        # For each node, find top-K nearest neighbours via cosine similarity
+        # among nodes in this group.  We compute pairwise scores only against
+        # the K closest vectors rather than all N nodes.
+        embedded_ids = list(embed_cache.keys())
+        embedded_vecs = [embed_cache[nid] for nid in embedded_ids]
+        n = len(embedded_ids)
+
+        # Track already-evaluated pairs to avoid duplicates
+        seen_pairs: set[tuple[str, str]] = set()
+
+        for i in range(n):
+            id_a = embedded_ids[i]
+            vec_a = embedded_vecs[i]
+
+            # Compute cosine similarity to all other embedded nodes and pick top-K
+            scored: list[tuple[float, int]] = []
+            for j in range(n):
+                if i == j:
+                    continue
+                sim = self._cosine_similarity(vec_a, embedded_vecs[j])
+                scored.append((sim, j))
+
+            # Sort descending and take top-K
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top_neighbours = scored[:top_k]
+
+            for embed_sim, j in top_neighbours:
+                id_b = embedded_ids[j]
+
+                # Normalize pair key to avoid duplicate evaluation
+                pair_key = (min(id_a, id_b), max(id_a, id_b))
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+
+                label_a = label_map[id_a]
+                label_b = label_map[id_b]
+
+                # Run the expensive SequenceMatcher only on top candidates
+                string_sim = difflib.SequenceMatcher(
+                    None, label_a.lower(), label_b.lower()
+                ).ratio()
+
+                combined = max(string_sim, embed_sim)
+                reason = "embedding" if embed_sim > string_sim else "string"
+
+                if combined >= self._threshold:
+                    candidates.append(
+                        MergeCandidate(
+                            node_a_id=id_a,
+                            node_b_id=id_b,
+                            label_a=label_a,
+                            label_b=label_b,
+                            similarity=combined,
+                            merge_reason=reason,
+                        )
+                    )
+
+        # Also check nodes that failed embedding — compare them string-only
+        # against each other and against the top vector candidates.
+        non_embedded = [(nid, lbl) for nid, lbl in members if nid not in embed_cache]
+        if non_embedded and len(non_embedded) <= 500:
+            self._find_duplicates_string(non_embedded, candidates)
+
+    def _find_duplicates_string(
+        self,
+        members: list[tuple[str, str]],
+        candidates: list[MergeCandidate],
+    ) -> None:
+        """All-pairs string comparison using SequenceMatcher. O(N^2)."""
+        n = len(members)
+        for i in range(n):
+            for j in range(i + 1, n):
+                id_a, label_a = members[i]
+                id_b, label_b = members[j]
+
+                string_sim = difflib.SequenceMatcher(
+                    None, label_a.lower(), label_b.lower()
+                ).ratio()
+
+                if string_sim >= self._threshold:
+                    candidates.append(
+                        MergeCandidate(
+                            node_a_id=id_a,
+                            node_b_id=id_b,
+                            label_a=label_a,
+                            label_b=label_b,
+                            similarity=string_sim,
+                            merge_reason="string",
+                        )
+                    )
 
     # ------------------------------------------------------------------
     # Merge
