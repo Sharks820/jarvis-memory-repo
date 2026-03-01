@@ -152,7 +152,7 @@ class ProactiveAlertReceiver @Inject constructor(
             .setContentIntent(tapIntent)
             .setWhen(alert.receivedAt)
             .addExtras(android.os.Bundle().apply {
-                putString("jarvis_alert_type", alert.groupKey)
+                putString("jarvis_alert_type", alert.type)
             })
 
         if (alert.priority == NotificationPriority.URGENT) {

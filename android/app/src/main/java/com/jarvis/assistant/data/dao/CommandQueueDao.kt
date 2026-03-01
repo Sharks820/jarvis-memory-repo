@@ -24,6 +24,14 @@ interface CommandQueueDao {
     @Query("UPDATE command_queue SET retry_count = retry_count + 1 WHERE id = :id")
     suspend fun incrementRetry(id: Long)
 
+    /** Atomically claim a pending command for sending. Returns rows affected (0 or 1). */
+    @Query("UPDATE command_queue SET status = 'sending' WHERE id = :id AND status = 'pending'")
+    suspend fun claimForSend(id: Long): Int
+
+    /** Reset stale 'sending' commands back to 'pending' (crash recovery). */
+    @Query("UPDATE command_queue SET status = 'pending' WHERE status = 'sending'")
+    suspend fun recoverStaleSending(): Int
+
     @Query("DELETE FROM command_queue WHERE status = 'sent' AND created_at < :before")
     suspend fun purgeSent(before: Long)
 }

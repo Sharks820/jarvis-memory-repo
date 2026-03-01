@@ -193,13 +193,20 @@ class VoiceEngine @Inject constructor(
         _state.value = VoiceState.Idle
     }
 
+    @Volatile
+    private var ttsInitializing = false
+
     private fun ensureTts(block: (TextToSpeech) -> Unit) {
         val existing = tts
         if (existing != null && ttsReady) {
             block(existing)
             return
         }
+        // Prevent multiple simultaneous TTS initializations
+        if (ttsInitializing) return
+        ttsInitializing = true
         tts = TextToSpeech(app) { status ->
+            ttsInitializing = false
             if (status == TextToSpeech.SUCCESS) {
                 // Capture a local reference to avoid race with destroy()
                 val engine = tts ?: return@TextToSpeech
