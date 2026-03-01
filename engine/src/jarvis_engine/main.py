@@ -3371,7 +3371,9 @@ def _cmd_voice_run_impl(
     elif (
         ("block" in lowered and "spam" in lowered and "call" in lowered)
         or ("stop" in lowered and "scam" in lowered and "call" in lowered)
-        or ("handle" in lowered and "spam" in lowered and "calls" in lowered)
+        or ("handle" in lowered and "spam" in lowered and "call" in lowered)
+        or ("run" in lowered and "spam" in lowered and "scan" in lowered)
+        or ("show" in lowered and "spam" in lowered and "report" in lowered)
     ):
         intent = "phone_spam_guard"
         rc = cmd_phone_spam_guard(
