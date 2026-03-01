@@ -222,7 +222,11 @@ class SchedulingCueExtractor @Inject constructor() {
             val year = if (yearStr.isNotBlank()) yearStr.toInt() else today.year
 
             try {
-                results.add(LocalDate.of(year, month, day))
+                var date = LocalDate.of(year, month, day)
+                if (yearStr.isBlank() && date.isBefore(today.minusDays(7))) {
+                    date = LocalDate.of(year + 1, month, day)
+                }
+                results.add(date)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to parse month-day date: $monthName $day", e)
             }
@@ -240,7 +244,11 @@ class SchedulingCueExtractor @Inject constructor() {
 
             try {
                 if (month in 1..12 && day in 1..31) {
-                    results.add(LocalDate.of(year, month, day))
+                    var date = LocalDate.of(year, month, day)
+                    if (yearStr.isBlank() && date.isBefore(today.minusDays(7))) {
+                        date = LocalDate.of(year + 1, month, day)
+                    }
+                    results.add(date)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to parse slash date: $month/$day/$yearStr", e)

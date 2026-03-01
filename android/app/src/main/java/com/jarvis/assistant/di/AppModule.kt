@@ -37,10 +37,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context, crypto: CryptoHelper): JarvisDatabase {
-        // Derive a stable passphrase from the Android Keystore-backed signing key.
-        // On first launch (before bootstrap) we use a SecureRandom-generated fallback
-        // stored in EncryptedSharedPreferences so the DB can still be created.
-        val seed = crypto.getSigningKey().ifBlank { crypto.getOrCreateFallbackPassphrase() }
+        // Always use the stable fallback passphrase for DB encryption.
+        // The signing key is only for HMAC signatures — using it here would change
+        // the DB encryption key after bootstrap, making the pre-bootstrap DB unreadable.
+        val seed = crypto.getOrCreateFallbackPassphrase()
         return JarvisDatabase.create(context, seed.toByteArray(Charsets.UTF_8))
     }
 
