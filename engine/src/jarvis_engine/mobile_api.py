@@ -615,22 +615,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 with _repo_root_lock:
                     original_repo_root = main_mod.repo_root
                     main_mod.repo_root = lambda: root  # type: ignore[assignment]
-                try:
-                    with contextlib.redirect_stdout(captured_out):
-                        rc = main_mod.cmd_voice_run(
-                            text=text,
-                            execute=execute,
-                            approve_privileged=approve_privileged,
-                            speak=speak,
-                            snapshot_path=root / ".planning" / "ops_snapshot.live.json",
-                            actions_path=root / ".planning" / "actions.generated.json",
-                            voice_user=voice_user,
-                            voice_auth_wav=voice_auth_wav,
-                            voice_threshold=voice_threshold,
-                            master_password=master_password,
-                        )
-                finally:
-                    with _repo_root_lock:
+                    try:
+                        with contextlib.redirect_stdout(captured_out):
+                            rc = main_mod.cmd_voice_run(
+                                text=text,
+                                execute=execute,
+                                approve_privileged=approve_privileged,
+                                speak=speak,
+                                snapshot_path=root / ".planning" / "ops_snapshot.live.json",
+                                actions_path=root / ".planning" / "actions.generated.json",
+                                voice_user=voice_user,
+                                voice_auth_wav=voice_auth_wav,
+                                voice_threshold=voice_threshold,
+                                master_password=master_password,
+                            )
+                    finally:
                         main_mod.repo_root = original_repo_root  # type: ignore[assignment]
             except Exception as exc:
                 logger.error("Voice command execution failed: %s", exc)
@@ -1630,7 +1629,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return
             try:
                 import base64 as _b64
-                raw_token = _b64.b64decode(encrypted_payload)
+                try:
+                    raw_token = _b64.b64decode(encrypted_payload)
+                except Exception:
+                    self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid base64 payload."})
+                    return
                 changes = sync_transport.decrypt(raw_token)
                 result = sync_engine.apply_incoming(changes, device_id)
                 self._write_json(HTTPStatus.OK, {
