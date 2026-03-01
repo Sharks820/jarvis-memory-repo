@@ -707,11 +707,8 @@ def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
 _VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 _VALID_KINDS = {"episodic", "semantic", "procedural"}
 
-def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> str:
-    if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
-        return ""
-    if source not in _VALID_SOURCES or kind not in _VALID_KINDS:
-        return ""
+def _auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) -> str:
+    """Synchronous core of auto-ingest (runs in background thread)."""
     safe_content = _sanitize_memory_content(content)
     if not safe_content:
         return ""
@@ -752,6 +749,26 @@ def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> s
     except ValueError:
         logger.warning("brain ingest failed for task_id=%s", safe_task_id[:32])
     return rec.record_id
+
+
+def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> str:
+    """Fire-and-forget auto-ingest — runs in a background thread to avoid blocking responses."""
+    if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
+        return ""
+    if source not in _VALID_SOURCES or kind not in _VALID_KINDS:
+        return ""
+
+    def _bg() -> None:
+        try:
+            _auto_ingest_memory_sync(source, kind, task_id, content)
+        except Exception as exc:
+            logger.debug("Background auto-ingest failed: %s", exc)
+
+    t = threading.Thread(target=_bg, daemon=True)
+    t.start()
+    # Return empty — the record ID is no longer available synchronously,
+    # but the ingest still happens in the background.
+    return ""
 
 
 def _windows_idle_seconds() -> float | None:

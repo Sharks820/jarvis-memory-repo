@@ -396,7 +396,7 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
         req = Request(url=f"{base.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
         ssl_ctx = _get_ssl_context(base)
         try:
-            with urlopen(req, timeout=10, context=ssl_ctx) as resp:
+            with urlopen(req, timeout=60, context=ssl_ctx) as resp:
                 raw = resp.read().decode("utf-8")
             try:
                 parsed = json.loads(raw)
@@ -1744,6 +1744,9 @@ class JarvisDesktopWidget(tk.Tk):
         threading.Thread(target=fn, daemon=True).start()
 
     def _send_command_async(self) -> None:
+        # Guard: skip if already processing to prevent duplicate commands
+        if getattr(self, "_widget_state", "idle") == "processing":
+            return
         text = self.command_text.get("1.0", tk.END).strip()
         if not text:
             self._log("No command text.")
@@ -1902,6 +1905,9 @@ class JarvisDesktopWidget(tk.Tk):
         self._thread(worker)
 
     def _dictate_async(self) -> None:
+        # Guard: skip if already listening or processing to prevent overlapping voice
+        if getattr(self, "_widget_state", "idle") in ("listening", "processing"):
+            return
         auto_send = bool(self.auto_send_var.get())
         self._set_state("listening")
 
@@ -1976,7 +1982,8 @@ class JarvisDesktopWidget(tk.Tk):
                         return  # Widget destroyed
             except Exception as exc:
                 logger.warning("Hotword detection error: %s", exc)
-            for _ in range(6):
+            # Cooldown: 10s after wake word to avoid re-triggering during processing
+            for _ in range(20):
                 if self.stop_event.is_set() or (not _read_hotword_var()):
                     return
                 time.sleep(0.5)
