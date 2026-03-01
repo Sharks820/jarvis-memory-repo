@@ -283,10 +283,21 @@ fun SettingsScreen(
                                         "${med.name} - ${med.dosage}",
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
+                                    // Compute days remaining the same way RefillTracker does:
+                                    // parse scheduledTimes JSON to get doses/day, then divide.
+                                    val dosesPerDay = try {
+                                        val times = com.google.gson.Gson().fromJson<List<String>>(
+                                            med.scheduledTimes,
+                                            object : com.google.gson.reflect.TypeToken<List<String>>() {}.type,
+                                        ) ?: emptyList()
+                                        times.size.coerceAtLeast(1)
+                                    } catch (_: Exception) { 1 }
+                                    val daysRemaining = med.pillsRemaining / dosesPerDay
+
                                     Text(
-                                        "${med.pillsRemaining} pills remaining",
+                                        "${med.pillsRemaining} pills remaining (~$daysRemaining days)",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (med.pillsRemaining <= med.refillReminderDays) {
+                                        color = if (daysRemaining <= med.refillReminderDays) {
                                             MaterialTheme.colorScheme.error
                                         } else {
                                             MaterialTheme.colorScheme.onSurfaceVariant
