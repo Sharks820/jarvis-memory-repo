@@ -1853,3 +1853,84 @@ class TestTrayMenuCallbacks:
         assert "Mobile API" in msg or "mobile" in msg.lower()
         assert "memory" in msg.lower() or "Memory" in msg
         assert "Minimize" in msg or "minimize" in msg.lower()
+
+
+class TestModelTabCycling:
+    """Tests for MODEL_ROTATION and Tab-key cycling feature."""
+
+    def test_model_rotation_has_entries(self):
+        """MODEL_ROTATION must have at least Auto + 1 model."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        assert len(JarvisDesktopWidget.MODEL_ROTATION) >= 2
+
+    def test_model_rotation_auto_first(self):
+        """First entry must be the Auto smart router."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        first = JarvisDesktopWidget.MODEL_ROTATION[0]
+        assert first[0] == "auto"
+        assert first[1] == "Auto"
+
+    def test_model_rotation_has_planner(self):
+        """MODEL_ROTATION must include a Planner entry."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        names = [entry[1] for entry in JarvisDesktopWidget.MODEL_ROTATION]
+        assert "Planner" in names
+
+    def test_model_rotation_tuples_have_4_fields(self):
+        """Each MODEL_ROTATION entry must be (alias, name, title, color)."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        for entry in JarvisDesktopWidget.MODEL_ROTATION:
+            assert len(entry) == 4
+            assert all(isinstance(f, str) for f in entry)
+            assert entry[3].startswith("#")  # color is hex
+
+    def test_tab_cycle_wraps_around(self):
+        """_on_tab_cycle_model should wrap from last entry back to 0."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
+        widget._model_index = len(widget.MODEL_ROTATION) - 1
+        widget._model_label = MagicMock()
+        widget._update_model_label = MagicMock()
+        result = JarvisDesktopWidget._on_tab_cycle_model(widget)
+        assert widget._model_index == 0
+        assert result == "break"
+
+    def test_tab_cycle_increments(self):
+        """_on_tab_cycle_model should advance index by 1."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
+        widget._model_index = 0
+        widget._model_label = MagicMock()
+        widget._update_model_label = MagicMock()
+        JarvisDesktopWidget._on_tab_cycle_model(widget)
+        assert widget._model_index == 1
+
+    def test_selected_model_override_auto_returns_empty(self):
+        """When on Auto, _selected_model_override should return empty string."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
+        widget._model_index = 0  # Auto
+        result = JarvisDesktopWidget._selected_model_override(widget)
+        assert result == ""
+
+    def test_selected_model_override_non_auto_returns_alias(self):
+        """When on a specific model, _selected_model_override returns its alias."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
+        widget._model_index = 1  # Kimi K2
+        result = JarvisDesktopWidget._selected_model_override(widget)
+        assert result == "kimi-k2"
+
+    def test_update_model_label_none_label_is_noop(self):
+        """_update_model_label should be a no-op when _model_label is None."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._model_label = None
+        widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
+        widget._model_index = 0
+        # Should not raise
+        JarvisDesktopWidget._update_model_label(widget)

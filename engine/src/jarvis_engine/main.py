@@ -515,6 +515,7 @@ def _get_history_messages() -> list[dict[str, str]]:
 _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
     "math_logic": 1024,
     "complex": 1024,
+    "creative": 1024,
     "routine": 512,
     "simple_private": 384,
     "web_research": 1024,
@@ -3125,6 +3126,7 @@ def _cmd_voice_run_impl(
     voice_auth_wav: str,
     voice_threshold: float,
     master_password: str,
+    model_override: str = "",
 ) -> int:
     """Implementation body for voice-run (called by handler via callback)."""
     lowered = text.lower().strip()
@@ -3827,6 +3829,11 @@ def _cmd_voice_run_impl(
         if _llm_model is None:
             _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
 
+        # --- Model override from widget Tab-cycling ---
+        if model_override:
+            _llm_model = model_override
+            logger.debug("Model overridden by user selection: %s", model_override)
+
         # --- Web search augmentation for queries needing current info ---
         _web_searched = False
         _web_attempted = False
@@ -4009,12 +4016,14 @@ def cmd_voice_run(
     voice_auth_wav: str,
     voice_threshold: float,
     master_password: str,
+    model_override: str = "",
 ) -> int:
     result = _get_bus().dispatch(VoiceRunCommand(
         text=text, execute=execute, approve_privileged=approve_privileged,
         speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
         voice_user=voice_user, voice_auth_wav=voice_auth_wav,
         voice_threshold=voice_threshold, master_password=master_password,
+        model_override=model_override,
     ))
     return result.return_code
 

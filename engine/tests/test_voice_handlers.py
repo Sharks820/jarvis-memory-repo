@@ -379,6 +379,7 @@ class TestVoiceRunHandler:
                 voice_auth_wav="auth.wav",
                 voice_threshold=0.9,
                 master_password="secret",
+                model_override="kimi-k2",
             )
         )
 
@@ -393,6 +394,7 @@ class TestVoiceRunHandler:
             voice_auth_wav="auth.wav",
             voice_threshold=0.9,
             master_password="secret",
+            model_override="kimi-k2",
         )
 
 

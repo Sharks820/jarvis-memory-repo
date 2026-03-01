@@ -151,6 +151,7 @@ class VoiceRunHandler:
             voice_auth_wav=cmd.voice_auth_wav,
             voice_threshold=cmd.voice_threshold,
             master_password=cmd.master_password,
+            model_override=cmd.model_override,
         )
         return VoiceRunResult(return_code=rc)
 

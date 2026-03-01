@@ -248,11 +248,14 @@ def search_web(query: str, *, limit: int) -> list[str]:
     # Try Brave first if an API key is available
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
     if brave_key:
-        urls = search_brave(query, limit=limit)
-        if urls:
-            logger.info("search_web: used Brave Search (%d results)", len(urls))
-            return urls
-        logger.info("search_web: Brave returned no results, falling back to DuckDuckGo")
+        try:
+            urls = search_brave(query, limit=limit)
+            if urls:
+                logger.info("search_web: used Brave Search (%d results)", len(urls))
+                return urls
+            logger.info("search_web: Brave returned no results, falling back to DuckDuckGo")
+        except Exception as exc:
+            logger.warning("search_web: Brave Search failed (%s), falling back to DuckDuckGo", exc)
 
     # Fallback to DuckDuckGo
     urls = search_duckduckgo(query, limit=limit)

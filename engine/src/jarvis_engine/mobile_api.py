@@ -242,6 +242,8 @@ def _parse_bool(value: Any) -> bool:
 
 
 class MobileIngestServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
     def __init__(
         self,
         server_address: tuple[str, int],
@@ -612,6 +614,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             except (ValueError, OSError):
                 return {"ok": False, "error": "voice_auth_wav path outside project root."}
         master_password = str(payload.get("master_password", "")).strip()
+        model_override = str(payload.get("model_override", "")).strip()
         voice_threshold_raw = payload.get("voice_threshold", 0.82)
         try:
             voice_threshold = float(voice_threshold_raw)
@@ -646,6 +649,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                                 voice_auth_wav=voice_auth_wav,
                                 voice_threshold=voice_threshold,
                                 master_password=master_password,
+                                model_override=model_override,
                             )
                     finally:
                         main_mod.repo_root = original_repo_root  # type: ignore[assignment]
