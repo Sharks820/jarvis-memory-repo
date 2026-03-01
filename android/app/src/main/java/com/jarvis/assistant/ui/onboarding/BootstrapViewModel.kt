@@ -44,10 +44,15 @@ class BootstrapViewModel @Inject constructor(
         } catch (_: Exception) {
             return false
         }
-        return host == "localhost" ||
-            host == "127.0.0.1" ||
-            host.startsWith("10.") ||
-            host.startsWith("192.168.")
+        if (host == "localhost" || host == "127.0.0.1" ||
+            host.startsWith("10.") || host.startsWith("192.168.")
+        ) return true
+        // RFC 1918: 172.16.0.0/12 (172.16.x.x through 172.31.x.x)
+        if (host.startsWith("172.")) {
+            val secondOctet = host.removePrefix("172.").substringBefore(".").toIntOrNull()
+            if (secondOctet != null && secondOctet in 16..31) return true
+        }
+        return false
     }
 
     fun onUrlChanged(url: String) {
