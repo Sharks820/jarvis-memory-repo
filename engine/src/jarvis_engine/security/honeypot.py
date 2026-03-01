@@ -249,7 +249,15 @@ class HoneypotEngine:
 
         If a *forensic_logger* was provided at construction time, the hit
         is also forwarded for forensic logging.
+
+        Only records hits for known honeypot paths. Non-honeypot paths are
+        silently ignored to prevent memory growth from arbitrary path strings.
         """
+        # Guard: only record hits for known honeypot paths
+        normalised = path.rstrip("/") if path != "/" else path
+        if normalised not in _HONEYPOT_SET:
+            return {"path": path, "total_hits": 0, "unique_ips": 0}
+
         record = _HitRecord(
             path=path,
             source_ip=source_ip,

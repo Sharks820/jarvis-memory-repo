@@ -114,9 +114,10 @@ class MemoryProvenance:
     # ------------------------------------------------------------------
 
     def get_provenance(self, record_hash: str) -> dict[str, Any] | None:
-        """Return the provenance dict for *record_hash*, or ``None``."""
+        """Return a copy of the provenance dict for *record_hash*, or ``None``."""
         with self._lock:
-            return self._records.get(record_hash)
+            prov = self._records.get(record_hash)
+            return dict(prov) if prov is not None else None
 
     # ------------------------------------------------------------------
     # Lifecycle transitions
@@ -158,12 +159,12 @@ class MemoryProvenance:
     # ------------------------------------------------------------------
 
     def get_quarantined(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Return up to *limit* quarantined records."""
+        """Return up to *limit* quarantined records (copies, not references)."""
         results: list[dict[str, Any]] = []
         with self._lock:
             for prov in self._records.values():
                 if prov["trust_level"] == QUARANTINED:
-                    results.append(prov)
+                    results.append(dict(prov))
                     if len(results) >= limit:
                         break
         return results

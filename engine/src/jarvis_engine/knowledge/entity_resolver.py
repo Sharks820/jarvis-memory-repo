@@ -132,6 +132,16 @@ class EntityResolver:
                     "(exceeds 500-node safety limit)", n,
                 )
                 continue
+
+            # Pre-compute embeddings once per node (O(N) instead of O(N^2))
+            embed_cache: dict[str, list[float]] = {}
+            if self._embed_service is not None:
+                for node_id, label in members:
+                    try:
+                        embed_cache[node_id] = self._embed_service.embed(label)
+                    except Exception:
+                        logger.debug("Embedding failed for node %s (%r)", node_id, label)
+
             for i in range(n):
                 for j in range(i + 1, n):
                     id_a, label_a = members[i]
@@ -143,17 +153,10 @@ class EntityResolver:
 
                     embed_sim = 0.0
                     reason = "string"
-                    if self._embed_service is not None:
-                        try:
-                            vec_a = self._embed_service.embed(label_a)
-                            vec_b = self._embed_service.embed(label_b)
-                            embed_sim = self._cosine_similarity(vec_a, vec_b)
-                        except Exception:
-                            logger.debug(
-                                "Embedding similarity failed for %r / %r",
-                                label_a,
-                                label_b,
-                            )
+                    if id_a in embed_cache and id_b in embed_cache:
+                        embed_sim = self._cosine_similarity(
+                            embed_cache[id_a], embed_cache[id_b]
+                        )
 
                     combined = max(string_sim, embed_sim)
                     if embed_sim > string_sim:
@@ -204,15 +207,23 @@ class EntityResolver:
         with self._kg.write_lock:
             # Verify both nodes exist
             keep_row = self._kg.db.execute(
-                "SELECT label, confidence FROM kg_nodes WHERE node_id = ?",
+                "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
                 (keep_id,),
             ).fetchone()
             remove_row = self._kg.db.execute(
-                "SELECT label, confidence FROM kg_nodes WHERE node_id = ?",
+                "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
                 (remove_id,),
             ).fetchone()
 
             if keep_row is None or remove_row is None:
+                return False
+
+            # Refuse to merge locked nodes -- lock contract guarantees immutability
+            if keep_row[2] or remove_row[2]:
+                logger.warning(
+                    "Refusing to merge locked nodes: keep=%s (locked=%s), remove=%s (locked=%s)",
+                    keep_id, bool(keep_row[2]), remove_id, bool(remove_row[2]),
+                )
                 return False
 
             keep_label = keep_row[0]

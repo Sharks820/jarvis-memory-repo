@@ -7,6 +7,7 @@ and detects session hijacking via fingerprint (IP + user-agent) changes.
 from __future__ import annotations
 
 import hashlib
+import hmac as _hmac_module
 import logging
 import threading
 import time
@@ -153,9 +154,9 @@ class SessionManager:
                 self._sessions.pop(session_id, None)
                 return (False, "IDLE_TIMEOUT")
 
-            # Check fingerprint
+            # Check fingerprint (constant-time comparison)
             current_fingerprint = _compute_fingerprint(ip, user_agent)
-            if current_fingerprint != session.fingerprint:
+            if not _hmac_module.compare_digest(current_fingerprint, session.fingerprint):
                 logger.warning(
                     "HIJACK DETECTED on session %s: fingerprint changed (device=%s)",
                     session_id[:8],
@@ -190,7 +191,7 @@ class SessionManager:
             for s in self._sessions.values():
                 result.append(
                     {
-                        "session_id": s.session_id,
+                        "session_id": s.session_id[:8] + "...",
                         "device_id": s.device_id,
                         "ip": s.ip,
                         "user_agent": s.user_agent,

@@ -671,7 +671,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             )
             return None, None
 
-        self.connection.settimeout(15.0)
+        try:
+            self.connection.settimeout(15.0)
+        except OSError:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Connection closed."},
+            )
+            return None, None
         body = self.rfile.read(content_length)
         if not self._validate_auth(body):
             return None, None
@@ -699,7 +706,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if content_length < 0 or content_length > max_content_length:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
             return None, None
-        self.connection.settimeout(15.0)
+        try:
+            self.connection.settimeout(15.0)
+        except OSError:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."})
+            return None, None
         body = self.rfile.read(content_length) if content_length > 0 else b"{}"
         try:
             payload = json.loads(body.decode("utf-8"))
@@ -788,6 +799,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         }
 
     def _cleanup_nonces(self, now: float, *, force: bool = False) -> None:
+        should_persist = False
         with self.server.nonce_lock:  # type: ignore[attr-defined]
             interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
             next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
@@ -799,6 +811,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             nonce_seen.clear()
             nonce_seen.update(valid_nonces)
             self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
+            should_persist = True
+        if should_persist:
             self.server._persist_nonces()  # type: ignore[attr-defined]
 
     def _validate_auth(self, body: bytes) -> bool:

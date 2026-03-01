@@ -38,7 +38,7 @@ def atomic_write_json(
     raw = json.dumps(payload, ensure_ascii=True, indent=2)
     last_error: Exception | None = None
     for attempt in range(max(1, retries)):
-        tmp = path.with_suffix(f"{path.suffix}.tmp.{attempt}")
+        tmp = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}.{attempt}")
         try:
             tmp.write_text(raw, encoding="utf-8")
             os.replace(str(tmp), str(path))

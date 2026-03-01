@@ -496,7 +496,58 @@ _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
     "complex": 1024,
     "routine": 512,
     "simple_private": 384,
+    "web_research": 1024,
 }
+
+# ---------------------------------------------------------------------------
+# Web search need detection — identifies queries requiring current information
+# ---------------------------------------------------------------------------
+_WEB_SIGNAL_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\b(?:latest|current|recent|today'?s|tonight'?s|yesterday'?s|this (?:week|month|year)'?s?)\b", re.I),
+    re.compile(r"\b(?:right now|at the moment|as of (?:today|now|2\d{3}))\b", re.I),
+    re.compile(r"\b(?:news|headlines|breaking|update|updates|happening)\b", re.I),
+    re.compile(r"\b(?:stock|price|market|cryptocurrency|bitcoin|crypto|eth|btc)\s*(?:price|value|worth|cost|today)?\b", re.I),
+    re.compile(r"\b(?:score|scores|game|match|playoff|championship|tournament|standings|results?)\b", re.I),
+    re.compile(r"\b(?:weather|forecast|temperature|rain|snow|wind)\b", re.I),
+    re.compile(r"\bwho (?:won|is winning|leads?|lost)\b", re.I),
+    re.compile(r"\b(?:when (?:is|does|did|will)|what time (?:is|does))\b", re.I),
+    re.compile(r"\b(?:release date|coming out|launched|announced|premiered)\b", re.I),
+    re.compile(r"\b(?:how (?:much|many) (?:does|is|are|do))\b", re.I),
+    re.compile(r"\b(?:look up|lookup|find out|check|search for)\b", re.I),
+    re.compile(r"\b(?:what (?:is|are|was|were) the (?:best|top|most|biggest|highest|lowest))\b", re.I),
+    re.compile(r"\b(?:compared? to|vs\.?|versus)\b", re.I),
+    re.compile(r"\b(?:2024|2025|2026|2027)\b"),  # Queries mentioning recent/future years
+    re.compile(r"\b(?:search|google|look up|find me|find out about)\b", re.I),
+    re.compile(r"\b(?:what(?:'s| is) (?:the |)(?:status|situation|deal) (?:with|of|about))\b", re.I),
+    re.compile(r"\b(?:tell me about|info on|information about|details about)\b", re.I),
+    re.compile(r"\b(?:where (?:can i|do i|is the|are the))\b", re.I),
+    re.compile(r"\b(?:how (?:do i|can i|to))\b", re.I),
+]
+
+# Exclusion patterns: queries that match web signals but are actually personal/private
+_WEB_EXCLUSION_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\bmy (?:calendar|medication|prescription|bill|password|appointment|meeting|schedule)\b", re.I),
+    re.compile(r"\b(?:remind me|set (?:a )?(?:reminder|alarm|timer))\b", re.I),
+    re.compile(r"\b(?:what did (?:i|jarvis)|show me my|what'?s on my)\b", re.I),
+]
+
+
+def _needs_web_search(query: str) -> bool:
+    """Detect if a query likely needs current web information to answer well.
+
+    Uses signal patterns (current events, prices, scores, news) and exclusion
+    patterns (personal/private queries) to decide.  Returns True when web
+    search augmentation would improve the LLM response.
+    """
+    lowered = query.lower().strip()
+    # Check exclusions first — personal queries should not trigger web search
+    for exc_pat in _WEB_EXCLUSION_PATTERNS:
+        if exc_pat.search(lowered):
+            return False
+    # Check for web search signals
+    matches = sum(1 for pat in _WEB_SIGNAL_PATTERNS if pat.search(lowered))
+    # Require at least 1 signal pattern match
+    return matches >= 1
 
 
 def _build_smart_context(
@@ -2802,6 +2853,187 @@ def cmd_voice_listen(
     return 0
 
 
+def _web_augmented_llm_conversation(
+    text: str,
+    *,
+    speak: bool = False,
+    force_web_search: bool = False,
+) -> int:
+    """Run a web-search-augmented LLM conversation for a single query.
+
+    This is the shared implementation used by:
+    - Explicit "search the web for X" voice commands
+    - Weather fallback when the dedicated handler fails
+    - Any keyword branch that needs web-augmented LLM responses
+
+    Returns 0 on success, 1 on failure.
+    """
+    bus = _get_bus()
+
+    # --- Smart context: hybrid search + KG facts + cross-branch ---
+    memory_lines, fact_lines, cross_branch_lines = _build_smart_context(bus, text)
+
+    # --- Persona + structured context ---
+    persona = load_persona_config(repo_root())
+    if persona.enabled:
+        persona_desc = (
+            "You are Jarvis, an intelligent personal AI assistant. "
+            "You are witty, knowledgeable, and speak like a refined British butler "
+            "with dry humor. Keep responses concise and natural. "
+            "Never repeat the same phrases. Vary your language."
+        )
+    else:
+        persona_desc = "You are Jarvis, a helpful personal AI assistant. Keep responses concise."
+    system_parts = [persona_desc]
+    if fact_lines:
+        system_parts.append(
+            "Known facts about the user (use these to personalize your response):\n"
+            + "\n".join(f"- {line}" for line in fact_lines[:6])
+        )
+    if memory_lines:
+        system_parts.append(
+            "Relevant memories (recent interactions and context):\n"
+            + "\n".join(f"- {line}" for line in memory_lines[:8])
+        )
+    if cross_branch_lines:
+        system_parts.append(
+            "Cross-domain connections:\n"
+            + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
+        )
+
+    # --- Intent classification + model routing ---
+    _llm_model: str | None = None
+    _route: str = "web_research"
+    _intent_cls = getattr(bus, "_intent_classifier", None)
+    if _intent_cls is not None:
+        try:
+            _route, _llm_model, _conf = _intent_cls.classify(text)
+            logger.debug("Web-augmented route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
+        except Exception:
+            _llm_model = None
+    if _llm_model is None:
+        for _env_key, _model_alias in [
+            ("GROQ_API_KEY", "kimi-k2"),
+            ("MISTRAL_API_KEY", "devstral-2"),
+            ("ZAI_API_KEY", "glm-4.7-flash"),
+        ]:
+            if os.environ.get(_env_key, ""):
+                _llm_model = _model_alias
+                break
+    if _llm_model is None:
+        _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+
+    # --- Web search (always performed for this code path) ---
+    _web_searched = False
+    _web_context_text = ""
+    try:
+        from jarvis_engine.web_research import run_web_research
+        _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
+        _web_lines = _web_result.get("summary_lines", [])
+        if _web_lines:
+            _web_searched = True
+            _web_context_text = (
+                "Web search results (use these to answer with current information):\n"
+                + "\n".join(f"- {line}" for line in _web_lines[:4])
+            )
+            _web_urls = _web_result.get("scanned_urls", [])
+            if _web_urls:
+                _web_context_text += "\nSources: " + ", ".join(_web_urls[:3])
+            system_parts.append(_web_context_text)
+            logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
+        else:
+            logger.warning("Web search returned no summary lines for query: %s", text[:80])
+    except Exception as exc:
+        logger.warning("Web search failed for query %r: %s", text[:80], exc)
+
+    # --- Instructions ---
+    if _web_searched:
+        system_parts.append(
+            "Instructions: You have web search results above. Use them to give a current, accurate answer. "
+            "Cite the source when using web search results. "
+            "If the web results don't fully answer the question, say what you found and note what's missing."
+        )
+    else:
+        system_parts.append(
+            "Instructions: Web search was attempted but returned no results. "
+            "Answer the question using your training knowledge, but clearly note that "
+            "you were unable to retrieve live web data and your information may not be current."
+        )
+    system_prompt = "\n\n".join(system_parts)
+
+    # --- Dynamic max_tokens ---
+    _max_tokens = max(_MAX_TOKENS_BY_ROUTE.get(_route, 512), 768)
+
+    # --- Build messages with conversation history ---
+    _hist = _get_history_messages()
+    _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
+    _add_to_history("user", text)
+    try:
+        result: QueryResult = bus.dispatch(QueryCommand(
+            query=text,
+            system_prompt=system_prompt,
+            max_tokens=_max_tokens,
+            model=_llm_model,
+            history=_hist_tuples,
+        ))
+        if result.return_code != 0:
+            print("intent=llm_unavailable")
+            print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
+            return 1
+        elif result.text.strip():
+            _add_to_history("assistant", result.text.strip())
+            print(f"response={result.text.strip()}")
+            print(f"model={result.model}")
+            print(f"provider={result.provider}")
+            if _web_searched:
+                print("web_search_used=true")
+            # Auto-learn
+            try:
+                bus.dispatch(LearnInteractionCommand(
+                    user_message=text[:1000],
+                    assistant_response=result.text.strip()[:1000],
+                    task_id=f"conv-web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                ))
+            except Exception:
+                try:
+                    _auto_ingest_memory(
+                        source="conversation",
+                        kind="episodic",
+                        task_id=f"conv-web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        content=(
+                            f"User asked: {text[:400]}\n"
+                            f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
+                        ),
+                    )
+                except Exception as exc:
+                    logger.debug("Auto-ingest failed for web conversation: %s", exc)
+            if speak:
+                cmd_voice_say(
+                    text=result.text.strip(),
+                    profile="jarvis_like",
+                    voice_pattern="",
+                    output_wav="",
+                    rate=-1,
+                )
+            return 0
+        else:
+            print("intent=llm_empty_response")
+            print("reason=LLM returned empty response.")
+            return 1
+    except Exception as exc:
+        print("intent=llm_error")
+        print(f"reason={exc}")
+        if speak:
+            cmd_voice_say(
+                text="I'm having trouble connecting to my language model. Please try again.",
+                profile="jarvis_like",
+                voice_pattern="",
+                output_wav="",
+                rate=-1,
+            )
+        return 1
+
+
 def _cmd_voice_run_impl(
     text: str,
     execute: bool,
@@ -2995,9 +3227,14 @@ def _cmd_voice_run_impl(
     elif "gaming mode" in lowered and any(k in lowered for k in ["status", "state"]):
         intent = "gaming_mode_status"
         rc = cmd_gaming_mode(enable=None, reason="", auto_detect="")
-    elif "weather" in lowered or "forecast" in lowered:
+    elif ("weather" in lowered or "forecast" in lowered) and "my calendar" not in lowered:
         intent = "weather"
         rc = cmd_weather(location=_extract_weather_location(text))
+        if rc != 0:
+            # Weather handler failed -- fall through to web-augmented LLM conversation
+            logger.info("Weather handler failed (rc=%d), falling back to web-augmented LLM", rc)
+            intent = "llm_conversation_weather_fallback"
+            rc = _web_augmented_llm_conversation(text, speak=speak, force_web_search=True)
     elif any(
         key in lowered
         for key in [
@@ -3007,15 +3244,18 @@ def _cmd_voice_run_impl(
             "search online for",
             "web search",
             "find on the web",
+            "search for",
+            "look up",
+            "google",
+            "find me",
+            "find out",
         ]
     ):
+        # Route through LLM with forced web search for a conversational answer.
+        # Previously this called cmd_web_research which returned raw snippets
+        # without LLM synthesis.
         intent = "web_research"
-        rc = cmd_web_research(
-            query=_extract_web_query(text),
-            max_results=8,
-            max_pages=6,
-            auto_ingest=True,
-        )
+        rc = _web_augmented_llm_conversation(text, speak=speak, force_web_search=True)
     elif any(
         key in lowered
         for key in [
@@ -3417,12 +3657,7 @@ def _cmd_voice_run_impl(
                 "Cross-domain connections:\n"
                 + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
             )
-        system_parts.append(
-            "Instructions: Reference the user's known facts and memories when relevant. "
-            "If the user asks about something you have facts for, use those facts directly. "
-            "If you don't have relevant information, say so honestly."
-        )
-        system_prompt = "\n\n".join(system_parts)
+        # Defer final instructions until after web search (see below)
 
         # --- Intent classification + model routing (reuse bus classifier) ---
         _llm_model: str | None = None
@@ -3455,8 +3690,60 @@ def _cmd_voice_run_impl(
         if _llm_model is None:
             _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
 
+        # --- Web search augmentation for queries needing current info ---
+        _web_searched = False
+        _web_attempted = False
+        if _route == "web_research" or _needs_web_search(text):
+            _web_attempted = True
+            try:
+                from jarvis_engine.web_research import run_web_research
+                _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
+                _web_lines = _web_result.get("summary_lines", [])
+                if _web_lines:
+                    _web_searched = True
+                    _web_context = (
+                        "Web search results (use these to answer with current information):\n"
+                        + "\n".join(f"- {line}" for line in _web_lines[:4])
+                    )
+                    _web_urls = _web_result.get("scanned_urls", [])
+                    if _web_urls:
+                        _web_context += "\nSources: " + ", ".join(_web_urls[:3])
+                    system_parts.append(_web_context)
+                    logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
+                else:
+                    logger.warning("Web search returned no summary lines for query: %s", text[:80])
+            except Exception as exc:
+                logger.warning("Web search augmentation failed for %r: %s", text[:80], exc)
+
+        # --- Finalize system prompt with context-aware instructions ---
+        if _web_searched:
+            system_parts.append(
+                "Instructions: Reference the user's known facts and memories when relevant. "
+                "If the user asks about something you have facts for, use those facts directly. "
+                "You have web search results above -- use them to give current, accurate answers. "
+                "Cite the source when using web search results. "
+                "If you don't have relevant information, say so honestly."
+            )
+        elif _web_attempted:
+            system_parts.append(
+                "Instructions: Reference the user's known facts and memories when relevant. "
+                "If the user asks about something you have facts for, use those facts directly. "
+                "A web search was attempted but returned no usable results. "
+                "Answer using your training knowledge, but note that your information may not be current. "
+                "If you don't have relevant information, say so honestly."
+            )
+        else:
+            system_parts.append(
+                "Instructions: Reference the user's known facts and memories when relevant. "
+                "If the user asks about something you have facts for, use those facts directly. "
+                "If you don't have relevant information, say so honestly."
+            )
+        system_prompt = "\n\n".join(system_parts)
+
         # --- Dynamic max_tokens based on query complexity ---
         _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
+        if _web_searched:
+            _max_tokens = max(_max_tokens, 768)  # Ensure enough tokens for web-augmented responses
 
         # --- Build messages with conversation history ---
         _hist = _get_history_messages()
@@ -3480,6 +3767,8 @@ def _cmd_voice_run_impl(
                 print(f"response={result.text.strip()}")
                 print(f"model={result.model}")
                 print(f"provider={result.provider}")
+                if _web_searched:
+                    print("web_search_used=true")
                 # Auto-learn: ingest through enriched pipeline (embeddings + KG)
                 # when available, with legacy JSONL fallback
                 try:

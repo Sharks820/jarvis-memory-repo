@@ -368,7 +368,10 @@ class SpeechToText:
         elapsed = time.monotonic() - t0
         full_text = " ".join(texts).strip()
         # Compute confidence from segment avg_logprob (not language_probability which is always ~1.0 for English)
-        logprobs = [seg.avg_logprob for seg in segments if hasattr(seg, 'avg_logprob')]
+        logprobs = [
+            seg.avg_logprob for seg in segments
+            if hasattr(seg, 'avg_logprob') and math.isfinite(seg.avg_logprob)
+        ]
         if logprobs:
             avg_logprob = sum(logprobs) / len(logprobs)
             confidence = min(1.0, max(0.0, 1.0 + avg_logprob))

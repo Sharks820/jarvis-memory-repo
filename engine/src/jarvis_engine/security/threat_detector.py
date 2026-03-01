@@ -144,9 +144,11 @@ class ThreatDetector:
         self._lock = threading.Lock()
         # nonce -> timestamp last seen
         self._nonce_cache: dict[str, float] = {}
+        self._nonce_cache_cap: int = 100000  # max nonces in cache
         # ip -> deque of request timestamps (for rate anomaly detection)
         # maxlen=200 caps per-IP memory: 200 entries is >3x the 60/min threshold
         self._request_log: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=200))
+        self._request_log_cap: int = 10000  # max distinct IPs tracked
         # Counter for periodic stale-IP cleanup (avoid O(n) scan every request)
         self._rate_check_counter: int = 0
 
@@ -168,6 +170,8 @@ class ThreatDetector:
         - ``timestamp``: request epoch time (float)
         """
         signals: list[ThreatSignal] = []
+        # Rules that must fail-closed: if they error, treat as suspicious
+        _critical_rules = {"_rule_replay_attack", "_rule_known_bad_ip", "_rule_auth_brute_force"}
         for rule in [
             self._rule_payload_injection,
             self._rule_path_traversal,
@@ -183,7 +187,15 @@ class ThreatDetector:
                 if signal is not None:
                     signals.append(signal)
             except Exception:
-                logger.debug("Rule %s raised an exception", rule.__name__, exc_info=True)
+                logger.warning("Rule %s raised an exception", rule.__name__, exc_info=True)
+                # Fail-closed for critical security rules
+                if rule.__name__ in _critical_rules:
+                    signals.append(ThreatSignal(
+                        severity="MEDIUM",
+                        category=f"rule_error:{rule.__name__}",
+                        confidence=0.50,
+                        evidence={"rule": rule.__name__, "error": "rule raised exception"},
+                    ))
 
         return self._aggregate(signals)
 
@@ -316,6 +328,15 @@ class ThreatDetector:
             for k in expired:
                 del self._nonce_cache[k]
 
+            # Hard cap: if cache is still too large after pruning, reject to prevent OOM
+            if len(self._nonce_cache) >= self._nonce_cache_cap:
+                return ThreatSignal(
+                    severity="MEDIUM",
+                    category="nonce_cache_overflow",
+                    confidence=0.70,
+                    evidence={"cache_size": len(self._nonce_cache), "nonce": nonce[:16]},
+                )
+
             if nonce in self._nonce_cache:
                 return ThreatSignal(
                     severity="HIGH",
@@ -335,6 +356,11 @@ class ThreatDetector:
         now = time.monotonic()
         window = 60.0  # 1 minute
         with self._lock:
+            # Prevent unbounded growth from IP spoofing: cap distinct IPs
+            if ip not in self._request_log and len(self._request_log) >= self._request_log_cap:
+                # Evict the stalest IP before adding a new one
+                stalest_ip = min(self._request_log, key=lambda k: self._request_log[k][-1] if self._request_log[k] else 0.0)
+                del self._request_log[stalest_ip]
             log = self._request_log[ip]
             log.append(now)
 

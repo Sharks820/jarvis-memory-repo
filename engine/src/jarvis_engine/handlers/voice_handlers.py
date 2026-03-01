@@ -225,7 +225,7 @@ class PersonaComposeHandler:
                 model=model,
                 route_reason="persona_reply",
             )
-        except (ConnectionError, OSError, RuntimeError) as exc:
+        except Exception as exc:
             logger.debug("Persona compose failed: %s", exc)
             return PersonaComposeResult(
                 branch=cmd.branch,

@@ -149,16 +149,29 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
         return []
     text = payload.decode("utf-8", errors="replace")
     urls: list[str] = []
-    for match in re.findall(r'href="(https?://[^"]+)"', text):
-        candidate = html_mod.unescape(match).strip()
+    # DDG returns redirect links: //duckduckgo.com/l/?uddg=<encoded_url>&rut=...
+    # Extract target URLs from the uddg= parameter first (primary method)
+    from urllib.parse import unquote
+    for uddg_match in re.findall(r'uddg=([^&"]+)', text):
+        candidate = html_mod.unescape(unquote(uddg_match)).strip()
         parsed = urlparse(candidate)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            continue
-        if "duckduckgo.com" in parsed.netloc.lower():
             continue
         if not is_safe_public_url(candidate):
             continue
         urls.append(candidate)
+    # Fallback: also check for direct https:// hrefs (some DDG responses vary)
+    if not urls:
+        for match in re.findall(r'href="(https?://[^"]+)"', text):
+            candidate = html_mod.unescape(match).strip()
+            parsed = urlparse(candidate)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                continue
+            if "duckduckgo.com" in parsed.netloc.lower():
+                continue
+            if not is_safe_public_url(candidate):
+                continue
+            urls.append(candidate)
     return list(dict.fromkeys(urls))[:max(1, limit)]
 
 

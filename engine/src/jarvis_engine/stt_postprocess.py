@@ -98,6 +98,8 @@ def preprocess_audio(
         logger.warning("Silence trimming failed, skipping: %s", exc)
 
     # 5. Re-normalize after processing (HPSS and noise reduction can lower peak)
+    if len(audio) == 0:
+        return np.array([], dtype=np.float32)
     peak = np.max(np.abs(audio))
     if peak > 0:
         target_amplitude = 10 ** (target_dbfs / 20)

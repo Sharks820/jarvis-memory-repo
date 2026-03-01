@@ -76,7 +76,12 @@ class CostTracker:
         if cost_usd is None:
             cost_usd = calculate_cost(model, input_tokens, output_tokens)
 
+        if getattr(self, "_closed", False):
+            return
+
         with self._write_lock:
+            if getattr(self, "_closed", False):
+                return
             self._db.execute(
                 """
                 INSERT INTO query_costs
@@ -106,7 +111,11 @@ class CostTracker:
         - total_cost_usd: float
         """
         days = max(1, min(days, 3650))
+        if getattr(self, "_closed", False):
+            return {"period_days": days, "models": [], "total_cost_usd": 0.0}
         with self._write_lock:
+            if getattr(self, "_closed", False):
+                return {"period_days": days, "models": [], "total_cost_usd": 0.0}
             cur = self._db.execute(
                 """
                 SELECT
@@ -155,7 +164,17 @@ class CostTracker:
         - cloud_cost_usd: float
         """
         days = max(1, min(days, 3650))
+        if getattr(self, "_closed", False):
+            return {
+                "period_days": days, "local_count": 0, "cloud_count": 0,
+                "total_count": 0, "local_pct": 0.0, "cloud_cost_usd": 0.0,
+            }
         with self._write_lock:
+            if getattr(self, "_closed", False):
+                return {
+                    "period_days": days, "local_count": 0, "cloud_count": 0,
+                    "total_count": 0, "local_pct": 0.0, "cloud_cost_usd": 0.0,
+                }
             cur = self._db.execute(
                 """
                 SELECT

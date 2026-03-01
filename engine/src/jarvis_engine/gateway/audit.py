@@ -96,10 +96,10 @@ class GatewayAudit:
     def recent(self, n: int = 50) -> list[dict]:
         """Return the last *n* audit records from the log file.
 
-        Reads only the tail of the file (estimated at ~200 bytes per line)
+        Reads only the tail of the file (estimated at ~500 bytes per line)
         to avoid loading the entire audit log into memory.
         """
-        if not self._path.exists():
+        if n <= 0 or not self._path.exists():
             return []
         try:
             with open(self._path, "rb") as f:
@@ -128,6 +128,7 @@ class GatewayAudit:
 
     def summary(self, hours: int = 24) -> dict:
         """Summarize routing decisions over the last *hours* hours."""
+        hours = max(1, hours)
         # Scale read size with time window — ~20 calls/hr baseline, 2x headroom
         read_limit = max(500, hours * 40)
         records = self.recent(read_limit)
@@ -135,7 +136,12 @@ class GatewayAudit:
         recent: list[dict] = []
         for r in records:
             try:
-                ts = datetime.fromisoformat(r["ts"]).timestamp()
+                ts_str = r["ts"]
+                # Python 3.10 fromisoformat() cannot parse timezone suffixes;
+                # strip the +00:00 suffix since all timestamps are UTC anyway.
+                if ts_str.endswith("+00:00"):
+                    ts_str = ts_str[:-6]
+                ts = datetime.fromisoformat(ts_str).replace(tzinfo=UTC).timestamp()
                 if ts >= cutoff:
                     recent.append(r)
             except (KeyError, ValueError):

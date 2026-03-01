@@ -77,6 +77,11 @@ class SyncEngine:
                     spec = _TRACKED_TABLES[table_name]
                     pk = spec["pk"]
 
+                    # Fetch cursor once per table (same for all entries)
+                    source_cursor = get_sync_cursor(
+                        self._db, source_device_id, table_name,
+                    )
+
                     for entry in entries:
                         row_id = str(entry.get("row_id", ""))
                         if not row_id:
@@ -85,9 +90,6 @@ class SyncEngine:
 
                         # Check for local conflict: same row modified locally since
                         # last sync from source_device_id
-                        source_cursor = get_sync_cursor(
-                            self._db, source_device_id, table_name,
-                        )
                         local_conflict = self._find_local_conflict(
                             table_name, row_id, source_cursor,
                         )
@@ -213,8 +215,10 @@ class SyncEngine:
 
         # Defense-in-depth: table_name must be in _TRACKED_TABLES (validated
         # by the caller) and must be a simple identifier — never user input.
-        assert table_name in _TRACKED_TABLES, f"Unknown table: {table_name}"
-        assert table_name.isidentifier(), f"Invalid table name: {table_name}"
+        if table_name not in _TRACKED_TABLES:
+            raise ValueError(f"Unknown table: {table_name}")
+        if not table_name.isidentifier():
+            raise ValueError(f"Invalid table name: {table_name}")
 
         # Validate all field/column names against the known schema to prevent
         # SQL injection via crafted sync payloads.

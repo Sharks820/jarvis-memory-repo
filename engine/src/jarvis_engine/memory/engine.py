@@ -345,6 +345,7 @@ class MemoryEngine:
         Returns the number of records actually deleted from the records table.
         All deletes happen in a single transaction for consistency.  Vec
         failures roll back the entire batch to prevent partial state.
+        Batches in chunks of 900 to stay under SQLite's 999-variable limit.
         """
         self._check_open()
         if not record_ids:
@@ -353,24 +354,27 @@ class MemoryEngine:
         with self._write_lock:
             cur = self._db.cursor()
             try:
-                placeholders = ",".join("?" for _ in record_ids)
+                deleted = 0
+                for i in range(0, len(record_ids), 900):
+                    chunk = record_ids[i : i + 900]
+                    placeholders = ",".join("?" for _ in chunk)
 
-                cur.execute(
-                    f"DELETE FROM records WHERE record_id IN ({placeholders})",
-                    record_ids,
-                )
-                deleted = cur.rowcount
-
-                cur.execute(
-                    f"DELETE FROM fts_records WHERE record_id IN ({placeholders})",
-                    record_ids,
-                )
-
-                if self._vec_available:
                     cur.execute(
-                        f"DELETE FROM vec_records WHERE record_id IN ({placeholders})",
-                        record_ids,
+                        f"DELETE FROM records WHERE record_id IN ({placeholders})",
+                        chunk,
                     )
+                    deleted += cur.rowcount
+
+                    cur.execute(
+                        f"DELETE FROM fts_records WHERE record_id IN ({placeholders})",
+                        chunk,
+                    )
+
+                    if self._vec_available:
+                        cur.execute(
+                            f"DELETE FROM vec_records WHERE record_id IN ({placeholders})",
+                            chunk,
+                        )
 
                 self._db.commit()
                 return deleted
@@ -457,6 +461,12 @@ class MemoryEngine:
         if not self._vec_available:
             return []
         try:
+            if len(query_embedding) != _EMBEDDING_DIM:
+                logger.warning(
+                    "Vec search dimension mismatch: got %d, expected %d",
+                    len(query_embedding), _EMBEDDING_DIM,
+                )
+                return []
             blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
             with self._db_lock:
                 cur = self._db.execute(
@@ -491,6 +501,12 @@ class MemoryEngine:
         if not self._vec_available:
             return []
         try:
+            if len(query_embedding) != _EMBEDDING_DIM:
+                logger.warning(
+                    "Filtered vec search dimension mismatch: got %d, expected %d",
+                    len(query_embedding), _EMBEDDING_DIM,
+                )
+                return []
             blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
             conditions: list[str] = []
             params: list = []
@@ -601,17 +617,21 @@ class MemoryEngine:
             self._db.commit()
 
     def get_records_batch(self, record_ids: list[str]) -> list[dict]:
-        """Fetch multiple records by ID in a single query."""
+        """Fetch multiple records by ID, batching to stay under SQLite's variable limit."""
         self._check_open()
         if not record_ids:
             return []
-        placeholders = ",".join("?" for _ in record_ids)
+        results: list[dict] = []
         with self._db_lock:
-            cur = self._db.execute(
-                f"SELECT * FROM records WHERE record_id IN ({placeholders})",
-                record_ids,
-            )
-            return [dict(row) for row in cur.fetchall()]
+            for i in range(0, len(record_ids), 900):
+                chunk = record_ids[i : i + 900]
+                placeholders = ",".join("?" for _ in chunk)
+                cur = self._db.execute(
+                    f"SELECT * FROM records WHERE record_id IN ({placeholders})",
+                    chunk,
+                )
+                results.extend(dict(row) for row in cur.fetchall())
+        return results
 
     def get_all_records_for_tier_maintenance(self) -> list[dict]:
         """Fetch all records with only the columns needed for tier classification."""
