@@ -738,16 +738,13 @@ def _auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str)
     dedupe_material = f"{source}|{kind}|{safe_task_id}|{safe_content.lower()}".encode("utf-8")
     dedupe_hash = hashlib.sha256(dedupe_material).hexdigest()
     # Lock prevents race condition when daemon + CLI ingest concurrently.
-    # We lock around check + mark to prevent double-ingest, then do the
-    # actual ingestion outside the lock (it involves I/O).
+    # Check dedup under lock, but only persist hash AFTER successful ingestion
+    # to allow retries on failure.
     with _auto_ingest_lock:
         seen = _load_auto_ingest_hashes(dedupe_path)
         seen_set = set(seen)
         if dedupe_hash in seen_set:
             return ""
-        # Mark as seen immediately to prevent concurrent duplicates
-        seen.append(dedupe_hash)
-        _store_auto_ingest_hashes(dedupe_path, seen)
 
     store = _get_auto_ingest_store()
     pipeline = IngestionPipeline(store)
@@ -769,6 +766,13 @@ def _auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str)
         )
     except ValueError:
         logger.warning("brain ingest failed for task_id=%s", safe_task_id[:32])
+
+    # Mark as seen only AFTER successful ingestion so failures can be retried
+    with _auto_ingest_lock:
+        seen = _load_auto_ingest_hashes(dedupe_path)
+        seen.append(dedupe_hash)
+        _store_auto_ingest_hashes(dedupe_path, seen)
+
     return rec.record_id
 
 
