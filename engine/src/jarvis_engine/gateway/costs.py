@@ -201,7 +201,7 @@ class CostTracker:
             if cat == "local":
                 local_count = cnt
             else:
-                cloud_count = cnt
+                cloud_count += cnt
                 cloud_cost += cost
 
         total = local_count + cloud_count

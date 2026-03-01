@@ -85,6 +85,7 @@ class JarvisService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         enqueueSyncWorker()
         scheduleMedicationAlarms()
+        recoverStaleCommands()
         startHighFrequencyLoop()
         return START_STICKY
     }
@@ -134,6 +135,22 @@ class JarvisService : Service() {
                 Log.i(TAG, "Medication alarms scheduled on service start")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to schedule medication alarms: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Recover commands stuck in 'sending' state from a prior crash/kill.
+     * Called once at service start, NOT on every tick (to avoid resetting
+     * legitimately in-flight sends).
+     */
+    private fun recoverStaleCommands() {
+        scope.launch {
+            try {
+                processor.recoverStale()
+                Log.i(TAG, "Stale command recovery completed")
+            } catch (e: Exception) {
+                Log.w(TAG, "Stale command recovery failed: ${e.message}")
             }
         }
     }

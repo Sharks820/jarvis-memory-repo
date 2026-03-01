@@ -56,10 +56,13 @@ class CommandQueueProcessor @Inject constructor(
         return id
     }
 
+    /** Recover commands stuck in 'sending' from a prior crash. Call once at startup. */
+    suspend fun recoverStale() {
+        commandQueueDao.recoverStaleSending()
+    }
+
     /** Flush all pending commands to the desktop. */
     suspend fun flushPending() {
-        // Recover any commands stuck in 'sending' state from a prior crash
-        commandQueueDao.recoverStaleSending()
         val pending = commandQueueDao.getPending()
         for (cmd in pending) {
             if (cmd.retryCount >= MAX_RETRIES) {
