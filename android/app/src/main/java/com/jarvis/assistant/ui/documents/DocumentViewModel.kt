@@ -44,7 +44,7 @@ class DocumentViewModel @Inject constructor(
     val categories: List<String> = categorizer.getAllCategories()
 
     /** Scan a document from the given image URI. */
-    fun scanDocument(imageUri: Uri) {
+    fun scanDocument(imageUri: Uri, tempFile: java.io.File? = null) {
         viewModelScope.launch {
             isScanning.value = true
             scanError.value = null
@@ -61,6 +61,8 @@ class DocumentViewModel @Inject constructor(
                 scanError.value = e.message ?: "Scan failed"
             } finally {
                 isScanning.value = false
+                // Clean up temp file after scan completes (success or failure)
+                tempFile?.delete()
             }
         }
     }

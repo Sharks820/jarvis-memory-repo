@@ -73,7 +73,7 @@ class SessionManager:
         idle_timeout_s: int = 86400,
         absolute_timeout_s: int = 259200,
     ) -> None:
-        self._max_sessions = max_sessions
+        self._max_sessions = max(max_sessions, 1)
         self._idle_timeout_s = idle_timeout_s
         self._absolute_timeout_s = absolute_timeout_s
         self._lock = threading.Lock()

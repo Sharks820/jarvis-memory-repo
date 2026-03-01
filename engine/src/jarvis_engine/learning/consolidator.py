@@ -342,11 +342,12 @@ class MemoryConsolidator:
 
                 existing_tags_raw = row[0] if row else "[]"
                 try:
-                    existing_tags = (
+                    parsed = (
                         json.loads(existing_tags_raw)
                         if isinstance(existing_tags_raw, str)
                         else existing_tags_raw
                     )
+                    existing_tags = parsed if isinstance(parsed, list) else []
                 except (json.JSONDecodeError, TypeError):
                     existing_tags = []
 

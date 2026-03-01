@@ -505,15 +505,15 @@ class MemoryEngine:
             params: list = []
 
             if tier:
-                conditions.append("r.tier = ?")
+                conditions.append("tier = ?")
                 params.append(tier)
             if source:
                 # Escape LIKE wildcards in user input to prevent unintended matching
                 safe_source = source.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                conditions.append("r.source LIKE ? ESCAPE '\\'")
+                conditions.append("source LIKE ? ESCAPE '\\'")
                 params.append(f"%{safe_source}%")
             if since:
-                conditions.append("r.ts >= ?")
+                conditions.append("ts >= ?")
                 params.append(since)
 
             if conditions:
