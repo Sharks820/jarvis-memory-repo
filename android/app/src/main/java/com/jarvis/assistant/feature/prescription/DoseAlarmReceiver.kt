@@ -123,7 +123,7 @@ class DoseAlarmReceiver : BroadcastReceiver() {
         }
         val takenPending = android.app.PendingIntent.getBroadcast(
             context,
-            (medicationId * 1000 + 1).toInt(),
+            ((medicationId * 1000 + 1).toInt() and 0x7FFFFFFF),
             takenIntent,
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -137,7 +137,7 @@ class DoseAlarmReceiver : BroadcastReceiver() {
         }
         val skipPending = android.app.PendingIntent.getBroadcast(
             context,
-            (medicationId * 1000 + 2).toInt(),
+            ((medicationId * 1000 + 2).toInt() and 0x7FFFFFFF),
             skipIntent,
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -170,7 +170,7 @@ class DoseAlarmReceiver : BroadcastReceiver() {
             )
             .build()
 
-        val notificationId = medicationId.toInt() + NOTIFICATION_ID_OFFSET
+        val notificationId = ((medicationId.toInt() + NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF)
         notificationManager.notify(notificationId, notification)
     }
 
@@ -221,7 +221,7 @@ class DoseActionReceiver : BroadcastReceiver() {
         // Dismiss the notification
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancel(medicationId.toInt() + DoseAlarmReceiver.NOTIFICATION_ID_OFFSET)
+        notificationManager.cancel(((medicationId.toInt() + DoseAlarmReceiver.NOTIFICATION_ID_OFFSET) and 0x7FFFFFFF))
 
         val pendingResult = goAsync()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

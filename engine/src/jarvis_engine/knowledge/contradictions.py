@@ -139,6 +139,14 @@ class ContradictionManager:
                 (node_id,),
             ).fetchone()
 
+            if node_row is None and resolution != "keep_old":
+                return {
+                    "success": False,
+                    "node_id": node_id,
+                    "resolution": resolution,
+                    "message": f"Node {node_id} no longer exists; cannot apply {resolution}.",
+                }
+
             current_label = node_row["label"] if node_row else existing_value
             history = []
             if node_row:

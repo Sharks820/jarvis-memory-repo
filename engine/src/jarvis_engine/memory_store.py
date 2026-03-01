@@ -23,6 +23,9 @@ class MemoryStore:
         self._events_path = self._dir / "events.jsonl"
         self._lock = threading.Lock()
 
+    def close(self) -> None:
+        """No-op — MemoryStore uses file append, no persistent connection."""
+
     def append(self, event_type: str, message: str) -> MemoryEvent:
         event = MemoryEvent(
             ts=datetime.now(UTC).isoformat(),

@@ -320,17 +320,10 @@ class MemoryEngine:
                 )
 
                 if self._vec_available:
-                    try:
-                        cur.execute(
-                            "DELETE FROM vec_records WHERE record_id = ?",
-                            (record_id,),
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to delete vec_records for %s: %s",
-                            record_id,
-                            exc,
-                        )
+                    cur.execute(
+                        "DELETE FROM vec_records WHERE record_id = ?",
+                        (record_id,),
+                    )
 
                 self._db.commit()
                 return True
@@ -525,16 +518,35 @@ class MemoryEngine:
 
             if conditions:
                 where_clause = " AND ".join(conditions)
-                query = f"""
-                    SELECT v.record_id, v.distance
-                    FROM vec_records v
-                    INNER JOIN records r ON v.record_id = r.record_id
-                    WHERE {where_clause}
-                    AND v.embedding MATCH ?
-                    ORDER BY v.distance
-                    LIMIT ?
-                """
-                params.extend([blob, limit])
+                # Two-phase approach: oversample KNN candidates, then filter
+                # by metadata.  sqlite-vec processes MATCH to get top-K first,
+                # so a single JOIN + WHERE would discard candidates post-hoc,
+                # returning fewer results than requested.
+                oversample = min(limit * 5, 500)
+                with self._db_lock:
+                    cur = self._db.execute(
+                        "SELECT record_id, distance FROM vec_records "
+                        "WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
+                        (blob, oversample),
+                    )
+                    knn_results = cur.fetchall()
+                    if not knn_results:
+                        return []
+                    candidate_ids = [r[0] for r in knn_results]
+                    dist_map = {r[0]: r[1] for r in knn_results}
+                    placeholders = ",".join("?" for _ in candidate_ids)
+                    filter_sql = (
+                        f"SELECT record_id FROM records "
+                        f"WHERE record_id IN ({placeholders}) AND {where_clause}"
+                    )
+                    cur2 = self._db.execute(filter_sql, candidate_ids + params)
+                    valid_ids = {r[0] for r in cur2.fetchall()}
+                results = [
+                    (rid, dist_map[rid])
+                    for rid in candidate_ids
+                    if rid in valid_ids
+                ]
+                return results[:limit]
             else:
                 query = """
                     SELECT record_id, distance
@@ -545,9 +557,9 @@ class MemoryEngine:
                 """
                 params = [blob, limit]
 
-            with self._db_lock:
-                cur = self._db.execute(query, params)
-                return [(row[0], row[1]) for row in cur.fetchall()]
+                with self._db_lock:
+                    cur = self._db.execute(query, params)
+                    return [(row[0], row[1]) for row in cur.fetchall()]
         except Exception as exc:
             logger.warning("Filtered vec search failed: %s", exc)
             return []

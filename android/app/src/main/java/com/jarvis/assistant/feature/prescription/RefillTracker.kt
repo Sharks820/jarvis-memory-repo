@@ -128,7 +128,7 @@ class RefillTracker @Inject constructor(
             .setAutoCancel(true)
             .build()
 
-        val notificationId = medicationId.toInt() + REFILL_NOTIFICATION_OFFSET
+        val notificationId = ((medicationId.toInt() + REFILL_NOTIFICATION_OFFSET) and 0x7FFFFFFF)
         notificationManager.notify(notificationId, notification)
     }
 
