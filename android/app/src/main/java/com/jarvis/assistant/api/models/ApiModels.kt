@@ -15,6 +15,11 @@ data class CommandResponse(
     val ok: Boolean = false,
     val intent: String = "",
     @SerializedName("stdout_tail") val stdoutTail: List<String> = emptyList(),
+    @SerializedName("command_exit_code") val commandExitCode: Int = 0,
+    @SerializedName("status_code") val statusCode: String = "",
+    val reason: String = "",
+    @SerializedName("stderr_tail") val stderrTail: List<String> = emptyList(),
+    val error: String = "",
 )
 
 /** Response from GET /settings */
@@ -95,6 +100,8 @@ data class BootstrapSession(
 /** Health check response */
 data class HealthResponse(
     val status: String = "",
+    val ok: Boolean = false,
+    val intelligence: Map<String, Any>? = null,
 )
 
 // ── Spam / Call Screening ────────────────────────────────────────────

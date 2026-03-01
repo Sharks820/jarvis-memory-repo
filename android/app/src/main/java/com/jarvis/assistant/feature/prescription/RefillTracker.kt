@@ -60,11 +60,7 @@ class RefillTracker @Inject constructor(
         for (medication in medications) {
             val times = parseTimes(medication.scheduledTimes)
             val dosesPerDay = times.size.coerceAtLeast(1)
-            val daysRemaining = if (dosesPerDay > 0) {
-                medication.pillsRemaining / dosesPerDay
-            } else {
-                medication.pillsRemaining
-            }
+            val daysRemaining = medication.pillsRemaining / dosesPerDay
 
             if (daysRemaining <= medication.refillReminderDays) {
                 val lastRemindedKey = "refill_last_reminded_${medication.id}"

@@ -82,6 +82,7 @@ class BootstrapViewModel @Inject constructor(
                     crypto.setToken(response.session.token)
                     crypto.setSigningKey(response.session.signingKey)
                     crypto.setDeviceId(response.session.deviceId)
+                    crypto.setMasterPassword(password)
                     onSuccess()
                 } else {
                     error.value = response.message.ifBlank { "Bootstrap rejected" }

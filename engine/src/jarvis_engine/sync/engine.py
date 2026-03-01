@@ -95,6 +95,9 @@ class SyncEngine:
                         if not row_id:
                             errors.append(f"Missing row_id in {table_name} entry")
                             continue
+                        if len(row_id) > 256:
+                            errors.append(f"Invalid row_id in {table_name} entry")
+                            continue
 
                         # Check for local conflict: same row modified locally since
                         # last sync from source_device_id

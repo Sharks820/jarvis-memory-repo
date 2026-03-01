@@ -21,7 +21,7 @@ def send_ingest(
     task_id: str,
     content: str,
 ) -> dict:
-    ts = str(time.time())
+    ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
     payload = {
         "source": source,

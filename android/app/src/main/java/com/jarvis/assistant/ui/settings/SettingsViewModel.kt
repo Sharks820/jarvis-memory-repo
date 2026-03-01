@@ -2,7 +2,6 @@ package com.jarvis.assistant.ui.settings
 
 import android.app.Application
 import android.content.Context
-import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -32,7 +31,6 @@ import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.scheduling.JarvisNotificationListenerService
 import com.jarvis.assistant.security.CryptoHelper
-import com.jarvis.assistant.service.JarvisService
 import com.google.gson.Gson
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -312,12 +310,14 @@ class SettingsViewModel @Inject constructor(
         crypto.setBaseUrl(url)
     }
 
+    /**
+     * @deprecated Sync interval is no longer configurable at runtime.
+     * Time-critical tasks use a fixed 30s coroutine loop in JarvisService,
+     * and all other periodic work is managed by WorkManager (15-minute minimum).
+     * This function now only persists the UI value without restarting the service.
+     */
     fun saveSyncInterval(seconds: Int) {
         syncIntervalSec.value = seconds
-        val intent = Intent(app, JarvisService::class.java).apply {
-            putExtra(JarvisService.EXTRA_SYNC_INTERVAL, seconds * 1000L)
-        }
-        app.startForegroundService(intent)
     }
 
     fun checkConnection() {

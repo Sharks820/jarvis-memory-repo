@@ -88,6 +88,12 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         val pkg = sbn.packageName
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+        // Track Jarvis notification post times for learning
+        val channelId = sbn.notification.channelId ?: ""
+        if (channelId.startsWith("jarvis_") && channelId != "jarvis_sync") {
+            notificationPostTimes[sbn.id] = System.currentTimeMillis()
+        }
+
         val extras = sbn.notification.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
@@ -136,16 +142,6 @@ class JarvisNotificationListenerService : NotificationListenerService() {
                 Log.w(TAG, "Cue extraction failed: ${e.message}")
             }
         }
-    }
-
-    override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap) {
-        // Track Jarvis notification post times for learning
-        val channelId = sbn.notification.channelId ?: ""
-        if (channelId.startsWith("jarvis_") && channelId != "jarvis_sync") {
-            notificationPostTimes[sbn.id] = System.currentTimeMillis()
-        }
-        // Delegate to the main handler for scheduling extraction
-        onNotificationPosted(sbn)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {

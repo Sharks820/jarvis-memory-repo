@@ -227,10 +227,11 @@ class ContradictionManager:
                 })
 
             elif resolution == "merge":
-                # Set merge_value on the node
+                # Set merge_value on the node, unlock it (same as accept_new)
                 self._db.execute(
                     """UPDATE kg_nodes
-                       SET label = ?, updated_at = datetime('now')
+                       SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
+                           updated_at = datetime('now')
                        WHERE node_id = ?""",
                     (merge_value, node_id),
                 )
@@ -244,11 +245,12 @@ class ContradictionManager:
                     "resolved_at": now,
                 })
 
-            # Update history on the node
-            self._db.execute(
-                "UPDATE kg_nodes SET history = ? WHERE node_id = ?",
-                (json.dumps(history[-50:]), node_id),
-            )
+            # Update history on the node (guard against missing node)
+            if node_row is not None:
+                self._db.execute(
+                    "UPDATE kg_nodes SET history = ? WHERE node_id = ?",
+                    (json.dumps(history[-50:]), node_id),
+                )
 
             # Mark contradiction as resolved
             self._db.execute(

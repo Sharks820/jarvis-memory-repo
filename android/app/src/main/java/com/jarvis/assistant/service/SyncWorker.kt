@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.jarvis.assistant.data.CommandQueueProcessor
 import com.jarvis.assistant.data.dao.CallLogDao
 import com.jarvis.assistant.data.dao.ContextStateDao
 import com.jarvis.assistant.data.dao.ConversationDao
@@ -21,20 +20,20 @@ import com.jarvis.assistant.feature.documents.DocumentSyncManager
 import com.jarvis.assistant.feature.habit.NudgeEngine
 import com.jarvis.assistant.feature.habit.NudgeResponseTracker
 import com.jarvis.assistant.feature.habit.PatternDetector
-import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.social.RelationshipAlertEngine
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
 /**
- * WorkManager-based periodic sync worker that replaces the Thread.sleep-based
- * sync loop in [JarvisService].
+ * WorkManager-based periodic sync worker that handles non-time-critical
+ * periodic tasks alongside [JarvisService].
  *
- * This worker handles all network sync and periodic tasks:
- * - Command queue flush
+ * Command queue flush and proactive alert checks are handled by
+ * JarvisService's high-frequency coroutine loop (30s interval).
+ *
+ * This worker handles:
  * - Spam DB sync (throttled to 10-minute intervals)
- * - Proactive alert checks
  * - Context detection (every 2 minutes)
  * - Refill checks (every 6 hours)
  * - Location recording (every 15 minutes)
@@ -56,9 +55,7 @@ import dagger.assisted.AssistedInject
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val processor: CommandQueueProcessor,
     private val spamDatabaseSync: SpamDatabaseSync,
-    private val proactiveReceiver: ProactiveAlertReceiver,
     private val contextDetector: ContextDetector,
     private val contextAdjuster: ContextAdjuster,
     private val contextStateDao: ContextStateDao,
@@ -83,14 +80,12 @@ class SyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val now = System.currentTimeMillis()
 
-        // 1. Command queue flush (every run)
-        try {
-            processor.flushPending()
-        } catch (e: Exception) {
-            Log.w(TAG, "Sync cycle error: ${e.message}")
-        }
+        // NOTE: Command queue flush and proactive alert checks are handled by
+        // JarvisService's high-frequency coroutine loop (30s interval) and are
+        // intentionally NOT duplicated here. SyncWorker handles only tasks that
+        // are fine with WorkManager's 15-minute minimum period.
 
-        // 2. Spam DB sync: at most every 10 minutes
+        // 1. Spam DB sync: at most every 10 minutes
         if (now - getLastTimestamp(KEY_LAST_SPAM_SYNC) >= SPAM_SYNC_INTERVAL_MS) {
             try {
                 spamDatabaseSync.syncFromDesktop()
@@ -100,14 +95,7 @@ class SyncWorker @AssistedInject constructor(
             }
         }
 
-        // 3. Proactive alert check: every run
-        try {
-            proactiveReceiver.checkAndPost()
-        } catch (e: Exception) {
-            Log.w(TAG, "Proactive alert check error: ${e.message}")
-        }
-
-        // 4. Context detection: every 2 minutes
+        // 2. Context detection: every 2 minutes
         if (now - getLastTimestamp(KEY_LAST_CONTEXT_CHECK) >= CONTEXT_CHECK_INTERVAL_MS) {
             try {
                 val state = contextDetector.detectCurrentContext()

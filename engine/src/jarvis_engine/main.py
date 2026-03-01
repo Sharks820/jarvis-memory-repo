@@ -3423,14 +3423,9 @@ def _cmd_voice_run_impl(
             message="",
             queue_path=phone_queue,
         )
-    elif (lowered.startswith("call ") or "place a call" in lowered or "make a call" in lowered or "phone call" in lowered):
+    elif (lowered.startswith("call ") or "place a call" in lowered or "make a call" in lowered or "phone call" in lowered) and _extract_first_phone_number(text):
         number = _extract_first_phone_number(text)
         intent = "phone_place_call"
-        if not number:
-            # No phone number found — don't queue a call to nobody
-            print("intent=phone_place_call")
-            print("reason=No phone number found in voice command.")
-            return 2
         if not execute:
             print("reason=Set --execute to queue phone actions.")
             return 2
@@ -3456,7 +3451,8 @@ def _cmd_voice_run_impl(
         )
     elif "generate code" in lowered:
         intent = "generate_code"
-        prompt = text.split("generate code", 1)[1].strip() if "generate code" in lowered else text
+        idx = lowered.index("generate code") + len("generate code")
+        prompt = text[idx:].strip()
         prompt = prompt or "Generate high-quality production code for the requested task."
         rc = cmd_run_task(
             task_type="code",
@@ -3470,7 +3466,8 @@ def _cmd_voice_run_impl(
         )
     elif "generate image" in lowered:
         intent = "generate_image"
-        prompt = text.split("generate image", 1)[1].strip() if "generate image" in lowered else text
+        idx = lowered.index("generate image") + len("generate image")
+        prompt = text[idx:].strip()
         prompt = prompt or "Generate a high-quality concept image."
         rc = cmd_run_task(
             task_type="image",
@@ -3484,7 +3481,8 @@ def _cmd_voice_run_impl(
         )
     elif "generate video" in lowered:
         intent = "generate_video"
-        prompt = text.split("generate video", 1)[1].strip() if "generate video" in lowered else text
+        idx = lowered.index("generate video") + len("generate video")
+        prompt = text[idx:].strip()
         prompt = prompt or "Generate a high-quality short cinematic video."
         rc = cmd_run_task(
             task_type="video",
@@ -3926,21 +3924,22 @@ def _cmd_voice_run_impl(
 
     print(f"intent={intent}")
     print(f"status_code={rc}")
-    try:
-        auto_id = _auto_ingest_memory(
-            source="user",
-            kind="episodic",
-            task_id=f"voice-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
-            content=(
-                f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
-                f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
-            ),
-        )
-        if auto_id:
-            print(f"auto_ingest_record_id={auto_id}")
-    except Exception as exc:
-        logger.debug("Auto-ingest of voice command memory failed: %s", exc)
-    if speak:
+    if rc == 0:
+        try:
+            auto_id = _auto_ingest_memory(
+                source="user",
+                kind="episodic",
+                task_id=f"voice-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                content=(
+                    f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
+                    f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
+                ),
+            )
+            if auto_id:
+                print(f"auto_ingest_record_id={auto_id}")
+        except Exception as exc:
+            logger.debug("Auto-ingest of voice command memory failed: %s", exc)
+    if speak and intent != "llm_conversation":
         persona = load_persona_config(repo_root())
         persona_line = compose_persona_reply(
             persona,

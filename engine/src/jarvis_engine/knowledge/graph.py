@@ -318,13 +318,18 @@ class KnowledgeGraph:
                     ),
                 )
                 # Update FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-                self._db.execute(
-                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-                )
-                self._db.execute(
-                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                    (node_id, label),
-                )
+                try:
+                    self._db.execute(
+                        "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+                    )
+                    self._db.execute(
+                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                        (node_id, label),
+                    )
+                except sqlite3.OperationalError as exc:
+                    if "no such table" not in str(exc):
+                        raise
+                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
             else:
                 # New node
                 sources = [source_record] if source_record else []
@@ -335,10 +340,15 @@ class KnowledgeGraph:
                     (node_id, label, node_type, confidence, json.dumps(sources)),
                 )
                 # Insert into FTS5 index
-                self._db.execute(
-                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                    (node_id, label),
-                )
+                try:
+                    self._db.execute(
+                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                        (node_id, label),
+                    )
+                except sqlite3.OperationalError as exc:
+                    if "no such table" not in str(exc):
+                        raise
+                    logger.debug("FTS5 table not available, skipping index insert for node %s", node_id)
 
             # Insert/update vec embedding if embed_service is available
             if self._embed_service is not None and self._vec_available:

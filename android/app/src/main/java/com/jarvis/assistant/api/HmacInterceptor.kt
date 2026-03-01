@@ -82,12 +82,11 @@ class HmacInterceptor(
     }
 
     /**
-     * Computes HMAC-SHA256 by streaming the request body through the Mac in
-     * chunks, avoiding full materialization in memory.
+     * Computes HMAC-SHA256 for large request bodies (>= 1 MB or unknown length).
      *
      * The signing material format remains: "$timestamp\n$nonce\n$body"
      * — the timestamp and nonce prefix are fed to the Mac first, then the
-     * body bytes are streamed in [CHUNK_SIZE] segments.
+     * body bytes are materialized once and fed to the Mac.
      *
      * @return Pair of (hex signature, rebuilt RequestBody for the actual request)
      */
@@ -99,32 +98,16 @@ class HmacInterceptor(
     ): Pair<String, RequestBody> {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        mac.update("$timestamp\n$nonce\n".toByteArray(Charsets.UTF_8))
 
-        // Feed the prefix: "$timestamp\n$nonce\n"
-        val prefix = "$timestamp\n$nonce\n"
-        mac.update(prefix.toByteArray(Charsets.UTF_8))
+        // Materialize body once into a byte array, compute HMAC, and rebuild
+        val buffer = Buffer()
+        body.writeTo(buffer)
+        val bodyBytes = buffer.readByteArray()
+        mac.update(bodyBytes)
 
-        // Write the body into a buffer, streaming chunks through the Mac
-        val bodyBuffer = Buffer()
-        body.writeTo(bodyBuffer)
-
-        // Read the buffer in chunks, updating the Mac incrementally
-        val bodyBytes = Buffer()
-        val chunk = ByteArray(CHUNK_SIZE)
-        while (!bodyBuffer.exhausted()) {
-            val bytesRead = bodyBuffer.read(chunk)
-            if (bytesRead > 0) {
-                mac.update(chunk, 0, bytesRead)
-                bodyBytes.write(chunk, 0, bytesRead)
-            }
-        }
-
-        val hash = mac.doFinal()
-        val signature = hash.joinToString("") { "%02x".format(it) }
-
-        // Rebuild the body from the buffered bytes
-        val rebuiltBody = bodyBytes.readByteArray().toRequestBody(body.contentType())
-        return Pair(signature, rebuiltBody)
+        val signature = mac.doFinal().joinToString("") { "%02x".format(it) }
+        return Pair(signature, bodyBytes.toRequestBody(body.contentType()))
     }
 
     private fun hmacSha256(key: String, message: String): String {
@@ -145,8 +128,5 @@ class HmacInterceptor(
 
         /** Bodies larger than this threshold (1 MB) use streaming HMAC. */
         private const val STREAMING_THRESHOLD_BYTES = 1L * 1024 * 1024
-
-        /** Chunk size for streaming HMAC reads (64 KB). */
-        private const val CHUNK_SIZE = 64 * 1024
     }
 }
