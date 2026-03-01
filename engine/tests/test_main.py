@@ -401,7 +401,7 @@ def test_cmd_runtime_control_persists_state(tmp_path: Path, monkeypatch) -> None
 
 def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-    rid = main_mod._auto_ingest_memory(  # type: ignore[attr-defined]
+    rid = main_mod._auto_ingest_memory_sync(  # type: ignore[attr-defined]
         source="user",
         kind="semantic",
         task_id="brain-seed",
