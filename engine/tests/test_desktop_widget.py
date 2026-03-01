@@ -1464,6 +1464,32 @@ class TestWidgetStateMachine:
 
         widget._set_state.assert_called_once_with("processing")
 
+    def test_on_escape_cancels_when_processing(self):
+        """ESC should cancel command when widget is processing."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._widget_state = "processing"
+        widget._cancel_command = MagicMock()
+        widget._toggle_min = MagicMock()
+
+        JarvisDesktopWidget._on_escape(widget)
+
+        widget._cancel_command.assert_called_once()
+        widget._toggle_min.assert_not_called()
+
+    def test_on_escape_minimizes_when_idle(self):
+        """ESC should minimize widget when not processing."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._widget_state = "idle"
+        widget._cancel_command = MagicMock()
+        widget._toggle_min = MagicMock()
+
+        JarvisDesktopWidget._on_escape(widget)
+
+        widget._toggle_min.assert_called_once()
+        widget._cancel_command.assert_not_called()
+
     def test_dictate_sets_listening_state(self):
         """_dictate_async should set listening state before dictation."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
