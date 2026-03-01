@@ -41,19 +41,28 @@ class JarvisApiClient @Inject constructor(
             .build()
     }
 
-    private val retrofit: Retrofit by lazy {
-        val baseUrl = crypto.getBaseUrl().ifBlank { "http://127.0.0.1:8787" }
+    @Volatile private var lastBaseUrl: String = ""
+    @Volatile private var cachedApi: JarvisApi? = null
+
+    private fun buildRetrofit(baseUrl: String): Retrofit =
         Retrofit.Builder()
             .baseUrl(baseUrl.trimEnd('/') + "/")
             .client(okHttp)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-    }
 
-    private val apiInstance: JarvisApi by lazy {
-        retrofit.create(JarvisApi::class.java)
+    /** Returns a [JarvisApi] Retrofit proxy, rebuilding if the base URL has changed. */
+    fun api(): JarvisApi {
+        val currentUrl = crypto.getBaseUrl().ifBlank { "http://127.0.0.1:8787" }
+        val existing = cachedApi
+        if (existing != null && currentUrl == lastBaseUrl) return existing
+        synchronized(this) {
+            // Double-check inside lock
+            if (cachedApi != null && currentUrl == lastBaseUrl) return cachedApi!!
+            lastBaseUrl = currentUrl
+            val api = buildRetrofit(currentUrl).create(JarvisApi::class.java)
+            cachedApi = api
+            return api
+        }
     }
-
-    /** Returns a cached [JarvisApi] Retrofit proxy. */
-    fun api(): JarvisApi = apiInstance
 }

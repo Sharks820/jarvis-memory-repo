@@ -41,7 +41,11 @@ import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
+fun HomeScreen(
+    viewModel: HomeViewModel = hiltViewModel(),
+    onNavigateToChat: () -> Unit = {},
+    onNavigateToMemory: () -> Unit = {},
+) {
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
@@ -173,10 +177,19 @@ fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
                         item {
                             Spacer(Modifier.height(8.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val actions = listOf("Daily Briefing", "Search Memory", "Sync Now")
-                                items(actions) { label ->
-                                    FilledTonalButton(onClick = { /* handled by nav */ }) {
-                                        Text(label)
+                                item {
+                                    FilledTonalButton(onClick = onNavigateToChat) {
+                                        Text("Daily Briefing")
+                                    }
+                                }
+                                item {
+                                    FilledTonalButton(onClick = onNavigateToMemory) {
+                                        Text("Search Memory")
+                                    }
+                                }
+                                item {
+                                    FilledTonalButton(onClick = { viewModel.syncNow() }) {
+                                        Text("Sync Now")
                                     }
                                 }
                             }

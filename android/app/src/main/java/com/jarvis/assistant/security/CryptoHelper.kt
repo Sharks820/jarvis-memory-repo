@@ -46,13 +46,14 @@ class CryptoHelper(context: Context) {
      * Returns a stable fallback passphrase for SQLCipher, generated once via
      * SecureRandom and persisted in EncryptedSharedPreferences.
      */
+    @Synchronized
     fun getOrCreateFallbackPassphrase(): String {
         val existing = prefs.getString(KEY_SQLCIPHER_FALLBACK, null)
         if (!existing.isNullOrBlank()) return existing
         val bytes = ByteArray(32)
         java.security.SecureRandom().nextBytes(bytes)
         val generated = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-        prefs.edit().putString(KEY_SQLCIPHER_FALLBACK, generated).apply()
+        prefs.edit().putString(KEY_SQLCIPHER_FALLBACK, generated).commit()
         return generated
     }
 

@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.jarvis.assistant.feature.voice.VoiceEngine
 import com.jarvis.assistant.ui.chat.ChatScreen
@@ -27,7 +28,7 @@ fun JarvisNavGraph(
     Scaffold(
         bottomBar = {
             // Only show bottom nav when NOT on bootstrap screen.
-            val current = navController.currentBackStackEntry?.destination?.route
+            val current = navController.currentBackStackEntryAsState().value?.destination?.route
             if (current != "bootstrap") {
                 BottomNavBar(navController)
             }
@@ -48,7 +49,10 @@ fun JarvisNavGraph(
                 )
             }
             composable("home") {
-                HomeScreen()
+                HomeScreen(
+                    onNavigateToChat = { navController.navigate("chat") },
+                    onNavigateToMemory = { navController.navigate("memory") },
+                )
             }
             composable("chat") {
                 ChatScreen(voiceEngine = voiceEngine)

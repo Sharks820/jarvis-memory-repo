@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ class EngineConfig:
     last_updated: str = ""
 
 
+@functools.lru_cache(maxsize=1)
 def repo_root() -> Path:
     """Return the repository root directory.
 

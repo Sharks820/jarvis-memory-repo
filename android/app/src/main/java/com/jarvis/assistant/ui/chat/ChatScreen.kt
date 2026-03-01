@@ -34,7 +34,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,8 +45,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jarvis.assistant.data.entity.ConversationEntity
@@ -63,6 +67,7 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val input by viewModel.inputText.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
     val voiceState by voiceEngine.state.collectAsState()
     val haptic = LocalHapticFeedback.current
 
@@ -101,6 +106,20 @@ fun ChatScreen(
             VoiceWaveIndicator(voiceState)
         }
 
+        // Error message
+        errorMessage?.let { error ->
+            Snackbar(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                action = {
+                    TextButton(onClick = { viewModel.clearError() }) {
+                        Text("Dismiss")
+                    }
+                },
+            ) {
+                Text(error)
+            }
+        }
+
         // Input bar
         Row(
             modifier = Modifier
@@ -113,7 +132,7 @@ fun ChatScreen(
                 onValueChange = { viewModel.inputText.value = it },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Message Jarvis...") },
-                singleLine = true,
+                maxLines = 4,
             )
 
             if (isSending) {
@@ -281,10 +300,11 @@ private fun ChatBubble(msg: ConversationEntity) {
 @Composable
 private fun ResponseActions(content: String) {
     if (content.isBlank()) return
+    val clipboardManager = LocalClipboardManager.current
     Spacer(Modifier.height(6.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         AssistChip(
-            onClick = { /* copy to clipboard handled by system */ },
+            onClick = { clipboardManager.setText(AnnotatedString(content)) },
             label = { Text("Copy", style = MaterialTheme.typography.labelSmall) },
             colors = AssistChipDefaults.assistChipColors(
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),

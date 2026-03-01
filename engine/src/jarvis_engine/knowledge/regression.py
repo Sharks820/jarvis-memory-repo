@@ -90,7 +90,8 @@ class RegressionChecker:
 
         Returns the Path of the newly created backup file.
         """
-        backup_dir = Path(".planning/runtime/kg_backups")
+        db_parent = Path(self._kg._engine._db_path).parent
+        backup_dir = db_parent / "kg_backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
@@ -98,9 +99,16 @@ class RegressionChecker:
         backup_name = f"{ts}{suffix}.db"
         backup_path = backup_dir / backup_name
 
-        # Use the DB path from the underlying engine
-        src_path = Path(self._kg._engine._db_path)
-        shutil.copy2(str(src_path), str(backup_path))
+        # Use sqlite3 backup API instead of shutil.copy2 so that
+        # in-flight WAL data is included in the backup atomically.
+        import sqlite3
+
+        dst_db = sqlite3.connect(str(backup_path))
+        try:
+            with self._kg.db_lock:
+                self._kg._engine._db.backup(dst_db)
+        finally:
+            dst_db.close()
         logger.info("Knowledge graph backed up to %s", backup_path)
 
         # Auto-prune oldest backups beyond _MAX_BACKUPS
