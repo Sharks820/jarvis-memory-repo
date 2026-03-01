@@ -34,6 +34,49 @@ class ContradictionManager:
         self._kg = kg
 
     # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _update_fts_index(self, node_id: str, label: str) -> None:
+        """Update fts_kg_nodes for a node. Silently no-ops if table missing."""
+        try:
+            self._db.execute(
+                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+            )
+            self._db.execute(
+                "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                (node_id, label),
+            )
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+            else:
+                raise
+
+    def _update_vec_embedding(self, node_id: str, label: str) -> None:
+        """Update vec_kg_nodes embedding for a node. Silently no-ops if unavailable."""
+        if self._kg is None:
+            return
+        embed_service = getattr(self._kg, "_embed_service", None)
+        vec_available = getattr(self._kg, "_vec_available", False)
+        if embed_service is None or not vec_available:
+            return
+        try:
+            import struct
+            embedding = embed_service.embed(label, prefix="search_document")
+            if len(embedding) == 768:
+                blob = struct.pack(f"{len(embedding)}f", *embedding)
+                self._db.execute(
+                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                )
+                self._db.execute(
+                    "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                    (node_id, blob),
+                )
+        except Exception as exc:
+            logger.debug("Vec embedding update for node %s failed: %s", node_id, exc)
+
+    # ------------------------------------------------------------------
     # List operations
     # ------------------------------------------------------------------
 
@@ -164,6 +207,9 @@ class ContradictionManager:
                        WHERE node_id = ?""",
                     (incoming_value, contradiction["incoming_confidence"], node_id),
                 )
+                # Update FTS5 + vec indexes (defensive — no-ops if tables missing)
+                self._update_fts_index(node_id, incoming_value)
+                self._update_vec_embedding(node_id, incoming_value)
                 history.append({
                     "action": "accept_new",
                     "previous_value": current_label,
@@ -188,6 +234,9 @@ class ContradictionManager:
                        WHERE node_id = ?""",
                     (merge_value, node_id),
                 )
+                # Update FTS5 + vec indexes (defensive — no-ops if tables missing)
+                self._update_fts_index(node_id, merge_value)
+                self._update_vec_embedding(node_id, merge_value)
                 history.append({
                     "action": "merge",
                     "previous_value": current_label,
