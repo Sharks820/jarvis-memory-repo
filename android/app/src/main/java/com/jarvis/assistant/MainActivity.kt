@@ -36,7 +36,6 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var crypto: CryptoHelper
 
     private val viewModel: MainViewModel by viewModels()
-    private var pendingVoiceIntent = false
 
     /**
      * Check if the device requires authentication.
@@ -75,8 +74,7 @@ class MainActivity : FragmentActivity() {
                 ) {
                     if (isAuthenticated) {
                         LaunchedEffect(Unit) {
-                            if (pendingVoiceIntent) {
-                                pendingVoiceIntent = false
+                            if (viewModel.consumePendingVoiceIntent()) {
                                 voiceEngine.startListening()
                             }
                         }
@@ -193,7 +191,7 @@ class MainActivity : FragmentActivity() {
             if (viewModel.isAuthenticated.value) {
                 voiceEngine.startListening()
             } else {
-                pendingVoiceIntent = true
+                viewModel.setPendingVoiceIntent(true)
             }
         }
     }

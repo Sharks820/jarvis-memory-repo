@@ -34,6 +34,10 @@ class MainViewModel @Inject constructor() : ViewModel() {
     private val _noAuthWarning = MutableStateFlow<String?>(null)
     val noAuthWarning: StateFlow<String?> = _noAuthWarning
 
+    /** Voice intent deferred until after authentication completes. */
+    private val _pendingVoiceIntent = MutableStateFlow(false)
+    val pendingVoiceIntent: StateFlow<Boolean> = _pendingVoiceIntent
+
     fun setAuthenticated(value: Boolean) {
         _isAuthenticated.value = value
     }
@@ -63,6 +67,19 @@ class MainViewModel @Inject constructor() : ViewModel() {
 
     fun showNoAuthWarning(warning: String) {
         _noAuthWarning.value = warning
+    }
+
+    fun setPendingVoiceIntent(pending: Boolean) {
+        _pendingVoiceIntent.value = pending
+    }
+
+    /** Consume pending voice intent (returns true if one was pending). */
+    fun consumePendingVoiceIntent(): Boolean {
+        if (_pendingVoiceIntent.value) {
+            _pendingVoiceIntent.value = false
+            return true
+        }
+        return false
     }
 
     /**
