@@ -2205,6 +2205,10 @@ class JarvisDesktopWidget(tk.Tk):
                 self._set_error_briefly_async()
             finally:
                 try:
+                    self.after(0, self._cancel_processing_timeout)
+                except Exception:
+                    pass
+                try:
                     self.after(0, lambda: self.command_text.config(state=tk.NORMAL))
                 except Exception:
                     pass

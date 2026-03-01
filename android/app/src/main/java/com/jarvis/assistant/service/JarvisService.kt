@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -58,6 +59,7 @@ class JarvisService : Service() {
     @Inject lateinit var proactiveReceiver: ProactiveAlertReceiver
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var loopJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -138,7 +140,8 @@ class JarvisService : Service() {
      * so command queue flush and proactive alert checks run here instead.
      */
     private fun startHighFrequencyLoop() {
-        scope.launch {
+        if (loopJob?.isActive == true) return
+        loopJob = scope.launch {
             while (true) {
                 try {
                     processor.flushPending()

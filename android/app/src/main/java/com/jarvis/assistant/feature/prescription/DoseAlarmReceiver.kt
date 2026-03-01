@@ -22,6 +22,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -98,6 +99,7 @@ class DoseAlarmReceiver : BroadcastReceiver() {
                 Log.e(TAG, "Error processing dose alarm", e)
             } finally {
                 pendingResult.finish()
+                scope.cancel()
             }
         }
     }
@@ -271,6 +273,7 @@ class DoseActionReceiver : BroadcastReceiver() {
                 Log.e(TAG, "Error processing dose action", e)
             } finally {
                 pendingResult.finish()
+                scope.cancel()
             }
         }
     }
