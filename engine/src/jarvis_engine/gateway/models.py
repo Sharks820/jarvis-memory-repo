@@ -251,6 +251,15 @@ class ModelGateway:
         Logs cost to CostTracker if one is configured.
         Logs routing decision to GatewayAudit if one is configured.
         """
+        if getattr(self, "_closed", False):
+            return GatewayResponse(
+                text="",
+                model=model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason="gateway is closed",
+            )
+
         # If Claude requested but Anthropic unavailable, remap to best cloud model
         if model.startswith("claude-") and self._anthropic is None:
             best = self._best_cloud_model()
@@ -311,6 +320,18 @@ class ModelGateway:
             # If Ollama failed and cloud providers are available, try them
             # skip_ollama=True to avoid re-trying Ollama at the end of the chain
             if response.provider == "none" and self._cloud_keys:
+                # Log the failed Ollama attempt (consistent with Anthropic/cloud paths)
+                self._audit_decision(
+                    provider="ollama",
+                    model=model,
+                    reason=route_reason or "primary:ollama",
+                    latency_ms=(time.perf_counter() - t0) * 1000,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    success=False,
+                    privacy_routed=privacy_routed,
+                )
                 t0 = time.perf_counter()
                 response = self._fallback_chain(
                     messages, max_tokens, response.fallback_reason or "ollama_failed",
@@ -441,6 +462,9 @@ class ModelGateway:
         # not in the messages array (only user/assistant roles allowed).
         system_parts = [m["content"] for m in messages if m.get("role") == "system"]
         non_system = [m for m in messages if m.get("role") != "system"]
+        # Anthropic API requires at least one user/assistant message
+        if not non_system:
+            raise RuntimeError("No user/assistant messages to send to Anthropic")
         kwargs: dict = {
             "model": api_model,
             "max_tokens": max_tokens,

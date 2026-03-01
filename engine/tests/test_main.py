@@ -535,17 +535,8 @@ def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monke
     assert observed["approve_privileged"] is False
 
 
-def test_cmd_voice_run_routes_web_research(monkeypatch) -> None:
-    observed: dict[str, str] = {}
-
-    def fake_web_research(query: str, *, max_results: int, max_pages: int, auto_ingest: bool) -> int:
-        observed["query"] = query
-        observed["max_results"] = str(max_results)
-        observed["max_pages"] = str(max_pages)
-        observed["auto_ingest"] = str(auto_ingest)
-        return 0
-
-    monkeypatch.setattr(main_mod, "cmd_web_research", fake_web_research)
+def test_cmd_voice_run_routes_web_research(monkeypatch, capsys) -> None:
+    """Web search queries route through LLM with web augmentation."""
     rc = main_mod.cmd_voice_run(
         text="Jarvis, search the web for samsung galaxy s25 spam call filtering",
         execute=False,
@@ -559,7 +550,8 @@ def test_cmd_voice_run_routes_web_research(monkeypatch) -> None:
         master_password="",
     )
     assert rc == 0
-    assert "spam call filtering" in observed["query"]
+    out = capsys.readouterr().out
+    assert "intent=web_research" in out
 
 
 def test_cmd_mobile_desktop_sync_and_self_heal(tmp_path: Path, monkeypatch) -> None:

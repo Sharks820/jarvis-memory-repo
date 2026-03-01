@@ -150,15 +150,22 @@ class WakeWordDetector:
                         # Cooldown to prevent rapid re-triggers
                         time.sleep(self._cooldown_seconds)
 
-                        # Drain stale audio that accumulated during cooldown
-                        # to prevent false re-triggers from buffered wake word echo
+                        # Drain stale audio that accumulated during callback + cooldown
+                        # to prevent false re-triggers from buffered wake word echo.
+                        # Use available frames count to avoid blocking on read().
                         with self._stream_lock:
                             drain_stream = self._stream
                         if drain_stream is not None:
                             try:
-                                drain_stream.read(int(16000 * self._cooldown_seconds))
+                                avail = drain_stream.read_available
+                                if avail > 0:
+                                    drain_stream.read(avail)
                             except Exception:
                                 pass  # Stream may have been closed
+
+                        # Reset silence state so first chunk after drain
+                        # goes through the silence-to-speech transition path
+                        _was_silent = True
         except Exception as exc:
             logger.error("Wake word detection error: %s", exc)
         finally:

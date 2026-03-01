@@ -81,7 +81,7 @@ class TestSessionCreation:
         sid = manager.create_session("device1", "10.0.0.1", "UA")
         sessions = manager.get_active_sessions()
         assert len(sessions) == 1
-        assert sessions[0]["session_id"] == sid
+        assert sessions[0]["session_id"] == sid[:8] + "..."
         assert sessions[0]["device_id"] == "device1"
         assert sessions[0]["ip"] == "10.0.0.1"
 

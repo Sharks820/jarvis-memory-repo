@@ -115,6 +115,23 @@ class IntentClassifier:
             "write an engaging introduction for my blog post",
             "help me craft a personal mission statement",
         ],
+        "web_research": [
+            "what is the latest news about artificial intelligence",
+            "what is the current price of bitcoin today",
+            "who won the Super Bowl this year",
+            "what are the top headlines right now",
+            "what is the weather forecast for this weekend",
+            "what are the latest stock market results",
+            "when does the new iPhone come out",
+            "what happened in the news today",
+            "how much does a Tesla Model 3 cost right now",
+            "who is winning the presidential election",
+            "what are the current gas prices near me",
+            "what is the score of the basketball game tonight",
+            "find me the best restaurants in downtown Austin",
+            "what movies are coming out this month",
+            "what is the exchange rate for USD to EUR today",
+        ],
     }
 
     MODEL_MAP: dict[str, str] = {
@@ -122,6 +139,7 @@ class IntentClassifier:
         "complex": "kimi-k2",      # Primary: Kimi K2 via Groq
         "routine": "kimi-k2",      # Primary: Kimi K2 via Groq
         "creative": "kimi-k2",     # Primary: Kimi K2 via Groq
+        "web_research": "kimi-k2", # Primary: Kimi K2 via Groq (web context injected)
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 

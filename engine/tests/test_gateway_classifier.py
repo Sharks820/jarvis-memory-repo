@@ -36,6 +36,9 @@ _PRIVATE_DIR[3] = 1.0
 _CREATIVE_DIR = np.zeros(_DIM)
 _CREATIVE_DIR[4] = 1.0
 
+_WEB_RESEARCH_DIR = np.zeros(_DIM)
+_WEB_RESEARCH_DIR[5] = 1.0
+
 # Neutral vector -- low similarity with all directions
 _NEUTRAL_DIR = np.ones(_DIM) / np.sqrt(_DIM)
 
@@ -69,6 +72,13 @@ _CREATIVE_KEYWORDS = {
     "motivational speech", "metaphors", "song lyrics", "comedy sketch",
     "gift ideas", "blog post", "mission statement",
 }
+_WEB_RESEARCH_KEYWORDS = {
+    "latest news", "current price", "super bowl", "top headlines",
+    "weather forecast", "stock market", "iphone come out", "news today",
+    "tesla model", "presidential election", "gas prices", "score of the",
+    "best restaurants", "coming out", "exchange rate",
+    # Ensure ALL 15 exemplars have keyword coverage (prevents neutral centroid drift)
+}
 
 
 def _match_direction(text: str) -> np.ndarray:
@@ -89,6 +99,9 @@ def _match_direction(text: str) -> np.ndarray:
     for kw in _CREATIVE_KEYWORDS:
         if kw in lower:
             return _CREATIVE_DIR.copy()
+    for kw in _WEB_RESEARCH_KEYWORDS:
+        if kw in lower:
+            return _WEB_RESEARCH_DIR.copy()
     return _NEUTRAL_DIR.copy()
 
 
@@ -113,7 +126,9 @@ def mock_embed():
 
 
 @pytest.fixture
-def classifier(mock_embed):
+def classifier(mock_embed, tmp_path, monkeypatch):
+    # Use a temp cache directory to avoid stale centroid caches from previous runs
+    monkeypatch.setattr(IntentClassifier, "_cache_dir", staticmethod(lambda: str(tmp_path / "centroids")))
     return IntentClassifier(mock_embed)
 
 
@@ -155,6 +170,20 @@ class TestIntentClassifierRouting:
             "write a short story about a robot learning to paint"
         )
         assert route == "creative"
+        assert model == "kimi-k2"
+
+    def test_classify_web_research_query(self, classifier):
+        route, model, confidence = classifier.classify(
+            "what is the latest news about artificial intelligence"
+        )
+        assert route == "web_research"
+        assert model == "kimi-k2"
+
+    def test_classify_web_research_current_price(self, classifier):
+        route, model, confidence = classifier.classify(
+            "what is the current price of bitcoin today"
+        )
+        assert route == "web_research"
         assert model == "kimi-k2"
 
 

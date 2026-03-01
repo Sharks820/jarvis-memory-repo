@@ -125,17 +125,21 @@ class ResponseFeedbackTracker:
             "satisfaction_rate": rate,
         }
 
-    def get_all_route_quality(self) -> dict[str, dict]:
+    def get_all_route_quality(self, last_n: int = 20) -> dict[str, dict]:
         """Get quality metrics for all routes.
 
-        Uses a single aggregation query instead of N+1 per-route queries.
+        Uses a windowed query to limit to the most recent *last_n* records
+        per route, matching the behaviour of :meth:`get_route_quality`.
         """
         with self._db_lock:
             cur = self._db.execute(
-                "SELECT route, feedback, COUNT(*) as cnt "
-                "FROM response_feedback "
-                "WHERE route != '' "
-                "GROUP BY route, feedback"
+                "SELECT route, feedback, COUNT(*) as cnt FROM ("
+                "  SELECT route, feedback, "
+                "    ROW_NUMBER() OVER (PARTITION BY route ORDER BY rowid DESC) AS rn "
+                "  FROM response_feedback WHERE route != ''"
+                ") WHERE rn <= ? "
+                "GROUP BY route, feedback",
+                (last_n,),
             )
             rows = cur.fetchall()
 

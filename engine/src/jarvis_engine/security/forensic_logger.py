@@ -189,7 +189,11 @@ class ForensicLogger:
     # ------------------------------------------------------------------
 
     def _recover_last_hash(self) -> str:
-        """Read the last line of the log to restore the hash chain."""
+        """Read the last line of the log to restore the hash chain.
+
+        Uses progressively larger reads to handle large JSON lines
+        (up to 1 MB). Falls back to full-file scan if needed.
+        """
         if not self._path.exists():
             return _ZERO_HASH
         try:
@@ -198,17 +202,28 @@ class ForensicLogger:
                 size = f.tell()
                 if size == 0:
                     return _ZERO_HASH
-                read_size = min(size, 8192)
-                f.seek(max(0, size - read_size))
-                tail = f.read().decode("utf-8", errors="replace")
+                # Try progressively larger reads to find a complete last line
+                for read_size in (8192, 65536, 524288, size):
+                    actual_read = min(size, read_size)
+                    f.seek(max(0, size - actual_read))
+                    tail = f.read().decode("utf-8", errors="replace")
+                    lines = tail.strip().splitlines()
+                    if not lines:
+                        continue
+                    last_line = lines[-1]
+                    # Verify the last line is valid JSON (complete, not truncated)
+                    try:
+                        json.loads(last_line)
+                        return hashlib.sha256(last_line.encode("utf-8")).hexdigest()
+                    except (json.JSONDecodeError, ValueError):
+                        if actual_read >= size:
+                            # We've read the entire file and still can't parse
+                            break
+                        continue  # Try a larger read
         except OSError:
             return _ZERO_HASH
 
-        lines = tail.strip().splitlines()
-        if not lines:
-            return _ZERO_HASH
-        last_line = lines[-1]
-        return hashlib.sha256(last_line.encode("utf-8")).hexdigest()
+        return _ZERO_HASH
 
     def _do_rotate(self) -> None:
         """Perform rotation — must be called with self._lock held."""

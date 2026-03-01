@@ -103,6 +103,8 @@ class AttackPatternMemory:
 
     # -- Record attack ------------------------------------------------------
 
+    _MAX_PAYLOAD_STORED = 500  # Truncate stored payloads for safety
+
     def record_attack(
         self,
         category: str,
@@ -116,6 +118,8 @@ class AttackPatternMemory:
         """
         pid = _payload_hash(payload)
         now = _now_iso()
+        # Truncate payload for storage to prevent stored XSS and limit DB bloat
+        safe_payload = payload[:self._MAX_PAYLOAD_STORED]
 
         with self._lock:
             cur = self._db.cursor()
@@ -130,7 +134,7 @@ class AttackPatternMemory:
                        (pattern_id, category, payload_signature, detection_method,
                         first_seen, last_seen, frequency, source_ips, notes)
                        VALUES (?, ?, ?, ?, ?, ?, 1, ?, '')""",
-                    (pid, category, payload, detection_method, now, now, ips_json),
+                    (pid, category, safe_payload, detection_method, now, now, ips_json),
                 )
             else:
                 # Upsert — increment frequency, update last_seen, append IP
@@ -141,6 +145,9 @@ class AttackPatternMemory:
                     existing_ips = []
                 if source_ip and source_ip not in existing_ips:
                     existing_ips.append(source_ip)
+                    # Cap stored IPs to prevent unbounded growth from botnets
+                    if len(existing_ips) > 200:
+                        existing_ips = existing_ips[-200:]
                 cur.execute(
                     """UPDATE attack_patterns
                        SET frequency = ?, last_seen = ?, source_ips = ?, detection_method = ?

@@ -192,6 +192,8 @@ class WakeWordStartHandler:
         """Stop the wake word detection thread if running."""
         if self._stop_event is not None:
             self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
         self._thread = None
         self._stop_event = None
 

@@ -413,7 +413,7 @@ class KnowledgeGraph:
         clauses = []
         params: list[object] = []
         for kw in keywords[:20]:  # cap to prevent huge queries
-            sanitized = kw.replace("%", "\\%").replace("_", "\\_")
+            sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("label LIKE ? ESCAPE '\\'")
             params.append(f"%{sanitized}%")
         params.append(min_confidence)
