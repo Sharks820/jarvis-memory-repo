@@ -667,7 +667,8 @@ class KnowledgeGraph:
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("label LIKE ? ESCAPE '\\'")
             like_params.append(f"%{sanitized}%")
-        from datetime import datetime, UTC
+        from datetime import datetime
+        from jarvis_engine._compat import UTC
         now = datetime.now(UTC).isoformat()
 
         where_clause = " OR ".join(clauses)

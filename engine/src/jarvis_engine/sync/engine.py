@@ -92,7 +92,7 @@ class SyncEngine:
                     )
 
                     for entry in entries:
-                        row_id = str(entry.get("row_id", ""))
+                        row_id = str(entry.get("row_id") or "")
                         if not row_id:
                             errors.append(f"Missing row_id in {table_name} entry")
                             continue
