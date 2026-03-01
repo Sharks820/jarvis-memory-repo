@@ -115,15 +115,15 @@ class RelationshipAlertEngine @Inject constructor(
         val year = Calendar.getInstance().get(Calendar.YEAR).toString()
 
         for (contact in contacts) {
-            val alertKey = "birthday_alerted_${contact.id}_$year"
-            if (prefs.getBoolean(alertKey, false)) continue
-
             val birthdayMMDD = extractMMDD(contact.birthday) ?: continue
             val when_ = when (birthdayMMDD) {
                 today -> "today"
                 tomorrow -> "tomorrow"
                 else -> continue
             }
+            // Include when_ in key so "tomorrow" alert doesn't suppress "today" alert
+            val alertKey = "birthday_alerted_${contact.id}_${year}_$when_"
+            if (prefs.getBoolean(alertKey, false)) continue
 
             val notifId = ((contact.id.toInt() + BIRTHDAY_NOTIFICATION_OFFSET) and 0x7FFFFFFF)
 
@@ -156,15 +156,15 @@ class RelationshipAlertEngine @Inject constructor(
         val year = Calendar.getInstance().get(Calendar.YEAR).toString()
 
         for (contact in contacts) {
-            val alertKey = "anniversary_alerted_${contact.id}_$year"
-            if (prefs.getBoolean(alertKey, false)) continue
-
             val anniversaryMMDD = extractMMDD(contact.anniversary) ?: continue
             val when_ = when (anniversaryMMDD) {
                 today -> "today"
                 tomorrow -> "tomorrow"
                 else -> continue
             }
+            // Include when_ in key so "tomorrow" alert doesn't suppress "today" alert
+            val alertKey = "anniversary_alerted_${contact.id}_${year}_$when_"
+            if (prefs.getBoolean(alertKey, false)) continue
 
             val notifId = ((contact.id.toInt() + ANNIVERSARY_NOTIFICATION_OFFSET) and 0x7FFFFFFF)
 

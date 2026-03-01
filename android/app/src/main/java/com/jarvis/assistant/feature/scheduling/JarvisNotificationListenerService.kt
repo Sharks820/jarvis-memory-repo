@@ -162,8 +162,9 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         }
 
         val action = when (reason) {
-            REASON_CLICK, REASON_APP_CANCEL -> "acted"
+            REASON_CLICK -> "acted"
             REASON_CANCEL -> "dismissed"
+            REASON_APP_CANCEL -> "expired"  // System/app removal, not user engagement
             else -> "expired"
         }
 

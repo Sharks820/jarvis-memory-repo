@@ -38,7 +38,7 @@ class SpendSummaryWorker @AssistedInject constructor(
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val cal = Calendar.getInstance()
             val endDate = dateFormat.format(cal.time)
-            cal.add(Calendar.DAY_OF_YEAR, -7)
+            cal.add(Calendar.DAY_OF_YEAR, -6)
             val startDate = dateFormat.format(cal.time)
 
             val transactions = transactionDao.getTransactionsInRange(startDate, endDate)

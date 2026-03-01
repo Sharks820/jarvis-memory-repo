@@ -58,7 +58,7 @@ def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | N
         if not number:
             continue
         ts = _parse_ts(item.get("ts_utc") or item.get("date_utc") or item.get("date", ""))
-        if ts and ts < lookback:
+        if not ts or ts < lookback:
             continue
         grouped[number].append(item)
 

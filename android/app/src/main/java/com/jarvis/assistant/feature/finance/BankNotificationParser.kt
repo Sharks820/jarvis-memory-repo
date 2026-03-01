@@ -57,15 +57,7 @@ class BankNotificationParser @Inject constructor(
             notificationHash = hash,
         )
 
-        val insertId = transactionDao.insert(entity)
-        if (insertId < 0) {
-            Log.d(TAG, "Duplicate notification skipped: $hash")
-            return null
-        }
-
-        entity = entity.copy(id = insertId)
-
-        // Check for anomalies
+        // Check for anomalies BEFORE insert so DB averages aren't diluted
         try {
             val anomalyResult = anomalyDetector.check(entity)
             if (anomalyResult.isAnomaly) {
@@ -73,13 +65,18 @@ class BankNotificationParser @Inject constructor(
                     isAnomaly = true,
                     anomalyReason = anomalyResult.reason,
                 )
-                transactionDao.update(entity)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Anomaly check failed: ${e.message}")
         }
 
-        return entity
+        val insertId = transactionDao.insert(entity)
+        if (insertId < 0) {
+            Log.d(TAG, "Duplicate notification skipped: $hash")
+            return null
+        }
+
+        return entity.copy(id = insertId)
     }
 
     /**
