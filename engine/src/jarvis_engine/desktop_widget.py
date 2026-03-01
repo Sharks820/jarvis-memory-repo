@@ -760,6 +760,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._thinking_marker: str | None = None  # Text index of thinking indicator start
         self._thinking_after_id: str | None = None  # after() id for dot animation
         self._thinking_dots: int = 3
+        self._welcome_shown: bool = False  # One-time welcome message flag
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
         self._position_save_id: str | None = None  # debounce timer for position save
         self._SNAP_DISTANCE = 20  # pixels from screen edge to trigger snap
@@ -1412,6 +1413,15 @@ class JarvisDesktopWidget(tk.Tk):
             spacing1=4,
             spacing3=4,
         )
+        self.output.tag_configure(
+            "learned",
+            foreground="#34d399",
+            font=("Consolas", 9, "italic"),
+            lmargin1=8,
+            lmargin2=8,
+            spacing1=1,
+            spacing3=1,
+        )
 
     def _clear_history(self) -> None:
         """Clear all text from the conversation display."""
@@ -1795,6 +1805,35 @@ class JarvisDesktopWidget(tk.Tk):
         help_win.bind("<Escape>", lambda _: help_win.destroy())
         help_win.focus_set()
 
+    def _show_welcome(self) -> None:
+        """Show one-time welcome message in chat."""
+        if self._welcome_shown:
+            return
+        self._welcome_shown = True
+        self._log(
+            "Hi! I'm Jarvis. Ask me anything, teach me with "
+            "'Remember that...', or click ? for help.",
+            role="jarvis",
+        )
+
+    def _show_learned_indicator(self) -> None:
+        """Show a brief 'Learned' indicator that fades after 2s."""
+        self.output.config(state=tk.NORMAL)
+        marker = self.output.index(tk.END)
+        self.output.insert(tk.END, "  Learned\n", "learned")
+        self.output.see(tk.END)
+        self.output.config(state=tk.DISABLED)
+
+        def _remove() -> None:
+            try:
+                self.output.config(state=tk.NORMAL)
+                self.output.delete(marker, f"{marker}+1l")
+                self.output.config(state=tk.DISABLED)
+            except tk.TclError:
+                pass
+
+        self.after(2000, _remove)
+
     def _animate_thinking(self) -> None:
         """Cycle dots on the thinking indicator: . -> .. -> ... -> ."""
         if self._thinking_marker is None:
@@ -1875,6 +1914,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self.after(0, self._apply_session_update, session)
                 trusted = bool(session.get("trusted_device", False))
                 self._log_async(f"Bootstrap complete. trusted_device={trusted}", role="jarvis")
+                self.after(0, self._show_welcome)
             except HTTPError as exc:
                 self._log_async(f"Connect failed: {_http_error_details(exc)}", role="error")
             except URLError:
@@ -1985,6 +2025,8 @@ class JarvisDesktopWidget(tk.Tk):
                     self._log_async(f"[{intent}] ok={ok}", role="jarvis")
                     if isinstance(lines, list) and lines:
                         self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
+                if ok and intent in ("memory_ingest", "memory_forget", "llm_conversation"):
+                    self.after(0, self._show_learned_indicator)
                 if not ok:
                     self._set_error_briefly_async()
                 else:
