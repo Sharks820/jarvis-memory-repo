@@ -270,6 +270,23 @@ class PostCallLogReceiver : BroadcastReceiver() {
                     callLog.phoneNumber,
                 ) ?: return@launch
 
+                // Always update call count and timestamps for any completed call
+                val todayDate = SimpleDateFormat(
+                    "yyyy-MM-dd",
+                    Locale.US,
+                ).format(Date())
+                var updatedContact = contactContext.copy(
+                    lastCallDate = todayDate,
+                    lastCallTimestamp = System.currentTimeMillis(),
+                    totalCalls = contactContext.totalCalls + 1,
+                    importance = calculateImportance(
+                        contactContext.totalCalls + 1,
+                        contactContext.createdAt,
+                    ),
+                    syncedToDesktop = false,
+                    updatedAt = System.currentTimeMillis(),
+                )
+
                 if (isSkip) {
                     // Mark as skipped
                     callLogDao.update(callLog.copy(notes = "(skipped)"))
@@ -284,7 +301,7 @@ class PostCallLogReceiver : BroadcastReceiver() {
                         val newTopics = extractTopics(notes)
                         val topicsJson = mergeTopics(contactContext.keyTopics, newTopics)
 
-                        // Update call log
+                        // Update call log with notes
                         callLogDao.update(
                             callLog.copy(
                                 notes = notes,
@@ -292,25 +309,11 @@ class PostCallLogReceiver : BroadcastReceiver() {
                             ),
                         )
 
-                        // Update contact context
-                        val todayDate = SimpleDateFormat(
-                            "yyyy-MM-dd",
-                            Locale.US,
-                        ).format(Date())
-                        val updatedContact = contactContext.copy(
+                        // Add note-specific fields to contact update
+                        updatedContact = updatedContact.copy(
                             lastNotes = notes,
                             keyTopics = topicsJson,
-                            lastCallDate = todayDate,
-                            lastCallTimestamp = System.currentTimeMillis(),
-                            totalCalls = contactContext.totalCalls + 1,
-                            importance = calculateImportance(
-                                contactContext.totalCalls + 1,
-                                contactContext.createdAt,
-                            ),
-                            syncedToDesktop = false,
-                            updatedAt = System.currentTimeMillis(),
                         )
-                        contactContextDao.update(updatedContact)
 
                         // Sync to desktop brain (best-effort)
                         try {
@@ -327,6 +330,8 @@ class PostCallLogReceiver : BroadcastReceiver() {
                         Log.i(TAG, "Post-call notes saved for ${contactContext.contactName}")
                     }
                 }
+
+                contactContextDao.update(updatedContact)
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing post-call log", e)
             } finally {
