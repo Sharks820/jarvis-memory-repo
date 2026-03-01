@@ -3612,6 +3612,10 @@ def _cmd_voice_run_impl(
             task_id=f"voice-remember-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
             content=content,
         )
+        if rc == 0:
+            print(f"response=Got it, I'll remember that.")
+        else:
+            print(f"response=Sorry, I couldn't save that to memory.")
     # --- Knowledge graph queries ---
     elif any(
         k in lowered
@@ -3625,6 +3629,7 @@ def _cmd_voice_run_impl(
     ):
         intent = "brain_status"
         rc = cmd_brain_status(as_json=False)
+        print(f"response=Here's your brain status — check the details above.")
     # --- Mission / learning queries ---
     elif any(
         k in lowered
@@ -3637,6 +3642,7 @@ def _cmd_voice_run_impl(
     ):
         intent = "mission_status"
         rc = cmd_mission_status(last=5)
+        print(f"response=Here are your recent learning missions.")
     # --- System status ---
     elif any(
         k in lowered
@@ -3652,6 +3658,7 @@ def _cmd_voice_run_impl(
     ):
         intent = "system_status"
         rc = cmd_status()
+        print(f"response=System status check complete.")
     else:
         # No keyword match -- route through LLM for a conversational response.
         intent = "llm_conversation"
