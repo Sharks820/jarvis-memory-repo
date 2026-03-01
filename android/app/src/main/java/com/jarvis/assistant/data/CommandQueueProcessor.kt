@@ -91,29 +91,36 @@ class CommandQueueProcessor @Inject constructor(
         // Atomically mark as "sending" to prevent duplicate concurrent sends
         val claimed = commandQueueDao.claimForSend(id)
         if (claimed == 0) return // Another coroutine already claimed it
-        val request = CommandRequest(
-            text = cmd.text,
-            execute = cmd.execute,
-            approvePrivileged = cmd.approvePrivileged,
-            speak = cmd.speak,
-        )
 
-        val response = apiClient.api().sendCommand(request)
-        val responseText = if (response.ok) {
-            response.intent.ifBlank {
-                response.stdoutTail.joinToString("\n").ifBlank { "Done." }
+        try {
+            val request = CommandRequest(
+                text = cmd.text,
+                execute = cmd.execute,
+                approvePrivileged = cmd.approvePrivileged,
+                speak = cmd.speak,
+            )
+
+            val response = apiClient.api().sendCommand(request)
+            val responseText = if (response.ok) {
+                response.intent.ifBlank {
+                    response.stdoutTail.joinToString("\n").ifBlank { "Done." }
+                }
+            } else {
+                "Command failed."
             }
-        } else {
-            "Command failed."
+
+            val newStatus = if (response.ok) "sent" else "failed"
+            commandQueueDao.updateStatus(id, newStatus, responseText)
+
+            // Persist the assistant's reply in conversation history.
+            conversationDao.insert(
+                ConversationEntity(role = "assistant", content = responseText),
+            )
+        } catch (e: Exception) {
+            // Reset status to "pending" so flushPending can retry
+            commandQueueDao.updateStatus(id, "pending")
+            throw e
         }
-
-        val newStatus = if (response.ok) "sent" else "failed"
-        commandQueueDao.updateStatus(id, newStatus, responseText)
-
-        // Persist the assistant's reply in conversation history.
-        conversationDao.insert(
-            ConversationEntity(role = "assistant", content = responseText),
-        )
     }
 
     companion object {
