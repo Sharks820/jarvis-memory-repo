@@ -102,7 +102,9 @@ class ProactiveAlertReceiver @Inject constructor(
                     }
                 } else {
                     // Not enough to batch yet -- post individual notification
+                    // and remove from buffer to prevent duplicate when batch flushes later
                     postNotification(alert)
+                    batcher.removeAlert(alert.groupKey, alert)
                 }
             }
         } catch (e: Exception) {

@@ -138,13 +138,19 @@ class SyncWorker @AssistedInject constructor(
             }
         }
 
-        // 7. Traffic check: every 30 minutes
+        // 7. Traffic check: every 30 minutes (if enabled)
         if (now - getLastTimestamp(KEY_LAST_TRAFFIC_CHECK) >= TRAFFIC_CHECK_INTERVAL_MS) {
-            try {
-                trafficChecker.checkPreDeparture()
-                saveTimestamp(KEY_LAST_TRAFFIC_CHECK, now)
-            } catch (e: Exception) {
-                Log.w(TAG, "Traffic check error: ${e.message}")
+            val jarvisPrefs = applicationContext.getSharedPreferences(
+                "jarvis_prefs", Context.MODE_PRIVATE,
+            )
+            val trafficEnabled = jarvisPrefs.getBoolean("traffic_alerts", true)
+            if (trafficEnabled) {
+                try {
+                    trafficChecker.checkPreDeparture()
+                    saveTimestamp(KEY_LAST_TRAFFIC_CHECK, now)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Traffic check error: ${e.message}")
+                }
             }
         }
 

@@ -28,6 +28,11 @@ interface HabitDao {
     )
     suspend fun findByTypeAndLabel(type: String, label: String): HabitPatternEntity?
 
+    @Query(
+        "SELECT * FROM habit_patterns WHERE patternType = :type AND label LIKE :labelPrefix || '%'",
+    )
+    suspend fun findByTypeAndLabelPrefix(type: String, labelPrefix: String): List<HabitPatternEntity>
+
     @Query("SELECT * FROM habit_patterns WHERE id = :id")
     suspend fun getById(id: Long): HabitPatternEntity?
 

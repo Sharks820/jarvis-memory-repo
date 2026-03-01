@@ -66,10 +66,13 @@ class JarvisService : Service() {
         createNotificationChannel()
         channelManager.createChannels()
         startForeground(NOTIF_ID, buildNotification())
-        try {
-            parkingMemory.registerBluetoothReceiver()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to register Bluetooth receiver: ${e.message}")
+        val jarvisPrefs = getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+        if (jarvisPrefs.getBoolean("parking_memory", true)) {
+            try {
+                parkingMemory.registerBluetoothReceiver()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to register Bluetooth receiver: ${e.message}")
+            }
         }
         try {
             SpendSummaryWorker.enqueue(applicationContext)

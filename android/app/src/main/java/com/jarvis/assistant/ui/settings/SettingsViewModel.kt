@@ -783,11 +783,14 @@ class SettingsViewModel @Inject constructor(
             .filter { it.patternType == "built_in" && it.label.startsWith(labelPrefix) }
             .map { it.label }
             .toSet()
-        // If no patterns found via the active/suppressed queries, try direct lookup
+        // If no patterns found via the active/suppressed queries, try direct prefix lookup
+        // to find all variants (e.g. "Water Reminder", "Water Reminder (Afternoon)", etc.)
         if (builtInLabels.isEmpty()) {
-            val directLookup = habitDao.findByTypeAndLabel("built_in", labelPrefix)
-            if (directLookup != null && seenIds.add(directLookup.id)) {
-                allPatterns.add(directLookup)
+            val directLookups = habitDao.findByTypeAndLabelPrefix("built_in", labelPrefix)
+            for (p in directLookups) {
+                if (seenIds.add(p.id)) {
+                    allPatterns.add(p)
+                }
             }
         }
         for (pattern in allPatterns) {

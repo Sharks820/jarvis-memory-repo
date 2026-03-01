@@ -51,10 +51,17 @@ class AnomalyDetector @Inject constructor(
      * @return [AnomalyResult] indicating whether an anomaly was found and why.
      */
     suspend fun check(transaction: TransactionEntity): AnomalyResult {
+        // Respect per-check toggle settings
+        val jarvisPrefs = context.getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+
         // Check in priority order: subscription price change, unusual amount, new merchant
         checkSubscriptionPriceChange(transaction)?.let { return it }
-        checkUnusualAmount(transaction)?.let { return it }
-        checkNewMerchant(transaction)?.let { return it }
+        if (jarvisPrefs.getBoolean("alert_unusual_amounts", true)) {
+            checkUnusualAmount(transaction)?.let { return it }
+        }
+        if (jarvisPrefs.getBoolean("alert_new_merchants", true)) {
+            checkNewMerchant(transaction)?.let { return it }
+        }
 
         return AnomalyResult(isAnomaly = false, reason = "")
     }
@@ -93,9 +100,9 @@ class AnomalyDetector @Inject constructor(
      */
     private suspend fun checkNewMerchant(transaction: TransactionEntity): AnomalyResult? {
         val stats = transactionDao.getMerchantStats(transaction.merchant)
-        // MerchantStats will have count >= 1 because the current transaction is already inserted.
-        // A "new" merchant means this is the only transaction (count == 1).
-        val isNew = stats == null || stats.count <= 1
+        // Anomaly check runs BEFORE insert (so DB averages aren't diluted).
+        // A "new" merchant means zero prior transactions in the DB.
+        val isNew = stats == null || stats.count < 1
         if (isNew && transaction.amount > NEW_MERCHANT_THRESHOLD) {
             val reason = "First transaction at ${transaction.merchant} " +
                 "for $${formatAmount(transaction.amount)}"
