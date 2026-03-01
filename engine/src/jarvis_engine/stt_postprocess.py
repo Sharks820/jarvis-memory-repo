@@ -347,7 +347,7 @@ def correct_with_llm(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
             ],
-            model="moonshotai/kimi-k2-instruct",
+            model="kimi-k2",
             max_tokens=512,
             route_reason="stt-post-correction",
         )

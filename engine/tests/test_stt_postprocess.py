@@ -199,7 +199,7 @@ def test_correct_with_llm_calls_gateway() -> None:
     result = correct_with_llm("corrected text here", mock_gateway, vocab_lines=["Conner"])
     mock_gateway.complete.assert_called_once()
     call_args = mock_gateway.complete.call_args
-    assert call_args[1]["model"] == "moonshotai/kimi-k2-instruct"
+    assert call_args[1]["model"] == "kimi-k2"
     assert "Conner" in call_args[1]["messages"][0]["content"]
 
 

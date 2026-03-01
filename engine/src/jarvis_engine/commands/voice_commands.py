@@ -91,6 +91,7 @@ class VoiceRunCommand:
     voice_auth_wav: str = ""
     voice_threshold: float = 0.82
     master_password: str = ""
+    model_override: str = ""
 
 
 @dataclass

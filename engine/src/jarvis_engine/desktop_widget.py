@@ -732,6 +732,21 @@ class JarvisDesktopWidget(tk.Tk):
     WARN = "#d15a5a"
     LAUNCHER_TRANSPARENT = "#010203"
 
+    # Model rotation: (alias, display_name, best_use_title, accent_color)
+    # "auto" lets IntentClassifier decide; others override the model choice.
+    # (alias, display_name, best_use_title, color)
+    MODEL_ROTATION: list[tuple[str, str, str, str]] = [
+        ("auto", "Auto", "Smart Router", "#12c9b1"),
+        ("kimi-k2", "Kimi K2", "Primary Operator", "#f59e0b"),
+        ("llama-3.3-70b", "LLaMA 3.3 70B", "Fast Analyst", "#3b82f6"),
+        ("devstral-2", "Devstral 2", "Code Specialist", "#8b5cf6"),
+        ("glm-4.7-flash", "GLM-4.7 Flash", "Speed Runner", "#ef4444"),
+        ("claude-opus", "Claude Opus", "Deep Reasoner", "#d946ef"),
+        ("claude-sonnet", "Claude Sonnet", "Balanced Thinker", "#06b6d4"),
+        ("claude-haiku", "Claude Haiku", "Rapid Responder", "#22c55e"),
+        ("kimi-k2", "Planner", "Research & Strategy", "#e879f9"),
+    ]
+
     def __init__(self, root_path: Path) -> None:
         super().__init__()
         self.root_path = root_path
@@ -769,6 +784,8 @@ class JarvisDesktopWidget(tk.Tk):
         self._position_save_id: str | None = None  # debounce timer for position save
         self._SNAP_DISTANCE = 20  # pixels from screen edge to trigger snap
         self._tray_icon: Any = None  # pystray.Icon instance (or None if unavailable)
+        self._model_index: int = 0  # Index into MODEL_ROTATION (0 = Auto)
+        self._model_label: tk.Label | None = None  # Model indicator label widget
 
         self.title("Jarvis Unlimited")
         # Restore saved panel position if available and on-screen
@@ -815,7 +832,7 @@ class JarvisDesktopWidget(tk.Tk):
         """Kill mobile API and daemon processes spawned alongside the widget."""
         try:
             from jarvis_engine.process_manager import read_pid_file, kill_service
-            root = Path(self._cfg_root) if hasattr(self, "_cfg_root") else _repo_root()
+            root = self.root_path if hasattr(self, "root_path") else _repo_root()
             for service in ("mobile_api", "daemon"):
                 try:
                     info = read_pid_file(service, root)
@@ -866,6 +883,9 @@ class JarvisDesktopWidget(tk.Tk):
             self._shutdown()
 
     def _shutdown(self) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
+        self._shutting_down = True
         self.stop_event.set()
         self._stop_tray_icon()
         # Kill child services (mobile API, daemon) before destroying widget
@@ -899,7 +919,7 @@ class JarvisDesktopWidget(tk.Tk):
         self.bind("<Control-space>", lambda _e: self._toggle_min())
         self.bind("<Escape>", lambda _e: self._on_escape())
         self.bind("<Control-Return>", lambda _e: self._send_command_async())
-        self.bind("<Control-Shift-Q>", lambda _e: self._shutdown())
+        self.bind("<Control-Shift-Q>", lambda _e: self._confirm_exit())
         self.bind("<Configure>", self._on_panel_configure)
 
     def _toggle_min(self) -> None:
@@ -1053,11 +1073,11 @@ class JarvisDesktopWidget(tk.Tk):
         canvas.bind("<ButtonPress-1>", self._launcher_start_drag)
         canvas.bind("<B1-Motion>", self._launcher_drag)
         canvas.bind("<ButtonRelease-1>", self._launcher_release)
-        canvas.bind("<Button-3>", lambda _e: self._shutdown())
+        canvas.bind("<Button-3>", lambda _e: self._confirm_exit())
         launcher.bind("<ButtonPress-1>", self._launcher_start_drag)
         launcher.bind("<B1-Motion>", self._launcher_drag)
         launcher.bind("<ButtonRelease-1>", self._launcher_release)
-        launcher.bind("<Control-Shift-Q>", lambda _e: self._shutdown())
+        launcher.bind("<Control-Shift-Q>", lambda _e: self._confirm_exit())
         self.launcher_win = launcher
         self.launcher_canvas = canvas
 
@@ -1283,6 +1303,22 @@ class JarvisDesktopWidget(tk.Tk):
         )
         self.command_text.pack(fill=tk.X, pady=(4, 4))
         self.command_text.bind("<Return>", self._on_command_enter)
+        self.command_text.bind("<Tab>", self._on_tab_cycle_model)
+
+        # Model indicator row
+        model_row = tk.Frame(cmd_block, bg=self.PANEL)
+        model_row.pack(fill=tk.X, pady=(0, 2))
+        _m = self.MODEL_ROTATION[0]
+        self._model_label = tk.Label(
+            model_row,
+            text=f"\u21b9 Tab  {_m[1]} \u00b7 {_m[2]}",
+            bg=self.PANEL,
+            fg=_m[3],
+            font=("Segoe UI", 9),
+            anchor="w",
+        )
+        self._model_label.pack(side=tk.LEFT)
+        _Tooltip(self._model_label, "Press Tab to cycle through available LLM models")
 
         flags = tk.Frame(body, bg=self.PANEL)
         flags.pack(fill=tk.X, padx=10, pady=(2, 0))
@@ -2156,6 +2192,27 @@ class JarvisDesktopWidget(tk.Tk):
     def _thread(self, fn) -> None:  # type: ignore[no-untyped-def]
         threading.Thread(target=fn, daemon=True).start()
 
+    def _on_tab_cycle_model(self, event: Any = None) -> str:
+        """Tab key in command text: cycle through model rotation."""
+        self._model_index = (self._model_index + 1) % len(self.MODEL_ROTATION)
+        self._update_model_label()
+        return "break"  # Prevent Tab from inserting a tab character
+
+    def _update_model_label(self) -> None:
+        """Update the model indicator label to reflect current selection."""
+        if self._model_label is None:
+            return
+        _m = self.MODEL_ROTATION[self._model_index]
+        self._model_label.config(
+            text=f"\u21b9 Tab  {_m[1]} \u00b7 {_m[2]}",
+            fg=_m[3],
+        )
+
+    def _selected_model_override(self) -> str:
+        """Return the model alias to override, or empty string for Auto routing."""
+        alias = self.MODEL_ROTATION[self._model_index][0]
+        return "" if alias == "auto" else alias
+
     def _on_escape(self) -> None:
         """ESC key handler: cancel command if processing, otherwise minimize."""
         if self._widget_state == "processing":
@@ -2238,17 +2295,23 @@ class JarvisDesktopWidget(tk.Tk):
         execute = bool(self.execute_var.get())
         approve_privileged = bool(self.priv_var.get())
         speak = bool(self.speak_var.get())
+        model_override = self._selected_model_override()
 
         def worker() -> None:
             try:
-                payload = {
+                payload: dict[str, Any] = {
                     "text": text,
                     "execute": execute,
                     "approve_privileged": approve_privileged,
                     "speak": speak,
                     "master_password": cfg.master_password,
                 }
+                if model_override:
+                    payload["model_override"] = model_override
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
+                # If user pressed ESC while HTTP was in-flight, discard results
+                if self._cancel_event.is_set():
+                    return
                 self.after(0, self._hide_thinking)
                 self.after(0, self._cancel_processing_timeout)
                 # Parse clean response from stdout_tail
@@ -2370,14 +2433,15 @@ class JarvisDesktopWidget(tk.Tk):
                 self._log_async("Ready for next command.", role="system")
                 self._set_error_briefly_async()
             finally:
-                try:
-                    self.after(0, self._cancel_processing_timeout)
-                except Exception:
-                    pass
-                try:
-                    self.after(0, lambda: self.command_text.config(state=tk.NORMAL))
-                except Exception:
-                    pass
+                if not self._cancel_event.is_set():
+                    try:
+                        self.after(0, self._cancel_processing_timeout)
+                    except Exception:
+                        pass
+                    try:
+                        self.after(0, lambda: self.command_text.config(state=tk.NORMAL))
+                    except Exception:
+                        pass
 
         self._thread(worker)
 
