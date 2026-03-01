@@ -46,14 +46,20 @@ class BootstrapViewModel @Inject constructor(
     fun testConnection() {
         error.value = null
         testResult.value = null
+        val newUrl = desktopUrl.value.trim()
+        val previousUrl = crypto.getBaseUrl()
         viewModelScope.launch {
             try {
-                crypto.setBaseUrl(desktopUrl.value.trim())
+                crypto.setBaseUrl(newUrl)
                 val health = apiClient.api().health()
                 testResult.value = health.status == "ok"
+                if (testResult.value != true) {
+                    crypto.setBaseUrl(previousUrl)
+                }
             } catch (e: Exception) {
                 testResult.value = false
                 error.value = "Cannot reach desktop: ${e.message}"
+                crypto.setBaseUrl(previousUrl)
             }
         }
     }

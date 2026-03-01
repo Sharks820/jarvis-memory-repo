@@ -19,12 +19,15 @@ import com.jarvis.assistant.R
 import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.finance.SpendSummaryWorker
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
+import com.jarvis.assistant.data.CommandQueueProcessor
+import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -40,9 +43,10 @@ import javax.inject.Inject
  * - Medication alarm scheduling on start
  * - Foreground notification (keeps the service alive)
  *
- * All network sync operations (command queue flush, spam sync, context
- * detection, etc.) are handled by [SyncWorker] on a 2-minute periodic
- * schedule managed by WorkManager.
+ * Time-critical tasks (command queue flush, proactive alerts) run in a
+ * lightweight coroutine loop (30s interval). All other sync operations
+ * (spam sync, context detection, etc.) are handled by [SyncWorker] on a
+ * 15-minute periodic schedule managed by WorkManager.
  */
 @AndroidEntryPoint
 class JarvisService : Service() {
@@ -50,6 +54,8 @@ class JarvisService : Service() {
     @Inject lateinit var channelManager: NotificationChannelManager
     @Inject lateinit var parkingMemory: ParkingMemory
     @Inject lateinit var medicationScheduler: MedicationScheduler
+    @Inject lateinit var processor: CommandQueueProcessor
+    @Inject lateinit var proactiveReceiver: ProactiveAlertReceiver
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -73,6 +79,7 @@ class JarvisService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         enqueueSyncWorker()
         scheduleMedicationAlarms()
+        startHighFrequencyLoop()
         return START_STICKY
     }
 
@@ -93,8 +100,11 @@ class JarvisService : Service() {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
+        // WorkManager enforces a 15-minute minimum for periodic work.
+        // High-frequency tasks (command queue, proactive alerts) use a
+        // coroutine loop in the foreground service instead.
         val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(
-            2, TimeUnit.MINUTES,
+            15, TimeUnit.MINUTES,
         )
             .setConstraints(constraints)
             .build()
@@ -104,7 +114,7 @@ class JarvisService : Service() {
             ExistingPeriodicWorkPolicy.KEEP,
             syncRequest,
         )
-        Log.i(TAG, "SyncWorker enqueued (2-minute periodic, network required)")
+        Log.i(TAG, "SyncWorker enqueued (15-minute periodic, network required)")
     }
 
     /**
@@ -118,6 +128,29 @@ class JarvisService : Service() {
                 Log.i(TAG, "Medication alarms scheduled on service start")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to schedule medication alarms: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Lightweight coroutine loop for time-critical tasks that need sub-15-minute
+     * frequency. WorkManager enforces a 15-minute minimum for periodic work,
+     * so command queue flush and proactive alert checks run here instead.
+     */
+    private fun startHighFrequencyLoop() {
+        scope.launch {
+            while (true) {
+                try {
+                    processor.flushPending()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Command queue flush error: ${e.message}")
+                }
+                try {
+                    proactiveReceiver.checkAndPost()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Proactive alert check error: ${e.message}")
+                }
+                delay(30_000L) // 30 seconds
             }
         }
     }
