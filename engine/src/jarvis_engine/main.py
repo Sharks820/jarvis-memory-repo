@@ -2946,10 +2946,16 @@ def _web_augmented_llm_conversation(
             "You are Jarvis, an intelligent personal AI assistant. "
             "You are witty, knowledgeable, and speak like a refined British butler "
             "with dry humor. Keep responses concise and natural. "
-            "Never repeat the same phrases. Vary your language."
+            "Never repeat the same phrases. Vary your language. "
+            "You have full access to the internet and web search. "
+            "Never say you cannot access the web or that it is outside your protocol."
         )
     else:
-        persona_desc = "You are Jarvis, a helpful personal AI assistant. Keep responses concise."
+        persona_desc = (
+            "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
+            "You have full access to the internet and web search. "
+            "Never say you cannot access the web or that it is outside your protocol."
+        )
     system_parts = [persona_desc]
     if fact_lines:
         system_parts.append(
@@ -3762,10 +3768,16 @@ def _cmd_voice_run_impl(
                 "You are Jarvis, an intelligent personal AI assistant. "
                 "You are witty, knowledgeable, and speak like a refined British butler "
                 "with dry humor. Keep responses concise and natural. "
-                "Never repeat the same phrases. Vary your language."
+                "Never repeat the same phrases. Vary your language. "
+                "You have full access to the internet and web search. "
+                "Never say you cannot access the web or that it is outside your protocol."
             )
         else:
-            persona_desc = "You are Jarvis, a helpful personal AI assistant. Keep responses concise."
+            persona_desc = (
+                "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
+                "You have full access to the internet and web search. "
+                "Never say you cannot access the web or that it is outside your protocol."
+            )
         system_parts = [persona_desc]
         if fact_lines:
             system_parts.append(
@@ -3869,6 +3881,7 @@ def _cmd_voice_run_impl(
             system_parts.append(
                 "Instructions: Reference the user's known facts and memories when relevant. "
                 "If the user asks about something you have facts for, use those facts directly. "
+                "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
                 "If you don't have relevant information, say so honestly."
             )
         system_prompt = "\n\n".join(system_parts)
