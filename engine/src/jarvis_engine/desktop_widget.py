@@ -841,7 +841,7 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _bind_shortcuts(self) -> None:
         self.bind("<Control-space>", lambda _e: self._toggle_min())
-        self.bind("<Escape>", lambda _e: self._toggle_min())
+        self.bind("<Escape>", lambda _e: self._on_escape())
         self.bind("<Control-Return>", lambda _e: self._send_command_async())
         self.bind("<Control-Shift-Q>", lambda _e: self._shutdown())
         self.bind("<Configure>", self._on_panel_configure)
@@ -2099,6 +2099,13 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _thread(self, fn) -> None:  # type: ignore[no-untyped-def]
         threading.Thread(target=fn, daemon=True).start()
+
+    def _on_escape(self) -> None:
+        """ESC key handler: cancel command if processing, otherwise minimize."""
+        if self._widget_state == "processing":
+            self._cancel_command()
+        else:
+            self._toggle_min()
 
     def _cancel_command(self) -> None:
         """Cancel the current in-progress command, stop TTS, and reset state."""
