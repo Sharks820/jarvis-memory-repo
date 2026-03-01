@@ -122,21 +122,32 @@ def decrypt_sync_payload(
     offset = 0
     while offset < len(compressed):
         block = compressed[offset:offset + block_size]
-        chunk = decompressor.decompress(block, MAX_DECOMPRESSED_SIZE - total_size)
+        remaining = MAX_DECOMPRESSED_SIZE - total_size
+        if remaining <= 0:
+            raise ValueError("Decompressed payload exceeds 16 MiB limit")
+        chunk = decompressor.decompress(block, remaining)
         chunks.append(chunk)
         total_size += len(chunk)
         if total_size > MAX_DECOMPRESSED_SIZE:
             raise ValueError("Decompressed payload exceeds 16 MiB limit")
+        # Check for unconsumed data that would exceed the limit
+        if decompressor.unconsumed_tail:
+            # There's more decompressed data than we accepted — payload too large
+            raise ValueError("Decompressed payload exceeds 16 MiB limit")
         offset += block_size
     # Flush remaining with size limit to prevent decompression bombs
     remaining = MAX_DECOMPRESSED_SIZE - total_size
-    if remaining < 0:
-        raise ValueError("Decompressed payload exceeds 16 MiB limit")
-    chunk = decompressor.flush(max(remaining, 1))
-    chunks.append(chunk)
-    total_size += len(chunk)
-    if total_size > MAX_DECOMPRESSED_SIZE:
-        raise ValueError("Decompressed payload exceeds 16 MiB limit")
+    if remaining <= 0:
+        # Already at limit; flush with 1 byte to detect overflow
+        chunk = decompressor.flush(1)
+        if chunk:
+            raise ValueError("Decompressed payload exceeds 16 MiB limit")
+    else:
+        chunk = decompressor.flush(remaining)
+        chunks.append(chunk)
+        total_size += len(chunk)
+        if total_size > MAX_DECOMPRESSED_SIZE:
+            raise ValueError("Decompressed payload exceeds 16 MiB limit")
     raw = b"".join(chunks)
     return json.loads(raw)
 
