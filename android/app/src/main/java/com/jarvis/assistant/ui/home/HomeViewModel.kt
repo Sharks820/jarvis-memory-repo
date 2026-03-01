@@ -28,6 +28,23 @@ class HomeViewModel @Inject constructor(
         loadDashboard()
     }
 
+    private val _syncMessage = MutableStateFlow<String?>(null)
+    val syncMessage: StateFlow<String?> = _syncMessage
+
+    fun syncNow() {
+        viewModelScope.launch {
+            try {
+                _syncMessage.value = "Syncing..."
+                apiClient.api().health()
+                // Trigger dashboard refresh as a side effect
+                loadDashboard()
+                _syncMessage.value = "Sync complete"
+            } catch (e: Exception) {
+                _syncMessage.value = "Sync failed: ${e.message}"
+            }
+        }
+    }
+
     fun loadDashboard() {
         _uiState.value = UiState.Loading
         viewModelScope.launch {

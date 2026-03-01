@@ -162,7 +162,9 @@ fun DocumentScannerScreen(
                                 }
 
                                 override fun onError(exception: ImageCaptureException) {
-                                    // Error handled via scanError state
+                                    viewModel.scanError.value =
+                                        exception.message ?: "Failed to capture image"
+                                    photoFile.delete()
                                 }
                             },
                         )

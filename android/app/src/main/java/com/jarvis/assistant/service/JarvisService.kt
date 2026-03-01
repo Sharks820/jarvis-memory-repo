@@ -78,17 +78,19 @@ class JarvisService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
     private var syncIntervalMs = DEFAULT_SYNC_MS
-    private var lastSpamSyncMs = 0L
-    private var lastContextCheckMs = 0L
-    private var lastRefillCheckMs = 0L
-    private var lastLocationRecordMs = 0L
-    private var lastTrafficCheckMs = 0L
-    private var lastDocSyncMs = 0L
-    private var lastRelationshipCheckMs = 0L
-    private var lastPatternDetectionMs = 0L
-    private var lastNudgeCheckMs = 0L
-    private var lastNudgeExpiryMs = 0L
-    private var lastCleanupMs = 0L
+    // Initialize to current time so all periodic tasks wait one full interval
+    // after service (re)start instead of all firing simultaneously.
+    private var lastSpamSyncMs = System.currentTimeMillis()
+    private var lastContextCheckMs = System.currentTimeMillis()
+    private var lastRefillCheckMs = System.currentTimeMillis()
+    private var lastLocationRecordMs = System.currentTimeMillis()
+    private var lastTrafficCheckMs = System.currentTimeMillis()
+    private var lastDocSyncMs = System.currentTimeMillis()
+    private var lastRelationshipCheckMs = System.currentTimeMillis()
+    private var lastPatternDetectionMs = System.currentTimeMillis()
+    private var lastNudgeCheckMs = System.currentTimeMillis()
+    private var lastNudgeExpiryMs = System.currentTimeMillis()
+    private var lastCleanupMs = System.currentTimeMillis()
     @Volatile
     private var currentContext: UserContext = UserContext.NORMAL
     private val contextLock = Any()

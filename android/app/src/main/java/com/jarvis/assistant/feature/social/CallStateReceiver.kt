@@ -66,7 +66,7 @@ class CallStateReceiver : BroadcastReceiver() {
                         currentNumber = incomingNumber
                     }
                     wasIncoming = true
-                    Log.i(TAG, "RINGING: $currentNumber")
+                    Log.i(TAG, "RINGING: ***${currentNumber.takeLast(4)}")
 
                     if (currentNumber.isNotBlank()) {
                         asyncHandled = true
@@ -106,7 +106,7 @@ class CallStateReceiver : BroadcastReceiver() {
                             }
                         }
                     }
-                    Log.i(TAG, "OFFHOOK: $currentNumber")
+                    Log.i(TAG, "OFFHOOK: ***${currentNumber.takeLast(4)}")
                 }
 
                 TelephonyManager.EXTRA_STATE_IDLE -> {
@@ -122,7 +122,7 @@ class CallStateReceiver : BroadcastReceiver() {
                         Log.i(
                             TAG,
                             "IDLE: Call ended. Duration: ${durationSec}s, " +
-                                "Direction: $direction, Number: $currentNumber",
+                                "Direction: $direction, Number: ***${currentNumber.takeLast(4)}",
                         )
 
                         val numberToLog = currentNumber

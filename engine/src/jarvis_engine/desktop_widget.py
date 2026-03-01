@@ -1524,23 +1524,21 @@ class JarvisDesktopWidget(tk.Tk):
                 if resolved:
                     popout_text.tag_configure(tag, **resolved)
 
-        # Copy content preserving tags
+        # Copy content preserving tags — use tag_ranges() for O(n) bulk copy
         popout_text.config(state=tk.NORMAL)
-        content = self.output.get("1.0", tk.END)
-        if content.strip():
-            idx = "1.0"
-            while True:
-                tags = self.output.tag_names(idx)
-                next_idx = self.output.index(f"{idx}+1c")
-                if self.output.compare(next_idx, ">=", tk.END):
-                    break
-                char = self.output.get(idx, next_idx)
-                tag = tags[0] if tags else None
-                if tag and tag != "sel":
-                    popout_text.insert(tk.END, char, tag)
-                else:
-                    popout_text.insert(tk.END, char)
-                idx = next_idx
+        full_text = self.output.get("1.0", tk.END)
+        if full_text.strip():
+            # Insert all text first (fast bulk copy)
+            popout_text.insert(tk.END, full_text)
+            # Apply tags using tag_ranges (each range is a start/end pair)
+            for tag in ("user", "jarvis", "system", "error", "separator",
+                        "timestamp", "thinking"):
+                try:
+                    ranges = self.output.tag_ranges(tag)
+                    for i in range(0, len(ranges), 2):
+                        popout_text.tag_add(tag, str(ranges[i]), str(ranges[i + 1]))
+                except tk.TclError:
+                    pass
         popout_text.config(state=tk.DISABLED)
         self._popout_text = popout_text
 
