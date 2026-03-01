@@ -427,3 +427,29 @@ class KnowledgeGraph:
         with self._db_lock:
             cur = self._db.execute(sql, params)
             return [dict(row) for row in cur.fetchall()]
+
+    def retract_facts(self, keywords: list[str]) -> int:
+        """Soft-retract KG facts matching keywords by setting confidence to 0.
+
+        Does not retract locked facts. Returns the number of facts retracted.
+        """
+        if not keywords:
+            return 0
+        clauses = []
+        like_params: list[str] = []
+        for kw in keywords[:20]:
+            sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append("label LIKE ? ESCAPE '\\'")
+            like_params.append(f"%{sanitized}%")
+        from datetime import datetime, UTC
+        now = datetime.now(UTC).isoformat()
+        sql = (
+            "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
+            "WHERE (" + " OR ".join(clauses) + ") AND confidence > 0 AND locked = 0"
+        )
+        all_params: list[object] = [now] + like_params
+        with self._write_lock:
+            with self._db_lock:
+                cur = self._db.execute(sql, all_params)
+                self._db.commit()
+                return cur.rowcount

@@ -515,4 +515,16 @@ def create_app(root: Path) -> CommandBus:
     bus._kg = kg  # type: ignore[attr-defined]
     bus._gateway = gateway  # type: ignore[attr-defined]
 
+    # Warm embedding model in background (first embed call loads the ~300MB model)
+    if embed_service is not None:
+        def _warm_embeddings() -> None:
+            try:
+                embed_service.embed("warmup", prefix="search_document")
+                logger.info("Embedding model warmed up")
+            except Exception as exc:
+                logger.debug("Embedding warm-up failed (will load on first use): %s", exc)
+
+        import threading as _threading
+        _threading.Thread(target=_warm_embeddings, daemon=True, name="embed-warmup").start()
+
     return bus

@@ -3567,6 +3567,51 @@ def _cmd_voice_run_impl(
         if not query_text:
             query_text = text
         rc = cmd_brain_context(query=query_text, max_items=5, max_chars=1200, as_json=False)
+    # --- Forget / unlearn ---
+    elif any(
+        k in lowered
+        for k in [
+            "forget about",
+            "forget that",
+            "forget everything about",
+            "unlearn",
+            "stop remembering",
+            "delete memory of",
+            "remove from memory",
+        ]
+    ):
+        intent = "memory_forget"
+        _forget_triggers = [
+            "forget everything about",
+            "forget about",
+            "forget that",
+            "delete memory of",
+            "remove from memory",
+            "stop remembering",
+            "unlearn",
+        ]
+        topic = text
+        for trigger in _forget_triggers:
+            if trigger in lowered:
+                idx = lowered.index(trigger) + len(trigger)
+                topic = text[idx:].strip().rstrip(".").strip()
+                break
+        if not topic:
+            print("response=What should I forget? Try 'Forget about [topic]'.")
+            rc = 0
+        else:
+            bus = _get_bus()
+            kg = getattr(bus, "_kg", None)
+            if kg is not None:
+                keywords = [w for w in topic.split() if len(w) > 2]
+                if not keywords:
+                    keywords = [topic]
+                count = kg.retract_facts(keywords)
+                print(f"response=Done. I've forgotten {count} fact(s) about '{topic}'.")
+                rc = 0
+            else:
+                print("response=Knowledge graph is not available right now.")
+                rc = 1
     # --- Memory save / remember ---
     elif any(
         k in lowered

@@ -1622,6 +1622,23 @@ def run_mobile_server(
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         logger.warning("mobile_api_non_loopback_without_tls")
     logger.info("endpoints: GET /, GET /quick, GET /health, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    # Pre-warm the CommandBus so the first user request doesn't pay cold start cost
+    def _prewarm() -> None:
+        try:
+            import jarvis_engine.main as main_mod
+            original = main_mod.repo_root
+            main_mod.repo_root = lambda: repo_root  # type: ignore[assignment]
+            try:
+                main_mod._get_bus()
+            finally:
+                main_mod.repo_root = original  # type: ignore[assignment]
+            logger.info("CommandBus pre-warmed successfully")
+        except Exception as exc:
+            logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
+
+    import threading as _threading
+    _threading.Thread(target=_prewarm, daemon=True, name="bus-prewarm").start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
