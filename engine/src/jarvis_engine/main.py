@@ -2526,6 +2526,23 @@ def _cmd_daemon_run_impl(
                         print("self_test_skipped=engine_not_initialized")
                 except Exception as exc:  # noqa: BLE001
                     print(f"self_test_error={exc}")
+            # --- SQLite optimize: ANALYZE every 100 cycles, VACUUM every 500 ---
+            if cycles % 100 == 0:
+                try:
+                    bus = _get_daemon_bus()
+                    engine = getattr(bus, "_engine", None)
+                    if engine is not None:
+                        do_vacuum = (cycles % 500 == 0)
+                        opt_result = engine.optimize(vacuum=do_vacuum)
+                        print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
+                        if do_vacuum:
+                            print(f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}")
+                        if opt_result.get("errors"):
+                            print(f"db_optimize_errors={len(opt_result['errors'])}")
+                    else:
+                        print("db_optimize_skipped=engine_not_initialized")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"db_optimize_error={exc}")
             # --- Knowledge graph regression check (every 10 cycles) ---
             if cycles % 10 == 0:
                 try:

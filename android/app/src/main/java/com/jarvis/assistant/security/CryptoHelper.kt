@@ -37,6 +37,9 @@ class CryptoHelper(context: Context) {
     fun getDeviceId(): String = prefs.getString(KEY_DEVICE_ID, "") ?: ""
     fun setDeviceId(id: String) = prefs.edit().putString(KEY_DEVICE_ID, id).apply()
 
+    fun getMasterPassword(): String = prefs.getString(KEY_MASTER_PASSWORD, "") ?: ""
+    fun setMasterPassword(password: String) = prefs.edit().putString(KEY_MASTER_PASSWORD, password).apply()
+
     fun isBootstrapped(): Boolean =
         getToken().isNotBlank() && getSigningKey().isNotBlank()
 
@@ -62,6 +65,7 @@ class CryptoHelper(context: Context) {
         private const val KEY_TOKEN = "api_token"
         private const val KEY_SIGNING_KEY = "signing_key"
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_MASTER_PASSWORD = "master_password"
         private const val KEY_SQLCIPHER_FALLBACK = "sqlcipher_fallback_passphrase"
     }
 }

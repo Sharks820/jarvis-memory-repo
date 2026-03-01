@@ -544,6 +544,365 @@ class TestSyncEngine:
 
 
 # ===========================================================================
+# Sync protocol hardening tests
+# ===========================================================================
+
+
+class TestSyncProtocolHardening:
+    """Tests for _apply_single_change return value and cursor advancement logic."""
+
+    def test_apply_single_change_returns_true_for_insert(self):
+        """INSERT operation returns True."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+        entry = {
+            "row_id": "r1",
+            "operation": "INSERT",
+            "fields_changed": ["source", "kind"],
+            "new_values": {"source": "user", "kind": "episodic"},
+        }
+        result = engine._apply_single_change("records", "record_id", entry)
+        assert result is True
+
+    def test_apply_single_change_returns_true_for_update(self):
+        """UPDATE operation returns True."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        db.execute(
+            "INSERT INTO records (record_id, source, kind, summary) "
+            "VALUES ('r1', 'user', 'episodic', 'test')"
+        )
+        db.commit()
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+        entry = {
+            "row_id": "r1",
+            "operation": "UPDATE",
+            "fields_changed": ["summary"],
+            "new_values": {"summary": "updated"},
+        }
+        result = engine._apply_single_change("records", "record_id", entry)
+        assert result is True
+
+    def test_apply_single_change_returns_true_for_delete(self):
+        """DELETE operation returns True."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        db.execute(
+            "INSERT INTO records (record_id, source, kind) "
+            "VALUES ('r1', 'user', 'episodic')"
+        )
+        db.commit()
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+        entry = {
+            "row_id": "r1",
+            "operation": "DELETE",
+            "fields_changed": [],
+            "new_values": {},
+        }
+        result = engine._apply_single_change("records", "record_id", entry)
+        assert result is True
+
+    def test_apply_single_change_returns_false_for_unknown_operation(self):
+        """Unknown operation types return False instead of silently succeeding."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+        entry = {
+            "row_id": "r1",
+            "operation": "MERGE",
+            "fields_changed": [],
+            "new_values": {},
+        }
+        result = engine._apply_single_change("records", "record_id", entry)
+        assert result is False
+
+    def test_apply_single_change_returns_false_for_empty_operation(self):
+        """Empty operation string returns False."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+        entry = {
+            "row_id": "r1",
+            "operation": "",
+            "fields_changed": [],
+            "new_values": {},
+        }
+        result = engine._apply_single_change("records", "record_id", entry)
+        assert result is False
+
+    def test_apply_incoming_unknown_op_not_counted_as_applied(self):
+        """Unknown operations are not included in the 'applied' count."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+
+        incoming = {
+            "changes": {
+                "records": [
+                    {
+                        "row_id": "r1",
+                        "operation": "UPSERT",  # Unknown
+                        "fields_changed": ["source"],
+                        "new_values": {"source": "user"},
+                        "__version": 1,
+                    }
+                ]
+            },
+            "cursors": {"records": 1},
+        }
+
+        result = engine.apply_incoming(incoming, "mobile-1")
+        assert result["applied"] == 0
+        assert len(result["errors"]) >= 1
+        assert "UPSERT" in result["errors"][0]
+
+    def test_apply_incoming_mixed_valid_and_invalid_ops(self):
+        """Mix of valid and invalid ops: only valid ones counted; errors logged."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+
+        incoming = {
+            "changes": {
+                "records": [
+                    {
+                        "row_id": "r1",
+                        "operation": "INSERT",
+                        "fields_changed": ["source", "kind"],
+                        "new_values": {"source": "user", "kind": "episodic"},
+                        "__version": 1,
+                    },
+                    {
+                        "row_id": "r2",
+                        "operation": "REPLACE",  # Unknown
+                        "fields_changed": ["source"],
+                        "new_values": {"source": "bot"},
+                        "__version": 2,
+                    },
+                    {
+                        "row_id": "r3",
+                        "operation": "INSERT",
+                        "fields_changed": ["source", "kind"],
+                        "new_values": {"source": "user", "kind": "semantic"},
+                        "__version": 3,
+                    },
+                ]
+            },
+            "cursors": {"records": 3},
+        }
+
+        result = engine.apply_incoming(incoming, "mobile-1")
+        assert result["applied"] == 2  # r1 and r3
+        assert len(result["errors"]) == 1  # r2 unknown op
+        assert "REPLACE" in result["errors"][0]
+
+        # Verify r1 and r3 were inserted but r2 was not
+        r1 = db.execute("SELECT record_id FROM records WHERE record_id = 'r1'").fetchone()
+        r2 = db.execute("SELECT record_id FROM records WHERE record_id = 'r2'").fetchone()
+        r3 = db.execute("SELECT record_id FROM records WHERE record_id = 'r3'").fetchone()
+        assert r1 is not None
+        assert r2 is None
+        assert r3 is not None
+
+    def test_cursor_advances_only_to_max_successful_version(self):
+        """Cursor should advance to max __version of successful ops, not incoming cursor."""
+        from jarvis_engine.sync.changelog import (
+            get_sync_cursor,
+            install_changelog_triggers,
+        )
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+
+        # Send 3 ops: version 1 (valid), version 2 (invalid), version 3 (valid)
+        incoming = {
+            "changes": {
+                "records": [
+                    {
+                        "row_id": "r1",
+                        "operation": "INSERT",
+                        "fields_changed": ["source"],
+                        "new_values": {"source": "user"},
+                        "__version": 1,
+                    },
+                    {
+                        "row_id": "r2",
+                        "operation": "TRUNCATE",  # Unknown
+                        "fields_changed": [],
+                        "new_values": {},
+                        "__version": 2,
+                    },
+                    {
+                        "row_id": "r3",
+                        "operation": "INSERT",
+                        "fields_changed": ["source"],
+                        "new_values": {"source": "bot"},
+                        "__version": 3,
+                    },
+                ]
+            },
+            "cursors": {"records": 5},  # incoming cursor says 5
+        }
+
+        engine.apply_incoming(incoming, "mobile-1")
+
+        # Cursor should be at 3 (max successful version), not 5
+        cursor = get_sync_cursor(db, "mobile-1", "records")
+        assert cursor == 3
+
+    def test_cursor_not_advanced_when_all_ops_fail(self):
+        """When all ops for a table fail, cursor should NOT be advanced."""
+        from jarvis_engine.sync.changelog import (
+            get_sync_cursor,
+            install_changelog_triggers,
+        )
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+
+        incoming = {
+            "changes": {
+                "records": [
+                    {
+                        "row_id": "r1",
+                        "operation": "MERGE",  # Unknown
+                        "fields_changed": [],
+                        "new_values": {},
+                        "__version": 1,
+                    },
+                    {
+                        "row_id": "r2",
+                        "operation": "UPSERT",  # Unknown
+                        "fields_changed": [],
+                        "new_values": {},
+                        "__version": 2,
+                    },
+                ]
+            },
+            "cursors": {"records": 2},
+        }
+
+        engine.apply_incoming(incoming, "mobile-1")
+
+        # Cursor should remain at 0 since no ops succeeded
+        cursor = get_sync_cursor(db, "mobile-1", "records")
+        assert cursor == 0
+
+    def test_cursor_advances_for_table_with_no_changes(self):
+        """When a table has a cursor entry but no changes, use the incoming cursor."""
+        from jarvis_engine.sync.changelog import (
+            get_sync_cursor,
+            install_changelog_triggers,
+        )
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+
+        # Only send changes for records, but include cursor for kg_nodes too
+        incoming = {
+            "changes": {
+                "records": [
+                    {
+                        "row_id": "r1",
+                        "operation": "INSERT",
+                        "fields_changed": ["source"],
+                        "new_values": {"source": "user"},
+                        "__version": 1,
+                    }
+                ]
+            },
+            "cursors": {"records": 1, "kg_nodes": 5},
+        }
+
+        engine.apply_incoming(incoming, "mobile-1")
+
+        # kg_nodes had no entries in changes, so cursor should use incoming value
+        cursor_kg = get_sync_cursor(db, "mobile-1", "kg_nodes")
+        assert cursor_kg == 5
+
+    def test_apply_incoming_errors_report_unknown_op_details(self):
+        """Error messages include the unknown operation name and row info."""
+        from jarvis_engine.sync.changelog import install_changelog_triggers
+        from jarvis_engine.sync.engine import SyncEngine
+
+        db = _make_db()
+        lock = threading.Lock()
+        install_changelog_triggers(db)
+
+        engine = SyncEngine(db, lock, device_id="desktop")
+
+        incoming = {
+            "changes": {
+                "records": [
+                    {
+                        "row_id": "my-special-row",
+                        "operation": "SNAPSHOT",
+                        "fields_changed": [],
+                        "new_values": {},
+                        "__version": 1,
+                    }
+                ]
+            },
+            "cursors": {"records": 1},
+        }
+
+        result = engine.apply_incoming(incoming, "mobile-1")
+        assert len(result["errors"]) == 1
+        assert "SNAPSHOT" in result["errors"][0]
+        assert "my-special-row" in result["errors"][0]
+
+
+# ===========================================================================
 # Transport tests
 # ===========================================================================
 

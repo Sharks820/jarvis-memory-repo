@@ -126,8 +126,8 @@ class RegressionChecker:
     def restore_graph(self, backup_path: Path) -> bool:
         """Restore the knowledge graph from a backup file.
 
-        Copies the backup over the live DB file, then reinitializes
-        the KG schema (which re-opens tables via ``_ensure_schema``).
+        Copies the backup over the live DB file (after removing stale WAL/SHM
+        files), then reinitializes the KG schema via ``_ensure_schema``.
 
         Returns True on success, False on failure.
         """
@@ -143,6 +143,17 @@ class RegressionChecker:
                 with self._kg.db_lock:
                     # Close the live connection before overwriting the file
                     self._kg._engine._db.close()
+
+                    # Delete stale WAL/SHM files before copying backup back.
+                    # These belong to the old connection and would corrupt the
+                    # restored database if left in place.
+                    wal_path = dst_path.with_suffix(".db-wal")
+                    shm_path = dst_path.with_suffix(".db-shm")
+                    if wal_path.exists():
+                        wal_path.unlink()
+                    if shm_path.exists():
+                        shm_path.unlink()
+
                     shutil.copy2(str(backup_path), str(dst_path))
                     # Reopen the DB connection
                     import sqlite3

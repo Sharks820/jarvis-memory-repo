@@ -36,12 +36,35 @@ class MainActivity : FragmentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    /**
+     * Check if the device requires authentication.
+     *
+     * Returns true if biometrics are available OR a master password is configured.
+     * When neither is available, the user gets a warning but can still access
+     * the app (personal device scenario).
+     */
+    private fun requiresAuth(): Boolean {
+        if (BiometricHelper.canAuthenticate(this)) return true
+        if (hasMasterPasswordConfigured()) return true
+        return false
+    }
+
+    /**
+     * Check if a master password has been configured via CryptoHelper.
+     */
+    private fun hasMasterPasswordConfigured(): Boolean {
+        return crypto.getMasterPassword().isNotBlank()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
             val isAuthenticated by viewModel.isAuthenticated.collectAsState()
             val authError by viewModel.authError.collectAsState()
+            val showPasswordPrompt by viewModel.showPasswordPrompt.collectAsState()
+            val passwordInput by viewModel.passwordInput.collectAsState()
+            val noAuthWarning by viewModel.noAuthWarning.collectAsState()
 
             JarvisTheme {
                 Surface(
@@ -79,9 +102,46 @@ class MainActivity : FragmentActivity() {
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                             }
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Button(onClick = { promptBiometric() }) {
-                                Text("Unlock")
+                            noAuthWarning?.let { warning ->
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = warning,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            if (showPasswordPrompt) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Enter master password:",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = passwordInput,
+                                    onValueChange = { viewModel.onPasswordChanged(it) },
+                                    singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(onClick = {
+                                    viewModel.verifyMasterPassword(crypto)
+                                }) {
+                                    Text("Unlock with Password")
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(onClick = { promptBiometric() }) {
+                                    Text("Unlock")
+                                }
+                            }
+                            // When no auth is available, show a "Continue anyway" button
+                            if (noAuthWarning != null) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(onClick = { viewModel.onAuthSuccess() }) {
+                                    Text("Continue without authentication")
+                                }
                             }
                         }
                     }
@@ -94,8 +154,15 @@ class MainActivity : FragmentActivity() {
         if (!viewModel.isAuthenticated.value) {
             if (BiometricHelper.canAuthenticate(this)) {
                 promptBiometric()
+            } else if (hasMasterPasswordConfigured()) {
+                // Biometrics unavailable but master password is set — prompt for it
+                viewModel.showPasswordPrompt(true)
             } else {
-                viewModel.setAuthenticated(true)
+                // No biometrics and no master password — warn but allow access
+                viewModel.showNoAuthWarning(
+                    "No biometrics or master password configured. " +
+                        "Set a master password in Settings for better security."
+                )
             }
         }
 

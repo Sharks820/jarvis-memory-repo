@@ -682,6 +682,43 @@ class MemoryEngine:
         except Exception as exc:
             logger.warning("WAL checkpoint failed: %s", exc)
 
+    def optimize(self, *, vacuum: bool = False) -> dict:
+        """Run ANALYZE (and optionally VACUUM) to keep query planner stats fresh.
+
+        Args:
+            vacuum: If True, also run VACUUM (expensive, rebuilds the DB file).
+                    Should only be done weekly at most.
+
+        Returns:
+            Dict with 'analyzed' (bool), 'vacuumed' (bool), and any error messages.
+        """
+        self._check_open()
+        result: dict = {"analyzed": False, "vacuumed": False, "errors": []}
+
+        # ANALYZE: update statistics for the query planner (lightweight)
+        try:
+            with self._write_lock:
+                self._db.execute("ANALYZE")
+                self._db.commit()
+            result["analyzed"] = True
+            logger.info("ANALYZE completed successfully")
+        except Exception as exc:
+            result["errors"].append(f"ANALYZE failed: {exc}")
+            logger.warning("ANALYZE failed: %s", exc)
+
+        # VACUUM: rebuild the database file (expensive, reclaims space)
+        if vacuum:
+            try:
+                with self._write_lock:
+                    self._db.execute("VACUUM")
+                result["vacuumed"] = True
+                logger.info("VACUUM completed successfully")
+            except Exception as exc:
+                result["errors"].append(f"VACUUM failed: {exc}")
+                logger.warning("VACUUM failed: %s", exc)
+
+        return result
+
     def close(self) -> None:
         """Close the database connection (idempotent).
 
