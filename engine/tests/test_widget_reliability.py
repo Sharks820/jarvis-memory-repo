@@ -295,8 +295,12 @@ class TestWidgetUI:
 
         def fake_http_json(cfg, path, method="GET", payload=None):
             call_paths.append(path)
+            if path == "/health":
+                return {"ok": True}
             if path == "/sync/status":
                 return {"ok": True, "last_sync_utc": "2026-01-01T00:00:00"}
+            if path == "/dashboard":
+                return {"intelligence_score": 85, "memory_count": 100, "fact_count": 50}
             if path == "/self-heal":
                 return {"ok": True, "command_exit_code": 0, "stdout_tail": ["heal ok"]}
             raise AssertionError(f"Unexpected path: {path}")
@@ -312,11 +316,12 @@ class TestWidgetUI:
             master_password="m",
         )
         widget._log_async = MagicMock()
+        widget._notify_toast = MagicMock()
         widget._thread = lambda fn: fn()
 
         desktop_widget.JarvisDesktopWidget._diagnose_repair_async(widget)
 
-        assert call_paths == ["/sync/status", "/self-heal"]
+        assert call_paths == ["/health", "/sync/status", "/dashboard", "/self-heal"]
 
     def test_launcher_release_opens_panel_when_not_dragging(self) -> None:
         """UI: Launcher click release should open panel."""
