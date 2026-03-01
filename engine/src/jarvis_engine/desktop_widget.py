@@ -712,6 +712,9 @@ class JarvisDesktopWidget(tk.Tk):
         self._launcher_after_id: str | None = None
         self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
         self._widget_state: str = "idle"  # idle | listening | processing | error
+        self._thinking_marker: str | None = None  # Text index of thinking indicator start
+        self._thinking_after_id: str | None = None  # after() id for dot animation
+        self._thinking_dots: int = 3
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
         self._position_save_id: str | None = None  # debounce timer for position save
         self._SNAP_DISTANCE = 20  # pixels from screen edge to trigger snap
@@ -1334,6 +1337,16 @@ class JarvisDesktopWidget(tk.Tk):
             spacing1=6,
             spacing3=2,
         )
+        self.output.tag_configure(
+            "thinking",
+            foreground="#ff9f43",
+            font=("Consolas", 11, "italic"),
+            lmargin1=8,
+            lmargin2=8,
+            rmargin=40,
+            spacing1=4,
+            spacing3=4,
+        )
 
     def _clear_history(self) -> None:
         """Clear all text from the conversation display."""
@@ -1616,6 +1629,65 @@ class JarvisDesktopWidget(tk.Tk):
         except Exception:
             pass  # Widget destroyed
 
+    def _show_thinking(self) -> None:
+        """Insert animated 'Jarvis is thinking...' indicator in chat."""
+        self.output.config(state=tk.NORMAL)
+        self._thinking_marker = self.output.index(tk.END)
+        self.output.insert(tk.END, "Jarvis is thinking...\n", "thinking")
+        self.output.see(tk.END)
+        self.output.config(state=tk.DISABLED)
+        popout = getattr(self, "_popout_text", None)
+        if popout is not None:
+            try:
+                popout.config(state=tk.NORMAL)
+                popout.insert(tk.END, "Jarvis is thinking...\n", "thinking")
+                popout.see(tk.END)
+                popout.config(state=tk.DISABLED)
+            except tk.TclError:
+                pass
+        self._animate_thinking()
+
+    def _hide_thinking(self) -> None:
+        """Remove the thinking indicator from chat."""
+        if self._thinking_after_id is not None:
+            try:
+                self.after_cancel(self._thinking_after_id)
+            except Exception:
+                pass
+            self._thinking_after_id = None
+        if self._thinking_marker is not None:
+            self.output.config(state=tk.NORMAL)
+            try:
+                self.output.delete(self._thinking_marker, tk.END)
+            except tk.TclError:
+                pass
+            self.output.config(state=tk.DISABLED)
+            popout = getattr(self, "_popout_text", None)
+            if popout is not None:
+                try:
+                    popout.config(state=tk.NORMAL)
+                    popout.delete("end-2l", tk.END)
+                    popout.config(state=tk.DISABLED)
+                except tk.TclError:
+                    pass
+            self._thinking_marker = None
+
+    def _animate_thinking(self) -> None:
+        """Cycle dots on the thinking indicator: . -> .. -> ... -> ."""
+        if self._thinking_marker is None:
+            return
+        self._thinking_dots = (self._thinking_dots % 3) + 1
+        label = "Jarvis is thinking" + "." * self._thinking_dots + "\n"
+        try:
+            self.output.config(state=tk.NORMAL)
+            self.output.delete(self._thinking_marker, tk.END)
+            self.output.insert(tk.END, label, "thinking")
+            self.output.see(tk.END)
+            self.output.config(state=tk.DISABLED)
+        except tk.TclError:
+            return
+        self._thinking_after_id = self.after(400, self._animate_thinking)
+
     def _notify_toast(self, title: str, message: str, icon: str = "Info") -> None:
         """Send a toast notification if the Notifications toggle is enabled."""
         try:
@@ -1754,6 +1826,8 @@ class JarvisDesktopWidget(tk.Tk):
         # Log the user's command with the "user" role
         self._log(text, role="user")
         self._set_state("processing")
+        self._show_thinking()
+        self.command_text.config(state=tk.DISABLED)
         # Read all tkinter vars on the main thread before spawning background thread
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())
@@ -1770,29 +1844,50 @@ class JarvisDesktopWidget(tk.Tk):
                     "master_password": cfg.master_password,
                 }
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
+                self.after(0, self._hide_thinking)
+                # Parse clean response from stdout_tail
+                lines = data.get("stdout_tail", [])
+                response_text = ""
+                if isinstance(lines, list):
+                    for line in lines:
+                        s = str(line)
+                        if s.startswith("response="):
+                            response_text = s[len("response="):]
+                            break
                 intent = str(data.get("intent", "unknown"))
                 ok = bool(data.get("ok", False))
-                self._log_async(f"[{intent}] ok={ok}", role="jarvis")
-                lines = data.get("stdout_tail", [])
-                if isinstance(lines, list) and lines:
-                    self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
+                if response_text:
+                    self._log_async(response_text, role="jarvis")
+                else:
+                    self._log_async(f"[{intent}] ok={ok}", role="jarvis")
+                    if isinstance(lines, list) and lines:
+                        self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
                 if not ok:
                     self._set_error_briefly_async()
                 else:
                     self._set_state_async("idle")
             except HTTPError as exc:
+                self.after(0, self._hide_thinking)
                 self._log_async(f"Command failed: {_http_error_details(exc)}", role="error")
                 self._set_error_briefly_async()
             except URLError:
+                self.after(0, self._hide_thinking)
                 self._log_async("Cannot connect to Jarvis services.", role="error")
                 self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
                 self._set_error_briefly_async()
             except (RuntimeError, TimeoutError) as exc:
+                self.after(0, self._hide_thinking)
                 self._log_async(f"Command failed: {exc}", role="error")
                 self._set_error_briefly_async()
             except Exception as exc:  # noqa: BLE001
+                self.after(0, self._hide_thinking)
                 self._log_async(f"Command failed: {exc}", role="error")
                 self._set_error_briefly_async()
+            finally:
+                try:
+                    self.after(0, lambda: self.command_text.config(state=tk.NORMAL))
+                except Exception:
+                    pass
 
         self._thread(worker)
 
