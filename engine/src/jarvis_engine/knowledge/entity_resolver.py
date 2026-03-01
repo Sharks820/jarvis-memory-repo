@@ -188,125 +188,152 @@ class EntityResolver:
         remove_id: str,
         *,
         canonical_label: str | None = None,
+        _lock_held: bool = False,
     ) -> bool:
         """Merge *remove_id* into *keep_id*, transferring all edges.
 
-        Acquires _write_lock for the entire operation.  Creates the
+        Acquires _write_lock for the entire operation unless *_lock_held*
+        is True (used internally by auto_resolve to avoid deadlock when
+        the caller already holds the lock).  Creates the
         ``kg_merge_history`` table on first use.
 
         Args:
             keep_id:         Node ID to retain.
             remove_id:       Node ID to delete after transfer.
             canonical_label: If provided, set as the label on *keep_id*.
+            _lock_held:      If True, caller already holds _write_lock.
 
         Returns:
             True on success, False if either node is missing.
         """
         self._ensure_merge_history()
 
+        return self._merge_nodes_impl(keep_id, remove_id, canonical_label=canonical_label, _lock_held=_lock_held)
+
+    def _merge_nodes_impl(
+        self,
+        keep_id: str,
+        remove_id: str,
+        *,
+        canonical_label: str | None = None,
+        _lock_held: bool = False,
+    ) -> bool:
+        """Internal merge implementation. Acquires _write_lock unless _lock_held."""
+        if _lock_held:
+            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label)
         with self._kg.write_lock:
-            # Verify both nodes exist
-            keep_row = self._kg.db.execute(
-                "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
-                (keep_id,),
-            ).fetchone()
-            remove_row = self._kg.db.execute(
-                "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
-                (remove_id,),
-            ).fetchone()
+            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label)
 
-            if keep_row is None or remove_row is None:
-                return False
+    def _merge_nodes_core(
+        self,
+        keep_id: str,
+        remove_id: str,
+        *,
+        canonical_label: str | None = None,
+    ) -> bool:
+        """Core merge logic. Caller MUST hold _write_lock."""
+        # Verify both nodes exist
+        keep_row = self._kg.db.execute(
+            "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
+            (keep_id,),
+        ).fetchone()
+        remove_row = self._kg.db.execute(
+            "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
+            (remove_id,),
+        ).fetchone()
 
-            # Refuse to merge locked nodes -- lock contract guarantees immutability
-            if keep_row[2] or remove_row[2]:
-                logger.warning(
-                    "Refusing to merge locked nodes: keep=%s (locked=%s), remove=%s (locked=%s)",
-                    keep_id, bool(keep_row[2]), remove_id, bool(remove_row[2]),
-                )
-                return False
+        if keep_row is None or remove_row is None:
+            return False
 
-            keep_label = keep_row[0]
-            keep_conf = keep_row[1]
-            remove_label = remove_row[0]
-            remove_conf = remove_row[1]
-
-            edges_transferred = 0
-
-            # Transfer outgoing edges FROM remove_id -> keep_id
-            outgoing = self._kg.db.execute(
-                "SELECT target_id, relation, confidence, source_record "
-                "FROM kg_edges WHERE source_id = ?",
-                (remove_id,),
-            ).fetchall()
-            for edge in outgoing:
-                target_id, relation, conf, src = edge
-                # Skip self-loops that would result from the merge
-                if target_id == keep_id:
-                    continue
-                cur = self._kg.db.execute(
-                    "INSERT OR IGNORE INTO kg_edges "
-                    "(source_id, target_id, relation, confidence, source_record) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (keep_id, target_id, relation, conf, src),
-                )
-                edges_transferred += cur.rowcount
-
-            # Transfer incoming edges TO remove_id -> keep_id
-            incoming = self._kg.db.execute(
-                "SELECT source_id, relation, confidence, source_record "
-                "FROM kg_edges WHERE target_id = ?",
-                (remove_id,),
-            ).fetchall()
-            for edge in incoming:
-                source_id, relation, conf, src = edge
-                if source_id == keep_id:
-                    continue
-                cur = self._kg.db.execute(
-                    "INSERT OR IGNORE INTO kg_edges "
-                    "(source_id, target_id, relation, confidence, source_record) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (source_id, keep_id, relation, conf, src),
-                )
-                edges_transferred += cur.rowcount
-
-            # Update keep_id: canonical label + max confidence
-            new_label = canonical_label if canonical_label is not None else keep_label
-            new_conf = max(keep_conf, remove_conf)
-            self._kg.db.execute(
-                "UPDATE kg_nodes SET label = ?, confidence = ?, "
-                "updated_at = datetime('now') WHERE node_id = ?",
-                (new_label, new_conf, keep_id),
+        # Refuse to merge locked nodes -- lock contract guarantees immutability
+        if keep_row[2] or remove_row[2]:
+            logger.warning(
+                "Refusing to merge locked nodes: keep=%s (locked=%s), remove=%s (locked=%s)",
+                keep_id, bool(keep_row[2]), remove_id, bool(remove_row[2]),
             )
+            return False
 
-            # Delete edges referencing remove_id, then the node itself
-            self._kg.db.execute(
-                "DELETE FROM kg_edges WHERE source_id = ? OR target_id = ?",
-                (remove_id, remove_id),
-            )
-            self._kg.db.execute(
-                "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)
-            )
+        keep_label = keep_row[0]
+        keep_conf = keep_row[1]
+        remove_label = remove_row[0]
+        remove_conf = remove_row[1]
 
-            # Record in merge history
-            self._kg.db.execute(
-                "INSERT INTO kg_merge_history "
-                "(keep_id, remove_id, keep_label, remove_label, "
-                " canonical_label, edges_transferred) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    keep_id,
-                    remove_id,
-                    keep_label,
-                    remove_label,
-                    canonical_label,
-                    edges_transferred,
-                ),
-            )
+        edges_transferred = 0
 
-            self._kg.db.commit()
-            # Invalidate NetworkX cache (bypassed add_fact/add_edge)
-            self._kg._mutation_counter += 1
+        # Transfer outgoing edges FROM remove_id -> keep_id
+        outgoing = self._kg.db.execute(
+            "SELECT target_id, relation, confidence, source_record "
+            "FROM kg_edges WHERE source_id = ?",
+            (remove_id,),
+        ).fetchall()
+        for edge in outgoing:
+            target_id, relation, conf, src = edge
+            # Skip self-loops that would result from the merge
+            if target_id == keep_id:
+                continue
+            cur = self._kg.db.execute(
+                "INSERT OR IGNORE INTO kg_edges "
+                "(source_id, target_id, relation, confidence, source_record) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (keep_id, target_id, relation, conf, src),
+            )
+            edges_transferred += cur.rowcount
+
+        # Transfer incoming edges TO remove_id -> keep_id
+        incoming = self._kg.db.execute(
+            "SELECT source_id, relation, confidence, source_record "
+            "FROM kg_edges WHERE target_id = ?",
+            (remove_id,),
+        ).fetchall()
+        for edge in incoming:
+            source_id, relation, conf, src = edge
+            if source_id == keep_id:
+                continue
+            cur = self._kg.db.execute(
+                "INSERT OR IGNORE INTO kg_edges "
+                "(source_id, target_id, relation, confidence, source_record) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (source_id, keep_id, relation, conf, src),
+            )
+            edges_transferred += cur.rowcount
+
+        # Update keep_id: canonical label + max confidence
+        new_label = canonical_label if canonical_label is not None else keep_label
+        new_conf = max(keep_conf, remove_conf)
+        self._kg.db.execute(
+            "UPDATE kg_nodes SET label = ?, confidence = ?, "
+            "updated_at = datetime('now') WHERE node_id = ?",
+            (new_label, new_conf, keep_id),
+        )
+
+        # Delete edges referencing remove_id, then the node itself
+        self._kg.db.execute(
+            "DELETE FROM kg_edges WHERE source_id = ? OR target_id = ?",
+            (remove_id, remove_id),
+        )
+        self._kg.db.execute(
+            "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)
+        )
+
+        # Record in merge history
+        self._kg.db.execute(
+            "INSERT INTO kg_merge_history "
+            "(keep_id, remove_id, keep_label, remove_label, "
+            " canonical_label, edges_transferred) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                keep_id,
+                remove_id,
+                keep_label,
+                remove_label,
+                canonical_label,
+                edges_transferred,
+            ),
+        )
+
+        self._kg.db.commit()
+        # Invalidate NetworkX cache (bypassed add_fact/add_edge)
+        self._kg._mutation_counter += 1
 
         logger.info(
             "Merged node %s into %s (edges transferred: %d)",
@@ -346,14 +373,22 @@ class EntityResolver:
         # Track already-removed IDs to avoid double-merging
         removed: set[str] = set()
 
+        # Ensure merge history table exists before acquiring _write_lock
+        # to avoid nested lock acquisition inside _merge_nodes_core.
+        self._ensure_merge_history()
+
         for cand in candidates:
             if cand.node_a_id in removed or cand.node_b_id in removed:
                 continue
 
-            keep_id, remove_id = self._pick_keeper(cand.node_a_id, cand.node_b_id)
-
             try:
-                ok = self.merge_nodes(keep_id, remove_id)
+                # Acquire _write_lock around both pick and merge to prevent
+                # TOCTOU race where node data changes between selection and merge.
+                with self._kg.write_lock:
+                    keep_id, remove_id = self._pick_keeper_unlocked(
+                        cand.node_a_id, cand.node_b_id,
+                    )
+                    ok = self._merge_nodes_core(keep_id, remove_id)
                 if ok:
                     result.merges_applied += 1
                     removed.add(remove_id)
@@ -363,7 +398,7 @@ class EntityResolver:
                     )
             except Exception as exc:
                 result.errors.append(
-                    f"Merge error ({keep_id} <- {remove_id}): {exc}"
+                    f"Merge error ({cand.node_a_id} <- {cand.node_b_id}): {exc}"
                 )
 
         return result
@@ -375,31 +410,38 @@ class EntityResolver:
     def _pick_keeper(self, id_a: str, id_b: str) -> tuple[str, str]:
         """Choose which node to keep based on confidence then edge count.
 
-        Returns (keep_id, remove_id).
+        Returns (keep_id, remove_id).  Acquires db_lock for standalone use.
         """
         with self._kg.db_lock:
-            row_a = self._kg.db.execute(
-                "SELECT confidence FROM kg_nodes WHERE node_id = ?", (id_a,)
-            ).fetchone()
-            row_b = self._kg.db.execute(
-                "SELECT confidence FROM kg_nodes WHERE node_id = ?", (id_b,)
-            ).fetchone()
+            return self._pick_keeper_unlocked(id_a, id_b)
 
-            conf_a = row_a[0] if row_a else 0.0
-            conf_b = row_b[0] if row_b else 0.0
+    def _pick_keeper_unlocked(self, id_a: str, id_b: str) -> tuple[str, str]:
+        """Choose which node to keep. Caller MUST hold _write_lock or _db_lock.
 
-            if conf_a != conf_b:
-                return (id_a, id_b) if conf_a >= conf_b else (id_b, id_a)
+        Returns (keep_id, remove_id).
+        """
+        row_a = self._kg.db.execute(
+            "SELECT confidence FROM kg_nodes WHERE node_id = ?", (id_a,)
+        ).fetchone()
+        row_b = self._kg.db.execute(
+            "SELECT confidence FROM kg_nodes WHERE node_id = ?", (id_b,)
+        ).fetchone()
 
-            # Tie-break: total edge count
-            edges_a = self._kg.db.execute(
-                "SELECT COUNT(*) FROM kg_edges WHERE source_id = ? OR target_id = ?",
-                (id_a, id_a),
-            ).fetchone()[0]
-            edges_b = self._kg.db.execute(
-                "SELECT COUNT(*) FROM kg_edges WHERE source_id = ? OR target_id = ?",
-                (id_b, id_b),
-            ).fetchone()[0]
+        conf_a = row_a[0] if row_a else 0.0
+        conf_b = row_b[0] if row_b else 0.0
+
+        if conf_a != conf_b:
+            return (id_a, id_b) if conf_a >= conf_b else (id_b, id_a)
+
+        # Tie-break: total edge count
+        edges_a = self._kg.db.execute(
+            "SELECT COUNT(*) FROM kg_edges WHERE source_id = ? OR target_id = ?",
+            (id_a, id_a),
+        ).fetchone()[0]
+        edges_b = self._kg.db.execute(
+            "SELECT COUNT(*) FROM kg_edges WHERE source_id = ? OR target_id = ?",
+            (id_b, id_b),
+        ).fetchone()[0]
 
         return (id_a, id_b) if edges_a >= edges_b else (id_b, id_a)
 

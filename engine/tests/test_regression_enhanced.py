@@ -90,7 +90,7 @@ class TestBackupGraph:
             p = checker.backup_graph(tag=f"b{i:02d}")
             created.append(p)
 
-        backup_dir = Path(".planning/runtime/kg_backups")
+        backup_dir = tmp_path / "kg_backups"
         remaining = list(backup_dir.glob("*.db"))
         assert len(remaining) == _MAX_BACKUPS
 

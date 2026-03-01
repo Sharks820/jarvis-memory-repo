@@ -77,6 +77,12 @@ class SettingsViewModel @Inject constructor(
     val deviceId = MutableStateFlow(crypto.getDeviceId())
     val isBootstrapped = MutableStateFlow(crypto.isBootstrapped())
 
+    // ── Shared Preferences (must be declared before first use) ───────
+
+    private val contextPrefs by lazy {
+        app.getSharedPreferences(ContextDetector.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
     // ── Call Screening Settings ──────────────────────────────────────
 
     private val callScreenPrefs by lazy {
@@ -250,10 +256,6 @@ class SettingsViewModel @Inject constructor(
     val notificationListenerEnabled = MutableStateFlow(isNotificationListenerEnabled())
 
     // ── Proactive Notification Settings ──────────────────────────────
-
-    private val contextPrefs by lazy {
-        app.getSharedPreferences(ContextDetector.PREFS_NAME, Context.MODE_PRIVATE)
-    }
 
     val proactiveAlertsEnabled = MutableStateFlow(
         contextPrefs.getBoolean(KEY_PROACTIVE_ALERTS_ENABLED, true),

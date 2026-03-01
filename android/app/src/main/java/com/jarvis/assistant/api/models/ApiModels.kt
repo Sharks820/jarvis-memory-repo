@@ -79,10 +79,17 @@ data class MemoryRegression(
 /** POST /bootstrap response */
 data class BootstrapResponse(
     val ok: Boolean = false,
+    val session: BootstrapSession? = null,
+    val message: String = "",
+)
+
+/** Nested session credentials from bootstrap response */
+data class BootstrapSession(
+    @SerializedName("base_url") val baseUrl: String = "",
     val token: String = "",
     @SerializedName("signing_key") val signingKey: String = "",
     @SerializedName("device_id") val deviceId: String = "",
-    val message: String = "",
+    @SerializedName("trusted_device") val trustedDevice: Boolean = false,
 )
 
 /** Health check response */

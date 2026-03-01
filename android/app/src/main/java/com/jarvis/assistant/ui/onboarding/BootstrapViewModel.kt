@@ -48,12 +48,12 @@ class BootstrapViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 crypto.setBaseUrl(url)
-                val body = mapOf("device_name" to "android-app")
+                val body = mapOf("device_id" to "android-app")
                 val response = apiClient.api().bootstrap(password, body)
-                if (response.ok) {
-                    crypto.setToken(response.token)
-                    crypto.setSigningKey(response.signingKey)
-                    crypto.setDeviceId(response.deviceId)
+                if (response.ok && response.session != null) {
+                    crypto.setToken(response.session.token)
+                    crypto.setSigningKey(response.session.signingKey)
+                    crypto.setDeviceId(response.session.deviceId)
                     onSuccess()
                 } else {
                     error.value = response.message.ifBlank { "Bootstrap rejected" }

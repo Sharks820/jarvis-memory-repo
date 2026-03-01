@@ -152,6 +152,24 @@ def _get_bus() -> CommandBus:
 _auto_ingest_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
+# Cached MemoryStore for auto-ingest (avoids recreating per call)
+# ---------------------------------------------------------------------------
+_auto_ingest_store: "MemoryStore | None" = None
+_auto_ingest_store_lock = threading.Lock()
+
+
+def _get_auto_ingest_store() -> "MemoryStore":
+    """Return a cached MemoryStore for auto-ingest, creating once on first call."""
+    global _auto_ingest_store
+    if _auto_ingest_store is not None:
+        return _auto_ingest_store
+    with _auto_ingest_store_lock:
+        if _auto_ingest_store is None:
+            _auto_ingest_store = MemoryStore(repo_root())
+        return _auto_ingest_store
+
+
+# ---------------------------------------------------------------------------
 # Daemon-scoped bus cache (avoids recreating MemoryEngine per periodic task)
 # ---------------------------------------------------------------------------
 _daemon_bus: CommandBus | None = None
@@ -290,15 +308,20 @@ def _discover_harvest_topics(root: Path) -> list[str]:
         candidates.append(topic)
         return len(candidates) >= _MAX_TOPICS
 
-    # --- Source 1: Conversation-derived topics from recent memories ---
-    try:
-        import sqlite3 as _sqlite3
-        from datetime import timedelta
+    # Open a single shared SQLite connection for sources 1-3 (memory + KG queries)
+    import sqlite3 as _sqlite3
+    from datetime import timedelta
 
-        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+    conn = None
+    try:
         if db_path.exists():
             conn = _sqlite3.connect(str(db_path), timeout=5)
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.row_factory = _sqlite3.Row
+
+        # --- Source 1: Conversation-derived topics from recent memories ---
+        if conn is not None:
             try:
                 cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
                 rows = conn.execute(
@@ -316,22 +339,14 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                             break
                     if len(candidates) >= _MAX_TOPICS:
                         break
-            finally:
-                conn.close()
-    except Exception:
-        pass  # Memory DB may not exist yet
+            except Exception:
+                pass  # Memory tables may not exist yet
 
-    if len(candidates) >= _MAX_TOPICS:
-        return candidates[:_MAX_TOPICS]
+        if len(candidates) >= _MAX_TOPICS:
+            return candidates[:_MAX_TOPICS]
 
-    # --- Source 2: KG gap analysis — relation types with few edges + sparse areas ---
-    try:
-        import sqlite3 as _sqlite3
-
-        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
-        if db_path.exists():
-            conn = _sqlite3.connect(str(db_path), timeout=5)
-            conn.row_factory = _sqlite3.Row
+        # --- Source 2: KG gap analysis — relation types with few edges + sparse areas ---
+        if conn is not None:
             try:
                 # 2a: Find nodes that have few outgoing edges (surface-level knowledge)
                 # These represent areas where we have facts but not much depth
@@ -383,22 +398,14 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                                     break
                         if len(candidates) >= _MAX_TOPICS:
                             break
-            finally:
-                conn.close()
-    except Exception:
-        pass  # KG may not exist yet
+            except Exception:
+                pass  # KG tables may not exist yet
 
-    if len(candidates) >= _MAX_TOPICS:
-        return candidates[:_MAX_TOPICS]
+        if len(candidates) >= _MAX_TOPICS:
+            return candidates[:_MAX_TOPICS]
 
-    # --- Source 3: Complementary topics — expand strong KG areas ---
-    try:
-        import sqlite3 as _sqlite3
-
-        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
-        if db_path.exists():
-            conn = _sqlite3.connect(str(db_path), timeout=5)
-            conn.row_factory = _sqlite3.Row
+        # --- Source 3: Complementary topics — expand strong KG areas ---
+        if conn is not None:
             try:
                 # Find the most populated topic areas (first 2-3 words of node labels)
                 strong_rows = conn.execute(
@@ -430,10 +437,11 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                         break
                     if len(candidates) >= _MAX_TOPICS:
                         break
-            finally:
-                conn.close()
-    except Exception as exc:
-        logger.debug("Failed to discover harvest topics from knowledge graph: %s", exc)
+            except Exception as exc:
+                logger.debug("Failed to discover harvest topics from knowledge graph: %s", exc)
+    finally:
+        if conn is not None:
+            conn.close()
 
     if len(candidates) >= _MAX_TOPICS:
         return candidates[:_MAX_TOPICS]
@@ -741,7 +749,7 @@ def _auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str)
         seen.append(dedupe_hash)
         _store_auto_ingest_hashes(dedupe_path, seen)
 
-    store = MemoryStore(repo_root())
+    store = _get_auto_ingest_store()
     pipeline = IngestionPipeline(store)
     rec = pipeline.ingest(
         source=source,  # type: ignore[arg-type]

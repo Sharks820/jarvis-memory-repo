@@ -449,7 +449,9 @@ class KnowledgeGraph:
         )
         all_params: list[object] = [now] + like_params
         with self._write_lock:
-            with self._db_lock:
-                cur = self._db.execute(sql, all_params)
-                self._db.commit()
-                return cur.rowcount
+            cur = self._db.execute(sql, all_params)
+            self._db.commit()
+            retracted = cur.rowcount
+            if retracted > 0:
+                self._mutation_counter += 1
+            return retracted
