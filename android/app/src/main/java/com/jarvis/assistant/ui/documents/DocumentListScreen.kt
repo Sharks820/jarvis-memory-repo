@@ -189,8 +189,21 @@ private fun DocumentCard(doc: ScannedDocumentEntity) {
     }
     val thumbnail = remember(doc.thumbnailPath) {
         try {
-            BitmapFactory.decodeFile(doc.thumbnailPath)?.asImageBitmap()
+            // Use inSampleSize to limit memory even if thumbnail is unexpectedly large
+            val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+            // Decode bounds first to determine if downsampling is needed
+            BitmapFactory.Options().apply { inJustDecodeBounds = true }.also {
+                BitmapFactory.decodeFile(doc.thumbnailPath, it)
+                // Target 120px for list thumbnails; downsample if larger
+                val maxDim = maxOf(it.outWidth, it.outHeight)
+                if (maxDim > 240) {
+                    options.inSampleSize = maxDim / 120
+                }
+            }
+            BitmapFactory.decodeFile(doc.thumbnailPath, options)?.asImageBitmap()
         } catch (_: Exception) {
+            null
+        } catch (_: OutOfMemoryError) {
             null
         }
     }
