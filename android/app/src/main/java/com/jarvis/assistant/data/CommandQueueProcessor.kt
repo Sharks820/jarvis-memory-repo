@@ -73,6 +73,13 @@ class CommandQueueProcessor @Inject constructor(
                 Log.w(TAG, "Retry failed for command ${cmd.id}: ${e.message}")
             }
         }
+        // Purge sent commands older than 7 days to prevent storage leak
+        try {
+            val cutoff = System.currentTimeMillis() - SENT_RETENTION_MS
+            commandQueueDao.purgeSent(cutoff)
+        } catch (e: Exception) {
+            Log.w(TAG, "Command queue purge failed: ${e.message}")
+        }
     }
 
     private suspend fun sendCommand(id: Long) {
@@ -109,5 +116,6 @@ class CommandQueueProcessor @Inject constructor(
     companion object {
         private const val TAG = "CmdQueue"
         private const val MAX_RETRIES = 5
+        private const val SENT_RETENTION_MS = 7L * 24 * 60 * 60 * 1000 // 7 days
     }
 }

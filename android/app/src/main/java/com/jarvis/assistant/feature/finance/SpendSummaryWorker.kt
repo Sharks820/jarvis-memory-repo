@@ -34,6 +34,13 @@ class SpendSummaryWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        // Respect the weekly summary toggle from settings
+        val jarvisPrefs = applicationContext.getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+        if (!jarvisPrefs.getBoolean("weekly_summary_enabled", true)) {
+            Log.d(TAG, "Weekly summary disabled in settings, skipping")
+            return Result.success()
+        }
+
         return try {
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val cal = Calendar.getInstance()

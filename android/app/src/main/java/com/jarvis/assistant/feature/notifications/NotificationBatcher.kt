@@ -55,6 +55,18 @@ class NotificationBatcher @Inject constructor() {
     }
 
     /**
+     * Remove a specific alert from the buffer (used after individual posting
+     * to prevent duplicate delivery when the batch later flushes).
+     */
+    @Synchronized
+    fun removeAlert(groupKey: String, alert: ProactiveAlert) {
+        buffer[groupKey]?.remove(alert)
+        if (buffer[groupKey]?.isEmpty() == true) {
+            buffer.remove(groupKey)
+        }
+    }
+
+    /**
      * Flush all pending groups regardless of size or age.
      * Called on context change or settings change.
      */
