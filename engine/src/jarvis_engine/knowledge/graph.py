@@ -169,6 +169,27 @@ class KnowledgeGraph:
                 self._vec_available = False
                 logger.warning("Failed to create vec_kg_nodes table: %s", exc)
 
+        # Backfill FTS5 index: populate fts_kg_nodes from existing kg_nodes
+        # that are missing from the index (idempotent -- skips already-indexed nodes).
+        try:
+            missing = self._db.execute(
+                """
+                SELECT n.node_id, n.label
+                FROM kg_nodes n
+                LEFT JOIN fts_kg_nodes f ON f.node_id = n.node_id
+                WHERE f.node_id IS NULL AND n.confidence > 0
+                """
+            ).fetchall()
+            if missing:
+                for row in missing:
+                    self._db.execute(
+                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                        (row[0], row[1]),
+                    )
+                logger.info("Backfilled %d nodes into fts_kg_nodes", len(missing))
+        except Exception as exc:
+            logger.warning("FTS5 backfill failed (non-fatal): %s", exc)
+
         # Bump schema version to 2
         self._db.execute(
             "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"

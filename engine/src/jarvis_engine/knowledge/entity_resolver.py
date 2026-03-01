@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -411,11 +412,61 @@ class EntityResolver:
             (new_label, new_conf, keep_id),
         )
 
+        # Update FTS5 index for keep_id (DELETE + INSERT since FTS5 has no UPDATE)
+        try:
+            self._kg.db.execute(
+                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (keep_id,)
+            )
+            self._kg.db.execute(
+                "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                (keep_id, new_label),
+            )
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise
+
+        # Update vec embedding for keep_id if embed_service is available
+        if (
+            self._embed_service is not None
+            and getattr(self._kg, "_vec_available", False)
+        ):
+            try:
+                import struct
+                embedding = self._embed_service.embed(new_label, prefix="search_document")
+                if len(embedding) == 768:
+                    blob = struct.pack(f"{len(embedding)}f", *embedding)
+                    self._kg.db.execute(
+                        "DELETE FROM vec_kg_nodes WHERE node_id = ?", (keep_id,)
+                    )
+                    self._kg.db.execute(
+                        "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                        (keep_id, blob),
+                    )
+            except Exception as exc:
+                logger.debug("Vec embedding update for merged node %s failed: %s", keep_id, exc)
+
         # Delete edges referencing remove_id, then the node itself
         self._kg.db.execute(
             "DELETE FROM kg_edges WHERE source_id = ? OR target_id = ?",
             (remove_id, remove_id),
         )
+
+        # Remove remove_id from FTS5 and vec indexes before deleting the node
+        try:
+            self._kg.db.execute(
+                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (remove_id,)
+            )
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise
+        if getattr(self._kg, "_vec_available", False):
+            try:
+                self._kg.db.execute(
+                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (remove_id,)
+                )
+            except Exception:
+                pass
+
         self._kg.db.execute(
             "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)
         )

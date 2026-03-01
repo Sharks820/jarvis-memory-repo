@@ -209,6 +209,7 @@ class TestMissionSecurity:
 
         def mock_urlopen(*args, **kwargs):
             class MockResp:
+                headers = {"Content-Type": "text/html; charset=utf-8"}
                 def __enter__(self):
                     return self
                 def __exit__(self, *a):
