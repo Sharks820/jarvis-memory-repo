@@ -760,6 +760,8 @@ class JarvisDesktopWidget(tk.Tk):
         self._thinking_marker: str | None = None  # Text index of thinking indicator start
         self._thinking_after_id: str | None = None  # after() id for dot animation
         self._thinking_dots: int = 3
+        self._thinking_start_time: float = 0.0  # When thinking started (time.time())
+        self._processing_timeout_id: str | None = None  # Safety timeout for stuck processing
         self._welcome_shown: bool = False  # One-time welcome message flag
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
         self._position_save_id: str | None = None  # debounce timer for position save
@@ -1249,15 +1251,27 @@ class JarvisDesktopWidget(tk.Tk):
 
         quick = tk.Frame(body, bg=self.PANEL)
         quick.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._btn(quick, "Pause Jarvis", lambda: self._quick_phrase("Jarvis, pause daemon"), self.WARN).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(quick, "Resume Jarvis", lambda: self._quick_phrase("Jarvis, resume daemon"), self.ACCENT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(quick, "Safe Mode", lambda: self._quick_phrase("Jarvis, enable safe mode"), self.ACCENT_2).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        _pause_btn = self._btn(quick, "\u23F8 Pause", lambda: self._quick_phrase("Jarvis, pause daemon"), self.WARN)
+        _pause_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        _Tooltip(_pause_btn, "Pause the Jarvis daemon.\nStops background tasks, proactive alerts, and auto-learning.\nUse Resume to restart.")
+        _resume_btn = self._btn(quick, "\u25B6 Resume", lambda: self._quick_phrase("Jarvis, resume daemon"), self.ACCENT)
+        _resume_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        _Tooltip(_resume_btn, "Resume the Jarvis daemon.\nRestarts background tasks, proactive alerts, and auto-learning.")
+        _safe_btn = self._btn(quick, "\U0001F6E1 Safe Mode", lambda: self._quick_phrase("Jarvis, enable safe mode"), self.ACCENT_2)
+        _safe_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        _Tooltip(_safe_btn, "Enable Safe Mode.\nForces all queries through local Ollama (no cloud).\nUse for private/sensitive conversations.")
 
         fetch = tk.Frame(body, bg=self.PANEL)
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._btn(fetch, "Refresh", self._refresh_dashboard_async, "#35517a").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(fetch, "Diagnose & Repair", self._diagnose_repair_async, "#1f5f88").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn_lg(fetch, "\u2630  View Activity", self._view_activity_async, "#4a3570").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        _refresh_btn = self._btn(fetch, "\U0001F504 Refresh", self._refresh_dashboard_async, "#35517a")
+        _refresh_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        _Tooltip(_refresh_btn, "Refresh the dashboard.\nShows intelligence score, memory stats, and growth trends.")
+        _diag_btn = self._btn(fetch, "\U0001F527 Diagnose", self._diagnose_repair_async, "#1f5f88")
+        _diag_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        _Tooltip(_diag_btn, "Run self-healing diagnostics.\nChecks DB integrity, repairs broken indexes,\nand creates a recovery snapshot.")
+        _activity_btn = self._btn_lg(fetch, "\U0001F4CA Activity", self._view_activity_async, "#4a3570")
+        _activity_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        _Tooltip(_activity_btn, "View recent activity log.\nShows last 20 events: commands, learning,\nalerts, and system actions.")
 
         # Running Services section
         svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
@@ -1305,6 +1319,20 @@ class JarvisDesktopWidget(tk.Tk):
             relief=tk.FLAT,
             font=("Segoe UI", 9),
             command=self._clear_history,
+            cursor="hand2",
+            padx=6,
+            pady=2,
+        ).pack(side=tk.RIGHT, padx=(4, 0))
+        tk.Button(
+            output_header,
+            text="\u23F9 End Conversation",
+            bg="#7a2f2f",
+            fg="#fca5a5",
+            activebackground="#a03030",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9),
+            command=self._end_conversation,
             cursor="hand2",
             padx=6,
             pady=2,
@@ -1428,6 +1456,25 @@ class JarvisDesktopWidget(tk.Tk):
         self.output.config(state=tk.NORMAL)
         self.output.delete("1.0", tk.END)
         self.output.config(state=tk.DISABLED)
+
+    def _end_conversation(self) -> None:
+        """End the conversation session, clear server-side history, and reset."""
+        # Reset local UI state
+        self._cancel_processing_timeout()
+        self._hide_thinking()
+        self._set_state("idle")
+        self.command_text.config(state=tk.NORMAL)
+        self._log("Conversation ended. Starting fresh.", role="system")
+        # Clear server-side conversation history
+        cfg = self._current_cfg()
+
+        def worker() -> None:
+            try:
+                _http_json(cfg, "/conversation/clear", method="POST", payload={})
+            except Exception:
+                pass  # Best-effort clear
+
+        self._thread(worker)
 
     def _pop_out_conversation(self) -> None:
         """Open conversation in a separate resizable window with command input."""
@@ -1706,16 +1753,18 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _show_thinking(self) -> None:
         """Insert animated 'Jarvis is thinking...' indicator in chat."""
+        import time as _time
+        self._thinking_start_time = _time.time()
         self.output.config(state=tk.NORMAL)
         self._thinking_marker = self.output.index(tk.END)
-        self.output.insert(tk.END, "Jarvis is thinking...\n", "thinking")
+        self.output.insert(tk.END, "\u23f3 Jarvis is thinking...  (0s)\n", "thinking")
         self.output.see(tk.END)
         self.output.config(state=tk.DISABLED)
         popout = getattr(self, "_popout_text", None)
         if popout is not None:
             try:
                 popout.config(state=tk.NORMAL)
-                popout.insert(tk.END, "Jarvis is thinking...\n", "thinking")
+                popout.insert(tk.END, "\u23f3 Jarvis is thinking...  (0s)\n", "thinking")
                 popout.see(tk.END)
                 popout.config(state=tk.DISABLED)
             except tk.TclError:
@@ -1731,12 +1780,13 @@ class JarvisDesktopWidget(tk.Tk):
                 pass
             self._thinking_after_id = None
         if self._thinking_marker is not None:
-            self.output.config(state=tk.NORMAL)
             try:
-                self.output.delete(self._thinking_marker, tk.END)
+                marker_end = f"{self._thinking_marker} lineend+1c"
+                self.output.config(state=tk.NORMAL)
+                self.output.delete(self._thinking_marker, marker_end)
+                self.output.config(state=tk.DISABLED)
             except tk.TclError:
                 pass
-            self.output.config(state=tk.DISABLED)
             popout = getattr(self, "_popout_text", None)
             if popout is not None:
                 try:
@@ -1763,10 +1813,10 @@ class JarvisDesktopWidget(tk.Tk):
 
         sections = [
             ("Talking to Jarvis", [
-                "Type any question or command in the text box",
-                "Press Enter or click Send",
-                "Click Voice Dictate or say 'Jarvis' (wake word)",
-                "Ctrl+Enter also sends the command",
+                "Type any question or command, press Enter or Send",
+                "Voice Dictate or say 'Jarvis' (wake word) for voice input",
+                "Say 'done' or click End Conversation when finished",
+                "Jarvis keeps context across commands in a conversation",
             ]),
             ("Teaching Jarvis", [
                 '"Remember that [fact]" -- saves to memory',
@@ -1778,11 +1828,21 @@ class JarvisDesktopWidget(tk.Tk):
                 '"Knowledge status" -- brain health report',
                 '"System status" -- service health check',
                 '"Mission status" -- active learning missions',
-                '"Pause/Resume Jarvis" -- control the daemon',
+                '"Search the web for [topic]" -- web-augmented answers',
+            ]),
+            ("Control Buttons", [
+                "Pause -- stops daemon (background tasks, alerts, learning)",
+                "Resume -- restarts daemon after pause",
+                "Safe Mode -- forces local Ollama (no cloud) for privacy",
+                "Refresh -- shows intelligence score and memory stats",
+                "Diagnose -- runs self-healing, repairs DB, creates snapshot",
+                "Activity -- shows last 20 events (commands, learning, alerts)",
+                "End Conversation -- clears context and starts fresh",
             ]),
             ("Keyboard Shortcuts", [
                 "Enter -- Send command",
                 "Ctrl+Enter -- Send command (alternative)",
+                "Shift+Enter -- New line (don't send)",
                 "Escape -- Close this help window",
             ]),
         ]
@@ -1835,16 +1895,24 @@ class JarvisDesktopWidget(tk.Tk):
         self.after(2000, _remove)
 
     def _animate_thinking(self) -> None:
-        """Cycle dots on the thinking indicator: . -> .. -> ... -> ."""
+        """Update thinking indicator in-place with elapsed time."""
+        import time as _time
         if self._thinking_marker is None:
             return
         self._thinking_dots = (self._thinking_dots % 3) + 1
-        label = "Jarvis is thinking" + "." * self._thinking_dots + "\n"
+        elapsed = int(_time.time() - self._thinking_start_time)
+        dots = "." * self._thinking_dots
+        # Build progress bar: fills over 30 seconds
+        bar_len = 20
+        filled = min(bar_len, int(elapsed * bar_len / 30))
+        bar = "\u2593" * filled + "\u2591" * (bar_len - filled)
+        label = f"\u23f3 Jarvis is thinking{dots}  ({elapsed}s)  [{bar}]\n"
         try:
+            marker_end = f"{self._thinking_marker} lineend+1c"
             self.output.config(state=tk.NORMAL)
-            self.output.delete(self._thinking_marker, tk.END)
-            self.output.insert(tk.END, label, "thinking")
-            self.output.see(tk.END)
+            self.output.delete(self._thinking_marker, marker_end)
+            self.output.insert(self._thinking_marker, label, "thinking")
+            self.output.see(self._thinking_marker)
             self.output.config(state=tk.DISABLED)
         except tk.TclError:
             return
@@ -1932,15 +2000,46 @@ class JarvisDesktopWidget(tk.Tk):
 
         def worker() -> None:
             try:
-                self._log_async("Checking connection...", role="system")
-                sync_data = _http_json(cfg, "/sync/status", method="GET")
-                sync_ok = bool(sync_data.get("ok", False))
-                self._log_async(f"Connection: {'OK' if sync_ok else 'issues detected'}", role="jarvis")
-                last_sync = sync_data.get("last_sync_utc", "")
-                if last_sync:
-                    self._log_async(f"Last sync: {last_sync}", role="jarvis")
+                self._log_async("\u2500" * 40, role="system")
+                self._log_async("\U0001F527 JARVIS DIAGNOSTICS", role="system")
+                self._log_async("\u2500" * 40, role="system")
 
-                self._log_async("Running diagnostics...", role="system")
+                # Step 1: Check connection
+                self._log_async("[1/4] Checking API connection...", role="system")
+                try:
+                    health_data = _http_json(cfg, "/health", method="GET")
+                    health_ok = bool(health_data.get("ok", False))
+                    self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
+                except Exception:
+                    self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
+                    self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
+                    return
+
+                # Step 2: Check sync status
+                self._log_async("[2/4] Checking sync status...", role="system")
+                try:
+                    sync_data = _http_json(cfg, "/sync/status", method="GET")
+                    sync_ok = bool(sync_data.get("ok", False))
+                    last_sync = sync_data.get("last_sync_utc", "unknown")
+                    self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
+                    self._log_async(f"  Last sync: {last_sync}", role="jarvis")
+                except Exception as exc:
+                    self._log_async(f"  Sync: unavailable ({exc})", role="error")
+
+                # Step 3: Check intelligence
+                self._log_async("[3/4] Testing intelligence pipeline...", role="system")
+                try:
+                    dash_data = _http_json(cfg, "/dashboard", method="GET")
+                    score = dash_data.get("intelligence_score", "?")
+                    mem_count = dash_data.get("memory_count", "?")
+                    fact_count = dash_data.get("fact_count", "?")
+                    self._log_async(f"  Intelligence score: {score}", role="jarvis")
+                    self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
+                except Exception as exc:
+                    self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
+
+                # Step 4: Run self-heal
+                self._log_async("[4/4] Running self-heal maintenance...", role="system")
                 heal_data = _http_json(
                     cfg,
                     "/self-heal",
@@ -1953,13 +2052,22 @@ class JarvisDesktopWidget(tk.Tk):
                 )
                 heal_ok = bool(heal_data.get("ok", False))
                 heal_exit = int(heal_data.get("command_exit_code", -1))
-                self._log_async(f"Repair {'completed successfully' if heal_ok else 'finished with issues (exit=' + str(heal_exit) + ')'}", role="jarvis")
                 heal_lines = heal_data.get("stdout_tail", [])
+                if heal_ok:
+                    self._log_async("  Self-heal: completed successfully", role="jarvis")
+                else:
+                    self._log_async(f"  Self-heal: finished with issues (exit={heal_exit})", role="error")
                 if isinstance(heal_lines, list) and heal_lines:
-                    self._log_async(" | ".join(str(x) for x in heal_lines[-4:]), role="jarvis")
-                if sync_ok and heal_ok:
-                    self._log_async("All systems healthy.", role="jarvis")
-                elif not heal_ok:
+                    for line in heal_lines[-5:]:
+                        s = str(line).strip()
+                        if s:
+                            self._log_async(f"  {s}", role="jarvis")
+
+                self._log_async("\u2500" * 40, role="system")
+                if heal_ok:
+                    self._log_async("\u2705 All systems healthy.", role="jarvis")
+                else:
+                    self._log_async("\u26A0 Some issues detected. Check details above.", role="error")
                     self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
             except HTTPError as exc:
                 self._log_async(f"Diagnose failed: {_http_error_details(exc)}", role="error")
@@ -1978,19 +2086,49 @@ class JarvisDesktopWidget(tk.Tk):
     def _thread(self, fn) -> None:  # type: ignore[no-untyped-def]
         threading.Thread(target=fn, daemon=True).start()
 
+    def _cancel_processing_timeout(self) -> None:
+        """Cancel the safety timeout for stuck processing state."""
+        if self._processing_timeout_id is not None:
+            try:
+                self.after_cancel(self._processing_timeout_id)
+            except Exception:
+                pass
+            self._processing_timeout_id = None
+
+    def _processing_timed_out(self) -> None:
+        """Safety net: force-reset stuck processing state after 120s."""
+        self._processing_timeout_id = None
+        if self._widget_state == "processing":
+            self._hide_thinking()
+            self._log("Command timed out (120s). Ready for new commands.", role="error")
+            self.command_text.config(state=tk.NORMAL)
+            self._set_state("idle")
+
     def _send_command_async(self) -> None:
-        # Guard: skip if already processing to prevent duplicate commands
+        # Guard: warn if already processing but don't silently drop
         if getattr(self, "_widget_state", "idle") == "processing":
+            self._log("Still processing previous command. Please wait...", role="system")
             return
         text = self.command_text.get("1.0", tk.END).strip()
         if not text:
             self._log("No command text.")
             return
+        # Check for conversation-ending phrases
+        lower = text.lower().strip()
+        if lower in ("done", "end conversation", "bye", "goodbye", "that's all", "thats all", "end"):
+            self.command_text.delete("1.0", tk.END)
+            self._end_conversation()
+            return
+        # Clear command text immediately after reading
+        self.command_text.delete("1.0", tk.END)
         # Log the user's command with the "user" role
         self._log(text, role="user")
         self._set_state("processing")
         self._show_thinking()
         self.command_text.config(state=tk.DISABLED)
+        # Start safety timeout: force-reset after 120 seconds
+        self._cancel_processing_timeout()
+        self._processing_timeout_id = self.after(120_000, self._processing_timed_out)
         # Read all tkinter vars on the main thread before spawning background thread
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())
@@ -2008,19 +2146,29 @@ class JarvisDesktopWidget(tk.Tk):
                 }
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
                 self.after(0, self._hide_thinking)
+                self.after(0, self._cancel_processing_timeout)
                 # Parse clean response from stdout_tail
                 lines = data.get("stdout_tail", [])
                 response_text = ""
+                reason_text = ""
+                error_text = str(data.get("error", ""))
                 if isinstance(lines, list):
                     for line in lines:
                         s = str(line)
                         if s.startswith("response="):
                             response_text = s[len("response="):]
-                            break
+                        elif s.startswith("reason=") and not reason_text:
+                            reason_text = s[len("reason="):]
+                        elif s.startswith("error=") and not error_text:
+                            error_text = s[len("error="):]
                 intent = str(data.get("intent", "unknown"))
                 ok = bool(data.get("ok", False))
                 if response_text:
                     self._log_async(response_text, role="jarvis")
+                elif not ok and (reason_text or error_text):
+                    # Show a clear error message instead of cryptic [intent] ok=False
+                    msg = reason_text or error_text
+                    self._log_async(f"Error: {msg}", role="error")
                 else:
                     self._log_async(f"[{intent}] ok={ok}", role="jarvis")
                     if isinstance(lines, list) and lines:
@@ -2031,22 +2179,31 @@ class JarvisDesktopWidget(tk.Tk):
                     self._set_error_briefly_async()
                 else:
                     self._set_state_async("idle")
+                # Prompt for continuation
+                self._log_async("Ready for next command. Say 'done' or click End Conversation when finished.", role="system")
             except HTTPError as exc:
                 self.after(0, self._hide_thinking)
+                self.after(0, self._cancel_processing_timeout)
                 self._log_async(f"Command failed: {_http_error_details(exc)}", role="error")
+                self._log_async("Ready for next command.", role="system")
                 self._set_error_briefly_async()
             except URLError:
                 self.after(0, self._hide_thinking)
+                self.after(0, self._cancel_processing_timeout)
                 self._log_async("Cannot connect to Jarvis services.", role="error")
                 self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
                 self._set_error_briefly_async()
             except (RuntimeError, TimeoutError) as exc:
                 self.after(0, self._hide_thinking)
+                self.after(0, self._cancel_processing_timeout)
                 self._log_async(f"Command failed: {exc}", role="error")
+                self._log_async("Ready for next command.", role="system")
                 self._set_error_briefly_async()
             except Exception as exc:  # noqa: BLE001
                 self.after(0, self._hide_thinking)
+                self.after(0, self._cancel_processing_timeout)
                 self._log_async(f"Command failed: {exc}", role="error")
+                self._log_async("Ready for next command.", role="system")
                 self._set_error_briefly_async()
             finally:
                 try:

@@ -39,6 +39,9 @@ REPLAY_WINDOW_SECONDS = 120.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 1_048_576  # 1 MB
 
+# Lock for serializing repo_root monkeypatch in multi-threaded HTTP server
+_repo_root_lock = threading.Lock()
+
 # CORS whitelist: only allow localhost/loopback origins and file:// protocol.
 # LAN IPs are added dynamically at server startup via _build_cors_whitelist().
 _CORS_ALLOWED_ORIGIN_PATTERNS = [
@@ -290,15 +293,18 @@ class MobileIngestServer(ThreadingHTTPServer):
 
     def _persist_nonces(self) -> None:
         """Persist current valid nonces to disk using atomic write pattern."""
+        # Take snapshot under lock to avoid iterating a dict mutated by other threads
+        with self.nonce_lock:
+            now = time.time()
+            cutoff = now - REPLAY_WINDOW_SECONDS
+            snapshot = {k: v for k, v in self.nonce_seen.items() if v >= cutoff}
+        # Write snapshot to file (outside lock to avoid holding it during I/O)
         tmp = self._nonce_cache_path.with_suffix(".jsonl.tmp")
         try:
             self._nonce_cache_path.parent.mkdir(parents=True, exist_ok=True)
-            now = time.time()
-            cutoff = now - REPLAY_WINDOW_SECONDS
             with open(tmp, "w", encoding="utf-8") as f:
-                for nonce, ts in self.nonce_seen.items():
-                    if ts >= cutoff:
-                        f.write(json.dumps({"nonce": nonce, "ts": ts}, ensure_ascii=True) + "\n")
+                for nonce, ts in snapshot.items():
+                    f.write(json.dumps({"nonce": nonce, "ts": ts}, ensure_ascii=True) + "\n")
             os.replace(str(tmp), str(self._nonce_cache_path))
         except OSError:
             logger.warning("Failed to persist nonce cache to disk")
@@ -325,7 +331,6 @@ class MobileIngestServer(ThreadingHTTPServer):
             db_path = self.repo_root / ".planning" / "brain" / "jarvis_memory.db"
             if not db_path.exists():
                 return None
-            self._sync_init_attempted = True
             try:
                 from jarvis_engine.sync.changelog import install_changelog_triggers
                 from jarvis_engine.sync.engine import SyncEngine
@@ -349,6 +354,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                     logger.info("Sync engine lazy-initialized for mobile API")
             except Exception as exc:
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
+                self._sync_init_attempted = True  # Only prevent retry on failure
             return self._sync_engine
 
     def ensure_memory_engine(self) -> Any:
@@ -493,8 +499,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             try:
                 import jarvis_engine.main as main_mod
 
-                original_repo_root = main_mod.repo_root
-                main_mod.repo_root = lambda: root  # type: ignore[assignment]
+                with _repo_root_lock:
+                    original_repo_root = main_mod.repo_root
+                    main_mod.repo_root = lambda: root  # type: ignore[assignment]
                 try:
                     with contextlib.redirect_stdout(captured_out):
                         rc = main_mod.cmd_voice_run(
@@ -510,10 +517,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                             master_password=master_password,
                         )
                 finally:
-                    main_mod.repo_root = original_repo_root  # type: ignore[assignment]
+                    with _repo_root_lock:
+                        main_mod.repo_root = original_repo_root  # type: ignore[assignment]
             except Exception as exc:
                 logger.error("Voice command execution failed: %s", exc)
-                return {"ok": False, "error": "Command execution failed."}
+                # Include partial stdout and error details for widget debugging
+                partial_out = captured_out.getvalue().splitlines()[-20:] if captured_out.getvalue() else []
+                return {
+                    "ok": False,
+                    "error": f"Command execution failed: {exc}",
+                    "intent": "execution_error",
+                    "reason": str(exc),
+                    "stdout_tail": partial_out + [f"error={exc}"],
+                    "stderr_tail": [],
+                }
             # Parse captured stdout for intent/reason/status (same as subprocess path)
             stdout_text = captured_out.getvalue()
             stdout_lines = stdout_text.splitlines()
@@ -1402,6 +1419,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
             return
 
+        if path == "/conversation/clear":
+            payload, _ = self._read_json_body(max_content_length=1_000)
+            if payload is None:
+                return
+            # Clear server-side conversation history
+            try:
+                import jarvis_engine.main as _main_mod
+                with _main_mod._conversation_history_lock:
+                    _main_mod._conversation_history.clear()
+                self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
+            except Exception as exc:
+                self._write_json(HTTPStatus.OK, {"ok": True, "message": f"Best-effort clear: {exc}"})
+            return
+
         if path == "/command":
             payload, _ = self._read_json_body(max_content_length=25_000)
             if payload is None:
@@ -1626,12 +1657,14 @@ def run_mobile_server(
     def _prewarm() -> None:
         try:
             import jarvis_engine.main as main_mod
-            original = main_mod.repo_root
-            main_mod.repo_root = lambda: repo_root  # type: ignore[assignment]
+            with _repo_root_lock:
+                original = main_mod.repo_root
+                main_mod.repo_root = lambda: repo_root  # type: ignore[assignment]
             try:
                 main_mod._get_bus()
             finally:
-                main_mod.repo_root = original  # type: ignore[assignment]
+                with _repo_root_lock:
+                    main_mod.repo_root = original  # type: ignore[assignment]
             logger.info("CommandBus pre-warmed successfully")
         except Exception as exc:
             logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
