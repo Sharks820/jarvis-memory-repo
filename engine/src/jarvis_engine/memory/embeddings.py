@@ -33,7 +33,7 @@ class EmbeddingService:
                 from sentence_transformers import SentenceTransformer
 
                 kwargs: dict[str, Any] = {
-                    "trust_remote_code": False,
+                    "trust_remote_code": True,
                 }
                 if self.MODEL_REVISION is not None:
                     kwargs["revision"] = self.MODEL_REVISION
