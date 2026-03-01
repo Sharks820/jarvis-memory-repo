@@ -177,13 +177,16 @@ class ContainmentEngine:
     def get_containment_status(self) -> dict:
         """Return current containment state."""
         with self._lock:
+            if self._current_level > 0:
+                try:
+                    level_name = ContainmentLevel(self._current_level).name
+                except ValueError:
+                    level_name = f"UNKNOWN({self._current_level})"
+            else:
+                level_name = "NONE"
             return {
                 "current_level": self._current_level,
-                "level_name": (
-                    ContainmentLevel(self._current_level).name
-                    if self._current_level > 0
-                    else "NONE"
-                ),
+                "level_name": level_name,
                 "throttled_ips": dict(self._throttled_ips),
                 "blocked_ips": sorted(self._blocked_ips),
                 "isolated_endpoints": sorted(self._isolated_endpoints),
@@ -312,5 +315,5 @@ class ContainmentEngine:
         event = {"event_type": event_type, **kwargs}
         try:
             self._forensic_logger.log_event(event)
-        except Exception:
-            logger.warning("Failed to write forensic log for %s", event_type)
+        except Exception as exc:
+            logger.warning("Failed to write forensic log for %s: %s", event_type, exc)

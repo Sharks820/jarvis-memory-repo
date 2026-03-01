@@ -34,11 +34,13 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
     if engine is not None:
         try:
             db = engine._db  # noqa: SLF001
-            total_records = db.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+            db_lock = engine._db_lock  # noqa: SLF001
+            with db_lock:
+                total_records = db.execute("SELECT COUNT(*) FROM records").fetchone()[0]
 
-            rows = db.execute(
-                "SELECT branch, COUNT(*) as cnt FROM records GROUP BY branch"
-            ).fetchall()
+                rows = db.execute(
+                    "SELECT branch, COUNT(*) as cnt FROM records GROUP BY branch"
+                ).fetchall()
             for row in rows:
                 branch_distribution[row[0]] = row[1]
         except Exception as exc:
@@ -68,10 +70,12 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
     if kg is not None:
         try:
             db = kg.db  # type: ignore[attr-defined]
-            rows = db.execute(
-                "SELECT temporal_type, COUNT(*) as cnt FROM kg_nodes "
-                "WHERE temporal_type IS NOT NULL GROUP BY temporal_type"
-            ).fetchall()
+            db_lock = kg.db_lock  # type: ignore[attr-defined]
+            with db_lock:
+                rows = db.execute(
+                    "SELECT temporal_type, COUNT(*) as cnt FROM kg_nodes "
+                    "WHERE temporal_type IS NOT NULL GROUP BY temporal_type"
+                ).fetchall()
             for row in rows:
                 temporal_distribution[row[0]] = row[1]
         except Exception:

@@ -60,7 +60,7 @@ class VoiceSayHandler:
                 output_wav=cmd.output_wav,
                 rate=cmd.rate,
             )
-        except (RuntimeError, OSError, Exception) as exc:
+        except Exception as exc:
             logger.error("TTS speak_text failed: %s", exc, exc_info=True)
             return VoiceSayResult(message="error: TTS failed.")
         return VoiceSayResult(

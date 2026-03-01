@@ -142,10 +142,23 @@ class WakeWordDetector:
                         # Reset prediction buffer (no mic access needed)
                         self._model.reset()
 
-                        on_detected()
+                        try:
+                            on_detected()
+                        except Exception as cb_exc:
+                            logger.error("Wake word callback error: %s", cb_exc)
 
                         # Cooldown to prevent rapid re-triggers
                         time.sleep(self._cooldown_seconds)
+
+                        # Drain stale audio that accumulated during cooldown
+                        # to prevent false re-triggers from buffered wake word echo
+                        with self._stream_lock:
+                            drain_stream = self._stream
+                        if drain_stream is not None:
+                            try:
+                                drain_stream.read(int(16000 * self._cooldown_seconds))
+                            except Exception:
+                                pass  # Stream may have been closed
         except Exception as exc:
             logger.error("Wake word detection error: %s", exc)
         finally:
@@ -175,21 +188,22 @@ class WakeWordDetector:
                     logger.debug("Error pausing wake word stream: %s", exc)
                 self._stream = None
 
-    def resume(self, sd: object | None = None) -> None:
+    def resume(self, sd_module: object | None = None) -> None:
         """Re-open the mic stream after STT recording completes.
 
-        *sd* must be the ``sounddevice`` module (passed in to avoid a
+        *sd_module* must be the ``sounddevice`` module (passed in to avoid a
         top-level import).
         """
         with self._stream_lock:
             if self._stream is not None:
                 return  # Already running
-            if sd is None:
+            if sd_module is None:
                 try:
-                    import sounddevice as sd  # type: ignore[import-untyped]
+                    import sounddevice as _sd  # type: ignore[import-untyped]
+                    sd_module = _sd
                 except ImportError:
                     return
-            self._stream = sd.InputStream(
+            self._stream = sd_module.InputStream(
                 samplerate=16000, channels=1, dtype="float32", blocksize=1280,
             )
             self._stream.start()

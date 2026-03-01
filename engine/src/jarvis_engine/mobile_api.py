@@ -232,6 +232,10 @@ class MobileIngestServer(ThreadingHTTPServer):
         Uses **separate** counters for expensive paths (/command, /self-heal)
         vs normal paths so that widget polling doesn't consume the expensive
         tier's budget.
+
+        Only records the request if it is NOT rate-limited, so rejected
+        requests do not consume future budget (matches bootstrap/master_pw
+        pattern).
         """
         is_expensive = path in _EXPENSIVE_PATHS
         limit = _API_RATE_LIMIT_EXPENSIVE if is_expensive else _API_RATE_LIMIT_NORMAL
@@ -242,9 +246,12 @@ class MobileIngestServer(ThreadingHTTPServer):
             attempts = bucket.get(client_ip, [])
             cutoff = now - _API_RATE_LIMIT_WINDOW
             attempts = [ts for ts in attempts if ts > cutoff]
+            if len(attempts) >= limit:
+                bucket[client_ip] = attempts
+                return True
             attempts.append(now)
             bucket[client_ip] = attempts
-            return len(attempts) > limit
+            return False
 
     def is_cors_origin_allowed(self, origin: str) -> bool:
         """Check if the given Origin is in the CORS whitelist."""
@@ -551,7 +558,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if voice_auth_wav:
             cmd.extend(["--voice-auth-wav", voice_auth_wav])
 
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         engine_dir = root / "engine"
         env = os.environ.copy()
         env["PYTHONPATH"] = "src"
@@ -1082,8 +1088,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     metrics["branches"] = {str(k): int(v) for k, v in branch_counts.items()}
 
                 # Count facts from last 7 days by comparing history entries
-                from datetime import datetime, timedelta
-                from jarvis_engine._compat import UTC
+                from datetime import timedelta
                 cutoff_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
                 recent_entries = [
                     e for e in history
@@ -1122,8 +1127,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 metrics["consolidations_run"] = int(stats.get("consolidation", 0))
 
             # Count corrections in last 7 days from feed query
-            from datetime import datetime, timedelta
-            from jarvis_engine._compat import UTC
+            from datetime import timedelta
             since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
             try:
                 recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)

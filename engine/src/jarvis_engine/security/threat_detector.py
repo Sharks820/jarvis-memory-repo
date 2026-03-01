@@ -117,11 +117,6 @@ class ThreatAssessment:
 
 _SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
-
-def _severity_rank(s: str) -> int:
-    return _SEVERITY_RANK.get(s, 0)
-
-
 # ---------------------------------------------------------------------------
 # Detector
 # ---------------------------------------------------------------------------
@@ -150,7 +145,10 @@ class ThreatDetector:
         # nonce -> timestamp last seen
         self._nonce_cache: dict[str, float] = {}
         # ip -> deque of request timestamps (for rate anomaly detection)
-        self._request_log: dict[str, deque[float]] = defaultdict(deque)
+        # maxlen=200 caps per-IP memory: 200 entries is >3x the 60/min threshold
+        self._request_log: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=200))
+        # Counter for periodic stale-IP cleanup (avoid O(n) scan every request)
+        self._rate_check_counter: int = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -286,7 +284,7 @@ class ThreatDetector:
 
     def _rule_suspicious_user_agent(self, ctx: dict) -> ThreatSignal | None:
         """Flag empty or scanner-associated user agents."""
-        ua = ctx.get("user_agent", "")
+        ua = ctx.get("user_agent") or ""
         if ua == "":
             return ThreatSignal(
                 severity="MEDIUM",
@@ -347,10 +345,13 @@ class ThreatDetector:
 
             count = len(log)
 
-            # Clean up IPs with no recent activity to prevent unbounded growth
-            stale = [k for k, v in self._request_log.items() if not v or v[-1] < cutoff]
-            for k in stale:
-                del self._request_log[k]
+            # Periodic cleanup: evict stale IPs every 100 requests (not every request)
+            self._rate_check_counter += 1
+            if self._rate_check_counter >= 100:
+                self._rate_check_counter = 0
+                stale = [k for k, v in self._request_log.items() if not v or v[-1] < cutoff]
+                for k in stale:
+                    del self._request_log[k]
 
         if count > 60:
             return ThreatSignal(

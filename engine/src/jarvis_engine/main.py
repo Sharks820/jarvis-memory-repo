@@ -188,9 +188,8 @@ def _extract_topic_phrases(text: str) -> list[str]:
     keeps capitalised/meaningful consecutive word runs of 2-5 words.
     No NLP libraries required.
     """
-    import re as _re
     # Split on sentence-level punctuation and common delimiters
-    fragments = _re.split(r'[.!?;:,\-\|/\(\)\[\]{}"\n]+', text)
+    fragments = re.split(r'[.!?;:,\-\|/\(\)\[\]{}"\n]+', text)
     phrases: list[str] = []
     seen_lower: set[str] = set()
 
@@ -220,8 +219,7 @@ def _get_recently_harvested_topics(root: Path) -> set[str]:
     recent: set[str] = set()
     try:
         from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
-        from datetime import datetime, timedelta
-        from jarvis_engine._compat import UTC
+        from datetime import timedelta
 
         feed_db = root / ".planning" / "brain" / "activity_feed.db"
         if not feed_db.exists():
@@ -282,8 +280,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
     # --- Source 1: Conversation-derived topics from recent memories ---
     try:
         import sqlite3 as _sqlite3
-        from datetime import datetime, timedelta
-        from jarvis_engine._compat import UTC
+        from datetime import timedelta
 
         db_path = root / ".planning" / "brain" / "jarvis_memory.db"
         if db_path.exists():
@@ -563,7 +560,6 @@ def _build_smart_context(
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
                 kg = KnowledgeGraph(engine)
             # Extract keywords from query for fact lookup
-            import re as _re
             _stop = {"the", "a", "an", "is", "are", "was", "were", "do", "does",
                       "did", "will", "would", "can", "could", "should", "shall",
                       "have", "has", "had", "be", "been", "being", "what", "when",
@@ -571,7 +567,7 @@ def _build_smart_context(
                       "from", "about", "into", "and", "but", "or", "not", "if",
                       "then", "than", "too", "very", "just", "my", "me", "i"}
             words = [
-                w for w in _re.findall(r"[a-zA-Z]{3,}", query.lower())
+                w for w in re.findall(r"[a-zA-Z]{3,}", query.lower())
                 if w not in _stop
             ][:10]
             if words:
@@ -703,8 +699,7 @@ def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> s
             confidence=0.74 if source == "task_outcome" else 0.68,
         )
     except ValueError:
-        import logging
-        logging.getLogger(__name__).warning("brain ingest failed for task_id=%s", safe_task_id[:32])
+        logger.warning("brain ingest failed for task_id=%s", safe_task_id[:32])
     return rec.record_id
 
 
@@ -911,8 +906,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
             print(f"error: config file not found: {config_file}")
             return 2
         try:
-            import json as _json
-            config_data = _json.loads(config_path.read_text(encoding="utf-8"))
+            config_data = json.loads(config_path.read_text(encoding="utf-8"))
         except (ValueError, OSError) as exc:
             print(f"error: failed to read config file: {exc}")
             return 2
@@ -937,15 +931,12 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
     # Token rotation warning: check config file age if loaded from file
     if config_file:
         try:
-            import json as _json_check
-            from datetime import datetime as _dt
-
             _cfg_text = Path(config_file).read_text(encoding="utf-8")
-            _cfg_data = _json_check.loads(_cfg_text)
+            _cfg_data = json.loads(_cfg_text)
             _created_utc = _cfg_data.get("created_utc", "")
             if _created_utc:
-                _created_dt = _dt.fromisoformat(_created_utc.replace("Z", "+00:00"))
-                _now_utc = _dt.now(tz=_created_dt.tzinfo) if _created_dt.tzinfo else _dt.utcnow()
+                _created_dt = datetime.fromisoformat(_created_utc.replace("Z", "+00:00"))
+                _now_utc = datetime.now(tz=_created_dt.tzinfo) if _created_dt.tzinfo else datetime.utcnow()
                 _age_days = (_now_utc - _created_dt).days
                 if _age_days > 90:
                     print(f"warning: mobile API token is {_age_days} days old. Consider rotating via: delete {config_file} and restart")
@@ -2613,10 +2604,12 @@ def _cmd_daemon_run_impl(
                                 )
                                 total_records = 0
                                 for topic in harvest_topics:
+                                    topic_records = 0
                                     h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
                                     for entry in h_result.get("results", []):
-                                        total_records += entry.get("records_created", 0)
-                                    print(f"auto_harvest_topic={topic} records={total_records}")
+                                        topic_records += entry.get("records_created", 0)
+                                    total_records += topic_records
+                                    print(f"auto_harvest_topic={topic} records={topic_records}")
                                 log_activity(
                                     ActivityCategory.HARVEST,
                                     f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",

@@ -8,11 +8,11 @@ import os
 import re
 import webbrowser
 from pathlib import Path
-
-logger = logging.getLogger(__name__)
 from typing import Any
 from urllib.parse import quote
 from urllib.request import urlopen
+
+logger = logging.getLogger(__name__)
 
 from jarvis_engine.commands.system_commands import (
     DaemonRunCommand,

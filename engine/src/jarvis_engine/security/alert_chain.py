@@ -65,8 +65,8 @@ class AlertChain:
         now = time.time()
 
         with self._lock:
-            # Check dedup
-            deduped = self._should_dedup(source_ip, level)
+            # Check dedup (pass pre-computed timestamp for consistency)
+            deduped = self._should_dedup(source_ip, level, now)
 
             alert_record = {
                 "timestamp": now,
@@ -111,8 +111,8 @@ class AlertChain:
                     "source_ip": source_ip,
                     "deduped": False,
                 })
-            except Exception:
-                logger.warning("Failed to write forensic log for alert dispatch")
+            except Exception as exc:
+                logger.warning("Failed to write forensic log for alert dispatch: %s", exc)
 
         logger.info(
             "Alert dispatched (level=%d, channel=%s): %s", level, channel, summary
@@ -130,17 +130,19 @@ class AlertChain:
     # Dedup logic
     # ------------------------------------------------------------------
 
-    def _should_dedup(self, source_ip: str | None, level: int) -> bool:
+    def _should_dedup(self, source_ip: str | None, level: int, now: float | None = None) -> bool:
         """Check if an alert from *source_ip* at *level* should be deduped.
 
         Returns True if the same (source_ip, level) was alerted within
         the last 5 minutes.
         """
+        if now is None:
+            now = time.time()
         key = (source_ip, level)
         last_time = self._dedup_cache.get(key)
         if last_time is None:
             return False
-        return (time.time() - last_time) < _DEDUP_WINDOW_S
+        return (now - last_time) < _DEDUP_WINDOW_S
 
     # ------------------------------------------------------------------
     # Dispatch internals

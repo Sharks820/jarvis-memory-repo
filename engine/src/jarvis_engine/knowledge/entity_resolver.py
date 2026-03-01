@@ -124,6 +124,14 @@ class EntityResolver:
 
         for _node_type, members in groups.items():
             n = len(members)
+            # Guard against O(n^2) explosion: skip groups larger than 500
+            # nodes -- they need a more efficient index-based strategy.
+            if n > 500:
+                logger.warning(
+                    "Skipping duplicate detection for node_type group with %d nodes "
+                    "(exceeds 500-node safety limit)", n,
+                )
+                continue
             for i in range(n):
                 for j in range(i + 1, n):
                     id_a, label_a = members[i]
@@ -386,10 +394,16 @@ class EntityResolver:
 
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
-        """Compute cosine similarity between two vectors."""
+        """Compute cosine similarity between two vectors.
+
+        Returns 0.0 if vectors have different dimensions or either is
+        zero-norm, rather than silently truncating via zip.
+        """
+        if len(a) != len(b):
+            return 0.0
         dot = sum(x * y for x, y in zip(a, b))
         norm_a = sum(x * x for x in a) ** 0.5
         norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a == 0.0 or norm_b == 0.0:
+        if norm_a < 1e-12 or norm_b < 1e-12:
             return 0.0
         return dot / (norm_a * norm_b)

@@ -120,14 +120,19 @@ def load_kg_history(history_path: Path, limit: int = 100) -> list[dict]:
     """Load last N KG metric snapshots."""
     if not history_path.exists():
         return []
-    lines = history_path.read_text(encoding="utf-8").strip().splitlines()
-    result: list[dict] = []
-    for line in lines[-limit:]:
-        try:
-            result.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return result
+
+    entries: list[dict] = []
+    with history_path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                entries.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                continue
+
+    return entries[-limit:]
 
 
 def kg_growth_trend(history: list[dict]) -> dict:

@@ -313,8 +313,14 @@ def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -
     return headers
 
 
+import ipaddress as _ipaddress_mod
+
+# Pre-built network object for CGNAT/Tailscale range check (RFC 6598).
+# Module-level to avoid re-parsing on every call to _is_safe_widget_base_url.
+_CGNAT_NETWORK = _ipaddress_mod.ip_network("100.64.0.0/10")
+
+
 def _is_safe_widget_base_url(url: str) -> bool:
-    import ipaddress
     from urllib.parse import urlparse
     parsed = urlparse(url)
     host = (parsed.hostname or "").strip().lower()
@@ -324,14 +330,13 @@ def _is_safe_widget_base_url(url: str) -> bool:
         return True
     # Allow HTTP for private/LAN IPs and CGNAT/Tailscale (trusted local network)
     try:
-        addr = ipaddress.ip_address(host)
+        addr = _ipaddress_mod.ip_address(host)
         if addr.is_private:
             return True
         # Tailscale and carrier-grade NAT use 100.64.0.0/10 (RFC 6598 shared
         # address space).  Python's is_private excludes this range, but it is
         # not publicly routable and Tailscale treats it as a private mesh.
-        _CGNAT = ipaddress.ip_network("100.64.0.0/10")
-        if addr in _CGNAT:
+        if addr in _CGNAT_NETWORK:
             return True
     except ValueError:
         pass

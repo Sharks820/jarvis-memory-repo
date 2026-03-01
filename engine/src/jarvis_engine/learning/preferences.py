@@ -30,9 +30,18 @@ class PreferenceTracker:
         },
     }
 
-    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock | None = None) -> None:
+    # Maximum score to prevent unbounded growth
+    _MAX_SCORE: float = 10.0
+
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        write_lock: threading.Lock | None = None,
+        db_lock: threading.Lock | None = None,
+    ) -> None:
         self._db = db
         self._write_lock = write_lock or threading.Lock()
+        self._db_lock = db_lock or threading.Lock()
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -72,34 +81,45 @@ class PreferenceTracker:
                 INSERT INTO user_preferences (category, preference, score, evidence_count, last_observed)
                 VALUES (?, ?, 1.0, 1, ?)
                 ON CONFLICT(category, preference) DO UPDATE SET
-                    score = score + 0.1,
+                    score = MIN(score + 0.1, ?),
                     evidence_count = evidence_count + 1,
                     last_observed = ?
-            """, (category, preference, now, now))
+            """, (category, preference, now, self._MAX_SCORE, now))
             self._db.commit()
 
     def get_preferences(self) -> dict[str, str]:
-        """Return the highest-scored preference per category."""
-        cur = self._db.execute("""
-            SELECT category, preference, MAX(score) as max_score
-            FROM user_preferences
-            GROUP BY category
-        """)
-        return {row[0]: row[1] for row in cur.fetchall()}
+        """Return the highest-scored preference per category.
+
+        Uses a correlated subquery to ensure the preference column
+        actually corresponds to the maximum score row (SQLite does NOT
+        guarantee that with bare MAX() + GROUP BY).
+        """
+        with self._db_lock:
+            cur = self._db.execute("""
+                SELECT p.category, p.preference
+                FROM user_preferences p
+                INNER JOIN (
+                    SELECT category, MAX(score) AS max_score
+                    FROM user_preferences
+                    GROUP BY category
+                ) m ON p.category = m.category AND p.score = m.max_score
+            """)
+            return {row[0]: row[1] for row in cur.fetchall()}
 
     def get_all_preferences(self) -> list[dict]:
         """Return all preferences with full details."""
-        cur = self._db.execute(
-            "SELECT category, preference, score, evidence_count, last_observed "
-            "FROM user_preferences ORDER BY category, score DESC"
-        )
-        return [
-            {
-                "category": row[0],
-                "preference": row[1],
-                "score": row[2],
-                "evidence_count": row[3],
-                "last_observed": row[4],
-            }
-            for row in cur.fetchall()
-        ]
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT category, preference, score, evidence_count, last_observed "
+                "FROM user_preferences ORDER BY category, score DESC"
+            )
+            return [
+                {
+                    "category": row[0],
+                    "preference": row[1],
+                    "score": row[2],
+                    "evidence_count": row[3],
+                    "last_observed": row[4],
+                }
+                for row in cur.fetchall()
+            ]

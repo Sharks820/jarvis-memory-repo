@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 
 _EMBEDDING_DIM = 768
 
-# FTS5 special characters that must be escaped in user queries
-_FTS5_SPECIAL_RE = re.compile(r'["\*\(\)\{\}\[\]:^~]')
+# FTS5 special characters that must be escaped in user queries.
+# Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
+_FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
 _FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
 
 
@@ -498,8 +499,10 @@ class MemoryEngine:
                 conditions.append("r.tier = ?")
                 params.append(tier)
             if source:
-                conditions.append("r.source LIKE ?")
-                params.append(f"%{source}%")
+                # Escape LIKE wildcards in user input to prevent unintended matching
+                safe_source = source.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                conditions.append("r.source LIKE ? ESCAPE '\\'")
+                params.append(f"%{safe_source}%")
             if since:
                 conditions.append("r.ts >= ?")
                 params.append(since)
@@ -599,6 +602,7 @@ class MemoryEngine:
 
     def get_records_batch(self, record_ids: list[str]) -> list[dict]:
         """Fetch multiple records by ID in a single query."""
+        self._check_open()
         if not record_ids:
             return []
         placeholders = ",".join("?" for _ in record_ids)
@@ -611,6 +615,7 @@ class MemoryEngine:
 
     def get_all_records_for_tier_maintenance(self) -> list[dict]:
         """Fetch all records with only the columns needed for tier classification."""
+        self._check_open()
         with self._db_lock:
             cur = self._db.execute(
                 "SELECT record_id, ts, access_count, confidence, tier FROM records"
@@ -619,12 +624,14 @@ class MemoryEngine:
 
     def get_all_record_ids(self) -> list[str]:
         """List all record IDs (for tier management)."""
+        self._check_open()
         with self._db_lock:
             cur = self._db.execute("SELECT record_id FROM records")
             return [row[0] for row in cur.fetchall()]
 
     def count_records(self) -> int:
         """Return total record count."""
+        self._check_open()
         with self._db_lock:
             cur = self._db.execute("SELECT COUNT(*) FROM records")
             return cur.fetchone()[0]
@@ -635,6 +642,7 @@ class MemoryEngine:
         Safe to call periodically from the daemon loop.  PASSIVE mode
         does not block concurrent readers.
         """
+        self._check_open()
         try:
             with self._write_lock:
                 self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
@@ -667,5 +675,6 @@ class MemoryEngine:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception as exc:
-            logger.debug("MemoryEngine __del__ cleanup failed: %s", exc)
+        except Exception:
+            # Suppress all errors during interpreter shutdown (__del__ is unreliable)
+            pass

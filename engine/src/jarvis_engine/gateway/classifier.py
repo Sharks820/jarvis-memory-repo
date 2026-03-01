@@ -167,6 +167,29 @@ class IntentClassifier:
         )
         self._centroids = self._precompute_routes()
 
+    @staticmethod
+    def _cache_dir() -> str:
+        """Return a writable cache directory for centroid embeddings.
+
+        Uses the project's ``.planning/cache`` directory when running from
+        the repo, and falls back to a platform temp directory otherwise
+        (e.g. when the package is installed read-only).
+        """
+        # Prefer .planning/cache under the repo root (two levels up from gateway/)
+        repo_cache = os.path.join(
+            os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
+            os.pardir, ".planning", "cache",
+        )
+        repo_cache = os.path.normpath(repo_cache)
+        try:
+            os.makedirs(repo_cache, exist_ok=True)
+            return repo_cache
+        except OSError:
+            pass
+        # Fallback: system temp directory
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), "jarvis_classifier_cache")
+
     def _precompute_routes(self) -> "dict[str, np.ndarray]":
         """Compute centroid embeddings for each route's exemplars.
 
@@ -184,8 +207,8 @@ class IntentClassifier:
                 hasher.update(f"{route_name}:{text}".encode())
         exemplar_hash = hasher.hexdigest()[:16]
 
-        # Try loading from disk cache
-        cache_dir = os.path.join(os.path.dirname(__file__), ".cache")
+        # Try loading from disk cache (writable directory, not inside package)
+        cache_dir = self._cache_dir()
         cache_path = os.path.join(cache_dir, f"centroids_{exemplar_hash}.npz")
         try:
             if os.path.exists(cache_path):
@@ -215,6 +238,8 @@ class IntentClassifier:
             if embeddings:
                 centroid = np.mean(embeddings, axis=0)
                 centroids[route_name] = centroid
+            else:
+                logger.error("All embeddings failed for route %r — route will be unreachable", route_name)
 
         # Save to disk cache
         try:
@@ -236,49 +261,58 @@ class IntentClassifier:
         Privacy keywords force local routing with confidence 1.0.
         Low-confidence results default to local routing (privacy-safe).
         """
+        import numpy as np
+
+        local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+
         # Privacy check first -- always trumps embedding similarity
         if self._check_privacy(query):
-            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
             return ("simple_private", local_model, 1.0)
 
         # Embed the query and find best route by cosine similarity
-        import numpy as np
-
         try:
             query_vec = np.array(self._embed.embed_query(query))
         except Exception:
             logger.warning("Embedding service failed for classify(), falling back to local model")
-            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
             return ("simple_private", local_model, 0.0)
 
         best_route = "simple_private"
         best_sim = -1.0
 
+        # Pre-compute query norm once (avoid redundant per-route computation)
+        query_norm = float(np.linalg.norm(query_vec))
+        if query_norm == 0:
+            return ("simple_private", local_model, 0.0)
+
         for route_name, centroid in self._centroids.items():
-            sim = self._cosine_sim(query_vec, centroid)
+            sim = self._cosine_sim(query_vec, centroid, query_norm)
             if sim > best_sim:
                 best_sim = sim
                 best_route = route_name
 
         # Default to local if confidence is below threshold
         if best_sim < self.CONFIDENCE_THRESHOLD:
-            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
             return ("simple_private", local_model, best_sim)
 
         if best_route == "simple_private":
-            model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            model = local_model
         else:
-            model = self.MODEL_MAP.get(best_route, os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b"))
+            model = self.MODEL_MAP.get(best_route, local_model)
         return (best_route, model, best_sim)
 
     @staticmethod
-    def _cosine_sim(a: "np.ndarray", b: "np.ndarray") -> float:
-        """Compute cosine similarity between two vectors."""
+    def _cosine_sim(a: "np.ndarray", b: "np.ndarray", norm_a: float = 0.0) -> float:
+        """Compute cosine similarity between two vectors.
+
+        If *norm_a* is provided and non-zero, it is reused to avoid
+        recomputing ``np.linalg.norm(a)`` on every call.
+        """
         import numpy as np
 
-        dot = np.dot(a, b)
-        norm_a = np.linalg.norm(a)
-        norm_b = np.linalg.norm(b)
-        if norm_a == 0 or norm_b == 0:
+        dot = float(np.dot(a, b))
+        if norm_a == 0.0:
+            norm_a = float(np.linalg.norm(a))
+        norm_b = float(np.linalg.norm(b))
+        if norm_a == 0.0 or norm_b == 0.0:
             return 0.0
-        return float(dot / (norm_a * norm_b))
+        return dot / (norm_a * norm_b)

@@ -239,17 +239,18 @@ class CorrectionDetector:
 # Helpers
 # ------------------------------------------------------------------
 
+_CORRECTION_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "it", "its", "was", "were", "be", "been",
+    "am", "are", "do", "did", "does", "to", "of", "in", "on", "at",
+    "for", "by", "and", "or", "but", "not", "no", "so", "if", "as",
+    "my", "me", "i", "we", "us", "he", "she", "they", "that", "this",
+    "with", "from", "has", "had", "have", "s",
+})
+
+
 def _extract_keywords(text: str) -> list[str]:
     """Extract meaningful keywords from *text* for KG searching."""
     if not text:
         return []
     words = re.findall(r"[a-zA-Z0-9]+", text.lower())
-    # Filter short/common words
-    stopwords = {
-        "a", "an", "the", "is", "it", "its", "was", "were", "be", "been",
-        "am", "are", "do", "did", "does", "to", "of", "in", "on", "at",
-        "for", "by", "and", "or", "but", "not", "no", "so", "if", "as",
-        "my", "me", "i", "we", "us", "he", "she", "they", "that", "this",
-        "with", "from", "has", "had", "have", "s",
-    }
-    return [w for w in words if len(w) > 2 and w not in stopwords]
+    return [w for w in words if len(w) > 2 and w not in _CORRECTION_STOPWORDS]

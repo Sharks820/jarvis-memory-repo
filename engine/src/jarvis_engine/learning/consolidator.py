@@ -313,7 +313,11 @@ class MemoryConsolidator:
         return record_id
 
     def _tag_originals(self, records: list[dict], new_record_id: str) -> None:
-        """Append ``consolidated_into:<id>`` to each original record's tags."""
+        """Append ``consolidated_into:<id>`` to each original record's tags.
+
+        Re-reads current tags from the database to avoid overwriting
+        concurrent tag updates (the ``records`` dicts may be stale).
+        """
         tag_value = f"consolidated_into:{new_record_id}"
 
         with self._engine._write_lock:
@@ -321,7 +325,16 @@ class MemoryConsolidator:
                 rid = rec.get("record_id")
                 if not rid:
                     continue
-                existing_tags_raw = rec.get("tags", "[]")
+
+                # Read current tags from DB (not the stale snapshot)
+                row = self._engine._db.execute(
+                    "SELECT tags FROM records WHERE record_id = ?",
+                    (rid,),
+                ).fetchone()
+                if row is None:
+                    continue
+
+                existing_tags_raw = row[0] if row else "[]"
                 try:
                     existing_tags = (
                         json.loads(existing_tags_raw)

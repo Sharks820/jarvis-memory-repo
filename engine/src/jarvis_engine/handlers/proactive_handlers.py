@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time as _time_mod
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +88,8 @@ class WakeWordStartHandler:
         self._gateway = gateway
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
+        self._mic_lock = threading.Lock()
+        self._conversation_until: float = 0.0
 
     def handle(self, cmd: WakeWordStartCommand) -> WakeWordStartResult:
         # Prevent duplicate threads
@@ -105,19 +108,16 @@ class WakeWordStartHandler:
             )
 
         detector = WakeWordDetector(threshold=cmd.threshold)
-        mic_lock = threading.Lock()
-        self._conversation_until: float = 0.0
 
         def _on_detected() -> None:
             """Wake word detected — record command, transcribe, and dispatch."""
-            import time as _time
             logger.info("Wake word detected! Listening for command...")
             try:
                 from jarvis_engine.stt import record_from_microphone, transcribe_smart
                 # Pause wake word mic stream to avoid dual-stream conflicts,
                 # then record on a fresh stream with buffer drain.
                 detector.pause()
-                _time.sleep(0.15)  # Let OS audio driver release mic fully
+                _time_mod.sleep(0.15)  # Let OS audio driver release mic fully
                 try:
                     audio = record_from_microphone(
                         max_duration_seconds=8.0,
@@ -166,14 +166,14 @@ class WakeWordStartHandler:
                 except Exception as exc:
                     logger.error("Voice command dispatch failed: %s", exc)
                 # Enter conversation mode for 20 seconds
-                self._conversation_until = _time.time() + 20.0
+                self._conversation_until = _time_mod.time() + 20.0
             except Exception as exc:
                 logger.error("Wake word callback error: %s", exc)
 
         self._stop_event = threading.Event()
         self._thread = threading.Thread(
             target=detector.start,
-            args=(_on_detected, self._stop_event, mic_lock),
+            args=(_on_detected, self._stop_event, self._mic_lock),
             daemon=True,
         )
         self._thread.start()
@@ -182,6 +182,11 @@ class WakeWordStartHandler:
             started=True,
             message="Wake word detection started. Say 'Jarvis' to activate.",
         )
+
+    @property
+    def in_conversation_mode(self) -> bool:
+        """True if within the 20-second follow-up window after a wake word command."""
+        return _time_mod.time() < self._conversation_until
 
     def stop(self) -> None:
         """Stop the wake word detection thread if running."""

@@ -98,12 +98,14 @@ class MemoryProvenance:
             self._records[record_hash] = prov
             # Evict oldest entries if capacity exceeded
             if len(self._records) > 50000:
-                # Sort by ingestion_timestamp, remove oldest
-                sorted_keys = sorted(
+                # Use heapq.nsmallest for O(n) eviction instead of O(n log n) full sort
+                import heapq
+                oldest_keys = heapq.nsmallest(
+                    10000,
                     self._records,
                     key=lambda k: self._records[k].get("ingestion_timestamp", ""),
                 )
-                for k in sorted_keys[:10000]:
+                for k in oldest_keys:
                     del self._records[k]
         return prov
 

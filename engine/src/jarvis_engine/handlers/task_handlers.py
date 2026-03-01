@@ -209,7 +209,7 @@ class QueryHandler:
                 max_tokens=cmd.max_tokens,
                 route_reason=route_reason,
             )
-        except (ConnectionError, RuntimeError, OSError, Exception) as exc:
+        except Exception as exc:
             logger.error("QueryHandler gateway.complete failed: %s", exc, exc_info=True)
             return QueryResult(
                 text=f"error: query failed ({type(exc).__name__})",

@@ -153,14 +153,26 @@ class AttackPatternMemory:
 
     # -- Similarity search --------------------------------------------------
 
-    def find_similar(self, payload: str, threshold: float = 0.8) -> list[dict[str, Any]]:
-        """Find patterns with token-overlap (Jaccard) similarity >= threshold."""
+    def find_similar(self, payload: str, threshold: float = 0.8, limit: int = 1000) -> list[dict[str, Any]]:
+        """Find patterns with token-overlap (Jaccard) similarity >= threshold.
+
+        Parameters
+        ----------
+        limit:
+            Maximum number of rows to scan from the database.  Prevents
+            unbounded memory usage on large attack pattern tables.
+        """
         target_tokens = _tokenize(payload)
         results: list[dict[str, Any]] = []
 
         with self._lock:
             cur = self._db.cursor()
-            cur.execute("SELECT pattern_id, category, payload_signature, detection_method, first_seen, last_seen, frequency, source_ips, notes FROM attack_patterns")
+            cur.execute(
+                "SELECT pattern_id, category, payload_signature, detection_method, "
+                "first_seen, last_seen, frequency, source_ips, notes "
+                "FROM attack_patterns ORDER BY last_seen DESC LIMIT ?",
+                (limit,),
+            )
             rows = cur.fetchall()
         for row in rows:
             pid, cat, sig, det, first, last, freq, ips, notes = row
