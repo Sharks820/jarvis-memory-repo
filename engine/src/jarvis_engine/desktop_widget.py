@@ -92,6 +92,7 @@ def _dpapi_decrypt(b64_cipher: str) -> str:
     return decrypted.decode("utf-8")
 
 import tkinter as tk
+from tkinter import messagebox
 
 
 @dataclass
@@ -807,13 +808,68 @@ class JarvisDesktopWidget(tk.Tk):
             self._log_async("Then click Connect to authenticate.", role="system")
 
     def _on_close(self) -> None:
-        """Handle window close: minimize to launcher orb (tray-app pattern).
-        Use the Exit button or Ctrl+Shift+Q for full shutdown."""
+        """Handle window close (X button): minimize to launcher orb."""
         self._hide_panel()
+
+    def _kill_child_services(self) -> None:
+        """Kill mobile API and daemon processes spawned alongside the widget."""
+        try:
+            from jarvis_engine.process_manager import read_pid_file, kill_service
+            root = Path(self._cfg_root) if hasattr(self, "_cfg_root") else _repo_root()
+            for service in ("mobile_api", "daemon"):
+                try:
+                    info = read_pid_file(service, root)
+                    if info is not None:
+                        kill_service(service, root)
+                        logger.info("Killed %s (pid=%s) on widget shutdown.", service, info.get("pid"))
+                except Exception as exc:
+                    logger.debug("Failed to kill %s on shutdown: %s", service, exc)
+        except ImportError:
+            # Fallback: kill by command line pattern
+            try:
+                import subprocess
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     "Get-CimInstance Win32_Process | Where-Object {"
+                     "($_.Name -eq 'python.exe') -and "
+                     "$_.CommandLine -match 'jarvis_engine.main\\s+(daemon-run|serve-mobile)'"
+                     "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
+                    capture_output=True, timeout=10,
+                )
+            except Exception as exc:
+                logger.debug("Fallback process kill failed: %s", exc)
+
+    def _confirm_exit(self) -> None:
+        """Show confirmation dialog before shutting down."""
+        msg = (
+            "Are you sure you want to exit Jarvis?\n\n"
+            "This will terminate all Jarvis services:\n"
+            "  \u2022 Desktop Widget\n"
+            "  \u2022 Mobile API Server\n"
+            "  \u2022 Background Daemon\n\n"
+            "For best results before exiting:\n"
+            "  1. Let any active command finish processing\n"
+            "  2. Memory is auto-saved (SQLite WAL mode),\n"
+            "     but in-flight learning cycles will be lost\n"
+            "  3. Knowledge graph writes are transactional\n"
+            "     and safe to interrupt\n\n"
+            "Tip: Use 'Minimize' or the X button to keep\n"
+            "Jarvis running in the background instead."
+        )
+        confirmed = messagebox.askyesno(
+            "Exit Jarvis",
+            msg,
+            icon=messagebox.WARNING,
+            parent=self,
+        )
+        if confirmed:
+            self._shutdown()
 
     def _shutdown(self) -> None:
         self.stop_event.set()
         self._stop_tray_icon()
+        # Kill child services (mobile API, daemon) before destroying widget
+        self._kill_child_services()
         # Cancel pending animation callbacks to prevent post-destroy TclError
         if self._orb_after_id is not None:
             try:
@@ -1079,7 +1135,7 @@ class JarvisDesktopWidget(tk.Tk):
     def _tray_quit(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
         """Tray menu: Quit."""
         try:
-            self.after(0, self._shutdown)
+            self.after(0, self._confirm_exit)
         except Exception:
             pass
 
@@ -1120,7 +1176,7 @@ class JarvisDesktopWidget(tk.Tk):
             activebackground="#4a1b1b",
             activeforeground="#ffffff",
             relief=tk.FLAT,
-            command=self._shutdown,
+            command=self._confirm_exit,
         ).pack(side=tk.RIGHT, padx=(0, 6))
         tk.Button(
             top,
