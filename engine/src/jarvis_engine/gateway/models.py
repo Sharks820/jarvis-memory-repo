@@ -482,12 +482,8 @@ class ModelGateway:
                 output_tokens=resp.usage.output_tokens,
                 cost_usd=calculate_cost(model, resp.usage.input_tokens, resp.usage.output_tokens),
             )
-        # Extract text from first TextBlock (content may contain tool_use blocks)
-        text = ""
-        for block in resp.content:
-            if hasattr(block, "text") and block.text:
-                text = block.text
-                break
+        # Extract text from all TextBlocks (content may contain tool_use blocks)
+        text = "".join(block.text for block in resp.content if hasattr(block, "text") and block.text)
         input_tokens = resp.usage.input_tokens
         output_tokens = resp.usage.output_tokens
         cost = calculate_cost(model, input_tokens, output_tokens)

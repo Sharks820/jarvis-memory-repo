@@ -237,7 +237,7 @@ class TestAutomationPolicyGate:
         assert outcomes[0].executed is True
         assert outcomes[0].return_code == 0
         assert outcomes[0].stdout == "ok"
-        mock_shell.assert_called_once_with("git status", timeout_s=90)
+        mock_shell.assert_called_once_with("git status", timeout_s=90, has_explicit_approval=False)
 
     def test_disallowed_command_blocked(self, executor: AutomationExecutor) -> None:
         actions = [

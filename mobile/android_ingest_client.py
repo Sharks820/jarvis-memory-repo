@@ -50,7 +50,7 @@ def send_ingest(
     )
     try:
         with urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read().decode("utf-8", errors="replace"))
     except HTTPError as e:
         sys.stderr.write(f"HTTP Error: {e.code} {e.reason}\n")
         return None
