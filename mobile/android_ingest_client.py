@@ -7,7 +7,9 @@ import hmac
 import json
 import os
 import time
+import sys
 import uuid
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -20,7 +22,7 @@ def send_ingest(
     kind: str,
     task_id: str,
     content: str,
-) -> dict:
+) -> dict | None:
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
     payload = {
@@ -46,8 +48,18 @@ def send_ingest(
         data=body,
         headers=headers,
     )
-    with urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as e:
+        sys.stderr.write(f"HTTP Error: {e.code} {e.reason}\n")
+        return None
+    except URLError as e:
+        sys.stderr.write(f"URL Error: {e.reason}\n")
+        return None
+    except json.JSONDecodeError:
+        sys.stderr.write("Error: Failed to decode JSON response from server.\n")
+        return None
 
 
 def main() -> int:
@@ -74,6 +86,8 @@ def main() -> int:
         task_id=args.task_id,
         content=args.content,
     )
+    if result is None:
+        return 1
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
