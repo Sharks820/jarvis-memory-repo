@@ -116,7 +116,9 @@ def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
 
 def _scan_recent_logs(root: Path, *, max_lines: int = 200) -> dict[str, Any]:
     log_dir = root / ".planning" / "logs"
-    files = sorted(log_dir.glob("*.log")) + sorted(log_dir.glob("*.err.log"))
+    # *.log already matches *.err.log -- no need for a separate glob
+    # (the old code double-counted .err.log files)
+    files = sorted(log_dir.glob("*.log"))
     issues = {
         "http_400": 0,
         "traceback": 0,

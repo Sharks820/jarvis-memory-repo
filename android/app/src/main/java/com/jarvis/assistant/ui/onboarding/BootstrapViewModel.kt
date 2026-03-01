@@ -7,6 +7,7 @@ import com.jarvis.assistant.security.CryptoHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.net.URI
 import javax.inject.Inject
 
 @HiltViewModel
@@ -23,15 +24,30 @@ class BootstrapViewModel @Inject constructor(
     val httpWarning = MutableStateFlow<String?>(null)
 
     /**
-     * Returns true if the given URL uses plain http:// on a non-localhost address.
-     * Localhost/127.0.0.1 are exempt because traffic never leaves the device.
+     * Returns true if the given URL uses plain http:// on a non-local address.
+     * Localhost/127.0.0.1 and private network ranges (10.x.x.x, 192.168.x.x)
+     * are exempt because traffic stays on the local network.
      */
     private fun isInsecureRemoteUrl(url: String): Boolean {
         val trimmed = url.trim().lowercase()
         if (!trimmed.startsWith("http://")) return false
-        // Allow plain HTTP for localhost and 127.0.0.1 only
-        val localhostPatterns = listOf("http://localhost", "http://127.0.0.1")
-        return localhostPatterns.none { trimmed.startsWith(it) }
+        return !isLocalNetworkHost(trimmed)
+    }
+
+    /**
+     * Returns true if the URL points to a local/private network host.
+     * Allows plain HTTP for: localhost, 127.0.0.1, 10.x.x.x, 192.168.x.x
+     */
+    private fun isLocalNetworkHost(url: String): Boolean {
+        val host = try {
+            URI(url).host?.lowercase() ?: return false
+        } catch (_: Exception) {
+            return false
+        }
+        return host == "localhost" ||
+            host == "127.0.0.1" ||
+            host.startsWith("10.") ||
+            host.startsWith("192.168.")
     }
 
     fun onUrlChanged(url: String) {
@@ -69,6 +85,10 @@ class BootstrapViewModel @Inject constructor(
         val password = masterPassword.value
         if (url.isBlank() || password.isBlank()) {
             error.value = "URL and password are required"
+            return
+        }
+        if (isInsecureRemoteUrl(url)) {
+            error.value = "Cannot send credentials over plain HTTP to a non-local host. Use https://"
             return
         }
         isConnecting.value = true

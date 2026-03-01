@@ -94,6 +94,7 @@ class ServeMobileHandler:
                 auth_token=effective_token,
                 signing_key=effective_signing_key,
                 repo_root=self._root,
+                tls=cmd.tls,
             )
         except KeyboardInterrupt:
             pass

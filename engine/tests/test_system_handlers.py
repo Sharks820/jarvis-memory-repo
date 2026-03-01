@@ -121,6 +121,7 @@ def test_serve_mobile_explicit_args(mock_run: MagicMock) -> None:
         auth_token="tok",
         signing_key="sk",
         repo_root=ROOT,
+        tls=None,
     )
 
 
