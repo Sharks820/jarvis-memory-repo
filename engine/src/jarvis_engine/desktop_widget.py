@@ -373,9 +373,6 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     if not _is_safe_widget_base_url(cfg.base_url):
         raise RuntimeError("Widget base_url must use HTTPS for non-localhost hosts.")
     body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
-    if payload is not None:
-        headers["Content-Type"] = "application/json"
 
     # Try configured URL first, then auto-fallback to localhost if it fails
     # (handles stale Tailscale/VPN IPs gracefully)
@@ -389,6 +386,13 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
 
     last_exc: Exception | None = None
     for base in _urls_to_try:
+        # Generate FRESH signed headers for each URL attempt.  Each attempt
+        # produces a unique nonce so that if the primary URL's server consumes
+        # the nonce (even on an HTTP error or timeout), the fallback URL gets
+        # its own valid nonce instead of being rejected as a replay.
+        headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
         req = Request(url=f"{base.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
         ssl_ctx = _get_ssl_context(base)
         try:
