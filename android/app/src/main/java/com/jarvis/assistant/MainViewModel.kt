@@ -2,6 +2,7 @@ package com.jarvis.assistant
 
 import androidx.lifecycle.ViewModel
 import com.jarvis.assistant.security.CryptoHelper
+import java.security.MessageDigest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,7 +76,11 @@ class MainViewModel @Inject constructor() : ViewModel() {
             return
         }
         val stored = crypto.getMasterPassword()
-        if (entered == stored) {
+        if (stored.isNotEmpty() && MessageDigest.isEqual(
+                entered.toByteArray(Charsets.UTF_8),
+                stored.toByteArray(Charsets.UTF_8),
+            )
+        ) {
             onAuthSuccess()
         } else {
             _authError.value = "Incorrect master password"

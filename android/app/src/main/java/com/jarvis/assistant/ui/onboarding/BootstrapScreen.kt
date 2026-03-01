@@ -42,6 +42,7 @@ fun BootstrapScreen(
     val isConnecting by viewModel.isConnecting.collectAsState()
     val error by viewModel.error.collectAsState()
     val testResult by viewModel.testResult.collectAsState()
+    val httpWarning by viewModel.httpWarning.collectAsState()
     var showPassword by remember { mutableStateOf(false) }
 
     Column(
@@ -64,7 +65,7 @@ fun BootstrapScreen(
         // Desktop URL
         OutlinedTextField(
             value = url,
-            onValueChange = { viewModel.desktopUrl.value = it },
+            onValueChange = { viewModel.onUrlChanged(it) },
             label = { Text("Desktop URL") },
             placeholder = { Text("http://192.168.1.x:8787") },
             modifier = Modifier.fillMaxWidth(),
@@ -77,6 +78,16 @@ fun BootstrapScreen(
                 }
             },
         )
+
+        // HTTP warning for insecure remote URLs
+        httpWarning?.let { warning ->
+            Text(
+                warning,
+                color = Color(0xFFFF9800),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
 
