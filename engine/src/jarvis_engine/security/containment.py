@@ -249,6 +249,12 @@ class ContainmentEngine:
                 actions.append("All endpoint isolations removed")
 
             if level >= ContainmentLevel.BLOCK:
+                if self._ip_tracker is not None:
+                    for ip in self._blocked_ips:
+                        try:
+                            self._ip_tracker.unblock_ip(ip)
+                        except Exception:
+                            pass
                 self._blocked_ips.clear()
                 actions.append("All IP blocks cleared")
 

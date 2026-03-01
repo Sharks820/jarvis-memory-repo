@@ -226,7 +226,11 @@ class OpenWebHandler:
             return OpenWebResult(return_code=2)
         if len(candidate) > 500:
             return OpenWebResult(return_code=2)
-        if not re.match(r"^https?://", candidate, flags=re.IGNORECASE):
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://", candidate):
+            # Has a scheme -- only allow http/https
+            if not re.match(r"^https?://", candidate, flags=re.IGNORECASE):
+                return OpenWebResult(return_code=2)
+        else:
             candidate = f"https://{candidate.lstrip('/')}"
         parsed = urlparse(candidate)
         if parsed.scheme not in ("http", "https"):

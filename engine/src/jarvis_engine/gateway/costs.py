@@ -178,7 +178,9 @@ class CostTracker:
             cur = self._db.execute(
                 """
                 SELECT
-                    CASE WHEN provider = 'ollama' THEN 'local' ELSE 'cloud' END AS category,
+                    CASE WHEN provider = 'ollama' THEN 'local'
+                         WHEN provider IN ('none', '') THEN 'failed'
+                         ELSE 'cloud' END AS category,
                     COUNT(*) AS cnt,
                     SUM(cost_usd) AS total_cost
                 FROM query_costs

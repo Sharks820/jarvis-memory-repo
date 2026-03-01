@@ -255,11 +255,11 @@ _feed_lock = threading.Lock()
 def get_activity_feed(db_path: Path | str | None = None) -> ActivityFeed:
     """Return (or create) the module-level ActivityFeed singleton."""
     global _feed
-    if _feed is not None:
+    if _feed is not None and not _feed._closed:
         return _feed
     with _feed_lock:
         # Double-checked locking
-        if _feed is not None:
+        if _feed is not None and not _feed._closed:
             return _feed
         _feed = ActivityFeed(db_path=db_path)
         return _feed

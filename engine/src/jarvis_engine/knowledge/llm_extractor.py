@@ -195,8 +195,14 @@ class LLMFactExtractor:
         # Strip markdown code fences if present
         if cleaned.startswith("```"):
             # Remove opening fence (possibly with language tag)
-            first_newline = cleaned.index("\n") if "\n" in cleaned else 3
-            cleaned = cleaned[first_newline + 1 :]
+            if "\n" in cleaned:
+                first_newline = cleaned.index("\n")
+                cleaned = cleaned[first_newline + 1 :]
+            else:
+                # Single-line: skip past the opening ``` and optional language tag
+                # e.g. ```json[...] or ```[...]
+                m = re.match(r"^```\w*", cleaned)
+                cleaned = cleaned[m.end() :] if m else cleaned[3:]
             if cleaned.endswith("```"):
                 cleaned = cleaned[:-3]
             cleaned = cleaned.strip()

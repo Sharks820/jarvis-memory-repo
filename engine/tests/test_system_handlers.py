@@ -363,14 +363,11 @@ def test_open_web_too_long() -> None:
     assert result.return_code == 2
 
 
-@patch("webbrowser.open")
-def test_open_web_non_http_scheme_gets_wrapped(mock_open: MagicMock) -> None:
-    """ftp:// doesn't match ^https?:// so it gets https:// prepended."""
+def test_open_web_non_http_scheme_rejected() -> None:
+    """Non-http/https schemes like ftp:// are rejected early."""
     handler = OpenWebHandler(ROOT)
     result = handler.handle(OpenWebCommand(url="ftp://example.com"))
-    # The handler prepends https:// to anything without http(s) prefix
-    assert result.return_code == 0
-    assert result.opened_url.startswith("https://")
+    assert result.return_code == 2
 
 
 def test_open_web_credentials_in_url() -> None:
