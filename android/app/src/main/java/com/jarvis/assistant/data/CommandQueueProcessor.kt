@@ -75,6 +75,7 @@ class CommandQueueProcessor @Inject constructor(
 
     private suspend fun sendCommand(id: Long) {
         val cmd = commandQueueDao.getById(id) ?: return
+        if (cmd.status != "pending") return // Already sent or failed — prevent duplicate sends
         val request = CommandRequest(
             text = cmd.text,
             execute = cmd.execute,
