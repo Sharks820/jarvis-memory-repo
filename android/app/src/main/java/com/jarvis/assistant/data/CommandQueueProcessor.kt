@@ -58,6 +58,8 @@ class CommandQueueProcessor @Inject constructor(
 
     /** Flush all pending commands to the desktop. */
     suspend fun flushPending() {
+        // Recover any commands stuck in 'sending' state from a prior crash
+        commandQueueDao.recoverStaleSending()
         val pending = commandQueueDao.getPending()
         for (cmd in pending) {
             if (cmd.retryCount >= MAX_RETRIES) {
@@ -76,6 +78,9 @@ class CommandQueueProcessor @Inject constructor(
     private suspend fun sendCommand(id: Long) {
         val cmd = commandQueueDao.getById(id) ?: return
         if (cmd.status != "pending") return // Already sent or failed — prevent duplicate sends
+        // Atomically mark as "sending" to prevent duplicate concurrent sends
+        val claimed = commandQueueDao.claimForSend(id)
+        if (claimed == 0) return // Another coroutine already claimed it
         val request = CommandRequest(
             text = cmd.text,
             execute = cmd.execute,
