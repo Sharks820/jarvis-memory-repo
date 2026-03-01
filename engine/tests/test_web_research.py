@@ -52,8 +52,8 @@ def test_query_keywords_filters_stopwords() -> None:
 
 
 def test_query_keywords_ignores_short_words() -> None:
-    kw = _query_keywords("a to be or not")
-    assert kw == set()  # All words < 4 chars
+    kw = _query_keywords("a to be or")
+    assert kw == set()  # All words < 3 chars
 
 
 def test_query_keywords_lowercases() -> None:

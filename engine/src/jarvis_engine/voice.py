@@ -375,6 +375,26 @@ def choose_voice(voices: list[str], profile: str, custom_pattern: str = "") -> s
     return voices[0] if voices else ""
 
 
+def _strip_markdown_for_speech(text: str) -> str:
+    """Remove markdown formatting so TTS doesn't read 'asterisk' etc."""
+    import re as _re
+    # Remove bold/italic markers: **text** → text, *text* → text
+    text = _re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", text)
+    # Remove underscores used for emphasis: __text__ → text, _text_ → text
+    text = _re.sub(r"_{1,2}([^_]+)_{1,2}", r"\1", text)
+    # Remove markdown headers: ### Header → Header
+    text = _re.sub(r"^#{1,6}\s+", "", text, flags=_re.MULTILINE)
+    # Remove markdown links: [text](url) → text
+    text = _re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    # Remove bullet points: - item or * item → item
+    text = _re.sub(r"^\s*[-*+]\s+", "", text, flags=_re.MULTILINE)
+    # Remove code backticks
+    text = _re.sub(r"`([^`]+)`", r"\1", text)
+    # Clean up extra whitespace
+    text = _re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def speak_text(
     text: str,
     *,
@@ -383,6 +403,8 @@ def speak_text(
     output_wav: str = "",
     rate: int = 0,
 ) -> VoiceSpeakResult:
+    # Strip markdown formatting to prevent TTS reading "asterisk" etc.
+    text = _strip_markdown_for_speech(text)
     env_pattern = os.getenv("JARVIS_VOICE_PATTERN", "").strip()
     effective_pattern = custom_voice_pattern.strip() or env_pattern
     engine_pref = os.getenv("JARVIS_TTS_ENGINE", "auto").strip().lower()

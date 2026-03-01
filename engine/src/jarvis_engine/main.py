@@ -1626,8 +1626,10 @@ def cmd_mission_status(last: int) -> int:
     result = _get_bus().dispatch(MissionStatusCommand(last=last))
     if not result.missions:
         print("learning_missions=none")
+        print("response=No active learning missions at the moment.")
         return 0
     print(f"learning_mission_count={result.total_count}")
+    summary_parts: list[str] = []
     for mission in result.missions:
         print(
             f"mission_id={mission.get('mission_id','')} "
@@ -1636,6 +1638,11 @@ def cmd_mission_status(last: int) -> int:
             f"verified_findings={mission.get('verified_findings', 0)} "
             f"updated_utc={mission.get('updated_utc','')}"
         )
+        topic = mission.get("topic", "unknown")
+        status = mission.get("status", "unknown")
+        findings = mission.get("verified_findings", 0)
+        summary_parts.append(f"{topic} ({status}, {findings} findings)")
+    print(f"response=Learning missions ({result.total_count} total): " + " | ".join(summary_parts))
     return 0
 
 
@@ -2999,6 +3006,14 @@ def _web_augmented_llm_conversation(
             if _web_urls:
                 _web_context_text += "\nSources: " + ", ".join(_web_urls[:3])
             system_parts.append(_web_context_text)
+            # Emit source URLs for widget display
+            _findings = _web_result.get("findings", [])
+            if isinstance(_findings, list):
+                for _idx, _row in enumerate(_findings[:4], start=1):
+                    if isinstance(_row, dict):
+                        _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
+                        if _src:
+                            print(f"source_{_idx}={_src}")
             logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
         else:
             logger.warning("Web search returned no summary lines for query: %s", text[:80])
@@ -3014,9 +3029,9 @@ def _web_augmented_llm_conversation(
         )
     else:
         system_parts.append(
-            "Instructions: Web search was attempted but returned no results. "
-            "Answer the question using your training knowledge, but clearly note that "
-            "you were unable to retrieve live web data and your information may not be current."
+            "Instructions: Answer the question using your knowledge. "
+            "Do NOT say you cannot access the web or that you are not wired for web access. "
+            "Simply provide the best answer you can with the information available."
         )
     system_prompt = "\n\n".join(system_parts)
 
@@ -3716,7 +3731,6 @@ def _cmd_voice_run_impl(
     ):
         intent = "mission_status"
         rc = cmd_mission_status(last=5)
-        print(f"response=Here are your recent learning missions.")
     # --- System status ---
     elif any(
         k in lowered
@@ -3820,6 +3834,14 @@ def _cmd_voice_run_impl(
                     if _web_urls:
                         _web_context += "\nSources: " + ", ".join(_web_urls[:3])
                     system_parts.append(_web_context)
+                    # Emit source URLs for widget display
+                    _findings = _web_result.get("findings", [])
+                    if isinstance(_findings, list):
+                        for _idx, _row in enumerate(_findings[:4], start=1):
+                            if isinstance(_row, dict):
+                                _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
+                                if _src:
+                                    print(f"source_{_idx}={_src}")
                     logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
                 else:
                     logger.warning("Web search returned no summary lines for query: %s", text[:80])
@@ -3839,9 +3861,9 @@ def _cmd_voice_run_impl(
             system_parts.append(
                 "Instructions: Reference the user's known facts and memories when relevant. "
                 "If the user asks about something you have facts for, use those facts directly. "
-                "A web search was attempted but returned no usable results. "
-                "Answer using your training knowledge, but note that your information may not be current. "
-                "If you don't have relevant information, say so honestly."
+                "Answer the question using your knowledge. "
+                "Do NOT say you cannot access the web or that you are not wired for web access. "
+                "Simply provide the best answer you can."
             )
         else:
             system_parts.append(

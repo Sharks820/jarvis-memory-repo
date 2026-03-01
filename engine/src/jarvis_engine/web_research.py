@@ -46,7 +46,7 @@ STOPWORDS = {
 
 
 def _query_keywords(query: str) -> set[str]:
-    words = re.findall(r"[a-zA-Z0-9]{4,}", query.lower())
+    words = re.findall(r"[a-zA-Z0-9]{3,}", query.lower())
     return {word for word in words if word not in STOPWORDS}
 
 

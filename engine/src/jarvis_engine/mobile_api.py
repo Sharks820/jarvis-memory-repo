@@ -493,6 +493,23 @@ class MobileIngestServer(ThreadingHTTPServer):
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
 
+    def ensure_embed_service(self) -> Any:
+        """Lazy-initialize an EmbeddingService for self-test queries.
+
+        Returns the EmbeddingService instance, or None on failure.
+        """
+        _embed = getattr(self, "_embed_service", None)
+        if _embed is not None:
+            return _embed
+        try:
+            from jarvis_engine.memory.embeddings import EmbeddingService
+            self._embed_service = EmbeddingService()
+            logger.info("EmbeddingService lazy-initialized for mobile API self-test")
+        except Exception as exc:
+            logger.warning("Failed to lazy-initialize EmbeddingService: %s", exc)
+            self._embed_service = None
+        return self._embed_service
+
 
 class MobileIngestHandler(BaseHTTPRequestHandler):
     server_version = "JarvisMobileAPI/0.1"
@@ -1325,8 +1342,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         # --- Self-test score from growth tracker history ---
+        self_test_path = root / ".planning" / "runtime" / "self_test_history.jsonl"
         try:
-            self_test_path = root / ".planning" / "runtime" / "self_test_history.jsonl"
             if self_test_path.exists():
                 lines = self_test_path.read_text(encoding="utf-8").strip().split("\n")
                 if lines and lines[-1].strip():
@@ -1335,6 +1352,24 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     metrics["last_self_test_score"] = round(float(score), 3)
         except Exception as exc:
             logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
+
+        # --- On-demand self-test if no history exists and memory engine is available ---
+        if metrics["last_self_test_score"] == 0.0 and metrics["memory_records"] > 0:
+            try:
+                from jarvis_engine.proactive.self_test import AdversarialSelfTest
+                server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+                mem_engine = server_obj.ensure_memory_engine()
+                embed_svc = server_obj.ensure_embed_service()
+                if mem_engine is not None and embed_svc is not None:
+                    tester = AdversarialSelfTest(mem_engine, embed_svc, score_threshold=0.5)
+                    quiz_result = tester.run_memory_quiz()
+                    self_test_path.parent.mkdir(parents=True, exist_ok=True)
+                    tester.save_quiz_result(quiz_result, self_test_path)
+                    score = quiz_result.get("average_score", 0.0)
+                    metrics["last_self_test_score"] = round(float(score), 3)
+                    logger.info("On-demand self-test completed: score=%.3f", score)
+            except Exception as exc:
+                logger.debug("On-demand self-test failed: %s", exc)
 
         # --- Capability history for overall trend confirmation ---
         try:
@@ -1350,6 +1385,27 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     metrics["growth_trend"] = "declining"
         except Exception as exc:
             logger.debug("Intelligence growth: capability history unavailable: %s", exc)
+
+        # --- Active learning missions ---
+        try:
+            import jarvis_engine.main as main_mod
+            from jarvis_engine.commands.intelligence_commands import MissionStatusCommand
+            bus = main_mod._get_bus()
+            mission_result = bus.dispatch(MissionStatusCommand(last=5))
+            if mission_result.missions:
+                metrics["mission_count"] = mission_result.total_count
+                metrics["active_missions"] = [
+                    {"topic": m.get("topic", ""), "status": m.get("status", ""), "findings": m.get("verified_findings", 0)}
+                    for m in mission_result.missions[:5]
+                    if isinstance(m, dict)
+                ]
+            else:
+                metrics["mission_count"] = 0
+                metrics["active_missions"] = []
+        except Exception as exc:
+            logger.debug("Intelligence growth: mission status unavailable: %s", exc)
+            metrics["mission_count"] = 0
+            metrics["active_missions"] = []
 
         return {"ok": True, "metrics": metrics}
 
