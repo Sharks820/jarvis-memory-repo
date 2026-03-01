@@ -856,6 +856,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if nonce in nonce_seen:
                 self._unauthorized("Replay detected.")
                 return False
+            # Temporarily record the nonce to block concurrent replays.
+            # If a downstream check (owner_guard) fails, we remove it so
+            # the client can retry with the same nonce or a fallback URL.
             nonce_seen[nonce] = now
 
         owner_guard = read_owner_guard(self.server.repo_root)  # type: ignore[attr-defined]
@@ -867,6 +870,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             }
             device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
             if not device_id or len(device_id) > 128 or (not device_id.isascii()):
+                # Remove nonce so client can retry (e.g. fallback URL)
+                with self.server.nonce_lock:  # type: ignore[attr-defined]
+                    self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
                 self._unauthorized("Missing trusted mobile device id.")
                 return False
             if device_id not in trusted:
@@ -875,6 +881,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     client_ip = str(self.client_address[0]).strip()
                     server: MobileIngestServer = self.server  # type: ignore[assignment]
                     if server.check_master_pw_rate(client_ip):
+                        with self.server.nonce_lock:  # type: ignore[attr-defined]
+                            self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
                         self._write_json(
                             HTTPStatus.TOO_MANY_REQUESTS,
                             {"ok": False, "error": "Too many master password attempts. Try again later."},
@@ -884,9 +892,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     if verify_master_password(self.server.repo_root, master_password):  # type: ignore[attr-defined]
                         trust_mobile_device(self.server.repo_root, device_id)  # type: ignore[attr-defined]
                     else:
+                        with self.server.nonce_lock:  # type: ignore[attr-defined]
+                            self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
                         self._unauthorized("Untrusted mobile device.")
                         return False
                 else:
+                    with self.server.nonce_lock:  # type: ignore[attr-defined]
+                        self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
                     self._unauthorized("Untrusted mobile device.")
                     return False
 
