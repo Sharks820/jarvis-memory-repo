@@ -621,10 +621,17 @@ class TestGracefulShutdown:
     def test_graceful_shutdown_succeeds_when_process_exits_quickly(
         self, mock_kill: MagicMock, mock_alive: MagicMock,
     ) -> None:
-        """_graceful_shutdown returns True when the target dies before timeout."""
+        """_graceful_shutdown returns True when the target dies before timeout.
+
+        On Windows, graceful shutdown is skipped (CTRL_C_EVENT affects the
+        entire console group), so the function always returns False there.
+        """
         result = _graceful_shutdown(12345)
-        assert result is True
-        mock_kill.assert_called_once()
+        if sys.platform == "win32":
+            assert result is False  # Skips graceful on Windows
+        else:
+            assert result is True
+            mock_kill.assert_called_once()
 
     @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
     @patch("jarvis_engine.process_manager.os.kill")
@@ -640,9 +647,15 @@ class TestGracefulShutdown:
     def test_graceful_shutdown_returns_true_when_kill_raises(
         self, mock_kill: MagicMock,
     ) -> None:
-        """If os.kill raises (process already gone), treat as success."""
+        """If os.kill raises (process already gone), treat as success.
+
+        On Windows, graceful shutdown returns False before os.kill is called.
+        """
         result = _graceful_shutdown(12345)
-        assert result is True
+        if sys.platform == "win32":
+            assert result is False
+        else:
+            assert result is True
 
     @patch("jarvis_engine.process_manager._check_pid_alive", return_value=True)
     @patch("jarvis_engine.process_manager._graceful_shutdown", return_value=False)

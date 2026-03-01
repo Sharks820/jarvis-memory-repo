@@ -41,7 +41,7 @@ class KnowledgeGraph:
         # Initialize lock manager for auto-lock after fact updates
         from jarvis_engine.knowledge.locks import FactLockManager
 
-        self._lock_manager = FactLockManager(self._db, self._write_lock, self._db_lock)
+        self._lock_manager = FactLockManager(self._db, self._write_lock, self._db_lock, kg=self)
 
     # ------------------------------------------------------------------
     # Public accessors (for handlers -- avoids direct access to private attrs)
@@ -181,7 +181,7 @@ class KnowledgeGraph:
 
         self._cached_graph = G
         self._cached_gen = gen
-        return G
+        return G.copy()
 
     # ------------------------------------------------------------------
     # Fact CRUD

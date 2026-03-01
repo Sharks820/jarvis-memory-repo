@@ -142,7 +142,7 @@ class TestContradictionListHandler:
 
         assert len(result.contradictions) == 2
         mock_contra_mod.ContradictionManager.assert_called_once_with(
-            kg.db, kg.write_lock, kg.db_lock
+            kg.db, kg.write_lock, kg.db_lock, kg=kg
         )
         mock_mgr.list_all.assert_called_once_with(status="pending", limit=50)
 
@@ -440,7 +440,7 @@ class TestFactLockHandler:
             handler = FactLockHandler(root=tmp_path, kg=kg)
             handler.handle(FactLockCommand(node_id="n1", action="lock"))
 
-        mock_locks_mod.FactLockManager.assert_called_once_with(kg.db, kg.write_lock, kg.db_lock)
+        mock_locks_mod.FactLockManager.assert_called_once_with(kg.db, kg.write_lock, kg.db_lock, kg=kg)
 
 
 # ---------------------------------------------------------------------------

@@ -79,6 +79,7 @@ class ContainmentOverrideCommand:
 
     level: int = 0
     action: str = "recover"
+    master_password: str = ""
 
 
 @dataclass(frozen=True)

@@ -424,8 +424,8 @@ class TestDaemonRegressionCheck:
         """When regression status is 'fail', daemon should auto-restore from backup."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        # Create a fake backup file
-        backup_dir = Path(".planning/runtime/kg_backups")
+        # Create a fake backup file under tmp_path (matches daemon's root-relative path)
+        backup_dir = tmp_path / ".planning" / "runtime" / "kg_backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
         backup_file = backup_dir / "20260101T000000_test.db"
         backup_file.write_bytes(b"fake_backup_data")
@@ -797,7 +797,13 @@ class TestDaemonAutoHarvest:
         mock_provider = MagicMock()
         mock_provider.is_available = True
 
+        mock_bus = MagicMock()
+        mock_bus._engine = MagicMock()
+        mock_bus._embed_service = MagicMock()
+        mock_bus._kg = MagicMock()
+
         with patch.object(main_mod, "_discover_harvest_topics", return_value=["test topic"]), \
+             patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.harvesting.providers.MiniMaxProvider",
                  return_value=mock_provider,
@@ -820,6 +826,14 @@ class TestDaemonAutoHarvest:
              ), \
              patch(
                  "jarvis_engine.harvesting.budget.BudgetManager",
+                 return_value=MagicMock(),
+             ), \
+             patch(
+                 "jarvis_engine.memory.classify.BranchClassifier",
+                 return_value=MagicMock(),
+             ), \
+             patch(
+                 "jarvis_engine.memory.ingest.EnrichedIngestPipeline",
                  return_value=MagicMock(),
              ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):

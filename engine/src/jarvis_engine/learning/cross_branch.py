@@ -161,14 +161,15 @@ def create_cross_branch_edges(
         safe_branch = (source_branch or "").replace("%", "\\%").replace("_", "\\_")
         # Search for matching nodes in OTHER branches via LIKE query
         try:
-            cursor = db.execute(
-                """SELECT node_id, label FROM kg_nodes
-                   WHERE label LIKE ? ESCAPE '\\'
-                   AND node_id NOT LIKE ? ESCAPE '\\'
-                   LIMIT 10""",
-                (f"%{safe_keyword}%", f"{safe_branch}.%" if source_branch else new_fact_id),
-            )
-            matches = cursor.fetchall()
+            with kg.db_lock:
+                cursor = db.execute(
+                    """SELECT node_id, label FROM kg_nodes
+                       WHERE label LIKE ? ESCAPE '\\'
+                       AND node_id NOT LIKE ? ESCAPE '\\'
+                       LIMIT 10""",
+                    (f"%{safe_keyword}%", f"{safe_branch}.%" if source_branch else new_fact_id),
+                )
+                matches = cursor.fetchall()
         except Exception as exc:
             logger.warning("Cross-branch keyword search failed for %r: %s", keyword, exc)
             continue

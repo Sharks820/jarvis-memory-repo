@@ -63,7 +63,7 @@ class ContradictionListHandler:
             logger.warning("contradictions module not available: %s", exc)
             return ContradictionListResult()
 
-        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock)
+        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
         contradictions = mgr.list_all(
             status=cmd.status if cmd.status else None,
             limit=min(cmd.limit, 500),
@@ -92,7 +92,7 @@ class ContradictionResolveHandler:
                 message="Contradictions module not available.",
             )
 
-        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock)
+        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
         result = mgr.resolve(
             contradiction_id=cmd.contradiction_id,
             resolution=cmd.resolution,
@@ -136,7 +136,7 @@ class FactLockHandler:
                 message="Locks module not available.",
             )
 
-        lock_mgr = FactLockManager(self._kg.db, self._kg.write_lock, self._kg.db_lock)
+        lock_mgr = FactLockManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
         if cmd.action == "lock":
             success = lock_mgr.owner_confirm_lock(cmd.node_id)
             return FactLockResult(

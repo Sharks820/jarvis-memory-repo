@@ -26,10 +26,12 @@ class FactLockManager:
         db: sqlite3.Connection,
         write_lock: threading.Lock,
         db_lock: threading.Lock | None = None,
+        kg: "object | None" = None,
     ) -> None:
         self._db = db
         self._write_lock = write_lock
         self._db_lock = db_lock or threading.Lock()
+        self._kg = kg
 
     # ------------------------------------------------------------------
     # Threshold check
@@ -77,6 +79,8 @@ class FactLockManager:
             self._db.commit()
             if cur.rowcount > 0:
                 logger.info("Fact %s locked by %s", node_id, locked_by)
+                if self._kg is not None:
+                    self._kg._mutation_counter += 1
                 return True
             return False
 
@@ -104,6 +108,8 @@ class FactLockManager:
             self._db.commit()
             if cur.rowcount > 0:
                 logger.info("Fact %s unlocked", node_id)
+                if self._kg is not None:
+                    self._kg._mutation_counter += 1
                 return True
             return False
 
@@ -145,6 +151,8 @@ class FactLockManager:
                 self._db.commit()
                 if cur.rowcount > 0:
                     logger.info("Fact %s locked by auto", node_id)
+                    if self._kg is not None:
+                        self._kg._mutation_counter += 1
                     return True
                 return False
         return False

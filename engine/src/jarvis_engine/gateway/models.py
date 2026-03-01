@@ -295,10 +295,12 @@ class ModelGateway:
             response = self._call_ollama(messages, model, max_tokens)
             audit_reason = route_reason or "primary:ollama"
             # If Ollama failed and cloud providers are available, try them
+            # skip_ollama=True to avoid re-trying Ollama at the end of the chain
             if response.provider == "none" and self._cloud_keys:
                 t0 = time.perf_counter()
                 response = self._fallback_chain(
-                    messages, max_tokens, response.fallback_reason or "ollama_failed"
+                    messages, max_tokens, response.fallback_reason or "ollama_failed",
+                    skip_ollama=True,
                 )
                 audit_reason = f"fallback:ollama_failed"
 
@@ -421,11 +423,18 @@ class ModelGateway:
             raise RuntimeError("Anthropic client is not initialized")
         # Resolve short aliases (e.g. "claude-opus") to full API model IDs
         api_model = ANTHROPIC_MODEL_ALIASES.get(model, model)
-        resp = self._anthropic.messages.create(
-            model=api_model,
-            max_tokens=max_tokens,
-            messages=messages,
-        )
+        # Anthropic Messages API requires system messages via `system=` param,
+        # not in the messages array (only user/assistant roles allowed).
+        system_parts = [m["content"] for m in messages if m.get("role") == "system"]
+        non_system = [m for m in messages if m.get("role") != "system"]
+        kwargs: dict = {
+            "model": api_model,
+            "max_tokens": max_tokens,
+            "messages": non_system,
+        }
+        if system_parts:
+            kwargs["system"] = "\n\n".join(system_parts)
+        resp = self._anthropic.messages.create(**kwargs)
         if not resp.content:
             return GatewayResponse(
                 text="",
@@ -470,7 +479,7 @@ class ModelGateway:
                 fallback_reason="ollama package is not installed",
             )
         try:
-            resp = self._ollama.chat(model=model, messages=messages)
+            resp = self._ollama.chat(model=model, messages=messages, options={"num_predict": max_tokens})
         except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             logger.warning("Ollama call failed: %s", exc)
             return GatewayResponse(
@@ -509,11 +518,15 @@ class ModelGateway:
         max_tokens: int,
         reason: str,
         skip_provider: str = "",
+        skip_ollama: bool = False,
     ) -> GatewayResponse:
         """Try remaining cloud providers, then fall back to local Ollama.
 
         Tries each available cloud provider in priority order (skipping
         the one that already failed) before falling back to local Ollama.
+
+        When skip_ollama=True, do not retry Ollama at the end of the chain
+        (used when Ollama was already the primary and failed).
         """
         # Try other cloud providers first
         priority = ["groq", "mistral", "zai"]
@@ -532,7 +545,19 @@ class ModelGateway:
                         logger.warning("Fallback to %s also failed: %s", pk, exc)
                     break
 
-        # All cloud providers failed, fall back to local Ollama
+        # All cloud providers failed
+        if skip_ollama:
+            # Ollama already tried as primary -- don't double-retry
+            full_reason = f"{reason} -> all cloud fallbacks also failed"
+            logger.error("All providers failed: %s", full_reason)
+            fallback_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            return GatewayResponse(
+                text="",
+                model=fallback_model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason=full_reason,
+            )
         return self._fallback_to_ollama(messages, max_tokens, reason)
 
     def _fallback_to_ollama(
@@ -560,7 +585,7 @@ class ModelGateway:
             )
 
         try:
-            resp = self._ollama.chat(model=fallback_model, messages=messages)
+            resp = self._ollama.chat(model=fallback_model, messages=messages, options={"num_predict": max_tokens})
             input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
             output_tokens = getattr(resp, "eval_count", 0) or 0
             return GatewayResponse(

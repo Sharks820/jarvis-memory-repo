@@ -128,8 +128,8 @@ def decrypt_sync_payload(
         if total_size >= MAX_DECOMPRESSED_SIZE:
             raise ValueError("Decompressed payload exceeds 16 MiB limit")
         offset += block_size
-    # Flush remaining
-    chunk = decompressor.flush()
+    # Flush remaining with size limit to prevent decompression bombs
+    chunk = decompressor.flush(MAX_DECOMPRESSED_SIZE - total_size + 1)
     chunks.append(chunk)
     total_size += len(chunk)
     if total_size > MAX_DECOMPRESSED_SIZE:

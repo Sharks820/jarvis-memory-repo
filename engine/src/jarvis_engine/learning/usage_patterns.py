@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from collections import Counter
 from datetime import datetime
 from jarvis_engine._compat import UTC
@@ -14,25 +15,27 @@ logger = logging.getLogger(__name__)
 class UsagePatternTracker:
     """Learn when the user asks certain types of questions by time of day/week."""
 
-    def __init__(self, db: sqlite3.Connection) -> None:
+    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock | None = None) -> None:
         self._db = db
+        self._write_lock = write_lock or threading.Lock()
         self._init_schema()
 
     def _init_schema(self) -> None:
-        self._db.execute("""
-            CREATE TABLE IF NOT EXISTS usage_patterns (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hour INTEGER NOT NULL CHECK(hour >= 0 AND hour <= 23),
-                day_of_week INTEGER NOT NULL CHECK(day_of_week >= 0 AND day_of_week <= 6),
-                route TEXT NOT NULL DEFAULT '',
-                topic TEXT NOT NULL DEFAULT '',
-                recorded_at TEXT NOT NULL
-            )
-        """)
-        self._db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_usage_hour_dow ON usage_patterns(hour, day_of_week)
-        """)
-        self._db.commit()
+        with self._write_lock:
+            self._db.execute("""
+                CREATE TABLE IF NOT EXISTS usage_patterns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hour INTEGER NOT NULL CHECK(hour >= 0 AND hour <= 23),
+                    day_of_week INTEGER NOT NULL CHECK(day_of_week >= 0 AND day_of_week <= 6),
+                    route TEXT NOT NULL DEFAULT '',
+                    topic TEXT NOT NULL DEFAULT '',
+                    recorded_at TEXT NOT NULL
+                )
+            """)
+            self._db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_usage_hour_dow ON usage_patterns(hour, day_of_week)
+            """)
+            self._db.commit()
 
     def record_interaction(
         self,
@@ -44,12 +47,13 @@ class UsagePatternTracker:
         ts = timestamp or datetime.now(UTC)
         hour = ts.hour
         day_of_week = ts.weekday()  # 0=Monday, 6=Sunday
-        self._db.execute(
-            "INSERT INTO usage_patterns (hour, day_of_week, route, topic, recorded_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (hour, day_of_week, route, topic, ts.isoformat()),
-        )
-        self._db.commit()
+        with self._write_lock:
+            self._db.execute(
+                "INSERT INTO usage_patterns (hour, day_of_week, route, topic, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (hour, day_of_week, route, topic, ts.isoformat()),
+            )
+            self._db.commit()
 
     def predict_context(self, hour: int, day_of_week: int) -> dict:
         """Predict likely user context based on historical patterns.

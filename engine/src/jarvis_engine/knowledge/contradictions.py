@@ -26,10 +26,12 @@ class ContradictionManager:
         db: sqlite3.Connection,
         write_lock: threading.Lock,
         db_lock: threading.Lock | None = None,
+        kg: "object | None" = None,
     ) -> None:
         self._db = db
         self._write_lock = write_lock
         self._db_lock = db_lock or threading.Lock()
+        self._kg = kg
 
     # ------------------------------------------------------------------
     # List operations
@@ -199,6 +201,10 @@ class ContradictionManager:
                 (resolution, contradiction_id),
             )
             self._db.commit()
+
+            # Invalidate NetworkX cache if kg_nodes was modified
+            if resolution in ("accept_new", "merge") and self._kg is not None:
+                self._kg._mutation_counter += 1
 
         logger.info(
             "Contradiction %d resolved: %s for node %s",

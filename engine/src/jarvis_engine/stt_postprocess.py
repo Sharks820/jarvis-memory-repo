@@ -193,18 +193,19 @@ def detect_hallucination(text: str) -> bool:
             else:
                 run_count = 1
 
-    # Multi-word sequence repetition (3+ word n-grams repeated)
+    # Multi-word sequence repetition (3+ word n-grams repeated 3+ times)
     # Hash-based O(n * max_n) approach with cap to avoid abuse on long inputs
     _MAX_WORDS = 200  # Cap for performance on very long transcripts
     capped = words[:_MAX_WORDS] if len(words) > _MAX_WORDS else words
     if len(capped) >= 6:
         for n in range(3, min(len(capped) // 2 + 1, 10)):
-            seen: set[tuple[str, ...]] = set()
+            ngram_counts: dict[tuple[str, ...], int] = {}
             for i in range(len(capped) - n + 1):
                 ngram = tuple(capped[i : i + n])
-                if ngram in seen:
-                    return True
-                seen.add(ngram)
+                ngram_counts[ngram] = ngram_counts.get(ngram, 0) + 1
+            max_count = max(ngram_counts.values()) if ngram_counts else 0
+            if max_count >= 3:
+                return True
 
     # Check compression ratio
     encoded = stripped.encode("utf-8")
@@ -264,6 +265,9 @@ def remove_fillers(text: str) -> str:
     """
     result = _SIMPLE_FILLERS.sub("", text)
     result = _MULTI_WORD_FILLERS.sub("", result)
+    # Clean up orphaned punctuation left by filler removal
+    result = re.sub(r",\s*,", ",", result)        # doubled commas
+    result = re.sub(r"^\s*[,;]\s*", "", result)    # leading comma/semicolon
     # Normalize whitespace
     result = re.sub(r"\s{2,}", " ", result).strip()
     return result

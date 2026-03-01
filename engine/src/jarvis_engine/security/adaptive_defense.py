@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -52,8 +52,8 @@ class AdaptiveDefenseEngine:
         self._ip_tracker = ip_tracker
         self._lock = threading.Lock()
 
-        # Detection event log: list of dicts
-        self._events: list[dict[str, Any]] = []
+        # Detection event log: bounded deque of dicts
+        self._events: deque[dict[str, Any]] = deque(maxlen=10000)
 
         # Counts per category for auto-rule generation
         self._category_counts: dict[str, int] = defaultdict(int)

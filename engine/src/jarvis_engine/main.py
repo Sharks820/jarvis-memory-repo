@@ -558,9 +558,10 @@ def _build_smart_context(
     kg = None  # Retain reference for cross-branch query below
     if engine is not None:
         try:
-            from jarvis_engine.knowledge.graph import KnowledgeGraph
-
-            kg = KnowledgeGraph(engine)
+            kg = getattr(bus, "_kg", None)
+            if kg is None:
+                from jarvis_engine.knowledge.graph import KnowledgeGraph
+                kg = KnowledgeGraph(engine)
             # Extract keywords from query for fact lookup
             import re as _re
             _stop = {"the", "a", "an", "is", "are", "was", "were", "do", "does",
@@ -2408,6 +2409,7 @@ def _cmd_daemon_run_impl(
                     db_path = root / ".planning" / "brain" / "jarvis_memory.db"
                     if db_path.exists():
                         _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
+                        _kg_conn.execute("PRAGMA busy_timeout=5000")
                         try:
                             # collect_kg_metrics uses kg.db — provide a lightweight shim
                             class _KGShim:
@@ -2470,7 +2472,7 @@ def _cmd_daemon_run_impl(
                             )
                             # Auto-restore from backup on failure
                             if comparison["status"] == "fail":
-                                backup_dir = Path(".planning/runtime/kg_backups")
+                                backup_dir = root / ".planning" / "runtime" / "kg_backups"
                                 if backup_dir.exists():
                                     backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
                                     if backups:
@@ -2578,33 +2580,55 @@ def _cmd_daemon_run_impl(
 
                     harvest_topics = _discover_harvest_topics(root)
                     if harvest_topics:
-                        # Build a lightweight harvester (same pattern as app.py)
+                        # Build harvester with ingest pipeline so results are stored
                         harvest_db_path = root / ".planning" / "brain" / "jarvis_memory.db"
                         h_budget = None
                         if harvest_db_path.exists():
                             h_budget = BudgetManager(harvest_db_path)
-                        h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
-                        h_available = [p for p in h_providers if p.is_available]
-                        if h_available:
-                            harvester = KnowledgeHarvester(
-                                providers=h_available,
-                                pipeline=None,  # Ingest through CLI; keep lightweight
-                                cost_tracker=None,
-                                budget_manager=h_budget,
-                            )
-                            total_records = 0
-                            for topic in harvest_topics:
-                                h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
-                                for entry in h_result.get("results", []):
-                                    total_records += entry.get("records_created", 0)
-                                print(f"auto_harvest_topic={topic} records={total_records}")
-                            log_activity(
-                                ActivityCategory.HARVEST,
-                                f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
-                                {"topics": harvest_topics, "total_records": total_records},
-                            )
-                        else:
-                            print("auto_harvest_skipped=no_providers_available")
+                        try:
+                            h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
+                            h_available = [p for p in h_providers if p.is_available]
+                            # Get pipeline components from daemon bus
+                            h_bus = _get_daemon_bus()
+                            h_engine = getattr(h_bus, "_engine", None)
+                            h_embed = getattr(h_bus, "_embed_service", None)
+                            h_kg = getattr(h_bus, "_kg", None)
+                            h_pipeline = None
+                            if h_engine is not None and h_embed is not None:
+                                try:
+                                    from jarvis_engine.memory.classify import BranchClassifier
+                                    from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+                                    h_classifier = BranchClassifier(h_embed)
+                                    h_pipeline = EnrichedIngestPipeline(
+                                        h_engine, h_embed, h_classifier, knowledge_graph=h_kg,
+                                    )
+                                except Exception as exc_pipe:
+                                    logger.debug("Auto-harvest pipeline init failed: %s", exc_pipe)
+                            if h_available and h_pipeline is not None:
+                                harvester = KnowledgeHarvester(
+                                    providers=h_available,
+                                    pipeline=h_pipeline,
+                                    cost_tracker=None,
+                                    budget_manager=h_budget,
+                                )
+                                total_records = 0
+                                for topic in harvest_topics:
+                                    h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
+                                    for entry in h_result.get("results", []):
+                                        total_records += entry.get("records_created", 0)
+                                    print(f"auto_harvest_topic={topic} records={total_records}")
+                                log_activity(
+                                    ActivityCategory.HARVEST,
+                                    f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
+                                    {"topics": harvest_topics, "total_records": total_records},
+                                )
+                            elif not h_available:
+                                print("auto_harvest_skipped=no_providers_available")
+                            else:
+                                print("auto_harvest_skipped=no_ingest_pipeline")
+                        finally:
+                            if h_budget is not None:
+                                h_budget.close()
                     else:
                         print("auto_harvest_skipped=no_topics_discovered")
                 except Exception as exc:  # noqa: BLE001

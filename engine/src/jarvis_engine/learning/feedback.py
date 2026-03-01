@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from datetime import datetime
 from jarvis_engine._compat import UTC
 
@@ -37,24 +38,26 @@ class ResponseFeedbackTracker:
         "awesome",
     ]
 
-    def __init__(self, db: sqlite3.Connection) -> None:
+    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock | None = None) -> None:
         self._db = db
+        self._write_lock = write_lock or threading.Lock()
         self._init_schema()
 
     def _init_schema(self) -> None:
-        self._db.execute("""
-            CREATE TABLE IF NOT EXISTS response_feedback (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                route TEXT NOT NULL DEFAULT '',
-                feedback TEXT NOT NULL CHECK(feedback IN ('positive', 'negative', 'neutral')),
-                user_message_snippet TEXT NOT NULL DEFAULT '',
-                recorded_at TEXT NOT NULL
-            )
-        """)
-        self._db.execute("""
-            CREATE INDEX IF NOT EXISTS idx_feedback_route ON response_feedback(route)
-        """)
-        self._db.commit()
+        with self._write_lock:
+            self._db.execute("""
+                CREATE TABLE IF NOT EXISTS response_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    route TEXT NOT NULL DEFAULT '',
+                    feedback TEXT NOT NULL CHECK(feedback IN ('positive', 'negative', 'neutral')),
+                    user_message_snippet TEXT NOT NULL DEFAULT '',
+                    recorded_at TEXT NOT NULL
+                )
+            """)
+            self._db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_feedback_route ON response_feedback(route)
+            """)
+            self._db.commit()
 
     def detect_feedback(self, user_message: str) -> str:
         """Detect if the user is giving implicit positive or negative feedback.
@@ -81,12 +84,13 @@ class ResponseFeedbackTracker:
             return feedback
         now = datetime.now(UTC).isoformat()
         snippet = user_message[:200]
-        self._db.execute(
-            "INSERT INTO response_feedback (route, feedback, user_message_snippet, recorded_at) "
-            "VALUES (?, ?, ?, ?)",
-            (route, feedback, snippet, now),
-        )
-        self._db.commit()
+        with self._write_lock:
+            self._db.execute(
+                "INSERT INTO response_feedback (route, feedback, user_message_snippet, recorded_at) "
+                "VALUES (?, ?, ?, ?)",
+                (route, feedback, snippet, now),
+            )
+            self._db.commit()
         return feedback
 
     def get_route_quality(self, route: str, last_n: int = 20) -> dict:

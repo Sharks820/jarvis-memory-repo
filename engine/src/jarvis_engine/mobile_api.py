@@ -283,11 +283,11 @@ class MobileIngestServer(ThreadingHTTPServer):
 
     def _persist_nonces(self) -> None:
         """Persist current valid nonces to disk using atomic write pattern."""
+        tmp = self._nonce_cache_path.with_suffix(".jsonl.tmp")
         try:
             self._nonce_cache_path.parent.mkdir(parents=True, exist_ok=True)
             now = time.time()
             cutoff = now - REPLAY_WINDOW_SECONDS
-            tmp = self._nonce_cache_path.with_suffix(".jsonl.tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 for nonce, ts in self.nonce_seen.items():
                     if ts >= cutoff:
@@ -310,12 +310,15 @@ class MobileIngestServer(ThreadingHTTPServer):
         """
         if self._sync_engine is not None:
             return self._sync_engine
+        if self._sync_init_attempted:
+            return None
         with self._sync_init_lock:
             if self._sync_engine is not None:
                 return self._sync_engine
             db_path = self.repo_root / ".planning" / "brain" / "jarvis_memory.db"
             if not db_path.exists():
                 return None
+            self._sync_init_attempted = True
             try:
                 from jarvis_engine.sync.changelog import install_changelog_triggers
                 from jarvis_engine.sync.engine import SyncEngine

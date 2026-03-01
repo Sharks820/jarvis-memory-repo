@@ -26,9 +26,9 @@ PRICING: dict[str, tuple[float, float]] = {
     # Mistral (devstral-2 currently free promo, pricing below for after)
     "devstral-2": (0.40, 2.00),
     "devstral-small-2": (0.10, 0.30),
-    # Z.ai GLM (free tier available)
-    "glm-4.7": (0.60, 2.50),
+    # Z.ai GLM (free tier available) — longer prefix first for startswith() matching
     "glm-4.7-flash": (0.14, 0.14),
+    "glm-4.7": (0.60, 2.50),
 }
 
 
