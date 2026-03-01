@@ -163,6 +163,8 @@ fun DocumentScannerScreen(
                                 ) {
                                     val uri = Uri.fromFile(photoFile)
                                     viewModel.scanDocument(uri)
+                                    // Clean up temp file after scan to prevent cache leak
+                                    photoFile.delete()
                                 }
 
                                 override fun onError(exception: ImageCaptureException) {

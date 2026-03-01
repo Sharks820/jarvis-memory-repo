@@ -43,15 +43,15 @@ def load_snapshot(path: Path) -> OpsSnapshot:
         raw = {}
     return OpsSnapshot(
         date=str(raw.get("date", "")),
-        tasks=list(raw.get("tasks", [])),
-        calendar_events=list(raw.get("calendar_events", [])),
-        emails=list(raw.get("emails", [])),
-        bills=list(raw.get("bills", [])),
-        subscriptions=list(raw.get("subscriptions", [])),
-        medications=list(raw.get("medications", [])),
-        school_items=list(raw.get("school_items", [])),
-        family_items=list(raw.get("family_items", [])),
-        projects=list(raw.get("projects", [])),
+        tasks=list(raw.get("tasks") or []),
+        calendar_events=list(raw.get("calendar_events") or []),
+        emails=list(raw.get("emails") or []),
+        bills=list(raw.get("bills") or []),
+        subscriptions=list(raw.get("subscriptions") or []),
+        medications=list(raw.get("medications") or []),
+        school_items=list(raw.get("school_items") or []),
+        family_items=list(raw.get("family_items") or []),
+        projects=list(raw.get("projects") or []),
     )
 
 
