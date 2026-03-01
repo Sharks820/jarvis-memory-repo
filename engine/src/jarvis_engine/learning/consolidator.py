@@ -143,6 +143,10 @@ class MemoryConsolidator:
                 result.errors.append(f"store failed: {exc}")
                 continue
 
+            if not new_id:
+                # Duplicate content hash -- no new record was created
+                continue
+
             # Tag originals
             try:
                 self._tag_originals(group_records, new_id)
@@ -309,7 +313,9 @@ class MemoryConsolidator:
         if self._embed_service is not None:
             embedding = self._embed_service.embed(summary, prefix="search_document")
 
-        self._engine.insert_record(record, embedding=embedding)
+        inserted = self._engine.insert_record(record, embedding=embedding)
+        if not inserted:
+            return ""  # duplicate -- no new fact created
         return record_id
 
     def _tag_originals(self, records: list[dict], new_record_id: str) -> None:

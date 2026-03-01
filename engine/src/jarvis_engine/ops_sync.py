@@ -14,7 +14,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import build_opener, HTTPSHandler
+from urllib.request import build_opener, HTTPRedirectHandler, HTTPSHandler
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
@@ -151,8 +151,12 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
         # Block symlinks and UNC paths to prevent path traversal
         if str(p).startswith("\\\\") or p.is_symlink():
             return []
-        if p.exists():
-            return _parse_ics(p.read_text(encoding="utf-8", errors="replace"), target_date=target_date)
+        if p.is_file():
+            try:
+                return _parse_ics(p.read_text(encoding="utf-8", errors="replace"), target_date=target_date)
+            except OSError as exc:
+                logger.warning("Failed to read ICS file %s: %s", p, exc)
+                return []
     if ics_url:
         if not allow_remote_url:
             return []
@@ -407,8 +411,8 @@ def _triage_email(sender: str, subject: str) -> str:
     return "normal"
 
 
-class _NoRedirectHandler(HTTPSHandler):
-    """HTTPS handler that raises on any redirect to prevent SSRF via redirect."""
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Redirect handler that raises on any redirect to prevent SSRF via redirect."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         from urllib.error import HTTPError

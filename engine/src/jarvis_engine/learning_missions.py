@@ -105,17 +105,17 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             ts, value = cached
             if now - ts <= _PAGE_CACHE_TTL_SECONDS:
                 return value
-            _page_cache_bytes -= len(value)
+            _page_cache_bytes -= len(value.encode("utf-8"))
             _PAGE_CACHE.pop(key, None)
     value = _fetch_page_text(url, max_bytes=max_bytes)
     with _PAGE_CACHE_LOCK:
         _PAGE_CACHE[key] = (now, value)
-        _page_cache_bytes += len(value)
+        _page_cache_bytes += len(value.encode("utf-8"))
         if len(_PAGE_CACHE) > 1200 or _page_cache_bytes > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:200]
             for stale_key, (_stale_ts, stale_val) in stale:
-                _page_cache_bytes -= len(stale_val)
+                _page_cache_bytes -= len(stale_val.encode("utf-8"))
                 _PAGE_CACHE.pop(stale_key, None)
     return value
 

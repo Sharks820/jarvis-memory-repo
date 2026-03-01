@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.util.Log
@@ -131,9 +132,11 @@ class JarvisCallScreeningService : CallScreeningService() {
 
 /**
  * Check whether the app currently holds the call screening role.
+ * Returns false on API < 29 (Q) where RoleManager is unavailable.
  */
 fun isCallScreeningRoleGranted(context: Context): Boolean {
-    val roleManager = context.getSystemService(RoleManager::class.java)
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+    val roleManager = context.getSystemService(RoleManager::class.java) ?: return false
     return roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
 }
 
@@ -150,7 +153,8 @@ fun registerCallScreeningRoleLauncher(
     activity: ComponentActivity,
     onResult: (Boolean) -> Unit,
 ): ActivityResultLauncher<Intent>? {
-    val roleManager = activity.getSystemService(RoleManager::class.java)
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    val roleManager = activity.getSystemService(RoleManager::class.java) ?: return null
     if (!roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
         return null
     }
@@ -165,7 +169,12 @@ fun registerCallScreeningRoleLauncher(
 /**
  * Create the intent to request the call screening role.
  */
-fun createCallScreeningRoleIntent(context: Context): Intent {
-    val roleManager = context.getSystemService(RoleManager::class.java)
+/**
+ * Create the intent to request the call screening role.
+ * Returns null on API < 29 (Q) where RoleManager is unavailable.
+ */
+fun createCallScreeningRoleIntent(context: Context): Intent? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    val roleManager = context.getSystemService(RoleManager::class.java) ?: return null
     return roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
 }

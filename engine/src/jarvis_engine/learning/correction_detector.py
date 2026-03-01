@@ -191,15 +191,26 @@ class CorrectionDetector:
             )
 
         with self._kg._write_lock:
-            # Read current confidence
+            # Read current confidence and lock state
             row = self._kg._db.execute(
-                "SELECT confidence FROM kg_nodes WHERE node_id = ?",
+                "SELECT confidence, locked FROM kg_nodes WHERE node_id = ?",
                 (node_id,),
             ).fetchone()
             if row is None:
                 return False
 
             existing_confidence = row[0] if isinstance(row[0], float) else float(row[0])
+            is_locked = bool(row[1]) if row[1] is not None else False
+
+            # Respect fact locks -- never modify a locked node
+            if is_locked:
+                logger.warning(
+                    "Correction skipped: node %s is locked (label=%r)",
+                    node_id,
+                    correction.new_claim,
+                )
+                return False
+
             new_confidence = min(max(existing_confidence + 0.1, 0.9), 1.0)
 
             # Update the fact label and confidence
@@ -209,6 +220,21 @@ class CorrectionDetector:
                    WHERE node_id = ?""",
                 (correction.new_claim, new_confidence, node_id),
             )
+
+            # Maintain FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
+            try:
+                self._kg._db.execute(
+                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+                )
+                self._kg._db.execute(
+                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                    (node_id, correction.new_claim),
+                )
+            except Exception as exc:
+                if "no such table" not in str(exc):
+                    raise
+                logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+
             self._kg._db.commit()
             # Invalidate NetworkX cache (bypassed add_fact)
             self._kg._mutation_counter += 1

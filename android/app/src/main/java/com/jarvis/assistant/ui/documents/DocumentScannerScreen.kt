@@ -250,9 +250,12 @@ fun DocumentScannerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        // Save any edits
-                        if (editedTitle != doc.title || editedCategory != doc.category) {
+                        // Save any edits (title and category)
+                        if (editedCategory != doc.category) {
                             viewModel.updateCategory(doc.id, editedCategory)
+                        }
+                        if (editedTitle != doc.title) {
+                            viewModel.updateTitle(doc.id, editedTitle)
                         }
                         viewModel.clearScanResult()
                         onNavigateBack()

@@ -91,7 +91,8 @@ class CommandQueueProcessor @Inject constructor(
             "Command failed."
         }
 
-        commandQueueDao.updateStatus(id, "sent", responseText)
+        val newStatus = if (response.ok) "sent" else "failed"
+        commandQueueDao.updateStatus(id, newStatus, responseText)
 
         // Persist the assistant's reply in conversation history.
         conversationDao.insert(

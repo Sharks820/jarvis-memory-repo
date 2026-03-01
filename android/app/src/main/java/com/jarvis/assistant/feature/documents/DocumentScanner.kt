@@ -78,7 +78,9 @@ class DocumentScanner @Inject constructor(
         val docsDir = File(context.filesDir, "documents").apply { mkdirs() }
         val imageFile = File(docsDir, "$timestamp.jpg")
         val fileSize = withContext(Dispatchers.IO) {
-            context.contentResolver.openInputStream(imageUri)?.use { input ->
+            val inputStream = context.contentResolver.openInputStream(imageUri)
+                ?: throw IllegalStateException("Failed to open input stream for URI: $imageUri")
+            inputStream.use { input ->
                 FileOutputStream(imageFile).use { output ->
                     input.copyTo(output)
                 }

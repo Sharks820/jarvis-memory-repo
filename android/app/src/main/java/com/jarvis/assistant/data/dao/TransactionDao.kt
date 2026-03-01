@@ -40,7 +40,7 @@ interface TransactionDao {
 
     @Query(
         "SELECT merchant, COUNT(*) as count, AVG(amount) as avgAmount " +
-            "FROM transactions WHERE merchant = :merchant",
+            "FROM transactions WHERE merchant = :merchant GROUP BY merchant",
     )
     suspend fun getMerchantStats(merchant: String): MerchantStats?
 
