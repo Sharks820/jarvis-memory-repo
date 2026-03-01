@@ -247,9 +247,17 @@ class GeminiProvider:
 
         client = self._get_client()
         prompt = f"{system_prompt}\n\n{topic}"
+        try:
+            from google.genai import types as genai_types
+            gen_config = genai_types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+            )
+        except (ImportError, AttributeError):
+            gen_config = None
         response = client.models.generate_content(
             model=self.model,
             contents=prompt,
+            **({"config": gen_config} if gen_config else {}),
         )
 
         # response.text can raise ValueError if response has no text parts

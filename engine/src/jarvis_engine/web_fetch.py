@@ -121,6 +121,13 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
     try:
         opener = build_opener(SafeRedirectHandler)
         with opener.open(req, timeout=12) as resp:  # nosec B310
+            raw_ct = resp.headers.get("Content-Type") if resp.headers else None
+            content_type = raw_ct.lower() if isinstance(raw_ct, str) else ""
+            if content_type and not any(
+                t in content_type
+                for t in ("text/", "application/xhtml", "application/xml")
+            ):
+                return ""
             payload = resp.read(max_bytes)
     except (OSError, ValueError):
         return ""

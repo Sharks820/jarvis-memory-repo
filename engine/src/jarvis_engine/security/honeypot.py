@@ -259,24 +259,24 @@ class HoneypotEngine:
             return {"path": path, "total_hits": 0, "unique_ips": 0}
 
         record = _HitRecord(
-            path=path,
+            path=normalised,
             source_ip=source_ip,
             headers=headers or {},
         )
         with self._lock:
-            self._hits[path].append(record)
-            if len(self._hits[path]) > 1000:
-                self._hits[path] = self._hits[path][-500:]
+            self._hits[normalised].append(record)
+            if len(self._hits[normalised]) > 1000:
+                self._hits[normalised] = self._hits[normalised][-500:]
             if len(self._unique_ips) < self._unique_ips_cap:
                 self._unique_ips.add(source_ip)
-            total_path_hits = len(self._hits[path])
-            unique_path_ips = len({h.source_ip for h in self._hits[path]})
+            total_path_hits = len(self._hits[normalised])
+            unique_path_ips = len({h.source_ip for h in self._hits[normalised]})
 
         if self._forensic_logger is not None:
             try:
                 self._forensic_logger.log_event({
                     "event_type": "honeypot_hit",
-                    "path": path,
+                    "path": normalised,
                     "source_ip": source_ip,
                     "headers": headers or {},
                     "timestamp": record.timestamp,
@@ -285,7 +285,7 @@ class HoneypotEngine:
                 logger.debug("Failed to forward hit to forensic logger: %s", exc)
 
         return {
-            "path": path,
+            "path": normalised,
             "total_hits": total_path_hits,
             "unique_ips": unique_path_ips,
         }

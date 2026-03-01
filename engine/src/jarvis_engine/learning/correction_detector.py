@@ -200,7 +200,7 @@ class CorrectionDetector:
                 return False
 
             existing_confidence = row[0] if isinstance(row[0], float) else float(row[0])
-            new_confidence = max(existing_confidence + 0.1, 0.9)
+            new_confidence = min(max(existing_confidence + 0.1, 0.9), 1.0)
 
             # Update the fact label and confidence
             self._kg._db.execute(

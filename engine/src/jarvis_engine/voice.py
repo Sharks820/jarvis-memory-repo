@@ -220,6 +220,11 @@ def _speak_text_edge(
         **_win_hidden_subprocess_kwargs(),
     )
     if proc.returncode != 0:
+        if not output_wav:
+            try:
+                Path(out_path).unlink(missing_ok=True)
+            except OSError:
+                pass
         raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
 
     if not output_wav:
