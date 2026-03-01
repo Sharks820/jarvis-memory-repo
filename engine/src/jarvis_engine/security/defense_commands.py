@@ -81,6 +81,12 @@ class ContainmentOverrideCommand:
     action: str = "recover"
     master_password: str = ""
 
+    def __repr__(self) -> str:
+        return (
+            f"ContainmentOverrideCommand(level={self.level!r}, "
+            f"action={self.action!r}, master_password='***')"
+        )
+
 
 @dataclass(frozen=True)
 class ContainmentOverrideResult:

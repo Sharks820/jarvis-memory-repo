@@ -36,6 +36,7 @@ class BudgetManager:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
         self._write_lock = threading.Lock()
+        self._closed = False
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
@@ -107,6 +108,8 @@ class BudgetManager:
         Checks both USD cost limits and request count limits.
         Uses write lock to serialize with record_spend and prevent TOCTOU races.
         """
+        if self._closed:
+            return False
         with self._write_lock:
             return self._can_spend_locked(provider)
 
@@ -159,6 +162,8 @@ class BudgetManager:
         topic: str = "",
     ) -> None:
         """Record a spend event for a provider."""
+        if self._closed:
+            return
         with self._write_lock:
             self._db.execute(
                 "INSERT INTO harvest_spend (provider, cost_usd, topic) VALUES (?, ?, ?)",
@@ -180,38 +185,42 @@ class BudgetManager:
         Returns:
             Dict with providers list and total spend.
         """
-        if provider:
-            cur = self._db.execute(
-                "SELECT provider, "
-                "COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
-                "COALESCE(SUM(request_count), 0) AS total_requests "
-                "FROM harvest_spend "
-                "WHERE provider = ? AND ts >= datetime('now', ?) "
-                "GROUP BY provider",
-                (provider, f"-{days} days"),
-            )
-        else:
-            cur = self._db.execute(
-                "SELECT provider, "
-                "COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
-                "COALESCE(SUM(request_count), 0) AS total_requests "
-                "FROM harvest_spend "
-                "WHERE ts >= datetime('now', ?) "
-                "GROUP BY provider "
-                "ORDER BY total_cost DESC",
-                (f"-{days} days",),
-            )
+        if self._closed:
+            return {"period_days": days, "providers": [], "total_cost_usd": 0.0}
+        days = max(0, days)
+        with self._write_lock:
+            if provider:
+                cur = self._db.execute(
+                    "SELECT provider, "
+                    "COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
+                    "COALESCE(SUM(request_count), 0) AS total_requests "
+                    "FROM harvest_spend "
+                    "WHERE provider = ? AND ts >= datetime('now', ?) "
+                    "GROUP BY provider",
+                    (provider, f"-{days} days"),
+                )
+            else:
+                cur = self._db.execute(
+                    "SELECT provider, "
+                    "COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
+                    "COALESCE(SUM(request_count), 0) AS total_requests "
+                    "FROM harvest_spend "
+                    "WHERE ts >= datetime('now', ?) "
+                    "GROUP BY provider "
+                    "ORDER BY total_cost DESC",
+                    (f"-{days} days",),
+                )
 
-        providers = []
-        total_cost = 0.0
-        for row in cur.fetchall():
-            row_cost = row["total_cost"] or 0.0
-            providers.append({
-                "provider": row["provider"],
-                "total_cost_usd": row_cost,
-                "total_requests": row["total_requests"] or 0,
-            })
-            total_cost += row_cost
+            providers = []
+            total_cost = 0.0
+            for row in cur.fetchall():
+                row_cost = row["total_cost"] or 0.0
+                providers.append({
+                    "provider": row["provider"],
+                    "total_cost_usd": row_cost,
+                    "total_requests": row["total_requests"] or 0,
+                })
+                total_cost += row_cost
 
         return {
             "period_days": days,
@@ -221,10 +230,12 @@ class BudgetManager:
 
     def close(self) -> None:
         """Close the database connection."""
-        try:
-            self._db.close()
-        except Exception:
-            logger.warning("Failed to close BudgetManager database connection")
+        with self._write_lock:
+            self._closed = True
+            try:
+                self._db.close()
+            except Exception:
+                logger.warning("Failed to close BudgetManager database connection")
 
     def __del__(self) -> None:
         try:

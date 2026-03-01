@@ -280,8 +280,8 @@ class TestCorrectionDetector:
             ("pref.color",),
         ).fetchone()
         assert row["label"] == "Favorite color is green"
-        # max(0.95 + 0.1, 0.9) = 1.05
-        assert row["confidence"] == pytest.approx(1.05)
+        # min(max(0.95 + 0.1, 0.9), 1.0) = 1.0 (clamped)
+        assert row["confidence"] == pytest.approx(1.0)
 
         db.close()
 
