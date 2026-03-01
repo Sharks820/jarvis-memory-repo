@@ -224,14 +224,7 @@ class HoneypotEngine:
         return normalised in _HONEYPOT_SET
 
     def generate_response(self, path: str) -> tuple[int, dict, str]:
-        """Return ``(status_code, headers, body)`` with a plausible fake response.
-
-        Includes a random delay between 0.5 and 2.0 seconds to waste the
-        attacker's time.
-        """
-        delay = random.uniform(0.5, 2.0)
-        time.sleep(delay)
-
+        """Return ``(status_code, headers, body)`` with a plausible fake response."""
         normalised = path.rstrip("/") if path != "/" else path
         entry = _RESPONSE_MAP.get(normalised)
         if entry is None:
@@ -263,6 +256,8 @@ class HoneypotEngine:
         )
         with self._lock:
             self._hits[path].append(record)
+            if len(self._hits[path]) > 1000:
+                self._hits[path] = self._hits[path][-500:]
             self._unique_ips.add(source_ip)
             path_hits = list(self._hits[path])
 

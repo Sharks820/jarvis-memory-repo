@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class AlertChain:
     def __init__(self, forensic_logger: object | None = None) -> None:
         self._forensic_logger = forensic_logger
         self._lock = threading.Lock()
-        self._alerts: list[dict] = []
+        self._alerts: deque[dict] = deque(maxlen=10000)
         # Dedup tracking: (source_ip, level) -> last_alert_timestamp
         self._dedup_cache: dict[tuple[str | None, int], float] = {}
 
@@ -84,6 +85,12 @@ class AlertChain:
                 # Update dedup cache
                 self._dedup_cache[(source_ip, level)] = now
 
+            # Periodic cleanup: evict stale entries when cache grows large
+            if len(self._dedup_cache) > 1000:
+                stale = [k for k, v in self._dedup_cache.items() if now - v > _DEDUP_WINDOW_S]
+                for k in stale:
+                    del self._dedup_cache[k]
+
         if deduped:
             logger.debug(
                 "Alert deduped (level=%d, ip=%s): %s", level, source_ip, summary
@@ -116,7 +123,8 @@ class AlertChain:
     def get_alert_history(self, limit: int = 50) -> list[dict]:
         """Return the most recent *limit* alerts (newest first)."""
         with self._lock:
-            return list(reversed(self._alerts[-limit:]))
+            items = list(self._alerts)
+            return list(reversed(items[-limit:]))
 
     # ------------------------------------------------------------------
     # Dedup logic

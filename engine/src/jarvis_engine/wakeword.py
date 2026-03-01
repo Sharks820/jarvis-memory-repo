@@ -86,6 +86,8 @@ class WakeWordDetector:
             logger.info("Wake word detection started (model=%s, threshold=%.2f)",
                          self._model_name, self._threshold)
 
+            _was_silent = False
+
             while not self._stop_event.is_set():
                 with self._stream_lock:
                     stream = self._stream
@@ -100,7 +102,10 @@ class WakeWordDetector:
                         continue  # Skip this detection cycle
 
                 try:
-                    audio_data, overflowed = stream.read(chunk_size)
+                    try:
+                        audio_data, overflowed = stream.read(chunk_size)
+                    except Exception:
+                        continue  # Stream was closed externally
                 finally:
                     if mic_lock is not None:
                         mic_lock.release()
@@ -114,7 +119,14 @@ class WakeWordDetector:
                 # Energy-based pre-filter: skip ML inference on silence
                 rms = float(np.sqrt(np.mean(audio_int16.astype(np.float32) ** 2)) / 32767.0)
                 if rms < 0.005:
+                    _was_silent = True
                     continue  # Silence, skip ML inference
+
+                # Reset prediction buffer when transitioning from silence to speech
+                # to prevent stale scores from causing false positives
+                if _was_silent:
+                    self._model.reset()
+                    _was_silent = False
 
                 self._model.predict(audio_int16)
 

@@ -157,7 +157,7 @@ class WakeWordStartHandler:
                         approve_privileged=False,
                         speak=True,
                         snapshot_path=_root / ".planning" / "ops_snapshot.live.json",
-                        actions_path=_root / ".planning" / "actions.json",
+                        actions_path=_root / ".planning" / "actions.generated.json",
                         voice_user="conner",
                         voice_auth_wav="",
                         voice_threshold=0.82,

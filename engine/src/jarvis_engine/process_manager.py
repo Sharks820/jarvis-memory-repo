@@ -166,6 +166,10 @@ def _lock_pid_file(service: str, root: Path):
             fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
             if sys.platform == "win32":
                 import msvcrt
+                # Write a sentinel byte so the file is non-empty before locking;
+                # msvcrt.locking on an empty file may not enforce mutual exclusion.
+                os.write(fd, b'\x00')
+                os.lseek(fd, 0, os.SEEK_SET)
                 # Non-blocking would use LK_NBLCK; blocking uses LK_LOCK
                 msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
             else:
@@ -283,7 +287,10 @@ def _graceful_shutdown(pid: int) -> bool:
     """
     try:
         if sys.platform == "win32":
-            os.kill(pid, signal.CTRL_C_EVENT)
+            # CTRL_C_EVENT affects entire console group on Windows,
+            # potentially killing the calling process. Skip graceful
+            # shutdown and fall through to hard kill.
+            return False
         else:
             os.kill(pid, signal.SIGTERM)
     except (OSError, PermissionError):

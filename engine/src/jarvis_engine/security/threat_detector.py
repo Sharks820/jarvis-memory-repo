@@ -348,8 +348,9 @@ class ThreatDetector:
             count = len(log)
 
             # Clean up IPs with no recent activity to prevent unbounded growth
-            if count == 0:
-                del self._request_log[ip]
+            stale = [k for k, v in self._request_log.items() if not v or v[-1] < cutoff]
+            for k in stale:
+                del self._request_log[k]
 
         if count > 60:
             return ThreatSignal(

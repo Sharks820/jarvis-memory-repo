@@ -391,7 +391,10 @@ def compact_changelog(
     if retention_days < 0:
         retention_days = 0
     with write_lock:
-        # First, collect the changelog_ids that are safe to delete
+        # First, collect the changelog_ids that are safe to delete.
+        # Only compact when ALL known sync devices have cursor rows for that
+        # table — otherwise a device that has never synced would be skipped
+        # by MIN(last_version) and lose unsynced entries.
         cur = db.execute(
             "SELECT changelog_id FROM _sync_changelog "
             "WHERE ts < datetime('now', ? || ' days') "
@@ -399,7 +402,10 @@ def compact_changelog(
             "  SELECT COALESCE(MIN(last_version), 0) "
             "  FROM _sync_cursor "
             "  WHERE _sync_cursor.table_name = _sync_changelog.table_name"
-            ")",
+            ") "
+            "AND (SELECT COUNT(DISTINCT device_id) FROM _sync_cursor "
+            "     WHERE _sync_cursor.table_name = _sync_changelog.table_name) >= "
+            "(SELECT COUNT(DISTINCT device_id) FROM _sync_cursor)",
             (str(-retention_days),),
         )
         ids_to_delete = [row[0] for row in cur.fetchall()]

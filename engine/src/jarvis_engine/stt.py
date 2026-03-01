@@ -182,10 +182,10 @@ def transcribe_groq(
                     },
                     files={"file": (filename, audio_bytes, "audio/wav")},
                 )
-                if resp.status_code >= 500:
+                if resp.status_code >= 500 or resp.status_code == 429:
                     logger.warning("Groq API returned %d, attempt %d/2", resp.status_code, attempt + 1)
                     if attempt < 1:
-                        time.sleep(1)
+                        time.sleep(2 if resp.status_code == 429 else 1)
                         continue
                 break
             except (httpx.ConnectError, httpx.ReadTimeout) as exc:
@@ -547,8 +547,13 @@ def transcribe_smart(
         )
 
     elif backend == "local":
-        stt = SpeechToText()
-        result = stt.transcribe_audio(audio, language=language)
+        result = _try_local(audio, language=language)
+        if result is None:
+            logger.error("Local STT backend failed in forced local mode")
+            return TranscriptionResult(
+                text="", language=language or "en",
+                confidence=0.0, duration_seconds=0.0, backend="local-failed",
+            )
         _log_stt_metric(
             root_dir,
             backend=result.backend,

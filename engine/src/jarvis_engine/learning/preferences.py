@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from datetime import datetime
 from jarvis_engine._compat import UTC
 
@@ -29,22 +30,24 @@ class PreferenceTracker:
         },
     }
 
-    def __init__(self, db: sqlite3.Connection) -> None:
+    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock | None = None) -> None:
         self._db = db
+        self._write_lock = write_lock or threading.Lock()
         self._init_schema()
 
     def _init_schema(self) -> None:
-        self._db.execute("""
-            CREATE TABLE IF NOT EXISTS user_preferences (
-                category TEXT NOT NULL,
-                preference TEXT NOT NULL,
-                score REAL NOT NULL DEFAULT 0.0,
-                evidence_count INTEGER NOT NULL DEFAULT 0,
-                last_observed TEXT NOT NULL,
-                PRIMARY KEY (category, preference)
-            )
-        """)
-        self._db.commit()
+        with self._write_lock:
+            self._db.execute("""
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    category TEXT NOT NULL,
+                    preference TEXT NOT NULL,
+                    score REAL NOT NULL DEFAULT 0.0,
+                    evidence_count INTEGER NOT NULL DEFAULT 0,
+                    last_observed TEXT NOT NULL,
+                    PRIMARY KEY (category, preference)
+                )
+            """)
+            self._db.commit()
 
     def observe(self, user_message: str) -> list[tuple[str, str]]:
         """Scan a user message for preference signals.
@@ -64,15 +67,16 @@ class PreferenceTracker:
 
     def _update_preference(self, category: str, preference: str) -> None:
         now = datetime.now(UTC).isoformat()
-        self._db.execute("""
-            INSERT INTO user_preferences (category, preference, score, evidence_count, last_observed)
-            VALUES (?, ?, 1.0, 1, ?)
-            ON CONFLICT(category, preference) DO UPDATE SET
-                score = score + 0.1,
-                evidence_count = evidence_count + 1,
-                last_observed = ?
-        """, (category, preference, now, now))
-        self._db.commit()
+        with self._write_lock:
+            self._db.execute("""
+                INSERT INTO user_preferences (category, preference, score, evidence_count, last_observed)
+                VALUES (?, ?, 1.0, 1, ?)
+                ON CONFLICT(category, preference) DO UPDATE SET
+                    score = score + 0.1,
+                    evidence_count = evidence_count + 1,
+                    last_observed = ?
+            """, (category, preference, now, now))
+            self._db.commit()
 
     def get_preferences(self) -> dict[str, str]:
         """Return the highest-scored preference per category."""

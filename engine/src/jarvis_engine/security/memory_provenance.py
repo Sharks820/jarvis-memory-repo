@@ -96,6 +96,15 @@ class MemoryProvenance:
         }
         with self._lock:
             self._records[record_hash] = prov
+            # Evict oldest entries if capacity exceeded
+            if len(self._records) > 50000:
+                # Sort by ingestion_timestamp, remove oldest
+                sorted_keys = sorted(
+                    self._records,
+                    key=lambda k: self._records[k].get("ingestion_timestamp", ""),
+                )
+                for k in sorted_keys[:10000]:
+                    del self._records[k]
         return prov
 
     # ------------------------------------------------------------------

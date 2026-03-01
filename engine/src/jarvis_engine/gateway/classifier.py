@@ -191,8 +191,15 @@ class IntentClassifier:
             if os.path.exists(cache_path):
                 data = np.load(cache_path)
                 centroids = {k: data[k] for k in data.files}
-                logger.debug("Loaded cached centroids from %s", cache_path)
-                return centroids
+                # Validate cache completeness -- all routes must be present
+                if set(centroids.keys()) == set(self.ROUTES.keys()):
+                    logger.debug("Loaded cached centroids from %s", cache_path)
+                    return centroids
+                else:
+                    logger.warning(
+                        "Centroid cache incomplete (cached=%s, expected=%s), recomputing",
+                        sorted(centroids.keys()), sorted(self.ROUTES.keys()),
+                    )
         except Exception:
             logger.debug("Failed to load centroid cache, recomputing")
 
@@ -237,7 +244,12 @@ class IntentClassifier:
         # Embed the query and find best route by cosine similarity
         import numpy as np
 
-        query_vec = np.array(self._embed.embed_query(query))
+        try:
+            query_vec = np.array(self._embed.embed_query(query))
+        except Exception:
+            logger.warning("Embedding service failed for classify(), falling back to local model")
+            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            return ("simple_private", local_model, 0.0)
 
         best_route = "simple_private"
         best_sim = -1.0
