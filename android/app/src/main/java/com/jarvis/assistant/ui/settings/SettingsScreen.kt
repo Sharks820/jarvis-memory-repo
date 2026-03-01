@@ -292,7 +292,8 @@ fun SettingsScreen(
                                         ) ?: emptyList()
                                         times.size.coerceAtLeast(1)
                                     } catch (_: Exception) { 1 }
-                                    val daysRemaining = med.pillsRemaining / dosesPerDay
+                                    // Ceiling division to include partial days
+                                    val daysRemaining = (med.pillsRemaining + dosesPerDay - 1) / dosesPerDay
 
                                     Text(
                                         "${med.pillsRemaining} pills remaining (~$daysRemaining days)",
