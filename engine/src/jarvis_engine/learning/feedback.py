@@ -38,9 +38,15 @@ class ResponseFeedbackTracker:
         "awesome",
     ]
 
-    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock | None = None) -> None:
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        write_lock: threading.Lock | None = None,
+        db_lock: threading.Lock | None = None,
+    ) -> None:
         self._db = db
         self._write_lock = write_lock or threading.Lock()
+        self._db_lock = db_lock or threading.Lock()
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -98,17 +104,18 @@ class ResponseFeedbackTracker:
 
         Returns dict with positive_count, negative_count, total, satisfaction_rate.
         """
-        cur = self._db.execute(
-            "SELECT feedback, COUNT(*) as cnt FROM "
-            "(SELECT feedback FROM response_feedback "
-            "WHERE route = ? ORDER BY rowid DESC LIMIT ?) "
-            "GROUP BY feedback",
-            (route, last_n),
-        )
-        counts = {"positive": 0, "negative": 0}
-        for row in cur.fetchall():
-            if row[0] in counts:
-                counts[row[0]] = row[1]
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT feedback, COUNT(*) as cnt FROM "
+                "(SELECT feedback FROM response_feedback "
+                "WHERE route = ? ORDER BY rowid DESC LIMIT ?) "
+                "GROUP BY feedback",
+                (route, last_n),
+            )
+            counts = {"positive": 0, "negative": 0}
+            for row in cur.fetchall():
+                if row[0] in counts:
+                    counts[row[0]] = row[1]
         total = counts["positive"] + counts["negative"]
         rate = counts["positive"] / total if total > 0 else 0.0
         return {
@@ -119,9 +126,35 @@ class ResponseFeedbackTracker:
         }
 
     def get_all_route_quality(self) -> dict[str, dict]:
-        """Get quality metrics for all routes."""
-        cur = self._db.execute(
-            "SELECT DISTINCT route FROM response_feedback WHERE route != ''"
-        )
-        routes = [row[0] for row in cur.fetchall()]
-        return {route: self.get_route_quality(route) for route in routes}
+        """Get quality metrics for all routes.
+
+        Uses a single aggregation query instead of N+1 per-route queries.
+        """
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT route, feedback, COUNT(*) as cnt "
+                "FROM response_feedback "
+                "WHERE route != '' "
+                "GROUP BY route, feedback"
+            )
+            rows = cur.fetchall()
+
+        route_counts: dict[str, dict[str, int]] = {}
+        for row in rows:
+            route, feedback, cnt = row[0], row[1], row[2]
+            if route not in route_counts:
+                route_counts[route] = {"positive": 0, "negative": 0}
+            if feedback in route_counts[route]:
+                route_counts[route][feedback] = cnt
+
+        result: dict[str, dict] = {}
+        for route, counts in route_counts.items():
+            total = counts["positive"] + counts["negative"]
+            rate = counts["positive"] / total if total > 0 else 0.0
+            result[route] = {
+                "positive_count": counts["positive"],
+                "negative_count": counts["negative"],
+                "total": total,
+                "satisfaction_rate": rate,
+            }
+        return result

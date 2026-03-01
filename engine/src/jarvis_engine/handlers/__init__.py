@@ -10,8 +10,10 @@ from jarvis_engine.handlers.memory_handlers import (
     MemorySnapshotHandler,
 )
 from jarvis_engine.handlers.voice_handlers import (
+    PersonaComposeHandler,
     VoiceEnrollHandler,
     VoiceListHandler,
+    VoiceListenHandler,
     VoiceRunHandler,
     VoiceSayHandler,
     VoiceVerifyHandler,
@@ -30,6 +32,7 @@ from jarvis_engine.handlers.system_handlers import (
     WeatherHandler,
 )
 from jarvis_engine.handlers.task_handlers import (
+    QueryHandler,
     RouteHandler,
     RunTaskHandler,
     WebResearchHandler,
@@ -70,6 +73,22 @@ from jarvis_engine.handlers.harvest_handlers import (
     HarvestHandler,
     IngestSessionHandler,
 )
+from jarvis_engine.handlers.proactive_handlers import (
+    CostReductionHandler,
+    ProactiveCheckHandler,
+    SelfTestHandler,
+    WakeWordStartHandler,
+)
+from jarvis_engine.handlers.learning_handlers import (
+    CrossBranchQueryHandler,
+    FlagExpiredFactsHandler,
+    LearnInteractionHandler,
+)
+from jarvis_engine.handlers.sync_handlers import (
+    SyncPullHandler,
+    SyncPushHandler,
+    SyncStatusHandler,
+)
 
 __all__ = [
     # Memory
@@ -81,8 +100,10 @@ __all__ = [
     "MemoryMaintenanceHandler",
     "MemorySnapshotHandler",
     # Voice
+    "PersonaComposeHandler",
     "VoiceEnrollHandler",
     "VoiceListHandler",
+    "VoiceListenHandler",
     "VoiceRunHandler",
     "VoiceSayHandler",
     "VoiceVerifyHandler",
@@ -99,6 +120,7 @@ __all__ = [
     "StatusHandler",
     "WeatherHandler",
     # Task
+    "QueryHandler",
     "RouteHandler",
     "RunTaskHandler",
     "WebResearchHandler",
@@ -134,4 +156,17 @@ __all__ = [
     "HarvestBudgetHandler",
     "HarvestHandler",
     "IngestSessionHandler",
+    # Proactive
+    "CostReductionHandler",
+    "ProactiveCheckHandler",
+    "SelfTestHandler",
+    "WakeWordStartHandler",
+    # Learning
+    "CrossBranchQueryHandler",
+    "FlagExpiredFactsHandler",
+    "LearnInteractionHandler",
+    # Sync
+    "SyncPullHandler",
+    "SyncPushHandler",
+    "SyncStatusHandler",
 ]

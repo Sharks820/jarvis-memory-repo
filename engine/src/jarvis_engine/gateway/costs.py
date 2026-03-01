@@ -196,7 +196,14 @@ class CostTracker:
         }
 
     def close(self) -> None:
-        """Close the database connection."""
+        """Close the database connection.
+
+        Safe to call multiple times.  Uses a ``_closed`` flag so that
+        ``__del__`` never deadlocks on an already-held write lock.
+        """
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         try:
             with self._write_lock:
                 self._db.close()

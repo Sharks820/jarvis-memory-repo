@@ -94,6 +94,12 @@ ANTHROPIC_MODEL_ALIASES: dict[str, str] = {
     "claude-haiku": "claude-haiku-4-5-20251001",
 }
 
+# Reverse index: provider_key -> first (preferred) model alias for fallback use.
+# Built once at import time to avoid O(n) scan per provider in _fallback_chain().
+_PROVIDER_DEFAULT_MODEL: dict[str, str] = {}
+for _alias, (_pk, _) in CLOUD_MODEL_MAP.items():
+    _PROVIDER_DEFAULT_MODEL.setdefault(_pk, _alias)
+
 
 @dataclass
 class GatewayResponse:
@@ -159,7 +165,8 @@ class ModelGateway:
                 self._cloud_keys[provider_key] = key
 
         # httpx client for cloud calls (shared, connection pooling)
-        self._http = httpx.Client(timeout=30.0)
+        # 60s timeout matches Anthropic SDK; LLM completions can be slow
+        self._http = httpx.Client(timeout=60.0)
 
         # Log available providers
         available = []
@@ -174,7 +181,14 @@ class ModelGateway:
             logger.info("LLM providers available: %s", ", ".join(available))
 
     def close(self) -> None:
-        """Release httpx connection pool and other resources."""
+        """Release httpx connection pool and other resources.
+
+        Safe to call multiple times -- uses ``_closed`` flag to avoid
+        double-close errors on httpx and Anthropic clients.
+        """
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         try:
             self._http.close()
         except Exception:
@@ -340,8 +354,8 @@ class ModelGateway:
             })
         except ImportError:
             pass
-        except Exception:
-            pass  # Never break the gateway
+        except Exception as exc:
+            logger.debug("Activity feed logging failed: %s", exc)
 
         return response
 
@@ -447,7 +461,7 @@ class ModelGateway:
         # Extract text from first TextBlock (content may contain tool_use blocks)
         text = ""
         for block in resp.content:
-            if hasattr(block, "text"):
+            if hasattr(block, "text") and block.text:
                 text = block.text
                 break
         input_tokens = resp.usage.input_tokens
@@ -499,12 +513,12 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason=f"Ollama error: {type(exc).__name__}",
             )
-        text = resp.message.content if resp.message else ""
+        text = (resp.message.content if resp.message else "") or ""
         input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
         output_tokens = getattr(resp, "eval_count", 0) or 0
 
         return GatewayResponse(
-            text=text or "",
+            text=text,
             model=model,
             provider="ollama",
             input_tokens=input_tokens,
@@ -533,17 +547,17 @@ class ModelGateway:
         for pk in priority:
             if pk == skip_provider or pk not in self._cloud_keys:
                 continue
-            # Find a default model for this provider
-            for model_alias, (provider_key, _) in CLOUD_MODEL_MAP.items():
-                if provider_key == pk:
-                    try:
-                        resp = self._call_openai_compat(messages, model_alias, max_tokens, pk)
-                        resp.fallback_used = True
-                        resp.fallback_reason = reason
-                        return resp
-                    except Exception as exc:
-                        logger.warning("Fallback to %s also failed: %s", pk, exc)
-                    break
+            # Look up the preferred model for this provider (O(1) lookup)
+            model_alias = _PROVIDER_DEFAULT_MODEL.get(pk)
+            if model_alias is None:
+                continue
+            try:
+                resp = self._call_openai_compat(messages, model_alias, max_tokens, pk)
+                resp.fallback_used = True
+                resp.fallback_reason = reason
+                return resp
+            except Exception as exc:
+                logger.warning("Fallback to %s also failed: %s", pk, exc)
 
         # All cloud providers failed
         if skip_ollama:

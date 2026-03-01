@@ -87,10 +87,8 @@ class GatewayAudit:
             return
         rotated = self._path.with_suffix(self._path.suffix + ".1")
         try:
-            # Replace any existing rotated file
-            if rotated.exists():
-                rotated.unlink()
-            self._path.rename(rotated)
+            # Atomic replace — avoids TOCTOU race of exists()+unlink()+rename()
+            self._path.replace(rotated)
             logger.info("Rotated audit log %s -> %s (%d bytes)", self._path, rotated, size)
         except OSError as exc:
             logger.warning("Failed to rotate audit log: %s", exc)
@@ -130,7 +128,9 @@ class GatewayAudit:
 
     def summary(self, hours: int = 24) -> dict:
         """Summarize routing decisions over the last *hours* hours."""
-        records = self.recent(500)
+        # Scale read size with time window — ~20 calls/hr baseline, 2x headroom
+        read_limit = max(500, hours * 40)
+        records = self.recent(read_limit)
         cutoff = datetime.now(UTC).timestamp() - (hours * 3600)
         recent: list[dict] = []
         for r in records:

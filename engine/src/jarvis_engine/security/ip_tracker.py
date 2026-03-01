@@ -85,15 +85,16 @@ class IPTracker:
 
             if row is None:
                 types = [attack_type]
+                total = 1
+                score = min(total * 1.0, 100.0)
                 self._db.execute(
                     """
                     INSERT INTO threat_ips
                         (ip, first_seen, last_seen, total_attempts, attack_types, threat_score)
-                    VALUES (?, ?, ?, 1, ?, 1.0)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (ip, now_str, now_str, json.dumps(types)),
+                    (ip, now_str, now_str, total, json.dumps(types), score),
                 )
-                total = 1
             else:
                 total = row[0] + 1
                 try:

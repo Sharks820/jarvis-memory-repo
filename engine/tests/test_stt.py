@@ -1387,8 +1387,10 @@ def test_groq_confidence_high_no_speech_penalty() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    # Code uses 1.0 + avg_logprob; no_speech_prob is not factored in
-    expected = round(min(1.0, max(0.0, 1.0 + (-0.1))), 4)  # = 0.9
+    # Confidence = (1.0 + avg_logprob) * (1.0 - no_speech_prob) when no_speech_prob > 0.5
+    # = 0.9 * (1.0 - 0.9) = 0.9 * 0.1 = 0.09
+    base_conf = min(1.0, max(0.0, 1.0 + (-0.1)))  # = 0.9
+    expected = round(base_conf * (1.0 - 0.9), 4)    # = 0.09
     assert result.confidence == expected
 
 

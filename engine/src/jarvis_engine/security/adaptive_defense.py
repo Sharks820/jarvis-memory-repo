@@ -68,6 +68,8 @@ class AdaptiveDefenseEngine:
         self._total_attacks = 0
         self._total_blocked = 0
         self._unique_ips: set[str] = set()
+        self._unique_ips_cap: int = 10000  # cap to prevent unbounded growth
+        self._category_counts_cap: int = 1000  # max distinct categories tracked
 
     # ------------------------------------------------------------------
     # Record a detection event
@@ -105,9 +107,10 @@ class AdaptiveDefenseEngine:
             self._total_attacks += 1
             if blocked:
                 self._total_blocked += 1
-            if source_ip:
+            if source_ip and len(self._unique_ips) < self._unique_ips_cap:
                 self._unique_ips.add(source_ip)
-            self._category_counts[category] += 1
+            if len(self._category_counts) < self._category_counts_cap or category in self._category_counts:
+                self._category_counts[category] += 1
 
     # ------------------------------------------------------------------
     # Auto-rule generation
@@ -130,12 +133,13 @@ class AdaptiveDefenseEngine:
             if category in self._ruled_categories:
                 return None
 
-            # Gather payload hashes that triggered this category
-            triggered_by = [
-                e["payload_hash"]
-                for e in self._events
-                if e["category"] == category
-            ]
+            # Gather payload hashes that triggered this category (limit scan to last 500 events)
+            triggered_by: list[str] = []
+            for e in reversed(self._events):
+                if e["category"] == category:
+                    triggered_by.append(e["payload_hash"])
+                    if len(triggered_by) >= 50:
+                        break
 
             rule: dict[str, Any] = {
                 "pattern": f"auto_rule_{category}",

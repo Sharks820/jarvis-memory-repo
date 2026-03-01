@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -176,7 +176,7 @@ def _fake_debug() -> str:
 
 
 # Map path -> (status_code, content_type, body_generator)
-_RESPONSE_MAP: dict[str, tuple[int, str, object]] = {
+_RESPONSE_MAP: dict[str, tuple[int, str, Callable[[], str]]] = {
     "/admin": (200, "text/html", _fake_admin_panel),
     "/wp-admin": (200, "text/html", _fake_admin_panel),
     "/wp-login.php": (200, "text/html", _fake_login_page),
@@ -213,6 +213,7 @@ class HoneypotEngine:
         self._lock = threading.Lock()
         self._hits: dict[str, list[_HitRecord]] = defaultdict(list)
         self._unique_ips: set[str] = set()
+        self._unique_ips_cap: int = 10000  # cap to prevent unbounded growth
 
     # ------------------------------------------------------------------
     # Public API
@@ -258,8 +259,10 @@ class HoneypotEngine:
             self._hits[path].append(record)
             if len(self._hits[path]) > 1000:
                 self._hits[path] = self._hits[path][-500:]
-            self._unique_ips.add(source_ip)
-            path_hits = list(self._hits[path])
+            if len(self._unique_ips) < self._unique_ips_cap:
+                self._unique_ips.add(source_ip)
+            total_path_hits = len(self._hits[path])
+            unique_path_ips = len({h.source_ip for h in self._hits[path]})
 
         if self._forensic_logger is not None:
             try:
@@ -270,13 +273,13 @@ class HoneypotEngine:
                     "headers": headers or {},
                     "timestamp": record.timestamp,
                 })
-            except Exception:
-                logger.debug("Failed to forward hit to forensic logger", exc_info=True)
+            except Exception as exc:
+                logger.debug("Failed to forward hit to forensic logger: %s", exc)
 
         return {
             "path": path,
-            "total_hits": len(path_hits),
-            "unique_ips": len({h.source_ip for h in path_hits}),
+            "total_hits": total_path_hits,
+            "unique_ips": unique_path_ips,
         }
 
     def get_honeypot_stats(self) -> dict:

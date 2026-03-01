@@ -15,6 +15,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from urllib.parse import unquote as _url_unquote
 
 logger = logging.getLogger(__name__)
 
@@ -242,8 +243,7 @@ def _detect_encoded_payloads(text: str) -> list[str]:
     for match in re.finditer(r"((%[0-9a-fA-F]{2}){4,})", text):
         segment = match.group(1)
         try:
-            from urllib.parse import unquote
-            decoded = unquote(segment)
+            decoded = _url_unquote(segment)
             if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override")):
                 findings.append(f"url_decoded_injection:{segment[:30]}...")
         except Exception as exc:

@@ -59,8 +59,8 @@ class ForensicLogger:
                     f.write(line + "\n")
                 # Only advance hash chain after successful write
                 self._prev_hash = current_hash
-            except OSError:
-                logger.warning("Failed to write forensic log entry to %s", self._path)
+            except OSError as exc:
+                logger.warning("Failed to write forensic log entry to %s: %s", self._path, exc)
 
     @staticmethod
     def verify_chain(path: Path) -> tuple[bool, int]:
@@ -161,7 +161,7 @@ class ForensicLogger:
                                 sev = entry.get("severity", "unknown")
                                 severities[sev] = severities.get(sev, 0) + 1
                 except OSError:
-                    logger.warning("Failed to read forensic log for export")
+                    logger.warning("Failed to read forensic log for export", exc_info=True)
 
         summary_lines = [
             "Forensic Log Export Summary",

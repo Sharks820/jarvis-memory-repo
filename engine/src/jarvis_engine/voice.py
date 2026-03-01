@@ -332,13 +332,13 @@ def _speak_text_edge_streamed(
     finally:
         # Always join the producer thread to prevent thread leaks
         worker.join(timeout=10)
-    # Clean up streamed chunk files and temp directory
-    try:
-        for f in out_dir.glob("chunk_*.mp3"):
-            f.unlink(missing_ok=True)
-        out_dir.rmdir()
-    except OSError:
-        pass
+        # Clean up streamed chunk files and temp directory
+        try:
+            for f in out_dir.glob("chunk_*.mp3"):
+                f.unlink(missing_ok=True)
+            out_dir.rmdir()
+        except OSError:
+            pass
     if err:
         raise RuntimeError(str(err[0]))
 

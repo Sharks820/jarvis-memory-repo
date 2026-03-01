@@ -130,6 +130,8 @@ _EXACT_HALLUCINATION_PHRASES: set[str] = {
 _SUBSTRING_HALLUCINATION_PHRASES: set[str] = {
     "thanks for watching",
     "thank you for watching",
+    "thank you for listening",
+    "thanks for listening",
     "please subscribe",
     "subscribe and like",
     "like and subscribe",
@@ -138,6 +140,7 @@ _SUBSTRING_HALLUCINATION_PHRASES: set[str] = {
     "leave a comment",
     "subtitles by",
     "copyright",
+    "cc by",
 }
 
 # Foreign-language artifacts that Whisper hallucinates from corrupted audio
@@ -267,6 +270,8 @@ def remove_fillers(text: str) -> str:
     result = _MULTI_WORD_FILLERS.sub("", result)
     # Clean up orphaned punctuation left by filler removal
     result = re.sub(r",\s*,", ",", result)        # doubled commas
+    result = re.sub(r"\.\s*,", ".", result)        # period-comma from removed filler
+    result = re.sub(r",\s*\.", ".", result)        # comma-period from removed filler
     result = re.sub(r"^\s*[,;]\s*", "", result)    # leading comma/semicolon
     # Normalize whitespace
     result = re.sub(r"\s{2,}", " ", result).strip()
@@ -290,16 +295,26 @@ Rules:
 {vocab_section}"""
 
 
+_personal_vocab_cache: list[str] | None = None
+
+
 def _load_personal_vocab() -> list[str]:
-    """Load personal vocabulary from data file."""
+    """Load personal vocabulary from data file (cached after first load)."""
+    global _personal_vocab_cache
+    if _personal_vocab_cache is not None:
+        return _personal_vocab_cache
+
     vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
     if not vocab_path.exists():
-        return []
+        _personal_vocab_cache = []
+        return _personal_vocab_cache
     try:
         lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
-        return [line.strip() for line in lines if line.strip()]
+        _personal_vocab_cache = [line.strip() for line in lines if line.strip()]
+        return _personal_vocab_cache
     except OSError:
-        return []
+        _personal_vocab_cache = []
+        return _personal_vocab_cache
 
 
 def correct_with_llm(
@@ -374,13 +389,18 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
         except Exception:
             pass
 
+    _PUNCT = ".,!?;:'\""
     words = text.split()
     corrected_words = []
     for word in words:
         # Strip punctuation for matching
-        stripped = word.strip(".,!?;:'\"")
-        prefix = word[: len(word) - len(word.lstrip(".,!?;:'\""))]
-        suffix = word[len(stripped) + len(prefix) :]
+        stripped = word.strip(_PUNCT)
+        if not stripped:
+            # Word is entirely punctuation — keep as-is
+            corrected_words.append(word)
+            continue
+        prefix = word[: word.index(stripped[0])]
+        suffix = word[word.rindex(stripped[-1]) + 1 :]
 
         # Exact match
         if stripped.lower() in exact_map:

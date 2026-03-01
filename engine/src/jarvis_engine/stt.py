@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import math
 import os
 import struct
 import threading
@@ -211,19 +212,21 @@ def transcribe_groq(
     text = data.get("text", "").strip()
     detected_lang = data.get("language", language)
 
-    # Compute real confidence from segment-level avg_logprob
+    # Compute real confidence from segment-level avg_logprob and no_speech_prob
     raw_segments = data.get("segments", [])
     parsed_segments: list[dict] | None = None
     if raw_segments and isinstance(raw_segments, list):
-        import math
-
-        logprobs = []
+        logprobs: list[float] = []
+        no_speech_probs: list[float] = []
         parsed_segments = []
         for seg in raw_segments:
             if isinstance(seg, dict):
                 alp = seg.get("avg_logprob")
                 if isinstance(alp, (int, float)) and math.isfinite(alp):
                     logprobs.append(alp)
+                nsp = seg.get("no_speech_prob")
+                if isinstance(nsp, (int, float)) and math.isfinite(nsp):
+                    no_speech_probs.append(nsp)
                 # Extract timing for segment-level timestamps
                 seg_start = seg.get("start")
                 seg_end = seg.get("end")
@@ -237,7 +240,13 @@ def transcribe_groq(
 
         if logprobs:
             avg_logprob = sum(logprobs) / len(logprobs)
-            confidence = round(min(1.0, max(0.0, 1.0 + avg_logprob)), 4)
+            confidence = min(1.0, max(0.0, 1.0 + avg_logprob))
+            # Penalize confidence when Whisper thinks segments are noise
+            if no_speech_probs:
+                avg_no_speech = sum(no_speech_probs) / len(no_speech_probs)
+                if avg_no_speech > 0.5:
+                    confidence *= (1.0 - avg_no_speech)
+            confidence = round(confidence, 4)
         else:
             confidence = 0.90  # fallback if segments lack logprobs
     else:
@@ -567,7 +576,7 @@ def transcribe_smart(
 
     else:
         # Auto mode: try Groq first, fall back to local
-        result: TranscriptionResult | None = None
+        result = None
         if os.environ.get("GROQ_API_KEY", ""):
             result = _try_groq(audio, language=language, prompt=prompt)
             if result is not None:

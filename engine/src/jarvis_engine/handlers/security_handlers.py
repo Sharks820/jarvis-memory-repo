@@ -230,19 +230,26 @@ class PersonaConfigHandler:
     def handle(self, cmd: PersonaConfigCommand) -> PersonaConfigResult:
         from jarvis_engine.persona import load_persona_config, save_persona_config
 
+        # Reject conflicting flags
+        if cmd.enable and cmd.disable:
+            return PersonaConfigResult(config={"error": "Cannot enable and disable persona simultaneously."})
+
         enabled_opt: bool | None = None
         if cmd.enable:
             enabled_opt = True
-        if cmd.disable:
+        elif cmd.disable:
             enabled_opt = False
 
-        if enabled_opt is not None or cmd.humor_level is not None or cmd.mode.strip() or cmd.style.strip():
+        mode_val = cmd.mode.strip() or None
+        style_val = cmd.style.strip() or None
+
+        if enabled_opt is not None or cmd.humor_level is not None or mode_val or style_val:
             cfg = save_persona_config(
                 self._root,
                 enabled=enabled_opt,
                 humor_level=cmd.humor_level,
-                mode=cmd.mode.strip() if cmd.mode.strip() else None,
-                style=cmd.style.strip() if cmd.style.strip() else None,
+                mode=mode_val,
+                style=style_val,
             )
         else:
             cfg = load_persona_config(self._root)

@@ -142,8 +142,9 @@ class KnowledgeGraph:
         Uses generation-based caching: returns cached graph if no mutations
         have occurred since last build.  Invalidated by add_fact/add_edge/
         update_node via _mutation_counter.
-        Thread-safe: acquires _write_lock to block concurrent writers,
-        ensuring a consistent snapshot of both nodes and edges.
+        Thread-safe: acquires _db_lock for read-only snapshot.  Writers
+        hold _write_lock which does not block readers here, avoiding
+        unnecessary serialization of graph builds behind writes.
         """
         if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
             return self._cached_graph.copy()
@@ -152,7 +153,7 @@ class KnowledgeGraph:
 
         G = nx.DiGraph()
 
-        with self._write_lock:
+        with self._db_lock:
             # Load nodes
             cur = self._db.execute(
                 "SELECT node_id, label, node_type, confidence, locked FROM kg_nodes"

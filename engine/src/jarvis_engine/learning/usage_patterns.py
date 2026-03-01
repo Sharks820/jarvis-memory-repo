@@ -15,9 +15,15 @@ logger = logging.getLogger(__name__)
 class UsagePatternTracker:
     """Learn when the user asks certain types of questions by time of day/week."""
 
-    def __init__(self, db: sqlite3.Connection, write_lock: threading.Lock | None = None) -> None:
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        write_lock: threading.Lock | None = None,
+        db_lock: threading.Lock | None = None,
+    ) -> None:
         self._db = db
         self._write_lock = write_lock or threading.Lock()
+        self._db_lock = db_lock or threading.Lock()
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -63,12 +69,13 @@ class UsagePatternTracker:
             common_topics: list of most common topics at this time
             interaction_count: total interactions at this time slot
         """
-        cur = self._db.execute(
-            "SELECT route, topic FROM usage_patterns "
-            "WHERE hour = ? AND day_of_week = ?",
-            (hour, day_of_week),
-        )
-        rows = cur.fetchall()
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT route, topic FROM usage_patterns "
+                "WHERE hour = ? AND day_of_week = ?",
+                (hour, day_of_week),
+            )
+            rows = cur.fetchall()
 
         if not rows:
             return {
@@ -96,16 +103,18 @@ class UsagePatternTracker:
 
     def get_hourly_distribution(self) -> dict[int, int]:
         """Get interaction counts per hour across all days."""
-        cur = self._db.execute(
-            "SELECT hour, COUNT(*) as cnt FROM usage_patterns GROUP BY hour ORDER BY hour"
-        )
-        return {row[0]: row[1] for row in cur.fetchall()}
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT hour, COUNT(*) as cnt FROM usage_patterns GROUP BY hour ORDER BY hour"
+            )
+            return {row[0]: row[1] for row in cur.fetchall()}
 
     def get_peak_hours(self, top_n: int = 3) -> list[int]:
         """Return the top N hours with most interactions."""
-        cur = self._db.execute(
-            "SELECT hour, COUNT(*) as cnt FROM usage_patterns "
-            "GROUP BY hour ORDER BY cnt DESC LIMIT ?",
-            (top_n,),
-        )
-        return [row[0] for row in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT hour, COUNT(*) as cnt FROM usage_patterns "
+                "GROUP BY hour ORDER BY cnt DESC LIMIT ?",
+                (top_n,),
+            )
+            return [row[0] for row in cur.fetchall()]

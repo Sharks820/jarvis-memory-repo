@@ -92,12 +92,12 @@ class SessionManager:
             # Purge expired sessions first
             self._purge_expired()
 
-            # Evict oldest if at capacity
+            # Evict oldest sessions if at capacity
             while len(self._sessions) >= self._max_sessions:
                 oldest_id = min(
                     self._sessions, key=lambda k: self._sessions[k].created_at
                 )
-                logger.info("Evicting oldest session %s to make room", oldest_id)
+                logger.info("Evicting oldest session %s to make room", oldest_id[:8])
                 del self._sessions[oldest_id]
 
             now = time.time()
