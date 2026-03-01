@@ -235,6 +235,12 @@ def _speak_text_edge(
                 Path(out_path).unlink(missing_ok=True)
             except OSError:
                 pass
+        # Temp file was deleted after playback -- don't return the stale path
+        return VoiceSpeakResult(
+            voice_name=voice,
+            output_wav="",
+            message="Edge neural voice output completed.",
+        )
 
     return VoiceSpeakResult(
         voice_name=voice,

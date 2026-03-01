@@ -14,6 +14,7 @@ from typing import Any
 
 from jarvis_engine.sync.changelog import (
     _TRACKED_TABLES,
+    _safe_json_loads,
     compute_diff,
     get_sync_cursor,
 )
@@ -194,9 +195,9 @@ class SyncEngine:
             "table_name": row[1],
             "row_id": row[2],
             "operation": row[3],
-            "fields_changed": json.loads(row[4]) if row[4] else [],
-            "old_values": json.loads(row[5]) if row[5] else {},
-            "new_values": json.loads(row[6]) if row[6] else {},
+            "fields_changed": _safe_json_loads(row[4], []),
+            "old_values": _safe_json_loads(row[5], {}),
+            "new_values": _safe_json_loads(row[6], {}),
             "device_id": row[7],
             "ts": row[8],
             "__version": row[9],

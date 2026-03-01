@@ -7,6 +7,7 @@ import hmac
 import io
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -37,7 +38,7 @@ ALLOWED_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 REPLAY_WINDOW_SECONDS = 120.0
 MAX_NONCES = 100_000
-MAX_AUTH_BODY_SIZE = 1_048_576  # 1 MB
+MAX_AUTH_BODY_SIZE = 2_000_000  # 2 MB (matches sync/push max_content_length)
 
 # Lock for serializing repo_root monkeypatch in multi-threaded HTTP server
 _repo_root_lock = threading.Lock()
@@ -965,6 +966,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         try:
             ts = float(ts_raw)
         except ValueError:
+            self._unauthorized("Invalid timestamp.")
+            return False
+        if not math.isfinite(ts):
             self._unauthorized("Invalid timestamp.")
             return False
         now = time.time()

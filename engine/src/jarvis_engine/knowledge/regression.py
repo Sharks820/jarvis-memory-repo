@@ -141,10 +141,28 @@ class RegressionChecker:
                 # Acquire _db_lock too so no readers are mid-query when we
                 # close the old connection (mirrors MemoryEngine.close()).
                 with self._kg.db_lock:
-                    # Close the live connection before overwriting the file
-                    self._kg._engine._db.close()
+                    # Copy backup to a temp location first (before closing DB)
+                    # so if the copy fails, the live DB is untouched.
+                    import sqlite3
+                    tmp_dst = dst_path.with_suffix(".db-restore-tmp")
+                    try:
+                        shutil.copy2(str(backup_path), str(tmp_dst))
+                    except Exception:
+                        # Copy failed -- live DB is still open and valid
+                        try:
+                            tmp_dst.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        raise
 
-                    # Delete stale WAL/SHM files before copying backup back.
+                    # Copy succeeded -- now close the live connection and swap
+                    old_db = self._kg._engine._db
+                    try:
+                        old_db.close()
+                    except Exception:
+                        pass
+
+                    # Delete stale WAL/SHM files before swapping in the backup.
                     # These belong to the old connection and would corrupt the
                     # restored database if left in place.
                     wal_path = dst_path.with_suffix(".db-wal")
@@ -154,9 +172,26 @@ class RegressionChecker:
                     if shm_path.exists():
                         shm_path.unlink()
 
-                    shutil.copy2(str(backup_path), str(dst_path))
-                    # Reopen the DB connection
-                    import sqlite3
+                    # Swap temp copy into the live path
+                    try:
+                        shutil.move(str(tmp_dst), str(dst_path))
+                    except Exception:
+                        # Swap failed -- reopen the original DB to avoid
+                        # leaving the KG with a closed connection
+                        try:
+                            tmp_dst.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        reopen_db = sqlite3.connect(
+                            str(dst_path), check_same_thread=False,
+                        )
+                        reopen_db.row_factory = sqlite3.Row
+                        self._kg._engine._db = reopen_db
+                        self._kg._db = reopen_db
+                        self._kg._lock_manager._db = reopen_db
+                        raise
+
+                    # Reopen the DB connection on the restored file
                     new_db = sqlite3.connect(
                         str(dst_path), check_same_thread=False,
                     )

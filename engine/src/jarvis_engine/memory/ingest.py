@@ -159,7 +159,7 @@ class EnrichedIngestPipeline:
                         if llm_extractor:
                             llm_facts = llm_extractor.extract_facts(chunk, branch=branch)
                             for fact in llm_facts:
-                                node_id = f"llm:{fact.entity}.{fact.relationship}.{fact.value}"[:64]
+                                node_id = f"llm:{hashlib.sha256(f'{fact.entity}.{fact.relationship}.{fact.value}'.encode()).hexdigest()[:16]}"
                                 self._kg.add_fact(
                                     node_id=node_id,
                                     label=f"{fact.entity}: {fact.value}",

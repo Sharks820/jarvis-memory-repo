@@ -139,9 +139,10 @@ def _clean_json_sql(expr: str) -> str:
 
     The CASE-based JSON building produces strings like ``[,,"x",,,"y",]``.
     This wraps with nested REPLACE calls to collapse multiple commas and
-    remove leading/trailing commas adjacent to brackets/braces.
+    remove leading/trailing commas adjacent to brackets.
 
-    REPLACE is not recursive so we need multiple shrink passes.
+    Safe for field-name arrays because values are hardcoded column names
+    (never user data).  REPLACE is not recursive so we need multiple passes.
     """
     return (
         "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
@@ -157,18 +158,79 @@ def _clean_json_sql(expr: str) -> str:
 
 
 def _clean_json_obj_sql(expr: str) -> str:
-    """Like _clean_json_sql but for ``{...}`` object expressions."""
+    """Minimal SQL cleanup for ``{...}`` object expressions.
+
+    Only strips leading/trailing commas adjacent to braces.  Multi-comma
+    collapsing is deferred to Python-side ``_safe_json_loads`` to avoid
+    corrupting legitimate field values that may contain ``,,``.
+    """
     return (
-        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+        "REPLACE(REPLACE("
         + expr
-        + ", ',,,,,,,,', ',')"
-        + ", ',,,,', ',')"
-        + ", ',,', ',')"
-        + ", ',,', ',')"
-        + ", ',,', ',')"
         + ", '{,', '{')"
         + ", ',}', '}')"
     )
+
+
+def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
+    """Parse JSON string, cleaning up CASE-expression comma artifacts first.
+
+    Instead of using SQL REPLACE to collapse multiple commas (which can
+    corrupt legitimate values containing ``,,``), we parse and rebuild
+    in Python where we can distinguish structural separators from values.
+    """
+    if not raw:
+        return fallback
+    # First try a direct parse -- fast path for well-formed JSON
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # Slow path: clean comma artifacts from CASE-expression output.
+    # These appear as sequences of commas between/around array or object
+    # elements, e.g. ``[,,"x",,,"y",]`` or ``{,,"k":1,,}``
+    # We collapse runs of commas that are NOT inside quoted strings.
+    cleaned_parts: list[str] = []
+    in_string = False
+    escape = False
+    i = 0
+    while i < len(raw):
+        ch = raw[i]
+        if escape:
+            cleaned_parts.append(ch)
+            escape = False
+            i += 1
+            continue
+        if ch == '\\' and in_string:
+            cleaned_parts.append(ch)
+            escape = True
+            i += 1
+            continue
+        if ch == '"':
+            in_string = not in_string
+            cleaned_parts.append(ch)
+            i += 1
+            continue
+        if ch == ',' and not in_string:
+            # Skip consecutive commas outside strings
+            j = i + 1
+            while j < len(raw) and raw[j] == ',':
+                j += 1
+            cleaned_parts.append(',')
+            i = j
+            continue
+        cleaned_parts.append(ch)
+        i += 1
+    cleaned = "".join(cleaned_parts)
+    # Remove commas adjacent to brackets/braces (outside strings)
+    cleaned = re.sub(r'\[,', '[', cleaned)
+    cleaned = re.sub(r',\]', ']', cleaned)
+    cleaned = re.sub(r'\{,', '{', cleaned)
+    cleaned = re.sub(r',\}', '}', cleaned)
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        return fallback
 
 
 def _build_update_trigger(
@@ -336,9 +398,9 @@ def compute_diff(
             "table_name": row[1],
             "row_id": row[2],
             "operation": row[3],
-            "fields_changed": json.loads(row[4]) if row[4] else [],
-            "old_values": json.loads(row[5]) if row[5] else {},
-            "new_values": json.loads(row[6]) if row[6] else {},
+            "fields_changed": _safe_json_loads(row[4], []),
+            "old_values": _safe_json_loads(row[5], {}),
+            "new_values": _safe_json_loads(row[6], {}),
             "device_id": row[7],
             "ts": row[8],
             "__version": row[9],

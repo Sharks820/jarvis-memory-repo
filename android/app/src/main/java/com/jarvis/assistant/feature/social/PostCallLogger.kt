@@ -104,11 +104,15 @@ class PostCallLogger @Inject constructor(
         )
 
         // Post notification with inline reply
-        val durationMin = durationSeconds / 60
+        val durationDisplay = if (durationSeconds < 60) {
+            "${durationSeconds}s"
+        } else {
+            "${durationSeconds / 60} min"
+        }
         postPromptNotification(
             contactForLog,
             normalizedNumber,
-            durationMin,
+            durationDisplay,
             direction,
             callLogId,
         )
@@ -117,7 +121,7 @@ class PostCallLogger @Inject constructor(
     private fun postPromptNotification(
         contact: ContactContextEntity,
         normalizedNumber: String,
-        durationMin: Int,
+        durationDisplay: String,
         direction: String,
         callLogId: Long,
     ) {
@@ -171,7 +175,7 @@ class PostCallLogger @Inject constructor(
         )
             .setContentTitle("Log your call with ${contact.contactName}")
             .setContentText(
-                "You just had a $durationMin min $direction call. " +
+                "You just had a $durationDisplay $direction call. " +
                     "Tap to add notes about what you discussed.",
             )
             .setSmallIcon(R.drawable.ic_launcher_foreground)

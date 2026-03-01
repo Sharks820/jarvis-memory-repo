@@ -68,11 +68,12 @@ class CallStateReceiver : BroadcastReceiver() {
                     wasIncoming = true
                     Log.i(TAG, "RINGING: ***${currentNumber.takeLast(4)}")
 
-                    if (currentNumber.isNotBlank()) {
+                    val capturedNumberRinging = currentNumber
+                    if (capturedNumberRinging.isNotBlank()) {
                         asyncHandled = true
                         scope.launch {
                             try {
-                                preCallCardManager.showPreCallCard(currentNumber)
+                                preCallCardManager.showPreCallCard(capturedNumberRinging)
                             } catch (e: Exception) {
                                 Log.w(TAG, "Pre-call card error: ${e.message}")
                             } finally {
@@ -93,11 +94,12 @@ class CallStateReceiver : BroadcastReceiver() {
                             currentNumber = incomingNumber
                         }
 
-                        if (currentNumber.isNotBlank()) {
+                        val capturedNumberOffhook = currentNumber
+                        if (capturedNumberOffhook.isNotBlank()) {
                             asyncHandled = true
                             scope.launch {
                                 try {
-                                    preCallCardManager.showPreCallCard(currentNumber)
+                                    preCallCardManager.showPreCallCard(capturedNumberOffhook)
                                 } catch (e: Exception) {
                                     Log.w(TAG, "Pre-call card error: ${e.message}")
                                 } finally {
