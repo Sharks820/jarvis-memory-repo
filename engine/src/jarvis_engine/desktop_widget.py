@@ -762,6 +762,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._thinking_dots: int = 3
         self._thinking_start_time: float = 0.0  # When thinking started (time.time())
         self._processing_timeout_id: str | None = None  # Safety timeout for stuck processing
+        self._cancel_event = threading.Event()  # Set to cancel current command
         self._welcome_shown: bool = False  # One-time welcome message flag
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
         self._position_save_id: str | None = None  # debounce timer for position save
@@ -1231,7 +1232,7 @@ class JarvisDesktopWidget(tk.Tk):
         flags.pack(fill=tk.X, padx=10, pady=(2, 0))
         self.execute_var = tk.BooleanVar(value=False)
         self.priv_var = tk.BooleanVar(value=False)
-        self.speak_var = tk.BooleanVar(value=False)
+        self.speak_var = tk.BooleanVar(value=True)
         self.auto_send_var = tk.BooleanVar(value=True)
         self.hotword_var = tk.BooleanVar(value=False)
         self.notify_var = tk.BooleanVar(value=True)
@@ -1247,7 +1248,10 @@ class JarvisDesktopWidget(tk.Tk):
         self._voice_btn = self._btn(row, "Voice Dictate", self._dictate_async, self.ACCENT_2)
         self._voice_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self._send_btn = self._btn(row, "Send", self._send_command_async, self.ACCENT)
-        self._send_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._send_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._cancel_btn = self._btn(row, "\u25A0 Stop", self._cancel_command, "#c0392b")
+        self._cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._cancel_btn.pack_forget()  # Hidden by default, shown during processing
 
         quick = tk.Frame(body, bg=self.PANEL)
         quick.pack(fill=tk.X, padx=10, pady=(8, 0))
@@ -1296,6 +1300,7 @@ class JarvisDesktopWidget(tk.Tk):
             ("facts", "Facts"),
             ("kg", "KG Size"),
             ("memory", "Memory"),
+            ("missions", "Missions"),
             ("score", "Self-Test"),
             ("trend", "Trend"),
         ]:
@@ -1754,7 +1759,11 @@ class JarvisDesktopWidget(tk.Tk):
         import time as _time
         self._thinking_start_time = _time.time()
         self.output.config(state=tk.NORMAL)
-        self._thinking_marker = self.output.index(tk.END)
+        # Use a tkinter Mark instead of a text index string — marks auto-adjust
+        # when text is inserted/deleted elsewhere, preventing line duplication.
+        self.output.mark_set("thinking_start", tk.END)
+        self.output.mark_gravity("thinking_start", "left")
+        self._thinking_marker = "thinking_start"
         self.output.insert(tk.END, "\u23f3 Jarvis is thinking...  (0s)\n", "thinking")
         self.output.see(tk.END)
         self.output.config(state=tk.DISABLED)
@@ -1762,6 +1771,8 @@ class JarvisDesktopWidget(tk.Tk):
         if popout is not None:
             try:
                 popout.config(state=tk.NORMAL)
+                popout.mark_set("thinking_start", tk.END)
+                popout.mark_gravity("thinking_start", "left")
                 popout.insert(tk.END, "\u23f3 Jarvis is thinking...  (0s)\n", "thinking")
                 popout.see(tk.END)
                 popout.config(state=tk.DISABLED)
@@ -1782,6 +1793,7 @@ class JarvisDesktopWidget(tk.Tk):
                 marker_end = f"{self._thinking_marker} lineend+1c"
                 self.output.config(state=tk.NORMAL)
                 self.output.delete(self._thinking_marker, marker_end)
+                self.output.mark_unset("thinking_start")
                 self.output.config(state=tk.DISABLED)
             except tk.TclError:
                 pass
@@ -1790,6 +1802,10 @@ class JarvisDesktopWidget(tk.Tk):
                 try:
                     popout.config(state=tk.NORMAL)
                     popout.delete("end-2l", tk.END)
+                    try:
+                        popout.mark_unset("thinking_start")
+                    except tk.TclError:
+                        pass
                     popout.config(state=tk.DISABLED)
                 except tk.TclError:
                     pass
@@ -2084,6 +2100,32 @@ class JarvisDesktopWidget(tk.Tk):
     def _thread(self, fn) -> None:  # type: ignore[no-untyped-def]
         threading.Thread(target=fn, daemon=True).start()
 
+    def _cancel_command(self) -> None:
+        """Cancel the current in-progress command, stop TTS, and reset state."""
+        self._cancel_event.set()
+        self._cancel_processing_timeout()
+        self._hide_thinking()
+        # Kill any running TTS processes
+        try:
+            import subprocess
+            # Kill edge-tts and PowerShell speech processes
+            for proc_name in ["edge-tts", "edge-playback"]:
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", f"{proc_name}.exe"],
+                    capture_output=True, timeout=5,
+                )
+            # Kill PowerShell speech synthesis if running
+            subprocess.run(
+                ["powershell", "-Command",
+                 "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
+        self.command_text.config(state=tk.NORMAL)
+        self._log("Command cancelled.", role="system")
+        self._set_state("idle")
+
     def _cancel_processing_timeout(self) -> None:
         """Cancel the safety timeout for stuck processing state."""
         if self._processing_timeout_id is not None:
@@ -2107,6 +2149,7 @@ class JarvisDesktopWidget(tk.Tk):
         if getattr(self, "_widget_state", "idle") == "processing":
             self._log("Still processing previous command. Please wait...", role="system")
             return
+        self._cancel_event.clear()
         text = self.command_text.get("1.0", tk.END).strip()
         if not text:
             self._log("No command text.")
@@ -2150,17 +2193,72 @@ class JarvisDesktopWidget(tk.Tk):
                 response_text = ""
                 reason_text = ""
                 error_text = str(data.get("error", ""))
+                source_urls: list[str] = []
+                thinking_steps: list[str] = []
+                web_search_used = False
+                model_name = ""
+                provider_name = ""
+                _in_response = False
                 if isinstance(lines, list):
                     for line in lines:
                         s = str(line)
                         if s.startswith("response="):
                             response_text = s[len("response="):]
+                            _in_response = True
                         elif s.startswith("reason=") and not reason_text:
                             reason_text = s[len("reason="):]
+                            _in_response = False
                         elif s.startswith("error=") and not error_text:
                             error_text = s[len("error="):]
+                            _in_response = False
+                        elif s.startswith("source_"):
+                            # source_1=domain url
+                            parts = s.split("=", 1)
+                            if len(parts) == 2:
+                                source_urls.append(parts[1].strip())
+                            _in_response = False
+                        elif s.startswith("model="):
+                            model_name = s[len("model="):]
+                            _in_response = False
+                        elif s.startswith("provider="):
+                            provider_name = s[len("provider="):]
+                            _in_response = False
+                        elif s == "web_search_used=true":
+                            web_search_used = True
+                            _in_response = False
+                        elif s.startswith("intent="):
+                            thinking_steps.append(f"Intent: {s[len('intent='):]}")
+                            _in_response = False
+                        elif s.startswith("finding_"):
+                            _in_response = False
+                        elif _in_response and not any(
+                            s.startswith(p) for p in [
+                                "status_code=", "voice=", "wav=",
+                                "auto_ingest_record_id=", "web_search",
+                                "query=", "scanned_url_count=",
+                            ]
+                        ):
+                            # Continuation line of multi-line response
+                            response_text += "\n" + s
+                        else:
+                            _in_response = False
                 intent = str(data.get("intent", "unknown"))
                 ok = bool(data.get("ok", False))
+
+                # Show processing trace (thinking steps)
+                if model_name or web_search_used or thinking_steps:
+                    trace_parts = []
+                    if thinking_steps:
+                        trace_parts.extend(thinking_steps)
+                    if web_search_used:
+                        trace_parts.append("Web search: performed")
+                    if model_name:
+                        via = f"{model_name}"
+                        if provider_name:
+                            via += f" ({provider_name})"
+                        trace_parts.append(f"Model: {via}")
+                    self._log_async("\u2699 " + " \u2022 ".join(trace_parts), role="system")
+
                 if response_text:
                     self._log_async(response_text, role="jarvis")
                 elif not ok and (reason_text or error_text):
@@ -2171,6 +2269,11 @@ class JarvisDesktopWidget(tk.Tk):
                     self._log_async(f"[{intent}] ok={ok}", role="jarvis")
                     if isinstance(lines, list) and lines:
                         self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
+
+                # Show web search source URLs
+                if source_urls:
+                    self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
+
                 if ok and intent in ("memory_ingest", "memory_forget", "llm_conversation"):
                     self.after(0, self._show_learned_indicator)
                 if not ok:
@@ -2540,6 +2643,20 @@ class JarvisDesktopWidget(tk.Tk):
             self._growth_labels["memory"].config(
                 text=f"{mem_records} records", fg=self.TEXT)
 
+            # Learning missions
+            missions = m.get("active_missions", [])
+            mission_count = int(m.get("mission_count", len(missions) if isinstance(missions, list) else 0))
+            if mission_count > 0 and isinstance(missions, list) and missions:
+                topics = [str(mi.get("topic", "?"))[:20] for mi in missions[:3] if isinstance(mi, dict)]
+                self._growth_labels["missions"].config(
+                    text=f"{mission_count} active: {', '.join(topics)}", fg=self.ACCENT)
+            elif mission_count > 0:
+                self._growth_labels["missions"].config(
+                    text=f"{mission_count} active", fg=self.ACCENT)
+            else:
+                self._growth_labels["missions"].config(
+                    text="None active", fg=self.MUTED)
+
             score_pct = round(score * 100)
             score_color = self.ACCENT if score_pct >= 70 else "#eab308" if score_pct >= 50 else self.WARN
             self._growth_labels["score"].config(
@@ -2584,6 +2701,17 @@ class JarvisDesktopWidget(tk.Tk):
         if state not in ("idle", "listening", "processing", "error"):
             state = "idle"
         self._widget_state = state
+        # Show/hide cancel button based on state
+        cancel_btn = getattr(self, "_cancel_btn", None)
+        if cancel_btn is not None:
+            try:
+                if state == "processing":
+                    cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                else:
+                    cancel_btn.pack_forget()
+                    self._cancel_event.clear()
+            except tk.TclError:
+                pass
         self._refresh_status_view()
 
     def _set_state_async(self, state: str) -> None:

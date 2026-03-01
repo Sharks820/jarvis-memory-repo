@@ -585,6 +585,47 @@ class TestSpeakText:
 
 
 # ---------------------------------------------------------------------------
+# _strip_markdown_for_speech
+# ---------------------------------------------------------------------------
+
+class TestStripMarkdownForSpeech:
+    """Tests for markdown stripping before TTS."""
+
+    def test_strips_bold(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("This is **bold** text") == "This is bold text"
+
+    def test_strips_italic(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("This is *italic* text") == "This is italic text"
+
+    def test_strips_bold_italic(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("***emphasis***") == "emphasis"
+
+    def test_strips_headers(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("### My Header") == "My Header"
+
+    def test_strips_markdown_links(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("[click here](https://example.com)") == "click here"
+
+    def test_strips_bullets(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        result = _strip_markdown_for_speech("- item one\n- item two")
+        assert result == "item one\nitem two"
+
+    def test_strips_backticks(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("Use `print()` function") == "Use print() function"
+
+    def test_plain_text_unchanged(self) -> None:
+        from jarvis_engine.voice import _strip_markdown_for_speech
+        assert _strip_markdown_for_speech("Hello world") == "Hello world"
+
+
+# ---------------------------------------------------------------------------
 # _speak_text_edge_streamed
 # ---------------------------------------------------------------------------
 

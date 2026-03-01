@@ -1458,6 +1458,7 @@ class TestWidgetStateMachine:
         widget.speak_var = MagicMock()
         widget.speak_var.get.return_value = False
         widget._thread = MagicMock()
+        widget._cancel_event = threading.Event()
 
         JarvisDesktopWidget._send_command_async(widget)
 
