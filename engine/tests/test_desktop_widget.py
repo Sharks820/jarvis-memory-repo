@@ -1754,13 +1754,13 @@ class TestTrayMenuCallbacks:
         assert calls[0] == ((0, widget._show_panel),)
         assert calls[1][0][0] == 100  # 100ms delay before dictation
 
-    def test_tray_quit_calls_shutdown(self):
+    def test_tray_quit_calls_confirm_exit(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.after = MagicMock()
-        widget._shutdown = MagicMock()
+        widget._confirm_exit = MagicMock()
         JarvisDesktopWidget._tray_quit(widget)
-        widget.after.assert_called_once_with(0, widget._shutdown)
+        widget.after.assert_called_once_with(0, widget._confirm_exit)
 
     def test_stop_tray_icon_cleans_up(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
@@ -1812,3 +1812,44 @@ class TestTrayMenuCallbacks:
         widget.launcher_win = None
         JarvisDesktopWidget._shutdown(widget)
         widget._stop_tray_icon.assert_called_once()
+
+    @patch("jarvis_engine.desktop_widget.messagebox")
+    def test_confirm_exit_yes_calls_shutdown(self, mock_msgbox):
+        """When user confirms exit, _shutdown should be called."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        mock_msgbox.askyesno.return_value = True
+        mock_msgbox.WARNING = "warning"
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._shutdown = MagicMock()
+        JarvisDesktopWidget._confirm_exit(widget)
+        mock_msgbox.askyesno.assert_called_once()
+        widget._shutdown.assert_called_once()
+
+    @patch("jarvis_engine.desktop_widget.messagebox")
+    def test_confirm_exit_no_does_not_shutdown(self, mock_msgbox):
+        """When user cancels exit, _shutdown should NOT be called."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        mock_msgbox.askyesno.return_value = False
+        mock_msgbox.WARNING = "warning"
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._shutdown = MagicMock()
+        JarvisDesktopWidget._confirm_exit(widget)
+        mock_msgbox.askyesno.assert_called_once()
+        widget._shutdown.assert_not_called()
+
+    @patch("jarvis_engine.desktop_widget.messagebox")
+    def test_confirm_exit_dialog_contains_key_info(self, mock_msgbox):
+        """Confirmation dialog should mention services and memory safety."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+        mock_msgbox.askyesno.return_value = False
+        mock_msgbox.WARNING = "warning"
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        widget._shutdown = MagicMock()
+        JarvisDesktopWidget._confirm_exit(widget)
+        call_args = mock_msgbox.askyesno.call_args
+        msg = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("message", "")
+        # Must mention key shutdown info
+        assert "Daemon" in msg or "daemon" in msg.lower()
+        assert "Mobile API" in msg or "mobile" in msg.lower()
+        assert "memory" in msg.lower() or "Memory" in msg
+        assert "Minimize" in msg or "minimize" in msg.lower()
