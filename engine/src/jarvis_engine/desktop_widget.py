@@ -675,6 +675,51 @@ def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
     return -100 <= x <= screen_w and -100 <= y <= screen_h
 
 
+class _Tooltip:
+    """Hover tooltip for tkinter widgets."""
+
+    def __init__(self, widget: tk.Widget, text: str, delay: int = 300) -> None:
+        self._widget = widget
+        self._text = text
+        self._delay = delay
+        self._tip: tk.Toplevel | None = None
+        self._after_id: str | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._cancel, add="+")
+
+    def _schedule(self, _event: Any = None) -> None:
+        self._cancel()
+        self._after_id = self._widget.after(self._delay, self._show)
+
+    def _cancel(self, _event: Any = None) -> None:
+        if self._after_id:
+            self._widget.after_cancel(self._after_id)
+            self._after_id = None
+        self._hide()
+
+    def _show(self) -> None:
+        if self._tip:
+            return
+        x = self._widget.winfo_rootx() + self._widget.winfo_width() // 2
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        self._tip = tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tw.attributes("-topmost", True)
+        label = tk.Label(
+            tw, text=self._text, justify=tk.LEFT,
+            background="#1e293b", foreground="#e2e8f0",
+            relief=tk.SOLID, borderwidth=1,
+            font=("Segoe UI", 9), padx=6, pady=3,
+        )
+        label.pack()
+
+    def _hide(self) -> None:
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
+
+
 class JarvisDesktopWidget(tk.Tk):
     BG = "#070d1a"
     PANEL = "#0d1628"
@@ -1073,6 +1118,19 @@ class JarvisDesktopWidget(tk.Tk):
             relief=tk.FLAT,
             command=self._shutdown,
         ).pack(side=tk.RIGHT, padx=(0, 6))
+        tk.Button(
+            top,
+            text="?",
+            bg="#1a3050",
+            fg="#a5b4fc",
+            activebackground="#2a4060",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 11, "bold"),
+            command=self._show_help,
+            cursor="hand2",
+            width=2,
+        ).pack(side=tk.RIGHT, padx=(0, 6))
 
         status_row = tk.Frame(header, bg=self.PANEL)
         status_row.pack(fill=tk.X, padx=10, pady=(0, 8))
@@ -1183,8 +1241,10 @@ class JarvisDesktopWidget(tk.Tk):
 
         row = tk.Frame(body, bg=self.PANEL)
         row.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._btn(row, "Voice Dictate", self._dictate_async, self.ACCENT_2).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._btn(row, "Send", self._send_command_async, self.ACCENT).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._voice_btn = self._btn(row, "Voice Dictate", self._dictate_async, self.ACCENT_2)
+        self._voice_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._send_btn = self._btn(row, "Send", self._send_command_async, self.ACCENT)
+        self._send_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         quick = tk.Frame(body, bg=self.PANEL)
         quick.pack(fill=tk.X, padx=10, pady=(8, 0))
@@ -1277,6 +1337,11 @@ class JarvisDesktopWidget(tk.Tk):
         )
         self.output.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 10))
         self._configure_chat_tags()
+
+        # Tooltips on key controls
+        _Tooltip(self.command_text, "Type a command or question")
+        _Tooltip(self._voice_btn, "Click or say 'Jarvis' to dictate")
+        _Tooltip(self._send_btn, "Send command (Enter)")
 
     def _configure_chat_tags(self) -> None:
         """Set up tag-based visual styles for the chat-style conversation display."""
@@ -1671,6 +1736,64 @@ class JarvisDesktopWidget(tk.Tk):
                 except tk.TclError:
                     pass
             self._thinking_marker = None
+
+    def _show_help(self) -> None:
+        """Show help overlay with commands and tips."""
+        help_win = tk.Toplevel(self)
+        help_win.title("Jarvis Help")
+        help_win.geometry("420x480")
+        help_win.configure(bg="#0a1628")
+        help_win.attributes("-topmost", True)
+        help_win.resizable(False, False)
+
+        tk.Label(
+            help_win, text="Jarvis Help", bg="#0a1628", fg="#e2e8f0",
+            font=("Segoe UI", 16, "bold"),
+        ).pack(pady=(16, 8))
+
+        sections = [
+            ("Talking to Jarvis", [
+                "Type any question or command in the text box",
+                "Press Enter or click Send",
+                "Click Voice Dictate or say 'Jarvis' (wake word)",
+                "Ctrl+Enter also sends the command",
+            ]),
+            ("Teaching Jarvis", [
+                '"Remember that [fact]" -- saves to memory',
+                '"What do you know about [topic]?" -- queries memory',
+                '"Forget about [topic]" -- removes from knowledge base',
+                "Jarvis auto-learns from every conversation",
+            ]),
+            ("Quick Commands", [
+                '"Knowledge status" -- brain health report',
+                '"System status" -- service health check',
+                '"Mission status" -- active learning missions',
+                '"Pause/Resume Jarvis" -- control the daemon',
+            ]),
+            ("Keyboard Shortcuts", [
+                "Enter -- Send command",
+                "Ctrl+Enter -- Send command (alternative)",
+                "Escape -- Close this help window",
+            ]),
+        ]
+
+        text = tk.Text(
+            help_win, wrap=tk.WORD, bg="#0a1628", fg="#cbd5e1",
+            font=("Segoe UI", 10), relief=tk.FLAT, padx=16, pady=8,
+            state=tk.DISABLED, highlightthickness=0,
+        )
+        text.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        text.tag_configure("heading", foreground="#6ee7b7", font=("Segoe UI", 11, "bold"))
+        text.tag_configure("item", foreground="#cbd5e1", font=("Segoe UI", 10))
+        text.config(state=tk.NORMAL)
+        for heading, items in sections:
+            text.insert(tk.END, f"\n{heading}\n", "heading")
+            for item in items:
+                text.insert(tk.END, f"  {item}\n", "item")
+        text.config(state=tk.DISABLED)
+
+        help_win.bind("<Escape>", lambda _: help_win.destroy())
+        help_win.focus_set()
 
     def _animate_thinking(self) -> None:
         """Cycle dots on the thinking indicator: . -> .. -> ... -> ."""
