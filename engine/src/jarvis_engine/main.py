@@ -725,7 +725,7 @@ def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
     _atomic_write_json(path, payload)
 
 
-_VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
+_VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome", "conversation"}
 _VALID_KINDS = {"episodic", "semantic", "procedural"}
 
 def _auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) -> str:
@@ -1025,7 +1025,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
             _created_utc = _cfg_data.get("created_utc", "")
             if _created_utc:
                 _created_dt = datetime.fromisoformat(_created_utc.replace("Z", "+00:00"))
-                _now_utc = datetime.now(tz=_created_dt.tzinfo) if _created_dt.tzinfo else datetime.utcnow()
+                _now_utc = datetime.now(tz=_created_dt.tzinfo) if _created_dt.tzinfo else datetime.now(UTC)
                 _age_days = (_now_utc - _created_dt).days
                 if _age_days > 90:
                     print(f"warning: mobile API token is {_age_days} days old. Consider rotating via: delete {config_file} and restart")

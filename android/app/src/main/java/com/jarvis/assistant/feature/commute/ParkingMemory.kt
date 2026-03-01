@@ -46,7 +46,7 @@ class ParkingMemory @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var receiver: BroadcastReceiver? = null
 
@@ -56,6 +56,11 @@ class ParkingMemory @Inject constructor(
      */
     fun registerBluetoothReceiver() {
         if (receiver != null) return // already registered
+
+        // Create a fresh scope in case the previous one was cancelled
+        if (!scope.coroutineContext[kotlinx.coroutines.Job]!!.isActive) {
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        }
 
         receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
@@ -117,7 +122,7 @@ class ParkingMemory @Inject constructor(
      * Unregister the BroadcastReceiver. Call from [JarvisService.onDestroy].
      */
     fun unregisterBluetoothReceiver() {
-        scope.coroutineContext[kotlinx.coroutines.Job]?.cancelChildren()
+        scope.cancel()
         receiver?.let {
             try {
                 context.unregisterReceiver(it)

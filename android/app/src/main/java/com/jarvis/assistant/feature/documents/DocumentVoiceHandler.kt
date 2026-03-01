@@ -22,8 +22,6 @@ class DocumentVoiceHandler @Inject constructor(
             "(?:document|receipt|warranty|id|medical|insurance|scan|paper)",
     )
 
-    private val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
-
     /** Returns true if the query text matches document search patterns. */
     fun matchesDocumentQuery(query: String): Boolean =
         documentPattern.containsMatchIn(query)
@@ -38,6 +36,9 @@ class DocumentVoiceHandler @Inject constructor(
         if (!matchesDocumentQuery(query)) return null
 
         val results = searchEngine.search(query)
+        // Create locally to avoid thread-safety issues — SimpleDateFormat is not thread-safe
+        // and this @Singleton's handleQuery() can be called concurrently.
+        val dateFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
 
         return if (results.isNotEmpty()) {
             val most = results.first()

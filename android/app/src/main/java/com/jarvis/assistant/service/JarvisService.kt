@@ -138,7 +138,11 @@ class JarvisService : Service() {
      * Lightweight coroutine loop for time-critical tasks that need sub-15-minute
      * frequency. WorkManager enforces a 15-minute minimum for periodic work,
      * so command queue flush and proactive alert checks run here instead.
+     *
+     * Synchronized to prevent duplicate loops when onStartCommand() is called
+     * twice in quick succession (e.g., OS restart + pending intent).
      */
+    @Synchronized
     private fun startHighFrequencyLoop() {
         if (loopJob?.isActive == true) return
         loopJob = scope.launch {

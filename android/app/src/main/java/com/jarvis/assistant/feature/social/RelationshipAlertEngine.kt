@@ -52,10 +52,55 @@ class RelationshipAlertEngine @Inject constructor(
         if (!prefs.getBoolean(KEY_RELATIONSHIP_ALERTS, true)) return
         if (!hasNotificationPermission()) return
 
+        cleanupStaleSuppressionKeys()
         checkBirthdays()
         checkAnniversaries()
         checkNeglectedConnections()
         syncDesktopSocialGraph()
+    }
+
+    /**
+     * Remove neglected_alerted_ suppression keys older than 7 days to prevent
+     * unbounded SharedPreferences growth.
+     */
+    private fun cleanupStaleSuppressionKeys() {
+        try {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val sevenDaysAgo = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, -SUPPRESSION_KEY_RETENTION_DAYS)
+            }.time
+
+            val allKeys = prefs.all.keys.toList()
+            val editor = prefs.edit()
+            var removed = 0
+
+            for (key in allKeys) {
+                if (!key.startsWith("neglected_alerted_")) continue
+                // Key format: neglected_alerted_{contactId}_{yyyy-MM-dd}
+                val dateSuffix = key.substringAfterLast("_", "")
+                    .takeIf { it.length >= 10 }
+                    ?.let { key.takeLast(10) }
+                    ?: continue
+
+                val keyDate = try {
+                    dateFormat.parse(dateSuffix)
+                } catch (_: Exception) {
+                    continue
+                } ?: continue
+
+                if (keyDate.before(sevenDaysAgo)) {
+                    editor.remove(key)
+                    removed++
+                }
+            }
+
+            if (removed > 0) {
+                editor.apply()
+                Log.i(TAG, "Cleaned up $removed stale neglected_alerted_ keys")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to cleanup stale suppression keys", e)
+        }
     }
 
     /**
@@ -302,5 +347,6 @@ class RelationshipAlertEngine @Inject constructor(
         const val ANNIVERSARY_NOTIFICATION_OFFSET = 51000
         const val NEGLECTED_NOTIFICATION_OFFSET = 52000
         const val MAX_NEGLECTED_ALERTS_PER_DAY = 2
+        const val SUPPRESSION_KEY_RETENTION_DAYS = 7
     }
 }

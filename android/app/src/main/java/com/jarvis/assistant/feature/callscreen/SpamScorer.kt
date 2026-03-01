@@ -75,8 +75,9 @@ class SpamScorer @Inject constructor(
     fun normalizeNumber(number: String): String {
         if (number.isBlank()) return ""
 
-        // Strip everything except digits and +
+        // Strip everything except digits and +, then collapse multiple + to one
         var cleaned = number.replace(Regex("[^\\d+]"), "")
+        cleaned = cleaned.replace(Regex("\\++"), "+")
 
         // Handle 00 international prefix
         if (cleaned.startsWith("00")) {
