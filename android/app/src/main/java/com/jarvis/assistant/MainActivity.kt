@@ -188,6 +188,8 @@ class MainActivity : FragmentActivity() {
 
     private fun handleVoiceIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(JarvisService.EXTRA_VOICE_COMMAND, false) == true) {
+            // Consume the extra so activity recreation doesn't retrigger
+            intent.removeExtra(JarvisService.EXTRA_VOICE_COMMAND)
             if (viewModel.isAuthenticated.value) {
                 voiceEngine.startListening()
             } else {

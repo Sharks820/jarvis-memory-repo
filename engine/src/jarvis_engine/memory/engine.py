@@ -268,7 +268,7 @@ class MemoryEngine:
 
                 if cur.rowcount == 0:
                     # Duplicate content_hash -- INSERT OR IGNORE did nothing.
-                    # No rollback needed: nothing was written.
+                    self._db.rollback()
                     return False
 
                 # Insert into FTS5 (same transaction as records insert)
@@ -312,6 +312,7 @@ class MemoryEngine:
                     (record_id,),
                 )
                 if cur.rowcount == 0:
+                    self._db.rollback()
                     return False
 
                 cur.execute(
