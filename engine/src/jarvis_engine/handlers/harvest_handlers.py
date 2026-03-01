@@ -93,7 +93,7 @@ class IngestSessionHandler:
                 if appdata.exists():
                     allowed_roots.append(appdata)
             if not any(
-                str(session_resolved).startswith(str(root))
+                session_resolved == root or session_resolved.is_relative_to(root)
                 for root in allowed_roots
             ):
                 return IngestSessionResult(

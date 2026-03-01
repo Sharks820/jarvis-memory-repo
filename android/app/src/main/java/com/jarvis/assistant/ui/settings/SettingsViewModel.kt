@@ -766,12 +766,37 @@ class SettingsViewModel @Inject constructor(
      * E.g. "Water Reminder" matches "Water Reminder", "Water Reminder (Afternoon)", etc.
      */
     private suspend fun toggleBuiltInNudgeGroup(labelPrefix: String, active: Boolean) {
-        val allActive = habitDao.getAllActivePatterns()
-        val allPatterns = allActive + habitDao.getSuppressedPatterns()
+        // Load ALL built-in patterns: active, suppressed, AND inactive unsuppressed.
+        // getAllActivePatterns() returns isActive=1 (both suppressed and unsuppressed).
+        // We also need inactive (isActive=0) patterns so they can be reactivated.
+        val activePatterns = habitDao.getAllActivePatterns()
+        val suppressedPatterns = habitDao.getSuppressedPatterns()
+        // Combine and deduplicate by id
+        val seenIds = mutableSetOf<Long>()
+        val allPatterns = mutableListOf<com.jarvis.assistant.data.entity.HabitPatternEntity>()
+        for (p in activePatterns + suppressedPatterns) {
+            if (seenIds.add(p.id)) allPatterns.add(p)
+        }
+        // Also check for inactive unsuppressed patterns by looking up each built-in label
+        // directly via findByTypeAndLabel (handles the case where isActive=0 AND isSuppressed=0)
+        val builtInLabels = allPatterns
+            .filter { it.patternType == "built_in" && it.label.startsWith(labelPrefix) }
+            .map { it.label }
+            .toSet()
+        // If no patterns found via the active/suppressed queries, try direct lookup
+        if (builtInLabels.isEmpty()) {
+            val directLookup = habitDao.findByTypeAndLabel("built_in", labelPrefix)
+            if (directLookup != null && seenIds.add(directLookup.id)) {
+                allPatterns.add(directLookup)
+            }
+        }
         for (pattern in allPatterns) {
             if (pattern.patternType == "built_in" && pattern.label.startsWith(labelPrefix)) {
                 if (active && !pattern.isActive) {
                     habitDao.activate(pattern.id)
+                    if (pattern.isSuppressed) {
+                        habitDao.unsuppress(pattern.id)
+                    }
                 } else if (!active && pattern.isActive) {
                     habitDao.deactivate(pattern.id)
                 }

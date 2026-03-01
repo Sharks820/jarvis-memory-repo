@@ -104,7 +104,10 @@ class NudgeEngine @Inject constructor(
         description: String,
         date: String,
     ) {
-        // Insert pending nudge log entry
+        // Check notification permission BEFORE logging delivery
+        if (!hasNotificationPermission()) return
+
+        // Insert nudge log entry only after confirming we can actually deliver
         val logId = nudgeLogDao.insert(
             NudgeLogEntity(
                 patternId = patternId,
@@ -114,9 +117,6 @@ class NudgeEngine @Inject constructor(
                 date = date,
             ),
         )
-
-        // Post notification
-        if (!hasNotificationPermission()) return
 
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

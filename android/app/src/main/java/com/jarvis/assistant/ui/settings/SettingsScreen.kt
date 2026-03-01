@@ -49,6 +49,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.os.Build
 import com.jarvis.assistant.feature.callscreen.createCallScreeningRoleIntent
 import com.jarvis.assistant.feature.callscreen.isCallScreeningRoleGranted
 
@@ -216,13 +217,15 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.labelMedium,
                     )
 
-                    // Permission button (only shown if role not held)
-                    if (!roleGranted) {
+                    // Permission button (only shown if role not held and API >= Q)
+                    if (!roleGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         Spacer(Modifier.height(8.dp))
                         FilledTonalButton(
                             onClick = {
                                 val intent = createCallScreeningRoleIntent(context)
-                                context.startActivity(intent)
+                                if (intent != null) {
+                                    context.startActivity(intent)
+                                }
                             },
                         ) {
                             Text("Request Call Screening Permission")

@@ -8,6 +8,7 @@ contract checks.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Optional, Type, get_type_hints, Union
@@ -287,10 +288,9 @@ def validate_contract(endpoint_name: str, response_dict: Dict[str, Any]) -> List
     for fname, f in contract_fields.items():
         if fname not in response_dict:
             # Fields with defaults are optional in the response
-            if f.default is not f.default_factory:  # type: ignore[attr-defined]
-                continue  # has a default, OK to be missing
-            # Check default_factory
-            if hasattr(f, "default_factory") and f.default_factory is not None:  # type: ignore[misc]
+            if f.default is not dataclasses.MISSING:
+                continue  # has a default value, OK to be missing
+            if f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
                 continue  # has a default_factory, OK to be missing
             errors.append(f"Missing required field: {fname}")
 
@@ -347,8 +347,8 @@ def _dataclass_to_schema(cls: Type[Any]) -> Dict[str, Any]:
         prop = _type_to_json_schema(resolved_type)
         properties[f.name] = prop
         # Fields without defaults are required
-        has_default = f.default is not f.default_factory  # type: ignore[attr-defined]
-        has_factory = hasattr(f, "default_factory") and f.default_factory is not None  # type: ignore[misc]
+        has_default = f.default is not dataclasses.MISSING
+        has_factory = f.default_factory is not dataclasses.MISSING  # type: ignore[misc]
         if not has_default and not has_factory:
             required.append(f.name)
     schema: Dict[str, Any] = {

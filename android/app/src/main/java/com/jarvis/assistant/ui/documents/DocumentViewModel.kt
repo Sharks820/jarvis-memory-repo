@@ -88,6 +88,16 @@ class DocumentViewModel @Inject constructor(
         }
     }
 
+    /** Update the title of a document. */
+    fun updateTitle(docId: Long, title: String) {
+        viewModelScope.launch {
+            val doc = documentDao.getById(docId) ?: return@launch
+            documentDao.update(
+                doc.copy(title = title, updatedAt = System.currentTimeMillis()),
+            )
+        }
+    }
+
     /** Delete a document and its associated files. */
     fun deleteDocument(doc: ScannedDocumentEntity) {
         viewModelScope.launch {
