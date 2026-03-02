@@ -14,6 +14,7 @@ from jarvis_engine.security.alert_chain import AlertChain
 from jarvis_engine.security.attack_memory import AttackPatternMemory
 from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel
 from jarvis_engine.security.forensic_logger import ForensicLogger
+from jarvis_engine.security.heartbeat import HeartbeatMonitor
 from jarvis_engine.security.honeypot import HoneypotEngine
 from jarvis_engine.security.identity_monitor import IdentityAlert, IdentityMonitor
 from jarvis_engine.security.injection_firewall import (
@@ -42,6 +43,7 @@ __all__ = [
     "ContainmentEngine",
     "ContainmentLevel",
     "ForensicLogger",
+    "HeartbeatMonitor",
     "HoneypotEngine",
     "IdentityAlert",
     "IdentityMonitor",
