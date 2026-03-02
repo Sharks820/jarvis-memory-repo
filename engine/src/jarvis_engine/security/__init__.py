@@ -36,6 +36,7 @@ from jarvis_engine.security.threat_detector import (
     ThreatSignal,
 )
 from jarvis_engine.security.threat_intel import ThreatIntelFeed
+from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
 
 __all__ = [
     "ActionAuditor",
@@ -65,5 +66,6 @@ __all__ = [
     "ThreatAssessment",
     "ThreatDetector",
     "ThreatIntelFeed",
+    "ThreatNeutralizer",
     "ThreatSignal",
 ]
