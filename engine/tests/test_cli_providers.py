@@ -171,6 +171,38 @@ class TestCallCodexCli:
         assert result["success"] is False
         assert "timeout" in result["error"]
 
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_failure_exit_code(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="codex error"
+        )
+        result = call_codex_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "exit 1" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_not_found(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = FileNotFoundError()
+        result = call_codex_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "not found" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_os_error(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = OSError("Argument list too long")
+        result = call_codex_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "OS error" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_success_but_empty_response(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
+        result = call_codex_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "empty response" in result["error"]
+
 
 # ---------------------------------------------------------------------------
 # Gemini CLI
@@ -199,6 +231,21 @@ class TestCallGeminiCli:
         result = call_gemini_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
 
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_timeout(self, mock_run: MagicMock) -> None:
+        import subprocess
+        mock_run.side_effect = subprocess.TimeoutExpired("gemini", 120)
+        result = call_gemini_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "timeout" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_not_found(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = FileNotFoundError()
+        result = call_gemini_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "not found" in result["error"]
+
 
 # ---------------------------------------------------------------------------
 # Kimi CLI
@@ -216,6 +263,30 @@ class TestCallKimiCli:
         assert result["success"] is True
         assert result["text"] == "Kimi response"
         assert result["provider"] == "kimi-cli"
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_failure(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="kimi error"
+        )
+        result = call_kimi_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "exit 1" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_timeout(self, mock_run: MagicMock) -> None:
+        import subprocess
+        mock_run.side_effect = subprocess.TimeoutExpired("kimi", 120)
+        result = call_kimi_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "timeout" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_not_found(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = FileNotFoundError()
+        result = call_kimi_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "not found" in result["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +370,42 @@ class TestGatewayCliIntegration:
         finally:
             gw.close()
 
+    @patch("jarvis_engine.gateway.cli_providers._detect_cli")
+    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}, clear=False)
+    def test_resolve_provider_claude_cli_not_hijacked_by_anthropic(self, mock_detect: MagicMock) -> None:
+        """claude-cli must route to CLI, NOT to Anthropic API, even when Anthropic is configured."""
+        mock_detect.return_value = "/usr/bin/claude"
+
+        from jarvis_engine.gateway.models import ModelGateway
+        gw = ModelGateway(groq_api_key="test", anthropic_api_key="sk-ant-test")
+        try:
+            provider = gw._resolve_provider("claude-cli")
+            assert provider == "cli:claude-cli", (
+                f"claude-cli should route to CLI, not {provider}"
+            )
+            # Regular claude models should still go to Anthropic
+            provider2 = gw._resolve_provider("claude-sonnet")
+            assert provider2 == "anthropic"
+        finally:
+            gw.close()
+
+    @patch("jarvis_engine.gateway.cli_providers._detect_cli")
+    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}, clear=False)
+    def test_complete_does_not_remap_claude_cli_to_cloud(self, mock_detect: MagicMock) -> None:
+        """claude-cli must NOT be remapped to a cloud model when Anthropic is unavailable."""
+        mock_detect.return_value = "/usr/bin/claude"
+
+        from jarvis_engine.gateway.models import ModelGateway
+        # No anthropic_api_key — previously this would remap claude-cli to kimi-k2
+        gw = ModelGateway(groq_api_key="test")
+        try:
+            provider = gw._resolve_provider("claude-cli")
+            assert provider == "cli:claude-cli", (
+                f"claude-cli should route to CLI even without Anthropic API key, not {provider}"
+            )
+        finally:
+            gw.close()
+
 
 # ---------------------------------------------------------------------------
 # Classifier route-to-model resolution
@@ -341,8 +448,23 @@ class TestClassifierModelResolution:
         mock_embed.embed_query.return_value = [0.0] * 384
 
         cls = IntentClassifier(mock_embed)
+        # Empty set: kimi-k2 not in available but available_models is empty
+        # so fallback returns first available (no items) -> kimi-k2 as last resort
         model = cls._resolve_model_for_route("math_logic", available)
         assert model == "kimi-k2"  # Ultimate fallback
+
+    def test_resolve_model_respects_available_set(self) -> None:
+        from jarvis_engine.gateway.classifier import IntentClassifier
+        available = {"gemini-cli"}  # Only gemini available
+        mock_embed = MagicMock()
+        mock_embed.embed.return_value = [0.0] * 384
+        mock_embed.embed_query.return_value = [0.0] * 384
+
+        cls = IntentClassifier(mock_embed)
+        model = cls._resolve_model_for_route("math_logic", available)
+        # Primary codex-cli not available, fallback claude-cli not available,
+        # kimi-k2 not available, gemini-cli IS in fallback list and available
+        assert model == "gemini-cli"
 
     def test_resolve_model_no_available_set_uses_primary(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier

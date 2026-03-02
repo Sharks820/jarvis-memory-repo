@@ -304,6 +304,11 @@ class IntentClassifier:
                 return fallback
 
         # Ultimate fallback: kimi-k2 (API-based, always available with GROQ_API_KEY)
+        if available_models is None or "kimi-k2" in available_models:
+            return "kimi-k2"
+        # If kimi-k2 not available either, return first available model or kimi-k2
+        if available_models:
+            return next(iter(available_models))
         return "kimi-k2"
 
     def classify(
@@ -338,11 +343,11 @@ class IntentClassifier:
             return ("simple_private", local_model, 0.0)
 
         best_route = "simple_private"
-        best_sim = -1.0
+        best_sim = 0.0
 
         # Pre-compute query norm once (avoid redundant per-route computation)
         query_norm = float(np.linalg.norm(query_vec))
-        if query_norm == 0:
+        if query_norm == 0 or not np.isfinite(query_norm):
             return ("simple_private", local_model, 0.0)
 
         for route_name, centroid in self._centroids.items():

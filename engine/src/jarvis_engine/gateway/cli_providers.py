@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,9 @@ def call_claude_cli(
 
     # Claude Code blocks nested sessions via CLAUDECODE env var.
     # Remove it so Jarvis daemon can call claude freely.
-    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    # Use copy() + pop() to avoid race if another thread modifies os.environ.
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
 
     cmd = [
         "claude",
@@ -196,6 +199,14 @@ def call_claude_cli(
             "success": False,
             "error": "claude CLI not found on PATH",
         }
+    except OSError as exc:
+        return {
+            "text": "",
+            "model": "claude-cli",
+            "provider": "claude-cli",
+            "success": False,
+            "error": f"OS error (prompt too long?): {exc}",
+        }
 
 
 def call_codex_cli(
@@ -222,10 +233,11 @@ def call_codex_cli(
     cmd = [
         "codex",
         "exec",
-        prompt,
         "-m", model,
         "-o", out_path,
         "--ephemeral",
+        "--",  # End of options — prompt follows as positional arg
+        prompt,
     ]
 
     try:
@@ -243,11 +255,6 @@ def call_codex_cli(
                 text = f.read().strip()
         except FileNotFoundError:
             pass
-        finally:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
 
         if proc.returncode != 0 and not text:
             return {
@@ -258,18 +265,15 @@ def call_codex_cli(
                 "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
             }
 
+        final_text = text or proc.stdout.strip()
         return {
-            "text": text or proc.stdout.strip(),
+            "text": final_text,
             "model": "codex-cli",
             "provider": "codex-cli",
-            "success": bool(text or proc.stdout.strip()),
-            "error": "" if text else "empty response",
+            "success": bool(final_text),
+            "error": "" if final_text else "empty response",
         }
     except subprocess.TimeoutExpired:
-        try:
-            os.unlink(out_path)
-        except OSError:
-            pass
         return {
             "text": "",
             "model": "codex-cli",
@@ -278,10 +282,6 @@ def call_codex_cli(
             "error": f"timeout after {timeout}s",
         }
     except FileNotFoundError:
-        try:
-            os.unlink(out_path)
-        except OSError:
-            pass
         return {
             "text": "",
             "model": "codex-cli",
@@ -289,6 +289,20 @@ def call_codex_cli(
             "success": False,
             "error": "codex CLI not found on PATH",
         }
+    except OSError as exc:
+        return {
+            "text": "",
+            "model": "codex-cli",
+            "provider": "codex-cli",
+            "success": False,
+            "error": f"OS error (prompt too long?): {exc}",
+        }
+    finally:
+        # Always clean up temp file, regardless of how we exit
+        try:
+            os.unlink(out_path)
+        except OSError:
+            pass
 
 
 def call_gemini_cli(
@@ -347,6 +361,14 @@ def call_gemini_cli(
             "provider": "gemini-cli",
             "success": False,
             "error": "gemini CLI not found on PATH",
+        }
+    except OSError as exc:
+        return {
+            "text": "",
+            "model": "gemini-cli",
+            "provider": "gemini-cli",
+            "success": False,
+            "error": f"OS error (prompt too long?): {exc}",
         }
 
 
@@ -409,13 +431,21 @@ def call_kimi_cli(
             "success": False,
             "error": "kimi CLI not found on PATH",
         }
+    except OSError as exc:
+        return {
+            "text": "",
+            "model": "kimi-cli",
+            "provider": "kimi-cli",
+            "success": False,
+            "error": f"OS error (prompt too long?): {exc}",
+        }
 
 
 # ---------------------------------------------------------------------------
 # Unified dispatcher
 # ---------------------------------------------------------------------------
 
-_CLI_CALLERS: dict[str, callable] = {
+_CLI_CALLERS: dict[str, Callable] = {
     "claude-cli": call_claude_cli,
     "codex-cli": call_codex_cli,
     "gemini-cli": call_gemini_cli,
@@ -428,6 +458,7 @@ def call_cli_provider(
     messages: list[dict[str, str]],
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
+    model: str | None = None,
 ) -> dict:
     """Call a CLI-based LLM provider by key.
 
@@ -436,6 +467,8 @@ def call_cli_provider(
         messages: Chat messages in standard format.
         max_tokens: Max tokens for response (advisory for CLI tools).
         timeout: Subprocess timeout in seconds.
+        model: Optional model override for providers that support it
+            (claude-cli, codex-cli). If None, uses the provider's default.
 
     Returns:
         Dict with keys: text, model, provider, success, error.
@@ -449,4 +482,7 @@ def call_cli_provider(
             "success": False,
             "error": f"unknown CLI provider: {provider_key}",
         }
+    # Forward model kwarg to providers that accept it (claude, codex)
+    if model is not None and provider_key in ("claude-cli", "codex-cli"):
+        return caller(messages, max_tokens, timeout, model=model)
     return caller(messages, max_tokens, timeout)
