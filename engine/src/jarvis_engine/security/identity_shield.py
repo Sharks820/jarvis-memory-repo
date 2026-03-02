@@ -24,6 +24,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+try:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    _HAS_THREADPOOL = True
+except ImportError:  # pragma: no cover
+    _HAS_THREADPOOL = False
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -374,12 +380,13 @@ class TyposquatMonitor:
     def check_domain(self, domain: str) -> list[dict]:
         """Check which typosquat variants of *domain* have DNS records.
 
+        Uses parallel DNS lookups (max 20 threads) when available.
+
         Returns list of ``{variant, registered: bool, ips: list[str]}``.
         """
         variants = self.generate_variants(domain)
-        results: list[dict] = []
 
-        for variant in variants:
+        def _lookup(variant: str) -> dict:
             entry: dict = {"variant": variant, "registered": False, "ips": []}
             try:
                 infos = socket.getaddrinfo(variant, 80, socket.AF_INET, socket.SOCK_STREAM)
@@ -389,9 +396,25 @@ class TyposquatMonitor:
                     entry["ips"] = ips
             except (socket.gaierror, OSError):
                 pass
-            results.append(entry)
+            return entry
 
-        return results
+        if _HAS_THREADPOOL and len(variants) > 1:
+            results: list[dict] = []
+            # Preserve order: submit all, collect by index
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                future_to_idx = {
+                    pool.submit(_lookup, v): i
+                    for i, v in enumerate(variants)
+                }
+                ordered = [None] * len(variants)
+                for future in as_completed(future_to_idx):
+                    idx = future_to_idx[future]
+                    ordered[idx] = future.result()
+                results = [r for r in ordered if r is not None]
+            return results
+
+        # Fallback: sequential
+        return [_lookup(v) for v in variants]
 
     # ------------------------------------------------------------------
     # Family scan
@@ -522,18 +545,43 @@ class ImpersonationDetector:
     def scan_all(self, family: FamilyShield) -> dict:
         """Check all family usernames for impersonation across platforms.
 
+        Uses parallel HTTP checks (max 20 threads) when available.
+
         Returns ``{username: [check_results]}``.
         """
         results: dict[str, list[dict]] = {}
         platforms = list(_PLATFORM_URLS.keys())
 
         for uname in family.get_all_usernames():
-            checks: list[dict] = []
+            # Build list of (variant, platform) pairs to check
+            tasks: list[tuple[str, str]] = []
             for variant in self.generate_username_variants(uname):
                 for platform in platforms:
+                    tasks.append((variant, platform))
+
+            checks: list[dict] = []
+            if _HAS_THREADPOOL and len(tasks) > 1:
+                with ThreadPoolExecutor(max_workers=20) as pool:
+                    futures = {
+                        pool.submit(self.check_platform, v, p): i
+                        for i, (v, p) in enumerate(tasks)
+                    }
+                    ordered = [None] * len(tasks)
+                    for future in as_completed(futures):
+                        idx = futures[future]
+                        try:
+                            res = future.result()
+                        except Exception:
+                            res = None
+                        ordered[idx] = res
+                    checks = [r for r in ordered if r is not None]
+            else:
+                # Fallback: sequential
+                for variant, platform in tasks:
                     res = self.check_platform(variant, platform)
                     if res is not None:
                         checks.append(res)
+
             results[uname] = checks
 
         return results

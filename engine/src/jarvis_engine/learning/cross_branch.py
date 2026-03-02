@@ -61,7 +61,7 @@ def cross_branch_query(
     vec_results = engine.search_vec(embedding, limit=k * 2)
 
     # Step 3: Build direct results and find cross-branch connections
-    G = kg.to_networkx()
+    G = kg.to_networkx(copy=False)
     direct_results = []
     cross_branch_connections = []
     branches_seen: set[str] = set()

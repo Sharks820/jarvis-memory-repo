@@ -200,7 +200,7 @@ class KnowledgeGraph:
     # NetworkX bridge
     # ------------------------------------------------------------------
 
-    def to_networkx(self) -> "nx.DiGraph":
+    def to_networkx(self, *, copy: bool = True) -> "nx.DiGraph":
         """Reconstruct full NetworkX DiGraph from SQLite tables.
 
         Uses generation-based caching: returns cached graph if no mutations
@@ -209,10 +209,15 @@ class KnowledgeGraph:
         Thread-safe: acquires _db_lock for read-only snapshot.  Writers
         hold _write_lock which does not block readers here, avoiding
         unnecessary serialization of graph builds behind writes.
+
+        Args:
+            copy: If True (default), return a defensive copy of the cached
+                graph so callers cannot mutate internal state.  Pass False
+                for read-only callers to avoid the O(n) copy overhead.
         """
         with self._db_lock:
             if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
-                return self._cached_graph.copy()
+                return self._cached_graph.copy() if copy else self._cached_graph
 
         import networkx as nx
 
@@ -247,7 +252,7 @@ class KnowledgeGraph:
 
         self._cached_graph = G
         self._cached_gen = gen
-        return G.copy()
+        return G.copy() if copy else G
 
     # ------------------------------------------------------------------
     # Fact CRUD
@@ -638,7 +643,10 @@ class KnowledgeGraph:
                 rows = cur2.fetchall()
 
             # Sort by distance (closest first), preserving KNN order
-            result_map = {dict(row)["node_id"]: dict(row) for row in rows}
+            result_map = {}
+            for row in rows:
+                d = dict(row)
+                result_map[d["node_id"]] = d
             results = []
             for nid in candidate_ids:
                 if nid in result_map:
@@ -695,18 +703,20 @@ class KnowledgeGraph:
             cur = self._db.execute(update_sql, all_params)
             retracted = cur.rowcount
 
-            # Remove retracted nodes from FTS5 index
-            for nid in retracted_ids:
+            # Remove retracted nodes from FTS5 and vec indexes (batch DELETE,
+            # chunked at 900 to stay under SQLite's 999-variable limit).
+            for i in range(0, len(retracted_ids), 900):
+                chunk = retracted_ids[i : i + 900]
+                placeholders = ",".join("?" for _ in chunk)
                 self._db.execute(
-                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (nid,)
+                    f"DELETE FROM fts_kg_nodes WHERE node_id IN ({placeholders})",
+                    chunk,
                 )
-
-            # Remove retracted nodes from vec index
-            if self._vec_available:
-                for nid in retracted_ids:
+                if self._vec_available:
                     try:
                         self._db.execute(
-                            "DELETE FROM vec_kg_nodes WHERE node_id = ?", (nid,)
+                            f"DELETE FROM vec_kg_nodes WHERE node_id IN ({placeholders})",
+                            chunk,
                         )
                     except Exception:
                         pass

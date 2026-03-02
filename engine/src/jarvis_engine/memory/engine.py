@@ -533,8 +533,12 @@ class MemoryEngine:
                     knn_results = cur.fetchall()
                     if not knn_results:
                         return []
-                    candidate_ids = [r[0] for r in knn_results]
-                    dist_map = {r[0]: r[1] for r in knn_results}
+                    # Single-pass: build ordered ID list and distance map together
+                    candidate_ids: list[str] = []
+                    dist_map: dict[str, float] = {}
+                    for r in knn_results:
+                        candidate_ids.append(r[0])
+                        dist_map[r[0]] = r[1]
                     placeholders = ",".join("?" for _ in candidate_ids)
                     filter_sql = (
                         f"SELECT record_id FROM records "

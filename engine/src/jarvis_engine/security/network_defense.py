@@ -293,7 +293,7 @@ class HomeNetworkMonitor:
 
     def _detect_arp_anomalies(self, entries: list[dict[str, Any]]) -> None:
         """Flag unknown devices and ARP poisoning in entry list (mutates)."""
-        # Build maps for poisoning detection.
+        # Single-pass: build maps and detect anomalies together.
         ip_to_macs: dict[str, set[str]] = {}
         mac_to_ips: dict[str, set[str]] = {}
 
@@ -302,6 +302,10 @@ class HomeNetworkMonitor:
             mac = entry["mac"]
             ip_to_macs.setdefault(ip, set()).add(mac)
             mac_to_ips.setdefault(mac, set()).add(ip)
+
+        # Track already-alerted pairs to prevent duplicate alert firing.
+        alerted_ip_macs: set[str] = set()
+        alerted_mac_ips: set[str] = set()
 
         for entry in entries:
             mac = entry["mac"]
@@ -322,24 +326,28 @@ class HomeNetworkMonitor:
             # --- ARP poisoning: multiple MACs for same IP ---
             if len(ip_to_macs.get(ip, set())) > 1:
                 entry["arp_poisoning"] = True
-                self._fire_alert({
-                    "type": "arp_poisoning",
-                    "ip": ip,
-                    "macs": sorted(ip_to_macs[ip]),
-                    "message": f"ARP poisoning suspected: {ip} resolves to multiple MACs",
-                    "timestamp": time.time(),
-                })
+                if ip not in alerted_ip_macs:
+                    alerted_ip_macs.add(ip)
+                    self._fire_alert({
+                        "type": "arp_poisoning",
+                        "ip": ip,
+                        "macs": sorted(ip_to_macs[ip]),
+                        "message": f"ARP poisoning suspected: {ip} resolves to multiple MACs",
+                        "timestamp": time.time(),
+                    })
 
             # --- ARP poisoning: multiple IPs for same MAC (not broadcast) ---
             if mac not in _BROADCAST_MACS and len(mac_to_ips.get(mac, set())) > 1:
                 entry["arp_poisoning"] = True
-                self._fire_alert({
-                    "type": "arp_poisoning",
-                    "mac": mac,
-                    "ips": sorted(mac_to_ips[mac]),
-                    "message": f"ARP anomaly: {mac} claims multiple IPs",
-                    "timestamp": time.time(),
-                })
+                if mac not in alerted_mac_ips:
+                    alerted_mac_ips.add(mac)
+                    self._fire_alert({
+                        "type": "arp_poisoning",
+                        "mac": mac,
+                        "ips": sorted(mac_to_ips[mac]),
+                        "message": f"ARP anomaly: {mac} claims multiple IPs",
+                        "timestamp": time.time(),
+                    })
 
     # ------------------------------------------------------------------
     # DNS cache analysis

@@ -66,6 +66,10 @@ _API_RATE_LIMIT_NORMAL = 120          # 120 req/min for standard endpoints
 _API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
 _EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login"}
 
+# Public endpoints with no body and no auth — skip the full security pipeline.
+# Rate limiting already protects these from abuse.
+_PUBLIC_SAFE_PATHS = frozenset({"/health", "/cert-fingerprint"})
+
 
 def _detect_lan_ips() -> list[str]:
     """Detect local LAN IP addresses for SAN entries."""
@@ -342,7 +346,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         """Return True if this IP is rate-limited for bootstrap attempts."""
         now = time.time()
         with self._bootstrap_rate_lock:
-            self._prune_rate_dict(self._bootstrap_attempts)
+            if len(self._bootstrap_attempts) > 5000:
+                self._prune_rate_dict(self._bootstrap_attempts)
             attempts = self._bootstrap_attempts.get(client_ip, [])
             # Prune attempts outside the sliding window
             cutoff = now - _BOOTSTRAP_RATE_LIMIT_WINDOW
@@ -364,7 +369,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         """Return True if this IP is rate-limited for master password attempts."""
         now = time.time()
         with self._master_pw_rate_lock:
-            self._prune_rate_dict(self._master_pw_attempts)
+            if len(self._master_pw_attempts) > 5000:
+                self._prune_rate_dict(self._master_pw_attempts)
             attempts = self._master_pw_attempts.get(client_ip, [])
             cutoff = now - _MASTER_PW_RATE_LIMIT_WINDOW
             attempts = [ts for ts in attempts if ts > cutoff]
@@ -397,7 +403,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         bucket = self._api_rate_expensive if is_expensive else self._api_rate_normal
         now = time.time()
         with self._api_rate_lock:
-            self._prune_rate_dict(bucket)
+            if len(bucket) > 5000:
+                self._prune_rate_dict(bucket)
             attempts = bucket.get(client_ip, [])
             cutoff = now - _API_RATE_LIMIT_WINDOW
             attempts = [ts for ts in attempts if ts > cutoff]
@@ -1136,249 +1143,287 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return True
         return self._validate_auth(body)
 
+    # ------------------------------------------------------------------
+    # GET handler methods (extracted for O(1) dispatch-dict routing)
+    # ------------------------------------------------------------------
+
+    def _handle_get_health(self) -> None:
+        # Include intelligence regression status from self-test history
+        self_test_history_path = self.server.repo_root / ".planning" / "runtime" / "self_test_history.jsonl"  # type: ignore[attr-defined]
+        intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
+        if self_test_history_path.exists():
+            try:
+                lines = self_test_history_path.read_text(encoding="utf-8").strip().split("\n")
+                if lines and lines[-1].strip():
+                    latest = json.loads(lines[-1])
+                    intelligence_status["score"] = latest.get("average_score", 0.0)
+                    intelligence_status["last_test"] = latest.get("timestamp", "")
+                    intelligence_status["regression"] = latest.get("below_threshold", False)
+            except Exception as exc:
+                logger.debug("self-test history parse failed: %s", exc)
+        self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
+
+    def _handle_get_cert_fingerprint(self) -> None:
+        # Public endpoint (no auth) — returns TLS cert SHA-256 fingerprint
+        # for trust-on-first-use (TOFU) cert pinning
+        server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+        security_dir = server_obj.repo_root / ".planning" / "security"
+        cert_path_str = str(security_dir / "tls_cert.pem")
+        if not (security_dir / "tls_cert.pem").exists():
+            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "No TLS certificate found."})
+            return
+        fingerprint = _get_cert_fingerprint(cert_path_str)
+        if fingerprint is None:
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to compute fingerprint."})
+            return
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "fingerprint": fingerprint,
+            "algorithm": "sha256",
+        })
+
+    def _handle_get_quick_panel(self) -> None:
+        self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
+
+    def _handle_get_auth_status(self) -> None:
+        # Public endpoint (no auth) — reports whether a session is active
+        owner_session = getattr(self.server, "owner_session", None)
+        if owner_session is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Session auth not available.",
+            })
+            return
+        status = owner_session.session_status()
+        status["ok"] = True
+        self._write_json(HTTPStatus.OK, status)
+
+    def _handle_get_settings(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
+
+    def _handle_get_dashboard(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        self._write_json(
+            HTTPStatus.OK,
+            {"ok": True, "dashboard": build_intelligence_dashboard(root)},
+        )
+
+    def _handle_get_security_status(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        _sec_orch = getattr(self.server, "security", None)
+        if _sec_orch is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Security orchestrator not available.",
+            })
+            return
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "security": _sec_orch.status(),
+        })
+
+    def _handle_get_security_dashboard(self) -> None:
+        if not self._validate_auth_flexible(b""):
+            return
+        server_obj = self.server
+        sec = getattr(server_obj, "security", None)
+        if sec is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False, "error": "Security orchestrator not available"
+            })
+            return
+        dashboard = {
+            "security_status": sec.status(),
+            "recent_actions": sec.action_auditor.recent_actions(20) if hasattr(sec, "action_auditor") and sec.action_auditor else [],
+            "scope_violations": sec.scope_enforcer.recent_violations(10) if hasattr(sec, "scope_enforcer") and sec.scope_enforcer else [],
+            "resource_usage": sec.resource_monitor.summary() if hasattr(sec, "resource_monitor") and sec.resource_monitor else {},
+            "heartbeat": sec.heartbeat.status() if hasattr(sec, "heartbeat") and sec.heartbeat else {},
+            "threat_intel": sec.threat_intel.status() if hasattr(sec, "threat_intel") and sec.threat_intel else {},
+        }
+        self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})
+
+    def _handle_get_audit(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
+        audit_path = root_path / ".planning" / "runtime" / "gateway_audit.jsonl"
+        records: list[dict[str, Any]] = []
+        if audit_path.exists():
+            try:
+                lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
+                for line in lines[-50:]:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            except OSError:
+                pass
+        self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})
+
+    def _handle_get_processes(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        from jarvis_engine.process_manager import list_services
+        root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
+        services = list_services(root_p)
+        control = {}
+        ctrl_path = root_p / ".planning" / "runtime" / "control.json"
+        if ctrl_path.exists():
+            try:
+                control = json.loads(ctrl_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "services": services,
+            "control": control,
+        })
+
+    def _handle_get_sync_status(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        sync_engine = self.server.ensure_sync_engine()
+        if sync_engine is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
+            return
+        try:
+            status = sync_engine.sync_status()
+            self._write_json(HTTPStatus.OK, {"ok": True, "sync_status": status})
+        except Exception as exc:
+            logger.error("sync/status failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync status query failed."})
+
+    def _handle_get_activity(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.activity_feed import get_activity_feed
+        except ImportError:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})
+            return
+        # Parse query params
+        import urllib.parse as _urlparse
+        qs = _urlparse.parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        try:
+            limit = int(qs.get("limit", ["50"])[0])
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(1, min(limit, 500))
+        category = qs.get("category", [None])[0]
+        since = qs.get("since", [None])[0]
+        try:
+            feed = get_activity_feed()
+            events = feed.query(limit=limit, category=category, since=since)
+            stats = feed.stats()
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "events": [
+                    {
+                        "event_id": e.event_id,
+                        "timestamp": e.timestamp,
+                        "category": e.category,
+                        "summary": e.summary,
+                        "details": e.details,
+                    }
+                    for e in events
+                ],
+                "stats": stats,
+            })
+        except Exception as exc:
+            logger.error("activity feed query failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
+
+    def _handle_get_widget_status(self) -> None:
+        # Combined endpoint: health + growth + dashboard alerts in ONE request.
+        # Replaces 3 separate calls per widget poll cycle.
+        if not self._validate_auth(b""):
+            return
+        root_ws: Path = self.server.repo_root  # type: ignore[attr-defined]
+        combined: dict[str, Any] = {"ok": True}
+        try:
+            combined["growth"] = self._gather_intelligence_growth()
+        except Exception:
+            combined["growth"] = {}
+        try:
+            dash = build_intelligence_dashboard(root_ws)
+            combined["alerts"] = dash.get("proactive_alerts", [])
+        except Exception:
+            combined["alerts"] = []
+        self._write_json(HTTPStatus.OK, combined)
+
+    def _handle_get_intelligence_growth(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        self._write_json(HTTPStatus.OK, self._gather_intelligence_growth())
+
+    def _handle_get_favicon(self) -> None:
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.end_headers()
+
+    # Dispatch dict for GET routes — built once per class, O(1) lookup.
+    _GET_DISPATCH: dict[str, str] = {
+        "/": "_handle_get_quick_panel",
+        "/quick": "_handle_get_quick_panel",
+        "/health": "_handle_get_health",
+        "/cert-fingerprint": "_handle_get_cert_fingerprint",
+        "/auth/status": "_handle_get_auth_status",
+        "/settings": "_handle_get_settings",
+        "/dashboard": "_handle_get_dashboard",
+        "/security/status": "_handle_get_security_status",
+        "/security/dashboard": "_handle_get_security_dashboard",
+        "/audit": "_handle_get_audit",
+        "/processes": "_handle_get_processes",
+        "/sync/status": "_handle_get_sync_status",
+        "/activity": "_handle_get_activity",
+        "/widget-status": "_handle_get_widget_status",
+        "/intelligence/growth": "_handle_get_intelligence_growth",
+        "/favicon.ico": "_handle_get_favicon",
+    }
+
+    # Paths exempt from rate limiting (public/unauthenticated GET endpoints)
+    _GET_RATE_LIMIT_EXEMPT = frozenset({"/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"})
+
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         # Rate limit authenticated GET endpoints
-        if path not in ("/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"):
+        if path not in self._GET_RATE_LIMIT_EXEMPT:
             if not self._check_rate_limit(path):
                 return
-        # Security orchestrator pipeline check
-        _security = getattr(self.server, "security", None)
-        if _security is not None:
-            _client_ip = str(self.client_address[0])
-            _sec_check = _security.check_request(
-                path=path,
-                source_ip=_client_ip,
-                headers=dict(self.headers),
-                body="",
-                user_agent=self.headers.get("User-Agent", ""),
-            )
-            if not _sec_check["allowed"]:
-                self._write_json(HTTPStatus.FORBIDDEN, {
-                    "ok": False,
-                    "error": f"Request blocked: {_sec_check['reason']}",
-                })
-                return
-        if path == "/":
-            self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
-            return
-        if path == "/quick":
-            self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
-            return
+        # Fast-path: public, unauthenticated endpoints polled frequently.
+        # Return early BEFORE the security pipeline for maximum performance.
         if path == "/health":
-            # Include intelligence regression status from self-test history
-            self_test_history_path = self.server.repo_root / ".planning" / "runtime" / "self_test_history.jsonl"  # type: ignore[attr-defined]
-            intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
-            if self_test_history_path.exists():
-                try:
-                    lines = self_test_history_path.read_text(encoding="utf-8").strip().split("\n")
-                    if lines and lines[-1].strip():
-                        latest = json.loads(lines[-1])
-                        intelligence_status["score"] = latest.get("average_score", 0.0)
-                        intelligence_status["last_test"] = latest.get("timestamp", "")
-                        intelligence_status["regression"] = latest.get("below_threshold", False)
-                except Exception as exc:
-                    logger.debug("self-test history parse failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
+            self._handle_get_health()
             return
         if path == "/cert-fingerprint":
-            # Public endpoint (no auth) — returns TLS cert SHA-256 fingerprint
-            # for trust-on-first-use (TOFU) cert pinning
-            server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
-            security_dir = server_obj.repo_root / ".planning" / "security"
-            cert_path_str = str(security_dir / "tls_cert.pem")
-            if not (security_dir / "tls_cert.pem").exists():
-                self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "No TLS certificate found."})
-                return
-            fingerprint = _get_cert_fingerprint(cert_path_str)
-            if fingerprint is None:
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to compute fingerprint."})
-                return
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "fingerprint": fingerprint,
-                "algorithm": "sha256",
-            })
+            self._handle_get_cert_fingerprint()
             return
-        if path == "/auth/status":
-            # Public endpoint (no auth) — reports whether a session is active
-            owner_session = getattr(self.server, "owner_session", None)
-            if owner_session is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Session auth not available.",
-                })
-                return
-            status = owner_session.session_status()
-            status["ok"] = True
-            self._write_json(HTTPStatus.OK, status)
-            return
-        if path == "/settings":
-            if not self._validate_auth(b""):
-                return
-            self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
-            return
-        if path == "/dashboard":
-            if not self._validate_auth(b""):
-                return
-            root: Path = self.server.repo_root  # type: ignore[attr-defined]
-            self._write_json(
-                HTTPStatus.OK,
-                {"ok": True, "dashboard": build_intelligence_dashboard(root)},
-            )
-            return
-        if path == "/security/status":
-            if not self._validate_auth(b""):
-                return
-            _sec_orch = getattr(self.server, "security", None)
-            if _sec_orch is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Security orchestrator not available.",
-                })
-                return
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "security": _sec_orch.status(),
-            })
-            return
-        if path == "/security/dashboard":
-            if not self._validate_auth_flexible(b""):
-                return
-            server_obj = self.server
-            sec = getattr(server_obj, "security", None)
-            if sec is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False, "error": "Security orchestrator not available"
-                })
-                return
-            dashboard = {
-                "security_status": sec.status(),
-                "recent_actions": sec.action_auditor.recent_actions(20) if hasattr(sec, "action_auditor") and sec.action_auditor else [],
-                "scope_violations": sec.scope_enforcer.recent_violations(10) if hasattr(sec, "scope_enforcer") and sec.scope_enforcer else [],
-                "resource_usage": sec.resource_monitor.summary() if hasattr(sec, "resource_monitor") and sec.resource_monitor else {},
-                "heartbeat": sec.heartbeat.status() if hasattr(sec, "heartbeat") and sec.heartbeat else {},
-                "threat_intel": sec.threat_intel.status() if hasattr(sec, "threat_intel") and sec.threat_intel else {},
-            }
-            self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})
-            return
-        if path == "/audit":
-            if not self._validate_auth(b""):
-                return
-            root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
-            audit_path = root_path / ".planning" / "runtime" / "gateway_audit.jsonl"
-            records: list[dict[str, Any]] = []
-            if audit_path.exists():
-                try:
-                    lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
-                    for line in lines[-50:]:
-                        try:
-                            records.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            continue
-                except OSError:
-                    pass
-            self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})
-            return
-        if path == "/processes":
-            if not self._validate_auth(b""):
-                return
-            from jarvis_engine.process_manager import list_services
-            root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
-            services = list_services(root_p)
-            control = {}
-            ctrl_path = root_p / ".planning" / "runtime" / "control.json"
-            if ctrl_path.exists():
-                try:
-                    control = json.loads(ctrl_path.read_text(encoding="utf-8"))
-                except (json.JSONDecodeError, OSError):
-                    pass
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "services": services,
-                "control": control,
-            })
-            return
-        if path == "/sync/status":
-            if not self._validate_auth(b""):
-                return
-            sync_engine = self.server.ensure_sync_engine()
-            if sync_engine is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
-                return
-            try:
-                status = sync_engine.sync_status()
-                self._write_json(HTTPStatus.OK, {"ok": True, "sync_status": status})
-            except Exception as exc:
-                logger.error("sync/status failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync status query failed."})
-            return
-        if path == "/activity":
-            if not self._validate_auth(b""):
-                return
-            try:
-                from jarvis_engine.activity_feed import get_activity_feed
-            except ImportError:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})
-                return
-            # Parse query params
-            import urllib.parse as _urlparse
-            qs = _urlparse.parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
-            try:
-                limit = int(qs.get("limit", ["50"])[0])
-            except (TypeError, ValueError):
-                limit = 50
-            limit = max(1, min(limit, 500))
-            category = qs.get("category", [None])[0]
-            since = qs.get("since", [None])[0]
-            try:
-                feed = get_activity_feed()
-                events = feed.query(limit=limit, category=category, since=since)
-                stats = feed.stats()
-                self._write_json(HTTPStatus.OK, {
-                    "ok": True,
-                    "events": [
-                        {
-                            "event_id": e.event_id,
-                            "timestamp": e.timestamp,
-                            "category": e.category,
-                            "summary": e.summary,
-                            "details": e.details,
-                        }
-                        for e in events
-                    ],
-                    "stats": stats,
-                })
-            except Exception as exc:
-                logger.error("activity feed query failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
-            return
-        if path == "/widget-status":
-            # Combined endpoint: health + growth + dashboard alerts in ONE request.
-            # Replaces 3 separate calls per widget poll cycle.
-            if not self._validate_auth(b""):
-                return
-            root_ws: Path = self.server.repo_root  # type: ignore[attr-defined]
-            combined: dict[str, Any] = {"ok": True}
-            try:
-                combined["growth"] = self._gather_intelligence_growth()
-            except Exception:
-                combined["growth"] = {}
-            try:
-                dash = build_intelligence_dashboard(root_ws)
-                combined["alerts"] = dash.get("proactive_alerts", [])
-            except Exception:
-                combined["alerts"] = []
-            self._write_json(HTTPStatus.OK, combined)
-            return
-        if path == "/intelligence/growth":
-            if not self._validate_auth(b""):
-                return
-            self._write_json(HTTPStatus.OK, self._gather_intelligence_growth())
-            return
-        if path == "/favicon.ico":
-            self.send_response(HTTPStatus.NO_CONTENT)
-            self.end_headers()
+        # Security orchestrator pipeline check (skipped for public safe paths)
+        if path not in _PUBLIC_SAFE_PATHS:
+            _security = getattr(self.server, "security", None)
+            if _security is not None:
+                _client_ip = str(self.client_address[0])
+                _sec_check = _security.check_request(
+                    path=path,
+                    source_ip=_client_ip,
+                    headers=dict(self.headers),
+                    body="",
+                    user_agent=self.headers.get("User-Agent", ""),
+                )
+                if not _sec_check["allowed"]:
+                    self._write_json(HTTPStatus.FORBIDDEN, {
+                        "ok": False,
+                        "error": f"Request blocked: {_sec_check['reason']}",
+                    })
+                    return
+        # O(1) dispatch for remaining GET routes
+        handler_name = self._GET_DISPATCH.get(path)
+        if handler_name:
+            getattr(self, handler_name)()
             return
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
@@ -1554,6 +1599,433 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return False
         return True
 
+    # ------------------------------------------------------------------
+    # POST handler methods (extracted for O(1) dispatch-dict routing)
+    # ------------------------------------------------------------------
+
+    def _handle_post_bootstrap(self) -> None:
+        payload, _ = self._read_json_body_noauth(max_content_length=6_000)
+        if payload is None:
+            return
+        # Bootstrap returns credentials so restrict to localhost first.
+        # The only exception is if JARVIS_ALLOW_REMOTE_BOOTSTRAP is set.
+        client_ip = str(self.client_address[0]).strip()
+        allow_remote_bootstrap = os.getenv("JARVIS_ALLOW_REMOTE_BOOTSTRAP", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if client_ip not in ("127.0.0.1", "::1") and not allow_remote_bootstrap:
+            self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
+            return
+        # Rate-limit bootstrap attempts to prevent brute-force attacks
+        server: MobileIngestServer = self.server  # type: ignore[assignment]
+        if server.check_bootstrap_rate(client_ip):
+            self._write_json(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"ok": False, "error": "Too many bootstrap attempts. Try again later."},
+            )
+            return
+        master_password = str(payload.get("master_password", "")).strip()
+        if not master_password:
+            master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
+        if not master_password:
+            self._unauthorized("Master password is required.")
+            return
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        if not verify_master_password(root, master_password):
+            server.record_bootstrap_attempt(client_ip)
+            self._unauthorized("Invalid master password.")
+            return
+        device_id = str(payload.get("device_id", "")).strip()
+        if not device_id:
+            device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
+        trusted = False
+        if device_id and len(device_id) <= 128 and device_id.isascii():
+            trust_mobile_device(root, device_id)
+            trusted = True
+        bind_addr = self.server.server_address[0]
+        port = self.server.server_address[1]
+        if bind_addr in ("0.0.0.0", "", "::"):
+            # Determine the actual LAN IP so the mobile client can connect
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    bind_addr = s.getsockname()[0]
+            except OSError:
+                bind_addr = "127.0.0.1"
+        _scheme = "https" if getattr(self.server, "tls_active", False) else "http"
+        base_url = f"{_scheme}://{bind_addr}:{port}"
+        logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
+        self._write_json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "session": {
+                    "base_url": base_url,
+                    "token": self.server.auth_token,  # type: ignore[attr-defined]
+                    "signing_key": self.server.signing_key,  # type: ignore[attr-defined]
+                    "device_id": device_id,
+                    "trusted_device": trusted,
+                },
+                "owner_guard": {
+                    k: v for k, v in read_owner_guard(root).items()
+                    if k not in ("master_password_hash", "master_password_salt_b64", "master_password_iterations")
+                },
+            },
+        )
+
+    def _handle_post_auth_login(self) -> None:
+        # No HMAC auth required — this IS the authentication step.
+        # Rate limiting is enforced by _check_rate_limit (/auth/login
+        # is in _EXPENSIVE_PATHS: 10 req/min).
+        owner_session = getattr(self.server, "owner_session", None)
+        if owner_session is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Session auth not available.",
+            })
+            return
+        payload, _ = self._read_json_body_noauth(max_content_length=2_000)
+        if payload is None:
+            return
+        password = str(payload.get("password", "")).strip()
+        if not password:
+            self._write_json(HTTPStatus.BAD_REQUEST, {
+                "ok": False,
+                "error": "Missing required field: password.",
+            })
+            return
+        # Try OwnerSessionManager first (password set via set_password)
+        token = owner_session.authenticate(password)
+        if token is None:
+            # Fall back to owner_guard master password verification.
+            # If it passes, create a session token manually.
+            root_auth: Path = self.server.repo_root  # type: ignore[attr-defined]
+            if verify_master_password(root_auth, password):
+                import secrets as _auth_secrets
+                token = _auth_secrets.token_hex(32)
+                with owner_session._lock:
+                    owner_session._sessions[token] = time.time() + owner_session._session_timeout
+                logger.info("Owner authenticated via master password, session %s... created", token[:8])
+        if token is None:
+            self._write_json(HTTPStatus.UNAUTHORIZED, {
+                "ok": False,
+                "error": "Invalid password.",
+            })
+            return
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "session_token": token,
+        })
+
+    def _handle_post_auth_logout(self) -> None:
+        owner_session = getattr(self.server, "owner_session", None)
+        if owner_session is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Session auth not available.",
+            })
+            return
+        session_token = self.headers.get("X-Jarvis-Session", "").strip()
+        if not session_token:
+            self._write_json(HTTPStatus.BAD_REQUEST, {
+                "ok": False,
+                "error": "Missing X-Jarvis-Session header.",
+            })
+            return
+        # Drain any request body to avoid broken pipe
+        raw_cl = self.headers.get("Content-Length", "0")
+        try:
+            cl = int(raw_cl)
+            if cl > 0:
+                self.rfile.read(min(cl, 1_000))
+        except (TypeError, ValueError, OSError):
+            pass
+        owner_session.logout(session_token)
+        self._write_json(HTTPStatus.OK, {"ok": True})
+
+    def _handle_post_auth_lock(self) -> None:
+        # Requires session auth — invalidates ALL sessions
+        owner_session = getattr(self.server, "owner_session", None)
+        if owner_session is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Session auth not available.",
+            })
+            return
+        session_token = self.headers.get("X-Jarvis-Session", "").strip()
+        if not session_token or not owner_session.validate_session(session_token):
+            self._write_json(HTTPStatus.UNAUTHORIZED, {
+                "ok": False,
+                "error": "Valid session required for lock.",
+            })
+            return
+        # Drain any request body to avoid broken pipe
+        raw_cl = self.headers.get("Content-Length", "0")
+        try:
+            cl = int(raw_cl)
+            if cl > 0:
+                self.rfile.read(min(cl, 1_000))
+        except (TypeError, ValueError, OSError):
+            pass
+        owner_session.logout_all()
+        self._write_json(HTTPStatus.OK, {"ok": True})
+
+    def _handle_post_processes_kill(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=1_000)
+        if payload is None:
+            return
+        service_name = str(payload.get("service", "")).strip()
+        from jarvis_engine.process_manager import SERVICES, kill_service
+        if service_name not in SERVICES:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Unknown service: {service_name}"})
+            return
+        root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
+        killed = kill_service(service_name, root_p)
+        self._write_json(HTTPStatus.OK, {"ok": True, "service": service_name, "killed": killed})
+
+    def _handle_post_ingest(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=50_000)
+        if payload is None:
+            return
+
+        source = str(payload.get("source", "user"))
+        kind = str(payload.get("kind", "episodic"))
+        task_id = str(payload.get("task_id", "")).strip()
+        content = str(payload.get("content", "")).strip()
+
+        if source not in ALLOWED_SOURCES:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid source."})
+            return
+        if kind not in ALLOWED_KINDS:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid kind."})
+            return
+        if not task_id or len(task_id) > 128:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid task_id."})
+            return
+        if not content or len(content) > 20_000:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."})
+            return
+
+        rec = self.server.pipeline.ingest(  # type: ignore[attr-defined]
+            source=source,  # type: ignore[arg-type]
+            kind=kind,  # type: ignore[arg-type]
+            task_id=task_id,
+            content=content,
+        )
+        self._write_json(
+            HTTPStatus.CREATED,
+            {
+                "ok": True,
+                "record_id": rec.record_id,
+                "ts": rec.ts,
+                "source": rec.source,
+                "kind": rec.kind,
+                "task_id": rec.task_id,
+            },
+        )
+
+    def _handle_post_settings(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+
+        reason = str(payload.get("reason", "")).strip()[:200]
+        reset_raw = payload.get("reset", False)
+        if not isinstance(reset_raw, bool):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid reset."})
+            return
+        reset = reset_raw
+        daemon_paused = payload.get("daemon_paused")
+        safe_mode = payload.get("safe_mode")
+        gaming_enabled = payload.get("gaming_enabled")
+        gaming_auto_detect = payload.get("gaming_auto_detect")
+
+        for key, value in (
+            ("daemon_paused", daemon_paused),
+            ("safe_mode", safe_mode),
+            ("gaming_enabled", gaming_enabled),
+            ("gaming_auto_detect", gaming_auto_detect),
+        ):
+            if value is not None and not isinstance(value, bool):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Invalid {key}."})
+                return
+
+        root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
+        if reset:
+            reset_control_state(root_path)
+            try:
+                self._write_gaming_state(enabled=False, auto_detect=False, reason=reason)
+            except PermissionError:
+                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
+                return
+        else:
+            if daemon_paused is not None or safe_mode is not None or reason:
+                write_control_state(
+                    root_path,
+                    daemon_paused=daemon_paused if isinstance(daemon_paused, bool) else None,
+                    safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                    reason=reason,
+                )
+            if gaming_enabled is not None or gaming_auto_detect is not None or reason:
+                try:
+                    self._write_gaming_state(
+                        enabled=gaming_enabled if isinstance(gaming_enabled, bool) else None,
+                        auto_detect=gaming_auto_detect if isinstance(gaming_auto_detect, bool) else None,
+                        reason=reason,
+                    )
+                except PermissionError:
+                    self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
+                    return
+
+        self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
+
+    def _handle_post_conversation_clear(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=1_000)
+        if payload is None:
+            return
+        # Clear server-side conversation history
+        try:
+            import jarvis_engine.main as _main_mod
+            with _main_mod._conversation_history_lock:
+                _main_mod._conversation_history.clear()
+            self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
+        except Exception as exc:
+            self._write_json(HTTPStatus.OK, {"ok": True, "message": f"Best-effort clear: {exc}"})
+
+    def _handle_post_command(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=25_000)
+        if payload is None:
+            return
+        result = self._run_voice_command(payload)
+        # Scan LLM output for security issues (credential leaks, exfiltration, etc.)
+        _sec_orch = getattr(self.server, "security", None)
+        if _sec_orch is not None and result.get("ok"):
+            # Build a combined text from the LLM response fields
+            _response_parts = []
+            if result.get("reason"):
+                _response_parts.append(str(result["reason"]))
+            for _line in result.get("stdout_tail", []):
+                _response_parts.append(str(_line))
+            _response_text = "\n".join(_response_parts)
+            if _response_text.strip():
+                _output_check = _sec_orch.scan_output(_response_text)
+                if not _output_check["safe"]:
+                    result["reason"] = _output_check["filtered_text"]
+                    result["stdout_tail"] = [_output_check["filtered_text"]]
+                    result["security_filtered"] = True
+                    logger.warning("Output filtered: %s", _output_check["findings"][:3])
+        self._write_json(HTTPStatus.OK, result)
+
+    def _handle_post_sync_deprecated(self) -> None:
+        # Deprecated endpoint — tell clients to use the new endpoints
+        self._write_json(
+            HTTPStatus.GONE,
+            {"ok": False, "error": "Deprecated. Use /sync/pull or /sync/push", "endpoints": ["/sync/pull", "/sync/push", "/sync/status"]},
+        )
+
+    def _handle_post_sync_pull(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+        device_id = str(payload.get("device_id", "")).strip()
+        if not device_id or len(device_id) > 128 or not device_id.isascii():
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
+            return
+        sync_engine = self.server.ensure_sync_engine()
+        sync_transport = getattr(self.server, "_sync_transport", None)
+        if sync_engine is None or sync_transport is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
+            return
+        try:
+            import base64 as _b64
+            outgoing = sync_engine.compute_outgoing(device_id)
+            encrypted = sync_transport.encrypt(outgoing)
+            encoded = _b64.b64encode(encrypted).decode("ascii")
+            has_more = any(len(v) >= 500 for v in outgoing.get("changes", {}).values())
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "encrypted_payload": encoded,
+                "new_cursors": outgoing.get("cursors", {}),
+                "has_more": has_more,
+            })
+        except Exception as exc:
+            logger.error("sync/pull failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync pull failed."})
+
+    def _handle_post_sync_push(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=2_000_000)
+        if payload is None:
+            return
+        device_id = str(payload.get("device_id", "")).strip()
+        encrypted_payload = str(payload.get("encrypted_payload", "")).strip()
+        if not device_id or len(device_id) > 128 or not device_id.isascii():
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
+            return
+        if not encrypted_payload:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "encrypted_payload is required."})
+            return
+        sync_engine = self.server.ensure_sync_engine()
+        sync_transport = getattr(self.server, "_sync_transport", None)
+        if sync_engine is None or sync_transport is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
+            return
+        try:
+            import base64 as _b64
+            try:
+                raw_token = _b64.b64decode(encrypted_payload)
+            except Exception:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid base64 payload."})
+                return
+            changes = sync_transport.decrypt(raw_token)
+            result = sync_engine.apply_incoming(changes, device_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "applied": result.get("applied", 0),
+                "conflicts_resolved": result.get("conflicts_resolved", 0),
+                "errors": result.get("errors", []),
+            })
+        except Exception as exc:
+            logger.error("sync/push failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync push failed."})
+
+    def _handle_post_self_heal(self) -> None:
+        payload, _ = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+        keep_recent_raw = payload.get("keep_recent", 1800)
+        force_maintenance = _parse_bool(payload.get("force_maintenance", False))
+        snapshot_note = str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160] or "mobile-self-heal"
+        snapshot_note = snapshot_note.lstrip("-") or "mobile-self-heal"
+        try:
+            keep_recent = int(keep_recent_raw)
+        except (TypeError, ValueError):
+            keep_recent = 1800
+        keep_recent = max(200, min(keep_recent, 50000))
+        args = ["self-heal", "--keep-recent", str(keep_recent), "--snapshot-note", snapshot_note]
+        if force_maintenance:
+            args.append("--force-maintenance")
+        result = self._run_main_cli(args, timeout_s=240)
+        self._write_json(HTTPStatus.OK, result)
+
+    # Dispatch dict for POST routes — built once per class, O(1) lookup.
+    _POST_DISPATCH: dict[str, str] = {
+        "/bootstrap": "_handle_post_bootstrap",
+        "/auth/login": "_handle_post_auth_login",
+        "/auth/logout": "_handle_post_auth_logout",
+        "/auth/lock": "_handle_post_auth_lock",
+        "/processes/kill": "_handle_post_processes_kill",
+        "/ingest": "_handle_post_ingest",
+        "/settings": "_handle_post_settings",
+        "/conversation/clear": "_handle_post_conversation_clear",
+        "/command": "_handle_post_command",
+        "/sync": "_handle_post_sync_deprecated",
+        "/sync/pull": "_handle_post_sync_pull",
+        "/sync/push": "_handle_post_sync_push",
+        "/self-heal": "_handle_post_self_heal",
+    }
+
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
@@ -1575,425 +2047,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     "error": f"Request blocked: {_sec_check['reason']}",
                 })
                 return
-        if path == "/bootstrap":
-            payload, _ = self._read_json_body_noauth(max_content_length=6_000)
-            if payload is None:
-                return
-            # Bootstrap returns credentials so restrict to localhost first.
-            # The only exception is if JARVIS_ALLOW_REMOTE_BOOTSTRAP is set.
-            client_ip = str(self.client_address[0]).strip()
-            allow_remote_bootstrap = os.getenv("JARVIS_ALLOW_REMOTE_BOOTSTRAP", "").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-            }
-            if client_ip not in ("127.0.0.1", "::1") and not allow_remote_bootstrap:
-                self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
-                return
-            # Rate-limit bootstrap attempts to prevent brute-force attacks
-            server: MobileIngestServer = self.server  # type: ignore[assignment]
-            if server.check_bootstrap_rate(client_ip):
-                self._write_json(
-                    HTTPStatus.TOO_MANY_REQUESTS,
-                    {"ok": False, "error": "Too many bootstrap attempts. Try again later."},
-                )
-                return
-            master_password = str(payload.get("master_password", "")).strip()
-            if not master_password:
-                master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
-            if not master_password:
-                self._unauthorized("Master password is required.")
-                return
-            root: Path = self.server.repo_root  # type: ignore[attr-defined]
-            if not verify_master_password(root, master_password):
-                server.record_bootstrap_attempt(client_ip)
-                self._unauthorized("Invalid master password.")
-                return
-            device_id = str(payload.get("device_id", "")).strip()
-            if not device_id:
-                device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
-            trusted = False
-            if device_id and len(device_id) <= 128 and device_id.isascii():
-                trust_mobile_device(root, device_id)
-                trusted = True
-            bind_addr = self.server.server_address[0]
-            port = self.server.server_address[1]
-            if bind_addr in ("0.0.0.0", "", "::"):
-                # Determine the actual LAN IP so the mobile client can connect
-                try:
-                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                        s.connect(("8.8.8.8", 80))
-                        bind_addr = s.getsockname()[0]
-                except OSError:
-                    bind_addr = "127.0.0.1"
-            _scheme = "https" if getattr(self.server, "tls_active", False) else "http"
-            base_url = f"{_scheme}://{bind_addr}:{port}"
-            logger.warning("Bootstrap credentials sent — ensure connection is from localhost only")
-            self._write_json(
-                HTTPStatus.OK,
-                {
-                    "ok": True,
-                    "session": {
-                        "base_url": base_url,
-                        "token": self.server.auth_token,  # type: ignore[attr-defined]
-                        "signing_key": self.server.signing_key,  # type: ignore[attr-defined]
-                        "device_id": device_id,
-                        "trusted_device": trusted,
-                    },
-                    "owner_guard": {
-                        k: v for k, v in read_owner_guard(root).items()
-                        if k not in ("master_password_hash", "master_password_salt_b64", "master_password_iterations")
-                    },
-                },
-            )
+        # O(1) dispatch for POST routes
+        handler_name = self._POST_DISPATCH.get(path)
+        if handler_name:
+            getattr(self, handler_name)()
             return
-
-        if path == "/auth/login":
-            # No HMAC auth required — this IS the authentication step.
-            # Rate limiting is enforced by _check_rate_limit (/auth/login
-            # is in _EXPENSIVE_PATHS: 10 req/min).
-            owner_session = getattr(self.server, "owner_session", None)
-            if owner_session is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Session auth not available.",
-                })
-                return
-            payload, _ = self._read_json_body_noauth(max_content_length=2_000)
-            if payload is None:
-                return
-            password = str(payload.get("password", "")).strip()
-            if not password:
-                self._write_json(HTTPStatus.BAD_REQUEST, {
-                    "ok": False,
-                    "error": "Missing required field: password.",
-                })
-                return
-            # Try OwnerSessionManager first (password set via set_password)
-            token = owner_session.authenticate(password)
-            if token is None:
-                # Fall back to owner_guard master password verification.
-                # If it passes, create a session token manually.
-                root_auth: Path = self.server.repo_root  # type: ignore[attr-defined]
-                if verify_master_password(root_auth, password):
-                    import secrets as _auth_secrets
-                    token = _auth_secrets.token_hex(32)
-                    with owner_session._lock:
-                        owner_session._sessions[token] = time.time() + owner_session._session_timeout
-                    logger.info("Owner authenticated via master password, session %s... created", token[:8])
-            if token is None:
-                self._write_json(HTTPStatus.UNAUTHORIZED, {
-                    "ok": False,
-                    "error": "Invalid password.",
-                })
-                return
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "session_token": token,
-            })
-            return
-
-        if path == "/auth/logout":
-            owner_session = getattr(self.server, "owner_session", None)
-            if owner_session is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Session auth not available.",
-                })
-                return
-            session_token = self.headers.get("X-Jarvis-Session", "").strip()
-            if not session_token:
-                self._write_json(HTTPStatus.BAD_REQUEST, {
-                    "ok": False,
-                    "error": "Missing X-Jarvis-Session header.",
-                })
-                return
-            # Drain any request body to avoid broken pipe
-            raw_cl = self.headers.get("Content-Length", "0")
-            try:
-                cl = int(raw_cl)
-                if cl > 0:
-                    self.rfile.read(min(cl, 1_000))
-            except (TypeError, ValueError, OSError):
-                pass
-            owner_session.logout(session_token)
-            self._write_json(HTTPStatus.OK, {"ok": True})
-            return
-
-        if path == "/auth/lock":
-            # Requires session auth — invalidates ALL sessions
-            owner_session = getattr(self.server, "owner_session", None)
-            if owner_session is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Session auth not available.",
-                })
-                return
-            session_token = self.headers.get("X-Jarvis-Session", "").strip()
-            if not session_token or not owner_session.validate_session(session_token):
-                self._write_json(HTTPStatus.UNAUTHORIZED, {
-                    "ok": False,
-                    "error": "Valid session required for lock.",
-                })
-                return
-            # Drain any request body to avoid broken pipe
-            raw_cl = self.headers.get("Content-Length", "0")
-            try:
-                cl = int(raw_cl)
-                if cl > 0:
-                    self.rfile.read(min(cl, 1_000))
-            except (TypeError, ValueError, OSError):
-                pass
-            owner_session.logout_all()
-            self._write_json(HTTPStatus.OK, {"ok": True})
-            return
-
-        if path == "/processes/kill":
-            payload, _ = self._read_json_body(max_content_length=1_000)
-            if payload is None:
-                return
-            service_name = str(payload.get("service", "")).strip()
-            from jarvis_engine.process_manager import SERVICES, kill_service
-            if service_name not in SERVICES:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Unknown service: {service_name}"})
-                return
-            root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
-            killed = kill_service(service_name, root_p)
-            self._write_json(HTTPStatus.OK, {"ok": True, "service": service_name, "killed": killed})
-            return
-
-        if path == "/ingest":
-            payload, _ = self._read_json_body(max_content_length=50_000)
-            if payload is None:
-                return
-
-            source = str(payload.get("source", "user"))
-            kind = str(payload.get("kind", "episodic"))
-            task_id = str(payload.get("task_id", "")).strip()
-            content = str(payload.get("content", "")).strip()
-
-            if source not in ALLOWED_SOURCES:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid source."})
-                return
-            if kind not in ALLOWED_KINDS:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid kind."})
-                return
-            if not task_id or len(task_id) > 128:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid task_id."})
-                return
-            if not content or len(content) > 20_000:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."})
-                return
-
-            rec = self.server.pipeline.ingest(  # type: ignore[attr-defined]
-                source=source,  # type: ignore[arg-type]
-                kind=kind,  # type: ignore[arg-type]
-                task_id=task_id,
-                content=content,
-            )
-            self._write_json(
-                HTTPStatus.CREATED,
-                {
-                    "ok": True,
-                    "record_id": rec.record_id,
-                    "ts": rec.ts,
-                    "source": rec.source,
-                    "kind": rec.kind,
-                    "task_id": rec.task_id,
-                },
-            )
-            return
-
-        if path == "/settings":
-            payload, _ = self._read_json_body(max_content_length=10_000)
-            if payload is None:
-                return
-
-            reason = str(payload.get("reason", "")).strip()[:200]
-            reset_raw = payload.get("reset", False)
-            if not isinstance(reset_raw, bool):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid reset."})
-                return
-            reset = reset_raw
-            daemon_paused = payload.get("daemon_paused")
-            safe_mode = payload.get("safe_mode")
-            gaming_enabled = payload.get("gaming_enabled")
-            gaming_auto_detect = payload.get("gaming_auto_detect")
-
-            for key, value in (
-                ("daemon_paused", daemon_paused),
-                ("safe_mode", safe_mode),
-                ("gaming_enabled", gaming_enabled),
-                ("gaming_auto_detect", gaming_auto_detect),
-            ):
-                if value is not None and not isinstance(value, bool):
-                    self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Invalid {key}."})
-                    return
-
-            root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
-            if reset:
-                reset_control_state(root_path)
-                try:
-                    self._write_gaming_state(enabled=False, auto_detect=False, reason=reason)
-                except PermissionError:
-                    self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
-                    return
-            else:
-                if daemon_paused is not None or safe_mode is not None or reason:
-                    write_control_state(
-                        root_path,
-                        daemon_paused=daemon_paused if isinstance(daemon_paused, bool) else None,
-                        safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
-                        reason=reason,
-                    )
-                if gaming_enabled is not None or gaming_auto_detect is not None or reason:
-                    try:
-                        self._write_gaming_state(
-                            enabled=gaming_enabled if isinstance(gaming_enabled, bool) else None,
-                            auto_detect=gaming_auto_detect if isinstance(gaming_auto_detect, bool) else None,
-                            reason=reason,
-                        )
-                    except PermissionError:
-                        self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
-                        return
-
-            self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
-            return
-
-        if path == "/conversation/clear":
-            payload, _ = self._read_json_body(max_content_length=1_000)
-            if payload is None:
-                return
-            # Clear server-side conversation history
-            try:
-                import jarvis_engine.main as _main_mod
-                with _main_mod._conversation_history_lock:
-                    _main_mod._conversation_history.clear()
-                self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
-            except Exception as exc:
-                self._write_json(HTTPStatus.OK, {"ok": True, "message": f"Best-effort clear: {exc}"})
-            return
-
-        if path == "/command":
-            payload, _ = self._read_json_body(max_content_length=25_000)
-            if payload is None:
-                return
-            result = self._run_voice_command(payload)
-            # Scan LLM output for security issues (credential leaks, exfiltration, etc.)
-            _sec_orch = getattr(self.server, "security", None)
-            if _sec_orch is not None and result.get("ok"):
-                # Build a combined text from the LLM response fields
-                _response_parts = []
-                if result.get("reason"):
-                    _response_parts.append(str(result["reason"]))
-                for _line in result.get("stdout_tail", []):
-                    _response_parts.append(str(_line))
-                _response_text = "\n".join(_response_parts)
-                if _response_text.strip():
-                    _output_check = _sec_orch.scan_output(_response_text)
-                    if not _output_check["safe"]:
-                        result["reason"] = _output_check["filtered_text"]
-                        result["stdout_tail"] = [_output_check["filtered_text"]]
-                        result["security_filtered"] = True
-                        logger.warning("Output filtered: %s", _output_check["findings"][:3])
-            self._write_json(HTTPStatus.OK, result)
-            return
-
-        if path == "/sync":
-            # Deprecated endpoint — tell clients to use the new endpoints
-            self._write_json(
-                HTTPStatus.GONE,
-                {"ok": False, "error": "Deprecated. Use /sync/pull or /sync/push", "endpoints": ["/sync/pull", "/sync/push", "/sync/status"]},
-            )
-            return
-
-        if path == "/sync/pull":
-            payload, _ = self._read_json_body(max_content_length=10_000)
-            if payload is None:
-                return
-            device_id = str(payload.get("device_id", "")).strip()
-            if not device_id or len(device_id) > 128 or not device_id.isascii():
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
-                return
-            sync_engine = self.server.ensure_sync_engine()
-            sync_transport = getattr(self.server, "_sync_transport", None)
-            if sync_engine is None or sync_transport is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
-                return
-            try:
-                import base64 as _b64
-                outgoing = sync_engine.compute_outgoing(device_id)
-                encrypted = sync_transport.encrypt(outgoing)
-                encoded = _b64.b64encode(encrypted).decode("ascii")
-                has_more = any(len(v) >= 500 for v in outgoing.get("changes", {}).values())
-                self._write_json(HTTPStatus.OK, {
-                    "ok": True,
-                    "encrypted_payload": encoded,
-                    "new_cursors": outgoing.get("cursors", {}),
-                    "has_more": has_more,
-                })
-            except Exception as exc:
-                logger.error("sync/pull failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync pull failed."})
-            return
-
-        if path == "/sync/push":
-            payload, _ = self._read_json_body(max_content_length=2_000_000)
-            if payload is None:
-                return
-            device_id = str(payload.get("device_id", "")).strip()
-            encrypted_payload = str(payload.get("encrypted_payload", "")).strip()
-            if not device_id or len(device_id) > 128 or not device_id.isascii():
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid device_id."})
-                return
-            if not encrypted_payload:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "encrypted_payload is required."})
-                return
-            sync_engine = self.server.ensure_sync_engine()
-            sync_transport = getattr(self.server, "_sync_transport", None)
-            if sync_engine is None or sync_transport is None:
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Sync not available."})
-                return
-            try:
-                import base64 as _b64
-                try:
-                    raw_token = _b64.b64decode(encrypted_payload)
-                except Exception:
-                    self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid base64 payload."})
-                    return
-                changes = sync_transport.decrypt(raw_token)
-                result = sync_engine.apply_incoming(changes, device_id)
-                self._write_json(HTTPStatus.OK, {
-                    "ok": True,
-                    "applied": result.get("applied", 0),
-                    "conflicts_resolved": result.get("conflicts_resolved", 0),
-                    "errors": result.get("errors", []),
-                })
-            except Exception as exc:
-                logger.error("sync/push failed: %s", exc)
-                self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync push failed."})
-            return
-
-        if path == "/self-heal":
-            payload, _ = self._read_json_body(max_content_length=10_000)
-            if payload is None:
-                return
-            keep_recent_raw = payload.get("keep_recent", 1800)
-            force_maintenance = _parse_bool(payload.get("force_maintenance", False))
-            snapshot_note = str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160] or "mobile-self-heal"
-            snapshot_note = snapshot_note.lstrip("-") or "mobile-self-heal"
-            try:
-                keep_recent = int(keep_recent_raw)
-            except (TypeError, ValueError):
-                keep_recent = 1800
-            keep_recent = max(200, min(keep_recent, 50000))
-            args = ["self-heal", "--keep-recent", str(keep_recent), "--snapshot-note", snapshot_note]
-            if force_maintenance:
-                args.append("--force-maintenance")
-            result = self._run_main_cli(args, timeout_s=240)
-            self._write_json(HTTPStatus.OK, result)
-            return
-
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
         return
 
