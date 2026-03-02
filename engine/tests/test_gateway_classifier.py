@@ -142,7 +142,7 @@ class TestIntentClassifierRouting:
             "solve this differential equation step by step"
         )
         assert route == "math_logic"
-        assert model == "codex-cli"  # o3/o4-mini excel at math
+        assert model == "codex-cli"  # GPT-5.3 excels at math
 
     def test_classify_complex_query(self, classifier):
         route, model, confidence = classifier.classify(
