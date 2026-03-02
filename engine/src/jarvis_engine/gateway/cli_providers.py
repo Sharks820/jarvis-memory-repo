@@ -53,8 +53,8 @@ _CLI_CONFIGS: dict[str, dict] = {
     "codex-cli": {
         "executable": "codex",
         "model": "codex-cli",
-        "display": "Codex CLI (o3)",
-        "default_model": "o3",  # o3 high reasoning — math, logic
+        "display": "Codex CLI (GPT-5.3)",
+        "default_model": "gpt-5.3-codex",  # GPT-5.3 high reasoning — math, logic
     },
     "gemini-cli": {
         "executable": "gemini",
@@ -202,12 +202,12 @@ def call_codex_cli(
     messages: list[dict[str, str]],
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
-    model: str = "o3",
+    model: str = "gpt-5.3-codex",
 ) -> dict:
     """Call Codex CLI in non-interactive exec mode.
 
-    Uses o3 (highest reasoning) by default via the user's Codex Pro plan.
-    o3 excels at math, logic, and complex reasoning tasks.
+    Uses GPT-5.3 (highest reasoning) by default via the user's Codex Pro plan.
+    GPT-5.3 excels at math, logic, and complex reasoning tasks.
 
     Returns dict with keys: text, model, provider, success, error.
     """

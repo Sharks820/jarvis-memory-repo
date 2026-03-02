@@ -1,7 +1,7 @@
 """IntentClassifier: embedding-based query routing with privacy keyword detection.
 
 Routes queries to the optimal model based on task type and model strengths:
-- Math/logic reasoning -> Codex CLI (o3 high reasoning via Codex Pro plan)
+- Math/logic reasoning -> Codex CLI (GPT-5.3 high reasoning via Codex Pro plan)
 - Complex coding/architecture -> Claude CLI (Opus 4.6 via 20x Max plan)
 - Routine summarization/formatting -> Kimi K2 via Groq API (fast, cost-effective)
 - Creative writing/brainstorming -> Gemini CLI (strong creative capabilities)
@@ -137,7 +137,7 @@ class IntentClassifier:
     # Primary model for each route — chosen for best performance per task type.
     # Gateway falls back through the chain if primary is unavailable.
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "codex-cli",    # o3/o4-mini excel at math and logic reasoning
+        "math_logic": "codex-cli",    # GPT-5.3 excels at math and logic reasoning
         "complex": "claude-cli",      # Opus excels at coding, architecture, debugging
         "routine": "kimi-k2",         # Fast API (Groq) for summarization, formatting
         "creative": "gemini-cli",     # Gemini strong at creative writing, brainstorming
