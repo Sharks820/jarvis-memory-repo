@@ -89,6 +89,16 @@ from jarvis_engine.handlers.sync_handlers import (
     SyncPushHandler,
     SyncStatusHandler,
 )
+from jarvis_engine.handlers.defense_handlers import (
+    BlockIPHandler,
+    ContainmentOverrideHandler,
+    ExportForensicsHandler,
+    ReviewQuarantineHandler,
+    SecurityBriefingHandler,
+    SecurityStatusHandler,
+    ThreatReportHandler,
+    UnblockIPHandler,
+)
 
 __all__ = [
     # Memory
@@ -169,4 +179,13 @@ __all__ = [
     "SyncPullHandler",
     "SyncPushHandler",
     "SyncStatusHandler",
+    # Defense
+    "BlockIPHandler",
+    "ContainmentOverrideHandler",
+    "ExportForensicsHandler",
+    "ReviewQuarantineHandler",
+    "SecurityBriefingHandler",
+    "SecurityStatusHandler",
+    "ThreatReportHandler",
+    "UnblockIPHandler",
 ]

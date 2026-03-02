@@ -347,6 +347,47 @@ def create_app(root: Path) -> CommandBus:
     bus.register(PhoneSpamGuardCommand, PhoneSpamGuardHandler(root).handle)
     bus.register(PersonaConfigCommand, PersonaConfigHandler(root).handle)
 
+    # Defense commands (Wave 9-13 security modules)
+    try:
+        from jarvis_engine.security.defense_commands import (
+            BlockIPCommand,
+            ContainmentOverrideCommand,
+            ExportForensicsCommand,
+            ReviewQuarantineCommand,
+            SecurityBriefingCommand,
+            SecurityStatusCommand,
+            ThreatReportCommand,
+            UnblockIPCommand,
+        )
+        from jarvis_engine.handlers.defense_handlers import (
+            BlockIPHandler,
+            ContainmentOverrideHandler,
+            ExportForensicsHandler,
+            ReviewQuarantineHandler,
+            SecurityBriefingHandler,
+            SecurityStatusHandler,
+            ThreatReportHandler,
+            UnblockIPHandler,
+        )
+
+        _sec_db_path = root / ".planning" / "brain" / "security.db"
+        _sec_db_path.parent.mkdir(parents=True, exist_ok=True)
+        _sec_db = __import__("sqlite3").connect(str(_sec_db_path), check_same_thread=False)
+        _sec_db.execute("PRAGMA journal_mode=WAL")
+        _sec_lock = __import__("threading").Lock()
+        _sec_log_dir = root / ".planning" / "runtime" / "forensic"
+
+        bus.register(SecurityStatusCommand, SecurityStatusHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(ThreatReportCommand, ThreatReportHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(ExportForensicsCommand, ExportForensicsHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(ContainmentOverrideCommand, ContainmentOverrideHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(BlockIPCommand, BlockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(UnblockIPCommand, UnblockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(ReviewQuarantineCommand, ReviewQuarantineHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        bus.register(SecurityBriefingCommand, SecurityBriefingHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+    except Exception as exc:
+        logger.warning("Failed to register defense commands: %s", exc)
+
     # -- Knowledge --
     bus.register(KnowledgeStatusCommand, KnowledgeStatusHandler(root, kg=kg).handle)
     bus.register(ContradictionListCommand, ContradictionListHandler(root, kg=kg).handle)
