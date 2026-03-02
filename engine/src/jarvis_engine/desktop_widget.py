@@ -737,14 +737,22 @@ class JarvisDesktopWidget(tk.Tk):
     # (alias, display_name, best_use_title, color)
     MODEL_ROTATION: list[tuple[str, str, str, str]] = [
         ("auto", "Auto", "Smart Router", "#12c9b1"),
-        ("kimi-k2", "Kimi K2", "Primary Operator", "#f59e0b"),
+        # CLI-based models (subscription plans, no API keys needed)
+        ("claude-cli", "Claude CLI", "Opus 4.6 · Code & Architecture", "#d946ef"),
+        ("codex-cli", "Codex CLI", "GPT-5.3 · Math & Logic", "#10b981"),
+        ("gemini-cli", "Gemini CLI", "Creative & Web Research", "#f59e0b"),
+        ("kimi-cli", "Kimi CLI", "General Purpose", "#e879f9"),
+        # Cloud API models
+        ("kimi-k2", "Kimi K2", "Fast API · Primary Operator", "#f59e0b"),
         ("llama-3.3-70b", "LLaMA 3.3 70B", "Fast Analyst", "#3b82f6"),
         ("devstral-2", "Devstral 2", "Code Specialist", "#8b5cf6"),
         ("glm-4.7-flash", "GLM-4.7 Flash", "Speed Runner", "#ef4444"),
-        ("claude-opus", "Claude Opus", "Deep Reasoner", "#d946ef"),
-        ("claude-sonnet", "Claude Sonnet", "Balanced Thinker", "#06b6d4"),
-        ("claude-haiku", "Claude Haiku", "Rapid Responder", "#22c55e"),
-        ("kimi-k2", "Planner", "Research & Strategy", "#e879f9"),
+        # Anthropic API models (require ANTHROPIC_API_KEY)
+        ("claude-opus", "Claude Opus", "Deep Reasoner (API)", "#d946ef"),
+        ("claude-sonnet", "Claude Sonnet", "Balanced Thinker (API)", "#06b6d4"),
+        ("claude-haiku", "Claude Haiku", "Rapid Responder (API)", "#22c55e"),
+        # Specialty aliases
+        ("claude-cli", "Planner", "Opus 4.6 · Strategy & Research", "#c084fc"),
     ]
 
     def __init__(self, root_path: Path) -> None:
