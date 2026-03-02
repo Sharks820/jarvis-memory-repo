@@ -64,7 +64,7 @@ _MASTER_PW_RATE_LIMIT_MAX = 5
 _API_RATE_LIMIT_WINDOW = 60.0        # 60-second window
 _API_RATE_LIMIT_NORMAL = 120          # 120 req/min for standard endpoints
 _API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
-_EXPENSIVE_PATHS = {"/command", "/self-heal"}
+_EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login"}
 
 
 def _detect_lan_ips() -> list[str]:
@@ -309,6 +309,18 @@ class MobileIngestServer(ThreadingHTTPServer):
         except Exception as exc:
             logger.warning("SecurityOrchestrator init failed (security checks disabled): %s", exc)
             self.security = None
+
+        # Owner session manager (optional — gracefully skipped if init fails)
+        self.owner_session: Any = None
+        try:
+            from jarvis_engine.security.owner_session import OwnerSessionManager
+            self.owner_session = OwnerSessionManager(
+                session_timeout=int(os.environ.get("JARVIS_SESSION_TIMEOUT", "1800")),
+            )
+            logger.info("OwnerSessionManager initialized for mobile API")
+        except Exception as exc:
+            logger.warning("OwnerSessionManager init failed (session auth disabled): %s", exc)
+            self.owner_session = None
 
     @staticmethod
     def _prune_rate_dict(d: dict[str, list[float]], max_keys: int = 5000) -> None:
@@ -558,7 +570,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self.send_header(
             "Access-Control-Allow-Headers",
             "Content-Type, Authorization, X-Jarvis-Timestamp, X-Jarvis-Nonce, "
-            "X-Jarvis-Signature, X-Jarvis-Device-Id, X-Jarvis-Master-Password",
+            "X-Jarvis-Signature, X-Jarvis-Device-Id, X-Jarvis-Master-Password, "
+            "X-Jarvis-Session",
         )
         self.send_header("Access-Control-Max-Age", "3600")
 
@@ -1110,10 +1123,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
         return True
 
+    def _validate_auth_flexible(self, body: bytes) -> bool:
+        """Accept either a valid session token OR standard HMAC auth.
+
+        Checks ``X-Jarvis-Session`` header first.  If a valid session token
+        is present, the request is authenticated without requiring HMAC
+        headers.  Otherwise falls back to the full HMAC validation path.
+        """
+        session_token = self.headers.get("X-Jarvis-Session", "").strip()
+        owner_session = getattr(self.server, "owner_session", None)
+        if session_token and owner_session and owner_session.validate_session(session_token):
+            return True
+        return self._validate_auth(body)
+
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         # Rate limit authenticated GET endpoints
-        if path not in ("/", "/quick", "/health", "/cert-fingerprint", "/favicon.ico"):
+        if path not in ("/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"):
             if not self._check_rate_limit(path):
                 return
         # Security orchestrator pipeline check
@@ -1173,6 +1199,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 "fingerprint": fingerprint,
                 "algorithm": "sha256",
             })
+            return
+        if path == "/auth/status":
+            # Public endpoint (no auth) — reports whether a session is active
+            owner_session = getattr(self.server, "owner_session", None)
+            if owner_session is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Session auth not available.",
+                })
+                return
+            status = owner_session.session_status()
+            status["ok"] = True
+            self._write_json(HTTPStatus.OK, status)
             return
         if path == "/settings":
             if not self._validate_auth(b""):
@@ -1589,6 +1628,106 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/auth/login":
+            # No HMAC auth required — this IS the authentication step.
+            # Rate limiting is enforced by _check_rate_limit (/auth/login
+            # is in _EXPENSIVE_PATHS: 10 req/min).
+            owner_session = getattr(self.server, "owner_session", None)
+            if owner_session is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Session auth not available.",
+                })
+                return
+            payload, _ = self._read_json_body_noauth(max_content_length=2_000)
+            if payload is None:
+                return
+            password = str(payload.get("password", "")).strip()
+            if not password:
+                self._write_json(HTTPStatus.BAD_REQUEST, {
+                    "ok": False,
+                    "error": "Missing required field: password.",
+                })
+                return
+            # Try OwnerSessionManager first (password set via set_password)
+            token = owner_session.authenticate(password)
+            if token is None:
+                # Fall back to owner_guard master password verification.
+                # If it passes, create a session token manually.
+                root_auth: Path = self.server.repo_root  # type: ignore[attr-defined]
+                if verify_master_password(root_auth, password):
+                    import secrets as _auth_secrets
+                    token = _auth_secrets.token_hex(32)
+                    with owner_session._lock:
+                        owner_session._sessions[token] = time.time() + owner_session._session_timeout
+                    logger.info("Owner authenticated via master password, session %s... created", token[:8])
+            if token is None:
+                self._write_json(HTTPStatus.UNAUTHORIZED, {
+                    "ok": False,
+                    "error": "Invalid password.",
+                })
+                return
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "session_token": token,
+            })
+            return
+
+        if path == "/auth/logout":
+            owner_session = getattr(self.server, "owner_session", None)
+            if owner_session is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Session auth not available.",
+                })
+                return
+            session_token = self.headers.get("X-Jarvis-Session", "").strip()
+            if not session_token:
+                self._write_json(HTTPStatus.BAD_REQUEST, {
+                    "ok": False,
+                    "error": "Missing X-Jarvis-Session header.",
+                })
+                return
+            # Drain any request body to avoid broken pipe
+            raw_cl = self.headers.get("Content-Length", "0")
+            try:
+                cl = int(raw_cl)
+                if cl > 0:
+                    self.rfile.read(min(cl, 1_000))
+            except (TypeError, ValueError, OSError):
+                pass
+            owner_session.logout(session_token)
+            self._write_json(HTTPStatus.OK, {"ok": True})
+            return
+
+        if path == "/auth/lock":
+            # Requires session auth — invalidates ALL sessions
+            owner_session = getattr(self.server, "owner_session", None)
+            if owner_session is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Session auth not available.",
+                })
+                return
+            session_token = self.headers.get("X-Jarvis-Session", "").strip()
+            if not session_token or not owner_session.validate_session(session_token):
+                self._write_json(HTTPStatus.UNAUTHORIZED, {
+                    "ok": False,
+                    "error": "Valid session required for lock.",
+                })
+                return
+            # Drain any request body to avoid broken pipe
+            raw_cl = self.headers.get("Content-Length", "0")
+            try:
+                cl = int(raw_cl)
+                if cl > 0:
+                    self.rfile.read(min(cl, 1_000))
+            except (TypeError, ValueError, OSError):
+                pass
+            owner_session.logout_all()
+            self._write_json(HTTPStatus.OK, {"ok": True})
+            return
+
         if path == "/processes/kill":
             payload, _ = self._read_json_body(max_content_length=1_000)
             if payload is None:
@@ -1955,7 +2094,7 @@ def run_mobile_server(
     logger.info("tls=%s", "enabled" if tls_active else "disabled")
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         logger.warning("mobile_api_non_loopback_without_tls")
-    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /auth/status, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /auth/login, POST /auth/logout, POST /auth/lock, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     # Pre-warm the CommandBus so the first user request doesn't pay cold start cost
     def _prewarm() -> None:
         try:
