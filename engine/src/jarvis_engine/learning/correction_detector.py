@@ -251,6 +251,15 @@ class CorrectionDetector:
                         "Correction merged: node %s retracted, existing node %s boosted to %.2f",
                         node_id, existing_new_id, merged_confidence if existing_new_row else new_confidence,
                     )
+                    # Add superseded edge for historical audit trail
+                    try:
+                        self._kg.add_edge(
+                            source_id=node_id,
+                            target_id=existing_new_id,
+                            relation="superseded",
+                        )
+                    except Exception:
+                        pass  # best-effort audit edge
                     return True
 
             # Update the fact label and confidence
