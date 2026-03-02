@@ -143,6 +143,49 @@ def test_query_handler_fallback_info_passed_through() -> None:
     assert result.fallback_reason == "Primary provider failed"
 
 
+def test_query_handler_gateway_exception() -> None:
+    """QueryHandler returns error result when gateway.complete raises."""
+    mock_gateway = MagicMock()
+    mock_gateway.complete.side_effect = RuntimeError("connection refused")
+
+    handler = QueryHandler(gateway=mock_gateway, classifier=None)
+    cmd = QueryCommand(query="test query")
+    result = handler.handle(cmd)
+
+    assert result.return_code == 2
+    assert "RuntimeError" in result.text
+    assert "error" in result.text.lower()
+
+
+def test_query_handler_conversation_history() -> None:
+    """QueryHandler injects conversation history into messages."""
+    mock_gateway = MagicMock()
+    mock_gateway.complete.return_value = SimpleNamespace(
+        text="history response",
+        model="test",
+        provider="test",
+        input_tokens=10,
+        output_tokens=5,
+        cost_usd=0.0,
+        fallback_used=False,
+        fallback_reason="",
+    )
+
+    handler = QueryHandler(gateway=mock_gateway, classifier=None)
+    history = (("user", "hello"), ("assistant", "hi there"), ("user", "how are you"))
+    cmd = QueryCommand(query="what is 2+2", history=history)
+    handler.handle(cmd)
+
+    call_args = mock_gateway.complete.call_args
+    messages = call_args.kwargs.get("messages", call_args[1].get("messages", []))
+    # 3 history messages + 1 final user query = 4 messages
+    assert len(messages) == 4
+    assert messages[0] == {"role": "user", "content": "hello"}
+    assert messages[1] == {"role": "assistant", "content": "hi there"}
+    assert messages[2] == {"role": "user", "content": "how are you"}
+    assert messages[3] == {"role": "user", "content": "what is 2+2"}
+
+
 # ---------------------------------------------------------------------------
 # RouteHandler
 # ---------------------------------------------------------------------------

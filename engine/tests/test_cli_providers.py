@@ -540,6 +540,20 @@ class TestClassifierModelResolution:
         # kimi-k2 not available, gemini-cli IS in fallback list and available
         assert model == "gemini-cli"
 
+    def test_resolve_provider_unavailable_cli_falls_to_ollama(self) -> None:
+        """CLI model that's not installed should route to Ollama, not Anthropic."""
+        from jarvis_engine.gateway.models import ModelGateway
+        with patch("jarvis_engine.gateway.cli_providers._detect_cli", return_value=None):
+            gw = ModelGateway(anthropic_api_key="sk-ant-test", groq_api_key="test")
+            try:
+                # claude-cli is in CLI_MODEL_MAP but no CLIs are installed
+                provider = gw._resolve_provider("claude-cli")
+                assert provider == "ollama", (
+                    f"Unavailable CLI model should route to Ollama, not {provider}"
+                )
+            finally:
+                gw.close()
+
     def test_resolve_model_no_available_set_uses_primary(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
         mock_embed = MagicMock()

@@ -242,6 +242,8 @@ class ModelGateway:
             cli_key = CLI_MODEL_MAP[model]
             if cli_key in self._cli_providers:
                 return f"cli:{cli_key}"
+            # CLI model requested but not installed — fall to Ollama, not Anthropic
+            return "ollama"
 
         if model.startswith("claude-") and self._anthropic is not None:
             return "anthropic"
