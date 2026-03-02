@@ -1759,14 +1759,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 "error": "Missing X-Jarvis-Session header.",
             })
             return
-        # Drain any request body to avoid broken pipe
-        raw_cl = self.headers.get("Content-Length", "0")
-        try:
-            cl = int(raw_cl)
-            if cl > 0:
-                self.rfile.read(min(cl, 1_000))
-        except (TypeError, ValueError, OSError):
-            pass
+        # Body already consumed by do_POST pre-read; no drain needed
         owner_session.logout(session_token)
         self._write_json(HTTPStatus.OK, {"ok": True})
 
@@ -1786,14 +1779,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 "error": "Valid session required for lock.",
             })
             return
-        # Drain any request body to avoid broken pipe
-        raw_cl = self.headers.get("Content-Length", "0")
-        try:
-            cl = int(raw_cl)
-            if cl > 0:
-                self.rfile.read(min(cl, 1_000))
-        except (TypeError, ValueError, OSError):
-            pass
+        # Body already consumed by do_POST pre-read; no drain needed
         owner_session.logout_all()
         self._write_json(HTTPStatus.OK, {"ok": True})
 
