@@ -82,14 +82,20 @@ class RunTaskHandler:
 
 
 class RouteHandler:
-    def __init__(self, root: Path, classifier: object | None = None) -> None:
+    def __init__(self, root: Path, classifier: object | None = None, gateway: object | None = None) -> None:
         self._root = root
         self._classifier = classifier
+        self._gateway = gateway
 
     def handle(self, cmd: RouteCommand) -> RouteResult:
         # New path: query-based routing via IntentClassifier
         if cmd.query and self._classifier is not None:
-            route_name, model_name, confidence = self._classifier.classify(cmd.query)
+            available = None
+            if self._gateway is not None:
+                available = getattr(self._gateway, "available_model_names", lambda: None)()
+            route_name, model_name, confidence = self._classifier.classify(
+                cmd.query, available_models=available,
+            )
             return RouteResult(
                 provider=model_name,
                 reason=f"Intent: {route_name} (confidence={confidence:.2f})",
@@ -183,7 +189,10 @@ class QueryHandler:
             model = cmd.model
             route_reason = f"Explicit model: {model}"
         elif self._classifier is not None:
-            route_name, model, confidence = self._classifier.classify(cmd.query)
+            available = gateway.available_model_names() if gateway is not None else None
+            route_name, model, confidence = self._classifier.classify(
+                cmd.query, available_models=available,
+            )
             route_reason = f"Intent: {route_name} (confidence={confidence:.2f})"
         else:
             # Fallback default model when no classifier is wired in.

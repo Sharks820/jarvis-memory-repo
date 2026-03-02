@@ -305,7 +305,7 @@ def create_app(root: Path) -> CommandBus:
 
     # -- Task --
     bus.register(RunTaskCommand, RunTaskHandler(root).handle)
-    bus.register(RouteCommand, RouteHandler(root, classifier=intent_classifier).handle)
+    bus.register(RouteCommand, RouteHandler(root, classifier=intent_classifier, gateway=gateway).handle)
     if gateway is not None:
         bus.register(QueryCommand, QueryHandler(gateway, classifier=intent_classifier).handle)
         bus.register(PersonaComposeCommand, PersonaComposeHandler(root, gateway=gateway).handle)

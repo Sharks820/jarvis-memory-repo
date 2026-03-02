@@ -2978,9 +2978,13 @@ def _web_augmented_llm_conversation(
     _llm_model: str | None = None
     _route: str = "web_research"
     _intent_cls = getattr(bus, "_intent_classifier", None)
+    _avail_models = None
+    _gw = getattr(bus, "_gateway", None)
+    if _gw is not None:
+        _avail_models = getattr(_gw, "available_model_names", lambda: None)()
     if _intent_cls is not None:
         try:
-            _route, _llm_model, _conf = _intent_cls.classify(text)
+            _route, _llm_model, _conf = _intent_cls.classify(text, available_models=_avail_models)
             logger.debug("Web-augmented route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
         except Exception:
             _llm_model = None
@@ -3802,9 +3806,13 @@ def _cmd_voice_run_impl(
         _llm_model: str | None = None
         _route: str = "routine"
         _intent_cls = getattr(bus, "_intent_classifier", None)
+        _avail_models = None
+        _gw = getattr(bus, "_gateway", None)
+        if _gw is not None:
+            _avail_models = getattr(_gw, "available_model_names", lambda: None)()
         if _intent_cls is not None:
             try:
-                _route, _llm_model, _conf = _intent_cls.classify(text)
+                _route, _llm_model, _conf = _intent_cls.classify(text, available_models=_avail_models)
                 logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
             except Exception:
                 _llm_model = None
@@ -3813,7 +3821,7 @@ def _cmd_voice_run_impl(
                 from jarvis_engine.gateway.classifier import IntentClassifier
                 from jarvis_engine.memory.embeddings import EmbeddingService
                 _cls = IntentClassifier(EmbeddingService())
-                _route, _llm_model, _conf = _cls.classify(text)
+                _route, _llm_model, _conf = _cls.classify(text, available_models=_avail_models)
                 logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
             except Exception as exc:
                 logger.debug("Fallback IntentClassifier creation/classification failed: %s", exc)
