@@ -146,6 +146,7 @@ class ThreatDetector:
         # nonce -> timestamp last seen
         self._nonce_cache: dict[str, float] = {}
         self._nonce_cache_cap: int = 100000  # max nonces in cache
+        self._nonce_prune_counter: int = 0
         # ip -> deque of request timestamps (for rate anomaly detection)
         # maxlen=200 caps per-IP memory: 200 entries is >3x the 60/min threshold
         self._request_log: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=200))
@@ -324,10 +325,13 @@ class ThreatDetector:
 
         now = time.monotonic()
         with self._lock:
-            # Prune expired entries
-            expired = [k for k, v in self._nonce_cache.items() if now - v > self._nonce_ttl]
-            for k in expired:
-                del self._nonce_cache[k]
+            # Prune expired entries periodically (every 100 requests, not every request)
+            self._nonce_prune_counter += 1
+            if self._nonce_prune_counter >= 100:
+                self._nonce_prune_counter = 0
+                expired = [k for k, v in self._nonce_cache.items() if now - v > self._nonce_ttl]
+                for k in expired:
+                    del self._nonce_cache[k]
 
             # Hard cap: if cache is still too large after pruning, reject to prevent OOM
             if len(self._nonce_cache) >= self._nonce_cache_cap:

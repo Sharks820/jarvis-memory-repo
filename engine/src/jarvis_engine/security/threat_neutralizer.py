@@ -341,9 +341,10 @@ class ThreatNeutralizer:
                 roles = entity.get("roles", [])
                 if "abuse" in roles:
                     result = self._extract_email_from_vcard(entity)
-                    with self._lock:
-                        self._rdap_cache[ip] = (time.time(), result)
-                    return result
+                    if result is not None:
+                        with self._lock:
+                            self._rdap_cache[ip] = (time.time(), result)
+                        return result
 
             # Check nested entities
             for entity in entities:
@@ -351,9 +352,10 @@ class ThreatNeutralizer:
                     roles = sub_entity.get("roles", [])
                     if "abuse" in roles:
                         result = self._extract_email_from_vcard(sub_entity)
-                        with self._lock:
-                            self._rdap_cache[ip] = (time.time(), result)
-                        return result
+                        if result is not None:
+                            with self._lock:
+                                self._rdap_cache[ip] = (time.time(), result)
+                            return result
 
             logger.debug("No abuse contact found in RDAP for %s", ip)
             with self._lock:

@@ -51,7 +51,8 @@ class AlertChain:
 
     def register_dispatch(self, callback) -> None:
         """Register a callback for alert dispatch. Callback receives (level, summary, evidence)."""
-        self._dispatch_callbacks.append(callback)
+        with self._lock:
+            self._dispatch_callbacks.append(callback)
 
     def send_alert(
         self,
@@ -119,8 +120,10 @@ class AlertChain:
             except Exception as exc:
                 logger.warning("Failed to write forensic log for alert dispatch: %s", exc)
 
-        # Invoke registered dispatch callbacks
-        for cb in self._dispatch_callbacks:
+        # Invoke registered dispatch callbacks (defensive copy for thread safety)
+        with self._lock:
+            callbacks = list(self._dispatch_callbacks)
+        for cb in callbacks:
             try:
                 cb(level, summary, evidence)
             except Exception as exc:
