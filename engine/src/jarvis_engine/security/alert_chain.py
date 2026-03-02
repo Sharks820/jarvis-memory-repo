@@ -43,10 +43,15 @@ class AlertChain:
         self._alerts: deque[dict] = deque(maxlen=10000)
         # Dedup tracking: (source_ip, level) -> last_alert_timestamp
         self._dedup_cache: dict[tuple[str | None, int], float] = {}
+        self._dispatch_callbacks: list = []
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def register_dispatch(self, callback) -> None:
+        """Register a callback for alert dispatch. Callback receives (level, summary, evidence)."""
+        self._dispatch_callbacks.append(callback)
 
     def send_alert(
         self,
@@ -113,6 +118,13 @@ class AlertChain:
                 })
             except Exception as exc:
                 logger.warning("Failed to write forensic log for alert dispatch: %s", exc)
+
+        # Invoke registered dispatch callbacks
+        for cb in self._dispatch_callbacks:
+            try:
+                cb(level, summary, evidence)
+            except Exception as exc:
+                logger.warning("Alert dispatch callback failed: %s", exc)
 
         logger.info(
             "Alert dispatched (level=%d, channel=%s): %s", level, channel, summary
