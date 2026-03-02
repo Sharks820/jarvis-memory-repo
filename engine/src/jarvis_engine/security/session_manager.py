@@ -9,9 +9,9 @@ from __future__ import annotations
 import hashlib
 import hmac as _hmac_module
 import logging
+import secrets
 import threading
 import time
-import uuid
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class SessionManager:
                 del self._sessions[oldest_id]
 
             now = time.time()
-            session_id = uuid.uuid4().hex
+            session_id = secrets.token_hex(32)
             fingerprint = _compute_fingerprint(ip, user_agent)
             session = Session(
                 session_id=session_id,

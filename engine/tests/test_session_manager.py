@@ -70,7 +70,7 @@ class TestSessionCreation:
     def test_create_returns_session_id(self, manager: SessionManager) -> None:
         sid = manager.create_session("device1", "10.0.0.1", "Mozilla/5.0")
         assert isinstance(sid, str)
-        assert len(sid) == 32  # UUID hex without dashes
+        assert len(sid) == 64  # secrets.token_hex(32) = 32 bytes = 64 hex chars
 
     def test_create_multiple_sessions(self, manager: SessionManager) -> None:
         s1 = manager.create_session("device1", "10.0.0.1")
