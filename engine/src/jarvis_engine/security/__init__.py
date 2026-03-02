@@ -17,6 +17,12 @@ from jarvis_engine.security.forensic_logger import ForensicLogger
 from jarvis_engine.security.heartbeat import HeartbeatMonitor
 from jarvis_engine.security.honeypot import HoneypotEngine
 from jarvis_engine.security.identity_monitor import IdentityAlert, IdentityMonitor
+from jarvis_engine.security.identity_shield import (
+    BreachMonitor,
+    FamilyShield,
+    ImpersonationDetector,
+    TyposquatMonitor,
+)
 from jarvis_engine.security.injection_firewall import (
     InjectionResult,
     InjectionVerdict,
@@ -44,14 +50,17 @@ __all__ = [
     "AdaptiveDefenseEngine",
     "AlertChain",
     "AttackPatternMemory",
+    "BreachMonitor",
     "ContainmentEngine",
     "ContainmentLevel",
+    "FamilyShield",
     "ForensicLogger",
     "HeartbeatMonitor",
     "HomeNetworkMonitor",
     "HoneypotEngine",
     "IdentityAlert",
     "IdentityMonitor",
+    "ImpersonationDetector",
     "InjectionResult",
     "InjectionVerdict",
     "IPTracker",
@@ -71,4 +80,5 @@ __all__ = [
     "ThreatIntelFeed",
     "ThreatNeutralizer",
     "ThreatSignal",
+    "TyposquatMonitor",
 ]
