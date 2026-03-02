@@ -185,10 +185,11 @@ class TestModelGateway:
         mock_ollama.chat.assert_called_once()
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
-    def test_gateway_fallback_on_api_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+    def test_gateway_fallback_on_api_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """ModelGateway falls back to Ollama when Anthropic raises APIConnectionError."""
         mock_client = MagicMock()
         mock_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -211,10 +212,11 @@ class TestModelGateway:
         assert "APIConnectionError" in resp.fallback_reason
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
-    def test_gateway_local_only_mode(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+    def test_gateway_local_only_mode(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """With no API key and no cloud keys, claude-* models fall through to Ollama."""
         mock_ollama = MagicMock()
         mock_ollama.chat.return_value = _mock_ollama_response("local only")
@@ -259,9 +261,10 @@ class TestModelGateway:
             tracker.close()
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
-    def test_gateway_all_providers_fail(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+    def test_gateway_all_providers_fail(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """When both Anthropic and Ollama fail, return graceful error response."""
         mock_client = MagicMock()
         mock_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -529,6 +532,7 @@ class TestModelGatewayAudit:
         assert records[0]["latency_ms"] > 0
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
@@ -536,6 +540,7 @@ class TestModelGatewayAudit:
         self,
         mock_anthropic_cls: MagicMock,
         mock_ollama_cls: MagicMock,
+        mock_cli: MagicMock,
         tmp_path: Path,
     ) -> None:
         """ModelGateway logs both the failed attempt and the fallback success."""
@@ -997,10 +1002,11 @@ class TestFallbackChain:
         assert "APIConnectionError" in resp.fallback_reason
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
-    def test_all_cloud_fails_ollama_fallback(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+    def test_all_cloud_fails_ollama_fallback(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """When no cloud providers available, chain falls back to Ollama."""
         mock_ollama = MagicMock()
         mock_ollama.chat.return_value = _mock_ollama_response("ollama saves the day")
@@ -1038,11 +1044,12 @@ class TestFallbackChain:
         assert resp.fallback_used is True
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "key", "MISTRAL_API_KEY": "key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_groq_fails_mistral_fails_ollama_succeeds(
-        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock
+        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock
     ) -> None:
         """When Groq and Mistral both fail, chain falls through to Ollama."""
         mock_ollama = MagicMock()
@@ -1062,11 +1069,12 @@ class TestFallbackChain:
         assert resp.fallback_used is True
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", False)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_all_providers_fail_returns_none_provider(
-        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock
+        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock
     ) -> None:
         """When all cloud and Ollama unavailable, provider is 'none'."""
         gw = ModelGateway()
@@ -1187,10 +1195,11 @@ class TestAvailableProviders:
         assert "ollama" in providers
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
-    def test_ollama_only(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+    def test_ollama_only(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """With no API keys, only ollama is available (if running)."""
         mock_ollama = MagicMock()
         mock_ollama.list.return_value = {"models": []}
@@ -1203,10 +1212,11 @@ class TestAvailableProviders:
         assert "anthropic" not in providers
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
-    def test_no_providers_when_ollama_down(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
+    def test_no_providers_when_ollama_down(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """With no API keys and Ollama down, empty provider list."""
         mock_ollama = MagicMock()
         mock_ollama.list.side_effect = ConnectionError("down")
@@ -1314,11 +1324,12 @@ class TestCloudCompleteIntegration:
         assert resp.fallback_used is False
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "groq-key", "MISTRAL_API_KEY": "mistral-key", "ZAI_API_KEY": ""})
+    @patch("jarvis_engine.gateway.models.detect_cli_providers", return_value={})
     @patch("jarvis_engine.gateway.models._HAS_OLLAMA", True)
     @patch("jarvis_engine.gateway.models.OllamaClient")
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_complete_cloud_failure_triggers_fallback(
-        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock
+        self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock
     ) -> None:
         """complete() with cloud provider failure falls back through chain."""
         mock_ollama = MagicMock()

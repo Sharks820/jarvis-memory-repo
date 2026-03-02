@@ -142,21 +142,21 @@ class TestIntentClassifierRouting:
             "solve this differential equation step by step"
         )
         assert route == "math_logic"
-        assert model == "kimi-k2"
+        assert model == "codex-cli"  # o3/o4-mini excel at math
 
     def test_classify_complex_query(self, classifier):
         route, model, confidence = classifier.classify(
             "help me debug this race condition in Python"
         )
         assert route == "complex"
-        assert model == "kimi-k2"
+        assert model == "claude-cli"  # Opus excels at coding
 
     def test_classify_routine_query(self, classifier):
         route, model, confidence = classifier.classify(
             "summarize this meeting transcript for me"
         )
         assert route == "routine"
-        assert model == "kimi-k2"
+        assert model == "kimi-k2"  # Fast API for simple tasks
 
     def test_classify_simple_private_query(self, classifier):
         route, model, confidence = classifier.classify(
@@ -170,21 +170,21 @@ class TestIntentClassifierRouting:
             "write a short story about a robot learning to paint"
         )
         assert route == "creative"
-        assert model == "kimi-k2"
+        assert model == "gemini-cli"  # Gemini strong at creative
 
     def test_classify_web_research_query(self, classifier):
         route, model, confidence = classifier.classify(
             "what is the latest news about artificial intelligence"
         )
         assert route == "web_research"
-        assert model == "kimi-k2"
+        assert model == "gemini-cli"  # Gemini has built-in search/grounding
 
     def test_classify_web_research_current_price(self, classifier):
         route, model, confidence = classifier.classify(
             "what is the current price of bitcoin today"
         )
         assert route == "web_research"
-        assert model == "kimi-k2"
+        assert model == "gemini-cli"
 
 
 # ---------------------------------------------------------------------------
