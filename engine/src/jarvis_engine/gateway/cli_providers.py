@@ -171,7 +171,7 @@ def call_claude_cli(
             data = json.loads(proc.stdout)
             text = data.get("result", "") or data.get("text", "") or proc.stdout
             cost = data.get("cost_usd", 0.0) or 0.0
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError, AttributeError):
             text = proc.stdout.strip()
             cost = 0.0
 
@@ -226,10 +226,19 @@ def call_codex_cli(
 
     # Use temp file for output to avoid parsing JSONL stream
     out_path = None
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False, prefix="codex_out_"
-    ) as tmp:
-        out_path = tmp.name
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, prefix="codex_out_"
+        ) as tmp:
+            out_path = tmp.name
+    except OSError as exc:
+        return {
+            "text": "",
+            "model": "codex-cli",
+            "provider": "codex-cli",
+            "success": False,
+            "error": f"Failed to create temp file: {exc}",
+        }
 
     cmd = [
         "codex",

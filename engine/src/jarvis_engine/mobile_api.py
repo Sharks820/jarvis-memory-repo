@@ -830,7 +830,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 {"ok": False, "error": "Connection closed."},
             )
             return None, None
-        body = self.rfile.read(content_length)
+        try:
+            body = self.rfile.read(content_length)
+        except (OSError, ConnectionError):
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Connection reset during read."},
+            )
+            return None, None
         if not self._validate_auth(body):
             return None, None
 
@@ -862,7 +869,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except OSError:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."})
             return None, None
-        body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        try:
+            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        except (OSError, ConnectionError):
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Connection reset during read."},
+            )
+            return None, None
         try:
             payload = json.loads(body.decode("utf-8"))
         except UnicodeDecodeError:
