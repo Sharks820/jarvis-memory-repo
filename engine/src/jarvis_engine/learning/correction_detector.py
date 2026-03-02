@@ -219,6 +219,40 @@ class CorrectionDetector:
 
             new_confidence = min(max(existing_confidence + 0.1, 0.9), 1.0)
 
+            # Check if a node with new_claim already exists to avoid duplication
+            if pre_new_matches:
+                existing_new_id = pre_new_matches[0]["node_id"]
+                if existing_new_id != node_id:
+                    # A node with the new claim already exists — merge instead of duplicating.
+                    # Boost the existing node's confidence to the max of both.
+                    existing_new_row = self._kg._db.execute(
+                        "SELECT confidence FROM kg_nodes WHERE node_id = ?",
+                        (existing_new_id,),
+                    ).fetchone()
+                    if existing_new_row is not None:
+                        existing_new_conf = float(existing_new_row[0])
+                        merged_confidence = min(max(existing_new_conf, new_confidence), 1.0)
+                        self._kg._db.execute(
+                            """UPDATE kg_nodes
+                               SET confidence = ?, updated_at = datetime('now')
+                               WHERE node_id = ?""",
+                            (merged_confidence, existing_new_id),
+                        )
+                    # Retract the old node (set confidence to 0) rather than deleting
+                    self._kg._db.execute(
+                        """UPDATE kg_nodes
+                           SET confidence = 0, updated_at = datetime('now')
+                           WHERE node_id = ?""",
+                        (node_id,),
+                    )
+                    self._kg._db.commit()
+                    self._kg._mutation_counter += 1
+                    logger.info(
+                        "Correction merged: node %s retracted, existing node %s boosted to %.2f",
+                        node_id, existing_new_id, merged_confidence if existing_new_row else new_confidence,
+                    )
+                    return True
+
             # Update the fact label and confidence
             self._kg._db.execute(
                 """UPDATE kg_nodes

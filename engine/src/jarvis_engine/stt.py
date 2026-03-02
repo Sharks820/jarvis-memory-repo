@@ -408,7 +408,7 @@ _local_stt_lock = threading.Lock()
 
 
 def _try_local(
-    audio: np.ndarray | str, *, language: str
+    audio: np.ndarray | str, *, language: str, prompt: str = ""
 ) -> TranscriptionResult | None:
     """Attempt local faster-whisper transcription, returning *None* on failure."""
     global _local_stt_instance
@@ -417,7 +417,7 @@ def _try_local(
             with _local_stt_lock:
                 if _local_stt_instance is None:
                     _local_stt_instance = SpeechToText()
-        return _local_stt_instance.transcribe_audio(audio, language=language)
+        return _local_stt_instance.transcribe_audio(audio, language=language, prompt=prompt)
     except Exception as exc:
         logger.warning("Local STT attempt failed: %s", exc)
         return None
@@ -444,7 +444,7 @@ def _confidence_retry(
 
     # Determine alternative backend
     if primary.backend == "groq-whisper":
-        retry_result = _try_local(audio, language=language)
+        retry_result = _try_local(audio, language=language, prompt=prompt)
     elif primary.backend == "faster-whisper" and has_groq:
         retry_result = _try_groq(audio, language=language, prompt=prompt)
     else:
@@ -559,7 +559,7 @@ def transcribe_smart(
         )
 
     elif backend == "local":
-        result = _try_local(audio, language=language)
+        result = _try_local(audio, language=language, prompt=prompt)
         if result is None:
             logger.error("Local STT backend failed in forced local mode")
             return TranscriptionResult(
@@ -586,7 +586,7 @@ def transcribe_smart(
                 logger.info("Groq STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
 
         if result is None:
-            result = _try_local(audio, language=language)
+            result = _try_local(audio, language=language, prompt=prompt)
             if result is not None:
                 logger.info("Local STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
 
