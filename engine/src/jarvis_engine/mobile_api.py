@@ -849,15 +849,46 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": message})
 
     def _read_json_body(self, *, max_content_length: int) -> tuple[dict[str, Any] | None, bytes | None]:
-        raw_content_length = self.headers.get("Content-Length", "0")
-        try:
-            content_length = int(raw_content_length)
-        except (TypeError, ValueError):
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Invalid content length."},
-            )
-            return None, None
+        # Use cached body from do_POST if available (already read for security scan)
+        cached = getattr(self, "_cached_post_body", None)
+        if cached is not None:
+            body = cached
+            self._cached_post_body = None  # consume once
+            content_length = len(body)
+        else:
+            raw_content_length = self.headers.get("Content-Length", "0")
+            try:
+                content_length = int(raw_content_length)
+            except (TypeError, ValueError):
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": "Invalid content length."},
+                )
+                return None, None
+
+            if content_length <= 0 or content_length > max_content_length:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": "Invalid content length."},
+                )
+                return None, None
+
+            try:
+                self.connection.settimeout(15.0)
+            except OSError:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": "Connection closed."},
+                )
+                return None, None
+            try:
+                body = self.rfile.read(content_length)
+            except (OSError, ConnectionError):
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": "Connection reset during read."},
+                )
+                return None, None
 
         if content_length <= 0 or content_length > max_content_length:
             self._write_json(
@@ -866,22 +897,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             )
             return None, None
 
-        try:
-            self.connection.settimeout(15.0)
-        except OSError:
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Connection closed."},
-            )
-            return None, None
-        try:
-            body = self.rfile.read(content_length)
-        except (OSError, ConnectionError):
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Connection reset during read."},
-            )
-            return None, None
         if not self._validate_auth(body):
             return None, None
 
@@ -899,27 +914,37 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         return payload, body
 
     def _read_json_body_noauth(self, *, max_content_length: int) -> tuple[dict[str, Any] | None, bytes | None]:
-        raw_content_length = self.headers.get("Content-Length", "0")
-        try:
-            content_length = int(raw_content_length)
-        except (TypeError, ValueError):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
-            return None, None
+        # Use cached body from do_POST if available (already read for security scan)
+        cached = getattr(self, "_cached_post_body", None)
+        if cached is not None:
+            body = cached
+            self._cached_post_body = None  # consume once
+            content_length = len(body)
+        else:
+            raw_content_length = self.headers.get("Content-Length", "0")
+            try:
+                content_length = int(raw_content_length)
+            except (TypeError, ValueError):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
+                return None, None
+            if content_length < 0 or content_length > max_content_length:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
+                return None, None
+            try:
+                self.connection.settimeout(15.0)
+            except OSError:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."})
+                return None, None
+            try:
+                body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+            except (OSError, ConnectionError):
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": "Connection reset during read."},
+                )
+                return None, None
         if content_length < 0 or content_length > max_content_length:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
-            return None, None
-        try:
-            self.connection.settimeout(15.0)
-        except OSError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."})
-            return None, None
-        try:
-            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
-        except (OSError, ConnectionError):
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Connection reset during read."},
-            )
             return None, None
         try:
             payload = json.loads(body.decode("utf-8"))
@@ -2030,15 +2055,37 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
             return
-        # Security orchestrator pipeline check
+        # Pre-read POST body so security pipeline can inspect it
+        self._cached_post_body: bytes | None = None
+        raw_cl = self.headers.get("Content-Length", "0")
+        try:
+            cl = int(raw_cl)
+        except (TypeError, ValueError):
+            cl = 0
+        if cl > 0:
+            try:
+                self.connection.settimeout(15.0)
+            except OSError:
+                pass
+            try:
+                self._cached_post_body = self.rfile.read(cl)
+            except (OSError, ConnectionError):
+                self._cached_post_body = None
+        # Security orchestrator pipeline check (with actual body)
         _security = getattr(self.server, "security", None)
         if _security is not None:
+            _body_text = ""
+            if self._cached_post_body:
+                try:
+                    _body_text = self._cached_post_body.decode("utf-8", errors="replace")
+                except Exception:
+                    _body_text = ""
             _client_ip = str(self.client_address[0])
             _sec_check = _security.check_request(
                 path=path,
                 source_ip=_client_ip,
                 headers=dict(self.headers),
-                body="",
+                body=_body_text,
                 user_agent=self.headers.get("User-Agent", ""),
             )
             if not _sec_check["allowed"]:
