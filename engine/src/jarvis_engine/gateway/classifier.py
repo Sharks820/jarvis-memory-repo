@@ -379,6 +379,7 @@ class IntentClassifier:
         if norm_a == 0.0:
             norm_a = float(np.linalg.norm(a))
         norm_b = float(np.linalg.norm(b))
-        if norm_a == 0.0 or norm_b == 0.0:
+        if norm_a < 1e-9 or norm_b < 1e-9 or not np.isfinite(norm_b):
             return 0.0
-        return dot / (norm_a * norm_b)
+        result = dot / (norm_a * norm_b)
+        return result if np.isfinite(result) else 0.0

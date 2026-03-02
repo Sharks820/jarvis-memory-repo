@@ -1441,6 +1441,11 @@ def cmd_persona_config(
     ))
     cfg = result.config
 
+    # Handler returns a dict with "error" key on conflicting flags
+    if isinstance(cfg, dict) and "error" in cfg:
+        print(f"error={cfg['error']}")
+        return 1
+
     print("persona_config")
     print(f"enabled={cfg.enabled}")
     print(f"mode={cfg.mode}")

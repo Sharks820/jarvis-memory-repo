@@ -44,22 +44,32 @@ class ProactiveEngine:
         seen_messages: set[str] = set()
 
         for rule in self._rules:
-            # Check cooldown (thread-safe)
+            # Check cooldown and reserve firing slot atomically
             with self._lock:
                 last = self._last_fired.get(rule.rule_id)
                 if last is not None:
                     elapsed = (now - last).total_seconds() / 60.0
                     if elapsed < rule.cooldown_minutes:
                         continue
+                # Reserve the slot so concurrent evaluations see this rule as fired
+                self._last_fired[rule.rule_id] = now
 
             # Run the check function
             try:
                 messages = rule.check_fn(snapshot_data)
             except Exception as exc:
                 logger.warning("Trigger rule %s failed: %s", rule.rule_id, exc)
+                # Undo reservation since the rule didn't actually fire
+                with self._lock:
+                    if self._last_fired.get(rule.rule_id) == now:
+                        self._last_fired[rule.rule_id] = last
                 continue
 
             if not messages:
+                # Undo reservation since no alerts were produced
+                with self._lock:
+                    if self._last_fired.get(rule.rule_id) == now:
+                        self._last_fired[rule.rule_id] = last
                 continue
 
             # Create alerts and send notifications (with dedup)
@@ -80,8 +90,11 @@ class ProactiveEngine:
 
             if new_alerts:
                 self._notifier.send_batch(new_alerts)
+            else:
+                # No alerts after dedup — undo reservation
                 with self._lock:
-                    self._last_fired[rule.rule_id] = now
+                    if self._last_fired.get(rule.rule_id) == now:
+                        self._last_fired[rule.rule_id] = last
 
         # Log to activity feed
         if alerts:

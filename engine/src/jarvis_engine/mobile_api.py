@@ -1393,7 +1393,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # --- Active learning missions ---
         try:
             import jarvis_engine.main as main_mod
-            from jarvis_engine.commands.intelligence_commands import MissionStatusCommand
+            from jarvis_engine.commands.ops_commands import MissionStatusCommand
             bus = main_mod._get_bus()
             mission_result = bus.dispatch(MissionStatusCommand(last=5))
             if mission_result.missions:
