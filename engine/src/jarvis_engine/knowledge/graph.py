@@ -277,104 +277,108 @@ class KnowledgeGraph:
         every insert/update.
         """
         with self._write_lock:
-            existing = self._db.execute(
-                "SELECT locked, label, confidence, sources FROM kg_nodes WHERE node_id = ?",
-                (node_id,),
-            ).fetchone()
+            try:
+                existing = self._db.execute(
+                    "SELECT locked, label, confidence, sources FROM kg_nodes WHERE node_id = ?",
+                    (node_id,),
+                ).fetchone()
 
-            if existing is not None:
-                is_locked = bool(existing[0])
-                existing_label = existing[1]
-                existing_conf = existing[2]
-                try:
-                    existing_sources = json.loads(existing[3])
-                except (json.JSONDecodeError, TypeError):
-                    existing_sources = []
+                if existing is not None:
+                    is_locked = bool(existing[0])
+                    existing_label = existing[1]
+                    existing_conf = existing[2]
+                    try:
+                        existing_sources = json.loads(existing[3])
+                    except (json.JSONDecodeError, TypeError):
+                        existing_sources = []
 
-                if is_locked:
-                    if label != existing_label:
-                        self._quarantine_contradiction(
-                            node_id,
-                            existing_label,
+                    if is_locked:
+                        if label != existing_label:
+                            self._quarantine_contradiction(
+                                node_id,
+                                existing_label,
+                                label,
+                                existing_conf,
+                                confidence,
+                                source=source_record,
+                            )
+                            self._db.commit()
+                            return False
+                        return True  # Same value on locked node -- no-op
+
+                    # Update existing unlocked node
+                    if source_record and source_record not in existing_sources:
+                        existing_sources.append(source_record)
+                    self._db.execute(
+                        """UPDATE kg_nodes
+                           SET label = ?, node_type = ?,
+                               confidence = MAX(confidence, ?),
+                               sources = ?,
+                               updated_at = datetime('now')
+                           WHERE node_id = ?""",
+                        (
                             label,
-                            existing_conf,
+                            node_type,
                             confidence,
-                            source=source_record,
-                        )
-                        self._db.commit()
-                        return False
-                    return True  # Same value on locked node -- no-op
-
-                # Update existing unlocked node
-                if source_record and source_record not in existing_sources:
-                    existing_sources.append(source_record)
-                self._db.execute(
-                    """UPDATE kg_nodes
-                       SET label = ?, node_type = ?,
-                           confidence = MAX(confidence, ?),
-                           sources = ?,
-                           updated_at = datetime('now')
-                       WHERE node_id = ?""",
-                    (
-                        label,
-                        node_type,
-                        confidence,
-                        json.dumps(existing_sources[-50:]),  # cap at 50
-                        node_id,
-                    ),
-                )
-                # Update FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-                try:
-                    self._db.execute(
-                        "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+                            json.dumps(existing_sources[-50:]),  # cap at 50
+                            node_id,
+                        ),
                     )
-                    self._db.execute(
-                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                        (node_id, label),
-                    )
-                except sqlite3.OperationalError as exc:
-                    if "no such table" not in str(exc):
-                        raise
-                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
-            else:
-                # New node
-                sources = [source_record] if source_record else []
-                self._db.execute(
-                    """INSERT INTO kg_nodes
-                       (node_id, label, node_type, confidence, sources)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (node_id, label, node_type, confidence, json.dumps(sources)),
-                )
-                # Insert into FTS5 index
-                try:
-                    self._db.execute(
-                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                        (node_id, label),
-                    )
-                except sqlite3.OperationalError as exc:
-                    if "no such table" not in str(exc):
-                        raise
-                    logger.debug("FTS5 table not available, skipping index insert for node %s", node_id)
-
-            # Insert/update vec embedding if embed_service is available
-            if self._embed_service is not None and self._vec_available:
-                try:
-                    embedding = self._embed_service.embed(label, prefix="search_document")
-                    if len(embedding) == _EMBEDDING_DIM:
-                        blob = struct.pack(f"{len(embedding)}f", *embedding)
-                        # DELETE + INSERT for idempotent upsert (vec0 has no REPLACE)
+                    # Update FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
+                    try:
                         self._db.execute(
-                            "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                            "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
                         )
                         self._db.execute(
-                            "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
-                            (node_id, blob),
+                            "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                            (node_id, label),
                         )
-                except Exception as exc:
-                    logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
+                    except sqlite3.OperationalError as exc:
+                        if "no such table" not in str(exc):
+                            raise
+                        logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+                else:
+                    # New node
+                    sources = [source_record] if source_record else []
+                    self._db.execute(
+                        """INSERT INTO kg_nodes
+                           (node_id, label, node_type, confidence, sources)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (node_id, label, node_type, confidence, json.dumps(sources)),
+                    )
+                    # Insert into FTS5 index
+                    try:
+                        self._db.execute(
+                            "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                            (node_id, label),
+                        )
+                    except sqlite3.OperationalError as exc:
+                        if "no such table" not in str(exc):
+                            raise
+                        logger.debug("FTS5 table not available, skipping index insert for node %s", node_id)
 
-            self._db.commit()
-            self._mutation_counter += 1
+                # Insert/update vec embedding if embed_service is available
+                if self._embed_service is not None and self._vec_available:
+                    try:
+                        embedding = self._embed_service.embed(label, prefix="search_document")
+                        if len(embedding) == _EMBEDDING_DIM:
+                            blob = struct.pack(f"{len(embedding)}f", *embedding)
+                            # DELETE + INSERT for idempotent upsert (vec0 has no REPLACE)
+                            self._db.execute(
+                                "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                            )
+                            self._db.execute(
+                                "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                                (node_id, blob),
+                            )
+                    except Exception as exc:
+                        logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
+
+                self._db.commit()
+                self._mutation_counter += 1
+            except Exception:
+                self._db.rollback()
+                raise
 
         # Auto-lock check (outside write_lock -- check_and_auto_lock acquires its own)
         try:
@@ -397,17 +401,21 @@ class KnowledgeGraph:
         Returns True if a new edge was inserted, False if it already existed.
         """
         with self._write_lock:
-            cur = self._db.execute(
-                """INSERT OR IGNORE INTO kg_edges
-                   (source_id, target_id, relation, confidence, source_record)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (source_id, target_id, relation, confidence, source_record),
-            )
-            self._db.commit()
-            inserted = cur.rowcount > 0
-            if inserted:
-                self._mutation_counter += 1
-            return inserted
+            try:
+                cur = self._db.execute(
+                    """INSERT OR IGNORE INTO kg_edges
+                       (source_id, target_id, relation, confidence, source_record)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (source_id, target_id, relation, confidence, source_record),
+                )
+                self._db.commit()
+                inserted = cur.rowcount > 0
+                if inserted:
+                    self._mutation_counter += 1
+                return inserted
+            except Exception:
+                self._db.rollback()
+                raise
 
     # ------------------------------------------------------------------
     # Contradiction quarantine
@@ -683,45 +691,49 @@ class KnowledgeGraph:
         where_clause = " OR ".join(clauses)
 
         with self._write_lock:
-            # Collect node_ids that will be retracted (for FTS5/vec cleanup)
-            select_sql = (
-                "SELECT node_id FROM kg_nodes "
-                "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
-            )
-            cur = self._db.execute(select_sql, like_params)
-            retracted_ids = [row[0] for row in cur.fetchall()]
-
-            if not retracted_ids:
-                return 0
-
-            # Update confidence to 0
-            update_sql = (
-                "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
-                "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
-            )
-            all_params: list[object] = [now] + like_params
-            cur = self._db.execute(update_sql, all_params)
-            retracted = cur.rowcount
-
-            # Remove retracted nodes from FTS5 and vec indexes (batch DELETE,
-            # chunked at 900 to stay under SQLite's 999-variable limit).
-            for i in range(0, len(retracted_ids), 900):
-                chunk = retracted_ids[i : i + 900]
-                placeholders = ",".join("?" for _ in chunk)
-                self._db.execute(
-                    f"DELETE FROM fts_kg_nodes WHERE node_id IN ({placeholders})",
-                    chunk,
+            try:
+                # Collect node_ids that will be retracted (for FTS5/vec cleanup)
+                select_sql = (
+                    "SELECT node_id FROM kg_nodes "
+                    "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
                 )
-                if self._vec_available:
-                    try:
-                        self._db.execute(
-                            f"DELETE FROM vec_kg_nodes WHERE node_id IN ({placeholders})",
-                            chunk,
-                        )
-                    except Exception:
-                        pass
+                cur = self._db.execute(select_sql, like_params)
+                retracted_ids = [row[0] for row in cur.fetchall()]
 
-            self._db.commit()
-            if retracted > 0:
-                self._mutation_counter += 1
-            return retracted
+                if not retracted_ids:
+                    return 0
+
+                # Update confidence to 0
+                update_sql = (
+                    "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
+                    "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
+                )
+                all_params: list[object] = [now] + like_params
+                cur = self._db.execute(update_sql, all_params)
+                retracted = cur.rowcount
+
+                # Remove retracted nodes from FTS5 and vec indexes (batch DELETE,
+                # chunked at 900 to stay under SQLite's 999-variable limit).
+                for i in range(0, len(retracted_ids), 900):
+                    chunk = retracted_ids[i : i + 900]
+                    placeholders = ",".join("?" for _ in chunk)
+                    self._db.execute(
+                        f"DELETE FROM fts_kg_nodes WHERE node_id IN ({placeholders})",
+                        chunk,
+                    )
+                    if self._vec_available:
+                        try:
+                            self._db.execute(
+                                f"DELETE FROM vec_kg_nodes WHERE node_id IN ({placeholders})",
+                                chunk,
+                            )
+                        except Exception:
+                            pass
+
+                self._db.commit()
+                if retracted > 0:
+                    self._mutation_counter += 1
+                return retracted
+            except Exception:
+                self._db.rollback()
+                raise
