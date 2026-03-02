@@ -285,6 +285,30 @@ class MobileIngestServer(ThreadingHTTPServer):
         # Master password rate-limiter: {ip: [timestamp, ...]}
         self._master_pw_attempts: dict[str, list[float]] = {}
         self._master_pw_rate_lock = threading.Lock()
+        # Security orchestrator (optional — gracefully skipped if init fails)
+        self.security: Any = None
+        self._security_db: Any = None
+        self._security_write_lock: threading.Lock | None = None
+        try:
+            import sqlite3 as _sec_sqlite3
+            from jarvis_engine.security.orchestrator import SecurityOrchestrator
+            security_db_path = self.repo_root / ".planning" / "brain" / "security.db"
+            security_db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._security_db = _sec_sqlite3.connect(str(security_db_path), check_same_thread=False)
+            self._security_db.execute("PRAGMA journal_mode=WAL")
+            self._security_db.execute("PRAGMA synchronous=NORMAL")
+            self._security_write_lock = threading.Lock()
+            forensic_dir = self.repo_root / ".planning" / "runtime" / "forensic"
+            forensic_dir.mkdir(parents=True, exist_ok=True)
+            self.security = SecurityOrchestrator(
+                db=self._security_db,
+                write_lock=self._security_write_lock,
+                log_dir=forensic_dir,
+            )
+            logger.info("SecurityOrchestrator initialized for mobile API")
+        except Exception as exc:
+            logger.warning("SecurityOrchestrator init failed (security checks disabled): %s", exc)
+            self.security = None
 
     @staticmethod
     def _prune_rate_dict(d: dict[str, list[float]], max_keys: int = 5000) -> None:
@@ -1092,6 +1116,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if path not in ("/", "/quick", "/health", "/cert-fingerprint", "/favicon.ico"):
             if not self._check_rate_limit(path):
                 return
+        # Security orchestrator pipeline check
+        _security = getattr(self.server, "security", None)
+        if _security is not None:
+            _client_ip = str(self.client_address[0])
+            _sec_check = _security.check_request(
+                path=path,
+                source_ip=_client_ip,
+                headers=dict(self.headers),
+                body="",
+                user_agent=self.headers.get("User-Agent", ""),
+            )
+            if not _sec_check["allowed"]:
+                self._write_json(HTTPStatus.FORBIDDEN, {
+                    "ok": False,
+                    "error": f"Request blocked: {_sec_check['reason']}",
+                })
+                return
         if path == "/":
             self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
             return
@@ -1146,6 +1187,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
                 {"ok": True, "dashboard": build_intelligence_dashboard(root)},
             )
+            return
+        if path == "/security/status":
+            if not self._validate_auth(b""):
+                return
+            _sec_orch = getattr(self.server, "security", None)
+            if _sec_orch is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Security orchestrator not available.",
+                })
+                return
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "security": _sec_orch.status(),
+            })
             return
         if path == "/audit":
             if not self._validate_auth(b""):
@@ -1443,6 +1499,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
             return
+        # Security orchestrator pipeline check
+        _security = getattr(self.server, "security", None)
+        if _security is not None:
+            _client_ip = str(self.client_address[0])
+            _sec_check = _security.check_request(
+                path=path,
+                source_ip=_client_ip,
+                headers=dict(self.headers),
+                body="",
+                user_agent=self.headers.get("User-Agent", ""),
+            )
+            if not _sec_check["allowed"]:
+                self._write_json(HTTPStatus.FORBIDDEN, {
+                    "ok": False,
+                    "error": f"Request blocked: {_sec_check['reason']}",
+                })
+                return
         if path == "/bootstrap":
             payload, _ = self._read_json_body_noauth(max_content_length=6_000)
             if payload is None:
@@ -1647,6 +1720,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             result = self._run_voice_command(payload)
+            # Scan LLM output for security issues (credential leaks, exfiltration, etc.)
+            _sec_orch = getattr(self.server, "security", None)
+            if _sec_orch is not None and result.get("ok"):
+                # Build a combined text from the LLM response fields
+                _response_parts = []
+                if result.get("reason"):
+                    _response_parts.append(str(result["reason"]))
+                for _line in result.get("stdout_tail", []):
+                    _response_parts.append(str(_line))
+                _response_text = "\n".join(_response_parts)
+                if _response_text.strip():
+                    _output_check = _sec_orch.scan_output(_response_text)
+                    if not _output_check["safe"]:
+                        result["reason"] = _output_check["filtered_text"]
+                        result["stdout_tail"] = [_output_check["filtered_text"]]
+                        result["security_filtered"] = True
+                        logger.warning("Output filtered: %s", _output_check["findings"][:3])
             self._write_json(HTTPStatus.OK, result)
             return
 
@@ -1865,7 +1955,7 @@ def run_mobile_server(
     logger.info("tls=%s", "enabled" if tls_active else "disabled")
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         logger.warning("mobile_api_non_loopback_without_tls")
-    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /settings, GET /dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     # Pre-warm the CommandBus so the first user request doesn't pay cold start cost
     def _prewarm() -> None:
         try:
@@ -1900,6 +1990,13 @@ def run_mobile_server(
                     logger.info("Sync engine DB connection closed")
             except Exception as exc:
                 logger.warning("Failed to close sync engine DB: %s", exc)
+        # Close security orchestrator DB connection
+        if server._security_db is not None:
+            try:
+                server._security_db.close()
+                logger.info("Security DB connection closed")
+            except Exception as exc:
+                logger.warning("Failed to close security DB: %s", exc)
         # Close the MemoryEngine (lazy-initialized for metrics)
         if server._memory_engine is not None:
             try:
