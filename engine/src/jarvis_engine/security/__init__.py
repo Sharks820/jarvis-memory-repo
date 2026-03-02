@@ -24,6 +24,7 @@ from jarvis_engine.security.injection_firewall import (
 )
 from jarvis_engine.security.ip_tracker import IPTracker
 from jarvis_engine.security.memory_provenance import MemoryProvenance
+from jarvis_engine.security.network_defense import HomeNetworkMonitor, KnownDeviceRegistry
 from jarvis_engine.security.orchestrator import SecurityOrchestrator
 from jarvis_engine.security.owner_session import OwnerSessionManager
 from jarvis_engine.security.output_scanner import OutputScanResult, OutputScanner
@@ -47,12 +48,14 @@ __all__ = [
     "ContainmentLevel",
     "ForensicLogger",
     "HeartbeatMonitor",
+    "HomeNetworkMonitor",
     "HoneypotEngine",
     "IdentityAlert",
     "IdentityMonitor",
     "InjectionResult",
     "InjectionVerdict",
     "IPTracker",
+    "KnownDeviceRegistry",
     "MemoryProvenance",
     "OutputScanResult",
     "OutputScanner",
