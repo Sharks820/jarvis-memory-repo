@@ -391,7 +391,8 @@ class ModelGateway:
             audit_reason = route_reason or "primary:ollama"
             # If Ollama failed and cloud providers are available, try them
             # skip_ollama=True to avoid re-trying Ollama at the end of the chain
-            if response.provider == "none" and self._cloud_keys:
+            # NEVER fall back to cloud for privacy-routed queries
+            if response.provider == "none" and self._cloud_keys and not privacy_routed:
                 # Log the failed Ollama attempt (consistent with Anthropic/cloud paths)
                 self._audit_decision(
                     provider="ollama",

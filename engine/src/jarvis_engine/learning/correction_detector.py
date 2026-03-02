@@ -169,7 +169,11 @@ class CorrectionDetector:
         if self._kg is None:
             return False
 
-        keywords = _extract_keywords(correction.old_claim or correction.new_claim)
+        # Require an explicit old_claim to find the fact to correct;
+        # without it we risk overwriting an unrelated fact.
+        if not correction.old_claim:
+            return False
+        keywords = _extract_keywords(correction.old_claim)
         if not keywords:
             return False
 

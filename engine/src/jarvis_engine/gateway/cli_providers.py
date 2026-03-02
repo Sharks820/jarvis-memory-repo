@@ -225,6 +225,7 @@ def call_codex_cli(
     prompt = _build_messages_text(messages)
 
     # Use temp file for output to avoid parsing JSONL stream
+    out_path = None
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, prefix="codex_out_"
     ) as tmp:
@@ -299,10 +300,11 @@ def call_codex_cli(
         }
     finally:
         # Always clean up temp file, regardless of how we exit
-        try:
-            os.unlink(out_path)
-        except OSError:
-            pass
+        if out_path is not None:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
 
 
 def call_gemini_cli(
