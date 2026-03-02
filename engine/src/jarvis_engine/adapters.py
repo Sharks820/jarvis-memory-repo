@@ -444,8 +444,8 @@ def _build_cylinder_obj(prompt: str, segments: int) -> tuple[str, int, int]:
         top_b = top_ring_start + (((seg + 1) % segments) * 2)
         bottom_a = top_a + 1
         bottom_b = top_b + 1
-        faces.append((top_center, top_a, top_b))
-        faces.append((bottom_center, bottom_b, bottom_a))
+        faces.append((top_center, top_b, top_a))
+        faces.append((bottom_center, bottom_a, bottom_b))
 
         # Side quads as triangles.
         faces.append((top_a, bottom_a, bottom_b))
