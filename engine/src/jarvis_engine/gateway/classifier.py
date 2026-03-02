@@ -1,13 +1,14 @@
 """IntentClassifier: embedding-based query routing with privacy keyword detection.
 
-Routes queries to the optimal model:
-- Math/logic reasoning -> Kimi K2 via Groq (primary)
-- Complex coding/architecture -> Kimi K2 via Groq (primary)
-- Routine summarization/formatting -> Kimi K2 via Groq (primary)
-- Creative writing/brainstorming -> Kimi K2 via Groq (primary)
+Routes queries to the optimal model based on task type and model strengths:
+- Math/logic reasoning -> Codex CLI (o3 high reasoning via Codex Pro plan)
+- Complex coding/architecture -> Claude CLI (Opus 4.6 via 20x Max plan)
+- Routine summarization/formatting -> Kimi K2 via Groq API (fast, cost-effective)
+- Creative writing/brainstorming -> Gemini CLI (strong creative capabilities)
+- Web research -> Gemini CLI (built-in grounding/search)
 - Private/personal data -> Local Ollama (never leaves device)
 
-Primary model: Kimi K2 (Groq) for all non-private queries.
+Falls back through the chain if primary is unavailable.
 Privacy keywords force local routing regardless of embedding similarity.
 Low-confidence queries default to local (privacy-safe).
 """
@@ -133,13 +134,25 @@ class IntentClassifier:
         ],
     }
 
+    # Primary model for each route — chosen for best performance per task type.
+    # Gateway falls back through the chain if primary is unavailable.
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "kimi-k2",   # Primary: Kimi K2 via Groq
-        "complex": "kimi-k2",      # Primary: Kimi K2 via Groq
-        "routine": "kimi-k2",      # Primary: Kimi K2 via Groq
-        "creative": "kimi-k2",     # Primary: Kimi K2 via Groq
-        "web_research": "kimi-k2", # Primary: Kimi K2 via Groq (web context injected)
+        "math_logic": "codex-cli",    # o3/o4-mini excel at math and logic reasoning
+        "complex": "claude-cli",      # Opus excels at coding, architecture, debugging
+        "routine": "kimi-k2",         # Fast API (Groq) for summarization, formatting
+        "creative": "gemini-cli",     # Gemini strong at creative writing, brainstorming
+        "web_research": "gemini-cli", # Gemini has built-in grounding and search
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
+    }
+
+    # Fallback preferences per route if primary is unavailable.
+    # Tried in order; if none available, gateway's own fallback chain kicks in.
+    MODEL_FALLBACKS: dict[str, list[str]] = {
+        "math_logic": ["claude-cli", "kimi-k2", "gemini-cli"],
+        "complex": ["codex-cli", "kimi-k2", "gemini-cli"],
+        "routine": ["gemini-cli", "claude-cli", "kimi-cli"],
+        "creative": ["claude-cli", "kimi-k2", "kimi-cli"],
+        "web_research": ["kimi-k2", "claude-cli", "kimi-cli"],
     }
 
     PRIVACY_KEYWORDS: set[str] = {
@@ -272,8 +285,39 @@ class IntentClassifier:
         """Return True if any privacy keyword appears in the query as a whole word."""
         return bool(self._privacy_re.search(query.lower()))
 
-    def classify(self, query: str) -> tuple[str, str, float]:
+    def _resolve_model_for_route(
+        self, route: str, available_models: set[str] | None = None,
+    ) -> str:
+        """Pick the best available model for a route.
+
+        Checks primary MODEL_MAP first, then MODEL_FALLBACKS in order.
+        If *available_models* is provided, only returns models in that set.
+        Falls back to 'kimi-k2' (fast API) if nothing else is available.
+        """
+        primary = self.MODEL_MAP.get(route)
+        if primary and (available_models is None or primary in available_models):
+            return primary
+
+        # Try fallback list in order
+        for fallback in self.MODEL_FALLBACKS.get(route, []):
+            if available_models is None or fallback in available_models:
+                return fallback
+
+        # Ultimate fallback: kimi-k2 (API-based, always available with GROQ_API_KEY)
+        return "kimi-k2"
+
+    def classify(
+        self,
+        query: str,
+        available_models: set[str] | None = None,
+    ) -> tuple[str, str, float]:
         """Classify a query and return (route_name, model_name, confidence).
+
+        Args:
+            query: User query text.
+            available_models: Optional set of model names that are actually
+                available. If provided, the classifier will only return models
+                from this set. Pass ``gateway.available_model_names()`` here.
 
         Privacy keywords force local routing with confidence 1.0.
         Low-confidence results default to local routing (privacy-safe).
@@ -314,7 +358,7 @@ class IntentClassifier:
         if best_route == "simple_private":
             model = local_model
         else:
-            model = self.MODEL_MAP.get(best_route, local_model)
+            model = self._resolve_model_for_route(best_route, available_models)
         return (best_route, model, best_sim)
 
     @staticmethod

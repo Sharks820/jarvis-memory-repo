@@ -1,9 +1,11 @@
 """ModelGateway: unified LLM completion interface.
 
 Wraps Anthropic SDK, OpenAI-compatible cloud APIs (Groq, Mistral, Z.ai),
-and Ollama Python client with:
+CLI-based LLMs (Claude Code, Codex, Gemini CLI, Kimi CLI), and Ollama
+Python client with:
 - Automatic provider resolution based on model name
-- Fallback chain: cloud failure -> local Ollama -> graceful error
+- CLI providers use authenticated CLI subscriptions (no API keys needed)
+- Fallback chain: cloud failure -> CLI -> local Ollama -> graceful error
 - Per-query cost tracking via CostTracker
 - Local-only mode when no API key is configured
 """
@@ -46,6 +48,11 @@ except ImportError:
         pass
 
 from jarvis_engine.gateway.audit import GatewayAudit
+from jarvis_engine.gateway.cli_providers import (
+    call_cli_provider,
+    detect_cli_providers,
+    CLIProviderInfo,
+)
 from jarvis_engine.gateway.pricing import calculate_cost
 
 if TYPE_CHECKING:
@@ -92,6 +99,14 @@ ANTHROPIC_MODEL_ALIASES: dict[str, str] = {
     "claude-opus": "claude-opus-4-0-20250514",
     "claude-sonnet": "claude-sonnet-4-5-20250929",
     "claude-haiku": "claude-haiku-4-5-20251001",
+}
+
+# CLI-based model names (these route to subprocess invocations, no API key needed)
+CLI_MODEL_MAP: dict[str, str] = {
+    "claude-cli": "claude-cli",
+    "codex-cli": "codex-cli",
+    "gemini-cli": "gemini-cli",
+    "kimi-cli": "kimi-cli",
 }
 
 # Reverse index: provider_key -> first (preferred) model alias for fallback use.
@@ -169,11 +184,19 @@ class ModelGateway:
         # 60s timeout matches Anthropic SDK; LLM completions can be slow
         self._http = httpx.Client(timeout=60.0)
 
+        # Detect CLI-based LLM providers (Claude Code, Codex, Gemini, Kimi)
+        self._cli_providers: dict[str, CLIProviderInfo] = {}
+        for key, info in detect_cli_providers().items():
+            if info.available:
+                self._cli_providers[key] = info
+
         # Log available providers
         available = []
         if self._anthropic is not None:
             available.append("anthropic")
         available.extend(self._cloud_keys.keys())
+        for key, info in self._cli_providers.items():
+            available.append(f"{key}")
         if _HAS_OLLAMA:
             available.append("ollama")
         if not available:
@@ -222,6 +245,12 @@ class ModelGateway:
             provider_key, _ = CLOUD_MODEL_MAP[model]
             if provider_key in self._cloud_keys:
                 return f"cloud:{provider_key}"
+
+        # Check if model maps to a CLI-based provider
+        if model in CLI_MODEL_MAP:
+            cli_key = CLI_MODEL_MAP[model]
+            if cli_key in self._cli_providers:
+                return f"cli:{cli_key}"
 
         return "ollama"
 
@@ -314,6 +343,45 @@ class ModelGateway:
                 )
                 t0 = time.perf_counter()
                 response = self._fallback_chain(messages, max_tokens, reason, skip_provider=provider_key)
+                audit_reason = f"fallback:{reason}"
+        elif provider.startswith("cli:"):
+            cli_key = provider.split(":", 1)[1]
+            try:
+                response = self._call_cli(messages, model, max_tokens, cli_key)
+                audit_reason = route_reason or f"primary:cli:{cli_key}"
+                if response.provider == "none":
+                    # CLI call failed, try fallback chain
+                    self._audit_decision(
+                        provider=cli_key,
+                        model=model,
+                        reason=route_reason or f"primary:cli:{cli_key}",
+                        latency_ms=(time.perf_counter() - t0) * 1000,
+                        input_tokens=0,
+                        output_tokens=0,
+                        cost_usd=0.0,
+                        success=False,
+                        privacy_routed=privacy_routed,
+                    )
+                    t0 = time.perf_counter()
+                    reason = response.fallback_reason or f"{cli_key}_failed"
+                    response = self._fallback_chain(messages, max_tokens, reason)
+                    audit_reason = f"fallback:{reason}"
+            except Exception as exc:
+                reason = f"{cli_key}: {type(exc).__name__}"
+                logger.warning("CLI provider %s failed, falling back: %s", cli_key, exc)
+                self._audit_decision(
+                    provider=cli_key,
+                    model=model,
+                    reason=route_reason or f"primary:cli:{cli_key}",
+                    latency_ms=(time.perf_counter() - t0) * 1000,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    success=False,
+                    privacy_routed=privacy_routed,
+                )
+                t0 = time.perf_counter()
+                response = self._fallback_chain(messages, max_tokens, reason)
                 audit_reason = f"fallback:{reason}"
         else:
             response = self._call_ollama(messages, model, max_tokens)
@@ -547,6 +615,32 @@ class ModelGateway:
             cost_usd=0.0,
         )
 
+    def _call_cli(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        cli_key: str,
+    ) -> GatewayResponse:
+        """Call a CLI-based LLM provider (Claude Code, Codex, Gemini, Kimi)."""
+        result = call_cli_provider(cli_key, messages, max_tokens)
+        if not result.get("success"):
+            error = result.get("error", "unknown CLI error")
+            logger.warning("CLI provider %s failed: %s", cli_key, error)
+            return GatewayResponse(
+                text="",
+                model=model,
+                provider="none",
+                fallback_used=True,
+                fallback_reason=f"CLI {cli_key}: {error}",
+            )
+        return GatewayResponse(
+            text=result.get("text", ""),
+            model=model,
+            provider=cli_key,
+            cost_usd=result.get("cost_usd", 0.0),
+        )
+
     def _fallback_chain(
         self,
         messages: list[dict[str, str]],
@@ -579,6 +673,21 @@ class ModelGateway:
                 return resp
             except Exception as exc:
                 logger.warning("Fallback to %s also failed: %s", pk, exc)
+
+        # Try CLI-based providers as fallback (free via subscription)
+        cli_priority = ["claude-cli", "gemini-cli", "codex-cli", "kimi-cli"]
+        for cli_key in cli_priority:
+            if cli_key == skip_provider or cli_key not in self._cli_providers:
+                continue
+            try:
+                resp = self._call_cli(messages, cli_key, max_tokens, cli_key)
+                if resp.provider != "none":
+                    resp.fallback_used = True
+                    resp.fallback_reason = reason
+                    return resp
+                logger.warning("CLI fallback %s returned empty", cli_key)
+            except Exception as exc:
+                logger.warning("CLI fallback %s failed: %s", cli_key, exc)
 
         # Try Anthropic as fallback if available and not the one that failed
         if self._anthropic is not None and skip_provider != "anthropic":
@@ -688,12 +797,39 @@ class ModelGateway:
         """Check which cloud providers have API keys configured."""
         return {k: True for k in self._cloud_keys}
 
+    def check_cli(self) -> dict[str, bool]:
+        """Check which CLI-based LLM providers are available."""
+        return {k: True for k in self._cli_providers}
+
+    def available_model_names(self) -> set[str]:
+        """Return set of all model names that can actually be routed.
+
+        Useful for passing to IntentClassifier.classify(available_models=...)
+        so it only routes to models that are actually available.
+        """
+        models: set[str] = set()
+        # Anthropic models
+        if self._anthropic is not None:
+            models.update(ANTHROPIC_MODEL_ALIASES.keys())
+        # Cloud API models
+        for alias, (pk, _) in CLOUD_MODEL_MAP.items():
+            if pk in self._cloud_keys:
+                models.add(alias)
+        # CLI-based models
+        for cli_key in self._cli_providers:
+            models.add(cli_key)
+        # Ollama (local) — always add local model name
+        if _HAS_OLLAMA:
+            models.add(os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b"))
+        return models
+
     def available_providers(self) -> list[str]:
         """Return list of all available provider names."""
         providers = []
         if self._anthropic is not None:
             providers.append("anthropic")
         providers.extend(self._cloud_keys.keys())
+        providers.extend(self._cli_providers.keys())
         if self.check_ollama():
             providers.append("ollama")
         return providers
