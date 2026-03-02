@@ -22,6 +22,7 @@ from jarvis_engine.security.injection_firewall import (
 )
 from jarvis_engine.security.ip_tracker import IPTracker
 from jarvis_engine.security.memory_provenance import MemoryProvenance
+from jarvis_engine.security.orchestrator import SecurityOrchestrator
 from jarvis_engine.security.output_scanner import OutputScanResult, OutputScanner
 from jarvis_engine.security.session_manager import Session, SessionManager
 from jarvis_engine.security.threat_detector import (
@@ -47,6 +48,7 @@ __all__ = [
     "OutputScanResult",
     "OutputScanner",
     "PromptInjectionFirewall",
+    "SecurityOrchestrator",
     "Session",
     "SessionManager",
     "ThreatAssessment",
