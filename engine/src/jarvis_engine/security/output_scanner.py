@@ -6,6 +6,7 @@ exfiltration markers, instruction injection, and persona violations.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -73,8 +74,10 @@ _CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 _PATH_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Unix absolute paths with sensitive directories
     ("unix_sensitive_path", re.compile(r"/(?:etc/(?:passwd|shadow|sudoers)|home/\w+/\.\w+|root/)")),
-    # Windows absolute paths
-    ("windows_absolute_path", re.compile(r"[A-Z]:\\(?:Users|Windows|Program Files)", re.I)),
+    # Windows absolute paths (excludes owner's home directory — personal assistant context)
+    ("windows_absolute_path", re.compile(
+        r"[A-Z]:\\(?:Windows|Program Files)\\", re.I,
+    )),
     # Generic absolute paths that look like system disclosure
     ("unix_absolute_path", re.compile(r"/(?:usr|var|opt|srv|tmp)/\w+/\w+")),
     # .env file path

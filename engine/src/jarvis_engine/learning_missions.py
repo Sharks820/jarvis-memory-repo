@@ -109,8 +109,13 @@ def _fetch_page_cached(url: str, *, max_bytes: int) -> str:
             _PAGE_CACHE.pop(key, None)
     value = _fetch_page_text(url, max_bytes=max_bytes)
     with _PAGE_CACHE_LOCK:
+        # Adjust byte counter if key already exists (concurrent fetch or refresh)
+        if key in _PAGE_CACHE:
+            _old_ts, old_val = _PAGE_CACHE[key]
+            _page_cache_bytes -= len(old_val.encode("utf-8"))
         _PAGE_CACHE[key] = (now, value)
         _page_cache_bytes += len(value.encode("utf-8"))
+        _page_cache_bytes = max(0, _page_cache_bytes)  # clamp against drift
         if len(_PAGE_CACHE) > 1200 or _page_cache_bytes > _PAGE_CACHE_MAX_BYTES:
             # Keep cache bounded for 24/7 operation.
             stale = sorted(_PAGE_CACHE.items(), key=lambda item: item[1][0])[:200]

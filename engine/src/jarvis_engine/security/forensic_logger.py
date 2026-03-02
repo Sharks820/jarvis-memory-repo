@@ -137,31 +137,33 @@ class ForensicLogger:
         categories: dict[str, int] = {}
         severities: dict[str, int] = {}
 
+        # Snapshot the file path under lock, then read outside to avoid
+        # blocking log_event() during potentially large file reads.
         with self._lock:
-            if not self._path.exists():
-                entries = []
-            else:
-                try:
-                    with open(self._path, "r", encoding="utf-8") as f:
-                        for raw_line in f:
-                            raw_line = raw_line.rstrip("\n")
-                            if not raw_line:
-                                continue
-                            try:
-                                entry = json.loads(raw_line)
-                            except json.JSONDecodeError:
-                                continue
-                            ts = entry.get("timestamp_utc", "")
-                            # Compare date prefix (YYYY-MM-DD)
-                            date_part = ts[:10]
-                            if start_date <= date_part <= end_date:
-                                entries.append(raw_line)
-                                cat = entry.get("category", "unknown")
-                                categories[cat] = categories.get(cat, 0) + 1
-                                sev = entry.get("severity", "unknown")
-                                severities[sev] = severities.get(sev, 0) + 1
-                except OSError:
-                    logger.warning("Failed to read forensic log for export", exc_info=True)
+            log_path = self._path if self._path.exists() else None
+
+        if log_path is not None:
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    for raw_line in f:
+                        raw_line = raw_line.rstrip("\n")
+                        if not raw_line:
+                            continue
+                        try:
+                            entry = json.loads(raw_line)
+                        except json.JSONDecodeError:
+                            continue
+                        ts = entry.get("timestamp_utc", "")
+                        # Compare date prefix (YYYY-MM-DD)
+                        date_part = ts[:10]
+                        if start_date <= date_part <= end_date:
+                            entries.append(raw_line)
+                            cat = entry.get("category", "unknown")
+                            categories[cat] = categories.get(cat, 0) + 1
+                            sev = entry.get("severity", "unknown")
+                            severities[sev] = severities.get(sev, 0) + 1
+            except OSError:
+                logger.warning("Failed to read forensic log for export", exc_info=True)
 
         summary_lines = [
             "Forensic Log Export Summary",

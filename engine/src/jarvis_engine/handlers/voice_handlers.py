@@ -219,7 +219,7 @@ class PersonaComposeHandler:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": cmd.query})
 
-        model = cmd.model or "claude-sonnet-4-5-20250929"
+        model = cmd.model or "kimi-k2"
         try:
             resp: GatewayResponse = gateway.complete(
                 messages=messages,

@@ -178,6 +178,7 @@ class QueryHandler:
 
         # Determine model
         route_reason = ""
+        route_name = ""
         if cmd.model is not None:
             model = cmd.model
             route_reason = f"Explicit model: {model}"
@@ -202,12 +203,14 @@ class QueryHandler:
         messages.append({"role": "user", "content": cmd.query})
 
         # Call gateway
+        is_private = route_name == "simple_private"
         try:
             resp: GatewayResponse = gateway.complete(
                 messages=messages,
                 model=model,
                 max_tokens=cmd.max_tokens,
                 route_reason=route_reason,
+                privacy_routed=is_private,
             )
         except Exception as exc:
             logger.error("QueryHandler gateway.complete failed: %s", exc, exc_info=True)

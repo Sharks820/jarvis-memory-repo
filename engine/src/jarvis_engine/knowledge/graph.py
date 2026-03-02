@@ -210,8 +210,9 @@ class KnowledgeGraph:
         hold _write_lock which does not block readers here, avoiding
         unnecessary serialization of graph builds behind writes.
         """
-        if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
-            return self._cached_graph.copy()
+        with self._db_lock:
+            if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
+                return self._cached_graph.copy()
 
         import networkx as nx
 
