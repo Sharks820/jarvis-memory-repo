@@ -242,9 +242,6 @@ class SecurityOrchestrator:
           - ``injection_verdict`` (str): clean / suspicious / injection_detected / hostile
           - ``containment_actions`` (list): actions taken by containment engine
         """
-        with self._lock:
-            self._total_requests += 1
-
         containment_actions: list[str] = []
 
         # --- Step 1: Honeypot check ---
@@ -264,6 +261,7 @@ class SecurityOrchestrator:
                 blocked=True,
             )
             with self._lock:
+                self._total_requests += 1
                 self._total_blocked += 1
             return {
                 "allowed": False,
@@ -281,6 +279,7 @@ class SecurityOrchestrator:
                 "path": path,
             })
             with self._lock:
+                self._total_requests += 1
                 self._total_blocked += 1
             return {
                 "allowed": False,
@@ -303,6 +302,7 @@ class SecurityOrchestrator:
                     })
                     self._ip_tracker.record_attempt(source_ip, "threat_intel_bad")
                     with self._lock:
+                        self._total_requests += 1
                         self._total_blocked += 1
                     return {
                         "allowed": False,
@@ -371,6 +371,9 @@ class SecurityOrchestrator:
                 source_ip=source_ip,
             )
 
+            # Record IP attempt once (before per-signal processing)
+            self._ip_tracker.record_attempt(source_ip, threat_level)
+
             # Record in attack memory and adaptive defense
             for signal in assessment.signals:
                 self._attack_memory.record_attack(
@@ -386,9 +389,6 @@ class SecurityOrchestrator:
                     blocked=True,
                 )
                 self._adaptive_defense.check_auto_rule(signal.category)
-
-            # Record IP attempt
-            self._ip_tracker.record_attempt(source_ip, threat_level)
 
         # On injection detected: record attack, block
         if injection_verdict != "clean":
@@ -428,10 +428,6 @@ class SecurityOrchestrator:
                     "patterns": injection_result.matched_patterns[:5],
                 })
 
-        if not allowed:
-            with self._lock:
-                self._total_blocked += 1
-
         # --- Step 7: Resource monitoring ---
         if self.resource_monitor is not None:
             try:
@@ -450,6 +446,12 @@ class SecurityOrchestrator:
                 )
             except Exception as exc:
                 logger.debug("ActionAuditor log failed: %s", exc)
+
+        # Single atomic counter update for non-early-return paths
+        with self._lock:
+            self._total_requests += 1
+            if not allowed:
+                self._total_blocked += 1
 
         return {
             "allowed": allowed,

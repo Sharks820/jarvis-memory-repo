@@ -46,6 +46,7 @@ class ConversationLearningEngine:
         self._preference_tracker = preference_tracker
         self._feedback_tracker = feedback_tracker
         self._usage_tracker = usage_tracker
+        self._correction_detector: object | None = None
 
     def learn_from_interaction(
         self,
@@ -74,7 +75,9 @@ class ConversationLearningEngine:
         try:
             from jarvis_engine.learning.correction_detector import CorrectionDetector
 
-            detector = CorrectionDetector(kg=self._kg)
+            if self._correction_detector is None:
+                self._correction_detector = CorrectionDetector(kg=self._kg)
+            detector = self._correction_detector
             correction = detector.detect_correction(user_message)
             if correction:
                 correction_detected = True

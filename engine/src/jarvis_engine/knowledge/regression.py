@@ -41,7 +41,7 @@ class RegressionChecker:
         Returns dict with: node_count, edge_count, locked_count, graph_hash,
         captured_at, and node_labels (dict mapping node_id -> label).
         """
-        G = self._kg.to_networkx()
+        G = self._kg.to_networkx(copy=False)
 
         node_count = G.number_of_nodes()
         edge_count = G.number_of_edges()

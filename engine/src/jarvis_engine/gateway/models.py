@@ -38,6 +38,11 @@ except ImportError:
         pass
 
 try:
+    from jarvis_engine.activity_feed import log_activity as _log_activity
+except ImportError:
+    _log_activity = None
+
+try:
     from ollama import Client as OllamaClient, ResponseError
     _HAS_OLLAMA = True
 except ImportError:
@@ -441,15 +446,13 @@ class ModelGateway:
             )
 
         # Log routing decision to activity feed
-        try:
-            from jarvis_engine.activity_feed import log_activity
-            log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
-                "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
-            })
-        except ImportError:
-            pass
-        except Exception as exc:
-            logger.debug("Activity feed logging failed: %s", exc)
+        if _log_activity is not None:
+            try:
+                _log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
+                    "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
+                })
+            except Exception as exc:
+                logger.debug("Activity feed logging failed: %s", exc)
 
         return response
 

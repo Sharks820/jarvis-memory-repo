@@ -88,6 +88,12 @@ class ThreatNeutralizer:
 
         # Rate limiting: ip -> last_report_timestamp
         self._report_cooldowns: dict[str, float] = {}
+        self._report_call_count = 0  # generation counter for periodic cleanup
+
+        # RDAP result cache: ip -> (timestamp, result_email_or_none)
+        self._rdap_cache: dict[str, tuple[float, str | None]] = {}
+        _RDAP_CACHE_TTL = 86400  # 24 hours
+        self._rdap_cache_ttl = _RDAP_CACHE_TTL
 
         # Counters
         self._total_neutralized = 0
@@ -247,6 +253,16 @@ class ThreatNeutralizer:
         # Rate limit check
         now = time.time()
         with self._lock:
+            # Periodic cleanup: every 100 calls, prune expired entries
+            self._report_call_count += 1
+            if self._report_call_count % 100 == 0:
+                expired = [
+                    k for k, v in self._report_cooldowns.items()
+                    if (now - v) >= _REPORT_COOLDOWN_S
+                ]
+                for k in expired:
+                    del self._report_cooldowns[k]
+
             last_report = self._report_cooldowns.get(ip)
             if last_report is not None and (now - last_report) < _REPORT_COOLDOWN_S:
                 logger.debug(
@@ -298,8 +314,19 @@ class ThreatNeutralizer:
         Queries ``https://rdap.org/ip/{ip}`` and searches for an entity
         with the ``"abuse"`` role, extracting its email from the vCard.
 
+        Results are cached for 24 hours to avoid redundant network calls.
+
         Returns the abuse email address, or None if lookup fails.
         """
+        # Check cache first
+        now = time.time()
+        with self._lock:
+            cached = self._rdap_cache.get(ip)
+            if cached is not None:
+                cached_time, cached_result = cached
+                if (now - cached_time) < self._rdap_cache_ttl:
+                    return cached_result
+
         url = _RDAP_URL_TEMPLATE.format(ip=ip)
         try:
             req = urllib.request.Request(url)
@@ -313,16 +340,24 @@ class ThreatNeutralizer:
             for entity in entities:
                 roles = entity.get("roles", [])
                 if "abuse" in roles:
-                    return self._extract_email_from_vcard(entity)
+                    result = self._extract_email_from_vcard(entity)
+                    with self._lock:
+                        self._rdap_cache[ip] = (time.time(), result)
+                    return result
 
             # Check nested entities
             for entity in entities:
                 for sub_entity in entity.get("entities", []):
                     roles = sub_entity.get("roles", [])
                     if "abuse" in roles:
-                        return self._extract_email_from_vcard(sub_entity)
+                        result = self._extract_email_from_vcard(sub_entity)
+                        with self._lock:
+                            self._rdap_cache[ip] = (time.time(), result)
+                        return result
 
             logger.debug("No abuse contact found in RDAP for %s", ip)
+            with self._lock:
+                self._rdap_cache[ip] = (time.time(), None)
             return None
 
         except Exception as exc:
