@@ -27,6 +27,7 @@ from jarvis_engine.security.memory_provenance import MemoryProvenance
 from jarvis_engine.security.orchestrator import SecurityOrchestrator
 from jarvis_engine.security.owner_session import OwnerSessionManager
 from jarvis_engine.security.output_scanner import OutputScanResult, OutputScanner
+from jarvis_engine.security.resource_monitor import ResourceMonitor
 from jarvis_engine.security.scope_enforcer import ScopeEnforcer
 from jarvis_engine.security.session_manager import Session, SessionManager
 from jarvis_engine.security.threat_detector import (
@@ -55,6 +56,7 @@ __all__ = [
     "OutputScanner",
     "OwnerSessionManager",
     "PromptInjectionFirewall",
+    "ResourceMonitor",
     "ScopeEnforcer",
     "SecurityOrchestrator",
     "Session",
