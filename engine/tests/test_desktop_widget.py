@@ -1921,9 +1921,9 @@ class TestModelTabCycling:
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
-        widget._model_index = 1  # Kimi K2
+        widget._model_index = 1  # Claude CLI (first non-auto entry)
         result = JarvisDesktopWidget._selected_model_override(widget)
-        assert result == "kimi-k2"
+        assert result == "claude-cli"
 
     def test_update_model_label_none_label_is_noop(self):
         """_update_model_label should be a no-op when _model_label is None."""
