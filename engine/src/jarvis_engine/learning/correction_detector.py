@@ -295,18 +295,6 @@ class CorrectionDetector:
             new_confidence,
         )
 
-        # Add superseded edge using pre-captured matches
-        if correction.old_claim and pre_new_matches:
-            new_id = pre_new_matches[0]["node_id"]
-            if node_id != new_id:
-                self._kg.add_edge(
-                    source_id=node_id,
-                    target_id=new_id,
-                    relation="superseded",
-                    confidence=correction.confidence,
-                    source_record="correction_detector",
-                )
-
         return True
 
 
