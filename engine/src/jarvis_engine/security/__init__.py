@@ -3,7 +3,7 @@
 Threat detection, forensic logging, IP tracking, prompt-injection firewall,
 honeypot engine, attack pattern memory, identity monitoring, output scanning,
 session management, autonomous containment, alert chain, adaptive defense,
-and memory provenance.
+memory provenance, and scope enforcement.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from jarvis_engine.security.memory_provenance import MemoryProvenance
 from jarvis_engine.security.orchestrator import SecurityOrchestrator
 from jarvis_engine.security.owner_session import OwnerSessionManager
 from jarvis_engine.security.output_scanner import OutputScanResult, OutputScanner
+from jarvis_engine.security.scope_enforcer import ScopeEnforcer
 from jarvis_engine.security.session_manager import Session, SessionManager
 from jarvis_engine.security.threat_detector import (
     ThreatAssessment,
@@ -52,6 +53,7 @@ __all__ = [
     "OutputScanner",
     "OwnerSessionManager",
     "PromptInjectionFirewall",
+    "ScopeEnforcer",
     "SecurityOrchestrator",
     "Session",
     "SessionManager",
