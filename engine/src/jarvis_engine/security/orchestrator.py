@@ -1,4 +1,4 @@
-"""Unified security orchestrator — wires all 17 security modules into a single pipeline.
+"""Unified security orchestrator — wires all security modules into a single pipeline.
 
 Provides ``check_request()`` for inbound request validation and
 ``scan_output()`` for outbound LLM response scanning.
@@ -6,10 +6,12 @@ Provides ``check_request()`` for inbound request validation and
 Pipeline order:
   1. Honeypot check (instant trap for scanning tools)
   2. IP blocklist check (reject known-bad IPs)
-  3. Threat detection (8 rule types)
-  4. Prompt injection firewall (3 layers)
-  5. Forensic logging of every decision
-  6. Auto-escalation for HIGH/CRITICAL threats
+  3. Threat intel enrichment (external feed check)
+  4. Threat detection (8 rule types)
+  5. Prompt injection firewall (3 layers)
+  6. Forensic logging of every decision
+  7. Auto-escalation for HIGH/CRITICAL threats
+  8. Action audit + resource monitoring
 """
 
 from __future__ import annotations
@@ -33,6 +35,62 @@ from jarvis_engine.security.injection_firewall import (
 from jarvis_engine.security.ip_tracker import IPTracker
 from jarvis_engine.security.output_scanner import OutputScanner
 from jarvis_engine.security.threat_detector import ThreatDetector
+
+# --- New module imports (graceful degradation if missing) ---
+
+try:
+    from jarvis_engine.security.action_auditor import ActionAuditor
+except ImportError:  # pragma: no cover
+    ActionAuditor = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.scope_enforcer import ScopeEnforcer
+except ImportError:  # pragma: no cover
+    ScopeEnforcer = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.heartbeat import HeartbeatMonitor
+except ImportError:  # pragma: no cover
+    HeartbeatMonitor = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.resource_monitor import ResourceMonitor
+except ImportError:  # pragma: no cover
+    ResourceMonitor = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.threat_intel import ThreatIntelFeed
+except ImportError:  # pragma: no cover
+    ThreatIntelFeed = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
+except ImportError:  # pragma: no cover
+    ThreatNeutralizer = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.network_defense import HomeNetworkMonitor, KnownDeviceRegistry
+except ImportError:  # pragma: no cover
+    HomeNetworkMonitor = None  # type: ignore[assignment, misc]
+    KnownDeviceRegistry = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.identity_shield import (
+        BreachMonitor,
+        FamilyShield,
+        ImpersonationDetector,
+        TyposquatMonitor,
+    )
+except ImportError:  # pragma: no cover
+    BreachMonitor = None  # type: ignore[assignment, misc]
+    FamilyShield = None  # type: ignore[assignment, misc]
+    ImpersonationDetector = None  # type: ignore[assignment, misc]
+    TyposquatMonitor = None  # type: ignore[assignment, misc]
+
+try:
+    from jarvis_engine.security.owner_session import OwnerSessionManager
+except ImportError:  # pragma: no cover
+    OwnerSessionManager = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +165,62 @@ class SecurityOrchestrator:
         self._total_blocked = 0
         self._lock = threading.Lock()
 
+        # --- New modules (gracefully skip if import failed) ---
+
+        # Bot governance
+        self.action_auditor = None
+        if ActionAuditor is not None:
+            try:
+                self.action_auditor = ActionAuditor(log_dir=log_dir)
+            except Exception as exc:
+                logger.warning("Failed to init ActionAuditor: %s", exc)
+
+        self.scope_enforcer = None
+        if ScopeEnforcer is not None:
+            try:
+                self.scope_enforcer = ScopeEnforcer()
+            except Exception as exc:
+                logger.warning("Failed to init ScopeEnforcer: %s", exc)
+
+        self.resource_monitor = None
+        if ResourceMonitor is not None:
+            try:
+                self.resource_monitor = ResourceMonitor()
+            except Exception as exc:
+                logger.warning("Failed to init ResourceMonitor: %s", exc)
+
+        # Threat intelligence & response
+        self.threat_intel = None
+        if ThreatIntelFeed is not None:
+            try:
+                self.threat_intel = ThreatIntelFeed()
+            except Exception as exc:
+                logger.warning("Failed to init ThreatIntelFeed: %s", exc)
+
+        self.threat_neutralizer = None
+        if ThreatNeutralizer is not None:
+            try:
+                self.threat_neutralizer = ThreatNeutralizer(
+                    forensic_logger=self._forensic_logger,
+                    ip_tracker=self._ip_tracker,
+                    attack_memory=self._attack_memory,
+                    alert_chain=self._alert_chain,
+                    threat_intel=self.threat_intel,
+                )
+            except Exception as exc:
+                logger.warning("Failed to init ThreatNeutralizer: %s", exc)
+
+        # Owner session (created but not configured with password — done via API)
+        self.owner_session = None
+        if OwnerSessionManager is not None:
+            try:
+                self.owner_session = OwnerSessionManager()
+            except Exception as exc:
+                logger.warning("Failed to init OwnerSessionManager: %s", exc)
+
+        # Note: HeartbeatMonitor and HomeNetworkMonitor are NOT instantiated here.
+        # They start background threads and are managed by the daemon startup code.
+
     # ------------------------------------------------------------------
     # Inbound request pipeline
     # ------------------------------------------------------------------
@@ -175,6 +289,30 @@ class SecurityOrchestrator:
                 "injection_verdict": "clean",
                 "containment_actions": [],
             }
+
+        # --- Step 2b: Threat intel enrichment ---
+        if self.threat_intel is not None:
+            try:
+                intel = self.threat_intel.enrich_ip(source_ip)
+                if intel.get("is_known_bad"):
+                    self._forensic_logger.log_event({
+                        "event_type": "threat_intel_bad_ip",
+                        "source_ip": source_ip,
+                        "path": path,
+                        "intel": intel,
+                    })
+                    self._ip_tracker.record_attempt(source_ip, "threat_intel_bad")
+                    with self._lock:
+                        self._total_blocked += 1
+                    return {
+                        "allowed": False,
+                        "reason": "IP flagged by threat intelligence feed",
+                        "threat_level": "HIGH",
+                        "injection_verdict": "clean",
+                        "containment_actions": [],
+                    }
+            except Exception as exc:
+                logger.debug("Threat intel enrichment failed for %s: %s", source_ip, exc)
 
         # --- Step 3: Threat detection ---
         request_context = {
@@ -294,6 +432,25 @@ class SecurityOrchestrator:
             with self._lock:
                 self._total_blocked += 1
 
+        # --- Step 7: Resource monitoring ---
+        if self.resource_monitor is not None:
+            try:
+                self.resource_monitor.record("api_calls_per_hour", 1)
+            except Exception as exc:
+                logger.debug("ResourceMonitor record failed: %s", exc)
+
+        # --- Step 8: Action audit ---
+        if self.action_auditor is not None:
+            try:
+                self.action_auditor.log_action(
+                    action_type="api_request",
+                    detail=f"{path} from {source_ip}",
+                    trigger="external",
+                    resource_usage={"threat_level": threat_level},
+                )
+            except Exception as exc:
+                logger.debug("ActionAuditor log failed: %s", exc)
+
         return {
             "allowed": allowed,
             "reason": reason,
@@ -343,7 +500,7 @@ class SecurityOrchestrator:
 
         Keys: ``containment_level``, ``total_threats``, ``blocked_ips``,
         ``honeypot_stats``, ``adaptive_defense``, ``total_requests``,
-        ``total_blocked``.
+        ``total_blocked``, plus new module statuses when available.
         """
         containment_status = self._containment.get_containment_status()
         honeypot_stats = self._honeypot.get_honeypot_stats()
@@ -353,7 +510,7 @@ class SecurityOrchestrator:
             total_req = self._total_requests
             total_blk = self._total_blocked
 
-        return {
+        result: dict[str, Any] = {
             "containment_level": containment_status["current_level"],
             "containment_detail": containment_status,
             "total_threats": defense_dashboard["total_attacks"],
@@ -363,6 +520,45 @@ class SecurityOrchestrator:
             "total_requests": total_req,
             "total_blocked": total_blk,
         }
+
+        # --- New module statuses ---
+        if self.action_auditor is not None:
+            try:
+                result["action_auditor"] = self.action_auditor.daily_summary()
+            except Exception as exc:
+                logger.debug("ActionAuditor status failed: %s", exc)
+
+        if self.scope_enforcer is not None:
+            try:
+                result["scope_enforcer_violations"] = self.scope_enforcer.violation_count()
+            except Exception as exc:
+                logger.debug("ScopeEnforcer status failed: %s", exc)
+
+        if self.resource_monitor is not None:
+            try:
+                result["resource_monitor"] = self.resource_monitor.status()
+            except Exception as exc:
+                logger.debug("ResourceMonitor status failed: %s", exc)
+
+        if self.threat_intel is not None:
+            try:
+                result["threat_intel"] = self.threat_intel.status()
+            except Exception as exc:
+                logger.debug("ThreatIntelFeed status failed: %s", exc)
+
+        if self.threat_neutralizer is not None:
+            try:
+                result["threat_neutralizer"] = self.threat_neutralizer.status()
+            except Exception as exc:
+                logger.debug("ThreatNeutralizer status failed: %s", exc)
+
+        if self.owner_session is not None:
+            try:
+                result["owner_session"] = self.owner_session.session_status()
+            except Exception as exc:
+                logger.debug("OwnerSessionManager status failed: %s", exc)
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -424,6 +620,15 @@ class SecurityOrchestrator:
 
         # Record IP attempt
         self._ip_tracker.record_attempt(source_ip, category)
+
+        # Threat neutralization for HIGH+ threats
+        if self.threat_neutralizer is not None and level >= 2:
+            try:
+                self.threat_neutralizer.neutralize(
+                    source_ip, category, {"detail": detail},
+                )
+            except Exception as exc:
+                logger.debug("ThreatNeutralizer failed for %s: %s", source_ip, exc)
 
         # Log to forensic log
         self._forensic_logger.log_event({

@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -47,6 +48,15 @@ class TestInstantiation:
         assert orchestrator._adaptive_defense is not None
         assert orchestrator._forensic_logger is not None
         assert orchestrator._ip_tracker is not None
+
+    def test_new_modules_exist(self, orchestrator):
+        """New modules should be instantiated when imports succeed."""
+        assert orchestrator.action_auditor is not None
+        assert orchestrator.scope_enforcer is not None
+        assert orchestrator.resource_monitor is not None
+        assert orchestrator.threat_intel is not None
+        assert orchestrator.threat_neutralizer is not None
+        assert orchestrator.owner_session is not None
 
     def test_forensic_log_dir_created(self, orchestrator, tmp_path):
         assert (tmp_path / "forensic").is_dir()
@@ -152,11 +162,19 @@ class TestStatus:
 
     def test_status_returns_expected_keys(self, orchestrator):
         status = orchestrator.status()
+        # Original keys
         assert "containment_level" in status
         assert "total_threats" in status
         assert "blocked_ips" in status
         assert "honeypot_stats" in status
         assert "adaptive_defense" in status
+        # New module keys
+        assert "action_auditor" in status
+        assert "scope_enforcer_violations" in status
+        assert "resource_monitor" in status
+        assert "threat_intel" in status
+        assert "threat_neutralizer" in status
+        assert "owner_session" in status
 
     def test_status_after_honeypot_hit(self, orchestrator):
         orchestrator.check_request(
@@ -172,6 +190,136 @@ class TestStatus:
     def test_status_containment_level_starts_at_zero(self, orchestrator):
         status = orchestrator.status()
         assert status["containment_level"] == 0
+
+    def test_status_action_auditor_summary(self, orchestrator):
+        """Action auditor summary should include total_actions key."""
+        status = orchestrator.status()
+        assert "total_actions" in status["action_auditor"]
+
+    def test_status_resource_monitor_has_metrics(self, orchestrator):
+        """Resource monitor status should have expected keys."""
+        status = orchestrator.status()
+        assert "metrics" in status["resource_monitor"]
+        assert "anomalies" in status["resource_monitor"]
+
+    def test_status_threat_intel_has_cache(self, orchestrator):
+        """Threat intel status should have cache_size."""
+        status = orchestrator.status()
+        assert "cache_size" in status["threat_intel"]
+
+    def test_status_owner_session(self, orchestrator):
+        """Owner session should report no active sessions initially."""
+        status = orchestrator.status()
+        assert status["owner_session"]["active"] is False
+        assert status["owner_session"]["session_count"] == 0
+
+
+class TestActionAuditIntegration:
+    """ActionAuditor and ResourceMonitor are wired into check_request."""
+
+    def test_check_request_logs_action(self, orchestrator):
+        """Each check_request should log an action via ActionAuditor."""
+        orchestrator.check_request(
+            path="/health",
+            source_ip="192.168.1.100",
+            headers={},
+            body="",
+        )
+        assert orchestrator.action_auditor.action_count() >= 1
+        recent = orchestrator.action_auditor.recent_actions(limit=5)
+        assert any(a["action_type"] == "api_request" for a in recent)
+
+    def test_check_request_records_resource(self, orchestrator):
+        """Each check_request should record a metric in ResourceMonitor."""
+        orchestrator.check_request(
+            path="/health",
+            source_ip="192.168.1.100",
+            headers={},
+            body="",
+        )
+        within_cap, current = orchestrator.resource_monitor.check_cap("api_calls_per_hour")
+        assert current >= 1.0
+
+    def test_multiple_requests_accumulate(self, orchestrator):
+        """Multiple requests should accumulate in both auditor and resource monitor."""
+        for _ in range(5):
+            orchestrator.check_request(
+                path="/health",
+                source_ip="192.168.1.100",
+                headers={},
+                body="",
+            )
+        assert orchestrator.action_auditor.action_count() >= 5
+        _, current = orchestrator.resource_monitor.check_cap("api_calls_per_hour")
+        assert current >= 5.0
+
+
+class TestThreatIntelIntegration:
+    """ThreatIntelFeed is wired into check_request for IP enrichment."""
+
+    def test_known_bad_ip_blocked(self, orchestrator):
+        """If threat_intel marks IP as known_bad, check_request should block it."""
+        # Mock the enrich_ip to return known_bad=True
+        orchestrator.threat_intel.enrich_ip = MagicMock(return_value={
+            "ip": "203.0.113.50",
+            "is_known_bad": True,
+            "abuseipdb_score": 95,
+            "otx_pulses": 3,
+            "feodo_listed": False,
+            "cache_hit": False,
+            "sources_checked": ["abuseipdb"],
+        })
+        result = orchestrator.check_request(
+            path="/command",
+            source_ip="203.0.113.50",
+            headers={},
+            body="hello",
+        )
+        assert result["allowed"] is False
+        assert "threat intelligence" in result["reason"].lower()
+        assert result["threat_level"] == "HIGH"
+
+    def test_clean_ip_passes_intel(self, orchestrator):
+        """If threat_intel marks IP as clean, request should continue."""
+        orchestrator.threat_intel.enrich_ip = MagicMock(return_value={
+            "ip": "192.168.1.100",
+            "is_known_bad": False,
+            "abuseipdb_score": 0,
+            "otx_pulses": 0,
+            "feodo_listed": False,
+            "cache_hit": False,
+            "sources_checked": ["feodo"],
+        })
+        result = orchestrator.check_request(
+            path="/health",
+            source_ip="192.168.1.100",
+            headers={},
+            body="",
+        )
+        assert result["allowed"] is True
+
+
+class TestThreatNeutralizerIntegration:
+    """ThreatNeutralizer is wired into _handle_threat."""
+
+    def test_handle_threat_calls_neutralizer(self, orchestrator):
+        """_handle_threat with level >= 2 should call neutralize."""
+        orchestrator.threat_neutralizer.neutralize = MagicMock(return_value={
+            "ip": "10.0.0.1",
+            "actions_taken": ["evidence_preserved"],
+            "evidence_id": "abc123",
+            "reported_to": [],
+            "blocked": True,
+        })
+        orchestrator._handle_threat(
+            source_ip="10.0.0.1",
+            category="test_threat",
+            detail="test payload",
+            level=2,
+        )
+        orchestrator.threat_neutralizer.neutralize.assert_called_once_with(
+            "10.0.0.1", "test_threat", {"detail": "test payload"},
+        )
 
 
 class TestHandleThreat:
