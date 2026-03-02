@@ -237,6 +237,12 @@ class ModelGateway:
 
     def _resolve_provider(self, model: str) -> str:
         """Determine which provider to use for a given model."""
+        # CLI models take precedence (exact match) — before startswith checks
+        if model in CLI_MODEL_MAP:
+            cli_key = CLI_MODEL_MAP[model]
+            if cli_key in self._cli_providers:
+                return f"cli:{cli_key}"
+
         if model.startswith("claude-") and self._anthropic is not None:
             return "anthropic"
 
@@ -245,12 +251,6 @@ class ModelGateway:
             provider_key, _ = CLOUD_MODEL_MAP[model]
             if provider_key in self._cloud_keys:
                 return f"cloud:{provider_key}"
-
-        # Check if model maps to a CLI-based provider
-        if model in CLI_MODEL_MAP:
-            cli_key = CLI_MODEL_MAP[model]
-            if cli_key in self._cli_providers:
-                return f"cli:{cli_key}"
 
         return "ollama"
 
@@ -290,8 +290,9 @@ class ModelGateway:
                 fallback_reason="gateway is closed",
             )
 
-        # If Claude requested but Anthropic unavailable, remap to best cloud model
-        if model.startswith("claude-") and self._anthropic is None:
+        # If Claude API requested but Anthropic unavailable, remap to best cloud model
+        # Skip CLI models (claude-cli) — those use the CLI, not the Anthropic API
+        if model.startswith("claude-") and model not in CLI_MODEL_MAP and self._anthropic is None:
             best = self._best_cloud_model()
             if best:
                 logger.info("Anthropic unavailable, routing %s -> %s", model, best)
@@ -364,7 +365,7 @@ class ModelGateway:
                     )
                     t0 = time.perf_counter()
                     reason = response.fallback_reason or f"{cli_key}_failed"
-                    response = self._fallback_chain(messages, max_tokens, reason)
+                    response = self._fallback_chain(messages, max_tokens, reason, skip_provider=cli_key)
                     audit_reason = f"fallback:{reason}"
             except Exception as exc:
                 reason = f"{cli_key}: {type(exc).__name__}"
@@ -381,7 +382,7 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()
-                response = self._fallback_chain(messages, max_tokens, reason)
+                response = self._fallback_chain(messages, max_tokens, reason, skip_provider=cli_key)
                 audit_reason = f"fallback:{reason}"
         else:
             response = self._call_ollama(messages, model, max_tokens)

@@ -208,6 +208,25 @@ class TestPrivacyKeywords:
             assert route == "simple_private", f"Keyword '{kw}' did not force simple_private"
             assert confidence == 1.0, f"Keyword '{kw}' did not return confidence 1.0"
 
+    def test_privacy_keyword_word_boundary(self, classifier):
+        """Words containing privacy keywords as substrings should NOT trigger privacy."""
+        # "accountant" contains "account" but should NOT trigger privacy
+        route, model, confidence = classifier.classify("I need to hire an accountant for taxes")
+        assert route != "simple_private" or confidence != 1.0, (
+            "Substring 'account' inside 'accountant' should not trigger privacy keyword"
+        )
+
+    def test_classify_with_available_models(self, classifier):
+        """classify() correctly filters to available_models set."""
+        # Only kimi-k2 and gemini-cli available — math_logic primary (codex-cli) unavailable
+        available = {"kimi-k2", "gemini-cli"}
+        route, model, confidence = classifier.classify(
+            "solve this differential equation step by step",
+            available_models=available,
+        )
+        assert route == "math_logic"
+        assert model in available, f"Model {model} not in available set {available}"
+
 
 # ---------------------------------------------------------------------------
 # Edge case tests
