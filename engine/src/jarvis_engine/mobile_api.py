@@ -1242,6 +1242,26 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 "security": _sec_orch.status(),
             })
             return
+        if path == "/security/dashboard":
+            if not self._validate_auth_flexible(b""):
+                return
+            server_obj = self.server
+            sec = getattr(server_obj, "security", None)
+            if sec is None:
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False, "error": "Security orchestrator not available"
+                })
+                return
+            dashboard = {
+                "security_status": sec.status(),
+                "recent_actions": sec.action_auditor.recent_actions(20) if hasattr(sec, "action_auditor") and sec.action_auditor else [],
+                "scope_violations": sec.scope_enforcer.recent_violations(10) if hasattr(sec, "scope_enforcer") and sec.scope_enforcer else [],
+                "resource_usage": sec.resource_monitor.summary() if hasattr(sec, "resource_monitor") and sec.resource_monitor else {},
+                "heartbeat": sec.heartbeat.status() if hasattr(sec, "heartbeat") and sec.heartbeat else {},
+                "threat_intel": sec.threat_intel.status() if hasattr(sec, "threat_intel") and sec.threat_intel else {},
+            }
+            self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})
+            return
         if path == "/audit":
             if not self._validate_auth(b""):
                 return
@@ -2094,7 +2114,7 @@ def run_mobile_server(
     logger.info("tls=%s", "enabled" if tls_active else "disabled")
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         logger.warning("mobile_api_non_loopback_without_tls")
-    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /auth/status, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /auth/login, POST /auth/logout, POST /auth/lock, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
+    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /auth/status, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /security/dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /auth/login, POST /auth/logout, POST /auth/lock, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     # Pre-warm the CommandBus so the first user request doesn't pay cold start cost
     def _prewarm() -> None:
         try:
