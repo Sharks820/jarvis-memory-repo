@@ -68,7 +68,10 @@ def test_query_handler_with_classifier() -> None:
 
     assert result.text == "Classified response"
     assert "Intent: simple_query" in result.route_reason
-    mock_classifier.classify.assert_called_once_with("what time is it")
+    mock_classifier.classify.assert_called_once_with(
+        "what time is it",
+        available_models=mock_gateway.available_model_names(),
+    )
 
 
 def test_query_handler_no_classifier_fallback() -> None:

@@ -139,6 +139,13 @@ class TestCallClaudeCli:
         assert result["success"] is False
         assert "not found" in result["error"]
 
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_os_error(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = OSError("Argument list too long")
+        result = call_claude_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "OS error" in result["error"]
+
 
 # ---------------------------------------------------------------------------
 # Codex CLI
@@ -246,6 +253,22 @@ class TestCallGeminiCli:
         assert result["success"] is False
         assert "not found" in result["error"]
 
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_os_error(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = OSError("Argument list too long")
+        result = call_gemini_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "OS error" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_empty_response(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
+        result = call_gemini_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert result["error"] == "empty response"
+
 
 # ---------------------------------------------------------------------------
 # Kimi CLI
@@ -288,6 +311,22 @@ class TestCallKimiCli:
         assert result["success"] is False
         assert "not found" in result["error"]
 
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_os_error(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = OSError("Argument list too long")
+        result = call_kimi_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert "OS error" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_empty_response(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
+        result = call_kimi_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is False
+        assert result["error"] == "empty response"
+
 
 # ---------------------------------------------------------------------------
 # Unified dispatcher
@@ -306,6 +345,41 @@ class TestCallCliProvider:
         result = call_cli_provider("nonexistent-cli", [{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert "unknown" in result["error"]
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_model_override_forwarded_to_claude(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="ok", stderr=""
+        )
+        call_cli_provider("claude-cli", [{"role": "user", "content": "hi"}], model="sonnet")
+        # Verify --model sonnet was passed in the subprocess command
+        cmd = mock_run.call_args[0][0]
+        assert "--model" in cmd
+        model_idx = cmd.index("--model") + 1
+        assert cmd[model_idx] == "sonnet"
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_model_override_forwarded_to_codex(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
+        call_cli_provider("codex-cli", [{"role": "user", "content": "hi"}], model="gpt-4o")
+        cmd = mock_run.call_args[0][0]
+        assert "-m" in cmd
+        model_idx = cmd.index("-m") + 1
+        assert cmd[model_idx] == "gpt-4o"
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_model_override_ignored_for_gemini(self, mock_run: MagicMock) -> None:
+        """Model override should NOT be forwarded to gemini/kimi (they don't accept it)."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="hello", stderr=""
+        )
+        result = call_cli_provider("gemini-cli", [{"role": "user", "content": "hi"}], model="custom-model")
+        assert result["success"] is True
+        # Gemini cmd should not have the model parameter
+        cmd = mock_run.call_args[0][0]
+        assert "custom-model" not in cmd
 
 
 # ---------------------------------------------------------------------------
