@@ -8,6 +8,7 @@ and memory provenance.
 
 from __future__ import annotations
 
+from jarvis_engine.security.action_auditor import ActionAuditor
 from jarvis_engine.security.adaptive_defense import AdaptiveDefenseEngine
 from jarvis_engine.security.alert_chain import AlertChain
 from jarvis_engine.security.attack_memory import AttackPatternMemory
@@ -33,6 +34,7 @@ from jarvis_engine.security.threat_detector import (
 )
 
 __all__ = [
+    "ActionAuditor",
     "AdaptiveDefenseEngine",
     "AlertChain",
     "AttackPatternMemory",
