@@ -138,6 +138,8 @@ class CorrectionDetector:
                 new_claim = m.group(new_group).strip()
                 # Strip trailing punctuation from claims
                 new_claim = new_claim.rstrip(".!?")
+                if not new_claim:
+                    continue  # Stripped to empty — not a meaningful correction
                 if old_claim:
                     old_claim = old_claim.rstrip(".!?")
                 return Correction(
