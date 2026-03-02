@@ -536,9 +536,9 @@ class TestPersonaComposeHandler:
             handler.handle(PersonaComposeCommand(query="hi", model=""))
 
         call_kwargs = mock_gateway.complete.call_args
-        # Default model should be claude-sonnet-4-5-20250929
-        assert call_kwargs.kwargs.get("model") == "claude-sonnet-4-5-20250929" or \
-            call_kwargs[1].get("model") == "claude-sonnet-4-5-20250929"
+        # Default model should be kimi-k2
+        assert call_kwargs.kwargs.get("model") == "kimi-k2" or \
+            call_kwargs[1].get("model") == "kimi-k2"
 
     def test_custom_model_used(self, tmp_path: Path) -> None:
         mock_gateway = MagicMock()

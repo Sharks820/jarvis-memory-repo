@@ -150,7 +150,8 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
         },
     )
     try:
-        with urlopen(req, timeout=12) as resp:  # nosec B310
+        opener = build_opener(SafeRedirectHandler)
+        with opener.open(req, timeout=12) as resp:  # nosec B310
             payload = resp.read(400_000)
     except OSError:
         return []

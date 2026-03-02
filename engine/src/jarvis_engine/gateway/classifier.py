@@ -1,14 +1,13 @@
 """IntentClassifier: embedding-based query routing with privacy keyword detection.
 
 Routes queries to the optimal model:
-- Math/logic reasoning -> Claude Opus (Anthropic, deep reasoning)
-- Complex coding/architecture -> Claude Opus (Anthropic, coding)
-- Routine summarization/formatting -> Kimi K2 via Groq (primary, fast)
-- Creative writing/brainstorming -> Kimi K2 via Groq (primary, fast)
+- Math/logic reasoning -> Kimi K2 via Groq (primary)
+- Complex coding/architecture -> Kimi K2 via Groq (primary)
+- Routine summarization/formatting -> Kimi K2 via Groq (primary)
+- Creative writing/brainstorming -> Kimi K2 via Groq (primary)
 - Private/personal data -> Local Ollama (never leaves device)
 
-Primary model: Kimi K2 (Groq) for most queries.
-Anthropic (Opus) only for coding and deep reasoning tasks.
+Primary model: Kimi K2 (Groq) for all non-private queries.
 Privacy keywords force local routing regardless of embedding similarity.
 Low-confidence queries default to local (privacy-safe).
 """

@@ -362,62 +362,63 @@ class TestFetchPageText:
 
 
 class TestSearchDuckduckgo:
-    def _mock_urlopen(self, html_body: bytes):
+    def _mock_opener(self, html_body: bytes):
+        """Create a mock opener whose .open() returns a context-manager response."""
         mock_resp = MagicMock()
         mock_resp.read.return_value = html_body
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        return mock_resp
+        mock_opener = MagicMock()
+        mock_opener.open.return_value = mock_resp
+        return mock_opener
 
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_extracts_urls_from_results(self, mock_urlopen, mock_safe):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_extracts_urls_from_results(self, mock_build_opener, mock_safe):
         html = b'''
         <div>
             <a href="https://example.com/result1">Result 1</a>
             <a href="https://example.org/result2">Result 2</a>
         </div>
         '''
-        mock_urlopen.return_value = self._mock_urlopen(html).return_value
-        # re-mock to use the context manager properly
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
 
         urls = search_duckduckgo("test query", limit=5)
         assert "https://example.com/result1" in urls
         assert "https://example.org/result2" in urls
 
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_respects_limit(self, mock_urlopen, mock_safe):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_respects_limit(self, mock_build_opener, mock_safe):
         html = b'''
         <a href="https://a.com/1">1</a>
         <a href="https://b.com/2">2</a>
         <a href="https://c.com/3">3</a>
         <a href="https://d.com/4">4</a>
         '''
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=2)
         assert len(urls) <= 2
 
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_filters_duckduckgo_urls(self, mock_urlopen, mock_safe):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_filters_duckduckgo_urls(self, mock_build_opener, mock_safe):
         html = b'''
         <a href="https://duckduckgo.com/internal">DDG</a>
         <a href="https://example.com/real">Real</a>
         '''
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=5)
         for url in urls:
             assert "duckduckgo.com" not in url
 
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_filters_unsafe_urls(self, mock_urlopen):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_filters_unsafe_urls(self, mock_build_opener):
         html = b'''
         <a href="http://192.168.1.1/admin">Private</a>
         <a href="https://safe.example.com/page">Safe</a>
         '''
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
 
         # is_safe_public_url: private IP returns False, safe URL returns True
         def _safe_check(url):
@@ -427,28 +428,29 @@ class TestSearchDuckduckgo:
             urls = search_duckduckgo("test", limit=5)
         assert all("192.168" not in u for u in urls)
 
-    @patch("jarvis_engine.web_fetch.urlopen", side_effect=OSError("network down"))
-    def test_network_error_returns_empty_list(self, mock_urlopen):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_network_error_returns_empty_list(self, mock_build_opener):
+        mock_build_opener.return_value.open.side_effect = OSError("network down")
         urls = search_duckduckgo("test query", limit=5)
         assert urls == []
 
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_deduplicates_urls(self, mock_urlopen, mock_safe):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_deduplicates_urls(self, mock_build_opener, mock_safe):
         html = b'''
         <a href="https://example.com/page">First</a>
         <a href="https://example.com/page">Duplicate</a>
         <a href="https://other.com/page">Other</a>
         '''
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=10)
         assert len(urls) == len(set(urls))  # no duplicates
 
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_unescapes_html_entities_in_urls(self, mock_urlopen, mock_safe):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_unescapes_html_entities_in_urls(self, mock_build_opener, mock_safe):
         html = b'<a href="https://example.com/page?a=1&amp;b=2">Link</a>'
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=5)
         # The & should be unescaped
         if urls:
@@ -456,10 +458,10 @@ class TestSearchDuckduckgo:
             assert "&" in urls[0]
 
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
-    @patch("jarvis_engine.web_fetch.urlopen")
-    def test_no_results_returns_empty_list(self, mock_urlopen, mock_safe):
+    @patch("jarvis_engine.web_fetch.build_opener")
+    def test_no_results_returns_empty_list(self, mock_build_opener, mock_safe):
         html = b"<html><body><p>No results found</p></body></html>"
-        mock_urlopen.return_value = self._mock_urlopen(html)
+        mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("xyzzy_nonexistent", limit=5)
         assert urls == []
 

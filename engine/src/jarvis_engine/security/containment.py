@@ -96,6 +96,7 @@ class ContainmentEngine:
         if level < ContainmentLevel.THROTTLE or level > ContainmentLevel.FULL_KILL:
             raise ValueError(f"Invalid containment level: {level}")
 
+        _do_block_ip = False
         with self._lock:
             actions: list[str] = []
             credentials_rotated = False
@@ -108,8 +109,7 @@ class ContainmentEngine:
             # Level 2+: BLOCK
             if level >= ContainmentLevel.BLOCK:
                 self._blocked_ips.add(ip)
-                if self._ip_tracker is not None:
-                    self._ip_tracker.block_ip(ip)
+                _do_block_ip = True
                 actions.append(f"BLOCK: added {ip} to blocklist")
 
             # Level 3+: ISOLATE
@@ -152,6 +152,10 @@ class ContainmentEngine:
                 result["credentials_rotated"] = True
 
             self._containment_history.append(result)
+
+        # IP tracker operations (outside lock — avoids lock-ordering deadlock)
+        if _do_block_ip and self._ip_tracker is not None:
+            self._ip_tracker.block_ip(ip)
 
         # Log to forensic logger (outside lock — no shared state mutation)
         self._log_forensic(
@@ -248,13 +252,9 @@ class ContainmentEngine:
                 self._isolated_endpoints.clear()
                 actions.append("All endpoint isolations removed")
 
+            _ips_to_unblock: list[str] = []
             if level >= ContainmentLevel.BLOCK:
-                if self._ip_tracker is not None:
-                    for ip in self._blocked_ips:
-                        try:
-                            self._ip_tracker.unblock_ip(ip)
-                        except Exception:
-                            pass
+                _ips_to_unblock = list(self._blocked_ips)
                 self._blocked_ips.clear()
                 actions.append("All IP blocks cleared")
 
@@ -263,6 +263,14 @@ class ContainmentEngine:
                 actions.append("All throttles cleared")
 
             self._current_level = 0
+
+        # IP tracker operations (outside lock — avoids lock-ordering deadlock)
+        if _ips_to_unblock and self._ip_tracker is not None:
+            for _unblock_ip in _ips_to_unblock:
+                try:
+                    self._ip_tracker.unblock_ip(_unblock_ip)
+                except Exception:
+                    pass
 
         self._log_forensic(
             "recovery_executed",

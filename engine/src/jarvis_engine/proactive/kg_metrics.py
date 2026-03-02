@@ -44,6 +44,9 @@ def collect_kg_metrics(kg) -> dict:
     try:
         db = kg.db
 
+        # Wrap all metric queries in a single transaction for consistent reads
+        db.execute("BEGIN DEFERRED")
+
         # Node count
         row = db.execute("SELECT COUNT(*) FROM kg_nodes").fetchone()
         metrics["node_count"] = row[0] if row else 0
@@ -103,7 +106,13 @@ def collect_kg_metrics(kg) -> dict:
             # Column may not exist if temporal migration has not run
             pass
 
+        db.execute("COMMIT")
+
     except Exception as exc:
+        try:
+            db.execute("ROLLBACK")
+        except Exception:
+            pass
         logger.warning("Failed to collect KG metrics: %s", exc)
 
     return metrics

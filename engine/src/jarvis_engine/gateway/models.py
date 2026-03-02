@@ -133,6 +133,7 @@ class ModelGateway:
         zai_api_key: str | None = None,
         audit_path: Path | None = None,
     ) -> None:
+        self._closed = False
         self._audit: GatewayAudit | None = (
             GatewayAudit(audit_path) if audit_path is not None else None
         )
@@ -578,6 +579,16 @@ class ModelGateway:
                 return resp
             except Exception as exc:
                 logger.warning("Fallback to %s also failed: %s", pk, exc)
+
+        # Try Anthropic as fallback if available and not the one that failed
+        if self._anthropic is not None and skip_provider != "anthropic":
+            try:
+                resp = self._call_anthropic(messages, "claude-haiku", max_tokens)
+                resp.fallback_used = True
+                resp.fallback_reason = reason
+                return resp
+            except Exception as exc:
+                logger.warning("Fallback to Anthropic also failed: %s", exc)
 
         # All cloud providers failed
         if skip_ollama:

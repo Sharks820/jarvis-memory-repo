@@ -53,16 +53,17 @@ _PATH_TRAVERSAL_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
+_DANGEROUS_CMDS = r"(?:rm|cat|curl|wget|chmod|chown|kill|dd|sh|bash|python|perl|ruby|nc|ncat|eval|exec|sudo)"
 _COMMAND_INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p)
     for p in [
-        r";\s*\w+",          # ; command
-        r"\|\s*\w+",         # | command
-        r"`[^`]+`",          # `command`
-        r"\$\([^)]+\)",      # $(command)
-        r"\$\{[^}]+\}",     # ${variable}
-        r"&&\s*\w+",        # && command
-        r"\|\|\s*\w+",      # || command
+        rf";\s*{_DANGEROUS_CMDS}\b",   # ; dangerous_cmd
+        rf"\|\s*{_DANGEROUS_CMDS}\b",   # | dangerous_cmd
+        r"`[^`]+`",                      # `command`
+        r"\$\([^)]+\)",                  # $(command)
+        r"\$\{[^}]+\}",                 # ${variable}
+        rf"&&\s*{_DANGEROUS_CMDS}\b",   # && dangerous_cmd
+        rf"\|\|\s*{_DANGEROUS_CMDS}\b", # || dangerous_cmd
     ]
 ]
 

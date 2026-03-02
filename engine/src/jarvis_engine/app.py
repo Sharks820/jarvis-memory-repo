@@ -239,6 +239,7 @@ def create_app(root: Path) -> CommandBus:
             engine = None
             embed_service = None
             pipeline = None
+            kg = None
 
     # -- Intelligence Gateway --
     gateway = None

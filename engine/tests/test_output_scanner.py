@@ -143,9 +143,14 @@ class TestPathDisclosure:
         assert not result.safe
 
     def test_windows_path(self, scanner: OutputScanner) -> None:
-        result = scanner.scan_output(r"Installed at C:\Users\admin\secrets")
+        result = scanner.scan_output(r"Installed at C:\Windows\System32\config")
         assert not result.safe
         assert any("windows_absolute_path" in i for i in result.issues)
+
+    def test_windows_user_path_not_flagged(self, scanner: OutputScanner) -> None:
+        """Owner's home directory paths should NOT be flagged (personal assistant context)."""
+        result = scanner.scan_output(r"File at C:\Users\Conner\Documents\report.pdf")
+        assert result.safe
 
     def test_env_file_path(self, scanner: OutputScanner) -> None:
         result = scanner.scan_output("Loaded from /app/.env")
