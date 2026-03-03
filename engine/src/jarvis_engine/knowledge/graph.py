@@ -206,9 +206,9 @@ class KnowledgeGraph:
         Uses generation-based caching: returns cached graph if no mutations
         have occurred since last build.  Invalidated by add_fact/add_edge/
         update_node via _mutation_counter.
-        Thread-safe: acquires _db_lock for read-only snapshot.  Writers
-        hold _write_lock which does not block readers here, avoiding
-        unnecessary serialization of graph builds behind writes.
+        Thread-safe: acquires _db_lock once (single acquisition prevents
+        thundering-herd where multiple threads each miss the cache check
+        and all rebuild simultaneously).
 
         Args:
             copy: If True (default), return a defensive copy of the cached
@@ -216,14 +216,15 @@ class KnowledgeGraph:
                 for read-only callers to avoid the O(n) copy overhead.
         """
         with self._db_lock:
+            # Check cache AND rebuild if needed inside the same lock block
+            # to prevent multiple threads from rebuilding simultaneously.
             if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
                 return self._cached_graph.copy() if copy else self._cached_graph
 
-        import networkx as nx
+            import networkx as nx
 
-        G = nx.DiGraph()
+            G = nx.DiGraph()
 
-        with self._db_lock:
             # Load nodes
             cur = self._db.execute(
                 "SELECT node_id, label, node_type, confidence, locked FROM kg_nodes"
@@ -238,20 +239,22 @@ class KnowledgeGraph:
 
             gen = self._mutation_counter
 
-        for row in nodes:
-            G.add_node(
-                row[0],
-                label=row[1],
-                node_type=row[2],
-                confidence=row[3],
-                locked=bool(row[4]),
-            )
+            for row in nodes:
+                G.add_node(
+                    row[0],
+                    label=row[1],
+                    node_type=row[2],
+                    confidence=row[3],
+                    locked=bool(row[4]),
+                )
 
-        for row in edges:
-            G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
+            for row in edges:
+                G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
 
-        self._cached_graph = G
-        self._cached_gen = gen
+            # Update cache inside the lock for thread safety (FIX 6)
+            self._cached_graph = G
+            self._cached_gen = gen
+
         return G.copy() if copy else G
 
     # ------------------------------------------------------------------
@@ -275,7 +278,20 @@ class KnowledgeGraph:
 
         Maintains FTS5 index (fts_kg_nodes) and vec index (vec_kg_nodes) on
         every insert/update.
+
+        Embedding is computed BEFORE acquiring the write lock to avoid holding
+        the lock during the (potentially slow) embedding model call.
         """
+        # Pre-compute embedding outside the write lock to minimize lock hold time
+        embedding_blob: bytes | None = None
+        if self._embed_service is not None and self._vec_available:
+            try:
+                embedding = self._embed_service.embed(label, prefix="search_document")
+                if len(embedding) == _EMBEDDING_DIM:
+                    embedding_blob = struct.pack(f"{len(embedding)}f", *embedding)
+            except Exception as exc:
+                logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
+
         with self._write_lock:
             try:
                 existing = self._db.execute(
@@ -357,22 +373,19 @@ class KnowledgeGraph:
                             raise
                         logger.debug("FTS5 table not available, skipping index insert for node %s", node_id)
 
-                # Insert/update vec embedding if embed_service is available
-                if self._embed_service is not None and self._vec_available:
+                # Insert/update vec embedding using pre-computed blob
+                if embedding_blob is not None:
                     try:
-                        embedding = self._embed_service.embed(label, prefix="search_document")
-                        if len(embedding) == _EMBEDDING_DIM:
-                            blob = struct.pack(f"{len(embedding)}f", *embedding)
-                            # DELETE + INSERT for idempotent upsert (vec0 has no REPLACE)
-                            self._db.execute(
-                                "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
-                            )
-                            self._db.execute(
-                                "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
-                                (node_id, blob),
-                            )
+                        # DELETE + INSERT for idempotent upsert (vec0 has no REPLACE)
+                        self._db.execute(
+                            "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                        )
+                        self._db.execute(
+                            "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                            (node_id, embedding_blob),
+                        )
                     except Exception as exc:
-                        logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
+                        logger.debug("Vec index update for KG node %s failed: %s", node_id, exc)
 
                 self._db.commit()
                 self._mutation_counter += 1
@@ -549,17 +562,21 @@ class KnowledgeGraph:
                     cur = self._db.execute(
                         """
                         SELECT n.node_id, n.label, n.node_type, n.confidence,
-                               n.locked, n.updated_at
+                               n.locked, n.updated_at, f.rank
                         FROM fts_kg_nodes f
                         JOIN kg_nodes n ON n.node_id = f.node_id
                         WHERE fts_kg_nodes MATCH ?
                           AND n.confidence >= ?
-                        ORDER BY n.confidence DESC
+                        ORDER BY (f.rank * -1 * 0.4 + n.confidence * 0.6) DESC
                         LIMIT ?
                         """,
                         (fts_query, min_confidence, limit),
                     )
-                    fts_results = [dict(row) for row in cur.fetchall()]
+                    # Strip internal 'rank' column from public results
+                    fts_results = [
+                        {k: v for k, v in dict(row).items() if k != "rank"}
+                        for row in cur.fetchall()
+                    ]
             except Exception as exc:
                 logger.debug("FTS5 KG search failed, falling back to LIKE: %s", exc)
 

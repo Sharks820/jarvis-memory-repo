@@ -175,13 +175,27 @@ class EntityResolver:
 
         Reduces O(N^2) to O(N*K) where K is ``top_k``.
         """
-        # Embed all nodes
+        # Embed all nodes in a single batch call for efficiency
         embed_cache: dict[str, list[float]] = {}
-        for node_id, label in members:
-            try:
-                embed_cache[node_id] = self._embed_service.embed(label)
-            except Exception:
-                logger.debug("Embedding failed for node %s (%r)", node_id, label)
+        all_ids = [nid for nid, _lbl in members]
+        all_labels = [lbl for _nid, lbl in members]
+        try:
+            if hasattr(self._embed_service, "embed_batch"):
+                batch_results = self._embed_service.embed_batch(all_labels)
+                for nid, vec in zip(all_ids, batch_results):
+                    embed_cache[nid] = vec
+            else:
+                # Fallback to individual calls if embed_batch unavailable
+                for node_id, label in members:
+                    embed_cache[node_id] = self._embed_service.embed(label)
+        except Exception:
+            # Batch failed — fall back to individual calls
+            embed_cache.clear()
+            for node_id, label in members:
+                try:
+                    embed_cache[node_id] = self._embed_service.embed(label)
+                except Exception:
+                    logger.debug("Embedding failed for node %s (%r)", node_id, label)
 
         if not embed_cache:
             # All embeddings failed — fall back to string-only for this group
@@ -202,53 +216,102 @@ class EntityResolver:
         # Track already-evaluated pairs to avoid duplicates
         seen_pairs: set[tuple[str, str]] = set()
 
-        for i in range(n):
-            id_a = embedded_ids[i]
-            vec_a = embedded_vecs[i]
+        # Batch vectorized cosine similarity using numpy when available
+        try:
+            import numpy as _np
+            mat = _np.array(embedded_vecs, dtype=_np.float32)
+            norms = _np.linalg.norm(mat, axis=1, keepdims=True)
+            norms = _np.where(norms == 0, 1.0, norms)
+            normed = mat / norms
+            sim_matrix = normed @ normed.T
+            # Exclude self-similarity
+            _np.fill_diagonal(sim_matrix, -1.0)
 
-            # Compute cosine similarity to all other embedded nodes and pick top-K
-            scored: list[tuple[float, int]] = []
-            for j in range(n):
-                if i == j:
-                    continue
-                sim = self._cosine_similarity(vec_a, embedded_vecs[j])
-                scored.append((sim, j))
+            for i in range(n):
+                id_a = embedded_ids[i]
+                # Get top-K neighbour indices from the precomputed row
+                row = sim_matrix[i]
+                if top_k < n - 1:
+                    top_indices = _np.argpartition(row, -top_k)[-top_k:]
+                else:
+                    top_indices = _np.arange(n)
+                    top_indices = top_indices[top_indices != i]
 
-            # Sort descending and take top-K
-            scored.sort(key=lambda x: x[0], reverse=True)
-            top_neighbours = scored[:top_k]
+                for j in top_indices:
+                    embed_sim = float(row[j])
+                    id_b = embedded_ids[j]
 
-            for embed_sim, j in top_neighbours:
-                id_b = embedded_ids[j]
+                    pair_key = (min(id_a, id_b), max(id_a, id_b))
+                    if pair_key in seen_pairs:
+                        continue
+                    seen_pairs.add(pair_key)
 
-                # Normalize pair key to avoid duplicate evaluation
-                pair_key = (min(id_a, id_b), max(id_a, id_b))
-                if pair_key in seen_pairs:
-                    continue
-                seen_pairs.add(pair_key)
+                    label_a = label_map[id_a]
+                    label_b = label_map[id_b]
 
-                label_a = label_map[id_a]
-                label_b = label_map[id_b]
+                    string_sim = difflib.SequenceMatcher(
+                        None, label_a.lower(), label_b.lower()
+                    ).ratio()
 
-                # Run the expensive SequenceMatcher only on top candidates
-                string_sim = difflib.SequenceMatcher(
-                    None, label_a.lower(), label_b.lower()
-                ).ratio()
+                    combined = max(string_sim, embed_sim)
+                    reason = "embedding" if embed_sim > string_sim else "string"
 
-                combined = max(string_sim, embed_sim)
-                reason = "embedding" if embed_sim > string_sim else "string"
-
-                if combined >= self._threshold:
-                    candidates.append(
-                        MergeCandidate(
-                            node_a_id=id_a,
-                            node_b_id=id_b,
-                            label_a=label_a,
-                            label_b=label_b,
-                            similarity=combined,
-                            merge_reason=reason,
+                    if combined >= self._threshold:
+                        candidates.append(
+                            MergeCandidate(
+                                node_a_id=id_a,
+                                node_b_id=id_b,
+                                label_a=label_a,
+                                label_b=label_b,
+                                similarity=combined,
+                                merge_reason=reason,
+                            )
                         )
-                    )
+        except ImportError:
+            # Fallback to pure-Python pairwise loop if numpy unavailable
+            for i in range(n):
+                id_a = embedded_ids[i]
+                vec_a = embedded_vecs[i]
+
+                scored: list[tuple[float, int]] = []
+                for j in range(n):
+                    if i == j:
+                        continue
+                    sim = self._cosine_similarity(vec_a, embedded_vecs[j])
+                    scored.append((sim, j))
+
+                scored.sort(key=lambda x: x[0], reverse=True)
+                top_neighbours = scored[:top_k]
+
+                for embed_sim, j in top_neighbours:
+                    id_b = embedded_ids[j]
+
+                    pair_key = (min(id_a, id_b), max(id_a, id_b))
+                    if pair_key in seen_pairs:
+                        continue
+                    seen_pairs.add(pair_key)
+
+                    label_a = label_map[id_a]
+                    label_b = label_map[id_b]
+
+                    string_sim = difflib.SequenceMatcher(
+                        None, label_a.lower(), label_b.lower()
+                    ).ratio()
+
+                    combined = max(string_sim, embed_sim)
+                    reason = "embedding" if embed_sim > string_sim else "string"
+
+                    if combined >= self._threshold:
+                        candidates.append(
+                            MergeCandidate(
+                                node_a_id=id_a,
+                                node_b_id=id_b,
+                                label_a=label_a,
+                                label_b=label_b,
+                                similarity=combined,
+                                merge_reason=reason,
+                            )
+                        )
 
         # Also check nodes that failed embedding — compare them string-only
         # against each other and against the top vector candidates.
@@ -605,14 +668,25 @@ class EntityResolver:
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
         """Compute cosine similarity between two vectors.
 
-        Returns 0.0 if vectors have different dimensions or either is
-        zero-norm, rather than silently truncating via zip.
+        Uses numpy for vectorized computation when available, with a
+        pure-Python fallback.  Returns 0.0 if vectors have different
+        dimensions or either is zero-norm.
         """
         if len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a < 1e-12 or norm_b < 1e-12:
-            return 0.0
-        return dot / (norm_a * norm_b)
+        try:
+            import numpy as np
+            a_arr = np.array(a, dtype=np.float32)
+            b_arr = np.array(b, dtype=np.float32)
+            norm_a = np.linalg.norm(a_arr)
+            norm_b = np.linalg.norm(b_arr)
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+            return float(np.dot(a_arr, b_arr) / (norm_a * norm_b))
+        except ImportError:
+            dot = sum(x * y for x, y in zip(a, b))
+            norm_a = sum(x * x for x in a) ** 0.5
+            norm_b = sum(x * x for x in b) ** 0.5
+            if norm_a < 1e-12 or norm_b < 1e-12:
+                return 0.0
+            return dot / (norm_a * norm_b)
