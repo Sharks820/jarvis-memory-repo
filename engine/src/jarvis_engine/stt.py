@@ -1,8 +1,13 @@
-"""Speech-to-text module with multiple backends.
+"""Speech-to-text module with 4-tier fallback chain.
 
-Backends: Groq Whisper Turbo (cloud), Deepgram Nova-3 (cloud), Parakeet TDT (local),
-faster-whisper (local).
-Backend selected via JARVIS_STT_BACKEND env var: "groq", "deepgram", "local", or "auto" (default).
+Backends (in auto-mode priority order):
+  1. Parakeet TDT 0.6B (local, 6.05% WER)
+  2. Deepgram Nova-3 (cloud, keyterm boosting)
+  3. Groq Whisper Turbo (cloud, free tier)
+  4. faster-whisper large-v3 (local, emergency fallback)
+
+Backend selected via JARVIS_STT_BACKEND env var:
+  "parakeet", "deepgram", "groq", "local", or "auto" (default).
 """
 
 from __future__ import annotations
@@ -457,6 +462,9 @@ _local_stt_lock = threading.Lock()
 _parakeet_model = None
 _parakeet_lock = threading.Lock()
 
+_local_emergency_instance: SpeechToText | None = None
+_local_emergency_lock = threading.Lock()
+
 
 def _try_local(
     audio: np.ndarray | str, *, language: str, prompt: str = ""
@@ -696,6 +704,49 @@ def _try_deepgram(
         return None
 
 
+def _try_local_emergency(
+    audio: np.ndarray | str, *, language: str, prompt: str = ""
+) -> TranscriptionResult | None:
+    """Attempt local faster-whisper transcription with large-v3 model.
+
+    This is the emergency fallback tier -- uses the highest-quality local
+    model (large-v3) for maximum accuracy when all other backends have
+    failed or returned low-confidence results.  A separate singleton is
+    used so the standard ``_try_local()`` path (small.en or JARVIS_STT_MODEL)
+    is unaffected.
+    """
+    global _local_emergency_instance
+    try:
+        if _local_emergency_instance is None:
+            with _local_emergency_lock:
+                if _local_emergency_instance is None:
+                    _local_emergency_instance = SpeechToText(model_size="large-v3")
+        return _local_emergency_instance.transcribe_audio(audio, language=language, prompt=prompt)
+    except Exception as exc:
+        logger.warning("Local emergency STT (large-v3) attempt failed: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Fallback chain: ordered list of backend names for auto mode.
+# Functions are looked up at call time so they can be mocked in tests.
+# ---------------------------------------------------------------------------
+
+FALLBACK_CHAIN: list[str] = [
+    "parakeet",     # Best local: 6.05% WER
+    "deepgram",     # Best cloud: keyterm boosting
+    "groq",         # Existing cloud: free tier
+    "local",        # Emergency: faster-whisper large-v3
+]
+
+_BACKEND_FN_MAP: dict[str, str] = {
+    "parakeet": "_try_parakeet",
+    "deepgram": "_try_deepgram",
+    "groq": "_try_groq",
+    "local": "_try_local_emergency",
+}
+
+
 def _confidence_retry(
     primary: TranscriptionResult,
     audio: np.ndarray | str,
@@ -774,18 +825,23 @@ def transcribe_smart(
 ) -> TranscriptionResult:
     """Transcribe using the best available backend.
 
-    Priority order based on JARVIS_STT_BACKEND env var:
-    - "groq": Force Groq Whisper (fail if unavailable)
-    - "local": Force local faster-whisper (fail if unavailable)
-    - "auto" (default): Try Groq first, fall back to local
+    Backend selection via ``JARVIS_STT_BACKEND`` env var:
+
+    - ``"groq"``: Force Groq Whisper only
+    - ``"local"``: Force local faster-whisper only (small.en / env override)
+    - ``"parakeet"``: Force Parakeet TDT only
+    - ``"deepgram"``: Force Deepgram Nova-3 only
+    - ``"auto"`` (default): 4-tier fallback chain
+      Parakeet -> Deepgram -> Groq -> faster-whisper large-v3
+
+    In auto mode each backend is tried in order.  If a backend succeeds
+    with confidence >= ``CONFIDENCE_RETRY_THRESHOLD`` the result is used
+    immediately.  If confidence is below threshold the result is saved as
+    *best_so_far* and the next backend is tried.  After all backends the
+    highest-confidence result is returned.
 
     When *root_dir* is provided, quality metrics are logged to
     ``<root_dir>/.planning/runtime/stt_metrics.jsonl``.
-
-    If the primary transcription confidence is below
-    ``CONFIDENCE_RETRY_THRESHOLD`` (0.6), an automatic retry using the
-    alternative backend is attempted.  The result with higher confidence
-    is returned.
 
     When *gateway* and/or *entity_list* are provided, post-processing
     (filler removal, LLM correction, NER entity correction) is applied
@@ -810,34 +866,33 @@ def transcribe_smart(
         except Exception as exc:
             logger.warning("Audio preprocessing failed, using raw audio: %s", exc)
 
+    # Map of forced backend modes to their try functions
+    _forced_backends: dict[str, object] = {
+        "groq": _try_groq,
+        "local": _try_local,
+        "parakeet": _try_parakeet,
+        "deepgram": _try_deepgram,
+    }
+
     final: TranscriptionResult | None = None
 
-    if backend == "groq":
-        result = transcribe_groq(audio, language=language, prompt=prompt)
-        if result is None:
-            logger.warning("Groq transcription returned None in forced groq mode")
-            return TranscriptionResult(
-                text="", language=language or "en",
-                confidence=0.0, duration_seconds=0.0, backend="groq-failed",
-            )
-        _log_stt_metric(
-            root_dir,
-            backend=result.backend,
-            confidence=result.confidence,
-            latency_ms=result.duration_seconds * 1000,
-            text_length=len(result.text),
-        )
-        final = _confidence_retry(
-            result, audio, language=language, prompt=prompt, root_dir=root_dir,
-        )
+    if backend in _forced_backends:
+        # Forced single-backend mode
+        try_fn = _forced_backends[backend]
+        if backend == "groq":
+            # Groq forced mode uses transcribe_groq directly (raises on failure)
+            result = transcribe_groq(audio, language=language, prompt=prompt)
+        elif backend == "deepgram":
+            result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+        else:
+            result = try_fn(audio, language=language, prompt=prompt)
 
-    elif backend == "local":
-        result = _try_local(audio, language=language, prompt=prompt)
         if result is None:
-            logger.error("Local STT backend failed in forced local mode")
+            logger.warning("%s transcription returned None in forced mode", backend)
             return TranscriptionResult(
                 text="", language=language or "en",
-                confidence=0.0, duration_seconds=0.0, backend="local-failed",
+                confidence=0.0, duration_seconds=0.0,
+                backend=f"{backend}-failed",
             )
         _log_stt_metric(
             root_dir,
@@ -846,24 +901,53 @@ def transcribe_smart(
             latency_ms=result.duration_seconds * 1000,
             text_length=len(result.text),
         )
-        final = _confidence_retry(
-            result, audio, language=language, prompt=prompt, root_dir=root_dir,
-        )
+        final = result
 
     else:
-        # Auto mode: try Groq first, fall back to local
-        result = None
-        if os.environ.get("GROQ_API_KEY", ""):
-            result = _try_groq(audio, language=language, prompt=prompt)
-            if result is not None:
-                logger.info("Groq STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
+        # Auto mode: 4-tier fallback chain
+        # Resolve function references at call time (supports mock patching)
+        import sys
+        _this_module = sys.modules[__name__]
+        best_so_far: TranscriptionResult | None = None
 
-        if result is None:
-            result = _try_local(audio, language=language, prompt=prompt)
-            if result is not None:
-                logger.info("Local STT: '%s' in %.2fs", result.text[:60], result.duration_seconds)
+        for name in FALLBACK_CHAIN:
+            try_fn = getattr(_this_module, _BACKEND_FN_MAP[name])
+            # Call the try function with appropriate kwargs
+            if name == "deepgram":
+                result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+            else:
+                result = try_fn(audio, language=language, prompt=prompt)
 
-        if result is None:
+            if result is not None and result.text.strip():
+                logger.info(
+                    "%s STT: '%s' in %.2fs (confidence: %.3f)",
+                    name, result.text[:60], result.duration_seconds,
+                    result.confidence,
+                )
+                _log_stt_metric(
+                    root_dir,
+                    backend=result.backend,
+                    confidence=result.confidence,
+                    latency_ms=result.duration_seconds * 1000,
+                    text_length=len(result.text),
+                )
+
+                if result.confidence >= CONFIDENCE_RETRY_THRESHOLD:
+                    # Good enough -- use this result
+                    best_so_far = result
+                    break
+
+                # Low confidence -- keep as best if better than previous
+                if best_so_far is None or result.confidence > best_so_far.confidence:
+                    best_so_far = result
+                # Continue to next backend
+            else:
+                if result is None:
+                    logger.info("%s STT failed, trying next backend", name)
+                else:
+                    logger.info("%s STT returned empty text, trying next backend", name)
+
+        if best_so_far is None:
             logger.error("All STT backends failed")
             return TranscriptionResult(
                 text="",
@@ -873,17 +957,7 @@ def transcribe_smart(
                 backend="none",
             )
 
-        _log_stt_metric(
-            root_dir,
-            backend=result.backend,
-            confidence=result.confidence,
-            latency_ms=result.duration_seconds * 1000,
-            text_length=len(result.text),
-        )
-
-        final = _confidence_retry(
-            result, audio, language=language, prompt=prompt, root_dir=root_dir,
-        )
+        final = best_so_far
 
     # Post-process transcription text
     if final.text.strip():

@@ -263,38 +263,39 @@ def test_transcription_result_retried_default() -> None:
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "JARVIS_STT_BACKEND": "auto"}, clear=False)
 def test_confidence_retry_triggers_on_low_confidence() -> None:
-    """When primary backend returns confidence < 0.6, retry with alternative."""
+    """When earlier backends return low confidence, fallback chain continues to find better result."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    # Primary: Groq returns low confidence
+    # Parakeet: returns low confidence
     low_conf_result = TranscriptionResult(
         text="hmm maybe",
         language="en",
         confidence=0.4,
         duration_seconds=0.5,
-        backend="groq-whisper",
+        backend="parakeet-tdt",
     )
-    # Retry: local returns higher confidence
+    # Groq: returns higher confidence (above threshold)
     high_conf_result = TranscriptionResult(
         text="hello jarvis",
         language="en",
         confidence=0.9,
         duration_seconds=1.0,
-        backend="faster-whisper",
+        backend="groq-whisper",
     )
 
-    with patch("jarvis_engine.stt.transcribe_groq", return_value=low_conf_result), \
-         patch("jarvis_engine.stt._try_local", return_value=high_conf_result), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=low_conf_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=high_conf_result), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "hello jarvis"
     assert result.confidence == 0.9
-    assert result.backend == "faster-whisper"
-    assert result.retried is True
+    assert result.backend == "groq-whisper"
 
 
 # ---------------------------------------------------------------------------
@@ -303,39 +304,48 @@ def test_confidence_retry_triggers_on_low_confidence() -> None:
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "JARVIS_STT_BACKEND": "auto"}, clear=False)
 def test_confidence_retry_keeps_higher_confidence() -> None:
-    """When retry has lower confidence than primary, keep the primary."""
+    """When later backends return lower confidence, keep the best result."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    # Primary: Groq returns low confidence
-    primary = TranscriptionResult(
+    # Parakeet returns low confidence
+    parakeet_result = TranscriptionResult(
         text="set timer",
         language="en",
         confidence=0.5,
         duration_seconds=0.5,
-        backend="groq-whisper",
+        backend="parakeet-tdt",
     )
-    # Retry: local returns EVEN LOWER confidence
-    retry = TranscriptionResult(
+    # Groq returns even lower
+    groq_result = TranscriptionResult(
         text="set time",
         language="en",
         confidence=0.3,
         duration_seconds=1.0,
+        backend="groq-whisper",
+    )
+    # Emergency local also returns lower
+    local_result = TranscriptionResult(
+        text="set time",
+        language="en",
+        confidence=0.2,
+        duration_seconds=2.0,
         backend="faster-whisper",
     )
 
-    with patch("jarvis_engine.stt.transcribe_groq", return_value=primary), \
-         patch("jarvis_engine.stt._try_local", return_value=retry), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=parakeet_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=groq_result), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=local_result), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
-    # Original primary should be kept (higher confidence)
+    # Parakeet result should be kept (highest confidence)
     assert result.text == "set timer"
     assert result.confidence == 0.5
-    assert result.backend == "groq-whisper"
-    assert result.retried is True  # retry was attempted
+    assert result.backend == "parakeet-tdt"
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +354,7 @@ def test_confidence_retry_keeps_higher_confidence() -> None:
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "JARVIS_STT_BACKEND": "auto"}, clear=False)
 def test_no_retry_when_confidence_sufficient() -> None:
-    """When confidence >= 0.6, no retry should be attempted."""
+    """When first backend returns high confidence, chain stops immediately."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -354,11 +364,13 @@ def test_no_retry_when_confidence_sufficient() -> None:
         language="en",
         confidence=0.85,
         duration_seconds=0.5,
-        backend="groq-whisper",
+        backend="parakeet-tdt",
     )
 
-    with patch("jarvis_engine.stt.transcribe_groq", return_value=good_result) as mock_groq, \
-         patch("jarvis_engine.stt._try_local") as mock_local, \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=good_result) as mock_pk, \
+         patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
@@ -366,7 +378,10 @@ def test_no_retry_when_confidence_sufficient() -> None:
     assert result.text == "turn on lights"
     assert result.confidence == 0.85
     assert result.retried is False
-    # _try_local should NOT have been called for retry
+    # Only parakeet should have been called (high confidence -> chain stops)
+    mock_pk.assert_called_once()
+    mock_dg.assert_not_called()
+    mock_groq.assert_not_called()
     mock_local.assert_not_called()
 
 
@@ -441,7 +456,7 @@ def test_stt_metric_logging_none_root_is_noop() -> None:
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "JARVIS_STT_BACKEND": "auto"}, clear=False)
 def test_confidence_retry_graceful_on_failure() -> None:
-    """If retry backend fails, the original low-confidence result is returned."""
+    """If only one backend returns a result, that low-confidence result is used."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -454,16 +469,17 @@ def test_confidence_retry_graceful_on_failure() -> None:
         backend="groq-whisper",
     )
 
-    with patch("jarvis_engine.stt.transcribe_groq", return_value=low_conf), \
-         patch("jarvis_engine.stt._try_local", return_value=None), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=low_conf), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
-    # Original result returned even though confidence is low
+    # Low-confidence result returned (only backend that worked)
     assert result.text == "something"
     assert result.confidence == 0.3
-    assert result.retried is False  # retry failed, not marked
 
 
 # ---------------------------------------------------------------------------
@@ -471,13 +487,13 @@ def test_confidence_retry_graceful_on_failure() -> None:
 # ---------------------------------------------------------------------------
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
-def test_local_primary_no_retry_without_groq_key() -> None:
-    """When local is primary and no GROQ_API_KEY, no retry is attempted."""
+def test_auto_mode_tries_all_chain_backends() -> None:
+    """In auto mode with low-confidence results, the fallback chain tries all backends."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    local_result = TranscriptionResult(
+    low_result = TranscriptionResult(
         text="maybe hello",
         language="en",
         confidence=0.4,
@@ -485,16 +501,21 @@ def test_local_primary_no_retry_without_groq_key() -> None:
         backend="faster-whisper",
     )
 
-    with patch("jarvis_engine.stt._try_groq") as mock_groq, \
-         patch("jarvis_engine.stt._try_local", return_value=local_result), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None) as mock_pk, \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None) as mock_dg, \
+         patch("jarvis_engine.stt._try_groq", return_value=None) as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=low_result) as mock_local, \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.text == "maybe hello"
     assert result.confidence == 0.4
-    # _try_groq should NOT have been called (no API key)
-    mock_groq.assert_not_called()
+    # All backends in the chain should have been tried
+    mock_pk.assert_called_once()
+    mock_dg.assert_called_once()
+    mock_groq.assert_called_once()
+    mock_local.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +539,10 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        with patch("jarvis_engine.stt.transcribe_groq", return_value=good_result), \
+        with patch("jarvis_engine.stt._try_parakeet", return_value=good_result), \
+             patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+             patch("jarvis_engine.stt._try_groq", return_value=None), \
+             patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
              patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
              patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
             result = transcribe_smart(fake_audio, root_dir=root)
@@ -530,7 +554,6 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
         lines = metrics_path.read_text(encoding="utf-8").strip().split("\n")
         assert len(lines) >= 1
         record = json.loads(lines[0])
-        assert record["backend"] == "groq-whisper"
         assert record["confidence"] == 0.92
 
 
@@ -924,14 +947,18 @@ def test_transcribe_smart_forced_local() -> None:
         duration_seconds=1.0, backend="faster-whisper",
     )
 
-    with patch("jarvis_engine.stt.SpeechToText.transcribe_audio", return_value=local_result), \
+    with patch("jarvis_engine.stt._try_local", return_value=local_result), \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_parakeet") as mock_pk, \
+         patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
     assert result.backend == "faster-whisper"
     mock_groq.assert_not_called()
+    mock_pk.assert_not_called()
+    mock_dg.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -945,8 +972,10 @@ def test_transcribe_smart_all_backends_fail() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    with patch("jarvis_engine.stt._try_groq", return_value=None), \
-         patch("jarvis_engine.stt._try_local", return_value=None), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
         result = transcribe_smart(fake_audio)
 
@@ -2000,15 +2029,17 @@ def test_transcribe_smart_calls_preprocess() -> None:
         backend="groq",
     )
 
-    with patch("jarvis_engine.stt._try_groq", return_value=mock_result), \
-         patch("jarvis_engine.stt._confidence_retry", return_value=mock_result), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=mock_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio) as mock_preprocess, \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="hello world"):
         result = transcribe_smart(fake_audio)
         mock_preprocess.assert_called_once()
 
 
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "JARVIS_STT_BACKEND": "auto"}, clear=False)
 def test_transcribe_smart_calls_postprocess() -> None:
     """transcribe_smart calls postprocess_transcription on result text."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
@@ -2019,11 +2050,13 @@ def test_transcribe_smart_calls_postprocess() -> None:
         language="en",
         confidence=0.8,
         duration_seconds=0.5,
-        backend="groq",
+        backend="parakeet-tdt",
     )
 
-    with patch("jarvis_engine.stt._try_groq", return_value=mock_result), \
-         patch("jarvis_engine.stt._confidence_retry", return_value=mock_result), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=mock_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="Hello, Conner!") as mock_post:
         mock_gateway = MagicMock()
@@ -2050,11 +2083,9 @@ def test_transcribe_smart_skips_preprocess_for_file_path() -> None:
     )
 
     with patch.dict("os.environ", {"JARVIS_STT_BACKEND": "local"}), \
-         patch("jarvis_engine.stt.SpeechToText") as MockSTT, \
-         patch("jarvis_engine.stt._confidence_retry", return_value=mock_result), \
+         patch("jarvis_engine.stt._try_local", return_value=mock_result), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio") as mock_preprocess, \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="hello world"):
-        MockSTT.return_value.transcribe_audio.return_value = mock_result
         result = transcribe_smart("/tmp/audio.wav")
         mock_preprocess.assert_not_called()
 
@@ -2804,3 +2835,278 @@ def test_try_deepgram_with_numpy_audio():
     # Content-Type header should be audio/wav
     headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
     assert headers.get("Content-Type") == "audio/wav"
+
+
+# ===========================================================================
+# 4-tier fallback chain tests (Plan 01-04)
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# FC1. test_transcribe_smart_fallback_chain_order
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_transcribe_smart_fallback_chain_order():
+    """Fallback chain tries backends in order: parakeet -> deepgram -> groq -> local."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    call_order = []
+
+    def mock_parakeet(*a, **kw):
+        call_order.append("parakeet")
+        return None
+
+    def mock_deepgram(*a, **kw):
+        call_order.append("deepgram")
+        return TranscriptionResult(
+            text="low conf", language="en", confidence=0.3,
+            duration_seconds=0.5, backend="deepgram-nova3",
+        )
+
+    def mock_groq(*a, **kw):
+        call_order.append("groq")
+        return TranscriptionResult(
+            text="hello jarvis", language="en", confidence=0.9,
+            duration_seconds=0.4, backend="groq-whisper",
+        )
+
+    def mock_local(*a, **kw):
+        call_order.append("local")
+        return None
+
+    with patch("jarvis_engine.stt._try_parakeet", side_effect=mock_parakeet), \
+         patch("jarvis_engine.stt._try_deepgram", side_effect=mock_deepgram), \
+         patch("jarvis_engine.stt._try_groq", side_effect=mock_groq), \
+         patch("jarvis_engine.stt._try_local_emergency", side_effect=mock_local), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    # Groq result is used (highest confidence, above threshold)
+    assert result.text == "hello jarvis"
+    assert result.confidence == 0.9
+    assert result.backend == "groq-whisper"
+    # Chain tried parakeet, deepgram, groq in order (stopped at groq due to high confidence)
+    assert call_order == ["parakeet", "deepgram", "groq"]
+
+
+# ---------------------------------------------------------------------------
+# FC2. test_transcribe_smart_parakeet_primary
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_transcribe_smart_parakeet_primary():
+    """Parakeet with high confidence stops the chain immediately."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    good_result = TranscriptionResult(
+        text="hello world", language="en", confidence=0.95,
+        duration_seconds=0.2, backend="parakeet-tdt",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=good_result), \
+         patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == "hello world"
+    assert result.backend == "parakeet-tdt"
+    # Other backends should NOT have been called
+    mock_dg.assert_not_called()
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# FC3. test_transcribe_smart_all_fail_fallback_chain
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_transcribe_smart_all_fail_fallback_chain():
+    """All backends returning None gives empty result with backend='none'."""
+    from jarvis_engine.stt import transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == ""
+    assert result.confidence == 0.0
+    assert result.backend == "none"
+
+
+# ---------------------------------------------------------------------------
+# FC4. test_transcribe_smart_forced_parakeet
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "parakeet"}, clear=False)
+def test_transcribe_smart_forced_parakeet():
+    """JARVIS_STT_BACKEND=parakeet forces only parakeet backend."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    pk_result = TranscriptionResult(
+        text="hello", language="en", confidence=0.9,
+        duration_seconds=0.3, backend="parakeet-tdt",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=pk_result) as mock_pk, \
+         patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == "hello"
+    assert result.backend == "parakeet-tdt"
+    mock_pk.assert_called_once()
+    mock_dg.assert_not_called()
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# FC5. test_transcribe_smart_forced_deepgram
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "deepgram", "DEEPGRAM_API_KEY": "test-key"}, clear=False)
+def test_transcribe_smart_forced_deepgram():
+    """JARVIS_STT_BACKEND=deepgram forces only deepgram backend."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    dg_result = TranscriptionResult(
+        text="hello jarvis", language="en", confidence=0.88,
+        duration_seconds=0.4, backend="deepgram-nova3",
+    )
+
+    with patch("jarvis_engine.stt._try_deepgram", return_value=dg_result) as mock_dg, \
+         patch("jarvis_engine.stt._try_parakeet") as mock_pk, \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == "hello jarvis"
+    assert result.backend == "deepgram-nova3"
+    mock_dg.assert_called_once()
+    mock_pk.assert_not_called()
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# FC6. test_transcribe_smart_low_confidence_fallthrough
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_transcribe_smart_low_confidence_fallthrough():
+    """Parakeet with low confidence falls through to next backends."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    low_conf = TranscriptionResult(
+        text="maybe hello", language="en", confidence=0.3,
+        duration_seconds=0.2, backend="parakeet-tdt",
+    )
+    high_conf = TranscriptionResult(
+        text="hello jarvis", language="en", confidence=0.85,
+        duration_seconds=0.5, backend="deepgram-nova3",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=low_conf), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=high_conf), \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    # Deepgram result used (above threshold)
+    assert result.text == "hello jarvis"
+    assert result.confidence == 0.85
+    assert result.backend == "deepgram-nova3"
+    # Groq and local should NOT have been called
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# FC7. test_fallback_chain_has_four_entries
+# ---------------------------------------------------------------------------
+
+def test_fallback_chain_has_four_entries():
+    """FALLBACK_CHAIN module constant has 4 backend entries in correct order."""
+    from jarvis_engine.stt import FALLBACK_CHAIN
+    assert len(FALLBACK_CHAIN) == 4
+    assert FALLBACK_CHAIN[0] == "parakeet"
+    assert FALLBACK_CHAIN[1] == "deepgram"
+    assert FALLBACK_CHAIN[2] == "groq"
+    assert FALLBACK_CHAIN[3] == "local"
+
+
+# ---------------------------------------------------------------------------
+# FC8. test_try_local_emergency_uses_large_v3
+# ---------------------------------------------------------------------------
+
+def test_try_local_emergency_uses_large_v3():
+    """_try_local_emergency creates SpeechToText with model_size='large-v3'."""
+    import jarvis_engine.stt as stt_mod
+
+    # Reset the singleton
+    original = stt_mod._local_emergency_instance
+    stt_mod._local_emergency_instance = None
+
+    try:
+        with patch("jarvis_engine.stt.SpeechToText") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.transcribe_audio.return_value = MagicMock(
+                text="hello", language="en", confidence=0.8,
+                duration_seconds=1.0, backend="faster-whisper"
+            )
+            mock_cls.return_value = mock_instance
+
+            stt_mod._try_local_emergency(
+                np.zeros(16000, dtype=np.float32), language="en"
+            )
+
+            # Verify large-v3 model was requested
+            mock_cls.assert_called_once_with(model_size="large-v3")
+    finally:
+        stt_mod._local_emergency_instance = original
+
+
+# ---------------------------------------------------------------------------
+# FC9. test_forced_parakeet_failure
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"JARVIS_STT_BACKEND": "parakeet"}, clear=False)
+def test_forced_parakeet_failure():
+    """Forced parakeet mode returns error result when parakeet fails."""
+    from jarvis_engine.stt import transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == ""
+    assert result.backend == "parakeet-failed"
