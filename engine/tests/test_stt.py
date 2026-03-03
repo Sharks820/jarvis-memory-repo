@@ -3110,3 +3110,408 @@ def test_forced_parakeet_failure():
 
     assert result.text == ""
     assert result.backend == "parakeet-failed"
+
+
+# ===========================================================================
+# INTEGRATION TESTS: Full STT pipeline end-to-end (Plan 01-05)
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# INT-1. test_full_pipeline_parakeet_happy_path
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_parakeet_happy_path():
+    """Parakeet returns high-confidence result; post-processing applied, metric logged,
+    other backends never called."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    parakeet_result = TranscriptionResult(
+        text="turn on the lights",
+        language="en",
+        confidence=0.94,
+        duration_seconds=0.3,
+        backend="parakeet-tdt",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=parakeet_result) as mock_pk, \
+         patch("jarvis_engine.stt._try_deepgram") as mock_dg, \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_pp, \
+         patch("jarvis_engine.stt._log_stt_metric") as mock_metric:
+        result = transcribe_smart(fake_audio)
+
+    # Parakeet result used
+    assert result.text == "turn on the lights"
+    assert result.backend == "parakeet-tdt"
+    assert result.confidence == 0.94
+    # Post-processing was called
+    mock_pp.assert_called_once()
+    # Metric was logged with correct backend
+    mock_metric.assert_called_once()
+    assert mock_metric.call_args[1]["backend"] == "parakeet-tdt"
+    # Other backends never called
+    mock_pk.assert_called_once()
+    mock_dg.assert_not_called()
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# INT-2. test_full_pipeline_fallback_to_deepgram
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "fake-dg", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_fallback_to_deepgram():
+    """Parakeet fails (returns None), Deepgram succeeds.  Verifies correct fallback."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    deepgram_result = TranscriptionResult(
+        text="set a timer for five minutes",
+        language="en",
+        confidence=0.92,
+        duration_seconds=0.8,
+        backend="deepgram-nova3",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None) as mock_pk, \
+         patch("jarvis_engine.stt._try_deepgram", return_value=deepgram_result) as mock_dg, \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == "set a timer for five minutes"
+    assert result.backend == "deepgram-nova3"
+    # Parakeet tried first, then Deepgram
+    mock_pk.assert_called_once()
+    mock_dg.assert_called_once()
+    # Groq and local never needed
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# INT-3. test_full_pipeline_fallback_to_groq
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_fallback_to_groq():
+    """Parakeet fails, Deepgram fails (no API key), Groq succeeds."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    groq_result = TranscriptionResult(
+        text="what time is it",
+        language="en",
+        confidence=0.88,
+        duration_seconds=1.2,
+        backend="groq-whisper",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=groq_result) as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == "what time is it"
+    assert result.backend == "groq-whisper"
+    assert result.confidence == 0.88
+    mock_groq.assert_called_once()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# INT-4. test_full_pipeline_emergency_local
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_emergency_local():
+    """All cloud/parakeet fail, faster-whisper large-v3 emergency fallback succeeds."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    emergency_result = TranscriptionResult(
+        text="brain status",
+        language="en",
+        confidence=0.75,
+        duration_seconds=3.0,
+        backend="faster-whisper",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=emergency_result), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    assert result.text == "brain status"
+    assert result.backend == "faster-whisper"
+    assert result.confidence == 0.75
+
+
+# ---------------------------------------------------------------------------
+# INT-5. test_full_pipeline_confidence_fallthrough
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "fake-dg", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_confidence_fallthrough():
+    """Parakeet returns confidence=0.4 (below threshold), Deepgram returns 0.9.
+    Deepgram result used because it exceeds the threshold."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    low_result = TranscriptionResult(
+        text="muffled words",
+        language="en",
+        confidence=0.4,
+        duration_seconds=0.3,
+        backend="parakeet-tdt",
+    )
+    high_result = TranscriptionResult(
+        text="clear words here",
+        language="en",
+        confidence=0.9,
+        duration_seconds=0.8,
+        backend="deepgram-nova3",
+    )
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=low_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=high_result), \
+         patch("jarvis_engine.stt._try_groq") as mock_groq, \
+         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
+        result = transcribe_smart(fake_audio)
+
+    # Deepgram result used (confidence 0.9 >= threshold 0.6)
+    assert result.text == "clear words here"
+    assert result.backend == "deepgram-nova3"
+    assert result.confidence == 0.9
+    # Chain stopped at Deepgram (no need for Groq/local)
+    mock_groq.assert_not_called()
+    mock_local.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# INT-6. test_full_pipeline_postprocessing_integration
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_postprocessing_integration():
+    """Post-processing pipeline transforms backend output: filler removal + entity correction."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    # Backend returns text with fillers
+    raw_result = TranscriptionResult(
+        text="um uh Hello Connor how are you doing today",
+        language="en",
+        confidence=0.85,
+        duration_seconds=0.5,
+        backend="parakeet-tdt",
+    )
+
+    # Mock postprocess_transcription to simulate filler removal + entity correction
+    def mock_postprocess(text, confidence, **kwargs):
+        return "Hello Conner how are you doing today"
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=raw_result), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=mock_postprocess):
+        result = transcribe_smart(fake_audio)
+
+    # Post-processing applied: fillers removed, entity corrected
+    assert result.text == "Hello Conner how are you doing today"
+    assert "um" not in result.text
+    assert "uh" not in result.text
+    assert "Connor" not in result.text
+
+
+# ---------------------------------------------------------------------------
+# INT-7. test_full_pipeline_personal_vocab_flows
+# ---------------------------------------------------------------------------
+
+@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "fake-dg", "JARVIS_STT_BACKEND": "auto"}, clear=False)
+def test_full_pipeline_personal_vocab_flows():
+    """Personal vocab flows to Deepgram as keyterms and to post-processing as entity_list."""
+    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+
+    deepgram_result = TranscriptionResult(
+        text="ask Conner about the project",
+        language="en",
+        confidence=0.91,
+        duration_seconds=0.7,
+        backend="deepgram-nova3",
+    )
+
+    vocab_terms = ["Conner", "Jarvis", "Ollama"]
+
+    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=deepgram_result) as mock_dg, \
+         patch("jarvis_engine.stt._try_groq", return_value=None), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
+         patch("jarvis_engine.stt._load_keyterms", return_value=vocab_terms), \
+         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
+         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_pp:
+        result = transcribe_smart(fake_audio, entity_list=vocab_terms)
+
+    # Verify Deepgram received keyterms
+    dg_call_kwargs = mock_dg.call_args[1]
+    assert dg_call_kwargs["keyterms"] == vocab_terms
+
+    # Verify postprocess_transcription received entity_list
+    pp_call_kwargs = mock_pp.call_args[1]
+    assert pp_call_kwargs["entity_list"] == vocab_terms
+
+    assert result.text == "ask Conner about the project"
+
+
+# ---------------------------------------------------------------------------
+# INT-8. test_listen_and_transcribe_uses_new_pipeline
+# ---------------------------------------------------------------------------
+
+def test_listen_and_transcribe_uses_new_pipeline():
+    """listen_and_transcribe() calls record_from_microphone + transcribe_smart
+    and returns the result from the new fallback chain."""
+    from jarvis_engine.stt import TranscriptionResult, listen_and_transcribe
+
+    fake_audio = np.zeros(32000, dtype=np.float32)
+    pipeline_result = TranscriptionResult(
+        text="hello jarvis",
+        language="en",
+        confidence=0.92,
+        duration_seconds=1.5,
+        backend="parakeet-tdt",
+    )
+
+    with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio) as mock_record, \
+         patch("jarvis_engine.stt.transcribe_smart", return_value=pipeline_result) as mock_smart:
+        result = listen_and_transcribe(max_duration_seconds=10.0)
+
+    # record_from_microphone was called
+    mock_record.assert_called_once_with(max_duration_seconds=10.0)
+    # transcribe_smart was called with the recorded audio
+    mock_smart.assert_called_once()
+    call_args = mock_smart.call_args
+    np.testing.assert_array_equal(call_args[0][0], fake_audio)
+    # Result comes from transcribe_smart
+    assert result.text == "hello jarvis"
+    assert result.backend == "parakeet-tdt"
+
+
+# ---------------------------------------------------------------------------
+# INT-9. test_caller_voice_handler_integration
+# ---------------------------------------------------------------------------
+
+def test_caller_voice_handler_integration():
+    """VoiceListenHandler calls listen_and_transcribe() and works with new return format."""
+    from jarvis_engine.stt import TranscriptionResult
+    from jarvis_engine.handlers.voice_handlers import VoiceListenHandler
+    from jarvis_engine.commands.voice_commands import VoiceListenCommand
+
+    pipeline_result = TranscriptionResult(
+        text="set timer for five minutes",
+        language="en",
+        confidence=0.93,
+        duration_seconds=2.1,
+        backend="deepgram-nova3",
+        segments=[{"start": 0.0, "end": 2.0, "text": "set timer for five minutes"}],
+    )
+
+    handler = VoiceListenHandler(root=Path("."))
+
+    with patch("jarvis_engine.stt.listen_and_transcribe", return_value=pipeline_result):
+        result = handler.handle(VoiceListenCommand())
+
+    assert result.text == "set timer for five minutes"
+    assert result.confidence == 0.93
+    assert result.duration_seconds == 2.1
+    assert result.message == ""
+
+
+# ---------------------------------------------------------------------------
+# INT-10. test_caller_proactive_handler_integration
+# ---------------------------------------------------------------------------
+
+def test_caller_proactive_handler_integration():
+    """WakeWordStartHandler._on_detected() callback works with new
+    record_from_microphone (Silero VAD) and transcribe_smart (fallback chain)."""
+    import threading
+    from jarvis_engine.stt import TranscriptionResult
+    from jarvis_engine.handlers.proactive_handlers import WakeWordStartHandler
+    from jarvis_engine.commands.proactive_commands import WakeWordStartCommand
+
+    fake_audio = np.zeros(16000, dtype=np.float32)
+    pipeline_result = TranscriptionResult(
+        text="jarvis brain status",
+        language="en",
+        confidence=0.95,
+        duration_seconds=1.0,
+        backend="parakeet-tdt",
+    )
+
+    handler = WakeWordStartHandler(root=Path("."))
+
+    # Mock the WakeWordDetector so start() captures the on_detected callback
+    # then we invoke it manually to test the integration.
+    # WakeWordDetector is lazy-imported inside handle(), so patch at its source.
+    captured_callback = {}
+
+    class MockDetector:
+        def __init__(self, **kwargs):
+            self.pause_called = False
+            self.resume_called = False
+
+        def start(self, on_detected, stop_event=None, mic_lock=None):
+            captured_callback["fn"] = on_detected
+            # Simulate detection loop ending immediately
+            if stop_event:
+                stop_event.set()
+
+        def pause(self):
+            self.pause_called = True
+
+        def resume(self, sd_module=None):
+            self.resume_called = True
+
+    with patch("jarvis_engine.wakeword.WakeWordDetector", MockDetector):
+        handler.handle(WakeWordStartCommand(threshold=0.5))
+
+    # Now invoke the captured callback with mocked STT functions
+    assert "fn" in captured_callback, "on_detected callback should have been captured"
+
+    with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio), \
+         patch("jarvis_engine.stt.transcribe_smart", return_value=pipeline_result), \
+         patch("jarvis_engine.stt_postprocess._load_personal_vocab", return_value=["Conner"]), \
+         patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time:
+        mock_time.sleep = MagicMock()
+        mock_time.time.return_value = 0.0
+        # The callback will try to dispatch via _cmd_voice_run_impl
+        with patch("jarvis_engine.main._cmd_voice_run_impl"):
+            with patch("jarvis_engine.main.repo_root", return_value=Path(".")):
+                captured_callback["fn"]()
+
+    # If we got here without error, the callback worked with the new pipeline
