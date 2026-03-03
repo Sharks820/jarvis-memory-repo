@@ -11,11 +11,11 @@ See: .planning/ROADMAP.md (v4.0 Intelligence Activation & Voice Overhaul)
 ## Current Position
 
 Phase: 1 (Voice-to-Text Overhaul)
-Current Plan: 3 of 5
+Current Plan: 5 of 5
 Status: Executing phase plans
 Last activity: 2026-03-03
 
-Progress (v4.0): [██░░░░░░░░] 19%
+Progress (v4.0): [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -23,7 +23,7 @@ Progress (v4.0): [██░░░░░░░░] 19%
 **v2.0 Android App**: SHIPPED (phases 10-13, 11 plans)
 **v3.0 Hardening**: SHIPPED (2 phases, 4136 tests, 7-pillar security, 4-CLI scan gauntlet clean)
 **v4.0 Intelligence & Voice**: IN PROGRESS
-- Test count: 4249+ passing (100 STT tests), 3 skipped, 0 failures
+- Test count: 4196 passing (178 STT+VAD+wakeword tests), 11 skipped, 0 failures
 - Source files: 60+ Python modules, 100+ Kotlin files
 - Self-analysis: 32 findings (4 CRITICAL, 3 HIGH, 4 MEDIUM, 12 LOW)
 
@@ -55,6 +55,9 @@ Progress (v4.0): [██░░░░░░░░] 19%
 - Keyterm loading: strip parenthetical annotations from personal_vocab.txt for clean Deepgram keywords
 - Parakeet TDT backend: baseline confidence 0.94 when log probs unavailable (from 6.05% WER)
 - Parakeet model: with_timestamps() attempted first for log prob access, silent fallback to base model
+- Fallback chain: string-based FALLBACK_CHAIN with dynamic getattr() resolution for mock-testability
+- Separate _local_emergency_instance with large-v3 preserves backward-compatible small.en for forced local mode
+- Wake word VAD threshold 0.3 (more sensitive than default 0.5) to avoid missing soft-spoken wake words
 
 ### Blockers/Concerns
 - None currently
@@ -62,5 +65,5 @@ Progress (v4.0): [██░░░░░░░░] 19%
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 01-03-PLAN.md (Deepgram Nova-3 backend with keyterm prompting)
+Stopped at: Completed 01-04-PLAN.md (Fallback chain rewrite + Silero VAD wake word integration)
 Resume file: None

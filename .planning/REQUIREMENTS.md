@@ -57,10 +57,10 @@
 | STT-02 | Phase 1 | Complete |
 | STT-03 | Phase 1 | Pending |
 | STT-04 | Phase 1 | Pending |
-| STT-05 | Phase 1 | Pending |
+| STT-05 | Phase 1 | Complete |
 | STT-06 | Phase 1 | In Progress (Parakeet confidence scoring in 01-02, chain in 01-04) |
 | STT-07 | Phase 1 | Complete |
-| STT-08 | Phase 1 | Pending |
+| STT-08 | Phase 1 | Complete |
 | LEARN-01 through LEARN-08 | Phase 2 | Pending |
 | UI-01 through UI-05 | Phase 3 | Pending |
 | STAB-01 through STAB-05 | Phase 4 | Pending |
