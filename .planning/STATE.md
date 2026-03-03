@@ -3,65 +3,59 @@
 ## Project Reference
 
 See: .planning/PROJECT.md
-See: .planning/ROADMAP.md (v3.0 Hardening & Security)
+See: .planning/ROADMAP.md (v4.0 Intelligence Activation & Voice Overhaul)
 
-**Core value:** Jarvis learns from everything, never forgets, never regresses, and defends itself, its owner, and the home environment from all threats.
-**Current focus:** v3.0 Hardening complete -- scan gauntlet + security deep hardening shipped
+**Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
+**Current focus:** v4.0 — Close the learning feedback loop, overhaul voice-to-text, fix UI live-updates, prepare for mobile deployment.
 
 ## Current Position
 
-Phase: 2 (Security Deep Hardening) -- COMPLETE
-Status: All 18 tasks implemented, 4136 tests passing, 0 failures
-Last activity: 2026-03-01
+Phase: 0 (Milestone Planning)
+Status: Defining requirements and roadmap
+Last activity: 2026-03-02
 
-Progress (v3.0): [██████████] 100%
+Progress (v4.0): [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **v1.0 Desktop Engine**: SHIPPED (phases 1-9, 18 plans, 473 tests at ship)
 **v2.0 Android App**: SHIPPED (phases 10-13, 11 plans)
-**v3.0 Hardening**: COMPLETE
-- Test count: 4136 passing, 5 skipped, 0 failures (was 3880 before hardening)
+**v3.0 Hardening**: SHIPPED (2 phases, 4136 tests, 7-pillar security, 4-CLI scan gauntlet clean)
+**v4.0 Intelligence & Voice**: IN PROGRESS
+- Test count: 4138+ passing, 3 skipped, 0 failures
 - Source files: 60+ Python modules, 100+ Kotlin files
-- Security modules: 27+ (10 new modules added to existing 17)
-- New tests added: ~256 (from 3880 to 4136)
-- 4-CLI scan gauntlet: 16 rounds, ~30 real bugs fixed, all 4 CLIs clean
-- Security deep hardening: 18 tasks, 10 new source files, 13 new test files
+- Self-analysis: 32 findings (4 CRITICAL, 3 HIGH, 4 MEDIUM, 12 LOW)
 
-## Phase 1: 4-CLI Scan Gauntlet (COMPLETE)
+## Self-Analysis Findings (informing v4.0 priorities)
 
-16 rounds across Opus, Codex, Gemini, Kimi CLIs. All achieved clean scans.
-~120 findings evaluated, ~30 real bugs fixed. 60+ false positive exclusions.
+### CRITICAL (must fix in v4.0)
+1. Learning trackers write-only — PreferenceTracker, ResponseFeedbackTracker, UsagePatternTracker collect data but NOTHING reads it
+2. Missing route param — record_feedback() and record_interaction() called without route/topic, all data stored with empty strings
+3. No learning feedback loop — learning system collects preferences but never applies them to personalize responses
 
-## Phase 2: Security Deep Hardening (COMPLETE)
+### HIGH
+4. db_path.exists() gate — silently disables entire brain on first run
+5. MemoryConsolidator not in CQRS bus — can only run via daemon, not mobile API or CLI
 
-7-pillar security architecture implemented:
-
-1. **SecurityOrchestrator** -- Single integration point wiring all security modules into live HTTP pipeline
-2. **Owner Session Auth** -- Argon2id/PBKDF2 password auth, session tokens, idle timeout, lockout
-3. **Bot Governance** -- ActionAuditor, ScopeEnforcer, HeartbeatMonitor, ResourceMonitor
-4. **Threat Intelligence** -- AbuseIPDB, AlienVault OTX, abuse.ch feeds with local cache
-5. **Legal Offensive Response** -- ThreatNeutralizer (evidence, reporting, blackholing, ISP/LEA packages)
-6. **Home Network Defense** -- ARP scan, DNS entropy DGA detection, device registry
-7. **Identity Protection** -- HIBP breach monitor, typosquat detection, impersonation detection
-
-New endpoints: /auth/login, /auth/logout, /auth/status, /auth/lock, /security/dashboard
-8 CQRS defense command handlers registered in CommandBus.
+### STT Research Findings (informing voice phase)
+- Current faster-whisper small.en has ~15-20% WER (terrible for commands)
+- NVIDIA Parakeet TDT 0.6B: 6.05% WER, 50x faster than Whisper (best local option)
+- Deepgram Nova-3: best cloud option with keyterm prompting
+- Silero VAD: replace energy-based VAD for better voice activity detection
+- RealtimeSTT library: proven architecture pattern
 
 ## Accumulated Context
 
 ### Decisions
-- 4-CLI scan gauntlet: Opus (Claude), Codex (GPT-5.3), Gemini, Kimi (Moonshot K2)
-- 7-pillar security architecture (design doc: docs/plans/2026-03-01-security-deep-hardening-design.md)
-- All new module imports wrapped in try/except for graceful degradation
-- Owner session auth coexists with mobile HMAC (session OR HMAC accepted)
-- CFAA-compliant offensive response only (evidence + reporting, no hack-back)
+- v4.0 milestone covers: voice overhaul, learning activation, UI live-updates, platform stability, mobile readiness
+- STT target: Parakeet TDT 0.6B (local) + Deepgram Nova-3 (cloud) + Silero VAD
+- Learning activation: wire tracker read methods into QueryHandler, IntentClassifier, and dashboard
 
 ### Blockers/Concerns
 - None currently
 
 ## Session Continuity
 
-Last session: 2026-03-01
-Stopped at: Security deep hardening complete, all 18 tasks done
+Last session: 2026-03-02
+Stopped at: Creating v4.0 milestone structure (requirements + roadmap)
 Resume file: None

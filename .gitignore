@@ -21,3 +21,8 @@ tmp/
 .planning/runtime/pids/
 .planning/runtime/auto_ingest_dedupe.json
 .planning/events.jsonl
+MagicMock/
+engine/MagicMock/
+.planning/cache/
+engine/.planning/
+ops_snapshot.live.json
