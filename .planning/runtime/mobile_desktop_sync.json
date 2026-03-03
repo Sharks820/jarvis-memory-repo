@@ -1,6 +1,6 @@
 {
   "sync_ok": true,
-  "generated_utc": "2026-02-23T12:39:17.177716+00:00",
+  "generated_utc": "2026-03-03T01:07:46.971194+00:00",
   "security": {
     "path": "C:\\Users\\Conner\\jarvis-memory-repo\\.planning\\security\\mobile_api.json",
     "exists": true,
@@ -11,17 +11,17 @@
   "owner_guard": {
     "enabled": true,
     "owner_user_id": "conner",
-    "trusted_mobile_device_count": 1,
+    "trusted_mobile_device_count": 3,
     "has_master_password": true
   },
   "runtime_control": {
     "daemon_paused": false,
     "safe_mode": false,
-    "updated_utc": ""
+    "updated_utc": "2026-03-03T00:41:01.307474+00:00"
   },
   "memory": {
     "total_records": 0,
-    "canonical_fact_count": 0
+    "fact_count": 9
   },
   "checks": [
     {
