@@ -794,6 +794,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._tray_icon: Any = None  # pystray.Icon instance (or None if unavailable)
         self._model_index: int = 0  # Index into MODEL_ROTATION (0 = Auto)
         self._model_label: tk.Label | None = None  # Model indicator label widget
+        self._seen_event_ids: set[str] = set()  # Dedup for activity feed events
 
         self.title("Jarvis Unlimited")
         # Restore saved panel position if available and on-screen
@@ -2430,8 +2431,30 @@ class JarvisDesktopWidget(tk.Tk):
                 if source_urls:
                     self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
 
-                if ok and intent in ("memory_ingest", "memory_forget", "llm_conversation"):
+                # Expanded learned indicator: fire for any knowledge-modifying intent
+                _LEARNED_INTENTS = (
+                    "memory_ingest", "memory_forget", "llm_conversation",
+                    "mission_cancel", "mission_create", "mission_run",
+                    "brain_status", "harvest", "fact_extracted",
+                )
+                if ok and intent in _LEARNED_INTENTS:
                     self.after(0, self._show_learned_indicator)
+                # Immediate dashboard refresh after brain-modifying commands
+                _REFRESH_INTENTS = (
+                    "mission_cancel", "mission_create", "mission_run",
+                    "brain_status", "memory_ingest", "memory_forget",
+                    "harvest",
+                )
+                if ok and intent in _REFRESH_INTENTS:
+                    try:
+                        ws = _http_json(cfg, "/widget-status", method="GET")
+                        growth_data = ws.get("growth") if isinstance(ws, dict) else None
+                        recent_evts = ws.get("recent_events", []) if isinstance(ws, dict) else []
+                        self.after(0, self._update_growth_labels, growth_data)
+                        if recent_evts:
+                            self.after(0, self._update_activity_events, recent_evts)
+                    except Exception:
+                        pass  # Best-effort immediate refresh
                 if not ok:
                     self._set_error_briefly_async()
                 else:
@@ -2755,13 +2778,15 @@ class JarvisDesktopWidget(tk.Tk):
                     time.sleep(0.2)
                 if ok or self.stop_event.is_set():
                     break
-            # Fetch growth + alerts in ONE request via /widget-status
+            # Fetch growth + alerts + recent events in ONE request via /widget-status
             growth_data: dict[str, Any] | None = None
+            recent_events: list[dict[str, Any]] = []
             if ok and cfg.token and cfg.signing_key:
                 try:
                     ws = _http_json(cfg, "/widget-status", method="GET")
                     growth_data = ws.get("growth") if isinstance(ws, dict) else None
                     alerts = ws.get("alerts", []) if isinstance(ws, dict) else []
+                    recent_events = ws.get("recent_events", []) if isinstance(ws, dict) else []
                     if isinstance(alerts, list):
                         for alert in alerts:
                             msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
@@ -2772,7 +2797,7 @@ class JarvisDesktopWidget(tk.Tk):
                     logger.debug("Failed to fetch widget-status: %s", exc)
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._set_online, ok, intel_data, growth_data)
+                    self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
                 except Exception:
                     return  # Widget destroyed
             for _ in range(16):
@@ -2780,11 +2805,15 @@ class JarvisDesktopWidget(tk.Tk):
                     return
                 time.sleep(0.5)
 
-    def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None, growth_data: dict[str, Any] | None = None) -> None:
+    def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None,
+                    growth_data: dict[str, Any] | None = None,
+                    recent_events: list[dict[str, Any]] | None = None) -> None:
         """Update online state and refresh status — always call on main thread."""
         self.online = value
         self._update_intelligence_label(intel_data)
         self._update_growth_labels(growth_data)
+        if recent_events:
+            self._update_activity_events(recent_events)
         self._refresh_status_view()
 
     def _update_growth_labels(self, growth_data: dict[str, Any] | None) -> None:
@@ -2836,6 +2865,33 @@ class JarvisDesktopWidget(tk.Tk):
         except (TypeError, ValueError, KeyError):
             for lbl in self._growth_labels.values():
                 lbl.config(text="--", fg=self.MUTED)
+
+    def _update_activity_events(self, events: list[dict[str, Any]]) -> None:
+        """Display new activity events in the conversation output (deduped by event_id)."""
+        _CAT_ROLE = {
+            "error": "error",
+            "security": "error",
+        }
+        new_events = []
+        for evt in events:
+            eid = str(evt.get("event_id", ""))
+            if eid and eid in self._seen_event_ids:
+                continue
+            if eid:
+                self._seen_event_ids.add(eid)
+            new_events.append(evt)
+        # Cap seen set to prevent unbounded growth
+        if len(self._seen_event_ids) > 500:
+            self._seen_event_ids = set(list(self._seen_event_ids)[-200:])
+        if not new_events:
+            return
+        for evt in reversed(new_events):  # Oldest first
+            ts_raw = str(evt.get("timestamp", ""))
+            ts_short = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
+            cat = str(evt.get("category", ""))
+            summary = str(evt.get("summary", ""))
+            role = _CAT_ROLE.get(cat, "system")
+            self._log(f"\u26a1 [{ts_short}] [{cat.upper()}] {summary}", role=role)
 
     def _update_intelligence_label(self, intel_data: dict[str, Any] | None) -> None:
         """Update the intelligence score label from /health response data."""
