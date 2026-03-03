@@ -25,6 +25,8 @@ class WakeWordDetector:
         self._model_name = model_name
         self._cooldown_seconds = cooldown_seconds
         self._model = None
+        self._vad = None  # SileroVADDetector (set in start())
+        self._vad_available = False
         self._stop_event = threading.Event()
         self._stream = None  # Active mic stream (for pause/resume)
         self._stream_lock = threading.Lock()
@@ -62,6 +64,22 @@ class WakeWordDetector:
         except Exception as exc:
             logger.error("Failed to load wake word model: %s", exc)
             return
+
+        # Initialize Silero VAD (lower threshold for wake word sensitivity)
+        try:
+            from jarvis_engine.stt_vad import SileroVADDetector
+            self._vad = SileroVADDetector(threshold=0.3)
+            self._vad_available = self._vad.available
+        except Exception:
+            self._vad = None
+            self._vad_available = False
+
+        if self._vad_available:
+            logger.info("Wake word using Silero VAD pre-filter (threshold=0.3)")
+        else:
+            logger.warning(
+                "Silero VAD not available for wake word, falling back to RMS energy"
+            )
 
         try:
             import sounddevice as sd  # type: ignore[import-untyped]
@@ -116,11 +134,20 @@ class WakeWordDetector:
                 # Convert float32 [-1,1] to int16 for openwakeword
                 audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
 
-                # Energy-based pre-filter: skip ML inference on silence
-                rms = float(np.sqrt(np.mean(audio_int16.astype(np.float32) ** 2)) / 32767.0)
-                if rms < 0.005:
-                    _was_silent = True
-                    continue  # Silence, skip ML inference
+                # Pre-filter: Silero VAD (ML-based) or RMS energy fallback
+                audio_float = audio_data[:, 0]  # mono channel, already float32
+                if self._vad_available and self._vad is not None:
+                    # Silero VAD path: process_chunk handles 1280-sample via sub-windowing
+                    has_speech = self._vad.process_chunk(audio_float)
+                    if not has_speech:
+                        _was_silent = True
+                        continue
+                else:
+                    # RMS energy fallback
+                    rms = float(np.sqrt(np.mean(audio_int16.astype(np.float32) ** 2)) / 32767.0)
+                    if rms < 0.005:
+                        _was_silent = True
+                        continue  # Silence, skip ML inference
 
                 # Reset prediction buffer when transitioning from silence to speech
                 # to prevent stale scores from causing false positives
@@ -139,8 +166,10 @@ class WakeWordDetector:
                     if len(scores) >= 3 and sum(scores[-3:]) / 3 > self._threshold:
                         logger.info("Wake word detected! (avg_score=%.3f)", sum(scores[-3:]) / 3)
 
-                        # Reset prediction buffer (no mic access needed)
+                        # Reset prediction buffer and VAD state
                         self._model.reset()
+                        if self._vad is not None:
+                            self._vad.reset()
 
                         try:
                             on_detected()
@@ -214,6 +243,11 @@ class WakeWordDetector:
                 samplerate=16000, channels=1, dtype="float32", blocksize=1280,
             )
             self._stream.start()
+
+            # Reset VAD state for clean slate after pause
+            if self._vad is not None:
+                self._vad.reset()
+
             logger.debug("Wake word mic stream resumed")
 
     def stop(self) -> None:
