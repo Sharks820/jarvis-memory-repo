@@ -282,6 +282,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._sync_transport: Any = None
         self._sync_init_attempted = False
         self._sync_init_lock = threading.Lock()
+        # Auto-sync config for relay URLs, sync scheduling, phone autonomy
+        self._auto_sync_config: Any = None
         self._memory_engine: Any = None
         self._memory_engine_init_lock = threading.Lock()
         self.nonce_seen: dict[str, float] = {}
@@ -521,7 +523,16 @@ class MobileIngestServer(ThreadingHTTPServer):
                     _configure_db(sync_db)
                     sync_lock = threading.Lock()
                     install_changelog_triggers(sync_db, device_id="desktop")
-                    self._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+                    # Load conflict strategy from auto-sync config
+                    conflict_strategy = "most_recent"
+                    if self._auto_sync_config is not None:
+                        conflict_strategy = self._auto_sync_config.get(
+                            "conflict_strategy", "most_recent",
+                        )
+                    self._sync_engine = SyncEngine(
+                        sync_db, sync_lock, device_id="desktop",
+                        conflict_strategy=conflict_strategy,
+                    )
                 except Exception:
                     sync_db.close()
                     raise
@@ -1373,6 +1384,55 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.error("sync/status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync status query failed."})
 
+    def _handle_get_sync_config(self) -> None:
+        """Return auto-sync configuration for the requesting device.
+
+        The phone calls this to learn: relay URL, sync intervals, conflict
+        strategy, offline cache settings, etc. This is what enables the phone
+        to work from anywhere — not just the same WiFi network.
+        """
+        if not self._validate_auth(b""):
+            return
+        try:
+            auto_sync = self.server._auto_sync_config
+            if auto_sync is None:
+                from jarvis_engine.sync.auto_sync import AutoSyncConfig
+                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
+                auto_sync = AutoSyncConfig(config_path)
+                self.server._auto_sync_config = auto_sync
+            device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
+            config = auto_sync.get_sync_config_for_device(device_id)
+            self._write_json(HTTPStatus.OK, {"ok": True, "config": config})
+        except Exception as exc:
+            logger.error("sync/config GET failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to get sync config."})
+
+    def _handle_get_sync_heartbeat(self) -> None:
+        """Lightweight heartbeat — phone calls this to confirm connectivity.
+
+        Also records the device's last-seen time for device status tracking.
+        Returns minimal payload for speed (used for connectivity checks).
+        """
+        if not self._validate_auth(b""):
+            return
+        try:
+            device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
+            auto_sync = self.server._auto_sync_config
+            if auto_sync is None:
+                from jarvis_engine.sync.auto_sync import AutoSyncConfig
+                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
+                auto_sync = AutoSyncConfig(config_path)
+                self.server._auto_sync_config = auto_sync
+            auto_sync.record_heartbeat(device_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "server_time": int(time.time()),
+                "device_id": device_id,
+            })
+        except Exception as exc:
+            logger.error("sync/heartbeat failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Heartbeat failed."})
+
     def _handle_get_activity(self) -> None:
         if not self._validate_auth(b""):
             return
@@ -1520,10 +1580,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/audit": "_handle_get_audit",
         "/processes": "_handle_get_processes",
         "/sync/status": "_handle_get_sync_status",
+        "/sync/config": "_handle_get_sync_config",
+        "/sync/heartbeat": "_handle_get_sync_heartbeat",
         "/activity": "_handle_get_activity",
         "/widget-status": "_handle_get_widget_status",
         "/intelligence/growth": "_handle_get_intelligence_growth",
         "/learning/summary": "_handle_get_learning_summary",
+        "/missions/status": "_handle_get_missions_status",
         "/favicon.ico": "_handle_get_favicon",
     }
 
@@ -2127,6 +2190,188 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.error("sync/push failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Sync push failed."})
 
+    def _handle_post_sync_config(self) -> None:
+        """Update auto-sync configuration (relay URL, intervals, etc).
+
+        Called from desktop CLI or admin to configure how phones connect.
+        Example: setting the relay_url to a Cloudflare Tunnel so the phone
+        can reach the desktop from anywhere.
+        """
+        payload, _ = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+        try:
+            auto_sync = self.server._auto_sync_config
+            if auto_sync is None:
+                from jarvis_engine.sync.auto_sync import AutoSyncConfig
+                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
+                auto_sync = AutoSyncConfig(config_path)
+                self.server._auto_sync_config = auto_sync
+            updates = payload.get("config", payload)
+            # Only allow known keys to be updated
+            from jarvis_engine.sync.auto_sync import DEFAULT_SYNC_CONFIG
+            safe_updates = {k: v for k, v in updates.items() if k in DEFAULT_SYNC_CONFIG}
+            if safe_updates:
+                auto_sync.update(safe_updates)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "config": auto_sync.get_all(),
+            })
+        except Exception as exc:
+            logger.error("sync/config POST failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to update sync config."})
+
+    def _handle_post_intelligence_merge(self) -> None:
+        """Accept intelligence from the phone and merge into desktop knowledge.
+
+        The phone sends locally-learned facts, context observations, habit
+        patterns, and interaction data. The desktop integrates these into
+        its knowledge graph, making both systems smarter together.
+        """
+        payload, _ = self._read_json_body(max_content_length=500_000)
+        if payload is None:
+            return
+        try:
+            items = payload.get("items", [])
+            if not items:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "No items to merge."})
+                return
+
+            merged = 0
+            from jarvis_engine.memory.store import MemoryStore
+            store = MemoryStore(self.server.repo_root)
+
+            for item in items[:200]:  # Cap at 200 items per merge
+                content = item.get("content", "")
+                category = item.get("category", "general")
+                confidence = float(item.get("confidence", 0.7))
+                source = item.get("source", "phone")
+
+                if not content or len(content) > 5000:
+                    continue
+
+                try:
+                    # Store as a memory record tagged with phone origin
+                    store.add(
+                        content=f"[phone-intelligence:{category}] {content}",
+                        source=source,
+                        kind="intelligence",
+                        tags=f"phone,{category},auto-merged",
+                        branch="phone-intelligence",
+                    )
+                    merged += 1
+                except Exception:
+                    pass
+
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "merged": merged,
+                "total_received": len(items),
+            })
+            logger.info("Intelligence merge: %d items from phone", merged)
+        except Exception as exc:
+            logger.error("intelligence/merge failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "error": "Intelligence merge failed.",
+            })
+
+    def _handle_post_intelligence_export(self) -> None:
+        """Export desktop knowledge for the phone's local intelligence.
+
+        Returns structured knowledge facts from the desktop's knowledge graph
+        and memory store for the phone to import into its local knowledge store.
+        This is what makes the phone as smart as the desktop — it gets real
+        knowledge, not just cached responses.
+        """
+        payload, _ = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+        try:
+            limit = min(int(payload.get("limit", 200)), 500)
+            items = []
+
+            # Export from knowledge graph
+            try:
+                from jarvis_engine.knowledge.graph import KnowledgeGraph
+                from jarvis_engine.memory.store import MemoryStore
+
+                store = MemoryStore(self.server.repo_root)
+                db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+
+                if db_path.exists():
+                    import sqlite3
+
+                    db = sqlite3.connect(str(db_path))
+                    db.row_factory = sqlite3.Row
+                    try:
+                        # Export high-confidence KG facts
+                        rows = db.execute(
+                            "SELECT label, node_type, confidence FROM kg_nodes "
+                            "WHERE confidence >= 0.5 ORDER BY confidence DESC LIMIT ?",
+                            (limit // 2,),
+                        ).fetchall()
+                        for row in rows:
+                            items.append({
+                                "content": f"{row['label']} ({row['node_type']})",
+                                "category": "knowledge",
+                                "confidence": row["confidence"],
+                            })
+
+                        # Export recent high-quality memories
+                        rows = db.execute(
+                            "SELECT summary, kind, tags, confidence FROM records "
+                            "WHERE confidence >= 0.5 AND summary != '' "
+                            "ORDER BY ts DESC LIMIT ?",
+                            (limit // 2,),
+                        ).fetchall()
+                        for row in rows:
+                            items.append({
+                                "content": row["summary"],
+                                "category": row["kind"] or "memory",
+                                "confidence": row["confidence"],
+                            })
+                    finally:
+                        db.close()
+            except Exception as exc:
+                logger.warning("KG export partial failure: %s", exc)
+
+            # Export user preferences
+            try:
+                db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+                if db_path.exists():
+                    import sqlite3
+
+                    db = sqlite3.connect(str(db_path))
+                    db.row_factory = sqlite3.Row
+                    try:
+                        rows = db.execute(
+                            "SELECT category, preference, score FROM user_preferences "
+                            "WHERE score > 0 ORDER BY score DESC LIMIT 50",
+                        ).fetchall()
+                        for row in rows:
+                            items.append({
+                                "content": f"Preference: {row['category']} — {row['preference']} "
+                                           f"(score: {row['score']:.1f})",
+                                "category": "preference",
+                                "confidence": min(row["score"] / 10.0, 1.0),
+                            })
+                    finally:
+                        db.close()
+            except Exception as exc:
+                logger.warning("Preferences export failure: %s", exc)
+
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "items": items[:limit],
+                "total": len(items),
+            })
+            logger.info("Intelligence export: %d items for phone", len(items))
+        except Exception as exc:
+            logger.error("intelligence/export failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "error": "Intelligence export failed.",
+            })
+
     def _handle_post_self_heal(self) -> None:
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
@@ -2179,6 +2424,87 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if fb_db is not None:
                 fb_db.close()
 
+    # ── Mission endpoints ────────────────────────────────────────────────
+
+    def _handle_post_missions_create(self) -> None:
+        """Create a learning mission from the phone.
+
+        Payload: {"topic": str, "objective": str?, "sources": list[str]?}
+        """
+        payload, _ = self._read_json_body(max_content_length=5_000)
+        if payload is None:
+            return
+        topic = str(payload.get("topic", "")).strip()
+        if not topic:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "topic is required"})
+            return
+        objective = str(payload.get("objective", "")).strip()[:400]
+        sources = payload.get("sources")
+        if sources is not None:
+            if not isinstance(sources, list):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "sources must be a list"})
+                return
+            sources = [str(s).strip() for s in sources if str(s).strip()][:6]
+        try:
+            import jarvis_engine.main as _main_mod
+            from jarvis_engine.commands.ops_commands import MissionCreateCommand
+            bus = _main_mod._get_bus()
+            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [])
+            result = bus.dispatch(cmd)
+            mission = result.mission if hasattr(result, "mission") else {}
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission.get("mission_id", ""),
+                "topic": mission.get("topic", ""),
+                "status": mission.get("status", "pending"),
+                "sources": mission.get("sources", []),
+            })
+        except Exception as exc:
+            logger.error("Mission create failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
+
+    def _handle_get_missions_status(self) -> None:
+        """Get learning mission status — richer than /intelligence/growth snippet."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            import jarvis_engine.main as _main_mod
+            from jarvis_engine.commands.ops_commands import MissionStatusCommand
+            bus = _main_mod._get_bus()
+            last = 15
+            qs = self.path.split("?", 1)
+            if len(qs) > 1:
+                from urllib.parse import parse_qs
+                params = parse_qs(qs[1])
+                try:
+                    last = min(int(params.get("last", ["15"])[0]), 50)
+                except (TypeError, ValueError):
+                    last = 15
+            result = bus.dispatch(MissionStatusCommand(last=last))
+            missions = result.missions if hasattr(result, "missions") else []
+            total = result.total_count if hasattr(result, "total_count") else 0
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "total": total,
+                "missions": [
+                    {
+                        "mission_id": m.get("mission_id", ""),
+                        "topic": m.get("topic", ""),
+                        "objective": m.get("objective", ""),
+                        "status": m.get("status", ""),
+                        "sources": m.get("sources", []),
+                        "verified_findings": m.get("verified_findings", 0),
+                        "created_utc": m.get("created_utc", ""),
+                        "updated_utc": m.get("updated_utc", ""),
+                    }
+                    for m in missions
+                    if isinstance(m, dict)
+                ],
+            })
+        except Exception as exc:
+            logger.error("Mission status failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
+
     # Dispatch dict for POST routes — built once per class, O(1) lookup.
     _POST_DISPATCH: dict[str, str] = {
         "/bootstrap": "_handle_post_bootstrap",
@@ -2190,11 +2516,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/settings": "_handle_post_settings",
         "/conversation/clear": "_handle_post_conversation_clear",
         "/command": "_handle_post_command",
+        "/intelligence/merge": "_handle_post_intelligence_merge",
+        "/intelligence/export": "_handle_post_intelligence_export",
         "/sync": "_handle_post_sync_deprecated",
         "/sync/pull": "_handle_post_sync_pull",
         "/sync/push": "_handle_post_sync_push",
+        "/sync/config": "_handle_post_sync_config",
         "/self-heal": "_handle_post_self_heal",
         "/feedback": "_handle_post_feedback",
+        "/missions/create": "_handle_post_missions_create",
     }
 
     def do_POST(self) -> None:  # noqa: N802
@@ -2317,6 +2647,24 @@ def run_mobile_server(
         repo_root=repo_root,
     )
 
+    # Initialize auto-sync config (relay URLs, sync scheduling, phone autonomy)
+    try:
+        from jarvis_engine.sync.auto_sync import AutoSyncConfig
+        config_path = repo_root / ".planning" / "sync" / "auto_sync_config.json"
+        server._auto_sync_config = AutoSyncConfig(config_path)
+        # Auto-detect and store LAN URL
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                lan_ip = s.getsockname()[0]
+            proto = "https" if tls_active else "http"
+            server._auto_sync_config.set("lan_url", f"{proto}://{lan_ip}:{port}")
+        except OSError:
+            pass
+        logger.info("Auto-sync config initialized")
+    except Exception as exc:
+        logger.warning("Failed to initialize auto-sync config: %s", exc)
+
     # Initialize sync engine and transport if memory DB exists
     db_path = repo_root / ".planning" / "brain" / "jarvis_memory.db"
     if db_path.exists():
@@ -2333,7 +2681,16 @@ def run_mobile_server(
                 _configure_db(sync_db)
                 sync_lock = _threading.Lock()
                 install_changelog_triggers(sync_db, device_id="desktop")
-                server._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
+                # Use conflict strategy from auto-sync config
+                conflict_strategy = "most_recent"
+                if server._auto_sync_config is not None:
+                    conflict_strategy = server._auto_sync_config.get(
+                        "conflict_strategy", "most_recent",
+                    )
+                server._sync_engine = SyncEngine(
+                    sync_db, sync_lock, device_id="desktop",
+                    conflict_strategy=conflict_strategy,
+                )
             except Exception:
                 sync_db.close()
                 raise

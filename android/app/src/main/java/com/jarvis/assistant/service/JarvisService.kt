@@ -23,6 +23,7 @@ import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import com.jarvis.assistant.data.CommandQueueProcessor
 import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
+import com.jarvis.assistant.sync.AutoSyncManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,7 @@ class JarvisService : Service() {
     @Inject lateinit var medicationScheduler: MedicationScheduler
     @Inject lateinit var processor: CommandQueueProcessor
     @Inject lateinit var proactiveReceiver: ProactiveAlertReceiver
+    @Inject lateinit var autoSyncManager: AutoSyncManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loopJob: Job? = null
@@ -87,12 +89,15 @@ class JarvisService : Service() {
         scheduleMedicationAlarms()
         recoverStaleCommands()
         startHighFrequencyLoop()
+        // Start auto-sync: network monitoring, relay failover, adaptive intervals
+        autoSyncManager.start()
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        autoSyncManager.stop()
         parkingMemory.unregisterBluetoothReceiver()
         scope.cancel()
         super.onDestroy()
