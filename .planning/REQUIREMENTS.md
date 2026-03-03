@@ -53,12 +53,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STT-01 | Phase 1 | Pending |
+| STT-01 | Phase 1 | In Progress (backend added in 01-02, chain wiring in 01-04) |
 | STT-02 | Phase 1 | Complete |
 | STT-03 | Phase 1 | Pending |
 | STT-04 | Phase 1 | Pending |
 | STT-05 | Phase 1 | Pending |
-| STT-06 | Phase 1 | Pending |
+| STT-06 | Phase 1 | In Progress (Parakeet confidence scoring in 01-02, chain in 01-04) |
 | STT-07 | Phase 1 | Complete |
 | STT-08 | Phase 1 | Pending |
 | LEARN-01 through LEARN-08 | Phase 2 | Pending |
