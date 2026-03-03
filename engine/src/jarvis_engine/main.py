@@ -2784,8 +2784,9 @@ def _cmd_daemon_run_impl(
                 consecutive_failures += 1
                 print(f"consecutive_failures={consecutive_failures}")
                 if consecutive_failures >= max_consecutive_failures:
-                    print("daemon_circuit_breaker_open=true")
-                    return 3
+                    print("daemon_circuit_breaker_open=true cooldown=300s")
+                    consecutive_failures = 0  # Reset counter after cooldown
+                    time.sleep(300)  # 5-minute cooldown instead of exit
             if max_cycles > 0 and cycles >= max_cycles:
                 break
             print(f"sleep_s={sleep_seconds}")
@@ -3141,6 +3142,13 @@ def _cmd_voice_run_impl(
     lowered = text.lower().strip()
     intent = "unknown"
     rc = 1
+    _last_response = ""  # Capture assistant response for learning pipeline
+
+    def _respond(msg: str) -> None:
+        """Print response= line and capture text for learning pipeline."""
+        nonlocal _last_response
+        _last_response = msg
+        print(f"response={msg}")
     phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
     phone_report = repo_root() / ".planning" / "phone_spam_report.json"
     phone_call_log = Path(os.getenv("JARVIS_CALL_LOG_JSON", str(repo_root() / ".planning" / "phone_call_log.json")))
@@ -3658,7 +3666,7 @@ def _cmd_voice_run_impl(
                 topic = text[idx:].strip().rstrip(".").strip()
                 break
         if not topic:
-            print("response=What should I forget? Try 'Forget about [topic]'.")
+            _respond("What should I forget? Try 'Forget about [topic]'.")
             rc = 0
         else:
             bus = _get_bus()
@@ -3668,10 +3676,10 @@ def _cmd_voice_run_impl(
                 if not keywords:
                     keywords = [topic]
                 count = kg.retract_facts(keywords)
-                print(f"response=Done. I've forgotten {count} fact(s) about '{topic}'.")
+                _respond(f"Done. I've forgotten {count} fact(s) about '{topic}'.")
                 rc = 0
             else:
-                print("response=Knowledge graph is not available right now.")
+                _respond("Knowledge graph is not available right now.")
                 rc = 1
     # --- Memory save / remember ---
     elif any(
@@ -3719,9 +3727,9 @@ def _cmd_voice_run_impl(
             content=content,
         )
         if rc == 0:
-            print(f"response=Got it, I'll remember that.")
+            _respond("Got it, I'll remember that.")
         else:
-            print(f"response=Sorry, I couldn't save that to memory.")
+            _respond("Sorry, I couldn't save that to memory.")
     # --- Knowledge graph queries ---
     elif any(
         k in lowered
@@ -3735,7 +3743,7 @@ def _cmd_voice_run_impl(
     ):
         intent = "brain_status"
         rc = cmd_brain_status(as_json=False)
-        print(f"response=Here's your brain status — check the details above.")
+        _respond("Here's your brain status \u2014 check the details above.")
     # --- Mission / learning queries ---
     elif any(
         k in lowered
@@ -3763,7 +3771,7 @@ def _cmd_voice_run_impl(
     ):
         intent = "system_status"
         rc = cmd_status()
-        print(f"response=System status check complete.")
+        _respond("System status check complete.")
     else:
         # No keyword match -- route through LLM for a conversational response.
         intent = "llm_conversation"
@@ -3930,7 +3938,7 @@ def _cmd_voice_run_impl(
                 rc = 1
             elif result.text.strip():
                 _add_to_history("assistant", result.text.strip())
-                print(f"response={result.text.strip()}")
+                _respond(result.text.strip())
                 print(f"model={result.model}")
                 print(f"provider={result.provider}")
                 if _web_searched:
@@ -4000,6 +4008,16 @@ def _cmd_voice_run_impl(
                 print(f"auto_ingest_record_id={auto_id}")
         except Exception as exc:
             logger.debug("Auto-ingest of voice command memory failed: %s", exc)
+        # Enriched learning for ALL successful commands (not just LLM path)
+        if _last_response and intent != "llm_conversation":
+            try:
+                bus.dispatch(LearnInteractionCommand(
+                    user_message=text[:1000],
+                    assistant_response=_last_response[:1000],
+                    task_id=f"learn-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                ))
+            except Exception as exc:
+                logger.debug("Enriched learning for %s failed: %s", intent, exc)
     if speak and intent != "llm_conversation":
         persona = load_persona_config(repo_root())
         persona_line = compose_persona_reply(
