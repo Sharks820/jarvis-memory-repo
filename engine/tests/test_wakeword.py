@@ -1030,3 +1030,238 @@ def test_energy_prefilter_and_smoothing_integration() -> None:
     callback.assert_called_once()
     mock_model.predict.assert_called_once()
     mock_model.reset.assert_called_once()
+
+
+# ===========================================================================
+# Silero VAD integration tests (Plan 01-04 Task 2)
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# V1. Silero VAD integration: process_chunk called on each audio chunk
+# ---------------------------------------------------------------------------
+
+def test_wakeword_silero_vad_integration() -> None:
+    """When Silero VAD is available, process_chunk is called on each audio chunk."""
+    detector = WakeWordDetector(threshold=0.5)
+
+    mock_model = MagicMock()
+    mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.1]}
+    detector._model = mock_model
+
+    mock_stream = MagicMock()
+    audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
+    mock_stream.read.return_value = (audio_chunk, False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    callback = MagicMock()
+
+    call_count = [0]
+    stop_event = MagicMock()
+
+    def _stop_after_one():
+        call_count[0] += 1
+        return call_count[0] > 1
+
+    stop_event.is_set = _stop_after_one
+    detector._stop_event = stop_event
+
+    # Mock SileroVADDetector to be available and return speech=True
+    mock_vad = MagicMock()
+    mock_vad.available = True
+    mock_vad.process_chunk.return_value = True  # Speech detected
+
+    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+
+    def _mock_imports(name, *args, **kwargs):
+        if name == "sounddevice":
+            return mock_sd
+        if name == "jarvis_engine.stt_vad":
+            module = MagicMock()
+            module.SileroVADDetector.return_value = mock_vad
+            return module
+        return original_import(name, *args, **kwargs)
+
+    with patch.object(detector, "_load_model"), \
+         patch("builtins.__import__", side_effect=_mock_imports):
+        detector.start(on_detected=callback)
+
+    # process_chunk should have been called with the audio float data
+    mock_vad.process_chunk.assert_called_once()
+    call_args = mock_vad.process_chunk.call_args[0][0]
+    assert isinstance(call_args, np.ndarray)
+    assert len(call_args) == 1280
+
+
+# ---------------------------------------------------------------------------
+# V2. VAD reset after wake word detection
+# ---------------------------------------------------------------------------
+
+def test_wakeword_vad_reset_after_detection() -> None:
+    """vad.reset() is called after wake word is detected."""
+    detector = WakeWordDetector(threshold=0.5, cooldown_seconds=0.0)
+
+    mock_model = MagicMock()
+    mock_model.prediction_buffer = {"hey_jarvis": [0.6, 0.7, 0.8]}
+    detector._model = mock_model
+
+    mock_stream = MagicMock()
+    audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
+    mock_stream.read.return_value = (audio_chunk, False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    callback = MagicMock()
+
+    call_count = [0]
+    stop_event = MagicMock()
+
+    def _stop_after_one():
+        call_count[0] += 1
+        return call_count[0] > 1
+
+    stop_event.is_set = _stop_after_one
+    detector._stop_event = stop_event
+
+    mock_vad = MagicMock()
+    mock_vad.available = True
+    mock_vad.process_chunk.return_value = True
+
+    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+
+    def _mock_imports(name, *args, **kwargs):
+        if name == "sounddevice":
+            return mock_sd
+        if name == "jarvis_engine.stt_vad":
+            module = MagicMock()
+            module.SileroVADDetector.return_value = mock_vad
+            return module
+        return original_import(name, *args, **kwargs)
+
+    with patch.object(detector, "_load_model"), \
+         patch("builtins.__import__", side_effect=_mock_imports), \
+         patch("time.sleep"):
+        detector.start(on_detected=callback)
+
+    callback.assert_called_once()
+    mock_vad.reset.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# V3. RMS fallback when Silero VAD unavailable
+# ---------------------------------------------------------------------------
+
+def test_wakeword_rms_fallback() -> None:
+    """When SileroVADDetector.available is False, RMS energy fallback is used."""
+    detector = WakeWordDetector(threshold=0.5)
+
+    mock_model = MagicMock()
+    mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.1]}
+    detector._model = mock_model
+
+    mock_stream = MagicMock()
+    # All-zero audio = silence -> RMS = 0 -> should skip predict
+    audio_chunk = np.zeros((1280, 1), dtype=np.float32)
+    mock_stream.read.return_value = (audio_chunk, False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    callback = MagicMock()
+
+    call_count = [0]
+    stop_event = MagicMock()
+
+    def _stop_after_one():
+        call_count[0] += 1
+        return call_count[0] > 1
+
+    stop_event.is_set = _stop_after_one
+    detector._stop_event = stop_event
+
+    # Mock VAD as unavailable
+    mock_vad = MagicMock()
+    mock_vad.available = False
+
+    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+
+    def _mock_imports(name, *args, **kwargs):
+        if name == "sounddevice":
+            return mock_sd
+        if name == "jarvis_engine.stt_vad":
+            module = MagicMock()
+            module.SileroVADDetector.return_value = mock_vad
+            return module
+        return original_import(name, *args, **kwargs)
+
+    with patch.object(detector, "_load_model"), \
+         patch("builtins.__import__", side_effect=_mock_imports):
+        detector.start(on_detected=callback)
+
+    # RMS fallback: silence -> predict should NOT be called
+    mock_model.predict.assert_not_called()
+    # VAD process_chunk should NOT be called (unavailable)
+    mock_vad.process_chunk.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# V4. VAD stored on instance
+# ---------------------------------------------------------------------------
+
+def test_wakeword_vad_stored_on_instance() -> None:
+    """self._vad is set after start() initializes VAD."""
+    detector = WakeWordDetector()
+    assert detector._vad is None
+    assert detector._vad_available is False
+
+    mock_vad = MagicMock()
+    mock_vad.available = True
+
+    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+
+    def _mock_imports(name, *args, **kwargs):
+        if name == "sounddevice":
+            raise ImportError("no sounddevice")
+        if name == "jarvis_engine.stt_vad":
+            module = MagicMock()
+            module.SileroVADDetector.return_value = mock_vad
+            return module
+        return original_import(name, *args, **kwargs)
+
+    with patch.object(detector, "_load_model"), \
+         patch("builtins.__import__", side_effect=_mock_imports):
+        # start() will load model, init VAD, then fail on sounddevice import
+        detector.start(on_detected=lambda: None)
+
+    # VAD should be stored on instance
+    assert detector._vad is mock_vad
+    assert detector._vad_available is True
+
+
+# ---------------------------------------------------------------------------
+# V5. VAD reset in resume()
+# ---------------------------------------------------------------------------
+
+def test_wakeword_vad_reset_on_resume() -> None:
+    """resume() resets VAD state for clean slate after pause."""
+    detector = WakeWordDetector()
+
+    mock_vad = MagicMock()
+    detector._vad = mock_vad
+
+    mock_sd = MagicMock()
+    mock_stream = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    # Ensure stream is None so resume creates a new one
+    detector._stream = None
+
+    detector.resume(sd_module=mock_sd)
+
+    # VAD should be reset
+    mock_vad.reset.assert_called_once()
+    # Stream should be created
+    assert detector._stream is mock_stream
