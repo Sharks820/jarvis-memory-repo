@@ -1586,6 +1586,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/widget-status": "_handle_get_widget_status",
         "/intelligence/growth": "_handle_get_intelligence_growth",
         "/learning/summary": "_handle_get_learning_summary",
+        "/missions/status": "_handle_get_missions_status",
         "/favicon.ico": "_handle_get_favicon",
     }
 
@@ -2423,6 +2424,87 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if fb_db is not None:
                 fb_db.close()
 
+    # ── Mission endpoints ────────────────────────────────────────────────
+
+    def _handle_post_missions_create(self) -> None:
+        """Create a learning mission from the phone.
+
+        Payload: {"topic": str, "objective": str?, "sources": list[str]?}
+        """
+        payload, _ = self._read_json_body(max_content_length=5_000)
+        if payload is None:
+            return
+        topic = str(payload.get("topic", "")).strip()
+        if not topic:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "topic is required"})
+            return
+        objective = str(payload.get("objective", "")).strip()[:400]
+        sources = payload.get("sources")
+        if sources is not None:
+            if not isinstance(sources, list):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "sources must be a list"})
+                return
+            sources = [str(s).strip() for s in sources if str(s).strip()][:6]
+        try:
+            import jarvis_engine.main as _main_mod
+            from jarvis_engine.commands.ops_commands import MissionCreateCommand
+            bus = _main_mod._get_bus()
+            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [])
+            result = bus.dispatch(cmd)
+            mission = result.mission if hasattr(result, "mission") else {}
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission.get("mission_id", ""),
+                "topic": mission.get("topic", ""),
+                "status": mission.get("status", "pending"),
+                "sources": mission.get("sources", []),
+            })
+        except Exception as exc:
+            logger.error("Mission create failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
+
+    def _handle_get_missions_status(self) -> None:
+        """Get learning mission status — richer than /intelligence/growth snippet."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            import jarvis_engine.main as _main_mod
+            from jarvis_engine.commands.ops_commands import MissionStatusCommand
+            bus = _main_mod._get_bus()
+            last = 15
+            qs = self.path.split("?", 1)
+            if len(qs) > 1:
+                from urllib.parse import parse_qs
+                params = parse_qs(qs[1])
+                try:
+                    last = min(int(params.get("last", ["15"])[0]), 50)
+                except (TypeError, ValueError):
+                    last = 15
+            result = bus.dispatch(MissionStatusCommand(last=last))
+            missions = result.missions if hasattr(result, "missions") else []
+            total = result.total_count if hasattr(result, "total_count") else 0
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "total": total,
+                "missions": [
+                    {
+                        "mission_id": m.get("mission_id", ""),
+                        "topic": m.get("topic", ""),
+                        "objective": m.get("objective", ""),
+                        "status": m.get("status", ""),
+                        "sources": m.get("sources", []),
+                        "verified_findings": m.get("verified_findings", 0),
+                        "created_utc": m.get("created_utc", ""),
+                        "updated_utc": m.get("updated_utc", ""),
+                    }
+                    for m in missions
+                    if isinstance(m, dict)
+                ],
+            })
+        except Exception as exc:
+            logger.error("Mission status failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
+
     # Dispatch dict for POST routes — built once per class, O(1) lookup.
     _POST_DISPATCH: dict[str, str] = {
         "/bootstrap": "_handle_post_bootstrap",
@@ -2442,6 +2524,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/sync/config": "_handle_post_sync_config",
         "/self-heal": "_handle_post_self_heal",
         "/feedback": "_handle_post_feedback",
+        "/missions/create": "_handle_post_missions_create",
     }
 
     def do_POST(self) -> None:  # noqa: N802

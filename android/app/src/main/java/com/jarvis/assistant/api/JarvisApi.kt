@@ -66,6 +66,16 @@ interface JarvisApi {
     @GET("/sync/heartbeat")
     suspend fun syncHeartbeat(): HeartbeatResponse
 
+    // ── Learning mission endpoints ────────────────────────────────────
+
+    /** Create a learning mission on the desktop. */
+    @POST("/missions/create")
+    suspend fun createMission(@Body request: MissionCreateRequest): MissionCreateResponse
+
+    /** Get learning mission status from desktop. */
+    @GET("/missions/status")
+    suspend fun getMissionStatus(): MissionStatusResponse
+
     // ── Intelligence sync endpoints ─────────────────────────────────────
 
     /**
@@ -109,4 +119,44 @@ data class IntelligenceExportResponse(
     val ok: Boolean = false,
     val items: List<Map<String, Any?>> = emptyList(),
     val total: Int = 0,
+)
+
+/** Request body for POST /missions/create. */
+data class MissionCreateRequest(
+    val topic: String,
+    val objective: String = "",
+    val sources: List<String> = emptyList(),
+)
+
+/** Response from POST /missions/create. */
+data class MissionCreateResponse(
+    val ok: Boolean = false,
+    @com.google.gson.annotations.SerializedName("mission_id")
+    val missionId: String = "",
+    val topic: String = "",
+    val status: String = "",
+    val sources: List<String> = emptyList(),
+)
+
+/** Individual mission entry from GET /missions/status. */
+data class MissionDto(
+    @com.google.gson.annotations.SerializedName("mission_id")
+    val missionId: String = "",
+    val topic: String = "",
+    val objective: String = "",
+    val status: String = "",
+    val sources: List<String> = emptyList(),
+    @com.google.gson.annotations.SerializedName("verified_findings")
+    val verifiedFindings: Int = 0,
+    @com.google.gson.annotations.SerializedName("created_utc")
+    val createdUtc: String = "",
+    @com.google.gson.annotations.SerializedName("updated_utc")
+    val updatedUtc: String = "",
+)
+
+/** Response from GET /missions/status. */
+data class MissionStatusResponse(
+    val ok: Boolean = false,
+    val total: Int = 0,
+    val missions: List<MissionDto> = emptyList(),
 )
