@@ -5,6 +5,11 @@ leverage subscription-based CLI plans (Claude Code 20x Max, Codex Pro, etc.)
 without needing separate API keys.
 
 Each provider is auto-detected at import time via ``shutil.which``.
+
+**Windows note:** npm-installed CLIs create ``.CMD`` batch wrappers that
+``subprocess.run`` cannot execute by bare name (CreateProcess doesn't search
+PATHEXT).  We resolve the full executable path via ``shutil.which`` at
+detection time and use that path for all invocations.
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -77,6 +83,7 @@ def detect_cli_providers() -> dict[str, CLIProviderInfo]:
 
     Returns a dict mapping provider key -> CLIProviderInfo.
     Only providers whose executable is found on PATH are marked available.
+    The resolved absolute path is stored so .CMD wrappers work on Windows.
     """
     result: dict[str, CLIProviderInfo] = {}
     for key, cfg in _CLI_CONFIGS.items():
@@ -88,7 +95,23 @@ def detect_cli_providers() -> dict[str, CLIProviderInfo]:
             available=path is not None,
             model=cfg["model"],
         )
+        # Cache resolved path for use by invocation functions
+        if path:
+            _RESOLVED_PATHS[key] = path
     return result
+
+
+# Resolved executable paths — populated by detect_cli_providers().
+# Maps provider key -> absolute path (e.g. "claude-cli" -> "C:\\...\\claude.CMD").
+_RESOLVED_PATHS: dict[str, str] = {}
+
+
+def _get_executable(provider_key: str, bare_name: str) -> str:
+    """Return the resolved executable path, falling back to bare name.
+
+    On Windows, .CMD wrappers require the full path for subprocess.run().
+    """
+    return _RESOLVED_PATHS.get(provider_key, bare_name)
 
 
 # ---------------------------------------------------------------------------
@@ -141,11 +164,12 @@ def call_claude_cli(
     env.pop("CLAUDECODE", None)
 
     cmd = [
-        "claude",
+        _get_executable("claude-cli", "claude"),
         "-p", prompt,
         "--model", model,
         "--output-format", "json",
         "--no-session-persistence",
+        "--max-turns", "1",
         "--max-budget-usd", "0.50",
     ]
 
@@ -156,6 +180,7 @@ def call_claude_cli(
             text=True,
             timeout=timeout,
             env=env,
+            cwd=tempfile.gettempdir(),
         )
         if proc.returncode != 0:
             return {
@@ -241,7 +266,7 @@ def call_codex_cli(
         }
 
     cmd = [
-        "codex",
+        _get_executable("codex-cli", "codex"),
         "exec",
         "-m", model,
         "-o", out_path,
@@ -256,6 +281,7 @@ def call_codex_cli(
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=tempfile.gettempdir(),
         )
 
         # Read output file
@@ -328,7 +354,7 @@ def call_gemini_cli(
     prompt = _build_messages_text(messages)
 
     cmd = [
-        "gemini",
+        _get_executable("gemini-cli", "gemini"),
         "-p", prompt,
         "-o", "text",
     ]
@@ -339,6 +365,7 @@ def call_gemini_cli(
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=tempfile.gettempdir(),
         )
         if proc.returncode != 0:
             return {
@@ -397,7 +424,7 @@ def call_kimi_cli(
     prompt = _build_messages_text(messages)
 
     cmd = [
-        "kimi",
+        _get_executable("kimi-cli", "kimi"),
         "--quiet",
         "-p", prompt,
     ]
@@ -408,6 +435,7 @@ def call_kimi_cli(
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=tempfile.gettempdir(),
         )
         if proc.returncode != 0:
             return {

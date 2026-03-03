@@ -3,7 +3,7 @@ param(
     [int]$IdleIntervalSeconds = 900,
     [int]$IdleAfterSeconds = 300,
     [int]$RestartDelaySeconds = 15,
-    [int]$MaxRestarts = 0,
+    [int]$MaxRestarts = 5,
     [int]$MaxCycles = 0,
     [string]$LogPath = "",
     [switch]$Execute,

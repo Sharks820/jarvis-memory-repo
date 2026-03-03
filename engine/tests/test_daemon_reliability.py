@@ -50,7 +50,7 @@ class TestDaemonReliability:
         assert len(sleeps) == 2  # Slept between cycles
 
     def test_daemon_circuit_breaker_after_too_many_errors(self, tmp_path: Path, monkeypatch) -> None:
-        """C1: Daemon should exit with error code after too many consecutive failures."""
+        """C1: Daemon circuit breaker should cooldown (sleep) then reset, not exit."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 10.0)
         monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (False, ""))
@@ -58,8 +58,16 @@ class TestDaemonReliability:
         def always_failing_autopilot(*args, **kwargs) -> int:
             raise RuntimeError("Always fails")
 
+        cooldown_sleeps: list[float] = []
+        _original_sleep = main_mod.time.sleep
+
+        def tracking_sleep(s: float) -> None:
+            if s >= 300:
+                cooldown_sleeps.append(s)
+            # All sleeps are no-ops in test
+
         monkeypatch.setattr(main_mod, "cmd_ops_autopilot", always_failing_autopilot)
-        monkeypatch.setattr(main_mod.time, "sleep", lambda s: None)
+        monkeypatch.setattr(main_mod.time, "sleep", tracking_sleep)
 
         rc = main_mod.cmd_daemon_run(
             interval_s=120,
@@ -73,8 +81,10 @@ class TestDaemonReliability:
             idle_after_s=300,
             run_missions=False,
         )
-        
-        assert rc == 3  # Circuit breaker exit code
+
+        # Circuit breaker now does cooldown sleep instead of exiting
+        assert rc == 0  # Completes all cycles normally
+        assert len(cooldown_sleeps) >= 1  # At least one 300s cooldown triggered
 
     def test_daemon_isolated_mission_failure(self, tmp_path: Path, monkeypatch) -> None:
         """C1: Mission failure should not affect main cycle."""

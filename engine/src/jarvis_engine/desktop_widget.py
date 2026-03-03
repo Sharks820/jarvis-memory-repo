@@ -781,10 +781,10 @@ class JarvisDesktopWidget(tk.Tk):
         self._launcher_after_id: str | None = None
         self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
         self._widget_state: str = "idle"  # idle | listening | processing | error
-        self._thinking_marker: str | None = None  # Text index of thinking indicator start
         self._thinking_after_id: str | None = None  # after() id for dot animation
         self._thinking_dots: int = 3
         self._thinking_start_time: float = 0.0  # When thinking started (time.time())
+        self._cmd_generation: int = 0  # Generation counter for race condition prevention
         self._processing_timeout_id: str | None = None  # Safety timeout for stuck processing
         self._cancel_event = threading.Event()  # Set to cancel current command
         self._welcome_shown: bool = False  # One-time welcome message flag
@@ -1330,7 +1330,7 @@ class JarvisDesktopWidget(tk.Tk):
 
         flags = tk.Frame(body, bg=self.PANEL)
         flags.pack(fill=tk.X, padx=10, pady=(2, 0))
-        self.execute_var = tk.BooleanVar(value=False)
+        self.execute_var = tk.BooleanVar(value=True)
         self.priv_var = tk.BooleanVar(value=False)
         self.speak_var = tk.BooleanVar(value=True)
         self.auto_send_var = tk.BooleanVar(value=True)
@@ -1456,9 +1456,26 @@ class JarvisDesktopWidget(tk.Tk):
             padx=6,
             pady=2,
         ).pack(side=tk.RIGHT)
+        # Thinking indicator (Label-based, hidden by default — much more robust
+        # than text-mark manipulation which caused loading bar spam)
+        self._thinking_frame = tk.Frame(body, bg="#1a1500")
+        self._thinking_label_widget = tk.Label(
+            self._thinking_frame,
+            text="",
+            bg="#1a1500",
+            fg="#ff9f43",
+            font=("Consolas", 11, "italic"),
+            anchor="w",
+            padx=8,
+            pady=4,
+        )
+        self._thinking_label_widget.pack(fill=tk.X)
+        # Not packed yet — shown only during processing via _show_thinking()
+
+        self._chat_frame = tk.Frame(body, bg="#081127")
+        self._chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 10))
         self.output = tk.Text(
-            body,
-            height=16,
+            self._chat_frame,
             wrap=tk.WORD,
             bg="#081127",
             fg="#d6e4ff",
@@ -1469,7 +1486,11 @@ class JarvisDesktopWidget(tk.Tk):
             font=("Consolas", 11),
             state=tk.DISABLED,
         )
-        self.output.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 10))
+        output_scroll = tk.Scrollbar(self._chat_frame, command=self.output.yview, bg="#0a1a3a",
+                                     troughcolor="#0d1628", activebackground="#1e3250")
+        self.output.config(yscrollcommand=output_scroll.set)
+        output_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.output.pack(fill=tk.BOTH, expand=True)
         self._configure_chat_tags()
 
         # Tooltips on key controls
@@ -1598,6 +1619,15 @@ class JarvisDesktopWidget(tk.Tk):
         win.configure(bg=self.BG)
         win.attributes("-topmost", True)
         self._popout_win = win
+
+        # --- Thinking indicator for popout ---
+        self._popout_thinking_frame = tk.Frame(win, bg="#1a1500")
+        self._popout_thinking_label = tk.Label(
+            self._popout_thinking_frame, text="", bg="#1a1500", fg="#ff9f43",
+            font=("Consolas", 12, "italic"), anchor="w", padx=8, pady=4,
+        )
+        self._popout_thinking_label.pack(fill=tk.X)
+        # Not packed yet — shown via _show_thinking() when processing
 
         # --- Conversation display (top, expandable) ---
         chat_frame = tk.Frame(win, bg=self.BG)
@@ -1855,61 +1885,48 @@ class JarvisDesktopWidget(tk.Tk):
             pass  # Widget destroyed
 
     def _show_thinking(self) -> None:
-        """Insert animated 'Jarvis is thinking...' indicator in chat."""
+        """Show animated 'Jarvis is thinking...' indicator as a Label widget.
+
+        Uses a dedicated Label (not text-mark manipulation) to avoid loading
+        bar spam from mark-based insert/delete race conditions.
+        """
         import time as _time
         self._thinking_start_time = _time.time()
-        self.output.config(state=tk.NORMAL)
-        # Use a tkinter Mark instead of a text index string — marks auto-adjust
-        # when text is inserted/deleted elsewhere, preventing line duplication.
-        self.output.mark_set("thinking_start", tk.END)
-        self.output.mark_gravity("thinking_start", "left")
-        self._thinking_marker = "thinking_start"
-        self.output.insert(tk.END, "\u23f3 Jarvis is thinking...  (0s)\n", "thinking")
-        self.output.see(tk.END)
-        self.output.config(state=tk.DISABLED)
-        popout = getattr(self, "_popout_text", None)
-        if popout is not None:
+        self._thinking_dots = 3
+        self._thinking_label_widget.config(text="\u23f3 Jarvis is thinking...  (0s)")
+        self._thinking_frame.pack(fill=tk.X, padx=10, pady=(2, 0),
+                                  before=self._chat_frame)
+        # Also show in popout if open
+        popout_lbl = getattr(self, "_popout_thinking_label", None)
+        if popout_lbl is not None:
             try:
-                popout.config(state=tk.NORMAL)
-                popout.mark_set("thinking_start", tk.END)
-                popout.mark_gravity("thinking_start", "left")
-                popout.insert(tk.END, "\u23f3 Jarvis is thinking...  (0s)\n", "thinking")
-                popout.see(tk.END)
-                popout.config(state=tk.DISABLED)
+                popout_frame = getattr(self, "_popout_thinking_frame", None)
+                if popout_frame is not None:
+                    popout_frame.pack(fill=tk.X, padx=8, pady=(2, 0))
+                popout_lbl.config(text="\u23f3 Jarvis is thinking...  (0s)")
             except tk.TclError:
                 pass
         self._animate_thinking()
 
     def _hide_thinking(self) -> None:
-        """Remove the thinking indicator from chat."""
+        """Hide the thinking indicator Label."""
         if self._thinking_after_id is not None:
             try:
                 self.after_cancel(self._thinking_after_id)
             except Exception:
                 pass
             self._thinking_after_id = None
-        if self._thinking_marker is not None:
+        try:
+            self._thinking_frame.pack_forget()
+        except tk.TclError:
+            pass
+        # Hide popout thinking label
+        popout_frame = getattr(self, "_popout_thinking_frame", None)
+        if popout_frame is not None:
             try:
-                marker_end = f"{self._thinking_marker} lineend+1c"
-                self.output.config(state=tk.NORMAL)
-                self.output.delete(self._thinking_marker, marker_end)
-                self.output.mark_unset("thinking_start")
-                self.output.config(state=tk.DISABLED)
+                popout_frame.pack_forget()
             except tk.TclError:
                 pass
-            popout = getattr(self, "_popout_text", None)
-            if popout is not None:
-                try:
-                    popout.config(state=tk.NORMAL)
-                    popout.delete("end-2l", tk.END)
-                    try:
-                        popout.mark_unset("thinking_start")
-                    except tk.TclError:
-                        pass
-                    popout.config(state=tk.DISABLED)
-                except tk.TclError:
-                    pass
-            self._thinking_marker = None
 
     def _show_help(self) -> None:
         """Show help overlay with commands and tips."""
@@ -2009,9 +2026,9 @@ class JarvisDesktopWidget(tk.Tk):
         self.after(2000, _remove)
 
     def _animate_thinking(self) -> None:
-        """Update thinking indicator in-place with elapsed time."""
+        """Update thinking indicator Label with elapsed time and progress bar."""
         import time as _time
-        if self._thinking_marker is None:
+        if self._widget_state != "processing":
             return
         self._thinking_dots = (self._thinking_dots % 3) + 1
         elapsed = int(_time.time() - self._thinking_start_time)
@@ -2020,16 +2037,18 @@ class JarvisDesktopWidget(tk.Tk):
         bar_len = 20
         filled = min(bar_len, int(elapsed * bar_len / 30))
         bar = "\u2593" * filled + "\u2591" * (bar_len - filled)
-        label = f"\u23f3 Jarvis is thinking{dots}  ({elapsed}s)  [{bar}]\n"
+        label = f"\u23f3 Jarvis is thinking{dots}  ({elapsed}s)  [{bar}]"
         try:
-            marker_end = f"{self._thinking_marker} lineend+1c"
-            self.output.config(state=tk.NORMAL)
-            self.output.delete(self._thinking_marker, marker_end)
-            self.output.insert(self._thinking_marker, label, "thinking")
-            self.output.see(self._thinking_marker)
-            self.output.config(state=tk.DISABLED)
+            self._thinking_label_widget.config(text=label)
         except tk.TclError:
             return
+        # Mirror animation to pop-out thinking label
+        popout_lbl = getattr(self, "_popout_thinking_label", None)
+        if popout_lbl is not None:
+            try:
+                popout_lbl.config(text=label)
+            except tk.TclError:
+                pass
         self._thinking_after_id = self.after(400, self._animate_thinking)
 
     def _notify_toast(self, title: str, message: str, icon: str = "Info") -> None:
@@ -2295,6 +2314,9 @@ class JarvisDesktopWidget(tk.Tk):
         self._set_state("processing")
         self._show_thinking()
         self.command_text.config(state=tk.DISABLED)
+        # Generation counter: prevents stale worker callbacks from corrupting state
+        self._cmd_generation += 1
+        gen = self._cmd_generation
         # Start safety timeout: force-reset after 120 seconds
         self._cancel_processing_timeout()
         self._processing_timeout_id = self.after(120_000, self._processing_timed_out)
@@ -2441,13 +2463,23 @@ class JarvisDesktopWidget(tk.Tk):
                 self._log_async("Ready for next command.", role="system")
                 self._set_error_briefly_async()
             finally:
+                # Always clean up: hide thinking, re-enable input, reset state.
+                # Check generation to avoid corrupting state from a newer command.
+                def _cleanup() -> None:
+                    if self._cmd_generation != gen:
+                        return  # Stale worker — a newer command owns the state
+                    self._cancel_processing_timeout()
+                    self._hide_thinking()
+                    try:
+                        self.command_text.config(state=tk.NORMAL)
+                    except tk.TclError:
+                        pass
+                    if self._widget_state == "processing":
+                        self._set_state("idle")
+
                 if not self._cancel_event.is_set():
                     try:
-                        self.after(0, self._cancel_processing_timeout)
-                    except Exception:
-                        pass
-                    try:
-                        self.after(0, lambda: self.command_text.config(state=tk.NORMAL))
+                        self.after(0, _cleanup)
                     except Exception:
                         pass
 

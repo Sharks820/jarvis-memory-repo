@@ -165,14 +165,14 @@ class ConversationLearningEngine:
 
         Returns False for:
         - None/empty text
-        - Text shorter than 50 characters
+        - Text shorter than 20 characters
         - Short greetings (greeting prefix AND under 100 chars)
         """
         if not text or not text.strip():
             return False
 
         stripped = text.strip()
-        if len(stripped) < 50:
+        if len(stripped) < 20:
             return False
 
         # Short greeting check: greeting prefix AND under 100 chars
