@@ -52,6 +52,7 @@ from jarvis_engine.commands.ops_commands import (
     GrowthEvalCommand,
     GrowthReportCommand,
     IntelligenceDashboardCommand,
+    MissionCancelCommand,
     MissionCreateCommand,
     MissionRunCommand,
     MissionStatusCommand,
@@ -121,6 +122,7 @@ from jarvis_engine.handlers.ops_handlers import (
     GrowthEvalHandler,
     GrowthReportHandler,
     IntelligenceDashboardHandler,
+    MissionCancelHandler,
     MissionCreateHandler,
     MissionRunHandler,
     MissionStatusHandler,
@@ -330,6 +332,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(OpsAutopilotCommand, OpsAutopilotHandler(root).handle)
     bus.register(AutomationRunCommand, AutomationRunHandler(root).handle)
     bus.register(MissionCreateCommand, MissionCreateHandler(root).handle)
+    bus.register(MissionCancelCommand, MissionCancelHandler(root).handle)
     bus.register(MissionStatusCommand, MissionStatusHandler(root).handle)
     bus.register(MissionRunCommand, MissionRunHandler(root, enriched_pipeline=pipeline).handle)
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)

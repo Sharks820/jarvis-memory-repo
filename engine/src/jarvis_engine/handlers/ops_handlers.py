@@ -22,6 +22,8 @@ from jarvis_engine.commands.ops_commands import (
     GrowthReportResult,
     IntelligenceDashboardCommand,
     IntelligenceDashboardResult,
+    MissionCancelCommand,
+    MissionCancelResult,
     MissionCreateCommand,
     MissionCreateResult,
     MissionRunCommand,
@@ -197,6 +199,20 @@ class MissionStatusHandler:
             missions=missions[-max(1, cmd.last) :],
             total_count=len(missions),
         )
+
+
+class MissionCancelHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MissionCancelCommand) -> MissionCancelResult:
+        from jarvis_engine.learning_missions import cancel_mission
+
+        try:
+            mission = cancel_mission(self._root, mission_id=cmd.mission_id)
+        except ValueError as exc:
+            return MissionCancelResult(error=str(exc))
+        return MissionCancelResult(cancelled=True, mission=mission)
 
 
 class MissionRunHandler:

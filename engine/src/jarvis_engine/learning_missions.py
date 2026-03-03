@@ -302,6 +302,44 @@ def run_learning_mission(
 
 
 # ---------------------------------------------------------------------------
+# Cancel a mission
+# ---------------------------------------------------------------------------
+
+
+def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
+    """Cancel a mission by setting its status to 'cancelled'.
+
+    Returns the updated mission dict, or raises ValueError if not found.
+    """
+    missions = load_missions(root)
+    target: dict[str, Any] | None = None
+    for item in missions:
+        if str(item.get("mission_id", "")) == mission_id:
+            target = item
+            break
+    if target is None:
+        raise ValueError(f"mission not found: {mission_id}")
+
+    target["status"] = "cancelled"
+    target["updated_utc"] = datetime.now(UTC).isoformat()
+    _save_missions(root, missions)
+
+    # Log activity event for mission state change
+    try:
+        from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+        log_activity(
+            ActivityCategory.MISSION_STATE_CHANGE,
+            f"Mission cancelled: {target.get('topic', '')}",
+            {"mission_id": mission_id, "new_status": "cancelled"},
+        )
+    except Exception:
+        pass
+
+    return target
+
+
+# ---------------------------------------------------------------------------
 # Retry failed missions
 # ---------------------------------------------------------------------------
 

@@ -45,6 +45,8 @@ class ActivityCategory:
     VOICE = "voice"
     ERROR = "error"
     SECURITY = "security"
+    PREFERENCE_LEARNED = "preference_learned"
+    MISSION_STATE_CHANGE = "mission_state_change"
 
 
 # ---------------------------------------------------------------------------

@@ -107,6 +107,17 @@ class ConversationLearningEngine:
         if self._preference_tracker is not None:
             try:
                 preferences_detected = self._preference_tracker.observe(user_message)
+                if preferences_detected:
+                    try:
+                        from jarvis_engine.activity_feed import ActivityCategory, log_activity
+                        for key, value in preferences_detected:
+                            log_activity(
+                                ActivityCategory.PREFERENCE_LEARNED,
+                                f"Learned preference: {key}={value}",
+                                {"key": key, "value": value},
+                            )
+                    except Exception:
+                        pass
             except Exception as exc:
                 logger.warning("Failed to observe preferences: %s", exc)
 
