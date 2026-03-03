@@ -150,7 +150,13 @@ def _build_messages_text(messages: list[dict[str, str]]) -> str:
     if system_parts:
         prompt = "\n\n".join(system_parts) + "\n\n"
     if multi_turn and parts:
-        prompt += "The following is a multi-turn conversation. Continue naturally:\n\n"
+        prompt += (
+            "IMPORTANT: This is an ongoing multi-turn conversation. "
+            "You are continuing a conversation that is already in progress. "
+            "The previous exchanges are shown below. Respond ONLY to the most "
+            "recent User message, using the conversation context naturally. "
+            "Do not restart or re-introduce yourself.\n\n"
+        )
     prompt += "\n\n".join(parts)
     return prompt
 
