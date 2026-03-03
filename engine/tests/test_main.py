@@ -400,7 +400,24 @@ def test_cmd_runtime_control_persists_state(tmp_path: Path, monkeypatch) -> None
 
 
 def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
+    from unittest.mock import MagicMock
+
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+
+    # Mock EmbeddingService to avoid loading real nomic-bert model
+    fake_embed = MagicMock()
+    fake_embed.embed.return_value = [0.1] * 384
+    fake_embed.embed_query.return_value = [0.1] * 384
+    fake_embed.embed_batch.return_value = [[0.1] * 384]
+    monkeypatch.setattr(
+        "jarvis_engine.memory.embeddings.EmbeddingService",
+        lambda *a, **kw: fake_embed,
+    )
+    # Clear cached bus so it rebuilds with mock
+    monkeypatch.setattr(main_mod, "_cached_bus", None)
+    monkeypatch.setattr(main_mod, "_cached_bus_root", None)
+    monkeypatch.setattr(main_mod, "_auto_ingest_store", None)
+
     rid = main_mod._auto_ingest_memory_sync(  # type: ignore[attr-defined]
         source="user",
         kind="semantic",

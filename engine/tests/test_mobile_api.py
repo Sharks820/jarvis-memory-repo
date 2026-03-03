@@ -1204,7 +1204,8 @@ def test_run_main_cli_os_error(mobile_server) -> None:
         result = stub._run_main_cli(["self-heal"])
     assert result["ok"] is False
     assert result["command_exit_code"] == 2
-    assert "No such file" in result["stderr_tail"][0]
+    assert result["error"] == "Command execution failed."
+    assert result["stderr_tail"] == []
 
 
 # ---------------------------------------------------------------------------
