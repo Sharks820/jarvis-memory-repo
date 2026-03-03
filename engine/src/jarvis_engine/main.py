@@ -518,7 +518,7 @@ _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
     "complex": 1024,
     "creative": 1024,
     "routine": 512,
-    "simple_private": 384,
+    "simple_private": 1024,
     "web_research": 1024,
 }
 
@@ -577,8 +577,8 @@ def _build_smart_context(
     bus: "CommandBus",
     query: str,
     *,
-    max_memory_items: int = 8,
-    max_fact_items: int = 6,
+    max_memory_items: int = 20,
+    max_fact_items: int = 15,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
     """Build context using best available retrieval method.
 
@@ -646,11 +646,37 @@ def _build_smart_context(
             ][:10]
             if words:
                 facts = kg.query_relevant_facts(words, limit=max_fact_items)
+                seen_node_ids: dict[str, float] = {}
                 for fact in facts:
                     label = str(fact.get("label", "")).strip()
                     conf = fact.get("confidence", 0.0)
+                    nid = fact.get("node_id", "")
                     if label and conf >= 0.5:
                         fact_lines.append(label)
+                        if nid:
+                            seen_node_ids[nid] = conf
+
+                # Semantic KG search (embedding-based) — complements keyword FTS5
+                if embed_service is not None:
+                    try:
+                        sem_facts = kg.query_relevant_facts_semantic(
+                            query, embed_service=embed_service,
+                            limit=max_fact_items, min_confidence=0.5,
+                        )
+                        for fact in sem_facts:
+                            nid = fact.get("node_id", "")
+                            label = str(fact.get("label", "")).strip()
+                            conf = fact.get("confidence", 0.0)
+                            if not label or conf < 0.5:
+                                continue
+                            # Deduplicate: skip if already seen with equal/higher confidence
+                            if nid and nid in seen_node_ids and seen_node_ids[nid] >= conf:
+                                continue
+                            fact_lines.append(label)
+                            if nid:
+                                seen_node_ids[nid] = conf
+                    except Exception as sem_exc:
+                        logger.debug("KG semantic fact query failed: %s", sem_exc)
         except Exception as exc:
             logger.debug("KG fact query failed: %s", exc)
 
@@ -828,14 +854,6 @@ def _windows_idle_seconds() -> float | None:
         return max(0.0, idle_ms / 1000.0)
     except Exception:
         return None
-
-
-def _load_voice_auth_impl():
-    try:
-        from jarvis_engine.voice_auth import enroll_voiceprint, verify_voiceprint
-    except ModuleNotFoundError as exc:
-        return None, None, str(exc)
-    return enroll_voiceprint, verify_voiceprint, ""
 
 
 def _gaming_mode_state_path() -> Path:
@@ -2949,7 +2967,6 @@ def cmd_voice_verify(user_id: str, wav_path: str, threshold: float) -> int:
 def cmd_voice_listen(
     duration: float,
     language: str,
-    model: str,
     execute: bool,
 ) -> int:
     """Record from microphone, transcribe, optionally execute as voice command."""
@@ -4632,7 +4649,6 @@ def main() -> int:
     p_voice_listen = sub.add_parser("voice-listen", help="Record from microphone and transcribe speech-to-text.")
     p_voice_listen.add_argument("--duration", type=float, default=30.0, help="Max recording duration in seconds.")
     p_voice_listen.add_argument("--language", default="en", help="Language code hint for transcription.")
-    p_voice_listen.add_argument("--model", default="small.en", help="Whisper model size (e.g. tiny.en, small.en, medium).")
     p_voice_listen.add_argument("--execute", action="store_true", help="Execute transcribed text as a voice command.")
 
     # -- Harvesting --
@@ -4988,7 +5004,6 @@ def main() -> int:
         return cmd_voice_listen(
             duration=args.duration,
             language=args.language,
-            model=args.model,
             execute=args.execute,
         )
     if args.command == "harvest":

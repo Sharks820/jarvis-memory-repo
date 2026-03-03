@@ -276,7 +276,7 @@ def create_app(root: Path) -> CommandBus:
         pipeline._gateway = gateway
 
     # -- Memory (dual-path: MemoryEngine or adapter shim) --
-    bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine).handle)
+    bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine, kg=kg).handle)
     bus.register(BrainContextCommand, BrainContextHandler(root, engine=engine, embed_service=embed_service).handle)
     bus.register(BrainCompactCommand, BrainCompactHandler(root).handle)
     bus.register(BrainRegressionCommand, BrainRegressionHandler(root).handle)

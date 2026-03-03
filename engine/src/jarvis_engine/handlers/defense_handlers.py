@@ -58,16 +58,30 @@ class SecurityStatusHandler:
         self._db = db
         self._write_lock = write_lock
         self._log_dir = log_dir
-
-    def handle(self, cmd: SecurityStatusCommand) -> SecurityStatusResult:
+        self._orchestrator = None
         try:
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
 
-            orch = SecurityOrchestrator(
+            self._orchestrator = SecurityOrchestrator(
                 db=self._db,
                 write_lock=self._write_lock,
                 log_dir=self._log_dir,
             )
+        except Exception as exc:
+            logger.warning("SecurityOrchestrator init failed, will retry per-call: %s", exc)
+
+    def handle(self, cmd: SecurityStatusCommand) -> SecurityStatusResult:
+        try:
+            orch = self._orchestrator
+            if orch is None:
+                from jarvis_engine.security.orchestrator import SecurityOrchestrator
+
+                orch = SecurityOrchestrator(
+                    db=self._db,
+                    write_lock=self._write_lock,
+                    log_dir=self._log_dir,
+                )
+                self._orchestrator = orch
             dashboard = orch.status()
             return SecurityStatusResult(
                 dashboard=dashboard,

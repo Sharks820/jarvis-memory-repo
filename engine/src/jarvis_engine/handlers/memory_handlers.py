@@ -27,21 +27,51 @@ from jarvis_engine.commands.memory_commands import (
 
 
 class BrainStatusHandler:
-    def __init__(self, root: Path, engine: Any = None) -> None:
+    def __init__(self, root: Path, engine: Any = None, kg: Any = None) -> None:
         self._root = root
         self._engine = engine
+        self._kg = kg
 
     def handle(self, cmd: BrainStatusCommand) -> BrainStatusResult:
         if self._engine is not None:
             # Use MemoryEngine: query record counts from SQLite
             count = self._engine.count_records()
+
+            # Query KnowledgeGraph for fact/edge counts if available
+            fact_count = 0
+            edge_count = 0
+            locked_count = 0
+            pending_contradictions = 0
+            if self._kg is not None:
+                try:
+                    fact_count = self._kg.count_nodes()
+                    edge_count = self._kg.count_edges()
+                    locked_count = self._kg.count_locked()
+                    pending_contradictions = self._kg.count_pending_contradictions()
+                except Exception as exc:
+                    logger.warning("Failed to query KnowledgeGraph stats: %s", exc)
+
+            # Query distinct branches from records table
+            branches: list[str] = []
+            try:
+                with self._engine._db_lock:
+                    rows = self._engine._db.execute(
+                        "SELECT DISTINCT branch FROM records ORDER BY branch"
+                    ).fetchall()
+                branches = [row[0] for row in rows]
+            except Exception as exc:
+                logger.warning("Failed to query branches: %s", exc)
+
             return BrainStatusResult(status={
                 "updated_utc": "",
-                "branch_count": 0,
-                "fact_count": 0,
+                "branch_count": len(branches),
+                "fact_count": fact_count,
+                "edge_count": edge_count,
+                "locked_facts": locked_count,
+                "pending_contradictions": pending_contradictions,
                 "total_records": count,
-                "regression": {"status": "pass"},
-                "branches": [],
+                "regression": {"status": "not_available"},
+                "branches": branches,
                 "engine": "sqlite",
             })
         from jarvis_engine.brain_memory import brain_status

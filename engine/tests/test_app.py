@@ -114,9 +114,22 @@ from jarvis_engine.commands.proactive_commands import (
 
 # Learning commands
 from jarvis_engine.commands.learning_commands import (
+    ConsolidateMemoryCommand,
     CrossBranchQueryCommand,
     FlagExpiredFactsCommand,
     LearnInteractionCommand,
+)
+
+# Defense commands
+from jarvis_engine.security.defense_commands import (
+    BlockIPCommand,
+    ContainmentOverrideCommand,
+    ExportForensicsCommand,
+    ReviewQuarantineCommand,
+    SecurityBriefingCommand,
+    SecurityStatusCommand,
+    ThreatReportCommand,
+    UnblockIPCommand,
 )
 
 # Sync commands
@@ -199,7 +212,8 @@ ALL_EXPECTED_COMMANDS = [
     ProactiveCheckCommand,
     SelfTestCommand,
     WakeWordStartCommand,
-    # Learning (3)
+    # Learning (4)
+    ConsolidateMemoryCommand,
     CrossBranchQueryCommand,
     FlagExpiredFactsCommand,
     LearnInteractionCommand,
@@ -207,6 +221,15 @@ ALL_EXPECTED_COMMANDS = [
     SyncPullCommand,
     SyncPushCommand,
     SyncStatusCommand,
+    # Defense (8)
+    BlockIPCommand,
+    ContainmentOverrideCommand,
+    ExportForensicsCommand,
+    ReviewQuarantineCommand,
+    SecurityBriefingCommand,
+    SecurityStatusCommand,
+    ThreatReportCommand,
+    UnblockIPCommand,
 ]
 
 

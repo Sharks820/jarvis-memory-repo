@@ -13,12 +13,12 @@ Both milestones are complete: v1.0 Desktop Engine (phases 1-9) and v2.0 Android 
 ```bash
 # Activate venv and run tests
 .venv/Scripts/activate
-python -m pytest engine/tests/ -x -q    # 3758 tests, ~4min
+python -m pytest engine/tests/ -x -q    # ~4400 tests, ~2min
 
 # Run the engine
-jarvis-engine daemon                     # Daemon mode (primary)
+jarvis-engine daemon-run                 # Daemon mode (primary)
 jarvis-engine ops-brief                  # Daily briefing
-jarvis-engine voice                      # Voice assistant
+jarvis-engine voice-run                  # Voice assistant
 
 # Start all services (daemon + mobile API + widget)
 powershell scripts/start-jarvis-services.ps1
@@ -39,7 +39,7 @@ powershell scripts/start-jarvis-services.ps1
 - **All 35 engine modules are actively used** — verified Feb 2026. Do not delete any without re-auditing imports.
 - **Handler pattern**: Handlers in `engine/src/jarvis_engine/handlers/` use lazy imports of domain modules
 - **Hilt DI in Android services**: `CallScreeningService` and `NotificationListenerService` use `@EntryPoint` + `EntryPointAccessors` pattern (NOT `@AndroidEntryPoint`)
-- **Room DB at version 10** with 16 entities and explicit `Migration` objects (NEVER use `fallbackToDestructiveMigration`)
+- **Room DB at version 11** with 16 entities and 10 explicit `Migration` objects (1->2 through 10->11, NEVER use `fallbackToDestructiveMigration`)
 - **HMAC timestamps must be integers** — `Math.floor(Date.now() / 1000)`, not floats
 - **Phone numbers masked in logs** — show only last 4 digits for PII protection
 
@@ -68,9 +68,9 @@ engine/src/jarvis_engine/       # Python desktop engine (35+ modules)
   sync/                         # Changelog-based encrypted mobile-desktop sync
   handlers/                     # CQRS command handlers (8 handler files)
   commands/                     # Command dataclasses
-engine/tests/                   # 3758 tests
+engine/tests/                   # ~4400 tests
 android/app/src/main/java/com/jarvis/assistant/
-  data/                         # Room entities, DAOs, database (v10, 16 entities)
+  data/                         # Room entities, DAOs, database (v11, 16 entities)
   di/                           # Hilt AppModule (15 DAOs)
   feature/                      # Domain features (callscreen, scheduling, prescription, etc.)
   service/                      # JarvisService foreground sync loop
