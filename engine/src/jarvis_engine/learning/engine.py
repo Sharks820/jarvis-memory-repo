@@ -53,6 +53,8 @@ class ConversationLearningEngine:
         user_message: str,
         assistant_response: str,
         task_id: str = "",
+        route: str = "",
+        topic: str = "",
     ) -> dict:
         """Learn from a single interaction, returning ingestion stats.
 
@@ -112,14 +114,14 @@ class ConversationLearningEngine:
         feedback_detected = "neutral"
         if self._feedback_tracker is not None:
             try:
-                feedback_detected = self._feedback_tracker.record_feedback(user_message)
+                feedback_detected = self._feedback_tracker.record_feedback(user_message, route=route)
             except Exception as exc:
                 logger.warning("Failed to record feedback: %s", exc)
 
         # Record usage pattern if tracker is available
         if self._usage_tracker is not None:
             try:
-                self._usage_tracker.record_interaction()
+                self._usage_tracker.record_interaction(route=route, topic=topic)
             except Exception as exc:
                 logger.warning("Failed to record usage pattern: %s", exc)
 

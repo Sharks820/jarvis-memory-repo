@@ -449,6 +449,8 @@ class TestLearningHandlers:
             user_message=cmd.user_message,
             assistant_response=cmd.assistant_response,
             task_id=cmd.task_id,
+            route=cmd.route,
+            topic=cmd.topic,
         )
         assert result.records_created == 2
         assert result.message == "ok"

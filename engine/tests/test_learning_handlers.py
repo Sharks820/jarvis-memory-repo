@@ -56,6 +56,8 @@ class TestLearnInteractionHandler:
             user_message="What is Jarvis?",
             assistant_response="Jarvis is your personal AI assistant.",
             task_id="t1",
+            route="",
+            topic="",
         )
 
     def test_learning_returns_error(self, tmp_path: Path) -> None:
@@ -100,6 +102,8 @@ class TestLearnInteractionHandler:
             user_message="q",
             assistant_response="a",
             task_id="task_xyz",
+            route="",
+            topic="",
         )
 
     def test_large_records_created(self, tmp_path: Path) -> None:

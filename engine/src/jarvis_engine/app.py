@@ -427,6 +427,12 @@ def create_app(root: Path) -> CommandBus:
             FlagExpiredFactsCommand,
             FlagExpiredFactsHandler(root, kg=kg).handle,
         )
+
+        # Expose learning trackers on bus for downstream read access
+        bus._pref_tracker = pref_tracker        # type: ignore[attr-defined]
+        bus._feedback_tracker = feedback_tracker  # type: ignore[attr-defined]
+        bus._usage_tracker = usage_tracker        # type: ignore[attr-defined]
+        bus._learning_engine = learning_engine    # type: ignore[attr-defined]
     except Exception as exc:
         logger.warning("Failed to initialize Learning subsystem, continuing without: %s", exc)
         bus.register(

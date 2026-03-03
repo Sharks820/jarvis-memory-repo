@@ -36,6 +36,8 @@ class LearnInteractionHandler:
             user_message=cmd.user_message,
             assistant_response=cmd.assistant_response,
             task_id=cmd.task_id,
+            route=cmd.route,
+            topic=cmd.topic,
         )
         records = result.get("records_created", 0)
         error = result.get("error", "")
