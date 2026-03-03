@@ -52,6 +52,28 @@ _TRACKED_TABLES: dict[str, dict[str, Any]] = {
         ],
         "noise_fields": [],
     },
+    "user_preferences": {
+        "pk": ["category", "preference"],
+        "fields": [
+            "category", "preference", "score", "evidence_count",
+            "last_observed",
+        ],
+        "noise_fields": [],
+    },
+    "response_feedback": {
+        "pk": "id",
+        "fields": [
+            "route", "feedback", "user_message_snippet", "recorded_at",
+        ],
+        "noise_fields": [],
+    },
+    "usage_patterns": {
+        "pk": "id",
+        "fields": [
+            "hour", "day_of_week", "route", "topic", "recorded_at",
+        ],
+        "noise_fields": [],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -100,7 +122,19 @@ _INDEXES = [
 # ---------------------------------------------------------------------------
 
 
-def _build_insert_trigger(table: str, pk: str, fields: list[str], device_id: str) -> str:
+def _pk_expr(pk: str | list[str], alias: str) -> str:
+    """Build a SQL expression for the row identifier in a trigger.
+
+    *pk* is either a single column name (``"record_id"``) or a list of column
+    names for composite keys (``["category", "preference"]``).
+    *alias* is ``"NEW"`` or ``"OLD"`` — the trigger row alias.
+    """
+    if isinstance(pk, list):
+        return " || ':' || ".join(f"{alias}.{col}" for col in pk)
+    return f"{alias}.{pk}"
+
+
+def _build_insert_trigger(table: str, pk: str | list[str], fields: list[str], device_id: str) -> str:
     """Generate AFTER INSERT trigger SQL for *table*."""
     fields_json = json.dumps(fields)
     new_values_expr = (
@@ -123,7 +157,7 @@ def _build_insert_trigger(table: str, pk: str, fields: list[str], device_id: str
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
-        "CAST(NEW." + pk + " AS TEXT), "
+        "CAST(" + _pk_expr(pk, "NEW") + " AS TEXT), "
         "'INSERT', "
         "'" + fields_json + "', "
         "'{}', "
@@ -234,7 +268,7 @@ def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
 
 
 def _build_update_trigger(
-    table: str, pk: str, fields: list[str], noise_fields: list[str], device_id: str,
+    table: str, pk: str | list[str], fields: list[str], noise_fields: list[str], device_id: str,
 ) -> str:
     """Generate AFTER UPDATE trigger SQL for *table*."""
     # WHEN clause: fire only if at least one non-noise field actually changed
@@ -291,7 +325,7 @@ def _build_update_trigger(
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
-        "CAST(NEW." + pk + " AS TEXT), "
+        "CAST(" + _pk_expr(pk, "NEW") + " AS TEXT), "
         "'UPDATE', "
         + fields_changed_expr + ", "
         + old_values_expr + ", "
@@ -302,7 +336,7 @@ def _build_update_trigger(
     )
 
 
-def _build_delete_trigger(table: str, pk: str, fields: list[str], device_id: str) -> str:
+def _build_delete_trigger(table: str, pk: str | list[str], fields: list[str], device_id: str) -> str:
     """Generate AFTER DELETE trigger SQL for *table*."""
     old_values_expr = (
         "'{' || "
@@ -324,7 +358,7 @@ def _build_delete_trigger(table: str, pk: str, fields: list[str], device_id: str
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
-        "CAST(OLD." + pk + " AS TEXT), "
+        "CAST(" + _pk_expr(pk, "OLD") + " AS TEXT), "
         "'DELETE', "
         "'[]', "
         + old_values_expr + ", "
@@ -354,7 +388,19 @@ def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop
     for idx_sql in _INDEXES:
         cur.execute(idx_sql)
 
+    # Check which tables exist so we only install triggers for present tables
+    existing_tables = {
+        row[0]
+        for row in cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+
     for table, spec in _TRACKED_TABLES.items():
+        if table not in existing_tables:
+            logger.debug("Sync: skipping triggers for %s (table not created yet)", table)
+            continue
+
         pk = spec["pk"]
         fields = spec["fields"]
         noise_fields = spec.get("noise_fields", [])

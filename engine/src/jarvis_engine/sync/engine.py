@@ -248,12 +248,16 @@ class SyncEngine:
         }
 
     def _apply_single_change(
-        self, table_name: str, pk: str, entry: dict[str, Any],
+        self, table_name: str, pk: str | list[str], entry: dict[str, Any],
     ) -> bool:
         """Execute INSERT/UPDATE/DELETE based on *entry* operation.
 
         Returns True if the operation was recognized and applied, False if the
         operation type is unknown.
+
+        *pk* may be a single column name (``"record_id"``) or a list of column
+        names for composite keys (``["category", "preference"]``).  For
+        composite keys the ``row_id`` is ``":"``-separated.
         """
         operation = entry.get("operation", "").upper()
         row_id = entry.get("row_id", "")
@@ -267,10 +271,30 @@ class SyncEngine:
         if not table_name.isidentifier():
             raise ValueError(f"Invalid table name: {table_name}")
 
+        # Normalize pk to a list for uniform handling below.
+        pk_cols: list[str] = pk if isinstance(pk, list) else [pk]
+        is_composite = len(pk_cols) > 1
+
+        # Split row_id into parts for composite PKs ("tone:casual" → ["tone", "casual"]).
+        if is_composite:
+            pk_values = row_id.split(":", len(pk_cols) - 1)
+            if len(pk_values) != len(pk_cols):
+                logger.warning(
+                    "Composite row_id %r has %d parts but pk has %d columns — skipping",
+                    row_id, len(pk_values), len(pk_cols),
+                )
+                return False
+        else:
+            pk_values = [row_id]
+
+        # WHERE clause for UPDATE/DELETE: "col1 = ? AND col2 = ?" for composite,
+        # "pk = ?" for simple.
+        where_clause = " AND ".join(col + " = ?" for col in pk_cols)
+
         # Validate all field/column names against the known schema to prevent
         # SQL injection via crafted sync payloads.
         allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
-        allowed_fields.add(pk)
+        allowed_fields.update(pk_cols)
 
         if operation == "INSERT":
             if not new_values:
@@ -279,10 +303,14 @@ class SyncEngine:
             safe_values = {k: v for k, v in new_values.items() if k in allowed_fields}
             if not safe_values:
                 return True
-            cols = [pk] + [k for k in safe_values if k != pk]
+            # Build column list: PK columns first (using split row_id values),
+            # then remaining value columns.
+            pk_set = set(pk_cols)
+            extra_cols = [k for k in safe_values if k not in pk_set]
+            cols = pk_cols + extra_cols
             placeholders = ", ".join(["?"] * len(cols))
             col_names = ", ".join(cols)
-            values = [row_id] + [safe_values[k] for k in cols if k != pk]
+            values = pk_values + [safe_values[k] for k in extra_cols]
             self._db.execute(
                 "INSERT OR IGNORE INTO " + table_name
                 + " (" + col_names + ") VALUES (" + placeholders + ")",
@@ -292,8 +320,8 @@ class SyncEngine:
         elif operation == "UPDATE":
             if not fields_changed or not new_values:
                 return True
-            set_parts = []
-            values = []
+            set_parts: list[str] = []
+            values: list[Any] = []
             for field in fields_changed:
                 if field not in allowed_fields:
                     continue  # Skip unknown fields
@@ -302,18 +330,18 @@ class SyncEngine:
                     values.append(new_values[field])
             if not set_parts:
                 return True
-            values.append(row_id)
+            values.extend(pk_values)
             self._db.execute(
                 "UPDATE " + table_name + " SET "
                 + ", ".join(set_parts)
-                + " WHERE " + pk + " = ?",
+                + " WHERE " + where_clause,
                 values,
             )
 
         elif operation == "DELETE":
             self._db.execute(
-                "DELETE FROM " + table_name + " WHERE " + pk + " = ?",
-                (row_id,),
+                "DELETE FROM " + table_name + " WHERE " + where_clause,
+                pk_values,
             )
 
         else:
