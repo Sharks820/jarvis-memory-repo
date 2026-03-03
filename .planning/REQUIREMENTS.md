@@ -5,14 +5,14 @@
 
 ## Voice-to-Text Overhaul (STT)
 
-- **STT-01**: Replace faster-whisper small.en with NVIDIA Parakeet TDT 0.6B as primary local STT model (target: <8% WER on conversational speech)
+- [x] **STT-01**: Replace faster-whisper small.en with NVIDIA Parakeet TDT 0.6B as primary local STT model (target: <8% WER on conversational speech)
 - [x] **STT-02**: Integrate Deepgram Nova-3 as cloud STT provider with keyterm prompting for proper nouns and domain vocabulary
-- **STT-03**: Replace energy-based VAD with Silero VAD for accurate voice activity detection (pre-speech, end-of-speech, silence handling)
-- **STT-04**: Implement streaming/chunked STT pipeline — detect speech start, transcribe incrementally, detect speech end, finalize
-- **STT-05**: Wake word detection continues to work with new VAD (Silero feeds into OpenWakeWord or existing porcupine)
-- **STT-06**: STT confidence scoring accurate and actionable — low-confidence triggers re-listen or clarification prompt
+- [x] **STT-03**: Replace energy-based VAD with Silero VAD for accurate voice activity detection (pre-speech, end-of-speech, silence handling)
+- [x] **STT-04**: Implement streaming/chunked STT pipeline — detect speech start, transcribe incrementally, detect speech end, finalize
+- [x] **STT-05**: Wake word detection continues to work with new VAD (Silero feeds into OpenWakeWord or existing porcupine)
+- [x] **STT-06**: STT confidence scoring accurate and actionable — low-confidence triggers re-listen or clarification prompt
 - [x] **STT-07**: Personal vocabulary and entity correction integrated into STT post-processing (names, places, custom terms)
-- **STT-08**: Fallback chain: Parakeet TDT (local) → Deepgram Nova-3 (cloud) → Groq Whisper (cloud) → faster-whisper large-v3 (local emergency)
+- [x] **STT-08**: Fallback chain: Parakeet TDT (local) → Deepgram Nova-3 (cloud) → Groq Whisper (cloud) → faster-whisper large-v3 (local emergency)
 
 ## Learning System Activation (LEARN)
 
@@ -53,14 +53,14 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STT-01 | Phase 1 | In Progress (backend added in 01-02, chain wiring in 01-04) |
-| STT-02 | Phase 1 | Complete |
-| STT-03 | Phase 1 | Pending |
-| STT-04 | Phase 1 | Pending |
-| STT-05 | Phase 1 | Complete |
-| STT-06 | Phase 1 | In Progress (Parakeet confidence scoring in 01-02, chain in 01-04) |
-| STT-07 | Phase 1 | Complete |
-| STT-08 | Phase 1 | Complete |
+| STT-01 | Phase 1 | Complete (Parakeet TDT backend in 01-02, chain in 01-04, verified in 01-05) |
+| STT-02 | Phase 1 | Complete (Deepgram Nova-3 in 01-03, verified in 01-05) |
+| STT-03 | Phase 1 | Complete (Silero VAD in 01-01, verified in 01-05) |
+| STT-04 | Phase 1 | Complete (32ms chunked pipeline in 01-01, verified in 01-05) |
+| STT-05 | Phase 1 | Complete (Wake word VAD in 01-04, verified in 01-05) |
+| STT-06 | Phase 1 | Complete (Confidence scoring in 01-02/01-04, fallthrough in 01-05) |
+| STT-07 | Phase 1 | Complete (Personal vocab in 01-03, NER in postprocess, verified in 01-05) |
+| STT-08 | Phase 1 | Complete (4-tier fallback chain in 01-04, integration tests in 01-05) |
 | LEARN-01 through LEARN-08 | Phase 2 | Pending |
 | UI-01 through UI-05 | Phase 3 | Pending |
 | STAB-01 through STAB-05 | Phase 4 | Pending |

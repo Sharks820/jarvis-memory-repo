@@ -17,14 +17,14 @@ v1.0 Desktop Engine, v2.0 Android App, and v3.0 Hardening are all shipped. v4.0 
 ### Phase 1: Voice-to-Text Overhaul
 **Goal**: Reliable voice understanding — commands and conversational speech recognized accurately
 **Requirements**: STT-01 through STT-08
-**Plans:** 3/3 plans complete
+**Plans:** 5/5 plans complete
 
 Plans:
 - [x] 01-01-PLAN.md — Silero VAD module + record_from_microphone integration
 - [x] 01-02-PLAN.md — NVIDIA Parakeet TDT 0.6B backend via onnx-asr
 - [x] 01-03-PLAN.md — Deepgram Nova-3 backend with keyterm prompting
-- [ ] 01-04-PLAN.md — Fallback chain rewrite + wake word VAD integration
-- [ ] 01-05-PLAN.md — Integration testing + end-to-end verification
+- [x] 01-04-PLAN.md — Fallback chain rewrite + wake word VAD integration
+- [x] 01-05-PLAN.md — Integration testing + end-to-end verification
 
 **Success Criteria**:
   1. Local STT WER < 8% on conversational speech (currently ~15-20%)
@@ -88,9 +88,10 @@ Plans:
 
 ## Progress
 
-| Phase | Plans Complete | Status |
-|-------|---------------|--------|
-| 1. Voice-to-Text Overhaul | 3/3 | Complete   | 2026-03-03 | 2. Learning System Activation | 0/3 | Planned |
-| 3. Widget & UI Live Updates | 0/? | Not started |
-| 4. Platform Stability | 0/? | Not started |
-| 5. Mobile App Readiness | 0/? | Not started |
+| Phase | Plans Complete | Status | Date |
+|-------|---------------|--------|------|
+| 1. Voice-to-Text Overhaul | 5/5 | Complete | 2026-03-03 |
+| 2. Learning System Activation | 0/3 | Planned | |
+| 3. Widget & UI Live Updates | 0/? | Not started | |
+| 4. Platform Stability | 0/? | Not started | |
+| 5. Mobile App Readiness | 0/? | Not started | |
