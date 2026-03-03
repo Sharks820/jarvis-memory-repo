@@ -61,6 +61,32 @@ class TestMissionCancel:
         with pytest.raises(ValueError, match="mission not found"):
             cancel_mission(root, mission_id="m-nonexistent")
 
+    def test_cancel_completed_mission_raises(self):
+        """cancel_mission raises ValueError for already-completed missions."""
+        from jarvis_engine.learning_missions import cancel_mission
+
+        root = self._make_tmp_root()
+        self._create_missions_file(root, [
+            {"mission_id": "m-done", "topic": "Done topic", "status": "completed",
+             "created_utc": "2026-01-01T00:00:00", "updated_utc": "2026-01-01T00:00:00"},
+        ])
+
+        with pytest.raises(ValueError, match="cannot cancel"):
+            cancel_mission(root, mission_id="m-done")
+
+    def test_cancel_already_cancelled_mission_raises(self):
+        """cancel_mission raises ValueError for already-cancelled missions."""
+        from jarvis_engine.learning_missions import cancel_mission
+
+        root = self._make_tmp_root()
+        self._create_missions_file(root, [
+            {"mission_id": "m-can", "topic": "Already cancelled", "status": "cancelled",
+             "created_utc": "2026-01-01T00:00:00", "updated_utc": "2026-01-01T00:00:00"},
+        ])
+
+        with pytest.raises(ValueError, match="cannot cancel"):
+            cancel_mission(root, mission_id="m-can")
+
     def test_cancel_mission_logs_activity(self):
         """cancel_mission logs a MISSION_STATE_CHANGE activity event."""
         from jarvis_engine.learning_missions import cancel_mission
