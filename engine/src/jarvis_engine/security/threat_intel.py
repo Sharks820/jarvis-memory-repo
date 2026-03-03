@@ -11,6 +11,7 @@ produce graceful degradation, never exceptions.
 
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import os
@@ -54,8 +55,9 @@ class ThreatIntelFeed:
         self._abuseipdb_key: str | None = os.environ.get("ABUSEIPDB_API_KEY") or None
         self._otx_key: str | None = os.environ.get("OTX_API_KEY") or None
 
-        # In-memory cache: ip -> (enrichment_dict, timestamp)
-        self._cache: dict[str, tuple[dict[str, Any], float]] = {}
+        # In-memory LRU cache: ip -> (enrichment_dict, timestamp)
+        # OrderedDict for O(1) eviction of oldest entry at capacity
+        self._cache: collections.OrderedDict[str, tuple[dict[str, Any], float]] = collections.OrderedDict()
         self._lock = threading.Lock()
 
         # Feodo blocklist (set of IPs), cached with its own timestamp
@@ -82,6 +84,7 @@ class ThreatIntelFeed:
             if cached is not None:
                 data, ts = cached
                 if time.time() - ts < self._cache_ttl:
+                    self._cache.move_to_end(ip)  # LRU: mark as recently used
                     result = dict(data)
                     result["cache_hit"] = True
                     return result
@@ -124,12 +127,13 @@ class ThreatIntelFeed:
             "sources_checked": sources_checked,
         }
 
-        # Store in cache (evict oldest when at capacity)
+        # Store in cache (O(1) LRU eviction via OrderedDict)
         now = time.time()
         with self._lock:
-            if len(self._cache) >= self.MAX_CACHE_SIZE:
-                oldest_ip = min(self._cache, key=lambda k: self._cache[k][1])
-                del self._cache[oldest_ip]
+            if ip in self._cache:
+                self._cache.move_to_end(ip)
+            elif len(self._cache) >= self.MAX_CACHE_SIZE:
+                self._cache.popitem(last=False)  # evict oldest
             self._cache[ip] = (dict(result), now)
             self._requests_today += 1
 

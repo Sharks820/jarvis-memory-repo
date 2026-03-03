@@ -202,16 +202,13 @@ class ConversationLearningEngine:
             return False
 
         stripped = text.strip()
-        if len(stripped) < 15:
-            return False
-
         lower = stripped.lower()
 
-        # Check for personal data keywords — accept regardless of greeting prefix
-        # Single words: use word-boundary matching to avoid false positives
-        # (e.g. "age" in "message", "son" in "reason")
-        # Multi-word phrases: use substring matching (safe, specific enough)
-        words = set(lower.split())
+        # Check personal data keywords FIRST (before length checks) so short
+        # personal facts like "My son is Jake" are always accepted.
+        # Strip punctuation from words for boundary matching (handles "son,", "email.")
+        import re
+        words = set(re.findall(r"[a-z]+", lower))
         has_personal_data = bool(
             words & ConversationLearningEngine._PERSONAL_DATA_SINGLE_WORDS
         ) or any(
@@ -220,6 +217,9 @@ class ConversationLearningEngine:
         )
         if has_personal_data:
             return True
+
+        if len(stripped) < 15:
+            return False
 
         if len(stripped) < 20:
             return False

@@ -409,7 +409,7 @@ class ModelGateway:
                 response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key)
                 audit_reason = f"fallback:{reason}"
         else:
-            response = self._call_ollama(messages, model, max_tokens)
+            response = self._call_ollama(messages, model, max_tokens, temperature)
             audit_reason = route_reason or "primary:ollama"
             # If Ollama failed and cloud providers are available, try them
             # skip_ollama=True to avoid re-trying Ollama at the end of the chain
@@ -598,6 +598,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         model: str,
         max_tokens: int,
+        temperature: float = 0.7,
     ) -> GatewayResponse:
         """Call local Ollama server."""
         if not _HAS_OLLAMA:
@@ -609,7 +610,7 @@ class ModelGateway:
                 fallback_reason="ollama package is not installed",
             )
         try:
-            resp = self._ollama.chat(model=model, messages=messages, options={"num_predict": max_tokens})
+            resp = self._ollama.chat(model=model, messages=messages, options={"num_predict": max_tokens, "temperature": temperature})
         except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             logger.warning("Ollama call failed: %s", exc)
             return GatewayResponse(
@@ -740,13 +741,14 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason=full_reason,
             )
-        return self._fallback_to_ollama(messages, max_tokens, reason)
+        return self._fallback_to_ollama(messages, max_tokens, reason, temperature)
 
     def _fallback_to_ollama(
         self,
         messages: list[dict[str, str]],
         max_tokens: int,
         reason: str,
+        temperature: float = 0.7,
     ) -> GatewayResponse:
         """Fall back to local Ollama after all cloud providers fail.
 
@@ -767,7 +769,7 @@ class ModelGateway:
             )
 
         try:
-            resp = self._ollama.chat(model=fallback_model, messages=messages, options={"num_predict": max_tokens})
+            resp = self._ollama.chat(model=fallback_model, messages=messages, options={"num_predict": max_tokens, "temperature": temperature})
             input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
             output_tokens = getattr(resp, "eval_count", 0) or 0
             return GatewayResponse(
