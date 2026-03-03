@@ -12,8 +12,10 @@ from jarvis_engine.learning_missions import (
     _mission_queries,
     _topic_keywords,
     _verify_candidates,
+    auto_generate_missions,
     create_learning_mission,
     load_missions,
+    retry_failed_missions,
     run_learning_mission,
 )
 
@@ -219,11 +221,21 @@ def test_extract_candidates_max_limit() -> None:
 
 # ── _verify_candidates tests ─────────────────────────────────────────────
 
-def test_verify_candidates_needs_multiple_domains() -> None:
+def test_verify_candidates_single_domain_low_confidence() -> None:
     candidates = [
         {"statement": "Python async programming uses coroutines efficiently and effectively", "url": "https://a.com/1", "domain": "a.com"},
     ]
-    # Single domain, no cross-domain verification possible
+    # Single domain with 4+ keywords → accepted at low confidence (0.30)
+    verified = _verify_candidates(candidates)
+    assert len(verified) == 1
+    assert verified[0]["confidence"] == 0.30
+
+
+def test_verify_candidates_single_domain_too_few_keywords() -> None:
+    candidates = [
+        {"statement": "A new app is ok to use now", "url": "https://a.com/1", "domain": "a.com"},
+    ]
+    # Single domain with < 4 keywords (most words are < 4 chars) → rejected
     verified = _verify_candidates(candidates)
     assert len(verified) == 0
 
@@ -279,14 +291,14 @@ def test_run_mission_fetch_returns_empty(tmp_path: Path, monkeypatch) -> None:
     assert report["candidate_count"] == 0
 
 
-def test_run_mission_updates_status_to_completed(tmp_path: Path, monkeypatch) -> None:
+def test_run_mission_zero_results_marks_failed(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Quick topic", objective="learn fast")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
     monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     missions = load_missions(tmp_path)
     target = [m for m in missions if m["mission_id"] == mission["mission_id"]][0]
-    assert target["status"] == "completed"
+    assert target["status"] == "failed"
     assert target["last_report_path"] != ""
 
 
@@ -300,3 +312,198 @@ def test_run_mission_writes_report_file(tmp_path: Path, monkeypatch) -> None:
     assert report_path.exists()
     raw = json.loads(report_path.read_text(encoding="utf-8"))
     assert raw["mission_id"] == mid
+
+
+# ── retry_failed_missions tests ──────────────────────────────────────────
+
+def test_retry_failed_missions_requeues(tmp_path: Path, monkeypatch) -> None:
+    """Failed missions get re-queued as pending with incremented retry count."""
+    mission = create_learning_mission(tmp_path, topic="Retry topic", objective="test retry")
+    # Manually mark as failed
+    missions = load_missions(tmp_path)
+    missions[0]["status"] = "failed"
+    missions[0]["retries"] = 0
+    missions_path = tmp_path / ".planning" / "missions.json"
+    missions_path.write_text(json.dumps(missions), encoding="utf-8")
+
+    retried = retry_failed_missions(tmp_path)
+    assert retried == 1
+
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "pending"
+    assert missions[0]["retries"] == 1
+    assert "wikipedia" in [s.lower() for s in missions[0]["sources"]]
+
+
+def test_retry_failed_missions_exhausts_after_two(tmp_path: Path) -> None:
+    """Missions with 2+ retries get marked exhausted, not re-queued."""
+    mission = create_learning_mission(tmp_path, topic="Exhausted topic", objective="test")
+    missions = load_missions(tmp_path)
+    missions[0]["status"] = "failed"
+    missions[0]["retries"] = 2
+    missions_path = tmp_path / ".planning" / "missions.json"
+    missions_path.write_text(json.dumps(missions), encoding="utf-8")
+
+    retried = retry_failed_missions(tmp_path)
+    assert retried == 0
+
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "exhausted"
+
+
+def test_retry_skips_non_failed(tmp_path: Path) -> None:
+    """Only failed missions get retried."""
+    create_learning_mission(tmp_path, topic="Pending topic", objective="test")
+    retried = retry_failed_missions(tmp_path)
+    assert retried == 0
+
+
+# ── auto_generate_missions tests ──────────────────────────────────────────
+
+def test_auto_generate_skips_when_pending_exist(tmp_path: Path) -> None:
+    """Auto-generate does nothing if pending missions already exist."""
+    create_learning_mission(tmp_path, topic="Existing pending", objective="test")
+    created = auto_generate_missions(tmp_path)
+    assert created == []
+
+
+def test_auto_generate_creates_from_db(tmp_path: Path) -> None:
+    """Auto-generate creates missions from conversation records in DB."""
+    import sqlite3
+
+    db_path = tmp_path / "test_memory.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""CREATE TABLE records (
+        id INTEGER PRIMARY KEY, summary TEXT, ts TEXT, source TEXT
+    )""")
+    from datetime import datetime, timedelta
+    from jarvis_engine._compat import UTC
+    recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    conn.execute(
+        "INSERT INTO records (summary, ts, source) VALUES (?, ?, ?)",
+        ("Python asyncio event loops and coroutines", recent, "user"),
+    )
+    conn.execute(
+        "INSERT INTO records (summary, ts, source) VALUES (?, ?, ?)",
+        ("Kubernetes cluster management techniques", recent, "user"),
+    )
+    conn.execute(
+        "INSERT INTO records (summary, ts, source) VALUES (?, ?, ?)",
+        ("Machine learning model training optimization", recent, "user"),
+    )
+    conn.commit()
+    conn.close()
+
+    created = auto_generate_missions(tmp_path, max_new=3, db_path=db_path)
+    assert len(created) >= 1
+    assert all(m["status"] == "pending" for m in created)
+    # Topics should be multi-word phrases from conversation records
+    for m in created:
+        assert len(m["topic"].split()) >= 2
+
+
+def test_auto_generate_no_db(tmp_path: Path) -> None:
+    """Auto-generate returns empty list when no DB exists."""
+    created = auto_generate_missions(tmp_path, db_path=tmp_path / "nonexistent.db")
+    assert created == []
+
+
+def test_auto_generate_deduplicates_existing(tmp_path: Path) -> None:
+    """Auto-generate skips topics that exactly match existing missions."""
+    import sqlite3
+    from datetime import datetime, timedelta
+    from jarvis_engine._compat import UTC
+
+    # Create DB with a single topic phrase
+    db_path = tmp_path / "test_memory.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE records (id INTEGER PRIMARY KEY, summary TEXT, ts TEXT, source TEXT)")
+    recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    conn.execute(
+        "INSERT INTO records (summary, ts, source) VALUES (?, ?, ?)",
+        ("Kubernetes cluster management", recent, "user"),
+    )
+    conn.commit()
+    conn.close()
+
+    # First generation should create a mission
+    created1 = auto_generate_missions(tmp_path, max_new=1, db_path=db_path)
+    assert len(created1) >= 1
+    topic1 = created1[0]["topic"].lower()
+
+    # Mark it completed so it's not "pending" (which would block generation)
+    missions = load_missions(tmp_path)
+    missions[0]["status"] = "completed"
+    missions_path = tmp_path / ".planning" / "missions.json"
+    missions_path.write_text(json.dumps(missions), encoding="utf-8")
+
+    # Second generation should not create the same exact topic
+    created2 = auto_generate_missions(tmp_path, max_new=1, db_path=db_path)
+    for m in created2:
+        assert m["topic"].lower() != topic1
+
+
+# ── _mission_queries with wikipedia ──────────────────────────────────────
+
+def test_mission_queries_wikipedia_source() -> None:
+    queries = _mission_queries("Neural networks", ["wikipedia"])
+    assert any("site:en.wikipedia.org" in q for q in queries)
+    assert any("explained" in q for q in queries)
+
+
+# ── Verification tier confidence levels ──────────────────────────────────
+
+def test_verify_cross_domain_higher_confidence() -> None:
+    """Cross-domain verified candidates get higher confidence than single-source."""
+    candidates = [
+        {"statement": "Python async programming uses coroutines efficiently and effectively", "url": "https://a.com/1", "domain": "a.com"},
+        {"statement": "Python async programming with coroutines efficiently simplifies code paths", "url": "https://b.com/2", "domain": "b.com"},
+    ]
+    verified = _verify_candidates(candidates)
+    assert len(verified) >= 1
+    # Cross-domain should have higher confidence than the 0.30 single-source tier
+    assert verified[0]["confidence"] > 0.30
+
+
+# ── Full retry cycle integration ──────────────────────────────────────────
+
+def test_full_retry_cycle(tmp_path: Path, monkeypatch) -> None:
+    """Mission fails → retry → fails again → retry → fails → exhausted."""
+    monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
+
+    mission = create_learning_mission(tmp_path, topic="Hard topic", objective="learn")
+    mid = mission["mission_id"]
+
+    # Run 1: should fail
+    run_learning_mission(tmp_path, mission_id=mid)
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "failed"
+
+    # Retry 1: re-queue
+    retried = retry_failed_missions(tmp_path)
+    assert retried == 1
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "pending"
+    assert missions[0]["retries"] == 1
+
+    # Run 2: should fail again
+    run_learning_mission(tmp_path, mission_id=mid)
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "failed"
+
+    # Retry 2: re-queue
+    retried = retry_failed_missions(tmp_path)
+    assert retried == 1
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "pending"
+    assert missions[0]["retries"] == 2
+
+    # Run 3: should be exhausted now (retries=2, so status="exhausted")
+    run_learning_mission(tmp_path, mission_id=mid)
+    missions = load_missions(tmp_path)
+    assert missions[0]["status"] == "exhausted"
+
+    # No more retries
+    retried = retry_failed_missions(tmp_path)
+    assert retried == 0

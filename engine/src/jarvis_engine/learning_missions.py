@@ -92,6 +92,9 @@ def _mission_queries(topic: str, sources: list[str]) -> list[str]:
         queries.append(f"{topic} guide")
     if "official_docs" in lowered:
         queries.append(f"{topic} official documentation")
+    if "wikipedia" in lowered:
+        queries.append(f"site:en.wikipedia.org {topic}")
+        queries.append(f"{topic} explained")
     return list(dict.fromkeys(q.strip() for q in queries if q.strip()))
 
 
@@ -153,16 +156,25 @@ def _keywords(text: str) -> set[str]:
 
 
 def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Cross-reference candidates across sources to verify factual claims.
+
+    Verification tiers:
+      - 2+ domains with 2+ keyword overlap → high confidence (0.55+)
+      - Single source with 4+ keywords → low confidence (0.30) — still useful for niche topics
+    """
     # Precompute keywords for all candidates to avoid redundant O(n) _keywords() calls
     candidate_keys = [_keywords(c.get("statement", "")) for c in candidates]
 
     verified: list[dict[str, Any]] = []
+    seen_statements: set[str] = set()
     for idx, item in enumerate(candidates):
         statement = item.get("statement", "").strip()
         if not statement:
             continue
         base_domain = item.get("domain", "")
         base_keys = candidate_keys[idx]
+        if len(base_keys) < 2:
+            continue  # Too few keywords to be meaningful
         support_urls = {item.get("url", "")}
         support_domains = {base_domain}
         for jdx, other in enumerate(candidates):
@@ -171,26 +183,37 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
             if other.get("domain", "") == base_domain:
                 continue
             overlap = len(base_keys.intersection(candidate_keys[jdx]))
-            if overlap >= 4:
+            if overlap >= 2:
                 support_urls.add(other.get("url", ""))
                 support_domains.add(other.get("domain", ""))
+        norm_key = re.sub(r"[^a-z0-9]+", " ", statement.lower()).strip()
+        if norm_key in seen_statements:
+            continue
         if len(support_domains) >= 2:
+            # Cross-source verified — higher confidence
             verified.append(
                 {
                     "statement": statement,
                     "source_urls": sorted(u for u in support_urls if u),
                     "source_domains": sorted(d for d in support_domains if d),
-                    "confidence": round(min(1.0, 0.45 + 0.2 * len(support_domains)), 2),
+                    "confidence": round(min(1.0, 0.55 + 0.15 * len(support_domains)), 2),
                 }
             )
+            seen_statements.add(norm_key)
+        elif len(base_keys) >= 4:
+            # Single-source but keyword-rich — accept at low confidence
+            # This prevents niche topics from producing zero results
+            verified.append(
+                {
+                    "statement": statement,
+                    "source_urls": sorted(u for u in support_urls if u),
+                    "source_domains": sorted(d for d in support_domains if d),
+                    "confidence": 0.30,
+                }
+            )
+            seen_statements.add(norm_key)
 
-    # Deduplicate by normalized statement.
-    dedup: dict[str, dict[str, Any]] = {}
-    for item in verified:
-        key = re.sub(r"[^a-z0-9]+", " ", item["statement"].lower()).strip()
-        if key not in dedup:
-            dedup[key] = item
-    return list(dedup.values())
+    return verified
 
 
 def run_learning_mission(
@@ -264,9 +287,225 @@ def run_learning_mission(
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
 
-    target["status"] = "completed"
+    if verified:
+        target["status"] = "completed"
+    else:
+        # No verified findings — mark as failed for retry
+        retries = int(target.get("retries", 0))
+        target["status"] = "failed" if retries < 2 else "exhausted"
+        target["retries"] = retries
     target["updated_utc"] = datetime.now(UTC).isoformat()
     target["last_report_path"] = str(report_path)
     target["verified_findings"] = len(verified)
     _save_missions(root, missions)
     return report
+
+
+# ---------------------------------------------------------------------------
+# Retry failed missions
+# ---------------------------------------------------------------------------
+
+def retry_failed_missions(root: Path) -> int:
+    """Re-queue failed missions (up to 2 retries) by setting status back to pending.
+
+    Broadens the query set on retry by appending alternate search terms.
+    Returns the number of missions re-queued.
+    """
+    missions = load_missions(root)
+    re_queued = 0
+    modified = False
+    for mission in missions:
+        if str(mission.get("status", "")).lower() != "failed":
+            continue
+        retries = int(mission.get("retries", 0))
+        if retries >= 2:
+            mission["status"] = "exhausted"
+            mission["updated_utc"] = datetime.now(UTC).isoformat()
+            modified = True
+            continue
+        # Broaden search: add alternative query phrasing
+        sources = mission.get("sources", list(MISSION_DEFAULT_SOURCES))
+        if not isinstance(sources, list):
+            sources = list(MISSION_DEFAULT_SOURCES)
+        # Add broadening sources on retry
+        if "wikipedia" not in [s.lower() for s in sources]:
+            sources.append("wikipedia")
+        mission["sources"] = sources
+        mission["retries"] = retries + 1
+        mission["status"] = "pending"
+        mission["updated_utc"] = datetime.now(UTC).isoformat()
+        re_queued += 1
+        modified = True
+    if modified:
+        _save_missions(root, missions)
+    if re_queued > 0:
+        logger.info("Re-queued %d failed mission(s) for retry", re_queued)
+    return re_queued
+
+
+# ---------------------------------------------------------------------------
+# Auto-generate missions from knowledge gaps
+# ---------------------------------------------------------------------------
+
+_MISSION_OBJECTIVES = [
+    "Discover verified facts and deepen knowledge graph coverage",
+    "Find authoritative sources and cross-reference claims",
+    "Expand understanding with practical examples and best practices",
+]
+
+
+def auto_generate_missions(
+    root: Path,
+    *,
+    max_new: int = 3,
+    db_path: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Auto-generate learning missions from conversation history and KG gaps.
+
+    Creates up to `max_new` missions when the pending queue is empty.
+    Uses the same 5-layer topic discovery as the auto-harvest system but
+    produces structured missions with objectives and source strategies.
+
+    Returns list of newly created mission dicts.
+    """
+    import sqlite3 as _sqlite3
+
+    missions = load_missions(root)
+    pending_count = sum(
+        1 for m in missions
+        if str(m.get("status", "")).lower() == "pending"
+    )
+    if pending_count > 0:
+        logger.debug("auto_generate_missions: %d pending missions exist, skipping", pending_count)
+        return []
+
+    # Collect existing topics to avoid duplicates
+    existing_topics = {
+        str(m.get("topic", "")).lower().strip()
+        for m in missions
+        if str(m.get("status", "")).lower() in ("pending", "completed", "running")
+    }
+
+    # --- Discover candidate topics using multiple sources ---
+    candidates: list[str] = []
+    seen_lower: set[str] = set()
+
+    def _add(topic: str) -> bool:
+        topic = topic.strip()
+        if not topic or len(topic) < 4:
+            return False
+        tl = topic.lower()
+        if tl in seen_lower or tl in existing_topics:
+            return False
+        if len(topic.split()) < 2 or len(topic.split()) > 6:
+            return False
+        seen_lower.add(tl)
+        candidates.append(topic)
+        return len(candidates) >= max_new
+
+    if db_path is None:
+        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+
+    conn = None
+    try:
+        if db_path.exists():
+            conn = _sqlite3.connect(str(db_path), timeout=5)
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.row_factory = _sqlite3.Row
+
+        # Source 1: Recent user conversations (last 14 days)
+        if conn is not None:
+            try:
+                from datetime import timedelta
+                cutoff = (datetime.now(UTC) - timedelta(days=14)).isoformat()
+                rows = conn.execute(
+                    """SELECT summary FROM records
+                       WHERE ts >= ? AND source = 'user'
+                       ORDER BY ts DESC
+                       LIMIT 50""",
+                    (cutoff,),
+                ).fetchall()
+                for row in rows:
+                    summary = row["summary"] or ""
+                    # Extract multi-word topic phrases
+                    words = re.findall(r"[a-zA-Z0-9]{3,}", summary)
+                    filtered = [w for w in words if w.lower() not in STOPWORDS]
+                    # Build 2-4 word phrases from consecutive words
+                    for i in range(len(filtered) - 1):
+                        phrase = " ".join(filtered[i:i + min(3, len(filtered) - i)])
+                        if _add(phrase):
+                            break
+                    if len(candidates) >= max_new:
+                        break
+            except Exception:
+                pass
+
+        # Source 2: KG nodes with low edge count (knowledge gaps)
+        if conn is not None and len(candidates) < max_new:
+            try:
+                sparse = conn.execute(
+                    """SELECT n.label FROM kg_nodes n
+                       LEFT JOIN kg_edges e ON n.node_id = e.source_id
+                       WHERE n.confidence >= 0.3
+                       GROUP BY n.node_id
+                       HAVING COUNT(e.edge_id) BETWEEN 0 AND 1
+                       ORDER BY n.updated_at DESC
+                       LIMIT 20""",
+                ).fetchall()
+                for row in sparse:
+                    label = row["label"] or ""
+                    words = re.findall(r"[a-zA-Z0-9]{3,}", label)
+                    filtered = [w for w in words if w.lower() not in STOPWORDS]
+                    if len(filtered) >= 2:
+                        phrase = " ".join(filtered[:4])
+                        if _add(phrase):
+                            break
+            except Exception:
+                pass
+
+        # Source 3: Strong KG areas that could be deepened
+        if conn is not None and len(candidates) < max_new:
+            try:
+                strong = conn.execute(
+                    """SELECT n.label, COUNT(e.edge_id) AS edge_cnt
+                       FROM kg_nodes n
+                       JOIN kg_edges e ON n.node_id = e.source_id
+                       WHERE n.confidence >= 0.5
+                       GROUP BY n.node_id
+                       HAVING edge_cnt >= 3
+                       ORDER BY edge_cnt DESC
+                       LIMIT 10""",
+                ).fetchall()
+                suffixes = ["advanced techniques", "real world applications", "recent developments"]
+                for i, row in enumerate(strong):
+                    label = row["label"] or ""
+                    words = re.findall(r"[a-zA-Z0-9]{3,}", label)
+                    filtered = [w for w in words if w.lower() not in STOPWORDS]
+                    if filtered:
+                        base = " ".join(filtered[:2])
+                        phrase = f"{base} {suffixes[i % len(suffixes)]}"
+                        if _add(phrase):
+                            break
+            except Exception:
+                pass
+
+    finally:
+        if conn is not None:
+            conn.close()
+
+    # --- Create missions from discovered topics ---
+    created: list[dict[str, Any]] = []
+    for i, topic in enumerate(candidates[:max_new]):
+        objective = _MISSION_OBJECTIVES[i % len(_MISSION_OBJECTIVES)]
+        try:
+            mission = create_learning_mission(
+                root,
+                topic=topic,
+                objective=objective,
+            )
+            created.append(mission)
+            logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
+        except Exception as exc:
+            logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
+
+    return created

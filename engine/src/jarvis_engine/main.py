@@ -2469,6 +2469,24 @@ def _cmd_daemon_run_impl(
                     print(f"mission_cycle_error={exc}")
                 else:
                     print(f"mission_cycle_rc={mission_rc}")
+                # Auto-generate new missions when queue is empty (every 50 cycles)
+                if cycles % 50 == 0:
+                    try:
+                        from jarvis_engine.learning_missions import (
+                            auto_generate_missions,
+                            retry_failed_missions,
+                        )
+                        # First, retry any failed missions
+                        retried = retry_failed_missions(root)
+                        if retried:
+                            print(f"mission_retried={retried}")
+                        # Then auto-generate if still no pending
+                        generated = auto_generate_missions(root, max_new=3)
+                        if generated:
+                            topics = ", ".join(m.get("topic", "") for m in generated)
+                            print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"mission_autogen_error={exc}")
             if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
                 try:
                     sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
