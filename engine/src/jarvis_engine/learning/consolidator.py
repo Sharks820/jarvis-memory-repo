@@ -158,10 +158,10 @@ class MemoryConsolidator:
             result.new_facts_created += 1
 
         # Tier update pass: re-classify records by relevance (LEARN-06)
-        if not dry_run:
+        # Reuse already-fetched records to avoid a duplicate DB query
+        if not dry_run and records:
             try:
-                all_records = self._fetch_episodic_records(branch, limit=500)
-                tier_changes = self._update_tiers(all_records)
+                tier_changes = self._update_tiers(records)
                 if tier_changes > 0:
                     logger.info("Updated %d record tiers based on relevance scoring", tier_changes)
             except Exception as exc:
@@ -172,6 +172,9 @@ class MemoryConsolidator:
 
     def _update_tiers(self, records: list[dict]) -> int:
         """Update record tiers based on relevance scoring.
+
+        Uses engine.update_tiers_batch() for proper write locking and
+        atomic commit semantics.
 
         Returns the number of records whose tier was changed.
         """
@@ -184,7 +187,7 @@ class MemoryConsolidator:
             return 0
 
         now = datetime.now(UTC)
-        changed = 0
+        batch: list[tuple[str, str]] = []  # (record_id, new_tier)
 
         for record in records:
             access_count = record.get("access_count", 0) or 0
@@ -227,22 +230,12 @@ class MemoryConsolidator:
             current_tier = record.get("tier", "warm")
 
             if new_tier != current_tier:
-                try:
-                    self._engine._db.execute(
-                        "UPDATE records SET tier = ? WHERE record_id = ?",
-                        (new_tier, record_id),
-                    )
-                    changed += 1
-                except Exception as exc:
-                    logger.warning("Failed to update tier for %s: %s", record_id, exc)
+                batch.append((record_id, new_tier))
 
-        if changed > 0:
-            try:
-                self._engine._db.commit()
-            except Exception as exc:
-                logger.warning("Failed to commit tier updates: %s", exc)
+        if batch:
+            self._engine.update_tiers_batch(batch)
 
-        return changed
+        return len(batch)
 
     # ------------------------------------------------------------------
     # Clustering

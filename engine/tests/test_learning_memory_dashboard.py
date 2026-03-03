@@ -97,8 +97,7 @@ class TestConsolidatorTierUpdate:
     def test_update_tiers_hot(self):
         """Record with high access + recent access -> hot tier."""
         mock_engine = MagicMock()
-        mock_engine._db.execute.return_value = None
-        mock_engine._db.commit.return_value = None
+        mock_engine.update_tiers_batch.return_value = None
 
         consolidator = self._make_consolidator(mock_engine)
 
@@ -115,17 +114,16 @@ class TestConsolidatorTierUpdate:
 
         changed = consolidator._update_tiers(records)
         assert changed == 1
-        # Verify UPDATE was called with "hot"
-        call_args = mock_engine._db.execute.call_args_list
-        update_call = [c for c in call_args if "UPDATE" in str(c)]
-        assert len(update_call) == 1
-        assert update_call[0][0][1][0] == "hot"
+        # Verify update_tiers_batch was called with ("rec_hot", "hot")
+        mock_engine.update_tiers_batch.assert_called_once()
+        batch = mock_engine.update_tiers_batch.call_args[0][0]
+        assert len(batch) == 1
+        assert batch[0] == ("rec_hot", "hot")
 
     def test_update_tiers_archive(self):
         """Record with 0 access + very old -> archive tier."""
         mock_engine = MagicMock()
-        mock_engine._db.execute.return_value = None
-        mock_engine._db.commit.return_value = None
+        mock_engine.update_tiers_batch.return_value = None
 
         consolidator = self._make_consolidator(mock_engine)
 
@@ -142,10 +140,9 @@ class TestConsolidatorTierUpdate:
 
         changed = consolidator._update_tiers(records)
         assert changed == 1
-        call_args = mock_engine._db.execute.call_args_list
-        update_call = [c for c in call_args if "UPDATE" in str(c)]
-        assert len(update_call) == 1
-        assert update_call[0][0][1][0] == "archive"
+        batch = mock_engine.update_tiers_batch.call_args[0][0]
+        assert len(batch) == 1
+        assert batch[0] == ("rec_archive", "archive")
 
     def test_update_tiers_no_change(self):
         """Record whose tier already matches relevance -> no UPDATE."""
@@ -166,9 +163,8 @@ class TestConsolidatorTierUpdate:
 
         changed = consolidator._update_tiers(records)
         assert changed == 0
-        # No UPDATE should have been executed
-        for call in mock_engine._db.execute.call_args_list:
-            assert "UPDATE" not in str(call)
+        # update_tiers_batch should NOT have been called (empty batch)
+        mock_engine.update_tiers_batch.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
