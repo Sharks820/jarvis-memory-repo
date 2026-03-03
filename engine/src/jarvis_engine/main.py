@@ -3085,7 +3085,8 @@ def _web_augmented_llm_conversation(
                     assistant_response=result.text.strip()[:1000],
                     task_id=f"conv-web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
                 ))
-            except Exception:
+            except Exception as exc_learn:
+                logger.warning("Enriched learning failed for web conversation: %s", exc_learn)
                 try:
                     _auto_ingest_memory(
                         source="conversation",
@@ -3097,7 +3098,7 @@ def _web_augmented_llm_conversation(
                         ),
                     )
                 except Exception as exc:
-                    logger.debug("Auto-ingest failed for web conversation: %s", exc)
+                    logger.warning("Auto-ingest fallback also failed for web conversation: %s", exc)
             if speak:
                 cmd_voice_say(
                     text=result.text.strip(),
@@ -3951,7 +3952,8 @@ def _cmd_voice_run_impl(
                         assistant_response=result.text.strip()[:1000],
                         task_id=f"conv-{_route}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
                     ))
-                except Exception:
+                except Exception as exc_learn:
+                    logger.warning("Enriched learning failed for conversation: %s", exc_learn)
                     # Fallback to legacy JSONL ingest
                     try:
                         _auto_ingest_memory(
@@ -3964,7 +3966,7 @@ def _cmd_voice_run_impl(
                             ),
                         )
                     except Exception as exc:
-                        logger.debug("Legacy JSONL auto-ingest fallback failed for conversation: %s", exc)
+                        logger.warning("Legacy JSONL auto-ingest fallback also failed: %s", exc)
                 if speak:
                     cmd_voice_say(
                         text=result.text.strip(),
@@ -4009,15 +4011,18 @@ def _cmd_voice_run_impl(
         except Exception as exc:
             logger.debug("Auto-ingest of voice command memory failed: %s", exc)
         # Enriched learning for ALL successful commands (not just LLM path)
-        if _last_response and intent != "llm_conversation":
+        if intent != "llm_conversation":
+            # Use captured response, or synthesize one from intent for commands
+            # that print structured output directly (brain_context, mission_status, etc.)
+            learn_response = _last_response or f"[{intent}] Command executed successfully."
             try:
                 bus.dispatch(LearnInteractionCommand(
                     user_message=text[:1000],
-                    assistant_response=_last_response[:1000],
+                    assistant_response=learn_response[:1000],
                     task_id=f"learn-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
                 ))
             except Exception as exc:
-                logger.debug("Enriched learning for %s failed: %s", intent, exc)
+                logger.warning("Enriched learning for %s failed: %s", intent, exc)
     if speak and intent != "llm_conversation":
         persona = load_persona_config(repo_root())
         persona_line = compose_persona_reply(

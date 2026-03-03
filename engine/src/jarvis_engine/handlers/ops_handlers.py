@@ -200,13 +200,16 @@ class MissionStatusHandler:
 
 
 class MissionRunHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, enriched_pipeline: Any = None) -> None:
         self._root = root
+        self._enriched_pipeline = enriched_pipeline
         self._store: Any = None
         self._pipeline: Any = None
 
     def _get_ingest_pipeline(self) -> Any:
-        """Lazily create and cache MemoryStore + IngestionPipeline for auto-ingest."""
+        """Return enriched pipeline if available, else lazily create legacy pipeline."""
+        if self._enriched_pipeline is not None:
+            return self._enriched_pipeline
         if self._pipeline is None:
             from jarvis_engine.ingest import IngestionPipeline
             from jarvis_engine.memory_store import MemoryStore
@@ -228,30 +231,38 @@ class MissionRunHandler:
         except ValueError:
             return MissionRunResult(return_code=2)
 
-        ingested_id = ""
+        ingested_ids: list[str] = []
         verified = report.get("verified_findings", [])
         if cmd.auto_ingest and isinstance(verified, list) and verified:
-            try:
-                lines = []
-                for finding in verified[:20]:
-                    if not isinstance(finding, dict):
-                        continue
-                    statement = str(finding.get("statement", "")).strip()
-                    domains = ",".join(str(x) for x in finding.get("source_domains", []))
-                    if statement:
-                        lines.append(f"- {statement} [sources:{domains}]")
-                content = "Verified learning mission findings:\n" + "\n".join(lines)
-                pipeline = self._get_ingest_pipeline()
-                rec = pipeline.ingest(
-                    source="task_outcome",
-                    kind="semantic",
-                    task_id=f"mission-{report.get('mission_id', '')}",
-                    content=content[:18000],
-                )
-                ingested_id = rec.record_id
-            except Exception as exc:
-                logger.warning("Auto-ingest failed for mission: %s", exc)
-        return MissionRunResult(report=report, return_code=0, ingested_record_id=ingested_id)
+            pipeline = self._get_ingest_pipeline()
+            # Ingest each finding individually for better KG fact extraction
+            for finding in verified[:20]:
+                if not isinstance(finding, dict):
+                    continue
+                statement = str(finding.get("statement", "")).strip()
+                domains = ",".join(str(x) for x in finding.get("source_domains", []))
+                if not statement:
+                    continue
+                content = f"{statement} [sources: {domains}]"
+                try:
+                    result = pipeline.ingest(
+                        source="mission",
+                        kind="semantic",
+                        task_id=f"mission-{report.get('mission_id', '')}",
+                        content=content[:4000],
+                        tags=["mission", "verified"],
+                    )
+                    # EnrichedIngestPipeline returns list of IDs; legacy returns record obj
+                    if isinstance(result, list):
+                        ingested_ids.extend(result)
+                    elif hasattr(result, "record_id"):
+                        ingested_ids.append(result.record_id)
+                except Exception as exc:
+                    logger.warning("Mission auto-ingest failed for finding: %s", exc)
+        return MissionRunResult(
+            report=report, return_code=0,
+            ingested_record_id=ingested_ids[0] if ingested_ids else "",
+        )
 
 
 class GrowthEvalHandler:
