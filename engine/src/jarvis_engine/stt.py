@@ -649,7 +649,11 @@ def record_from_microphone(
     silence_duration: float = 2.0,
     drain_seconds: float = 0.0,
 ) -> np.ndarray:
-    """Record audio from the default microphone with energy-based VAD.
+    """Record audio from the default microphone with Silero VAD.
+
+    Uses Silero VAD (ML-based) for speech detection by default.  Falls
+    back to RMS energy-based VAD when ``torch`` / ``silero-vad`` are not
+    installed.
 
     Recording stops early when silence is detected after speech, avoiding
     the need to wait for the full *max_duration_seconds*.
@@ -661,7 +665,8 @@ def record_from_microphone(
     max_duration_seconds:
         Maximum recording duration in seconds (default 30).
     silence_threshold:
-        RMS energy threshold below which audio is considered silence (default 0.01).
+        RMS energy threshold below which audio is considered silence
+        (default 0.01).  Only used when Silero VAD is unavailable.
     silence_duration:
         Seconds of continuous silence after speech before stopping (default 2.0).
     drain_seconds:
@@ -680,6 +685,24 @@ def record_from_microphone(
             "sounddevice is not installed. "
             "Install with: pip install sounddevice"
         ) from exc
+
+    # Lazy-import VAD detector (graceful degradation if not installed)
+    _vad_detector = None
+    _use_silero = False
+    try:
+        from jarvis_engine.stt_vad import get_vad_detector
+        _vad_detector = get_vad_detector(sampling_rate=sample_rate)
+        _use_silero = _vad_detector.available
+    except Exception:
+        pass
+
+    if _use_silero:
+        logger.info("Using Silero VAD for speech detection")
+    else:
+        logger.warning(
+            "Silero VAD not available, falling back to energy-based VAD"
+        )
+
     try:
         logger.info(
             "Recording from microphone for up to %.1f seconds at %d Hz...",
@@ -690,7 +713,13 @@ def record_from_microphone(
         frames: list[np.ndarray] = []
         speech_detected = False
         silence_frames = 0
-        chunk_duration = 0.1  # 100ms chunks
+
+        # Silero VAD works best with 32ms (512-sample) chunks at 16 kHz.
+        # RMS fallback uses 100ms chunks for backward compatibility.
+        if _use_silero:
+            chunk_duration = 0.032  # 32ms for Silero VAD
+        else:
+            chunk_duration = 0.1   # 100ms for RMS fallback
         samples_per_chunk = int(sample_rate * chunk_duration)
         max_silence_chunks = int(silence_duration / chunk_duration)
         min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
@@ -707,8 +736,17 @@ def record_from_microphone(
                 chunk, _ = stream.read(samples_per_chunk)
                 frames.append(chunk.copy())
 
-                rms = float(np.sqrt(np.mean(chunk ** 2)))
-                if rms > silence_threshold:
+                # --- Speech detection ---
+                if _use_silero and _vad_detector is not None:
+                    # Silero VAD path: process mono channel
+                    mono = chunk[:, 0] if chunk.ndim > 1 else chunk
+                    is_speech = _vad_detector.process_chunk(mono)
+                else:
+                    # RMS energy fallback
+                    rms = float(np.sqrt(np.mean(chunk ** 2)))
+                    is_speech = rms > silence_threshold
+
+                if is_speech:
                     speech_detected = True
                     silence_frames = 0
                 elif speech_detected:
@@ -720,6 +758,10 @@ def record_from_microphone(
                             (i + 1) * chunk_duration,
                         )
                         break
+
+        # Reset VAD state for next recording session (stateful model)
+        if _use_silero and _vad_detector is not None:
+            _vad_detector.reset()
 
     except Exception as exc:
         # PortAudioError or similar -- microphone not available

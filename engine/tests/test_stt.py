@@ -2057,3 +2057,229 @@ def test_transcribe_smart_skips_preprocess_for_file_path() -> None:
         MockSTT.return_value.transcribe_audio.return_value = mock_result
         result = transcribe_smart("/tmp/audio.wav")
         mock_preprocess.assert_not_called()
+
+
+# ===========================================================================
+# Silero VAD integration in record_from_microphone
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# record_from_microphone uses Silero VAD when available
+# ---------------------------------------------------------------------------
+
+def test_record_from_microphone_with_silero_vad() -> None:
+    """record_from_microphone uses Silero VAD for speech detection."""
+    from jarvis_engine import stt as stt_mod
+
+    # Create a mock VAD detector
+    mock_vad = MagicMock()
+    mock_vad.available = True
+    # First 3 chunks: speech detected, next 200 chunks: silence (trigger stop)
+    speech_calls = [True, True, True] + [False] * 200
+    mock_vad.process_chunk.side_effect = speech_calls
+
+    # Mock sounddevice InputStream
+    mock_stream = MagicMock()
+    # Each read returns a 512-sample float32 chunk (32ms at 16kHz)
+    fake_chunk = np.random.randn(512, 1).astype(np.float32)
+    mock_stream.read.return_value = (fake_chunk, None)
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt.get_vad_detector", return_value=mock_vad, create=True), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+        result = stt_mod.record_from_microphone()
+
+    assert len(result) > 0
+    # VAD should have been called multiple times
+    assert mock_vad.process_chunk.call_count > 3
+    # VAD should be reset after recording
+    mock_vad.reset.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# record_from_microphone falls back to RMS when Silero unavailable
+# ---------------------------------------------------------------------------
+
+def test_record_from_microphone_rms_fallback() -> None:
+    """record_from_microphone uses RMS energy when Silero VAD unavailable."""
+    from jarvis_engine import stt as stt_mod
+
+    # Create a mock VAD detector that reports not available
+    mock_vad = MagicMock()
+    mock_vad.available = False
+
+    # Mock sounddevice InputStream
+    mock_stream = MagicMock()
+    # Create chunks: some with energy (speech), then silence
+    speech_chunk = np.full((1600, 1), 0.5, dtype=np.float32)  # High energy
+    silence_chunk = np.full((1600, 1), 0.0001, dtype=np.float32)  # Low energy
+
+    # 3 speech chunks then many silence chunks
+    chunks = [speech_chunk] * 3 + [silence_chunk] * 100
+    read_idx = [0]
+
+    def mock_read(n):
+        idx = read_idx[0]
+        read_idx[0] += 1
+        if idx < len(chunks):
+            return (chunks[idx], None)
+        return (silence_chunk, None)
+
+    mock_stream.read.side_effect = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+        result = stt_mod.record_from_microphone()
+
+    assert len(result) > 0
+    # process_chunk should NOT be called since Silero is unavailable
+    mock_vad.process_chunk.assert_not_called()
+    # reset should NOT be called since Silero was not used
+    mock_vad.reset.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# record_from_microphone uses 32ms chunks when Silero is active
+# ---------------------------------------------------------------------------
+
+def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
+    """When Silero VAD is active, chunk size is 512 samples (32ms at 16kHz)."""
+    from jarvis_engine import stt as stt_mod
+
+    mock_vad = MagicMock()
+    mock_vad.available = True
+    # Only speech for first chunk, then enough silence to stop
+    mock_vad.process_chunk.side_effect = [True] + [False] * 2000
+
+    mock_stream = MagicMock()
+    fake_chunk = np.zeros((512, 1), dtype=np.float32)
+    mock_stream.read.return_value = (fake_chunk, None)
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+        stt_mod.record_from_microphone()
+
+    # stream.read should be called with 512 samples (32ms at 16kHz)
+    first_read_arg = mock_stream.read.call_args_list[0][0][0]
+    assert first_read_arg == 512
+
+
+# ---------------------------------------------------------------------------
+# record_from_microphone RMS fallback uses 100ms chunks
+# ---------------------------------------------------------------------------
+
+def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
+    """When RMS fallback is active, chunk size is 1600 samples (100ms at 16kHz)."""
+    from jarvis_engine import stt as stt_mod
+
+    mock_vad = MagicMock()
+    mock_vad.available = False
+
+    mock_stream = MagicMock()
+    # Create speech + silence pattern
+    speech_chunk = np.full((1600, 1), 0.5, dtype=np.float32)
+    silence_chunk = np.zeros((1600, 1), dtype=np.float32)
+    chunks = [speech_chunk] * 3 + [silence_chunk] * 100
+    read_idx = [0]
+
+    def mock_read(n):
+        idx = read_idx[0]
+        read_idx[0] += 1
+        if idx < len(chunks):
+            return (chunks[idx], None)
+        return (silence_chunk, None)
+
+    mock_stream.read.side_effect = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+        stt_mod.record_from_microphone()
+
+    # stream.read should be called with 1600 samples (100ms at 16kHz)
+    first_read_arg = mock_stream.read.call_args_list[0][0][0]
+    assert first_read_arg == 1600
+
+
+# ---------------------------------------------------------------------------
+# record_from_microphone resets VAD state after recording
+# ---------------------------------------------------------------------------
+
+def test_record_from_microphone_resets_vad_state() -> None:
+    """VAD state is reset after recording completes (stateful model)."""
+    from jarvis_engine import stt as stt_mod
+
+    mock_vad = MagicMock()
+    mock_vad.available = True
+    # All speech, hit max duration quickly
+    mock_vad.process_chunk.return_value = True
+
+    mock_stream = MagicMock()
+    fake_chunk = np.zeros((512, 1), dtype=np.float32)
+    mock_stream.read.return_value = (fake_chunk, None)
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
+        stt_mod.record_from_microphone(max_duration_seconds=0.1)
+
+    mock_vad.reset.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# record_from_microphone graceful when stt_vad import fails entirely
+# ---------------------------------------------------------------------------
+
+def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
+    """If stt_vad module fails to import, falls back to RMS."""
+    from jarvis_engine import stt as stt_mod
+
+    mock_stream = MagicMock()
+    speech_chunk = np.full((1600, 1), 0.5, dtype=np.float32)
+    silence_chunk = np.zeros((1600, 1), dtype=np.float32)
+    chunks = [speech_chunk] * 3 + [silence_chunk] * 100
+    read_idx = [0]
+
+    def mock_read(n):
+        idx = read_idx[0]
+        read_idx[0] += 1
+        if idx < len(chunks):
+            return (chunks[idx], None)
+        return (silence_chunk, None)
+
+    mock_stream.read.side_effect = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock()
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", side_effect=ImportError("no module")):
+        result = stt_mod.record_from_microphone()
+
+    # Should still produce audio (fell back to RMS)
+    assert len(result) > 0
