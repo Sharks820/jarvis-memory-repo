@@ -2,7 +2,7 @@
 
 Covers:
 1. _extract_facts in EnrichedIngestPipeline now calls create_cross_branch_edges
-2. _build_smart_context returns a 3-tuple (memory_lines, fact_lines, cross_branch_lines)
+2. _build_smart_context returns a 4-tuple (memory_lines, fact_lines, cross_branch_lines, preference_lines)
 3. Cross-branch connections appear in context when available
 4. Graceful degradation when cross-branch operations fail
 """
@@ -127,15 +127,15 @@ class TestExtractFactsCrossBranch:
 
 
 # ---------------------------------------------------------------------------
-# Task 2 tests: _build_smart_context returns 3-tuple with cross-branch lines
+# Task 2 tests: _build_smart_context returns 4-tuple with cross-branch + preference lines
 # ---------------------------------------------------------------------------
 
 
 class TestBuildSmartContextCrossBranch:
-    """Verify _build_smart_context returns a 3-tuple and includes cross-branch lines."""
+    """Verify _build_smart_context returns a 4-tuple and includes cross-branch lines."""
 
-    def test_returns_three_tuple(self):
-        """_build_smart_context always returns (memory_lines, fact_lines, cross_branch_lines)."""
+    def test_returns_four_tuple(self):
+        """_build_smart_context returns (memory, facts, cross_branch, preferences)."""
         import jarvis_engine.main as main_mod
 
         bus = MagicMock(spec=[])  # No _engine attribute
@@ -146,11 +146,12 @@ class TestBuildSmartContextCrossBranch:
             result = main_mod._build_smart_context(bus, "test query")
 
         assert isinstance(result, tuple)
-        assert len(result) == 3
-        memory_lines, fact_lines, cross_branch_lines = result
+        assert len(result) == 4
+        memory_lines, fact_lines, cross_branch_lines, preference_lines = result
         assert isinstance(memory_lines, list)
         assert isinstance(fact_lines, list)
         assert isinstance(cross_branch_lines, list)
+        assert isinstance(preference_lines, list)
 
     def test_cross_branch_lines_populated_when_connections_found(self):
         """Cross-branch connections are formatted and included when available."""
@@ -181,7 +182,7 @@ class TestBuildSmartContextCrossBranch:
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
              patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
              patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=cb_result):
-            _, _, cross_branch_lines = main_mod._build_smart_context(bus, "dad medication")
+            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "dad medication")
 
         assert len(cross_branch_lines) == 1
         line = cross_branch_lines[0]
@@ -210,7 +211,7 @@ class TestBuildSmartContextCrossBranch:
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
              patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
              patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=cb_result):
-            _, _, cross_branch_lines = main_mod._build_smart_context(bus, "random query")
+            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "random query")
 
         assert cross_branch_lines == []
 
@@ -232,7 +233,7 @@ class TestBuildSmartContextCrossBranch:
                  "jarvis_engine.learning.cross_branch.cross_branch_query",
                  side_effect=RuntimeError("cross-branch DB error"),
              ):
-            _, _, cross_branch_lines = main_mod._build_smart_context(bus, "query")
+            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "query")
 
         assert cross_branch_lines == []
 
@@ -248,7 +249,7 @@ class TestBuildSmartContextCrossBranch:
         ), patch(
             "jarvis_engine.learning.cross_branch.cross_branch_query"
         ) as mock_cb_query:
-            _, _, cross_branch_lines = main_mod._build_smart_context(bus, "test")
+            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "test")
 
         mock_cb_query.assert_not_called()
         assert cross_branch_lines == []
@@ -273,7 +274,7 @@ class TestBuildSmartContextCrossBranch:
         ), patch(
             "jarvis_engine.learning.cross_branch.cross_branch_query"
         ) as mock_cb_query:
-            _, _, cross_branch_lines = main_mod._build_smart_context(bus, "test")
+            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "test")
 
         mock_cb_query.assert_not_called()
         assert cross_branch_lines == []

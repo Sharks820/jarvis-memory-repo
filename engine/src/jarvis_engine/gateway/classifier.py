@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     import numpy as np
 
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+
 
 class IntentClassifier:
     """Classify user queries into routing categories using embedding similarity."""
@@ -185,13 +187,19 @@ class IntentClassifier:
 
     CONFIDENCE_THRESHOLD: float = 0.35
 
-    def __init__(self, embed_service: object) -> None:
+    def __init__(
+        self,
+        embed_service: object,
+        feedback_tracker: "ResponseFeedbackTracker | None" = None,
+    ) -> None:
         """Initialize with an EmbeddingService instance.
 
         Args:
             embed_service: Must implement embed(text, prefix) and embed_query(query).
+            feedback_tracker: Optional feedback tracker for route quality penalty (LEARN-02).
         """
         self._embed = embed_service
+        self._feedback_tracker = feedback_tracker
         self._privacy_re = re.compile(
             r"\b(?:" + "|".join(re.escape(kw) for kw in self.PRIVACY_KEYWORDS) + r")\b"
         )
@@ -352,6 +360,15 @@ class IntentClassifier:
 
         for route_name, centroid in self._centroids.items():
             sim = self._cosine_sim(query_vec, centroid, query_norm)
+            # Apply route quality penalty (LEARN-02): penalize routes with poor feedback
+            if self._feedback_tracker is not None:
+                try:
+                    quality = self._feedback_tracker.get_route_quality(route_name)
+                    if quality["total"] >= 5:  # Minimum sample threshold
+                        # Scale similarity by 0.5-1.0 based on satisfaction rate
+                        sim *= (0.5 + 0.5 * quality["satisfaction_rate"])
+                except Exception:
+                    pass  # Graceful degradation -- no penalty on error
             if sim > best_sim:
                 best_sim = sim
                 best_route = route_name

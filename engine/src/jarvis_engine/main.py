@@ -578,12 +578,12 @@ def _build_smart_context(
     *,
     max_memory_items: int = 8,
     max_fact_items: int = 6,
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str], list[str]]:
     """Build context using best available retrieval method.
 
-    Returns (memory_lines, fact_lines, cross_branch_lines) for system prompt
-    injection.  Uses hybrid search (FTS5 + embeddings + RRF) when
-    MemoryEngine is available, falls back to legacy token-overlap otherwise.
+    Returns (memory_lines, fact_lines, cross_branch_lines, preference_lines)
+    for system prompt injection.  Uses hybrid search (FTS5 + embeddings + RRF)
+    when MemoryEngine is available, falls back to legacy token-overlap otherwise.
     """
     memory_lines: list[str] = []
     fact_lines: list[str] = []
@@ -677,7 +677,19 @@ def _build_smart_context(
         except Exception as exc:
             logger.debug("Cross-branch query failed: %s", exc)
 
-    return memory_lines, fact_lines, cross_branch_lines
+    # --- User preferences: personalize responses (LEARN-01) ---
+    preference_lines: list[str] = []
+    pref_tracker = getattr(bus, "_pref_tracker", None)
+    if pref_tracker is not None:
+        try:
+            prefs = pref_tracker.get_preferences()
+            if prefs:
+                pref_str = ", ".join(f"{k}: {v}" for k, v in prefs.items())
+                preference_lines.append(pref_str)
+        except Exception as exc:
+            logger.debug("Preference retrieval failed: %s", exc)
+
+    return memory_lines, fact_lines, cross_branch_lines, preference_lines
 
 
 def _auto_ingest_dedupe_path() -> Path:
@@ -2048,6 +2060,8 @@ def cmd_learn(user_message: str, assistant_response: str) -> int:
     result = _get_bus().dispatch(LearnInteractionCommand(
         user_message=user_message,
         assistant_response=assistant_response,
+        route="manual",
+        topic=user_message[:100],
     ))
     print(f"records_created={result.records_created}")
     print(f"message={result.message}")
@@ -2619,6 +2633,22 @@ def _cmd_daemon_run_impl(
                         print("kg_regression_skipped=kg_not_initialized")
                 except Exception as exc:  # noqa: BLE001
                     print(f"kg_regression_error={exc}")
+            # --- Usage pattern prediction (LEARN-03, every 10 cycles) ---
+            if cycles % 10 == 0:
+                try:
+                    bus = _get_daemon_bus()
+                    usage_tracker = getattr(bus, "_usage_tracker", None)
+                    if usage_tracker is not None:
+                        from datetime import datetime as _dt
+                        _now = _dt.now(UTC)
+                        prediction = usage_tracker.predict_context(_now.hour, _now.weekday())
+                        if prediction["interaction_count"] > 0:
+                            print(f"usage_predicted_route={prediction['likely_route']}")
+                            if prediction["common_topics"]:
+                                print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
+                            print(f"usage_interaction_count={prediction['interaction_count']}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"usage_prediction_error={exc}")
             # --- Memory consolidation (every 50 cycles) ---
             if cycles % 50 == 0:
                 try:
@@ -2962,7 +2992,7 @@ def _web_augmented_llm_conversation(
     bus = _get_bus()
 
     # --- Smart context: hybrid search + KG facts + cross-branch ---
-    memory_lines, fact_lines, cross_branch_lines = _build_smart_context(bus, text)
+    memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
 
     # --- Persona + structured context ---
     persona = load_persona_config(repo_root())
@@ -2996,6 +3026,11 @@ def _web_augmented_llm_conversation(
         system_parts.append(
             "Cross-domain connections:\n"
             + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
+        )
+    if preference_lines:
+        system_parts.append(
+            "User preferences (adjust your response style accordingly): "
+            + "; ".join(preference_lines)
         )
 
     # --- Intent classification + model routing ---
@@ -3102,6 +3137,8 @@ def _web_augmented_llm_conversation(
                     user_message=text[:1000],
                     assistant_response=result.text.strip()[:1000],
                     task_id=f"conv-web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                    route=_route,
+                    topic=text[:100],
                 ))
             except Exception as exc_learn:
                 logger.warning("Enriched learning failed for web conversation: %s", exc_learn)
@@ -3797,7 +3834,7 @@ def _cmd_voice_run_impl(
         bus = _get_bus()
 
         # --- Smart context: hybrid search + KG facts + cross-branch ---
-        memory_lines, fact_lines, cross_branch_lines = _build_smart_context(bus, text)
+        memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
 
         # --- Persona + structured context ---
         persona = load_persona_config(repo_root())
@@ -3831,6 +3868,11 @@ def _cmd_voice_run_impl(
             system_parts.append(
                 "Cross-domain connections:\n"
                 + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
+            )
+        if preference_lines:
+            system_parts.append(
+                "User preferences (adjust your response style accordingly): "
+                + "; ".join(preference_lines)
             )
         # Defer final instructions until after web search (see below)
 
@@ -3969,6 +4011,8 @@ def _cmd_voice_run_impl(
                         user_message=text[:1000],
                         assistant_response=result.text.strip()[:1000],
                         task_id=f"conv-{_route}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        route=_route,
+                        topic=text[:100],
                     ))
                 except Exception as exc_learn:
                     logger.warning("Enriched learning failed for conversation: %s", exc_learn)
@@ -4038,6 +4082,8 @@ def _cmd_voice_run_impl(
                     user_message=text[:1000],
                     assistant_response=learn_response[:1000],
                     task_id=f"learn-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                    route=intent,
+                    topic=text[:100],
                 ))
             except Exception as exc:
                 logger.warning("Enriched learning for %s failed: %s", intent, exc)

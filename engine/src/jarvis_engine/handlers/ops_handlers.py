@@ -337,11 +337,32 @@ class GrowthAuditHandler:
 
 
 class IntelligenceDashboardHandler:
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        pref_tracker: Any = None,
+        feedback_tracker: Any = None,
+        usage_tracker: Any = None,
+        kg: Any = None,
+        engine: Any = None,
+    ) -> None:
         self._root = root
+        self._pref_tracker = pref_tracker
+        self._feedback_tracker = feedback_tracker
+        self._usage_tracker = usage_tracker
+        self._kg = kg
+        self._engine = engine
 
     def handle(self, cmd: IntelligenceDashboardCommand) -> IntelligenceDashboardResult:
         from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 
-        dashboard = build_intelligence_dashboard(self._root, last_runs=cmd.last_runs)
+        dashboard = build_intelligence_dashboard(
+            self._root,
+            last_runs=cmd.last_runs,
+            pref_tracker=self._pref_tracker,
+            feedback_tracker=self._feedback_tracker,
+            usage_tracker=self._usage_tracker,
+            kg=self._kg,
+            engine=self._engine,
+        )
         return IntelligenceDashboardResult(dashboard=dashboard)
