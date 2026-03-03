@@ -990,6 +990,9 @@ def cmd_status() -> int:
     else:
         for event in result.events:
             print(f"- [{event.ts}] {event.event_type}: {event.message}")
+    # Structured response for UI consumption (UI-05)
+    print(f"response=Engine status: {result.profile} profile, {result.operation_mode} mode, "
+          f"runtime={result.primary_runtime}")
     return 0
 
 
