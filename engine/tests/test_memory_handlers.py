@@ -45,7 +45,8 @@ class TestBrainStatusHandler:
     def test_with_engine_returns_sqlite_status(self, tmp_path: Path) -> None:
         engine = MagicMock()
         engine.count_records.return_value = 42
-        handler = BrainStatusHandler(root=tmp_path, engine=engine)
+        engine._db.execute.return_value.fetchall.return_value = [("general",)]
+        handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
         result = handler.handle(BrainStatusCommand())
         assert result.status["total_records"] == 42
         assert result.status["engine"] == "sqlite"
@@ -54,12 +55,13 @@ class TestBrainStatusHandler:
     def test_with_engine_zero_records(self, tmp_path: Path) -> None:
         engine = MagicMock()
         engine.count_records.return_value = 0
-        handler = BrainStatusHandler(root=tmp_path, engine=engine)
+        engine._db.execute.return_value.fetchall.return_value = []
+        handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
         result = handler.handle(BrainStatusCommand())
         assert result.status["total_records"] == 0
         assert result.status["branch_count"] == 0
         assert result.status["fact_count"] == 0
-        assert result.status["regression"]["status"] == "pass"
+        assert result.status["regression"]["status"] == "not_available"
 
     @patch("jarvis_engine.handlers.memory_handlers.brain_status", create=True)
     def test_fallback_uses_brain_status(self, mock_bs: MagicMock, tmp_path: Path) -> None:
@@ -88,7 +90,8 @@ class TestBrainStatusHandler:
     def test_result_has_standard_keys(self, tmp_path: Path) -> None:
         engine = MagicMock()
         engine.count_records.return_value = 5
-        handler = BrainStatusHandler(root=tmp_path, engine=engine)
+        engine._db.execute.return_value.fetchall.return_value = []
+        handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
         result = handler.handle(BrainStatusCommand())
         for key in ("updated_utc", "branch_count", "fact_count", "total_records", "regression", "branches", "engine"):
             assert key in result.status, f"Missing key: {key}"
