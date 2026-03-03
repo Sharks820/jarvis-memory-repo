@@ -1,7 +1,8 @@
-"""Speech-to-text module with Groq Whisper (cloud), Parakeet TDT (local), and faster-whisper (local) backends.
+"""Speech-to-text module with multiple backends.
 
-Priority: Groq Whisper Turbo (fast, accurate, free tier) -> Parakeet TDT 0.6B (local, low WER) -> faster-whisper (offline fallback).
-Backend selected via JARVIS_STT_BACKEND env var: "groq", "local", or "auto" (default).
+Backends: Groq Whisper Turbo (cloud), Deepgram Nova-3 (cloud), Parakeet TDT (local),
+faster-whisper (local).
+Backend selected via JARVIS_STT_BACKEND env var: "groq", "deepgram", "local", or "auto" (default).
 """
 
 from __future__ import annotations
@@ -54,6 +55,53 @@ JARVIS_DEFAULT_PROMPT = (
     "Groq, Anthropic, SQLite, Kotlin, Jetpack Compose, "
     "brain status, daily brief, self heal, daemon, safe mode."
 )
+
+
+# ---------------------------------------------------------------------------
+# Keyterm loading for Deepgram prompting
+# ---------------------------------------------------------------------------
+
+_keyterms_cache: list[str] | None = None
+
+
+def _load_keyterms() -> list[str]:
+    """Load keyterms from personal_vocab.txt for Deepgram prompting.
+
+    Each line in personal_vocab.txt may contain annotations in
+    parentheses (e.g. ``"Conner (not Connor, Conor)"``).  Only the
+    primary term before the parenthetical is extracted for use as a
+    Deepgram keyword.
+
+    Keyterms are cached after the first read so the file is only
+    opened once per process lifetime.
+    """
+    global _keyterms_cache
+    if _keyterms_cache is not None:
+        return _keyterms_cache
+    vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
+    if not vocab_path.exists():
+        _keyterms_cache = []
+        return _keyterms_cache
+    try:
+        lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
+        terms: list[str] = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Strip parenthetical annotations: "Conner (not Connor)" -> "Conner"
+            paren_idx = line.find("(")
+            if paren_idx > 0:
+                term = line[:paren_idx].strip()
+            else:
+                term = line
+            if term:
+                terms.append(term)
+        _keyterms_cache = terms
+        return _keyterms_cache
+    except OSError:
+        _keyterms_cache = []
+        return _keyterms_cache
 
 
 def _log_stt_metric(
@@ -510,6 +558,141 @@ def _try_parakeet(
 
     except Exception as exc:
         logger.warning("Parakeet STT attempt failed: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Deepgram Nova-3 STT (cloud, keyterm prompting)
+# ---------------------------------------------------------------------------
+
+def _try_deepgram(
+    audio: np.ndarray | str,
+    *,
+    language: str,
+    prompt: str = "",
+    keyterms: list[str] | None = None,
+) -> TranscriptionResult | None:
+    """Attempt Deepgram Nova-3 transcription with keyterm prompting.
+
+    Returns *None* immediately if ``DEEPGRAM_API_KEY`` is not set or
+    if the request fails for any reason, so the caller can fall back
+    to the next backend.
+
+    Parameters
+    ----------
+    audio:
+        Either a mono float32 numpy array (16 kHz) or a path to an audio file.
+    language:
+        Language code hint (e.g. ``"en"``).
+    prompt:
+        Unused for Deepgram (kept for API compatibility with other backends).
+    keyterms:
+        Explicit keyterm list.  If *None*, auto-loaded from
+        ``personal_vocab.txt`` via :func:`_load_keyterms`.
+    """
+    api_key = os.environ.get("DEEPGRAM_API_KEY", "")
+    if not api_key:
+        return None
+
+    try:
+        import httpx
+    except ImportError:
+        logger.warning("httpx not installed; Deepgram backend unavailable")
+        return None
+
+    try:
+        t0 = time.monotonic()
+
+        # Prepare audio bytes
+        if isinstance(audio, str):
+            with open(audio, "rb") as f:
+                audio_bytes = f.read()
+            content_type = "audio/wav"
+        else:
+            audio_bytes = _numpy_to_wav_bytes(audio)
+            content_type = "audio/wav"
+
+        # Build query params as list of tuples to support repeated "keywords"
+        # Deepgram REST API uses "keywords" param (can be repeated)
+        if keyterms is None:
+            keyterms = _load_keyterms()
+
+        params: list[tuple[str, str]] = [
+            ("model", "nova-3"),
+            ("language", language),
+            ("punctuate", "true"),
+            ("smart_format", "true"),
+        ]
+        # Deepgram supports up to 500 keywords per request
+        for kt in keyterms[:500]:
+            params.append(("keywords", kt))
+
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.post(
+                "https://api.deepgram.com/v1/listen",
+                headers={
+                    "Authorization": f"Token {api_key}",
+                    "Content-Type": content_type,
+                },
+                params=params,
+                content=audio_bytes,
+            )
+
+        elapsed = time.monotonic() - t0
+
+        if resp.status_code != 200:
+            logger.warning(
+                "Deepgram API returned %d: %s",
+                resp.status_code,
+                resp.text[:200],
+            )
+            return None
+
+        data = resp.json()
+
+        # Extract transcript and confidence from Deepgram response
+        # Response structure: results.channels[0].alternatives[0]
+        channels = data.get("results", {}).get("channels", [])
+        if not channels:
+            logger.warning("Deepgram returned no channels")
+            return None
+
+        alternatives = channels[0].get("alternatives", [])
+        if not alternatives:
+            logger.warning("Deepgram returned no alternatives")
+            return None
+
+        best = alternatives[0]
+        transcript = best.get("transcript", "").strip()
+        confidence = best.get("confidence", 0.0)
+
+        # Extract per-word data for segments if available
+        words = best.get("words", [])
+        parsed_segments: list[dict] | None = None
+        if words:
+            parsed_segments = []
+            for word_info in words:
+                w_start = word_info.get("start")
+                w_end = word_info.get("end")
+                w_word = word_info.get("word", "")
+                if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
+                    parsed_segments.append({
+                        "start": float(w_start),
+                        "end": float(w_end),
+                        "text": str(w_word),
+                    })
+
+        return TranscriptionResult(
+            text=transcript,
+            language=language,
+            confidence=round(float(confidence), 4),
+            duration_seconds=round(elapsed, 3),
+            backend="deepgram-nova3",
+            segments=parsed_segments if parsed_segments else None,
+        )
+
+    except Exception as exc:
+        logger.warning("Deepgram STT attempt failed: %s", exc)
         return None
 
 
