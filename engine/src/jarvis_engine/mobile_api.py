@@ -2220,6 +2220,157 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.error("sync/config POST failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to update sync config."})
 
+    def _handle_post_intelligence_merge(self) -> None:
+        """Accept intelligence from the phone and merge into desktop knowledge.
+
+        The phone sends locally-learned facts, context observations, habit
+        patterns, and interaction data. The desktop integrates these into
+        its knowledge graph, making both systems smarter together.
+        """
+        payload, _ = self._read_json_body(max_content_length=500_000)
+        if payload is None:
+            return
+        try:
+            items = payload.get("items", [])
+            if not items:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "No items to merge."})
+                return
+
+            merged = 0
+            from jarvis_engine.memory.store import MemoryStore
+            store = MemoryStore(self.server.repo_root)
+
+            for item in items[:200]:  # Cap at 200 items per merge
+                content = item.get("content", "")
+                category = item.get("category", "general")
+                confidence = float(item.get("confidence", 0.7))
+                source = item.get("source", "phone")
+
+                if not content or len(content) > 5000:
+                    continue
+
+                try:
+                    # Store as a memory record tagged with phone origin
+                    store.add(
+                        content=f"[phone-intelligence:{category}] {content}",
+                        source=source,
+                        kind="intelligence",
+                        tags=f"phone,{category},auto-merged",
+                        branch="phone-intelligence",
+                    )
+                    merged += 1
+                except Exception:
+                    pass
+
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "merged": merged,
+                "total_received": len(items),
+            })
+            logger.info("Intelligence merge: %d items from phone", merged)
+        except Exception as exc:
+            logger.error("intelligence/merge failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "error": "Intelligence merge failed.",
+            })
+
+    def _handle_post_intelligence_export(self) -> None:
+        """Export desktop knowledge for the phone's local intelligence.
+
+        Returns structured knowledge facts from the desktop's knowledge graph
+        and memory store for the phone to import into its local knowledge store.
+        This is what makes the phone as smart as the desktop — it gets real
+        knowledge, not just cached responses.
+        """
+        payload, _ = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+        try:
+            limit = min(int(payload.get("limit", 200)), 500)
+            items = []
+
+            # Export from knowledge graph
+            try:
+                from jarvis_engine.knowledge.graph import KnowledgeGraph
+                from jarvis_engine.memory.store import MemoryStore
+
+                store = MemoryStore(self.server.repo_root)
+                db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+
+                if db_path.exists():
+                    import sqlite3
+
+                    db = sqlite3.connect(str(db_path))
+                    db.row_factory = sqlite3.Row
+                    try:
+                        # Export high-confidence KG facts
+                        rows = db.execute(
+                            "SELECT label, node_type, confidence FROM kg_nodes "
+                            "WHERE confidence >= 0.5 ORDER BY confidence DESC LIMIT ?",
+                            (limit // 2,),
+                        ).fetchall()
+                        for row in rows:
+                            items.append({
+                                "content": f"{row['label']} ({row['node_type']})",
+                                "category": "knowledge",
+                                "confidence": row["confidence"],
+                            })
+
+                        # Export recent high-quality memories
+                        rows = db.execute(
+                            "SELECT summary, kind, tags, confidence FROM records "
+                            "WHERE confidence >= 0.5 AND summary != '' "
+                            "ORDER BY ts DESC LIMIT ?",
+                            (limit // 2,),
+                        ).fetchall()
+                        for row in rows:
+                            items.append({
+                                "content": row["summary"],
+                                "category": row["kind"] or "memory",
+                                "confidence": row["confidence"],
+                            })
+                    finally:
+                        db.close()
+            except Exception as exc:
+                logger.warning("KG export partial failure: %s", exc)
+
+            # Export user preferences
+            try:
+                db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+                if db_path.exists():
+                    import sqlite3
+
+                    db = sqlite3.connect(str(db_path))
+                    db.row_factory = sqlite3.Row
+                    try:
+                        rows = db.execute(
+                            "SELECT category, preference, score FROM user_preferences "
+                            "WHERE score > 0 ORDER BY score DESC LIMIT 50",
+                        ).fetchall()
+                        for row in rows:
+                            items.append({
+                                "content": f"Preference: {row['category']} — {row['preference']} "
+                                           f"(score: {row['score']:.1f})",
+                                "category": "preference",
+                                "confidence": min(row["score"] / 10.0, 1.0),
+                            })
+                    finally:
+                        db.close()
+            except Exception as exc:
+                logger.warning("Preferences export failure: %s", exc)
+
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "items": items[:limit],
+                "total": len(items),
+            })
+            logger.info("Intelligence export: %d items for phone", len(items))
+        except Exception as exc:
+            logger.error("intelligence/export failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "error": "Intelligence export failed.",
+            })
+
     def _handle_post_self_heal(self) -> None:
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
@@ -2283,6 +2434,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/settings": "_handle_post_settings",
         "/conversation/clear": "_handle_post_conversation_clear",
         "/command": "_handle_post_command",
+        "/intelligence/merge": "_handle_post_intelligence_merge",
+        "/intelligence/export": "_handle_post_intelligence_export",
         "/sync": "_handle_post_sync_deprecated",
         "/sync/pull": "_handle_post_sync_pull",
         "/sync/push": "_handle_post_sync_push",

@@ -8,6 +8,7 @@ import android.net.NetworkRequest
 import android.util.Log
 import com.jarvis.assistant.api.JarvisApiClient
 import com.jarvis.assistant.data.CommandQueueProcessor
+import com.jarvis.assistant.intelligence.IntelligenceMerger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ class AutoSyncManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val apiClient: JarvisApiClient,
     private val processor: CommandQueueProcessor,
-    private val responseCache: LocalResponseCache,
+    private val intelligenceMerger: IntelligenceMerger,
     private val syncConfig: SyncConfigStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -202,6 +203,19 @@ class AutoSyncManager @Inject constructor(
             if (isDesktopReachable) {
                 consecutiveFailures = 0
                 lastSyncTime = System.currentTimeMillis()
+
+                // Bidirectional intelligence merge — this is what makes
+                // both brains smarter together. Phone pushes local learnings
+                // (context, habits, interactions), desktop pushes knowledge
+                // graph facts and analysis results.
+                try {
+                    val mergeResult = intelligenceMerger.fullMerge()
+                    Log.i(TAG, "Intelligence merge: pushed=${mergeResult.pushed}, " +
+                        "pulled=${mergeResult.pulled}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Intelligence merge failed: ${e.message}")
+                }
+
                 Log.i(TAG, "Full sync completed successfully")
             }
         } catch (e: Exception) {

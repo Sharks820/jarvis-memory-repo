@@ -51,4 +51,8 @@ interface DocumentDao {
 
     @Query("UPDATE scanned_documents SET syncedToDesktop = 1 WHERE id = :id")
     suspend fun markSynced(id: Long)
+
+    /** Get recently scanned documents (for on-device intelligence context). */
+    @Query("SELECT * FROM scanned_documents ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun getRecentDocuments(limit: Int = 5): List<ScannedDocumentEntity>
 }
