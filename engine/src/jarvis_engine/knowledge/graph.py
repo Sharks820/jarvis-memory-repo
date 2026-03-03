@@ -206,32 +206,31 @@ class KnowledgeGraph:
         Uses generation-based caching: returns cached graph if no mutations
         have occurred since last build.  Invalidated by add_fact/add_edge/
         update_node via _mutation_counter.
-        Thread-safe: acquires _db_lock once (single acquisition prevents
-        thundering-herd where multiple threads each miss the cache check
-        and all rebuild simultaneously).
+
+        Lock strategy: _db_lock held only for SQL reads (not graph build)
+        to avoid blocking concurrent read queries.  _mutation_counter is
+        checked atomically (Python GIL) to prevent thundering-herd rebuilds.
 
         Args:
             copy: If True (default), return a defensive copy of the cached
                 graph so callers cannot mutate internal state.  Pass False
                 for read-only callers to avoid the O(n) copy overhead.
         """
+        # Fast path: check cache without lock (mutation_counter is atomic under GIL)
+        if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
+            return self._cached_graph.copy() if copy else self._cached_graph
+
+        # Read data from SQLite under _db_lock (minimal lock scope)
         with self._db_lock:
-            # Check cache AND rebuild if needed inside the same lock block
-            # to prevent multiple threads from rebuilding simultaneously.
+            # Re-check cache inside lock to prevent thundering herd
             if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
                 return self._cached_graph.copy() if copy else self._cached_graph
 
-            import networkx as nx
-
-            G = nx.DiGraph()
-
-            # Load nodes
             cur = self._db.execute(
                 "SELECT node_id, label, node_type, confidence, locked FROM kg_nodes"
             )
             nodes = cur.fetchall()
 
-            # Load edges
             cur = self._db.execute(
                 "SELECT source_id, target_id, relation, confidence FROM kg_edges"
             )
@@ -239,21 +238,27 @@ class KnowledgeGraph:
 
             gen = self._mutation_counter
 
-            for row in nodes:
-                G.add_node(
-                    row[0],
-                    label=row[1],
-                    node_type=row[2],
-                    confidence=row[3],
-                    locked=bool(row[4]),
-                )
+        # Build graph outside lock (no DB access needed)
+        import networkx as nx
 
-            for row in edges:
-                G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
+        G = nx.DiGraph()
 
-            # Update cache inside the lock for thread safety (FIX 6)
-            self._cached_graph = G
-            self._cached_gen = gen
+        for row in nodes:
+            G.add_node(
+                row[0],
+                label=row[1],
+                node_type=row[2],
+                confidence=row[3],
+                locked=bool(row[4]),
+            )
+
+        for row in edges:
+            G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
+
+        # Update cache (atomic under GIL; concurrent rebuilds are harmless
+        # since they produce identical results for the same gen)
+        self._cached_graph = G
+        self._cached_gen = gen
 
         return G.copy() if copy else G
 
@@ -587,9 +592,13 @@ class KnowledgeGraph:
         clauses = []
         params: list[object] = []
         for kw in keywords[:20]:
+            if not kw or not kw.strip():
+                continue
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("label LIKE ? ESCAPE '\\'")
             params.append(f"%{sanitized}%")
+        if not clauses:
+            return []
         params.append(min_confidence)
         params.append(limit)
         sql = (
@@ -695,9 +704,13 @@ class KnowledgeGraph:
         """
         if not keywords:
             return 0
+        # Filter out empty/whitespace keywords to prevent LIKE '%%' matching everything
+        filtered = [kw for kw in keywords[:20] if kw and kw.strip()]
+        if not filtered:
+            return 0
         clauses = []
         like_params: list[str] = []
-        for kw in keywords[:20]:
+        for kw in filtered:
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("label LIKE ? ESCAPE '\\'")
             like_params.append(f"%{sanitized}%")

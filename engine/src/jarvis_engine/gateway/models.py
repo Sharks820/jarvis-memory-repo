@@ -305,9 +305,6 @@ class ModelGateway:
             else:
                 temperature = 0.7
 
-        # Store on instance for use by _call_* methods during this request
-        self._current_temperature = temperature
-
         if getattr(self, "_closed", False):
             return GatewayResponse(
                 text="",
@@ -330,7 +327,7 @@ class ModelGateway:
 
         if provider == "anthropic":
             try:
-                response = self._call_anthropic(messages, model, max_tokens)
+                response = self._call_anthropic(messages, model, max_tokens, temperature)
                 audit_reason = route_reason or "primary:anthropic"
             except (APIConnectionError, APIStatusError, RateLimitError) as exc:
                 reason = f"{type(exc).__name__}"
@@ -348,12 +345,12 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()  # reset timer for fallback
-                response = self._fallback_chain(messages, max_tokens, reason, skip_provider="anthropic")
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic")
                 audit_reason = f"fallback:{reason}"
         elif provider.startswith("cloud:"):
             provider_key = provider.split(":", 1)[1]
             try:
-                response = self._call_openai_compat(messages, model, max_tokens, provider_key)
+                response = self._call_openai_compat(messages, model, max_tokens, provider_key, temperature)
                 audit_reason = route_reason or f"primary:cloud:{provider_key}"
             except Exception as exc:
                 reason = f"{provider_key}: {type(exc).__name__}"
@@ -370,7 +367,7 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()
-                response = self._fallback_chain(messages, max_tokens, reason, skip_provider=provider_key)
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key)
                 audit_reason = f"fallback:{reason}"
         elif provider.startswith("cli:"):
             cli_key = provider.split(":", 1)[1]
@@ -392,7 +389,7 @@ class ModelGateway:
                     )
                     t0 = time.perf_counter()
                     reason = response.fallback_reason or f"{cli_key}_failed"
-                    response = self._fallback_chain(messages, max_tokens, reason, skip_provider=cli_key)
+                    response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key)
                     audit_reason = f"fallback:{reason}"
             except Exception as exc:
                 reason = f"{cli_key}: {type(exc).__name__}"
@@ -409,7 +406,7 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()
-                response = self._fallback_chain(messages, max_tokens, reason, skip_provider=cli_key)
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key)
                 audit_reason = f"fallback:{reason}"
         else:
             response = self._call_ollama(messages, model, max_tokens)
@@ -433,7 +430,7 @@ class ModelGateway:
                 t0 = time.perf_counter()
                 response = self._fallback_chain(
                     messages, max_tokens, response.fallback_reason or "ollama_failed",
-                    skip_ollama=True,
+                    temperature, skip_ollama=True,
                 )
                 audit_reason = f"fallback:ollama_failed"
 
@@ -487,6 +484,7 @@ class ModelGateway:
         model: str,
         max_tokens: int,
         provider_key: str,
+        temperature: float = 0.7,
     ) -> GatewayResponse:
         """Call an OpenAI-compatible API (Groq, Mistral, Z.ai)."""
         cfg = OPENAI_COMPAT_PROVIDERS[provider_key]
@@ -504,7 +502,7 @@ class ModelGateway:
             "model": api_model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": getattr(self, "_current_temperature", 0.7),
+            "temperature": temperature,
         }
 
         resp = self._http.post(
@@ -546,6 +544,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         model: str,
         max_tokens: int,
+        temperature: float = 0.7,
     ) -> GatewayResponse:
         """Call Anthropic API via the SDK."""
         if not _HAS_ANTHROPIC:
@@ -565,7 +564,7 @@ class ModelGateway:
             "model": api_model,
             "max_tokens": max_tokens,
             "messages": non_system,
-            "temperature": getattr(self, "_current_temperature", 0.7),
+            "temperature": temperature,
         }
         if system_parts:
             kwargs["system"] = "\n\n".join(system_parts)
@@ -674,6 +673,7 @@ class ModelGateway:
         messages: list[dict[str, str]],
         max_tokens: int,
         reason: str,
+        temperature: float = 0.7,
         skip_provider: str = "",
         skip_ollama: bool = False,
     ) -> GatewayResponse:
@@ -695,7 +695,7 @@ class ModelGateway:
             if model_alias is None:
                 continue
             try:
-                resp = self._call_openai_compat(messages, model_alias, max_tokens, pk)
+                resp = self._call_openai_compat(messages, model_alias, max_tokens, pk, temperature)
                 resp.fallback_used = True
                 resp.fallback_reason = reason
                 return resp
@@ -720,7 +720,7 @@ class ModelGateway:
         # Try Anthropic as fallback if available and not the one that failed
         if self._anthropic is not None and skip_provider != "anthropic":
             try:
-                resp = self._call_anthropic(messages, "claude-haiku", max_tokens)
+                resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
                 resp.fallback_used = True
                 resp.fallback_reason = reason
                 return resp

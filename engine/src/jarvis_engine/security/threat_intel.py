@@ -45,6 +45,8 @@ class ThreatIntelFeed:
         Defaults to 3600 (1 hour).
     """
 
+    MAX_CACHE_SIZE = 10_000
+
     def __init__(self, cache_ttl: int = 3600) -> None:
         self._cache_ttl = cache_ttl
 
@@ -122,9 +124,13 @@ class ThreatIntelFeed:
             "sources_checked": sources_checked,
         }
 
-        # Store in cache
+        # Store in cache (evict oldest when at capacity)
+        now = time.time()
         with self._lock:
-            self._cache[ip] = (dict(result), time.time())
+            if len(self._cache) >= self.MAX_CACHE_SIZE:
+                oldest_ip = min(self._cache, key=lambda k: self._cache[k][1])
+                del self._cache[oldest_ip]
+            self._cache[ip] = (dict(result), now)
             self._requests_today += 1
 
         return result
