@@ -53,6 +53,8 @@ Progress (v4.0): [██░░░░░░░░] 19%
 - Learning activation: wire tracker read methods into QueryHandler, IntentClassifier, and dashboard
 - Deepgram backend: used httpx REST API directly instead of deepgram-sdk (avoids SDK version uncertainty)
 - Keyterm loading: strip parenthetical annotations from personal_vocab.txt for clean Deepgram keywords
+- Parakeet TDT backend: baseline confidence 0.94 when log probs unavailable (from 6.05% WER)
+- Parakeet model: with_timestamps() attempted first for log prob access, silent fallback to base model
 
 ### Blockers/Concerns
 - None currently
