@@ -12,6 +12,8 @@ class LearnInteractionCommand:
     user_message: str = ""
     assistant_response: str = ""
     task_id: str = ""
+    route: str = ""      # IntentClassifier route name (e.g., "routine", "complex", "math_logic")
+    topic: str = ""      # Topic hint for usage pattern mining (first 100 chars of query)
 
 
 @dataclass
