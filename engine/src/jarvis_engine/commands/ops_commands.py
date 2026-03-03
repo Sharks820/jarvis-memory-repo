@@ -147,6 +147,18 @@ class GrowthAuditResult:
 
 
 @dataclass(frozen=True)
+class MissionCancelCommand:
+    mission_id: str
+
+
+@dataclass
+class MissionCancelResult:
+    cancelled: bool = False
+    mission: dict[str, Any] = field(default_factory=dict)
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class IntelligenceDashboardCommand:
     last_runs: int = 20
     output_path: str = ""

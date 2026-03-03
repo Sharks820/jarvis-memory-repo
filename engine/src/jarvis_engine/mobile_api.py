@@ -1364,7 +1364,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
 
     def _handle_get_widget_status(self) -> None:
-        # Combined endpoint: health + growth + dashboard alerts in ONE request.
+        # Combined endpoint: health + growth + dashboard alerts + recent events in ONE request.
         # Replaces 3 separate calls per widget poll cycle.
         if not self._validate_auth(b""):
             return
@@ -1379,6 +1379,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             combined["alerts"] = dash.get("proactive_alerts", [])
         except Exception:
             combined["alerts"] = []
+        # Recent activity events for UI live updates (UI-03/04)
+        try:
+            from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+            feed = get_activity_feed()
+            events = feed.query(limit=10)
+            combined["recent_events"] = [
+                {
+                    "event_id": e.event_id,
+                    "timestamp": e.timestamp,
+                    "category": e.category,
+                    "summary": e.summary,
+                }
+                for e in events
+                if e.category != ActivityCategory.DAEMON_CYCLE
+            ][:10]
+        except Exception:
+            combined["recent_events"] = []
         self._write_json(HTTPStatus.OK, combined)
 
     def _handle_get_intelligence_growth(self) -> None:

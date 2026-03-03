@@ -73,6 +73,7 @@ from jarvis_engine.commands.ops_commands import (
     GrowthEvalCommand,
     GrowthReportCommand,
     IntelligenceDashboardCommand,
+    MissionCancelCommand,
     MissionCreateCommand,
     MissionRunCommand,
     MissionStatusCommand,
@@ -1241,7 +1242,8 @@ def cmd_brain_status(as_json: bool) -> int:
         return 0
     print("brain_status")
     print(f"updated_utc={status.get('updated_utc', '')}")
-    print(f"branch_count={status.get('branch_count', 0)}")
+    branch_count = status.get("branch_count", 0)
+    print(f"branch_count={branch_count}")
     branches = status.get("branches", [])
     if isinstance(branches, list):
         for row in branches[:12]:
@@ -1251,6 +1253,12 @@ def cmd_brain_status(as_json: bool) -> int:
                 f"branch={row.get('branch','')} count={row.get('count', 0)} "
                 f"last_ts={row.get('last_ts','')} summary={row.get('last_summary','')}"
             )
+    # Structured response for UI consumption (UI-05)
+    branch_names = [str(row.get("branch", "")) for row in branches[:6] if isinstance(row, dict)]
+    summary = f"Brain has {branch_count} branch(es)"
+    if branch_names:
+        summary += f": {', '.join(branch_names)}"
+    print(f"response={summary}")
     return 0
 
 
@@ -1661,6 +1669,20 @@ def cmd_mission_status(last: int) -> int:
         findings = mission.get("verified_findings", 0)
         summary_parts.append(f"{topic} ({status}, {findings} findings)")
     print(f"response=Learning missions ({result.total_count} total): " + " | ".join(summary_parts))
+    return 0
+
+
+def cmd_mission_cancel(mission_id: str) -> int:
+    result = _get_bus().dispatch(MissionCancelCommand(mission_id=mission_id))
+    if not result.cancelled:
+        print(f"error: {result.error or 'cancel failed'}")
+        print(f"response=Could not cancel mission: {result.error or 'unknown error'}")
+        return 2
+    mission = result.mission
+    print(f"mission_cancelled=true")
+    print(f"mission_id={mission.get('mission_id', '')}")
+    print(f"topic={mission.get('topic', '')}")
+    print(f"response=Cancelled mission: {mission.get('topic', '')}")
     return 0
 
 
@@ -3800,6 +3822,30 @@ def _cmd_voice_run_impl(
         intent = "brain_status"
         rc = cmd_brain_status(as_json=False)
         _respond("Here's your brain status \u2014 check the details above.")
+    # --- Cancel mission ---
+    elif any(k in lowered for k in ["cancel mission", "cancel the mission", "stop mission", "abort mission"]):
+        if not _require_state_mutation_voice_auth():
+            return 2
+        intent = "mission_cancel"
+        # Try to extract mission ID; if not specified, cancel the most recent pending one
+        mission_id = ""
+        for prefix in ["cancel mission ", "cancel the mission ", "stop mission ", "abort mission "]:
+            if prefix in lowered:
+                mission_id = text[lowered.index(prefix) + len(prefix):].strip()
+                break
+        if not mission_id:
+            # Auto-cancel the most recent pending mission
+            from jarvis_engine.learning_missions import load_missions as _load_missions
+            missions = _load_missions(repo_root())
+            for m in reversed(missions):
+                if str(m.get("status", "")).lower() == "pending":
+                    mission_id = str(m.get("mission_id", ""))
+                    break
+        if not mission_id:
+            _respond("No pending missions to cancel.")
+            rc = 0
+        else:
+            rc = cmd_mission_cancel(mission_id=mission_id)
     # --- Mission / learning queries ---
     elif any(
         k in lowered
