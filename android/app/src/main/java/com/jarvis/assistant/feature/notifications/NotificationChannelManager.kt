@@ -128,10 +128,12 @@ class NotificationChannelManager @Inject constructor(
             "medication_reminder", "emergency", "urgent_bill", "security_alert" ->
                 NotificationPriority.URGENT
 
-            "meeting_prep", "bill_reminder", "schedule_conflict", "important_task" ->
+            "meeting_prep", "meeting_intelligence", "bill_reminder", "schedule_conflict",
+            "important_task", "mission_completed", "contact_neglect", "smart_reply_ready" ->
                 NotificationPriority.IMPORTANT
 
-            "daily_briefing", "weekly_summary", "spend_report", "habit_nudge" ->
+            "daily_briefing", "weekly_summary", "spend_report", "habit_nudge",
+            "context_digest", "morning_brief" ->
                 NotificationPriority.ROUTINE
 
             else -> NotificationPriority.BACKGROUND

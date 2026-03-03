@@ -312,6 +312,18 @@ def run_learning_mission(
             return report
         if verified:
             target["status"] = "completed"
+            # Fire proactive alert so the phone gets notified
+            try:
+                from jarvis_engine.proactive.alert_queue import enqueue_alert
+                enqueue_alert(root, {
+                    "type": "mission_completed",
+                    "title": f"Mission Complete: {target.get('topic', '')}",
+                    "body": f"Found {len(verified)} verified findings for '{target.get('topic', '')}'",
+                    "group_key": "jarvis_missions",
+                    "priority": "important",
+                })
+            except Exception:
+                pass
         else:
             # No verified findings — mark as failed for retry.
             # retries tracks how many times retry_failed_missions re-queued this.

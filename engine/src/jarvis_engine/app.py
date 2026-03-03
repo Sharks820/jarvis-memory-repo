@@ -570,7 +570,7 @@ def create_app(root: Path) -> CommandBus:
         )
 
         notifier = Notifier()
-        proactive_engine = ProactiveEngine(rules=DEFAULT_TRIGGER_RULES, notifier=notifier)
+        proactive_engine = ProactiveEngine(rules=DEFAULT_TRIGGER_RULES, notifier=notifier, root=root)
         bus.register(
             ProactiveCheckCommand,
             ProactiveCheckHandler(root, proactive_engine=proactive_engine).handle,

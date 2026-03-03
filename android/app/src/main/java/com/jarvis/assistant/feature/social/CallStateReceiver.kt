@@ -31,6 +31,7 @@ class CallStateReceiver : BroadcastReceiver() {
     interface CallStateEntryPoint {
         fun preCallCardManager(): PreCallCardManager
         fun postCallLogger(): PostCallLogger
+        fun smartMissedCallHandler(): com.jarvis.assistant.feature.automation.SmartMissedCallHandler
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -112,8 +113,8 @@ class CallStateReceiver : BroadcastReceiver() {
                 }
 
                 TelephonyManager.EXTRA_STATE_IDLE -> {
-                    // Call ended
                     if (lastState == TelephonyManager.EXTRA_STATE_OFFHOOK && currentNumber.isNotBlank()) {
+                        // Call was answered and now ended — log it
                         val durationSec = if (callStartTime > 0) {
                             ((System.currentTimeMillis() - callStartTime) / 1000).toInt()
                         } else {
@@ -138,6 +139,28 @@ class CallStateReceiver : BroadcastReceiver() {
                                 )
                             } catch (e: Exception) {
                                 Log.w(TAG, "Post-call logger error: ${e.message}")
+                            } finally {
+                                pendingResult.finish()
+                            }
+                        }
+                    } else if (lastState == TelephonyManager.EXTRA_STATE_RINGING &&
+                        wasIncoming && currentNumber.isNotBlank()
+                    ) {
+                        // RINGING → IDLE without OFFHOOK = MISSED CALL
+                        // Trigger smart auto-reply if user is in a busy context
+                        Log.i(TAG, "MISSED CALL from ***${currentNumber.takeLast(4)}")
+                        val missedNumber = currentNumber
+                        val smartHandler = entryPoint.smartMissedCallHandler()
+                        asyncHandled = true
+                        scope.launch {
+                            try {
+                                // Resolve contact name
+                                val contactName = try {
+                                    preCallCardManager.resolveContactName(missedNumber)
+                                } catch (_: Exception) { "" }
+                                smartHandler.handleMissedCall(missedNumber, contactName)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Smart missed call handler error: ${e.message}")
                             } finally {
                                 pendingResult.finish()
                             }
