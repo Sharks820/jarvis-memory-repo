@@ -78,9 +78,8 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
                 ).fetchall()
             for row in rows:
                 temporal_distribution[row[0]] = row[1]
-        except Exception:
-            # Column may not exist if migration has not run yet
-            pass
+        except Exception as exc:
+            logger.debug("Temporal distribution query failed (migration may not have run): %s", exc)
 
     return {
         "total_records": total_records,

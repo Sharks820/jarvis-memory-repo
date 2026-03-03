@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine.commands.learning_commands import (
+    ConsolidateMemoryCommand,
+    ConsolidateMemoryResult,
     CrossBranchQueryCommand,
     CrossBranchQueryResult,
     FlagExpiredFactsCommand,
@@ -116,4 +118,79 @@ class FlagExpiredFactsHandler:
         return FlagExpiredFactsResult(
             expired_count=count,
             message=f"Flagged {count} expired fact(s).",
+        )
+
+
+class ConsolidateMemoryHandler:
+    """Delegates ConsolidateMemoryCommand to MemoryConsolidator."""
+
+    def __init__(
+        self,
+        root: Path,
+        engine: Any = None,
+        gateway: Any = None,
+        embed_service: Any = None,
+        kg: Any = None,
+    ) -> None:
+        self._root = root
+        self._engine = engine
+        self._gateway = gateway
+        self._embed_service = embed_service
+        self._kg = kg
+
+    def handle(self, cmd: ConsolidateMemoryCommand) -> ConsolidateMemoryResult:
+        if self._engine is None:
+            return ConsolidateMemoryResult(message="MemoryEngine not available.")
+
+        try:
+            from jarvis_engine.learning.consolidator import MemoryConsolidator
+        except ImportError as exc:
+            logger.warning("Consolidator module not available: %s", exc)
+            return ConsolidateMemoryResult(message="Consolidator module not available.")
+
+        # Backup KG state before consolidation
+        if self._kg is not None:
+            try:
+                from jarvis_engine.knowledge.regression import RegressionChecker
+                rc_checker = RegressionChecker(self._kg)
+                rc_checker.backup_graph(tag="pre-consolidation")
+            except Exception as exc:
+                logger.warning("KG backup before consolidation failed: %s", exc)
+
+        consolidator = MemoryConsolidator(
+            self._engine,
+            gateway=self._gateway,
+            embed_service=self._embed_service,
+        )
+        result = consolidator.consolidate(
+            branch=cmd.branch or None,
+            max_groups=cmd.max_groups,
+            dry_run=cmd.dry_run,
+        )
+
+        # Log to activity feed
+        try:
+            from jarvis_engine.activity_feed import log_activity, ActivityCategory
+            log_activity(
+                ActivityCategory.CONSOLIDATION,
+                f"Memory consolidation: {result.new_facts_created} facts from {result.groups_found} groups",
+                {
+                    "groups_found": result.groups_found,
+                    "records_consolidated": result.records_consolidated,
+                    "new_facts_created": result.new_facts_created,
+                },
+            )
+        except Exception as exc:
+            logger.debug("Activity feed logging for consolidation failed: %s", exc)
+
+        return ConsolidateMemoryResult(
+            groups_found=result.groups_found,
+            records_consolidated=result.records_consolidated,
+            new_facts_created=result.new_facts_created,
+            errors=result.errors,
+            message=(
+                f"Consolidated {result.new_facts_created} facts from {result.groups_found} groups."
+                if not result.errors
+                else f"Consolidated {result.new_facts_created} facts with {len(result.errors)} error(s)."
+            ),
         )

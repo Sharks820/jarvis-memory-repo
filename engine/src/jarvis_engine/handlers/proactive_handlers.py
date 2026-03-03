@@ -73,10 +73,42 @@ class ProactiveCheckHandler:
             for a in alerts
         ]
 
+        # Diagnostic: check which data sources are empty
+        diagnostics_parts: list[str] = []
+        _data_sources = {
+            "medications": "medication_reminder",
+            "bills": "bill_due_alert",
+            "calendar_events": "calendar_prep",
+            "tasks": "urgent_task_alert",
+        }
+        for source_key, rule_id in _data_sources.items():
+            items = snapshot_data.get(source_key, [])
+            if not items:
+                diagnostics_parts.append(f"{rule_id}: no {source_key} data available")
+
+        connectors = snapshot_data.get("connector_statuses", [])
+        not_ready = [
+            c["name"]
+            for c in connectors
+            if isinstance(c, dict) and not c.get("ready", False)
+        ]
+        if not_ready:
+            diagnostics_parts.append(f"Connectors not ready: {', '.join(not_ready)}")
+
+        diagnostics_str = "; ".join(diagnostics_parts) if diagnostics_parts else ""
+
+        if alerts:
+            message = f"Fired {len(alerts)} alert(s)."
+        elif diagnostics_parts:
+            message = f"No alerts. {len(diagnostics_parts)} diagnostic(s)."
+        else:
+            message = "No alerts. All data sources populated."
+
         return ProactiveCheckResult(
             alerts_fired=len(alerts),
             alerts=json.dumps(alerts_dicts),
-            message=f"Fired {len(alerts)} alert(s)." if alerts else "No alerts.",
+            message=message,
+            diagnostics=diagnostics_str,
         )
 
 

@@ -512,37 +512,31 @@ class TestDaemonConsolidation:
     def test_consolidation_runs_every_50_cycles(
         self, tmp_path: Path, monkeypatch, capsys
     ) -> None:
-        """Memory consolidation should run on multiples of 50."""
+        """Memory consolidation should run on multiples of 50 via CQRS bus."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
+        from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
+
         mock_bus = MagicMock()
-        mock_engine = MagicMock()
-        mock_kg = MagicMock()
-        mock_bus._engine = mock_engine
-        mock_bus._kg = mock_kg
+        mock_bus._engine = MagicMock()
+        mock_bus._kg = MagicMock()
         mock_bus._gateway = None
         mock_bus._embed_service = None
 
-        mock_consolidation_result = MagicMock()
-        mock_consolidation_result.groups_found = 3
-        mock_consolidation_result.records_consolidated = 9
-        mock_consolidation_result.new_facts_created = 2
-        mock_consolidation_result.errors = []
+        consolidation_result = ConsolidateMemoryResult(
+            groups_found=3, records_consolidated=9, new_facts_created=2,
+            errors=[], message="Consolidated 2 facts from 3 groups.",
+        )
 
-        mock_consolidator = MagicMock()
-        mock_consolidator.consolidate.return_value = mock_consolidation_result
+        def _dispatch_side_effect(cmd):
+            from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
+            if isinstance(cmd, ConsolidateMemoryCommand):
+                return consolidation_result
+            return MagicMock()
 
-        mock_rc_checker = MagicMock()
+        mock_bus.dispatch.side_effect = _dispatch_side_effect
 
         with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
-             patch(
-                 "jarvis_engine.learning.consolidator.MemoryConsolidator",
-                 return_value=mock_consolidator,
-             ), \
-             patch(
-                 "jarvis_engine.knowledge.regression.RegressionChecker",
-                 return_value=mock_rc_checker,
-             ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
@@ -550,8 +544,6 @@ class TestDaemonConsolidation:
         captured = capsys.readouterr()
         assert "consolidation_groups=3" in captured.out
         assert "consolidation_new_facts=2" in captured.out
-        # Should have backed up KG before consolidation
-        mock_rc_checker.backup_graph.assert_called_with(tag="pre-consolidation")
 
     def test_consolidation_exception_does_not_crash_daemon(
         self, tmp_path: Path, monkeypatch
@@ -568,12 +560,20 @@ class TestDaemonConsolidation:
     def test_consolidation_skipped_when_engine_not_initialized(
         self, tmp_path: Path, monkeypatch, capsys
     ) -> None:
-        """When engine is None on the bus, consolidation should be skipped."""
+        """When engine is None, consolidation via bus returns 'not available'."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        mock_bus = MagicMock(spec=[])  # No attributes at all
-        mock_bus._engine = None  # explicitly None
+        from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
+
+        mock_bus = MagicMock()
+        mock_bus._engine = None
         mock_bus._kg = None
+
+        # Bus dispatch returns a result with 0 groups (handler sees engine=None)
+        consolidation_result = ConsolidateMemoryResult(
+            message="MemoryEngine not available.",
+        )
+        mock_bus.dispatch.return_value = consolidation_result
 
         with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
@@ -581,7 +581,8 @@ class TestDaemonConsolidation:
 
         assert rc == 0
         captured = capsys.readouterr()
-        assert "consolidation_skipped=engine_not_initialized" in captured.out
+        # Now prints consolidation_groups=0 instead of skipped message
+        assert "consolidation_groups=0" in captured.out
 
 
 class TestDaemonEntityResolution:

@@ -10,12 +10,12 @@ See: .planning/ROADMAP.md (v4.0 Intelligence Activation & Voice Overhaul)
 
 ## Current Position
 
-Phase: 2 (Learning System Activation) -- COMPLETE
-Current Plan: 3 of 3 (all plans complete)
-Status: Phase 2 complete, ready for Phase 3
+Phase: 4 (Platform Stability) -- COMPLETE
+Current Plan: 1 of 1 (all plans complete)
+Status: Phase 4 complete, ready for Phase 5
 Last activity: 2026-03-02
 
-Progress (v4.0): [██████░░░░] 50%
+Progress (v4.0): [████████░░] 85%
 
 ## Performance Metrics
 
@@ -23,10 +23,12 @@ Progress (v4.0): [██████░░░░] 50%
 **v2.0 Android App**: SHIPPED (phases 10-13, 11 plans)
 **v3.0 Hardening**: SHIPPED (2 phases, 4136 tests, 7-pillar security, 4-CLI scan gauntlet clean)
 **v4.0 Intelligence & Voice**: IN PROGRESS
-- Test count: 4243 passing, 3 skipped, 0 failures
+- Test count: 4300 passing, 5 skipped, 0 failures
 - Source files: 60+ Python modules, 100+ Kotlin files
 - Phase 1 (Voice-to-Text Overhaul): COMPLETE — 5 plans, 8 STT requirements verified
 - Phase 2 (Learning System Activation): COMPLETE — 3 plans, 8 LEARN requirements verified
+- Phase 3 (Widget & UI Live Updates): COMPLETE — 2 plans, 5 UI requirements verified, bug scan clean
+- Phase 4 (Platform Stability): COMPLETE — 1 plan, 5 STAB requirements verified, bug scan clean
 
 ## Self-Analysis Findings (informing v4.0 priorities)
 
@@ -35,9 +37,9 @@ Progress (v4.0): [██████░░░░] 50%
 2. ~~Missing route param~~ — FIXED: all 4 dispatch sites pass route/topic
 3. ~~No learning feedback loop~~ — FIXED: preferences personalize responses, quality penalties adjust routing
 
-### HIGH
-4. db_path.exists() gate — silently disables entire brain on first run
-5. MemoryConsolidator not in CQRS bus — can only run via daemon, not mobile API or CLI
+### HIGH (fixed in Phase 4)
+4. ~~db_path.exists() gate~~ — FIXED: removed 3 gates, SQLite creates on connect, try/except for graceful degradation
+5. ~~MemoryConsolidator not in CQRS bus~~ — FIXED: ConsolidateMemoryCommand exposed via bus, CLI, and daemon
 
 ### STT Research Findings (informing voice phase)
 - Current faster-whisper small.en has ~15-20% WER (terrible for commands)
@@ -57,12 +59,19 @@ Progress (v4.0): [██████░░░░] 50%
   - Plan 01: route/topic data quality in dispatch sites
   - Plan 02: preferences in prompts, quality penalty in classifier, usage prediction in daemon
   - Plan 03: frequency boost in search (0.9-1.1x), tier management in consolidator, dashboard learning metrics + knowledge snapshot
+- Phase 3 complete: all 5 UI requirements verified
+  - Plan 01: Mission cancel CQRS command, activity events (PREFERENCE_LEARNED, MISSION_STATE_CHANGE), recent_events in /widget-status, response= output
+  - Plan 02: Widget frontend — live activity feed display, immediate dashboard refresh, expanded learned indicator
+  - Bug scan: 2 MEDIUM + 3 LOW fixed (CLI subcommand, cancel guard, ordered dedup, correct learned intents)
+- Phase 4 complete: all 5 STAB requirements verified
+  - Plan 01: STAB-01 (db_path.exists() gate removal), STAB-02 (silent except logging), STAB-03 (ConsolidateMemoryCommand CQRS), STAB-04 (proactive diagnostics), STAB-05 (34 tests)
+  - Bug scan: 1 MEDIUM + 1 LOW fixed (consolidator import guard, activity feed logging)
 
 ### Blockers/Concerns
-- None currently
+- Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed Phase 2 (Learning System Activation) -- all 3 plans complete, deep bug scan next
+Stopped at: Completed Phase 4 (Platform Stability) -- 1 plan complete, bug scan done, moving to Phase 5
 Resume file: None

@@ -97,10 +97,10 @@ class ConversationLearningEngine:
                             "applied": applied,
                         },
                     )
-                except ImportError:
-                    pass
-        except ImportError:
-            pass
+                except ImportError as exc:
+                    logger.debug("activity_feed not available for correction logging: %s", exc)
+        except ImportError as exc:
+            logger.debug("correction_detector not available: %s", exc)
 
         # Extract user preferences if tracker is available
         preferences_detected: list[tuple[str, str]] = []
