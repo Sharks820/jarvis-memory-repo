@@ -39,6 +39,13 @@ Plans:
 **Goal**: Jarvis actually uses what it learns — preferences shape responses, feedback improves routing, usage patterns drive proactive features
 **Requirements**: LEARN-01 through LEARN-08
 **Depends on**: None (independent of Phase 1)
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Fix data quality (route/topic in LearnInteractionCommand) + bus exposure
+- [ ] 02-02-PLAN.md — Wire preferences into prompts, route quality into classifier, usage into daemon
+- [ ] 02-03-PLAN.md — Relevance scoring in search, tier management in consolidator, learning dashboard
+
 **Success Criteria**:
   1. User preferences (detected over time) appear in LLM system prompts
   2. Routes with poor feedback scores deprioritized in IntentClassifier
@@ -84,7 +91,7 @@ Plans:
 | Phase | Plans Complete | Status |
 |-------|---------------|--------|
 | 1. Voice-to-Text Overhaul | 0/5 | Planned |
-| 2. Learning System Activation | 0/? | Not started |
+| 2. Learning System Activation | 0/3 | Planned |
 | 3. Widget & UI Live Updates | 0/? | Not started |
 | 4. Platform Stability | 0/? | Not started |
 | 5. Mobile App Readiness | 0/? | Not started |
