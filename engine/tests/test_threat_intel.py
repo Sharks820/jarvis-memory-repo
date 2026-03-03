@@ -257,8 +257,8 @@ def test_status_report():
     assert "abuseipdb" in st["api_keys_configured"]
     assert "otx" in st["api_keys_configured"]
     assert "last_feed_update" in st
-    assert "requests_today" in st
-    assert isinstance(st["requests_today"], int)
+    assert "requests_total" in st
+    assert isinstance(st["requests_total"], int)
 
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ class ThreatIntelFeed:
         self._feodo_last_update: float = 0.0
 
         # Metrics
-        self._requests_today: int = 0
+        self._requests_total: int = 0
         self._last_feed_update: float | None = None
 
     # ------------------------------------------------------------------
@@ -135,7 +135,7 @@ class ThreatIntelFeed:
             elif len(self._cache) >= self.MAX_CACHE_SIZE:
                 self._cache.popitem(last=False)  # evict oldest
             self._cache[ip] = (dict(result), now)
-            self._requests_today += 1
+            self._requests_total += 1
 
         return result
 
@@ -148,7 +148,7 @@ class ThreatIntelFeed:
         """Return operational status of the threat intel feed."""
         with self._lock:
             cache_size = len(self._cache)
-            requests = self._requests_today
+            requests = self._requests_total
 
         keys_configured: list[str] = []
         if self._abuseipdb_key:
@@ -160,7 +160,7 @@ class ThreatIntelFeed:
             "cache_size": cache_size,
             "api_keys_configured": keys_configured,
             "last_feed_update": self._last_feed_update,
-            "requests_today": requests,
+            "requests_total": requests,
         }
 
     # ------------------------------------------------------------------

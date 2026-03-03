@@ -194,7 +194,7 @@ class ConversationLearningEngine:
 
         Returns False for:
         - None/empty text
-        - Text shorter than 15 characters (unless contains personal data keywords)
+        - Text shorter than 20 characters (unless contains personal data keywords)
         - Short greetings (greeting prefix AND under 100 chars) unless they
           contain personal data keywords
         """
@@ -217,9 +217,6 @@ class ConversationLearningEngine:
         )
         if has_personal_data:
             return True
-
-        if len(stripped) < 15:
-            return False
 
         if len(stripped) < 20:
             return False
