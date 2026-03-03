@@ -22,7 +22,7 @@ class TestActivityEventDedup:
         """Create a minimal stub with the _update_activity_events method."""
         # Import the actual method and test its logic in isolation
         stub = MagicMock()
-        stub._seen_event_ids = set()
+        stub._seen_event_ids = {}  # Ordered dict for dedup
         stub._log = MagicMock()
         return stub
 
@@ -46,7 +46,7 @@ class TestActivityEventDedup:
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
-        stub._seen_event_ids = {"evt-001"}
+        stub._seen_event_ids = {"evt-001": None}
         events = [
             {"event_id": "evt-001", "timestamp": "2026-03-02T10:00:00", "category": "llm_routing", "summary": "Routed to kimi-k2"},
             {"event_id": "evt-003", "timestamp": "2026-03-02T09:50:00", "category": "harvest", "summary": "Harvest complete"},
@@ -65,13 +65,13 @@ class TestActivityEventDedup:
         JarvisDesktopWidget._update_activity_events(stub, [])
         stub._log.assert_not_called()
 
-    def test_seen_set_capped_at_500(self):
-        """Seen event IDs set is capped to prevent unbounded memory growth."""
+    def test_seen_dict_capped_at_500(self):
+        """Seen event IDs dict is capped to prevent unbounded memory growth."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
 
         stub = self._make_widget_stub()
-        # Pre-fill with 510 event IDs
-        stub._seen_event_ids = {f"evt-{i:04d}" for i in range(510)}
+        # Pre-fill with 510 event IDs (ordered dict)
+        stub._seen_event_ids = dict.fromkeys(f"evt-{i:04d}" for i in range(510))
         events = [
             {"event_id": "evt-new", "timestamp": "2026-03-02T10:00:00", "category": "llm_routing", "summary": "Test"},
         ]
@@ -100,24 +100,27 @@ class TestActivityEventDedup:
 class TestLearnedIndicatorIntents:
     """Verify the expanded learned indicator intent list."""
 
-    def test_expanded_intents_include_mission_cancel(self):
-        """mission_cancel should be in the learned intents list."""
-        # This tests that the code uses the expanded set
+    def test_expanded_intents_include_knowledge_modifiers(self):
+        """Knowledge-modifying intents should be in the learned intents list."""
+        # This mirrors the actual tuple in desktop_widget.py _send_command_async
         _LEARNED_INTENTS = (
             "memory_ingest", "memory_forget", "llm_conversation",
-            "mission_cancel", "mission_create", "mission_run",
-            "brain_status", "harvest", "fact_extracted",
+            "mission_create", "mission_run",
+            "harvest", "fact_extracted",
         )
-        assert "mission_cancel" in _LEARNED_INTENTS
         assert "mission_create" in _LEARNED_INTENTS
         assert "harvest" in _LEARNED_INTENTS
+        assert "fact_extracted" in _LEARNED_INTENTS
+        # Read-only intents should NOT be in learned list
+        assert "brain_status" not in _LEARNED_INTENTS
+        assert "mission_cancel" not in _LEARNED_INTENTS
 
     def test_original_intents_still_present(self):
         """Original three intents (memory_ingest, memory_forget, llm_conversation) remain."""
         _LEARNED_INTENTS = (
             "memory_ingest", "memory_forget", "llm_conversation",
-            "mission_cancel", "mission_create", "mission_run",
-            "brain_status", "harvest", "fact_extracted",
+            "mission_create", "mission_run",
+            "harvest", "fact_extracted",
         )
         assert "memory_ingest" in _LEARNED_INTENTS
         assert "memory_forget" in _LEARNED_INTENTS

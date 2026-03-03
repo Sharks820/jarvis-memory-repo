@@ -320,6 +320,11 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
     if target is None:
         raise ValueError(f"mission not found: {mission_id}")
 
+    current_status = str(target.get("status", ""))
+    _NON_CANCELLABLE = ("completed", "cancelled", "exhausted")
+    if current_status in _NON_CANCELLABLE:
+        raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
+
     target["status"] = "cancelled"
     target["updated_utc"] = datetime.now(UTC).isoformat()
     _save_missions(root, missions)

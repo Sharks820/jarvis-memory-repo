@@ -4514,6 +4514,9 @@ def main() -> int:
     p_mission_run.add_argument("--max-pages", type=int, default=12)
     p_mission_run.add_argument("--no-ingest", action="store_true", help="Do not ingest verified findings.")
 
+    p_mission_cancel = sub.add_parser("mission-cancel", help="Cancel a pending learning mission.")
+    p_mission_cancel.add_argument("--id", required=True, help="Mission id to cancel.")
+
     p_runtime = sub.add_parser("runtime-control", help="Pause/resume daemon and toggle safe mode.")
     p_runtime_group = p_runtime.add_mutually_exclusive_group()
     p_runtime_group.add_argument("--pause", action="store_true")
@@ -4892,6 +4895,8 @@ def main() -> int:
             max_pages=args.max_pages,
             auto_ingest=not args.no_ingest,
         )
+    if args.command == "mission-cancel":
+        return cmd_mission_cancel(mission_id=args.id)
     if args.command == "runtime-control":
         return cmd_runtime_control(
             pause=args.pause,

@@ -794,7 +794,7 @@ class JarvisDesktopWidget(tk.Tk):
         self._tray_icon: Any = None  # pystray.Icon instance (or None if unavailable)
         self._model_index: int = 0  # Index into MODEL_ROTATION (0 = Auto)
         self._model_label: tk.Label | None = None  # Model indicator label widget
-        self._seen_event_ids: set[str] = set()  # Dedup for activity feed events
+        self._seen_event_ids: dict[str, None] = {}  # Ordered dedup for activity feed events
 
         self.title("Jarvis Unlimited")
         # Restore saved panel position if available and on-screen
@@ -2431,11 +2431,11 @@ class JarvisDesktopWidget(tk.Tk):
                 if source_urls:
                     self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
 
-                # Expanded learned indicator: fire for any knowledge-modifying intent
+                # Expanded learned indicator: fire for knowledge-modifying intents
                 _LEARNED_INTENTS = (
                     "memory_ingest", "memory_forget", "llm_conversation",
-                    "mission_cancel", "mission_create", "mission_run",
-                    "brain_status", "harvest", "fact_extracted",
+                    "mission_create", "mission_run",
+                    "harvest", "fact_extracted",
                 )
                 if ok and intent in _LEARNED_INTENTS:
                     self.after(0, self._show_learned_indicator)
@@ -2878,11 +2878,12 @@ class JarvisDesktopWidget(tk.Tk):
             if eid and eid in self._seen_event_ids:
                 continue
             if eid:
-                self._seen_event_ids.add(eid)
+                self._seen_event_ids[eid] = None
             new_events.append(evt)
-        # Cap seen set to prevent unbounded growth
+        # Cap seen dict to prevent unbounded growth (keeps most recent 200)
         if len(self._seen_event_ids) > 500:
-            self._seen_event_ids = set(list(self._seen_event_ids)[-200:])
+            keys = list(self._seen_event_ids.keys())
+            self._seen_event_ids = dict.fromkeys(keys[-200:])
         if not new_events:
             return
         for evt in reversed(new_events):  # Oldest first
