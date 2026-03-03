@@ -292,7 +292,7 @@ class SelfTestHandler:
             logger.warning("self_test module not available: %s", exc)
             return SelfTestResult(message="Self-test module not available.")
 
-        history_path = self._root / ".planning" / "brain" / "self_test_history.jsonl"
+        history_path = self._root / ".planning" / "runtime" / "self_test_history.jsonl"
 
         tester = AdversarialSelfTest(
             self._engine,
