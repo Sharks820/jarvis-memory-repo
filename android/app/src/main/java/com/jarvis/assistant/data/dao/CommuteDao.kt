@@ -42,6 +42,10 @@ interface CommuteDao {
     @Query("SELECT * FROM commute_locations ORDER BY lastVisited DESC")
     suspend fun getAllLocations(): List<CommuteLocationEntity>
 
+    /** Get most frequently visited locations (for on-device intelligence context). */
+    @Query("SELECT * FROM commute_locations ORDER BY visitCount DESC LIMIT :limit")
+    suspend fun getMostVisited(limit: Int = 10): List<CommuteLocationEntity>
+
     // ── Parking ─────────────────────────────────────────────────
 
     @Insert

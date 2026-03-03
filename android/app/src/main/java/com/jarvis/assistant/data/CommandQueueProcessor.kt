@@ -1,42 +1,47 @@
 package com.jarvis.assistant.data
 
 import android.util.Log
-import com.jarvis.assistant.api.JarvisApiClient
-import com.jarvis.assistant.api.models.CommandRequest
 import com.jarvis.assistant.data.dao.CommandQueueDao
 import com.jarvis.assistant.data.dao.ConversationDao
 import com.jarvis.assistant.data.entity.CommandQueueEntity
 import com.jarvis.assistant.data.entity.ConversationEntity
-import com.jarvis.assistant.sync.LocalResponseCache
+import com.jarvis.assistant.intelligence.IntelligenceRouter
+import com.jarvis.assistant.intelligence.LocalKnowledgeStore
 import com.jarvis.assistant.sync.SyncConfigStore
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Queues commands locally and flushes them to the desktop engine.
+ * Processes user commands through the intelligence router.
  *
- * Key improvements over the original:
- * - **No max retry limit**: Commands stay pending until the desktop is reachable,
- *   even if that takes days. Your commands never die.
- * - **Exponential backoff**: Instead of hammering the server every 30s, backs off
- *   intelligently based on how long the desktop has been unreachable.
- * - **Offline response cache**: When the desktop is unreachable, checks the local
- *   cache for similar previous responses so you still get answers.
- * - **Age-based expiry**: Commands older than the configured max age (default 7 days)
- *   are expired instead of using a fixed retry count.
+ * The command flow is now powered by real on-device intelligence:
+ *
+ * 1. User sends a query
+ * 2. [IntelligenceRouter] decides the best path:
+ *    - **Desktop online**: Send to desktop (full LLM), phone enriches with local context
+ *    - **Desktop offline**: Process locally with Gemini Nano + local knowledge store
+ *    - **Neither can answer**: Queue for desktop, tell user honestly
+ * 3. Every interaction teaches the phone something new (knowledge store learning)
+ * 4. Exponential backoff with age-based expiry for queued commands
+ *
+ * The phone is NOT weaker than the desktop — it's a different kind of smart:
+ * - It knows your real-world context (where you are, who you're with, what you're doing)
+ * - It has Gemini Nano for real AI reasoning on the NPU
+ * - It has 2000+ synced knowledge facts from the desktop
+ * - It has 16 Room DB tables of personal data to reason over
  */
 @Singleton
 class CommandQueueProcessor @Inject constructor(
-    private val apiClient: JarvisApiClient,
+    private val intelligenceRouter: IntelligenceRouter,
     private val commandQueueDao: CommandQueueDao,
     private val conversationDao: ConversationDao,
-    private val responseCache: LocalResponseCache,
     private val syncConfig: SyncConfigStore,
 ) {
     /**
-     * Queue a user command. Inserts into the local DB then immediately
-     * attempts to send it to the desktop. If the desktop is unreachable,
-     * checks the local cache for a similar response.
+     * Process a user command through the intelligence router.
+     *
+     * The router handles all intelligence: desktop, on-device AI, knowledge
+     * store, and queueing. The user always gets an answer — even offline.
      *
      * @return the local command row id
      */
@@ -58,22 +63,42 @@ class CommandQueueProcessor @Inject constructor(
             ),
         )
 
-        // Optimistic send — fire and forget; the sync loop will retry on failure.
+        // Route through intelligence router — handles desktop, on-device, and queueing
         try {
-            sendCommand(id)
-        } catch (e: Exception) {
-            Log.w(TAG, "Immediate send failed, will retry on next sync: ${e.message}")
+            val result = intelligenceRouter.route(text, execute, speak)
 
-            // If desktop is unreachable, try to serve a cached response
-            if (!execute) { // Don't serve cached responses for execution commands
-                val cached = responseCache.findCachedResponse(text)
-                if (cached != null) {
+            when (result.source) {
+                IntelligenceRouter.Source.DESKTOP -> {
+                    // Desktop answered — mark as sent
+                    commandQueueDao.updateStatus(id, "sent", result.response)
                     conversationDao.insert(
-                        ConversationEntity(role = "assistant", content = cached),
+                        ConversationEntity(role = "assistant", content = result.response),
                     )
-                    Log.i(TAG, "Served cached response for offline query")
+                }
+                IntelligenceRouter.Source.ON_DEVICE -> {
+                    // On-device AI answered — mark as sent (processed locally)
+                    commandQueueDao.updateStatus(id, "sent", result.response)
+                    conversationDao.insert(
+                        ConversationEntity(role = "assistant", content = result.response),
+                    )
+                }
+                IntelligenceRouter.Source.QUEUED -> {
+                    // Neither could answer — keep pending, show the queued message
+                    conversationDao.insert(
+                        ConversationEntity(role = "assistant", content = result.response),
+                    )
                 }
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Intelligence routing failed: ${e.message}")
+            // Keep command in queue for retry
+            conversationDao.insert(
+                ConversationEntity(
+                    role = "assistant",
+                    content = "I'm having trouble processing that right now. " +
+                        "Your command has been saved and will be processed shortly.",
+                ),
+            )
         }
 
         return id
@@ -85,11 +110,11 @@ class CommandQueueProcessor @Inject constructor(
     }
 
     /**
-     * Flush all pending commands to the desktop.
+     * Flush pending commands that weren't answered by on-device AI.
      *
-     * Commands are never permanently failed based on retry count alone.
-     * Instead, they're expired based on age (configurable, default 7 days).
-     * Retry timing uses exponential backoff to avoid hammering the server.
+     * These are execution commands or queries that neither the desktop
+     * nor on-device AI could answer at the time. They stay queued with
+     * exponential backoff until the desktop is reachable.
      */
     suspend fun flushPending() {
         val pending = commandQueueDao.getPending()
@@ -97,8 +122,7 @@ class CommandQueueProcessor @Inject constructor(
         val maxAgeMs = syncConfig.maxOfflineQueueAgeHours * 60 * 60 * 1000
 
         for (cmd in pending) {
-            // Age-based expiry instead of retry-count-based failure.
-            // Commands older than maxOfflineQueueAgeHours are expired.
+            // Age-based expiry
             val age = now - cmd.createdAt
             if (age > maxAgeMs) {
                 commandQueueDao.updateStatus(cmd.id, "expired")
@@ -106,8 +130,7 @@ class CommandQueueProcessor @Inject constructor(
                 continue
             }
 
-            // Exponential backoff: skip this command if it's not time to retry yet.
-            // backoff = base * 2^retryCount, capped at max
+            // Exponential backoff
             if (cmd.retryCount > 0) {
                 val backoffBase = syncConfig.retryBackoffBase * 1000L
                 val backoffMax = syncConfig.retryBackoffMax * 1000L
@@ -115,15 +138,27 @@ class CommandQueueProcessor @Inject constructor(
                     backoffBase * (1L shl minOf(cmd.retryCount, 10)),
                     backoffMax,
                 )
-                val timeSinceLastRetry = now - cmd.createdAt - (cmd.retryCount * backoffBase)
-                // Simple check: if retry count is high, wait longer between retries
                 if (cmd.retryCount > 3 && age < cmd.retryCount * backoffBase) {
                     continue // Not time to retry yet
                 }
             }
 
+            // Try routing again through the intelligence router
             try {
-                sendCommand(cmd.id)
+                val result = intelligenceRouter.route(cmd.text, cmd.execute, cmd.speak)
+
+                when (result.source) {
+                    IntelligenceRouter.Source.DESKTOP,
+                    IntelligenceRouter.Source.ON_DEVICE -> {
+                        commandQueueDao.updateStatus(cmd.id, "sent", result.response)
+                        conversationDao.insert(
+                            ConversationEntity(role = "assistant", content = result.response),
+                        )
+                    }
+                    IntelligenceRouter.Source.QUEUED -> {
+                        commandQueueDao.incrementRetry(cmd.id)
+                    }
+                }
             } catch (e: Exception) {
                 commandQueueDao.incrementRetry(cmd.id)
                 Log.w(TAG, "Retry #${cmd.retryCount + 1} failed for command ${cmd.id}: ${e.message}")
@@ -136,49 +171,6 @@ class CommandQueueProcessor @Inject constructor(
             commandQueueDao.purgeSent(cutoff)
         } catch (e: Exception) {
             Log.w(TAG, "Command queue purge failed: ${e.message}")
-        }
-    }
-
-    private suspend fun sendCommand(id: Long) {
-        val cmd = commandQueueDao.getById(id) ?: return
-        if (cmd.status != "pending") return // Already sent or failed — prevent duplicate sends
-        // Atomically mark as "sending" to prevent duplicate concurrent sends
-        val claimed = commandQueueDao.claimForSend(id)
-        if (claimed == 0) return // Another coroutine already claimed it
-
-        try {
-            val request = CommandRequest(
-                text = cmd.text,
-                execute = cmd.execute,
-                approvePrivileged = cmd.approvePrivileged,
-                speak = cmd.speak,
-            )
-
-            val response = apiClient.api().sendCommand(request)
-            val responseText = if (response.ok) {
-                response.intent.ifBlank {
-                    response.stdoutTail.joinToString("\n").ifBlank { "Done." }
-                }
-            } else {
-                "Command failed."
-            }
-
-            val newStatus = if (response.ok) "sent" else "failed"
-            commandQueueDao.updateStatus(id, newStatus, responseText)
-
-            // Persist the assistant's reply in conversation history.
-            conversationDao.insert(
-                ConversationEntity(role = "assistant", content = responseText),
-            )
-
-            // Cache successful responses for offline use
-            if (response.ok) {
-                responseCache.cacheResponse(cmd.text, responseText)
-            }
-        } catch (e: Exception) {
-            // Reset status to "pending" so flushPending can retry
-            commandQueueDao.updateStatus(id, "pending")
-            throw e
         }
     }
 

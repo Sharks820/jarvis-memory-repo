@@ -65,6 +65,23 @@ interface JarvisApi {
      */
     @GET("/sync/heartbeat")
     suspend fun syncHeartbeat(): HeartbeatResponse
+
+    // ── Intelligence sync endpoints ─────────────────────────────────────
+
+    /**
+     * Push phone-learned intelligence to the desktop for merging into
+     * the knowledge graph. The phone sends context observations, habit
+     * patterns, and locally-learned facts.
+     */
+    @POST("/intelligence/merge")
+    suspend fun intelligenceMerge(@Body body: Map<String, Any>): IntelligenceMergeResponse
+
+    /**
+     * Pull desktop knowledge for the phone's local intelligence store.
+     * Returns structured facts from the knowledge graph and memory.
+     */
+    @POST("/intelligence/export")
+    suspend fun intelligenceExport(@Body body: Map<String, Any>): IntelligenceExportResponse
 }
 
 /** Response from /sync/config. */
@@ -78,4 +95,18 @@ data class HeartbeatResponse(
     val ok: Boolean = false,
     val server_time: Long = 0,
     val device_id: String = "",
+)
+
+/** Response from /intelligence/merge. */
+data class IntelligenceMergeResponse(
+    val ok: Boolean = false,
+    val merged: Int = 0,
+    val total_received: Int = 0,
+)
+
+/** Response from /intelligence/export. */
+data class IntelligenceExportResponse(
+    val ok: Boolean = false,
+    val items: List<Map<String, Any?>> = emptyList(),
+    val total: Int = 0,
 )
