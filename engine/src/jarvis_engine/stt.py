@@ -1,6 +1,6 @@
-"""Speech-to-text module with Groq Whisper (cloud) and faster-whisper (local) backends.
+"""Speech-to-text module with Groq Whisper (cloud), Parakeet TDT (local), and faster-whisper (local) backends.
 
-Priority: Groq Whisper Turbo (fast, accurate, free tier) -> faster-whisper (offline fallback).
+Priority: Groq Whisper Turbo (fast, accurate, free tier) -> Parakeet TDT 0.6B (local, low WER) -> faster-whisper (offline fallback).
 Backend selected via JARVIS_STT_BACKEND env var: "groq", "local", or "auto" (default).
 """
 
@@ -406,6 +406,9 @@ def _try_groq(
 _local_stt_instance: SpeechToText | None = None
 _local_stt_lock = threading.Lock()
 
+_parakeet_model = None
+_parakeet_lock = threading.Lock()
+
 
 def _try_local(
     audio: np.ndarray | str, *, language: str, prompt: str = ""
@@ -420,6 +423,93 @@ def _try_local(
         return _local_stt_instance.transcribe_audio(audio, language=language, prompt=prompt)
     except Exception as exc:
         logger.warning("Local STT attempt failed: %s", exc)
+        return None
+
+
+def _try_parakeet(
+    audio: np.ndarray | str, *, language: str, prompt: str = ""
+) -> TranscriptionResult | None:
+    """Attempt Parakeet TDT 0.6B transcription via onnx-asr.
+
+    Returns *None* on any failure (import error, model error, etc.) so the
+    caller can fall back to the next backend.  The model is lazy-loaded on
+    first use with double-checked locking to be thread-safe.
+    """
+    global _parakeet_model
+
+    try:
+        try:
+            import onnx_asr  # type: ignore[import-untyped]
+        except ImportError:
+            logger.warning(
+                "onnx-asr is not installed; Parakeet backend unavailable. "
+                "Install with: pip install onnx-asr"
+            )
+            return None
+
+        t0 = time.monotonic()
+
+        # Lazy model load with double-checked locking
+        if _parakeet_model is None:
+            with _parakeet_lock:
+                if _parakeet_model is None:
+                    logger.info("Loading Parakeet TDT 0.6B model via onnx-asr...")
+                    model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2")
+                    # Try to enable timestamps for log probability access
+                    try:
+                        model = model.with_timestamps()
+                        logger.debug("Parakeet timestamps model loaded")
+                    except Exception:
+                        logger.debug(
+                            "Parakeet timestamps not available, using base model"
+                        )
+                    _parakeet_model = model
+
+        # Transcription: numpy arrays need explicit sample_rate, file paths do not
+        if isinstance(audio, np.ndarray):
+            result = _parakeet_model.recognize(audio, sample_rate=16000)
+        else:
+            result = _parakeet_model.recognize(audio)
+
+        text = str(result).strip() if result else ""
+        elapsed = time.monotonic() - t0
+
+        if not text:
+            return TranscriptionResult(
+                text="",
+                language="en",
+                confidence=0.0,
+                duration_seconds=round(elapsed, 3),
+                backend="parakeet-tdt",
+            )
+
+        # Confidence scoring: try to extract log probabilities from result
+        confidence = 0.94  # Baseline: Parakeet's known 6.05% WER
+        try:
+            # onnx-asr TimestampedResult may expose token-level log probs
+            tokens = getattr(result, "tokens", None)
+            if tokens:
+                logprobs = []
+                for tok in tokens:
+                    lp = getattr(tok, "logprob", None) or getattr(tok, "log_prob", None)
+                    if lp is not None and isinstance(lp, (int, float)) and math.isfinite(lp):
+                        logprobs.append(lp)
+                if logprobs:
+                    avg_logprob = sum(logprobs) / len(logprobs)
+                    confidence = min(1.0, max(0.0, 1.0 + avg_logprob))
+        except Exception:
+            pass  # Fall through to baseline confidence
+
+        return TranscriptionResult(
+            text=text,
+            language="en",
+            confidence=round(confidence, 4),
+            duration_seconds=round(elapsed, 3),
+            backend="parakeet-tdt",
+        )
+
+    except Exception as exc:
+        logger.warning("Parakeet STT attempt failed: %s", exc)
         return None
 
 
