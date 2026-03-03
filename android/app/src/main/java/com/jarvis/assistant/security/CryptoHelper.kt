@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.security.MessageDigest
 
 /**
  * Encrypted storage for API credentials and sensitive configuration.
@@ -37,8 +38,58 @@ class CryptoHelper(context: Context) {
     fun getDeviceId(): String = prefs.getString(KEY_DEVICE_ID, "") ?: ""
     fun setDeviceId(id: String) = prefs.edit().putString(KEY_DEVICE_ID, id).apply()
 
-    fun getMasterPassword(): String = prefs.getString(KEY_MASTER_PASSWORD, "") ?: ""
-    fun setMasterPassword(password: String) = prefs.edit().putString(KEY_MASTER_PASSWORD, password).apply()
+    /**
+     * Store the SHA-256 hash of the master password (never the plaintext).
+     * Also removes any legacy plaintext storage from older versions.
+     */
+    fun setMasterPassword(password: String) {
+        prefs.edit()
+            .putString(KEY_MASTER_PASSWORD_HASH, hashPassword(password))
+            .remove(KEY_MASTER_PASSWORD)
+            .apply()
+    }
+
+    /**
+     * Verify a candidate password against the stored hash.
+     * Automatically migrates legacy plaintext storage on first access.
+     */
+    fun verifyMasterPassword(password: String): Boolean {
+        migrateLegacyPassword()
+        val stored = prefs.getString(KEY_MASTER_PASSWORD_HASH, "") ?: ""
+        return stored.isNotBlank() && MessageDigest.isEqual(
+            stored.toByteArray(Charsets.UTF_8),
+            hashPassword(password).toByteArray(Charsets.UTF_8),
+        )
+    }
+
+    /**
+     * Check whether a master password has been configured.
+     * Automatically migrates legacy plaintext storage on first access.
+     */
+    fun hasMasterPassword(): Boolean {
+        migrateLegacyPassword()
+        return prefs.getString(KEY_MASTER_PASSWORD_HASH, "")?.isNotBlank() == true
+    }
+
+    /**
+     * One-time migration: if a plaintext password exists from a prior version,
+     * hash it and delete the plaintext entry.
+     */
+    private fun migrateLegacyPassword() {
+        val legacy = prefs.getString(KEY_MASTER_PASSWORD, null)
+        if (legacy != null && legacy.isNotBlank()) {
+            prefs.edit()
+                .putString(KEY_MASTER_PASSWORD_HASH, hashPassword(legacy))
+                .remove(KEY_MASTER_PASSWORD)
+                .apply()
+        }
+    }
+
+    private fun hashPassword(password: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(password.toByteArray(Charsets.UTF_8))
+        return hash.joinToString("") { "%02x".format(it) }
+    }
 
     fun isBootstrapped(): Boolean =
         getToken().isNotBlank() && getSigningKey().isNotBlank()
@@ -65,7 +116,9 @@ class CryptoHelper(context: Context) {
         private const val KEY_TOKEN = "api_token"
         private const val KEY_SIGNING_KEY = "signing_key"
         private const val KEY_DEVICE_ID = "device_id"
+        /** @deprecated Legacy plaintext key, kept only for migration detection. */
         private const val KEY_MASTER_PASSWORD = "master_password"
+        private const val KEY_MASTER_PASSWORD_HASH = "master_password_hash"
         private const val KEY_SQLCIPHER_FALLBACK = "sqlcipher_fallback_passphrase"
     }
 }

@@ -54,7 +54,7 @@ class MainActivity : FragmentActivity() {
      * Check if a master password has been configured via CryptoHelper.
      */
     private fun hasMasterPasswordConfigured(): Boolean {
-        return crypto.getMasterPassword().isNotBlank()
+        return crypto.hasMasterPassword()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

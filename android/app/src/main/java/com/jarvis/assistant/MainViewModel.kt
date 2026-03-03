@@ -2,7 +2,6 @@ package com.jarvis.assistant
 
 import androidx.lifecycle.ViewModel
 import com.jarvis.assistant.security.CryptoHelper
-import java.security.MessageDigest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -83,7 +82,7 @@ class MainViewModel @Inject constructor() : ViewModel() {
     }
 
     /**
-     * Verify the entered master password against the stored value.
+     * Verify the entered master password against the stored hash.
      * If correct, authenticate the user.
      */
     fun verifyMasterPassword(crypto: CryptoHelper) {
@@ -92,12 +91,7 @@ class MainViewModel @Inject constructor() : ViewModel() {
             _authError.value = "Password cannot be empty"
             return
         }
-        val stored = crypto.getMasterPassword()
-        if (stored.isNotEmpty() && MessageDigest.isEqual(
-                entered.toByteArray(Charsets.UTF_8),
-                stored.toByteArray(Charsets.UTF_8),
-            )
-        ) {
+        if (crypto.verifyMasterPassword(entered)) {
             onAuthSuccess()
         } else {
             _authError.value = "Incorrect master password"
