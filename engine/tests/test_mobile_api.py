@@ -1801,3 +1801,177 @@ def test_intelligence_growth_handles_missing_data_gracefully(mobile_server) -> N
     assert m["memory_records"] == 0
     assert m["last_self_test_score"] == 0.0
     assert m["growth_trend"] in ("stable", "increasing", "declining")
+
+
+# ---------------------------------------------------------------------------
+# Mission endpoints — POST /missions/create, GET /missions/status
+# ---------------------------------------------------------------------------
+
+
+def test_missions_create_requires_auth(mobile_server) -> None:
+    """POST /missions/create without auth should return 401."""
+    body = json.dumps({"topic": "test"}).encode()
+    code, _ = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body)
+    assert code == 401
+
+
+def test_missions_create_missing_topic(mobile_server) -> None:
+    """POST /missions/create without topic should return 400."""
+    body = json.dumps({"objective": "learn stuff"}).encode()
+    headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
+    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    assert code == 400
+    payload = json.loads(resp.decode("utf-8"))
+    assert payload["ok"] is False
+    assert "topic" in payload["error"].lower()
+
+
+def test_missions_create_empty_topic(mobile_server) -> None:
+    """POST /missions/create with empty topic should return 400."""
+    body = json.dumps({"topic": "   "}).encode()
+    headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
+    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    assert code == 400
+    payload = json.loads(resp.decode("utf-8"))
+    assert payload["ok"] is False
+
+
+def test_missions_create_invalid_sources_type(mobile_server) -> None:
+    """POST /missions/create with non-list sources should return 400."""
+    body = json.dumps({"topic": "test topic", "sources": "google"}).encode()
+    headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
+    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    assert code == 400
+    payload = json.loads(resp.decode("utf-8"))
+    assert payload["ok"] is False
+    assert "sources" in payload["error"].lower()
+
+
+def test_missions_create_success(mobile_server, monkeypatch) -> None:
+    """POST /missions/create with valid topic should create a mission."""
+    from jarvis_engine.commands.ops_commands import MissionCreateResult
+
+    mock_mission = {
+        "mission_id": "m-20260303120000000000",
+        "topic": "quantum computing basics",
+        "status": "pending",
+        "sources": ["google", "reddit", "official_docs"],
+    }
+
+    class FakeBus:
+        def dispatch(self, cmd):
+            return MissionCreateResult(mission=mock_mission)
+
+    import jarvis_engine.main as _main_mod
+    monkeypatch.setattr(_main_mod, "_get_bus", lambda: FakeBus())
+
+    body = json.dumps({"topic": "quantum computing basics"}).encode()
+    headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
+    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    assert code == 200
+    payload = json.loads(resp.decode("utf-8"))
+    assert payload["ok"] is True
+    assert payload["mission_id"] == "m-20260303120000000000"
+    assert payload["topic"] == "quantum computing basics"
+    assert payload["status"] == "pending"
+    assert isinstance(payload["sources"], list)
+
+
+def test_missions_create_with_objective_and_sources(mobile_server, monkeypatch) -> None:
+    """POST /missions/create passes objective and sources to CQRS command."""
+    from jarvis_engine.commands.ops_commands import MissionCreateCommand, MissionCreateResult
+
+    captured_cmds = []
+
+    class FakeBus:
+        def dispatch(self, cmd):
+            captured_cmds.append(cmd)
+            return MissionCreateResult(mission={
+                "mission_id": "m-test",
+                "topic": cmd.topic,
+                "status": "pending",
+                "sources": cmd.sources or ["google", "reddit"],
+            })
+
+    import jarvis_engine.main as _main_mod
+    monkeypatch.setattr(_main_mod, "_get_bus", lambda: FakeBus())
+
+    body = json.dumps({
+        "topic": "rust async patterns",
+        "objective": "Learn tokio runtime internals",
+        "sources": ["google", "official_docs"],
+    }).encode()
+    headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
+    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    assert code == 200
+    payload = json.loads(resp.decode("utf-8"))
+    assert payload["ok"] is True
+
+    # Verify the command was dispatched with correct fields
+    assert len(captured_cmds) == 1
+    cmd = captured_cmds[0]
+    assert isinstance(cmd, MissionCreateCommand)
+    assert cmd.topic == "rust async patterns"
+    assert cmd.objective == "Learn tokio runtime internals"
+    assert cmd.sources == ["google", "official_docs"]
+
+
+def test_missions_status_requires_auth(mobile_server) -> None:
+    """GET /missions/status without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/missions/status")
+    assert code == 401
+
+
+def test_missions_status_returns_structure(mobile_server, monkeypatch) -> None:
+    """GET /missions/status returns expected JSON structure."""
+    from jarvis_engine.commands.ops_commands import MissionStatusResult
+
+    mock_missions = [
+        {
+            "mission_id": "m-001",
+            "topic": "quantum computing",
+            "objective": "basics",
+            "status": "completed",
+            "sources": ["google"],
+            "verified_findings": 5,
+            "created_utc": "2026-03-01T10:00:00Z",
+            "updated_utc": "2026-03-01T12:00:00Z",
+        },
+        {
+            "mission_id": "m-002",
+            "topic": "rust ownership",
+            "objective": "",
+            "status": "pending",
+            "sources": ["google", "reddit"],
+            "verified_findings": 0,
+            "created_utc": "2026-03-02T08:00:00Z",
+            "updated_utc": "2026-03-02T08:00:00Z",
+        },
+    ]
+
+    class FakeBus:
+        def dispatch(self, cmd):
+            return MissionStatusResult(missions=mock_missions, total_count=2)
+
+    import jarvis_engine.main as _main_mod
+    monkeypatch.setattr(_main_mod, "_get_bus", lambda: FakeBus())
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, resp = http_request("GET", f"{mobile_server.base_url}/missions/status", headers=headers)
+    assert code == 200
+    payload = json.loads(resp.decode("utf-8"))
+    assert payload["ok"] is True
+    assert payload["total"] == 2
+    assert len(payload["missions"]) == 2
+
+    m0 = payload["missions"][0]
+    assert m0["mission_id"] == "m-001"
+    assert m0["topic"] == "quantum computing"
+    assert m0["status"] == "completed"
+    assert m0["verified_findings"] == 5
+    assert m0["created_utc"] == "2026-03-01T10:00:00Z"
+
+    m1 = payload["missions"][1]
+    assert m1["mission_id"] == "m-002"
+    assert m1["status"] == "pending"
+    assert m1["verified_findings"] == 0
