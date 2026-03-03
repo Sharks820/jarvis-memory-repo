@@ -7,10 +7,10 @@ v1.0 Desktop Engine, v2.0 Android App, and v3.0 Hardening are all shipped. v4.0 
 ## Phases
 
 - [x] **Phase 1: Voice-to-Text Overhaul** — Replace failing STT pipeline with best-in-class models. Parakeet TDT 0.6B (local), Deepgram Nova-3 (cloud), Silero VAD, streaming pipeline, fallback chain. (completed 2026-03-03)
-- [ ] **Phase 2: Learning System Activation** — Close the write-only feedback loop. Wire preference/feedback/usage tracker reads into QueryHandler, IntentClassifier, and dashboard. Pass route params. Integrate relevance scoring.
-- [ ] **Phase 3: Widget & UI Live Updates** — Fix brain UI live-updating for all functions. Add activity feed to conversation display. Parse and display all command outputs cleanly.
-- [ ] **Phase 4: Platform Stability** — Fix db_path gate, add logging to silent blocks, expose MemoryConsolidator via CQRS, proactive trigger diagnostics. End-to-end verification scan.
-- [ ] **Phase 5: Mobile App Readiness** — Verify mobile-desktop sync, learning sync, offline queue, API surface compatibility. Prepare for S25 Ultra deployment.
+- [x] **Phase 2: Learning System Activation** — Close the write-only feedback loop. Wire preference/feedback/usage tracker reads into QueryHandler, IntentClassifier, and dashboard. Pass route params. Integrate relevance scoring. (completed 2026-03-02)
+- [x] **Phase 3: Widget & UI Live Updates** — Fix brain UI live-updating for all functions. Add activity feed to conversation display. Parse and display all command outputs cleanly. (completed 2026-03-02)
+- [x] **Phase 4: Platform Stability** — Fix db_path gate, add logging to silent blocks, expose MemoryConsolidator via CQRS, proactive trigger diagnostics. End-to-end verification scan. (completed 2026-03-02)
+- [x] **Phase 5: Mobile App Readiness** — Verify mobile-desktop sync, learning sync, offline queue, API surface compatibility. Prepare for S25 Ultra deployment. (completed 2026-03-02)
 
 ## Phase Details
 
@@ -42,9 +42,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Fix data quality (route/topic in LearnInteractionCommand) + bus exposure
-- [ ] 02-02-PLAN.md — Wire preferences into prompts, route quality into classifier, usage into daemon
-- [ ] 02-03-PLAN.md — Relevance scoring in search, tier management in consolidator, learning dashboard
+- [x] 02-01-PLAN.md — Fix data quality (route/topic in LearnInteractionCommand) + bus exposure
+- [x] 02-02-PLAN.md — Wire preferences into prompts, route quality into classifier, usage into daemon
+- [x] 02-03-PLAN.md — Relevance scoring in search, tier management in consolidator, learning dashboard
 
 **Success Criteria**:
   1. User preferences (detected over time) appear in LLM system prompts
@@ -91,7 +91,9 @@ Plans:
 | Phase | Plans Complete | Status | Date |
 |-------|---------------|--------|------|
 | 1. Voice-to-Text Overhaul | 5/5 | Complete | 2026-03-03 |
-| 2. Learning System Activation | 0/3 | Planned | |
-| 3. Widget & UI Live Updates | 0/? | Not started | |
-| 4. Platform Stability | 0/? | Not started | |
-| 5. Mobile App Readiness | 0/? | Not started | |
+| 2. Learning System Activation | 3/3 | Complete | 2026-03-02 |
+| 3. Widget & UI Live Updates | 2/2 | Complete | 2026-03-02 |
+| 4. Platform Stability | 1/1 | Complete | 2026-03-02 |
+| 5. Mobile App Readiness | 1/1 | Complete | 2026-03-02 |
+
+**v4.0 MILESTONE COMPLETE** — All 5 phases shipped, 31 requirements verified, 4345 tests passing.
