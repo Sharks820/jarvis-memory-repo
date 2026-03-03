@@ -6,12 +6,12 @@
 ## Voice-to-Text Overhaul (STT)
 
 - **STT-01**: Replace faster-whisper small.en with NVIDIA Parakeet TDT 0.6B as primary local STT model (target: <8% WER on conversational speech)
-- **STT-02**: Integrate Deepgram Nova-3 as cloud STT provider with keyterm prompting for proper nouns and domain vocabulary
+- [x] **STT-02**: Integrate Deepgram Nova-3 as cloud STT provider with keyterm prompting for proper nouns and domain vocabulary
 - **STT-03**: Replace energy-based VAD with Silero VAD for accurate voice activity detection (pre-speech, end-of-speech, silence handling)
 - **STT-04**: Implement streaming/chunked STT pipeline — detect speech start, transcribe incrementally, detect speech end, finalize
 - **STT-05**: Wake word detection continues to work with new VAD (Silero feeds into OpenWakeWord or existing porcupine)
 - **STT-06**: STT confidence scoring accurate and actionable — low-confidence triggers re-listen or clarification prompt
-- **STT-07**: Personal vocabulary and entity correction integrated into STT post-processing (names, places, custom terms)
+- [x] **STT-07**: Personal vocabulary and entity correction integrated into STT post-processing (names, places, custom terms)
 - **STT-08**: Fallback chain: Parakeet TDT (local) → Deepgram Nova-3 (cloud) → Groq Whisper (cloud) → faster-whisper large-v3 (local emergency)
 
 ## Learning System Activation (LEARN)
@@ -53,7 +53,14 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STT-01 through STT-08 | Phase 1 | Pending |
+| STT-01 | Phase 1 | Pending |
+| STT-02 | Phase 1 | Complete |
+| STT-03 | Phase 1 | Pending |
+| STT-04 | Phase 1 | Pending |
+| STT-05 | Phase 1 | Pending |
+| STT-06 | Phase 1 | Pending |
+| STT-07 | Phase 1 | Complete |
+| STT-08 | Phase 1 | Pending |
 | LEARN-01 through LEARN-08 | Phase 2 | Pending |
 | UI-01 through UI-05 | Phase 3 | Pending |
 | STAB-01 through STAB-05 | Phase 4 | Pending |

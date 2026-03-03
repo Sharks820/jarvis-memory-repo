@@ -10,11 +10,12 @@ See: .planning/ROADMAP.md (v4.0 Intelligence Activation & Voice Overhaul)
 
 ## Current Position
 
-Phase: 0 (Milestone Planning)
-Status: Defining requirements and roadmap
-Last activity: 2026-03-02
+Phase: 1 (Voice-to-Text Overhaul)
+Current Plan: 3 of 5
+Status: Executing phase plans
+Last activity: 2026-03-03
 
-Progress (v4.0): [░░░░░░░░░░] 0%
+Progress (v4.0): [██░░░░░░░░] 19%
 
 ## Performance Metrics
 
@@ -22,7 +23,7 @@ Progress (v4.0): [░░░░░░░░░░] 0%
 **v2.0 Android App**: SHIPPED (phases 10-13, 11 plans)
 **v3.0 Hardening**: SHIPPED (2 phases, 4136 tests, 7-pillar security, 4-CLI scan gauntlet clean)
 **v4.0 Intelligence & Voice**: IN PROGRESS
-- Test count: 4138+ passing, 3 skipped, 0 failures
+- Test count: 4249+ passing (100 STT tests), 3 skipped, 0 failures
 - Source files: 60+ Python modules, 100+ Kotlin files
 - Self-analysis: 32 findings (4 CRITICAL, 3 HIGH, 4 MEDIUM, 12 LOW)
 
@@ -50,12 +51,14 @@ Progress (v4.0): [░░░░░░░░░░] 0%
 - v4.0 milestone covers: voice overhaul, learning activation, UI live-updates, platform stability, mobile readiness
 - STT target: Parakeet TDT 0.6B (local) + Deepgram Nova-3 (cloud) + Silero VAD
 - Learning activation: wire tracker read methods into QueryHandler, IntentClassifier, and dashboard
+- Deepgram backend: used httpx REST API directly instead of deepgram-sdk (avoids SDK version uncertainty)
+- Keyterm loading: strip parenthetical annotations from personal_vocab.txt for clean Deepgram keywords
 
 ### Blockers/Concerns
 - None currently
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Creating v4.0 milestone structure (requirements + roadmap)
+Last session: 2026-03-03
+Stopped at: Completed 01-03-PLAN.md (Deepgram Nova-3 backend with keyterm prompting)
 Resume file: None
