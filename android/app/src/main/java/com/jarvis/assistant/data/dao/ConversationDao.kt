@@ -27,4 +27,8 @@ interface ConversationDao {
     /** Delete entries older than the given timestamp to prevent unbounded table growth. */
     @Query("DELETE FROM conversations WHERE created_at < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long)
+
+    /** Get the most recent messages (non-Flow, for on-device intelligence context). */
+    @Query("SELECT * FROM conversations ORDER BY created_at DESC LIMIT :limit")
+    suspend fun getLatestMessages(limit: Int = 5): List<ConversationEntity>
 }

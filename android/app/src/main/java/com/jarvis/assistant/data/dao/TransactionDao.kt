@@ -55,6 +55,10 @@ interface TransactionDao {
             "WHERE date BETWEEN :startDate AND :endDate AND isAnomaly = 1",
     )
     suspend fun getAnomalyCountInRange(startDate: String, endDate: String): Int
+
+    /** Get transactions since a timestamp (for on-device intelligence context). */
+    @Query("SELECT * FROM transactions WHERE timestamp >= :sinceMs ORDER BY timestamp DESC")
+    suspend fun getSince(sinceMs: Long): List<TransactionEntity>
 }
 
 /** Aggregate stats for a single merchant. */

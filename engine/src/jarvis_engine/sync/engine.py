@@ -23,17 +23,25 @@ logger = logging.getLogger(__name__)
 
 
 class SyncEngine:
-    """Bidirectional sync engine with field-level conflict resolution."""
+    """Bidirectional sync engine with field-level conflict resolution.
+
+    Supports two conflict strategies:
+    - ``"most_recent"``: timestamp-based, fairest — whichever change is newer wins.
+      This respects phone data (context, location, interactions) equally.
+    - ``"desktop_wins"``: legacy behavior — desktop always wins ties.
+    """
 
     def __init__(
         self,
         db: sqlite3.Connection,
         write_lock: threading.Lock,
         device_id: str = "desktop",
+        conflict_strategy: str = "most_recent",
     ) -> None:
         self._db = db
         self._write_lock = write_lock
         self._device_id = device_id
+        self._conflict_strategy = conflict_strategy
 
     def compute_outgoing(self, target_device_id: str, limit: int = 500) -> dict[str, Any]:
         """Compute changes to send to *target_device_id*.
@@ -209,7 +217,17 @@ class SyncEngine:
         remote_entry: dict[str, Any],
         desktop_is_local: bool,
     ) -> dict[str, Any]:
-        """Field-level merge. DELETE always wins. Desktop wins ties."""
+        """Field-level merge with configurable conflict strategy.
+
+        DELETE always wins over UPDATE regardless of strategy.
+
+        Strategies for same-field conflicts:
+        - ``"most_recent"``: whichever entry has the newer timestamp wins.
+          This treats phone and desktop data equally — if you made a change
+          on your phone at 3pm and the desktop had an older change from 2pm,
+          the phone's change wins. Fair and intuitive.
+        - ``"desktop_wins"``: legacy behavior, desktop always wins ties.
+        """
         # DELETE always wins over UPDATE
         if local_entry.get("operation") == "DELETE":
             return local_entry
@@ -232,11 +250,27 @@ class SyncEngine:
             elif field in remote_fields and field not in local_fields:
                 merged_new[field] = remote_new.get(field)
             else:
-                # Both changed the same field -- desktop wins ties
-                if desktop_is_local:
-                    merged_new[field] = local_new.get(field)
+                # Both changed the same field — use configured strategy
+                if self._conflict_strategy == "most_recent":
+                    # Compare timestamps: newer wins
+                    local_ts = local_entry.get("ts", "")
+                    remote_ts = remote_entry.get("ts", "")
+                    if remote_ts > local_ts:
+                        merged_new[field] = remote_new.get(field)
+                    elif local_ts > remote_ts:
+                        merged_new[field] = local_new.get(field)
+                    else:
+                        # Exact same timestamp — desktop wins as tiebreaker
+                        if desktop_is_local:
+                            merged_new[field] = local_new.get(field)
+                        else:
+                            merged_new[field] = remote_new.get(field)
                 else:
-                    merged_new[field] = remote_new.get(field)
+                    # Legacy: desktop wins ties
+                    if desktop_is_local:
+                        merged_new[field] = local_new.get(field)
+                    else:
+                        merged_new[field] = remote_new.get(field)
 
         return {
             "table_name": local_entry.get("table_name", remote_entry.get("table_name")),

@@ -54,4 +54,8 @@ interface ContactContextDao {
 
     @Query("UPDATE contact_context SET syncedToDesktop = 1 WHERE id = :id")
     suspend fun markSynced(id: Long)
+
+    /** Get contacts sorted by importance (for on-device intelligence context). */
+    @Query("SELECT * FROM contact_context ORDER BY importance DESC LIMIT :limit")
+    suspend fun getTopByImportance(limit: Int = 10): List<ContactContextEntity>
 }

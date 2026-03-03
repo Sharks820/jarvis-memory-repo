@@ -35,4 +35,12 @@ interface ExtractedEventDao {
 
     @Query("DELETE FROM extracted_events WHERE content_hash = :hash")
     suspend fun deleteByHash(hash: String)
+
+    /** Get upcoming events in a time range (for on-device intelligence context). */
+    @Query(
+        "SELECT * FROM extracted_events " +
+            "WHERE date_time_ms >= :fromMs AND date_time_ms <= :toMs " +
+            "ORDER BY date_time_ms ASC",
+    )
+    suspend fun getUpcomingEvents(fromMs: Long, toMs: Long): List<ExtractedEventEntity>
 }
