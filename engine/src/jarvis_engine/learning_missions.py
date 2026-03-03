@@ -480,8 +480,8 @@ def auto_generate_missions(
                             break
                     if len(candidates) >= max_new:
                         break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Topic extraction from recent queries failed: %s", exc)
 
         # Source 2: KG nodes with low edge count (knowledge gaps)
         if conn is not None and len(candidates) < max_new:
@@ -503,8 +503,8 @@ def auto_generate_missions(
                         phrase = " ".join(filtered[:4])
                         if _add(phrase):
                             break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("KG gap analysis for mission topics failed: %s", exc)
 
         # Source 3: Strong KG areas that could be deepened
         if conn is not None and len(candidates) < max_new:
@@ -529,8 +529,8 @@ def auto_generate_missions(
                         phrase = f"{base} {suffixes[i % len(suffixes)]}"
                         if _add(phrase):
                             break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("KG strength analysis for mission topics failed: %s", exc)
 
     finally:
         if conn is not None:

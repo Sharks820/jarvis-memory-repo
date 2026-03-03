@@ -49,3 +49,21 @@ class FlagExpiredFactsCommand:
 class FlagExpiredFactsResult:
     expired_count: int = 0
     message: str = ""
+
+
+@dataclass(frozen=True)
+class ConsolidateMemoryCommand:
+    """Trigger memory consolidation of episodic records into semantic facts."""
+
+    branch: str = ""          # Restrict to specific branch (empty = all)
+    max_groups: int = 20      # Max groups to process
+    dry_run: bool = False     # Compute clusters but don't write
+
+
+@dataclass
+class ConsolidateMemoryResult:
+    groups_found: int = 0
+    records_consolidated: int = 0
+    new_facts_created: int = 0
+    errors: list = field(default_factory=list)
+    message: str = ""

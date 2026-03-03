@@ -1689,6 +1689,22 @@ def cmd_mission_cancel(mission_id: str) -> int:
     return 0
 
 
+def cmd_consolidate(branch: str, max_groups: int, dry_run: bool) -> int:
+    from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
+    result = _get_bus().dispatch(ConsolidateMemoryCommand(
+        branch=branch, max_groups=max_groups, dry_run=dry_run,
+    ))
+    print(f"consolidation_groups={result.groups_found}")
+    print(f"consolidation_records={result.records_consolidated}")
+    print(f"consolidation_new_facts={result.new_facts_created}")
+    if result.errors:
+        print(f"consolidation_errors={len(result.errors)}")
+        for e in result.errors:
+            print(f"  {e}")
+    print(f"response={result.message}")
+    return 0 if not result.errors else 2
+
+
 def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_ingest: bool) -> int:
     result = _get_bus().dispatch(MissionRunCommand(
         mission_id=mission_id, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
@@ -2677,43 +2693,13 @@ def _cmd_daemon_run_impl(
             # --- Memory consolidation (every 50 cycles) ---
             if cycles % 50 == 0:
                 try:
-                    from jarvis_engine.learning.consolidator import MemoryConsolidator
-                    from jarvis_engine.knowledge.regression import RegressionChecker
-                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
+                    from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
                     bus = _get_daemon_bus()
-                    engine = getattr(bus, "_engine", None)
-                    kg = getattr(bus, "_kg", None)
-                    gateway = getattr(bus, "_gateway", None)
-                    embed_svc = getattr(bus, "_embed_service", None)
-                    if engine is not None:
-                        # Backup KG state before consolidation
-                        if kg is not None:
-                            try:
-                                rc_checker = RegressionChecker(kg)
-                                rc_checker.backup_graph(tag="pre-consolidation")
-                                print("consolidation_kg_backup=ok")
-                            except Exception as exc:  # noqa: BLE001
-                                print(f"consolidation_kg_backup_error={exc}")
-                        consolidator = MemoryConsolidator(
-                            engine, gateway=gateway, embed_service=embed_svc,
-                        )
-                        result = consolidator.consolidate()
-                        print(f"consolidation_groups={result.groups_found}")
-                        print(f"consolidation_new_facts={result.new_facts_created}")
-                        if result.errors:
-                            print(f"consolidation_errors={len(result.errors)}")
-                        log_activity(
-                            ActivityCategory.CONSOLIDATION,
-                            f"Memory consolidation: {result.new_facts_created} facts from {result.groups_found} groups",
-                            {
-                                "groups_found": result.groups_found,
-                                "records_consolidated": result.records_consolidated,
-                                "new_facts_created": result.new_facts_created,
-                                "errors": result.errors,
-                            },
-                        )
-                    else:
-                        print("consolidation_skipped=engine_not_initialized")
+                    result = bus.dispatch(ConsolidateMemoryCommand())
+                    print(f"consolidation_groups={result.groups_found}")
+                    print(f"consolidation_new_facts={result.new_facts_created}")
+                    if result.errors:
+                        print(f"consolidation_errors={len(result.errors)}")
                 except Exception as exc:  # noqa: BLE001
                     print(f"consolidation_error={exc}")
             # --- Entity resolution (every 100 cycles) ---
@@ -4190,6 +4176,8 @@ def cmd_proactive_check(snapshot_path: str) -> int:
                 continue
             print(f"  [{a.get('rule_id', '?')}] {a.get('message', '')}")
     print(f"message={result.message}")
+    if result.diagnostics:
+        print(f"diagnostics={result.diagnostics}")
     return 0
 
 
@@ -4516,6 +4504,11 @@ def main() -> int:
 
     p_mission_cancel = sub.add_parser("mission-cancel", help="Cancel a pending learning mission.")
     p_mission_cancel.add_argument("--id", required=True, help="Mission id to cancel.")
+
+    p_consolidate = sub.add_parser("consolidate", help="Consolidate episodic memories into semantic facts.")
+    p_consolidate.add_argument("--branch", default="", help="Restrict to specific branch (empty = all).")
+    p_consolidate.add_argument("--max-groups", type=int, default=20, help="Max groups to process.")
+    p_consolidate.add_argument("--dry-run", action="store_true", help="Compute clusters but don't write.")
 
     p_runtime = sub.add_parser("runtime-control", help="Pause/resume daemon and toggle safe mode.")
     p_runtime_group = p_runtime.add_mutually_exclusive_group()
@@ -4897,6 +4890,10 @@ def main() -> int:
         )
     if args.command == "mission-cancel":
         return cmd_mission_cancel(mission_id=args.id)
+    if args.command == "consolidate":
+        return cmd_consolidate(
+            branch=args.branch, max_groups=args.max_groups, dry_run=args.dry_run,
+        )
     if args.command == "runtime-control":
         return cmd_runtime_control(
             pause=args.pause,

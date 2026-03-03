@@ -171,11 +171,13 @@ from jarvis_engine.handlers.proactive_handlers import (
     WakeWordStartHandler,
 )
 from jarvis_engine.commands.learning_commands import (
+    ConsolidateMemoryCommand,
     CrossBranchQueryCommand,
     FlagExpiredFactsCommand,
     LearnInteractionCommand,
 )
 from jarvis_engine.handlers.learning_handlers import (
+    ConsolidateMemoryHandler,
     CrossBranchQueryHandler,
     FlagExpiredFactsHandler,
     LearnInteractionHandler,
@@ -214,34 +216,33 @@ def create_app(root: Path) -> CommandBus:
     pipeline = None
     kg = None
 
-    if db_path.exists():
-        try:
-            from jarvis_engine.memory.classify import BranchClassifier
-            from jarvis_engine.memory.embeddings import EmbeddingService
-            from jarvis_engine.memory.engine import MemoryEngine
-            from jarvis_engine.memory.ingest import EnrichedIngestPipeline
-            from jarvis_engine.knowledge.graph import KnowledgeGraph
+    try:
+        from jarvis_engine.memory.classify import BranchClassifier
+        from jarvis_engine.memory.embeddings import EmbeddingService
+        from jarvis_engine.memory.engine import MemoryEngine
+        from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+        from jarvis_engine.knowledge.graph import KnowledgeGraph
 
-            embed_service = EmbeddingService()
-            engine = MemoryEngine(db_path, embed_service=embed_service)
-            classifier = BranchClassifier(embed_service)
-            kg = KnowledgeGraph(engine, embed_service=embed_service)
-            # Run temporal metadata migration (idempotent)
-            try:
-                from jarvis_engine.learning.temporal import migrate_temporal_metadata
-                migrate_temporal_metadata(engine._db, engine._write_lock)
-            except Exception as exc_tm:
-                logger.warning("Temporal metadata migration skipped: %s", exc_tm)
-            pipeline = EnrichedIngestPipeline(
-                engine, embed_service, classifier, knowledge_graph=kg,
-            )
-        except Exception as exc:
-            # Graceful degradation: if SQLite engine fails, fall back to adapter shims
-            logger.warning("Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc)
-            engine = None
-            embed_service = None
-            pipeline = None
-            kg = None
+        embed_service = EmbeddingService()
+        engine = MemoryEngine(db_path, embed_service=embed_service)
+        classifier = BranchClassifier(embed_service)
+        kg = KnowledgeGraph(engine, embed_service=embed_service)
+        # Run temporal metadata migration (idempotent)
+        try:
+            from jarvis_engine.learning.temporal import migrate_temporal_metadata
+            migrate_temporal_metadata(engine._db, engine._write_lock)
+        except Exception as exc_tm:
+            logger.warning("Temporal metadata migration skipped: %s", exc_tm)
+        pipeline = EnrichedIngestPipeline(
+            engine, embed_service, classifier, knowledge_graph=kg,
+        )
+    except Exception as exc:
+        # Graceful degradation: if SQLite engine fails, fall back to adapter shims
+        logger.warning("Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc)
+        engine = None
+        embed_service = None
+        pipeline = None
+        kg = None
 
     # -- Intelligence Gateway --
     gateway = None
@@ -253,8 +254,7 @@ def create_app(root: Path) -> CommandBus:
         from jarvis_engine.gateway.models import ModelGateway
         from jarvis_engine.gateway.classifier import IntentClassifier
 
-        if db_path.exists():
-            cost_tracker = CostTracker(db_path)
+        cost_tracker = CostTracker(db_path)
         gateway = ModelGateway(
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
             cost_tracker=cost_tracker,
@@ -430,6 +430,13 @@ def create_app(root: Path) -> CommandBus:
             FlagExpiredFactsCommand,
             FlagExpiredFactsHandler(root, kg=kg).handle,
         )
+        bus.register(
+            ConsolidateMemoryCommand,
+            ConsolidateMemoryHandler(
+                root, engine=engine, gateway=gateway,
+                embed_service=embed_service, kg=kg,
+            ).handle,
+        )
 
         # Expose learning trackers on bus for downstream read access
         bus._pref_tracker = pref_tracker        # type: ignore[attr-defined]
@@ -467,6 +474,10 @@ def create_app(root: Path) -> CommandBus:
         bus.register(
             FlagExpiredFactsCommand,
             FlagExpiredFactsHandler(root).handle,
+        )
+        bus.register(
+            ConsolidateMemoryCommand,
+            ConsolidateMemoryHandler(root).handle,
         )
         # Fallback: dashboard without trackers
         bus.register(
@@ -529,9 +540,7 @@ def create_app(root: Path) -> CommandBus:
         )
         from jarvis_engine.harvesting.harvester import KnowledgeHarvester
 
-        budget_manager = None
-        if db_path.exists():
-            budget_manager = BudgetManager(db_path)
+        budget_manager = BudgetManager(db_path)
 
         all_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
         available_providers = [p for p in all_providers if p.is_available]

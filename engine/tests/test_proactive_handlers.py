@@ -54,7 +54,7 @@ class TestProactiveCheckHandler:
         handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=engine)
         result = handler.handle(ProactiveCheckCommand(snapshot_path=""))
 
-        assert result.message == "No alerts."
+        assert "No alerts" in result.message
         assert result.alerts_fired == 0
         engine.evaluate.assert_called_once_with({"status": "ok"})
 

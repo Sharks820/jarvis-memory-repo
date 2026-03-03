@@ -17,6 +17,7 @@ class ProactiveCheckResult:
     alerts_fired: int = 0
     alerts: str = "[]"
     message: str = ""
+    diagnostics: str = ""
 
 
 @dataclass(frozen=True)
