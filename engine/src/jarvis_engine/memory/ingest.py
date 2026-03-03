@@ -93,11 +93,30 @@ class EnrichedIngestPipeline:
         tag_str = json.dumps(tag_list)
         inserted_ids: list[str] = []
 
-        for chunk in chunks:
-            # Skip empty chunks
-            if not chunk.strip():
-                continue
+        # Pre-filter empty chunks and batch-embed all valid chunks at once
+        valid_chunks = [chunk for chunk in chunks if chunk.strip()]
+        if not valid_chunks:
+            return []
 
+        # Batch embedding: single model call for all chunks instead of N calls
+        if hasattr(self._embed_service, "embed_batch") and len(valid_chunks) > 1:
+            try:
+                all_embeddings = self._embed_service.embed_batch(
+                    valid_chunks, prefix="search_document"
+                )
+            except Exception:
+                # Fallback to individual calls if batch fails
+                all_embeddings = [
+                    self._embed_service.embed(chunk, prefix="search_document")
+                    for chunk in valid_chunks
+                ]
+        else:
+            all_embeddings = [
+                self._embed_service.embed(chunk, prefix="search_document")
+                for chunk in valid_chunks
+            ]
+
+        for chunk, embedding in zip(valid_chunks, all_embeddings):
             # 4a: Per-chunk content hash (CRITICAL: hash chunk text, NOT full document)
             chunk_hash = hashlib.sha256(chunk.encode("utf-8")).hexdigest()
 
@@ -105,8 +124,7 @@ class EnrichedIngestPipeline:
             id_material = f"{source}|{kind}|{task_id}|{chunk}".encode("utf-8")
             record_id = hashlib.sha256(id_material).hexdigest()[:32]
 
-            # 4c: Generate embedding
-            embedding = self._embed_service.embed(chunk, prefix="search_document")
+            # 4c: Embedding already computed in batch above
 
             # 4d: Classify branch
             branch = self._classifier.classify(embedding)

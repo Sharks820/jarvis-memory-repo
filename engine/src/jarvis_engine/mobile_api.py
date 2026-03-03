@@ -71,6 +71,20 @@ _EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login", "/feedback"}
 _PUBLIC_SAFE_PATHS = frozenset({"/health", "/cert-fingerprint"})
 
 
+def _configure_db(conn: "sqlite3.Connection") -> None:
+    """Apply consistent SQLite PRAGMAs for performance and reliability.
+
+    WAL mode, relaxed synchronous, 5s busy timeout, 64MB cache, 256MB mmap,
+    and foreign key enforcement.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA cache_size=-65536")   # 64MB
+    conn.execute("PRAGMA mmap_size=268435456")  # 256MB
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _detect_lan_ips() -> list[str]:
     """Detect local LAN IP addresses for SAN entries."""
     ips: list[str] = []
@@ -289,18 +303,19 @@ class MobileIngestServer(ThreadingHTTPServer):
         # Master password rate-limiter: {ip: [timestamp, ...]}
         self._master_pw_attempts: dict[str, list[float]] = {}
         self._master_pw_rate_lock = threading.Lock()
-        # Security orchestrator (optional — gracefully skipped if init fails)
+        # Security orchestrator — FAIL CLOSED: if init fails, reject all
+        # non-essential requests (security subsystem must be operational).
         self.security: Any = None
         self._security_db: Any = None
         self._security_write_lock: threading.Lock | None = None
+        self._security_degraded: bool = False
         try:
             import sqlite3 as _sec_sqlite3
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
             security_db_path = self.repo_root / ".planning" / "brain" / "security.db"
             security_db_path.parent.mkdir(parents=True, exist_ok=True)
             self._security_db = _sec_sqlite3.connect(str(security_db_path), check_same_thread=False)
-            self._security_db.execute("PRAGMA journal_mode=WAL")
-            self._security_db.execute("PRAGMA synchronous=NORMAL")
+            _configure_db(self._security_db)
             self._security_write_lock = threading.Lock()
             forensic_dir = self.repo_root / ".planning" / "runtime" / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
@@ -311,11 +326,14 @@ class MobileIngestServer(ThreadingHTTPServer):
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
         except Exception as exc:
-            logger.warning("SecurityOrchestrator init failed (security checks disabled): %s", exc)
+            logger.error("SecurityOrchestrator init FAILED — server will reject non-essential requests: %s", exc)
             self.security = None
+            self._security_degraded = True
 
-        # Owner session manager (optional — gracefully skipped if init fails)
+        # Owner session manager — FAIL CLOSED: if init fails, reject
+        # session-dependent requests.
         self.owner_session: Any = None
+        self._session_degraded: bool = False
         try:
             from jarvis_engine.security.owner_session import OwnerSessionManager
             self.owner_session = OwnerSessionManager(
@@ -323,8 +341,9 @@ class MobileIngestServer(ThreadingHTTPServer):
             )
             logger.info("OwnerSessionManager initialized for mobile API")
         except Exception as exc:
-            logger.warning("OwnerSessionManager init failed (session auth disabled): %s", exc)
+            logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
+            self._session_degraded = True
 
     @staticmethod
     def _prune_rate_dict(d: dict[str, list[float]], max_keys: int = 5000) -> None:
@@ -499,8 +518,7 @@ class MobileIngestServer(ThreadingHTTPServer):
 
                 sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
                 try:
-                    sync_db.execute("PRAGMA journal_mode=WAL")
-                    sync_db.execute("PRAGMA busy_timeout=5000")
+                    _configure_db(sync_db)
                     sync_lock = threading.Lock()
                     install_changelog_triggers(sync_db, device_id="desktop")
                     self._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
@@ -699,14 +717,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         main_mod.repo_root = original_repo_root  # type: ignore[assignment]
             except Exception as exc:
                 logger.error("Voice command execution failed: %s", exc)
-                # Include partial stdout and error details for widget debugging
-                partial_out = captured_out.getvalue().splitlines()[-20:] if captured_out.getvalue() else []
                 return {
                     "ok": False,
-                    "error": f"Command execution failed: {exc}",
+                    "error": "Command execution failed.",
                     "intent": "execution_error",
-                    "reason": str(exc),
-                    "stdout_tail": partial_out + [f"error={exc}"],
+                    "reason": "internal error",
+                    "stdout_tail": [],
                     "stderr_tail": [],
                 }
             # Parse captured stdout for intent/reason/status (same as subprocess path)
@@ -835,7 +851,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             }
         except OSError as exc:
             logger.error("CLI subprocess failed: %s", exc)
-            return {"ok": False, "error": "Command execution failed.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": [str(exc)]}
+            return {"ok": False, "error": "Command execution failed.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": []}
         stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         return {
@@ -1159,12 +1175,46 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         """Accept either a valid session token OR standard HMAC auth.
 
         Checks ``X-Jarvis-Session`` header first.  If a valid session token
-        is present, the request is authenticated without requiring HMAC
-        headers.  Otherwise falls back to the full HMAC validation path.
+        is present **and** the device is trusted, the request is authenticated
+        without requiring HMAC headers.  Otherwise falls back to the full
+        HMAC validation path.
+
+        Session-based auth also enforces device trust to prevent stolen
+        session tokens from being used on untrusted devices.
         """
+        # If the session subsystem failed to initialize, reject session-based
+        # auth attempts (fail closed) but still allow HMAC fallback.
+        if getattr(self.server, "_session_degraded", False):
+            session_token = self.headers.get("X-Jarvis-Session", "").strip()
+            if session_token:
+                # Session was explicitly provided but subsystem is down
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Service unavailable: session subsystem failed to initialize",
+                })
+                return False
+            # No session token — fall through to HMAC auth
+            return self._validate_auth(body)
+
         session_token = self.headers.get("X-Jarvis-Session", "").strip()
         owner_session = getattr(self.server, "owner_session", None)
         if session_token and owner_session and owner_session.validate_session(session_token):
+            # Session token is valid — now enforce device trust
+            owner_guard = read_owner_guard(self.server.repo_root)  # type: ignore[attr-defined]
+            if bool(owner_guard.get("enabled", False)):
+                trusted = {
+                    str(did).strip()
+                    for did in owner_guard.get("trusted_mobile_devices", [])
+                    if str(did).strip()
+                }
+                device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
+                if not device_id or device_id not in trusted:
+                    logger.warning(
+                        "Session auth rejected: device %s not trusted",
+                        device_id[-4:] if device_id else "(missing)",
+                    )
+                    self._unauthorized("Session requires trusted device.")
+                    return False
             return True
         return self._validate_auth(body)
 
@@ -1422,8 +1472,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         try:
             import sqlite3 as _lrn_sqlite3
             lrn_db = _lrn_sqlite3.connect(str(db_path), check_same_thread=False)
-            lrn_db.execute("PRAGMA journal_mode=WAL")
-            lrn_db.execute("PRAGMA busy_timeout=5000")
+            _configure_db(lrn_db)
             try:
                 from jarvis_engine.learning.preferences import PreferenceTracker
                 pt = PreferenceTracker(lrn_db)
@@ -1508,11 +1557,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     user_agent=self.headers.get("User-Agent", ""),
                 )
                 if not _sec_check["allowed"]:
+                    logger.warning("Security pipeline blocked GET %s: %s", path, _sec_check.get("reason", "unknown"))
                     self._write_json(HTTPStatus.FORBIDDEN, {
                         "ok": False,
-                        "error": f"Request blocked: {_sec_check['reason']}",
+                        "error": "Request blocked by security policy",
                     })
                     return
+            elif getattr(self.server, "_security_degraded", False):
+                # Fail closed: security subsystem failed to init
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Service unavailable: security subsystem failed to initialize",
+                })
+                return
         # O(1) dispatch for remaining GET routes
         handler_name = self._GET_DISPATCH.get(path)
         if handler_name:
@@ -1971,7 +2028,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 _main_mod._conversation_history.clear()
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
         except Exception as exc:
-            self._write_json(HTTPStatus.OK, {"ok": True, "message": f"Best-effort clear: {exc}"})
+            logger.error("Conversation history clear failed: %s", exc)
+            self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
     def _handle_post_command(self) -> None:
         payload, _ = self._read_json_body(max_content_length=25_000)
@@ -2109,8 +2167,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         try:
             import sqlite3 as _fb_sqlite3
             fb_db = _fb_sqlite3.connect(str(db_path), check_same_thread=False)
-            fb_db.execute("PRAGMA journal_mode=WAL")
-            fb_db.execute("PRAGMA busy_timeout=5000")
+            _configure_db(fb_db)
             from jarvis_engine.learning.feedback import ResponseFeedbackTracker
             tracker = ResponseFeedbackTracker(fb_db)
             tracker.record_explicit_feedback(quality, route, comment)
@@ -2178,11 +2235,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 user_agent=self.headers.get("User-Agent", ""),
             )
             if not _sec_check["allowed"]:
+                logger.warning("Security pipeline blocked POST %s: %s", path, _sec_check.get("reason", "unknown"))
                 self._write_json(HTTPStatus.FORBIDDEN, {
                     "ok": False,
-                    "error": f"Request blocked: {_sec_check['reason']}",
+                    "error": "Request blocked by security policy",
                 })
                 return
+        elif getattr(self.server, "_security_degraded", False) and path not in ("/health", "/auth/login"):
+            # Fail closed: security subsystem failed to init — reject all
+            # non-essential requests.
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Service unavailable: security subsystem failed to initialize",
+            })
+            return
         # O(1) dispatch for POST routes
         handler_name = self._POST_DISPATCH.get(path)
         if handler_name:
@@ -2264,8 +2330,7 @@ def run_mobile_server(
 
             sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
             try:
-                sync_db.execute("PRAGMA journal_mode=WAL")
-                sync_db.execute("PRAGMA busy_timeout=5000")
+                _configure_db(sync_db)
                 sync_lock = _threading.Lock()
                 install_changelog_triggers(sync_db, device_id="desktop")
                 server._sync_engine = SyncEngine(sync_db, sync_lock, device_id="desktop")
