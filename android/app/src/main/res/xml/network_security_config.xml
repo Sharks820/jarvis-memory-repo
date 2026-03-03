@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Jarvis is a local-first app that connects to the user's desktop engine
+    over LAN HTTP (port 8787) with HMAC-SHA256 message authentication.
+
+    Android's network_security_config does NOT support IP range/CIDR
+    whitelisting — <domain includeSubdomains="true"> only works for DNS
+    hostnames, not IP addresses. Since the desktop engine runs on an
+    arbitrary LAN IP without TLS, cleartext must be permitted globally.
+
+    Security is enforced at the application layer:
+      - HMAC-SHA256 with nonce replay protection (120s window)
+      - Fernet-encrypted sync payloads (PBKDF2HMAC-derived key)
+      - Owner session with Argon2id authentication
+-->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">localhost</domain>
-        <domain includeSubdomains="true">10.0.0.0</domain>
-        <domain includeSubdomains="true">192.168.0.0</domain>
-    </domain-config>
 </network-security-config>

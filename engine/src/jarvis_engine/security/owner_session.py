@@ -63,6 +63,8 @@ class OwnerSessionManager:
         Useful for testing without the optional dependency.
     """
 
+    MAX_SESSIONS: int = 10
+
     def __init__(
         self,
         session_timeout: int = 1800,
@@ -93,14 +95,26 @@ class OwnerSessionManager:
         self._use_argon2 = _HAS_ARGON2 and not force_pbkdf2
 
     # ------------------------------------------------------------------
+    # Internal housekeeping
+    # ------------------------------------------------------------------
+
+    def _purge_expired(self) -> None:
+        """Remove expired sessions from ``_sessions``.  Caller must hold lock."""
+        now = time.monotonic()
+        expired = [t for t, exp in self._sessions.items() if now > exp]
+        for t in expired:
+            del self._sessions[t]
+
+    # ------------------------------------------------------------------
     # Password management
     # ------------------------------------------------------------------
 
     def set_password(self, password: str) -> None:
         """Hash and store *password*.
 
-        Replaces any previously stored password.  Existing sessions are
-        **not** invalidated (the owner is already authenticated).
+        Replaces any previously stored password.  All existing sessions
+        are invalidated — the owner must re-authenticate with the new
+        password.
         """
         with self._lock:
             if self._use_argon2:
@@ -124,6 +138,11 @@ class OwnerSessionManager:
                 self._password_hash = dk.hex()
                 self._password_salt = salt
                 self._hash_algo = "pbkdf2"
+            # Invalidate all existing sessions — force re-auth with new password
+            count = len(self._sessions)
+            self._sessions.clear()
+            if count:
+                logger.info("Password changed — %d session(s) invalidated", count)
             logger.info("Owner password set (algo=%s)", self._hash_algo)
 
     # ------------------------------------------------------------------
@@ -141,6 +160,9 @@ class OwnerSessionManager:
                 logger.warning("authenticate() called before set_password()")
                 return None
 
+            # Housekeeping — evict expired sessions before any checks
+            self._purge_expired()
+
             # Check lockout
             if self._is_locked_out_internal():
                 logger.warning("Authentication rejected — account is locked out")
@@ -152,7 +174,7 @@ class OwnerSessionManager:
                 if self._failure_count >= self._max_failures:
                     self._lockout_count += 1
                     duration = self._lockout_duration * (2 ** (self._lockout_count - 1))
-                    self._lockout_until = time.time() + duration
+                    self._lockout_until = time.monotonic() + duration
                     logger.warning(
                         "Account locked out for %ds after %d failures (lockout #%d)",
                         duration,
@@ -161,10 +183,18 @@ class OwnerSessionManager:
                     )
                 return None
 
+            # Check session cap after purge
+            if len(self._sessions) >= self.MAX_SESSIONS:
+                logger.warning(
+                    "Session cap reached (%d) — rejecting new session",
+                    self.MAX_SESSIONS,
+                )
+                return None
+
             # Success — reset failure counter, create session
             self._failure_count = 0
             token = secrets.token_hex(32)
-            self._sessions[token] = time.time() + self._session_timeout
+            self._sessions[token] = time.monotonic() + self._session_timeout
             logger.info("Owner authenticated, session %s... created", token[:8])
             return token
 
@@ -181,12 +211,12 @@ class OwnerSessionManager:
             expiry = self._sessions.get(token)
             if expiry is None:
                 return False
-            if time.time() > expiry:
+            if time.monotonic() > expiry:
                 # Expired — remove it
                 self._sessions.pop(token, None)
                 return False
             # Extend idle timeout
-            self._sessions[token] = time.time() + self._session_timeout
+            self._sessions[token] = time.monotonic() + self._session_timeout
             return True
 
     def logout(self, token: str) -> None:
@@ -216,7 +246,7 @@ class OwnerSessionManager:
         """Check lockout without acquiring the lock (caller must hold it)."""
         if self._lockout_until <= 0:
             return False
-        if time.time() >= self._lockout_until:
+        if time.monotonic() >= self._lockout_until:
             # Lockout expired — reset failure count but keep lockout_count
             # for exponential backoff on next lockout
             self._failure_count = 0
@@ -239,12 +269,7 @@ class OwnerSessionManager:
             ``session_count`` — number of non-expired sessions.
         """
         with self._lock:
-            now = time.time()
-            # Purge expired sessions
-            expired = [t for t, exp in self._sessions.items() if now > exp]
-            for t in expired:
-                del self._sessions[t]
-
+            self._purge_expired()
             return {
                 "active": len(self._sessions) > 0,
                 "locked_out": self._is_locked_out_internal(),

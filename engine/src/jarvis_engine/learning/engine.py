@@ -172,15 +172,21 @@ class ConversationLearningEngine:
             "feedback_detected": feedback_detected,
         }
 
-    # Keywords indicating personal/factual data worth keeping even in short messages
-    _PERSONAL_DATA_KEYWORDS: set[str] = {
+    # Keywords indicating personal/factual data worth keeping even in short messages.
+    # Single-word keywords checked via word-boundary (set intersection) to avoid
+    # false positives like "age" in "message" or "son" in "reason".
+    # Multi-word phrases checked via substring match (safe since they're specific).
+    _PERSONAL_DATA_SINGLE_WORDS: set[str] = {
         "name", "birthday", "born", "lives", "works", "prefer", "prefers",
         "preference", "allergy", "allergic", "wife", "husband", "daughter",
         "son", "mother", "father", "brother", "sister", "married", "favorite",
-        "favourite", "address", "phone", "email", "age", "job", "occupation",
+        "favourite", "address", "phone", "email", "job", "occupation",
         "school", "college", "university", "company", "weighs", "height",
-        "blood type", "diagnosed", "medication",
+        "diagnosed", "medication",
     }
+    _PERSONAL_DATA_PHRASES: tuple[str, ...] = (
+        "blood type", "credit card", "bank account",
+    )
 
     @staticmethod
     def _is_knowledge_bearing(text: str) -> bool:
@@ -202,8 +208,15 @@ class ConversationLearningEngine:
         lower = stripped.lower()
 
         # Check for personal data keywords — accept regardless of greeting prefix
-        has_personal_data = any(
-            kw in lower for kw in ConversationLearningEngine._PERSONAL_DATA_KEYWORDS
+        # Single words: use word-boundary matching to avoid false positives
+        # (e.g. "age" in "message", "son" in "reason")
+        # Multi-word phrases: use substring matching (safe, specific enough)
+        words = set(lower.split())
+        has_personal_data = bool(
+            words & ConversationLearningEngine._PERSONAL_DATA_SINGLE_WORDS
+        ) or any(
+            phrase in lower
+            for phrase in ConversationLearningEngine._PERSONAL_DATA_PHRASES
         )
         if has_personal_data:
             return True
