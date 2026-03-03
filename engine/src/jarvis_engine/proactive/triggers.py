@@ -118,6 +118,77 @@ def check_urgent_tasks(snapshot_data: dict) -> list[str]:
     return alerts
 
 
+def check_contact_neglect(snapshot_data: dict) -> list[str]:
+    """Check for important contacts not contacted in a long time."""
+    alerts: list[str] = []
+    contacts = snapshot_data.get("contacts", [])
+    neglect_days = int(snapshot_data.get("neglect_threshold_days", 14))
+    now = datetime.now()
+
+    for contact in contacts:
+        importance = float(contact.get("importance", 0))
+        if importance < 0.4:
+            continue
+        last_contact_str = contact.get("last_contact_date", "")
+        if not last_contact_str:
+            continue
+        try:
+            last_dt = datetime.fromisoformat(last_contact_str)
+            if last_dt.tzinfo is not None:
+                last_dt = last_dt.replace(tzinfo=None)
+            days_since = (now - last_dt).days
+            # Scale threshold by importance — more important = shorter threshold
+            adjusted_threshold = max(7, int(neglect_days * (1.0 - importance * 0.5)))
+            if days_since >= adjusted_threshold:
+                name = contact.get("name", "someone")
+                last_topic = contact.get("last_topic", "")
+                msg = f"You haven't talked to {name} in {days_since} days"
+                if last_topic:
+                    msg += f" — last discussed: {last_topic}"
+                alerts.append(msg)
+        except (ValueError, TypeError):
+            continue
+
+    return alerts[:3]  # Cap at 3 to avoid alert fatigue
+
+
+def check_meeting_prep_intelligence(snapshot_data: dict) -> list[str]:
+    """Check for upcoming meetings that need KG-powered intelligence briefing."""
+    alerts: list[str] = []
+    events = snapshot_data.get("calendar_events", [])
+    now = datetime.now().astimezone()
+
+    for event in events:
+        start_str = event.get("start_time", "")
+        if not start_str:
+            continue
+        try:
+            start_dt = datetime.fromisoformat(start_str)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.astimezone()
+            diff_minutes = (start_dt - now).total_seconds() / 60.0
+            # Fire 10-15 minutes before meeting starts
+            if 5 <= diff_minutes <= 15:
+                title = event.get("title", "meeting")
+                attendees = event.get("attendees", [])
+                location = event.get("location", "")
+                msg = f"Meeting in {int(diff_minutes)} min: {title}"
+                if attendees:
+                    names = ", ".join(str(a) for a in attendees[:3])
+                    msg += f" with {names}"
+                if location:
+                    msg += f" at {location}"
+                # Add context hints from KG if available
+                context = event.get("kg_context", "")
+                if context:
+                    msg += f" | Context: {context}"
+                alerts.append(msg)
+        except (ValueError, TypeError):
+            continue
+
+    return alerts
+
+
 DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
     TriggerRule(
         rule_id="medication_reminder",
@@ -142,5 +213,17 @@ DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
         description="Alert about high/urgent priority tasks",
         check_fn=check_urgent_tasks,
         cooldown_minutes=180,
+    ),
+    TriggerRule(
+        rule_id="contact_neglect",
+        description="Nudge about important contacts you haven't talked to",
+        check_fn=check_contact_neglect,
+        cooldown_minutes=720,  # 12 hours
+    ),
+    TriggerRule(
+        rule_id="meeting_intelligence",
+        description="Pre-meeting intelligence briefing with KG context",
+        check_fn=check_meeting_prep_intelligence,
+        cooldown_minutes=10,
     ),
 ]

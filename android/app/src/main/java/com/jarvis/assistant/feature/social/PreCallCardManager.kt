@@ -187,7 +187,7 @@ class PreCallCardManager @Inject constructor(
      * Try to resolve a contact name from Android's ContactsContract
      * by phone number lookup.
      */
-    private fun resolveContactName(phoneNumber: String): String? {
+    internal fun resolveContactName(phoneNumber: String): String? {
         return try {
             val uri = Uri.withAppendedPath(
                 ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
