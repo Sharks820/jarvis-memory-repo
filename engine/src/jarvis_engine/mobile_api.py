@@ -2038,18 +2038,24 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         reset = reset_raw
         daemon_paused = payload.get("daemon_paused")
         safe_mode = payload.get("safe_mode")
+        muted = payload.get("muted")
+        mute_until_utc = payload.get("mute_until_utc")
         gaming_enabled = payload.get("gaming_enabled")
         gaming_auto_detect = payload.get("gaming_auto_detect")
 
         for key, value in (
             ("daemon_paused", daemon_paused),
             ("safe_mode", safe_mode),
+            ("muted", muted),
             ("gaming_enabled", gaming_enabled),
             ("gaming_auto_detect", gaming_auto_detect),
         ):
             if value is not None and not isinstance(value, bool):
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Invalid {key}."})
                 return
+        if mute_until_utc is not None and not isinstance(mute_until_utc, str):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid mute_until_utc."})
+            return
 
         root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
         if reset:
@@ -2060,11 +2066,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
                 return
         else:
-            if daemon_paused is not None or safe_mode is not None or reason:
+            if any(v is not None for v in (daemon_paused, safe_mode, muted, mute_until_utc)) or reason:
                 write_control_state(
                     root_path,
                     daemon_paused=daemon_paused if isinstance(daemon_paused, bool) else None,
                     safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                    muted=muted if isinstance(muted, bool) else None,
+                    mute_until_utc=mute_until_utc if isinstance(mute_until_utc, str) else None,
                     reason=reason,
                 )
             if gaming_enabled is not None or gaming_auto_detect is not None or reason:
@@ -2449,16 +2457,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             import jarvis_engine.main as _main_mod
             from jarvis_engine.commands.ops_commands import MissionCreateCommand
             bus = _main_mod._get_bus()
-            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [])
+            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [], origin="phone")
             result = bus.dispatch(cmd)
+            if result.return_code != 0:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Mission creation failed — invalid parameters."})
+                return
             mission = result.mission if hasattr(result, "mission") else {}
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
                 "mission_id": mission.get("mission_id", ""),
                 "topic": mission.get("topic", ""),
                 "status": mission.get("status", "pending"),
+                "origin": mission.get("origin", "phone"),
                 "sources": mission.get("sources", []),
             })
+        except ValueError as exc:
+            logger.warning("Mission create validation failed: %s", exc)
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
         except Exception as exc:
             logger.error("Mission create failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
@@ -2492,6 +2507,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         "topic": m.get("topic", ""),
                         "objective": m.get("objective", ""),
                         "status": m.get("status", ""),
+                        "origin": m.get("origin", "desktop-manual"),
                         "sources": m.get("sources", []),
                         "verified_findings": m.get("verified_findings", 0),
                         "created_utc": m.get("created_utc", ""),

@@ -135,6 +135,7 @@ data class MissionCreateResponse(
     val missionId: String = "",
     val topic: String = "",
     val status: String = "",
+    val origin: String = "",
     val sources: List<String> = emptyList(),
 )
 
@@ -145,6 +146,7 @@ data class MissionDto(
     val topic: String = "",
     val objective: String = "",
     val status: String = "",
+    val origin: String = "",
     val sources: List<String> = emptyList(),
     @com.google.gson.annotations.SerializedName("verified_findings")
     val verifiedFindings: Int = 0,
