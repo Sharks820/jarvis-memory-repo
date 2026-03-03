@@ -20,9 +20,9 @@ v1.0 Desktop Engine, v2.0 Android App, and v3.0 Hardening are all shipped. v4.0 
 **Plans:** 5 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Silero VAD module + record_from_microphone integration
-- [ ] 01-02-PLAN.md — NVIDIA Parakeet TDT 0.6B backend via onnx-asr
-- [ ] 01-03-PLAN.md — Deepgram Nova-3 backend with keyterm prompting
+- [x] 01-01-PLAN.md — Silero VAD module + record_from_microphone integration
+- [x] 01-02-PLAN.md — NVIDIA Parakeet TDT 0.6B backend via onnx-asr
+- [x] 01-03-PLAN.md — Deepgram Nova-3 backend with keyterm prompting
 - [ ] 01-04-PLAN.md — Fallback chain rewrite + wake word VAD integration
 - [ ] 01-05-PLAN.md — Integration testing + end-to-end verification
 
@@ -90,7 +90,7 @@ Plans:
 
 | Phase | Plans Complete | Status |
 |-------|---------------|--------|
-| 1. Voice-to-Text Overhaul | 0/5 | Planned |
+| 1. Voice-to-Text Overhaul | 3/5 | In Progress |
 | 2. Learning System Activation | 0/3 | Planned |
 | 3. Widget & UI Live Updates | 0/? | Not started |
 | 4. Platform Stability | 0/? | Not started |
