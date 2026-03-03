@@ -27,6 +27,7 @@ class LearnInteractionHandler:
 
     def handle(self, cmd: LearnInteractionCommand) -> LearnInteractionResult:
         if self._learning_engine is None:
+            logger.warning("LearnInteractionCommand dropped: learning engine not available (task=%s)", cmd.task_id)
             return LearnInteractionResult(
                 message="Learning engine not available.",
             )
@@ -36,9 +37,15 @@ class LearnInteractionHandler:
             assistant_response=cmd.assistant_response,
             task_id=cmd.task_id,
         )
+        records = result.get("records_created", 0)
+        error = result.get("error", "")
+        if records > 0:
+            logger.info("Learned %d record(s) from interaction (task=%s)", records, cmd.task_id)
+        elif error:
+            logger.warning("Learning produced 0 records (task=%s): %s", cmd.task_id, error)
         return LearnInteractionResult(
-            records_created=result.get("records_created", 0),
-            message=result.get("error", "ok"),
+            records_created=records,
+            message=error or "ok",
         )
 
 

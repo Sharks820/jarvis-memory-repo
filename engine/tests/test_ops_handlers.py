@@ -467,7 +467,7 @@ class TestMissionRunHandler:
     def test_handle_successful_run_with_auto_ingest(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:
-        """Successful run with auto_ingest=True ingests verified findings."""
+        """Successful run with auto_ingest=True ingests each verified finding individually."""
         fake_report = {
             "mission_id": "m-456",
             "verified_findings": [
@@ -493,10 +493,12 @@ class TestMissionRunHandler:
 
         assert result.return_code == 0
         assert result.ingested_record_id == "rec-xyz"
-        mock_pipeline.ingest.assert_called_once()
-        call_kwargs = mock_pipeline.ingest.call_args
-        assert call_kwargs.kwargs["source"] == "task_outcome"
-        assert call_kwargs.kwargs["kind"] == "semantic"
+        # Each finding is ingested individually for better KG fact extraction
+        assert mock_pipeline.ingest.call_count == 2
+        first_call = mock_pipeline.ingest.call_args_list[0]
+        assert first_call.kwargs["source"] == "mission"
+        assert first_call.kwargs["kind"] == "semantic"
+        assert "Water is H2O" in first_call.kwargs["content"]
 
     @patch("jarvis_engine.learning_missions.run_learning_mission")
     def test_handle_no_verified_findings_skips_ingest(

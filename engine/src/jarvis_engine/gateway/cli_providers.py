@@ -122,9 +122,15 @@ def _build_messages_text(messages: list[dict[str, str]]) -> str:
     """Convert chat messages to a single text prompt for CLI tools.
 
     System messages become a preamble, then user/assistant turns follow.
+    Multi-turn history is formatted with User:/Assistant: prefixes so CLIs
+    can distinguish conversation turns even though they receive flat text.
     """
     parts: list[str] = []
     system_parts: list[str] = []
+    # Count user messages to detect multi-turn conversations
+    user_count = sum(1 for m in messages if m.get("role", "user") == "user")
+    multi_turn = user_count > 1
+
     for m in messages:
         role = m.get("role", "user")
         content = m.get("content", "")
@@ -133,11 +139,18 @@ def _build_messages_text(messages: list[dict[str, str]]) -> str:
         elif role == "assistant":
             parts.append(f"Assistant: {content}")
         else:
-            parts.append(content)
+            # Add "User:" prefix in multi-turn conversations so CLIs can
+            # distinguish prior turns from the current query
+            if multi_turn:
+                parts.append(f"User: {content}")
+            else:
+                parts.append(content)
 
     prompt = ""
     if system_parts:
         prompt = "\n\n".join(system_parts) + "\n\n"
+    if multi_turn and parts:
+        prompt += "The following is a multi-turn conversation. Continue naturally:\n\n"
     prompt += "\n\n".join(parts)
     return prompt
 

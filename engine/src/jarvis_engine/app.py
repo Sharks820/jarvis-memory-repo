@@ -331,7 +331,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(AutomationRunCommand, AutomationRunHandler(root).handle)
     bus.register(MissionCreateCommand, MissionCreateHandler(root).handle)
     bus.register(MissionStatusCommand, MissionStatusHandler(root).handle)
-    bus.register(MissionRunCommand, MissionRunHandler(root).handle)
+    bus.register(MissionRunCommand, MissionRunHandler(root, enriched_pipeline=pipeline).handle)
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)
     bus.register(GrowthReportCommand, GrowthReportHandler(root).handle)
     bus.register(GrowthAuditCommand, GrowthAuditHandler(root).handle)
