@@ -281,13 +281,33 @@ class ModelGateway:
         max_tokens: int = 1024,
         route_reason: str = "",
         privacy_routed: bool = False,
+        temperature: float | None = None,
     ) -> GatewayResponse:
         """Send a completion request to the appropriate provider.
 
         Automatically falls back through the provider chain on failure.
         Logs cost to CostTracker if one is configured.
         Logs routing decision to GatewayAudit if one is configured.
+
+        Args:
+            temperature: Sampling temperature override. When None, derived from
+                route_reason/model: codex/math_logic -> 0.2, gemini/creative -> 0.85,
+                default -> 0.7.
         """
+        # Derive temperature from route/model when not explicitly provided
+        if temperature is None:
+            model_lower = model.lower()
+            reason_lower = route_reason.lower()
+            if "codex" in model_lower or "math_logic" in reason_lower:
+                temperature = 0.2
+            elif "gemini" in model_lower or "creative" in reason_lower:
+                temperature = 0.85
+            else:
+                temperature = 0.7
+
+        # Store on instance for use by _call_* methods during this request
+        self._current_temperature = temperature
+
         if getattr(self, "_closed", False):
             return GatewayResponse(
                 text="",
@@ -484,7 +504,7 @@ class ModelGateway:
             "model": api_model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0.7,
+            "temperature": getattr(self, "_current_temperature", 0.7),
         }
 
         resp = self._http.post(
@@ -545,6 +565,7 @@ class ModelGateway:
             "model": api_model,
             "max_tokens": max_tokens,
             "messages": non_system,
+            "temperature": getattr(self, "_current_temperature", 0.7),
         }
         if system_parts:
             kwargs["system"] = "\n\n".join(system_parts)

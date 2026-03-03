@@ -150,12 +150,12 @@ class ConversationLearningEngine:
             except Exception as exc:
                 logger.warning("Failed to ingest user message: %s", exc)
 
-        # Ingest assistant response if knowledge-bearing
+        # Ingest assistant response if knowledge-bearing (episodic, not semantic)
         if self._is_knowledge_bearing(assistant_response):
             try:
                 ids = self._pipeline.ingest(
                     source="conversation:assistant",
-                    kind="semantic",
+                    kind="episodic",
                     task_id=task_id,
                     content=assistant_response,
                     tags=["conversation", "assistant"],
@@ -172,25 +172,47 @@ class ConversationLearningEngine:
             "feedback_detected": feedback_detected,
         }
 
+    # Keywords indicating personal/factual data worth keeping even in short messages
+    _PERSONAL_DATA_KEYWORDS: set[str] = {
+        "name", "birthday", "born", "lives", "works", "prefer", "prefers",
+        "preference", "allergy", "allergic", "wife", "husband", "daughter",
+        "son", "mother", "father", "brother", "sister", "married", "favorite",
+        "favourite", "address", "phone", "email", "age", "job", "occupation",
+        "school", "college", "university", "company", "weighs", "height",
+        "blood type", "diagnosed", "medication",
+    }
+
     @staticmethod
     def _is_knowledge_bearing(text: str) -> bool:
         """Determine if text contains extractable knowledge.
 
         Returns False for:
         - None/empty text
-        - Text shorter than 20 characters
-        - Short greetings (greeting prefix AND under 100 chars)
+        - Text shorter than 15 characters (unless contains personal data keywords)
+        - Short greetings (greeting prefix AND under 100 chars) unless they
+          contain personal data keywords
         """
         if not text or not text.strip():
             return False
 
         stripped = text.strip()
+        if len(stripped) < 15:
+            return False
+
+        lower = stripped.lower()
+
+        # Check for personal data keywords — accept regardless of greeting prefix
+        has_personal_data = any(
+            kw in lower for kw in ConversationLearningEngine._PERSONAL_DATA_KEYWORDS
+        )
+        if has_personal_data:
+            return True
+
         if len(stripped) < 20:
             return False
 
         # Short greeting check: greeting prefix AND under 100 chars
         if len(stripped) < 100:
-            lower = stripped.lower()
             for prefix in _GREETING_PREFIXES:
                 if lower.startswith(prefix):
                     return False

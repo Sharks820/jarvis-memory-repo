@@ -108,6 +108,10 @@ class MemoryConsolidator:
             result.errors.append(f"embedding failed: {exc}")
             return result
 
+        if not embeddings:
+            # Embedding service unavailable — cannot cluster meaningfully
+            return result
+
         # Step 3 -- cluster
         try:
             groups = self._cluster_records(records, embeddings)
@@ -344,13 +348,17 @@ class MemoryConsolidator:
             return [dict(row) for row in cur.fetchall()]
 
     def _compute_embeddings(self, records: list[dict]) -> list[list[float]]:
-        """Compute or retrieve embeddings for every record's summary."""
+        """Compute or retrieve embeddings for every record's summary.
+
+        Returns empty list when embedding service is unavailable — callers
+        must check for this and skip clustering.
+        """
         texts = [r.get("summary", "") or "" for r in records]
         if self._embed_service is not None:
             return self._embed_service.embed_batch(texts, prefix="search_document")
-        # Fallback: zero vectors (clustering will treat all as identical)
-        dim = 768
-        return [[0.0] * dim for _ in texts]
+        # No embedding service — cannot meaningfully cluster
+        logger.warning("Consolidation skipped: embedding service unavailable")
+        return []
 
     def _store_consolidated(
         self,
@@ -371,6 +379,15 @@ class MemoryConsolidator:
             group_records[0].get("branch", "general") if group_records else "general"
         )
 
+        # Use the highest confidence from input records, floored at 0.85
+        input_confidences = [
+            r.get("confidence", 0.0) for r in group_records
+            if isinstance(r.get("confidence"), (int, float))
+        ]
+        confidence = max(input_confidences, default=0.85)
+        if confidence < 0.85:
+            confidence = 0.85
+
         record = {
             "record_id": record_id,
             "ts": ts,
@@ -381,7 +398,7 @@ class MemoryConsolidator:
             "tags": json.dumps(["consolidated"]),
             "summary": summary[:200],
             "content_hash": content_hash,
-            "confidence": 0.85,
+            "confidence": confidence,
             "tier": "warm",
             "access_count": 0,
             "last_accessed": "",

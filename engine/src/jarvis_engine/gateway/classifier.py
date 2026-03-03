@@ -183,6 +183,23 @@ class IntentClassifier:
         "address",
         "phone number",
         "social security",
+        "therapist",
+        "therapy",
+        "health",
+        "diagnosis",
+        "medical",
+        "symptom",
+        "treatment",
+        "surgery",
+        "ssn",
+        "insurance",
+        "credit card",
+        "pin",
+        "bank account",
+        "credential",
+        "income",
+        "blood type",
+        "allergy",
     }
 
     CONFIDENCE_THRESHOLD: float = 0.35

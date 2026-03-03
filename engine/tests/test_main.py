@@ -2632,7 +2632,7 @@ class TestMaxTokensByRoute:
         assert main_mod._MAX_TOKENS_BY_ROUTE["routine"] == 512
 
     def test_max_tokens_simple_private(self):
-        assert main_mod._MAX_TOKENS_BY_ROUTE["simple_private"] == 384
+        assert main_mod._MAX_TOKENS_BY_ROUTE["simple_private"] == 1024
 
     def test_max_tokens_unknown_route_returns_none(self):
         """Unknown routes are not in the dict (caller uses .get with default)."""
