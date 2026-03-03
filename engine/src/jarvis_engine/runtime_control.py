@@ -9,6 +9,8 @@ from typing import Any
 DEFAULT_CONTROL_STATE = {
     "daemon_paused": False,
     "safe_mode": False,
+    "muted": False,
+    "mute_until_utc": "",
     "reason": "",
     "updated_utc": "",
 }
@@ -31,12 +33,24 @@ def read_control_state(root: Path) -> dict[str, Any]:
         return dict(DEFAULT_CONTROL_STATE)
     if not isinstance(raw, dict):
         return dict(DEFAULT_CONTROL_STATE)
-    return {
+    state = {
         "daemon_paused": bool(raw.get("daemon_paused", False)),
         "safe_mode": bool(raw.get("safe_mode", False)),
+        "muted": bool(raw.get("muted", False)),
+        "mute_until_utc": str(raw.get("mute_until_utc", "")),
         "reason": str(raw.get("reason", "")).strip()[:200],
         "updated_utc": str(raw.get("updated_utc", "")),
     }
+    # Auto-expire mute if mute_until_utc has passed
+    if state["muted"] and state["mute_until_utc"]:
+        try:
+            mute_until = datetime.fromisoformat(state["mute_until_utc"])
+            if datetime.now(UTC) >= mute_until:
+                state["muted"] = False
+                state["mute_until_utc"] = ""
+        except (ValueError, TypeError):
+            pass
+    return state
 
 
 def write_control_state(
@@ -44,6 +58,8 @@ def write_control_state(
     *,
     daemon_paused: bool | None = None,
     safe_mode: bool | None = None,
+    muted: bool | None = None,
+    mute_until_utc: str | None = None,
     reason: str = "",
 ) -> dict[str, Any]:
     state = read_control_state(root)
@@ -51,6 +67,12 @@ def write_control_state(
         state["daemon_paused"] = daemon_paused
     if safe_mode is not None:
         state["safe_mode"] = safe_mode
+    if muted is not None:
+        state["muted"] = muted
+        if not muted:
+            state["mute_until_utc"] = ""
+    if mute_until_utc is not None:
+        state["mute_until_utc"] = mute_until_utc.strip()
     if reason.strip():
         state["reason"] = reason.strip()[:200]
     state["updated_utc"] = datetime.now(UTC).isoformat()

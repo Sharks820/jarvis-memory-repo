@@ -17,6 +17,10 @@ from jarvis_engine.web_fetch import (
     search_web as _search_web,
 )
 
+# File-level lock for missions.json to prevent TOCTOU race conditions
+# between concurrent daemon auto-generation, mobile API creates, and mission runs.
+_MISSIONS_LOCK = threading.Lock()
+
 logger = logging.getLogger(__name__)
 
 MISSION_DEFAULT_SOURCES = ["google", "reddit", "official_docs"]
@@ -61,6 +65,7 @@ def create_learning_mission(
     topic: str,
     objective: str,
     sources: list[str] | None = None,
+    origin: str = "desktop-manual",
 ) -> dict[str, Any]:
     cleaned_topic = topic.strip()
     if not cleaned_topic:
@@ -72,14 +77,16 @@ def create_learning_mission(
         "objective": objective.strip()[:400],
         "sources": sources or list(MISSION_DEFAULT_SOURCES),
         "status": "pending",
+        "origin": origin,
         "created_utc": datetime.now(UTC).isoformat(),
         "updated_utc": datetime.now(UTC).isoformat(),
         "last_report_path": "",
         "verified_findings": 0,
     }
-    missions = load_missions(root)
-    missions.append(mission)
-    _save_missions(root, missions)
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        missions.append(mission)
+        _save_missions(root, missions)
     return mission
 
 
@@ -223,14 +230,19 @@ def run_learning_mission(
     max_search_results: int = 8,
     max_pages: int = 12,
 ) -> dict[str, Any]:
-    missions = load_missions(root)
-    target: dict[str, Any] | None = None
-    for item in missions:
-        if str(item.get("mission_id", "")) == mission_id:
-            target = item
-            break
-    if target is None:
-        raise ValueError(f"mission not found: {mission_id}")
+    # Mark as "running" under lock before starting the long operation.
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        target: dict[str, Any] | None = None
+        for item in missions:
+            if str(item.get("mission_id", "")) == mission_id:
+                target = item
+                break
+        if target is None:
+            raise ValueError(f"mission not found: {mission_id}")
+        target["status"] = "running"
+        target["updated_utc"] = datetime.now(UTC).isoformat()
+        _save_missions(root, missions)
 
     topic = str(target.get("topic", "")).strip()
     sources = target.get("sources", MISSION_DEFAULT_SOURCES)
@@ -287,17 +299,28 @@ def run_learning_mission(
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
 
-    if verified:
-        target["status"] = "completed"
-    else:
-        # No verified findings — mark as failed for retry
-        retries = int(target.get("retries", 0))
-        target["status"] = "failed" if retries < 2 else "exhausted"
-        target["retries"] = retries
-    target["updated_utc"] = datetime.now(UTC).isoformat()
-    target["last_report_path"] = str(report_path)
-    target["verified_findings"] = len(verified)
-    _save_missions(root, missions)
+    # Re-read under lock to avoid TOCTOU overwrites from concurrent creates/runs.
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        target = None
+        for item in missions:
+            if str(item.get("mission_id", "")) == mission_id:
+                target = item
+                break
+        if target is None:
+            logger.warning("Mission %s disappeared during run — skipping status update", mission_id)
+            return report
+        if verified:
+            target["status"] = "completed"
+        else:
+            # No verified findings — mark as failed for retry.
+            # retries tracks how many times retry_failed_missions re-queued this.
+            retries = int(target.get("retries", 0))
+            target["status"] = "failed" if retries < 2 else "exhausted"
+        target["updated_utc"] = datetime.now(UTC).isoformat()
+        target["last_report_path"] = str(report_path)
+        target["verified_findings"] = len(verified)
+        _save_missions(root, missions)
     return report
 
 
@@ -311,23 +334,24 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
 
     Returns the updated mission dict, or raises ValueError if not found.
     """
-    missions = load_missions(root)
-    target: dict[str, Any] | None = None
-    for item in missions:
-        if str(item.get("mission_id", "")) == mission_id:
-            target = item
-            break
-    if target is None:
-        raise ValueError(f"mission not found: {mission_id}")
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        target: dict[str, Any] | None = None
+        for item in missions:
+            if str(item.get("mission_id", "")) == mission_id:
+                target = item
+                break
+        if target is None:
+            raise ValueError(f"mission not found: {mission_id}")
 
-    current_status = str(target.get("status", ""))
-    _NON_CANCELLABLE = ("completed", "cancelled", "exhausted")
-    if current_status in _NON_CANCELLABLE:
-        raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
+        current_status = str(target.get("status", ""))
+        _NON_CANCELLABLE = ("completed", "cancelled", "exhausted")
+        if current_status in _NON_CANCELLABLE:
+            raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
 
-    target["status"] = "cancelled"
-    target["updated_utc"] = datetime.now(UTC).isoformat()
-    _save_missions(root, missions)
+        target["status"] = "cancelled"
+        target["updated_utc"] = datetime.now(UTC).isoformat()
+        _save_missions(root, missions)
 
     # Log activity event for mission state change
     try:
@@ -354,33 +378,34 @@ def retry_failed_missions(root: Path) -> int:
     Broadens the query set on retry by appending alternate search terms.
     Returns the number of missions re-queued.
     """
-    missions = load_missions(root)
-    re_queued = 0
-    modified = False
-    for mission in missions:
-        if str(mission.get("status", "")).lower() != "failed":
-            continue
-        retries = int(mission.get("retries", 0))
-        if retries >= 2:
-            mission["status"] = "exhausted"
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        re_queued = 0
+        modified = False
+        for mission in missions:
+            if str(mission.get("status", "")).lower() != "failed":
+                continue
+            retries = int(mission.get("retries", 0))
+            if retries >= 2:
+                mission["status"] = "exhausted"
+                mission["updated_utc"] = datetime.now(UTC).isoformat()
+                modified = True
+                continue
+            # Broaden search: add alternative query phrasing
+            sources = mission.get("sources", list(MISSION_DEFAULT_SOURCES))
+            if not isinstance(sources, list):
+                sources = list(MISSION_DEFAULT_SOURCES)
+            # Add broadening sources on retry
+            if "wikipedia" not in [s.lower() for s in sources]:
+                sources.append("wikipedia")
+            mission["sources"] = sources
+            mission["retries"] = retries + 1
+            mission["status"] = "pending"
             mission["updated_utc"] = datetime.now(UTC).isoformat()
+            re_queued += 1
             modified = True
-            continue
-        # Broaden search: add alternative query phrasing
-        sources = mission.get("sources", list(MISSION_DEFAULT_SOURCES))
-        if not isinstance(sources, list):
-            sources = list(MISSION_DEFAULT_SOURCES)
-        # Add broadening sources on retry
-        if "wikipedia" not in [s.lower() for s in sources]:
-            sources.append("wikipedia")
-        mission["sources"] = sources
-        mission["retries"] = retries + 1
-        mission["status"] = "pending"
-        mission["updated_utc"] = datetime.now(UTC).isoformat()
-        re_queued += 1
-        modified = True
-    if modified:
-        _save_missions(root, missions)
+        if modified:
+            _save_missions(root, missions)
     if re_queued > 0:
         logger.info("Re-queued %d failed mission(s) for retry", re_queued)
     return re_queued
@@ -545,6 +570,7 @@ def auto_generate_missions(
                 root,
                 topic=topic,
                 objective=objective,
+                origin="daemon",
             )
             created.append(mission)
             logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)

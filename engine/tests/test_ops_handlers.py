@@ -390,6 +390,7 @@ class TestMissionCreateHandler:
             topic="Quantum computing",
             objective="Learn basics",
             sources=["wikipedia"],
+            origin="desktop-manual",
         )
 
     @patch("jarvis_engine.learning_missions.create_learning_mission")
@@ -424,6 +425,7 @@ class TestMissionCreateHandler:
             topic="AI Safety",
             objective="",
             sources=[],
+            origin="desktop-manual",
         )
 
 
