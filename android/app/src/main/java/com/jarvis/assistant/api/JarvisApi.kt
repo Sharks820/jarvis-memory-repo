@@ -48,4 +48,34 @@ interface JarvisApi {
      */
     @GET("/spam/candidates")
     suspend fun getSpamCandidates(): SpamCandidatesResponse
+
+    // ── Auto-sync endpoints ─────────────────────────────────────────────
+
+    /**
+     * Get sync configuration from desktop: relay URL, sync intervals,
+     * conflict strategy, cache settings. The phone stores this config
+     * locally so it knows how to behave even when desktop is unreachable.
+     */
+    @GET("/sync/config")
+    suspend fun getSyncConfig(): SyncConfigResponse
+
+    /**
+     * Lightweight heartbeat to confirm desktop reachability.
+     * Returns minimal payload for speed — used for connectivity checks.
+     */
+    @GET("/sync/heartbeat")
+    suspend fun syncHeartbeat(): HeartbeatResponse
 }
+
+/** Response from /sync/config. */
+data class SyncConfigResponse(
+    val ok: Boolean = false,
+    val config: Map<String, Any?> = emptyMap(),
+)
+
+/** Response from /sync/heartbeat. */
+data class HeartbeatResponse(
+    val ok: Boolean = false,
+    val server_time: Long = 0,
+    val device_id: String = "",
+)
