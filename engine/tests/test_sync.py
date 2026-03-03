@@ -71,6 +71,37 @@ def _make_db() -> sqlite3.Connection:
         )
     """)
 
+    # Learning tables (tracked for mobile sync)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            category TEXT NOT NULL,
+            preference TEXT NOT NULL,
+            score REAL NOT NULL DEFAULT 0.0,
+            evidence_count INTEGER NOT NULL DEFAULT 0,
+            last_observed TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (category, preference)
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS response_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route TEXT NOT NULL DEFAULT '',
+            feedback TEXT NOT NULL DEFAULT 'neutral',
+            user_message_snippet TEXT NOT NULL DEFAULT '',
+            recorded_at TEXT NOT NULL DEFAULT ''
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS usage_patterns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hour INTEGER NOT NULL DEFAULT 0,
+            day_of_week INTEGER NOT NULL DEFAULT 0,
+            route TEXT NOT NULL DEFAULT '',
+            topic TEXT NOT NULL DEFAULT '',
+            recorded_at TEXT NOT NULL DEFAULT ''
+        )
+    """)
+
     db.commit()
     return db
 

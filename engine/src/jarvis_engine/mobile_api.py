@@ -64,7 +64,7 @@ _MASTER_PW_RATE_LIMIT_MAX = 5
 _API_RATE_LIMIT_WINDOW = 60.0        # 60-second window
 _API_RATE_LIMIT_NORMAL = 120          # 120 req/min for standard endpoints
 _API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
-_EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login"}
+_EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login", "/feedback"}
 
 # Public endpoints with no body and no auth — skip the full security pipeline.
 # Rate limiting already protects these from abuse.
@@ -1403,6 +1403,56 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         self._write_json(HTTPStatus.OK, self._gather_intelligence_growth())
 
+    def _handle_get_learning_summary(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        summary: dict[str, Any] = {
+            "preferences": {},
+            "route_quality": {},
+            "peak_hours": [],
+            "hourly_distribution": {},
+            "current_context": {},
+        }
+        if not db_path.exists():
+            self._write_json(HTTPStatus.OK, summary)
+            return
+        lrn_db = None
+        try:
+            import sqlite3 as _lrn_sqlite3
+            lrn_db = _lrn_sqlite3.connect(str(db_path), check_same_thread=False)
+            lrn_db.execute("PRAGMA journal_mode=WAL")
+            lrn_db.execute("PRAGMA busy_timeout=5000")
+            try:
+                from jarvis_engine.learning.preferences import PreferenceTracker
+                pt = PreferenceTracker(lrn_db)
+                summary["preferences"] = pt.get_preferences()
+            except Exception as exc:
+                logger.debug("Learning summary: preferences unavailable: %s", exc)
+            try:
+                from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+                ft = ResponseFeedbackTracker(lrn_db)
+                summary["route_quality"] = ft.get_all_route_quality()
+            except Exception as exc:
+                logger.debug("Learning summary: route quality unavailable: %s", exc)
+            try:
+                from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+                ut = UsagePatternTracker(lrn_db)
+                summary["peak_hours"] = ut.get_peak_hours()
+                summary["hourly_distribution"] = ut.get_hourly_distribution()
+                from datetime import datetime as _dt
+                now = _dt.now(UTC)
+                summary["current_context"] = ut.predict_context(now.hour, now.weekday())
+            except Exception as exc:
+                logger.debug("Learning summary: usage patterns unavailable: %s", exc)
+        except Exception as exc:
+            logger.debug("Learning summary: DB unavailable: %s", exc)
+        finally:
+            if lrn_db is not None:
+                lrn_db.close()
+        self._write_json(HTTPStatus.OK, summary)
+
     def _handle_get_favicon(self) -> None:
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()
@@ -1424,6 +1474,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/activity": "_handle_get_activity",
         "/widget-status": "_handle_get_widget_status",
         "/intelligence/growth": "_handle_get_intelligence_growth",
+        "/learning/summary": "_handle_get_learning_summary",
         "/favicon.ico": "_handle_get_favicon",
     }
 
@@ -2037,6 +2088,40 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         result = self._run_main_cli(args, timeout_s=240)
         self._write_json(HTTPStatus.OK, result)
 
+    def _handle_post_feedback(self) -> None:
+        payload, body_bytes = self._read_json_body(max_content_length=10_000)
+        if payload is None:
+            return
+        quality = payload.get("quality")
+        if quality not in ("positive", "negative", "neutral"):
+            self._write_json(HTTPStatus.BAD_REQUEST, {
+                "ok": False, "error": "quality must be 'positive', 'negative', or 'neutral'",
+            })
+            return
+        route = str(payload.get("route", "")).strip()[:100]
+        comment = str(payload.get("comment", "")).strip()[:500]
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        if not db_path.exists():
+            self._write_json(HTTPStatus.OK, {"ok": True, "recorded": False, "reason": "DB not available"})
+            return
+        fb_db = None
+        try:
+            import sqlite3 as _fb_sqlite3
+            fb_db = _fb_sqlite3.connect(str(db_path), check_same_thread=False)
+            fb_db.execute("PRAGMA journal_mode=WAL")
+            fb_db.execute("PRAGMA busy_timeout=5000")
+            from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+            tracker = ResponseFeedbackTracker(fb_db)
+            tracker.record_explicit_feedback(quality, route, comment)
+            self._write_json(HTTPStatus.OK, {"ok": True, "recorded": True, "quality": quality, "route": route})
+        except Exception as exc:
+            logger.error("Feedback recording failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Feedback recording failed."})
+        finally:
+            if fb_db is not None:
+                fb_db.close()
+
     # Dispatch dict for POST routes — built once per class, O(1) lookup.
     _POST_DISPATCH: dict[str, str] = {
         "/bootstrap": "_handle_post_bootstrap",
@@ -2052,6 +2137,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/sync/pull": "_handle_post_sync_pull",
         "/sync/push": "_handle_post_sync_push",
         "/self-heal": "_handle_post_self_heal",
+        "/feedback": "_handle_post_feedback",
     }
 
     def do_POST(self) -> None:  # noqa: N802

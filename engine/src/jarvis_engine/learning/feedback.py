@@ -99,6 +99,27 @@ class ResponseFeedbackTracker:
             self._db.commit()
         return feedback
 
+    def record_explicit_feedback(
+        self, quality: str, route: str = "", comment: str = "",
+    ) -> None:
+        """Record an explicit feedback entry (e.g. from mobile client).
+
+        Unlike :meth:`record_feedback`, this accepts a pre-determined *quality*
+        value (``"positive"``, ``"negative"``, or ``"neutral"``) and an optional
+        *comment* instead of detecting sentiment from a user message.
+        """
+        if quality not in ("positive", "negative", "neutral"):
+            raise ValueError(f"quality must be 'positive', 'negative', or 'neutral', got {quality!r}")
+        now_str = datetime.now(UTC).isoformat()
+        snippet = comment[:200] if comment else ""
+        with self._write_lock:
+            self._db.execute(
+                "INSERT INTO response_feedback (route, feedback, user_message_snippet, recorded_at) "
+                "VALUES (?, ?, ?, ?)",
+                (route, quality, snippet, now_str),
+            )
+            self._db.commit()
+
     def get_route_quality(self, route: str, last_n: int = 20) -> dict:
         """Get quality metrics for a specific route.
 
