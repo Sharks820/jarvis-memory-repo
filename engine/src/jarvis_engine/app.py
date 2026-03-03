@@ -335,7 +335,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)
     bus.register(GrowthReportCommand, GrowthReportHandler(root).handle)
     bus.register(GrowthAuditCommand, GrowthAuditHandler(root).handle)
-    bus.register(IntelligenceDashboardCommand, IntelligenceDashboardHandler(root).handle)
+    # IntelligenceDashboardHandler registered after learning subsystem init (LEARN-07/08)
 
     # -- Security --
     bus.register(RuntimeControlCommand, RuntimeControlHandler(root).handle)
@@ -433,6 +433,24 @@ def create_app(root: Path) -> CommandBus:
         bus._feedback_tracker = feedback_tracker  # type: ignore[attr-defined]
         bus._usage_tracker = usage_tracker        # type: ignore[attr-defined]
         bus._learning_engine = learning_engine    # type: ignore[attr-defined]
+
+        # Wire feedback tracker into IntentClassifier for route quality penalty (LEARN-02)
+        # Classifier is created before learning subsystem, so we set it after the fact
+        if intent_classifier is not None:
+            intent_classifier._feedback_tracker = feedback_tracker
+
+        # Wire trackers into IntelligenceDashboardHandler (LEARN-07/08)
+        bus.register(
+            IntelligenceDashboardCommand,
+            IntelligenceDashboardHandler(
+                root,
+                pref_tracker=pref_tracker,
+                feedback_tracker=feedback_tracker,
+                usage_tracker=usage_tracker,
+                kg=kg,
+                engine=engine,
+            ).handle,
+        )
     except Exception as exc:
         logger.warning("Failed to initialize Learning subsystem, continuing without: %s", exc)
         bus.register(
@@ -446,6 +464,11 @@ def create_app(root: Path) -> CommandBus:
         bus.register(
             FlagExpiredFactsCommand,
             FlagExpiredFactsHandler(root).handle,
+        )
+        # Fallback: dashboard without trackers
+        bus.register(
+            IntelligenceDashboardCommand,
+            IntelligenceDashboardHandler(root).handle,
         )
 
     # -- Sync --

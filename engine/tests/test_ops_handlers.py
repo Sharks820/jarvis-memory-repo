@@ -314,7 +314,11 @@ class TestIntelligenceDashboardHandler:
         result = handler.handle(cmd)
 
         assert result.dashboard == fake_dashboard
-        mock_build.assert_called_once_with(tmp_path, last_runs=10)
+        mock_build.assert_called_once_with(
+            tmp_path, last_runs=10,
+            pref_tracker=None, feedback_tracker=None, usage_tracker=None,
+            kg=None, engine=None,
+        )
 
     @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
     def test_handle_default_last_runs(
@@ -327,7 +331,11 @@ class TestIntelligenceDashboardHandler:
         cmd = IntelligenceDashboardCommand()
         handler.handle(cmd)
 
-        mock_build.assert_called_once_with(tmp_path, last_runs=20)
+        mock_build.assert_called_once_with(
+            tmp_path, last_runs=20,
+            pref_tracker=None, feedback_tracker=None, usage_tracker=None,
+            kg=None, engine=None,
+        )
 
     @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
     def test_handle_result_is_intelligence_dashboard_result(

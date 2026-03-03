@@ -457,7 +457,7 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
         "classify": lambda self, q: ("routine", "mock-model", 0.9),
     })
     with patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
-         patch("jarvis_engine.main._build_smart_context", return_value=([], [], [])), \
+         patch("jarvis_engine.main._build_smart_context", return_value=([], [], [], [])), \
          patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
         code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
     assert code == 200
@@ -644,7 +644,7 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
     # Temporarily lower the limit for testing
     with _mock.patch.object(mobile_api, "_API_RATE_LIMIT_EXPENSIVE", 2), \
          _mock.patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
-         _mock.patch("jarvis_engine.main._build_smart_context", return_value=([], [], [])), \
+         _mock.patch("jarvis_engine.main._build_smart_context", return_value=([], [], [], [])), \
          _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
         # Clear any existing rate state for our IP
         mobile_server.server._api_rate_normal.clear()

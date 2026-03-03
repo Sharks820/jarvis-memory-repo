@@ -157,7 +157,92 @@ class MemoryConsolidator:
             result.records_consolidated += len(group_records)
             result.new_facts_created += 1
 
+        # Tier update pass: re-classify records by relevance (LEARN-06)
+        if not dry_run:
+            try:
+                all_records = self._fetch_episodic_records(branch, limit=500)
+                tier_changes = self._update_tiers(all_records)
+                if tier_changes > 0:
+                    logger.info("Updated %d record tiers based on relevance scoring", tier_changes)
+            except Exception as exc:
+                logger.warning("Tier update pass failed: %s", exc)
+                result.errors.append(f"tier update failed: {exc}")
+
         return result
+
+    def _update_tiers(self, records: list[dict]) -> int:
+        """Update record tiers based on relevance scoring.
+
+        Returns the number of records whose tier was changed.
+        """
+        try:
+            from jarvis_engine.learning.relevance import (
+                classify_tier_by_relevance,
+                compute_relevance_score,
+            )
+        except ImportError:
+            return 0
+
+        now = datetime.now(UTC)
+        changed = 0
+
+        for record in records:
+            access_count = record.get("access_count", 0) or 0
+            record_id = record.get("record_id")
+            if not record_id:
+                continue
+
+            # Compute days since access and creation
+            last_accessed_str = record.get("last_accessed", "") or ""
+            created_str = record.get("ts", "") or record.get("created_at", "") or ""
+
+            days_since_access = 365.0  # Default: very old
+            if last_accessed_str:
+                raw = str(last_accessed_str).strip()
+                if raw.endswith("Z"):
+                    raw = raw[:-1] + "+00:00"
+                try:
+                    la = datetime.fromisoformat(raw)
+                    if la.tzinfo is None:
+                        la = la.replace(tzinfo=UTC)
+                    days_since_access = max(0.0, (now - la).total_seconds() / 86400.0)
+                except (ValueError, TypeError):
+                    pass
+
+            days_since_creation = 365.0
+            if created_str:
+                raw = str(created_str).strip()
+                if raw.endswith("Z"):
+                    raw = raw[:-1] + "+00:00"
+                try:
+                    cr = datetime.fromisoformat(raw)
+                    if cr.tzinfo is None:
+                        cr = cr.replace(tzinfo=UTC)
+                    days_since_creation = max(0.0, (now - cr).total_seconds() / 86400.0)
+                except (ValueError, TypeError):
+                    pass
+
+            relevance = compute_relevance_score(access_count, days_since_access, days_since_creation)
+            new_tier = classify_tier_by_relevance(relevance, days_since_creation)
+            current_tier = record.get("tier", "warm")
+
+            if new_tier != current_tier:
+                try:
+                    self._engine._db.execute(
+                        "UPDATE records SET tier = ? WHERE record_id = ?",
+                        (new_tier, record_id),
+                    )
+                    changed += 1
+                except Exception as exc:
+                    logger.warning("Failed to update tier for %s: %s", record_id, exc)
+
+        if changed > 0:
+            try:
+                self._engine._db.commit()
+            except Exception as exc:
+                logger.warning("Failed to commit tier updates: %s", exc)
+
+        return changed
 
     # ------------------------------------------------------------------
     # Clustering

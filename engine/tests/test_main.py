@@ -2665,7 +2665,7 @@ class TestBuildSmartContext:
                 pass
             # Patch at the location where it's imported inside the function
             with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_records):
-                memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "health")
+                memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "health")
 
         # Memory lines come from hybrid_search results
         assert "User likes hiking on weekends" in memory_lines
@@ -2686,7 +2686,7 @@ class TestBuildSmartContext:
             main_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
-        memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "anything")
+        memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "anything")
         assert "Legacy memory entry 1" in memory_lines
         assert "Legacy memory entry 2" in memory_lines
 
@@ -2704,7 +2704,7 @@ class TestBuildSmartContext:
             main_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
-        memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "test query")
+        memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "test query")
         assert "Fallback memory" in memory_lines
 
     def test_kg_facts_injected_when_engine_available(self, monkeypatch, tmp_path):
@@ -2728,7 +2728,7 @@ class TestBuildSmartContext:
         ]
 
         with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
-            memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "tell me about allergies")
+            memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "tell me about allergies")
 
         assert "User is allergic to peanuts" in fact_lines
 
@@ -2750,7 +2750,7 @@ class TestBuildSmartContext:
         ]
 
         with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
-            memory_lines, fact_lines, _cb = main_mod._build_smart_context(bus, "some query")
+            memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "some query")
 
         assert "High confidence fact" in fact_lines
         assert "Low confidence fact" not in fact_lines
@@ -2764,10 +2764,11 @@ class TestBuildSmartContext:
             MagicMock(side_effect=RuntimeError("DB broken")),
         )
 
-        memory_lines, fact_lines, cross_branch_lines = main_mod._build_smart_context(bus, "broken query")
+        memory_lines, fact_lines, cross_branch_lines, pref_lines = main_mod._build_smart_context(bus, "broken query")
         assert memory_lines == []
         assert fact_lines == []
         assert cross_branch_lines == []
+        assert pref_lines == []
 
 
 # ===========================================================================

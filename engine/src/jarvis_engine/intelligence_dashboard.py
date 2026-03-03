@@ -173,7 +173,63 @@ def _estimate_eta(latest_score: float, slope_per_run: float, avg_days_per_run: f
     return {"runs": runs_needed, "days": days_needed, "status": "projected"}
 
 
-def build_intelligence_dashboard(root: Path, *, last_runs: int = 20) -> dict[str, Any]:
+def _safe_learning_metrics(
+    pref_tracker: Any = None,
+    feedback_tracker: Any = None,
+    usage_tracker: Any = None,
+) -> dict[str, Any]:
+    """Collect learning metrics from all trackers (returns empty on failure)."""
+    result: dict[str, Any] = {}
+
+    # Per-route quality scores (LEARN-08)
+    if feedback_tracker is not None:
+        try:
+            result["route_quality"] = feedback_tracker.get_all_route_quality()
+        except Exception:
+            result["route_quality"] = {}
+
+    # Preference summary (LEARN-08)
+    if pref_tracker is not None:
+        try:
+            result["preferences"] = pref_tracker.get_preferences()
+            result["all_preferences"] = pref_tracker.get_all_preferences()
+        except Exception:
+            result["preferences"] = {}
+            result["all_preferences"] = []
+
+    # Peak usage hours (LEARN-08)
+    if usage_tracker is not None:
+        try:
+            result["peak_hours"] = usage_tracker.get_peak_hours(top_n=5)
+            result["hourly_distribution"] = usage_tracker.get_hourly_distribution()
+        except Exception:
+            result["peak_hours"] = []
+            result["hourly_distribution"] = {}
+
+    return result
+
+
+def _safe_knowledge_snapshot(kg: Any = None, engine: Any = None) -> dict[str, Any]:
+    """Capture live knowledge metrics (returns empty on failure)."""
+    if kg is None and engine is None:
+        return {}
+    try:
+        from jarvis_engine.learning.metrics import capture_knowledge_metrics
+        return capture_knowledge_metrics(kg, engine)
+    except Exception:
+        return {}
+
+
+def build_intelligence_dashboard(
+    root: Path,
+    *,
+    last_runs: int = 20,
+    pref_tracker: Any = None,
+    feedback_tracker: Any = None,
+    usage_tracker: Any = None,
+    kg: Any = None,
+    engine: Any = None,
+) -> dict[str, Any]:
     history_rows = read_history(_history_path(root))
     summary = summarize_history(history_rows, last=last_runs)
     latest_score = _to_float(summary.get("latest_score_pct", 0.0), 0.0)
@@ -256,6 +312,8 @@ def build_intelligence_dashboard(root: Path, *, last_runs: int = 20) -> dict[str
         "memory_regression": brain_regression_report(root),
         "knowledge_graph": _safe_kg_metrics(root),
         "gateway_audit": _safe_gateway_summary(root),
+        "learning": _safe_learning_metrics(pref_tracker, feedback_tracker, usage_tracker),
+        "knowledge_snapshot": _safe_knowledge_snapshot(kg, engine),
         "achievements": {
             "new": new_unlocks,
             "all": unlocked,

@@ -9,7 +9,8 @@ Algorithm:
 2. sqlite-vec KNN search for semantic similarity
 3. RRF combination: score = sum(1/(rrf_k + rank_i + 1))
 4. Recency boost: score *= (1.0 + recency_weight * exp(-age_hours/168))
-5. Return top-k records sorted by combined score
+5. Frequency boost: score *= (0.9 + 0.2 * min(log1p(access_count)/log1p(10), 1.0))
+6. Return top-k records sorted by combined score
 """
 
 from __future__ import annotations
@@ -97,7 +98,7 @@ def hybrid_search(
     records_list = engine.get_records_batch(candidate_ids)
     records_by_id = {r["record_id"]: r for r in records_list}
 
-    # 5. Recency boost
+    # 5. Recency + frequency boost
     scored_records: list[tuple[float, dict]] = []
     for rid, score in scores.items():
         record = records_by_id.get(rid)
@@ -106,6 +107,13 @@ def hybrid_search(
         ts = str(record.get("ts", ""))
         recency = _recency_weight(ts)
         boosted_score = score * (1.0 + recency_weight * recency)
+
+        # Frequency boost: access_count via log1p, 0.9-1.1x range (LEARN-05)
+        # Avoids double-counting recency (already handled above)
+        access_count = record.get("access_count", 0) or 0
+        freq_factor = math.log1p(max(access_count, 0)) / math.log1p(10)
+        boosted_score *= (0.9 + 0.2 * min(freq_factor, 1.0))
+
         scored_records.append((boosted_score, record))
 
     # 6. Sort by combined score descending, take top-k
