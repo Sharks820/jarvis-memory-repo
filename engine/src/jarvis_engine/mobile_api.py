@@ -1453,7 +1453,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         records: list[dict[str, Any]] = []
         if audit_path.exists():
             try:
-                lines = audit_path.read_text(encoding="utf-8").strip().splitlines()
+                # Tail-read: only read last ~64KB to avoid loading the entire file.
+                _MAX_TAIL = 65_536
+                fsize = audit_path.stat().st_size
+                with open(audit_path, "r", encoding="utf-8") as f:
+                    if fsize > _MAX_TAIL:
+                        f.seek(fsize - _MAX_TAIL)
+                        f.readline()  # skip partial first line
+                    lines = f.read().strip().splitlines()
                 for line in lines[-50:]:
                     try:
                         records.append(json.loads(line))
@@ -2035,7 +2042,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         owner_session._failure_count = 0
                     else:
                         token = None  # session cap reached
-                logger.info("Owner authenticated via master password, session %s... created", token[:8])
+                if token is not None:
+                    logger.info("Owner authenticated via master password, session %s... created", token[:8])
         if token is None:
             self._write_json(HTTPStatus.UNAUTHORIZED, {
                 "ok": False,
@@ -2060,6 +2068,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.BAD_REQUEST, {
                 "ok": False,
                 "error": "Missing X-Jarvis-Session header.",
+            })
+            return
+        if not owner_session.validate_session(session_token):
+            self._write_json(HTTPStatus.UNAUTHORIZED, {
+                "ok": False,
+                "error": "Invalid or expired session.",
             })
             return
         # Body already consumed by do_POST pre-read; no drain needed
@@ -3185,13 +3199,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
             return
-        # Pre-read POST body so security pipeline can inspect it
+        # Pre-read POST body so security pipeline can inspect it.
+        # Cap at 5MB to prevent memory exhaustion from malicious Content-Length.
+        _MAX_POST_BODY = 5_000_000
         self._cached_post_body: bytes | None = None
         raw_cl = self.headers.get("Content-Length", "0")
         try:
             cl = int(raw_cl)
         except (TypeError, ValueError):
             cl = 0
+        if cl > _MAX_POST_BODY:
+            self._write_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {
+                "ok": False,
+                "error": "Request body too large.",
+            })
+            return
         if cl > 0:
             try:
                 self.connection.settimeout(15.0)

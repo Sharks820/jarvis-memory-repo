@@ -545,11 +545,19 @@ def save_call_intel(path: Path, report: CallIntelReport) -> None:
 
 
 def load_call_intel(path: Path, *, limit: int = 500) -> list[dict[str, Any]]:
-    """Load recent call intel reports from JSONL file."""
+    """Load recent call intel reports from JSONL file (tail-read for efficiency)."""
     if not path.exists():
         return []
     try:
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        # Tail-read: estimate ~256 bytes per line, read only what we need.
+        _BYTES_PER_LINE = 256
+        fsize = path.stat().st_size
+        tail_bytes = min(fsize, limit * _BYTES_PER_LINE * 2)
+        with open(path, "r", encoding="utf-8") as f:
+            if fsize > tail_bytes:
+                f.seek(fsize - tail_bytes)
+                f.readline()  # skip partial first line
+            lines = f.read().strip().splitlines()
         reports = []
         for line in lines[-limit:]:
             try:
@@ -567,16 +575,18 @@ def load_call_intel(path: Path, *, limit: int = 500) -> list[dict[str, Any]]:
 
 def save_carrier_intel(path: Path, intel: CarrierIntel) -> None:
     """Cache carrier lookup result."""
+    from jarvis_engine._shared import atomic_write_json
     with _CAMPAIGNS_LOCK:
         cache = _load_carrier_cache(path)
         cache[intel.number] = asdict(intel)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+        atomic_write_json(path, cache, secure=False)
 
 
 def lookup_carrier_cached(path: Path, number: str) -> CarrierIntel | None:
     """Check carrier cache for a number or its prefix."""
-    cache = _load_carrier_cache(path)
+    with _CAMPAIGNS_LOCK:
+        cache = _load_carrier_cache(path)
     if number in cache:
         entry = cache[number]
         return CarrierIntel(**{

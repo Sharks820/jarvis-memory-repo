@@ -243,9 +243,12 @@ def run_learning_mission(
         target["status"] = "running"
         target["updated_utc"] = datetime.now(UTC).isoformat()
         _save_missions(root, missions)
+        # Copy fields under lock to avoid referencing the shared dict outside.
+        _topic = str(target.get("topic", "")).strip()
+        _sources = target.get("sources", MISSION_DEFAULT_SOURCES)
 
-    topic = str(target.get("topic", "")).strip()
-    sources = target.get("sources", MISSION_DEFAULT_SOURCES)
+    topic = _topic
+    sources = _sources
     if not isinstance(sources, list):
         sources = list(MISSION_DEFAULT_SOURCES)
     queries = _mission_queries(topic, [str(s) for s in sources])
@@ -309,6 +312,10 @@ def run_learning_mission(
                 break
         if target is None:
             logger.warning("Mission %s disappeared during run — skipping status update", mission_id)
+            return report
+        # Respect user-initiated cancellation — do not overwrite.
+        if target.get("status") == "cancelled":
+            logger.info("Mission %s was cancelled during run — preserving cancelled status", mission_id)
             return report
         if verified:
             target["status"] = "completed"

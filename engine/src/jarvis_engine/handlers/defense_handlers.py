@@ -90,8 +90,8 @@ class SecurityStatusHandler:
         except Exception as exc:
             logger.warning("SecurityStatusHandler failed: %s", exc)
             return SecurityStatusResult(
-                dashboard={"error": str(exc)},
-                message=f"Failed to retrieve security status: {exc}",
+                dashboard={"error": "internal_error"},
+                message="Failed to retrieve security status.",
             )
 
 
@@ -144,8 +144,8 @@ class ThreatReportHandler:
         except Exception as exc:
             logger.warning("ThreatReportHandler failed: %s", exc)
             return ThreatReportResult(
-                report={"error": str(exc)},
-                message=f"Failed to retrieve threat report: {exc}",
+                report={"error": "internal_error"},
+                message="Failed to retrieve threat report.",
             )
 
 
@@ -193,7 +193,7 @@ class ExportForensicsHandler:
             logger.warning("ExportForensicsHandler failed: %s", exc)
             return ExportForensicsResult(
                 export_path="",
-                message=f"Failed to export forensic logs: {exc}",
+                message="Failed to export forensic logs.",
             )
 
 
@@ -260,7 +260,7 @@ class ContainmentOverrideHandler:
             logger.warning("ContainmentOverrideHandler failed: %s", exc)
             return ContainmentOverrideResult(
                 success=False,
-                message=f"Containment override failed: {exc}",
+                message="Containment override failed.",
             )
 
 
@@ -305,7 +305,7 @@ class BlockIPHandler:
             logger.warning("BlockIPHandler failed: %s", exc)
             return BlockIPResult(
                 success=False,
-                message=f"Failed to block IP: {exc}",
+                message="Failed to block IP.",
             )
 
 
@@ -348,7 +348,7 @@ class UnblockIPHandler:
             logger.warning("UnblockIPHandler failed: %s", exc)
             return UnblockIPResult(
                 success=False,
-                message=f"Failed to unblock IP: {exc}",
+                message="Failed to unblock IP.",
             )
 
 
@@ -386,7 +386,7 @@ class ReviewQuarantineHandler:
             logger.warning("ReviewQuarantineHandler failed: %s", exc)
             return ReviewQuarantineResult(
                 records=[],
-                message=f"Failed to review quarantine: {exc}",
+                message="Failed to review quarantine.",
             )
 
 
@@ -431,5 +431,5 @@ class SecurityBriefingHandler:
             logger.warning("SecurityBriefingHandler failed: %s", exc)
             return SecurityBriefingResult(
                 briefing="",
-                message=f"Failed to generate security briefing: {exc}",
+                message="Failed to generate security briefing.",
             )

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
+from jarvis_engine._compat import UTC
+
 
 @dataclass
 class TriggerRule:
@@ -122,11 +124,17 @@ def check_contact_neglect(snapshot_data: dict) -> list[str]:
     """Check for important contacts not contacted in a long time."""
     alerts: list[str] = []
     contacts = snapshot_data.get("contacts", [])
-    neglect_days = int(snapshot_data.get("neglect_threshold_days", 14))
-    now = datetime.now()
+    try:
+        neglect_days = int(snapshot_data.get("neglect_threshold_days", 14))
+    except (ValueError, TypeError):
+        neglect_days = 14
+    now = datetime.now(UTC)
 
     for contact in contacts:
-        importance = float(contact.get("importance", 0))
+        try:
+            importance = float(contact.get("importance", 0))
+        except (ValueError, TypeError):
+            continue
         if importance < 0.4:
             continue
         last_contact_str = contact.get("last_contact_date", "")
@@ -134,8 +142,8 @@ def check_contact_neglect(snapshot_data: dict) -> list[str]:
             continue
         try:
             last_dt = datetime.fromisoformat(last_contact_str)
-            if last_dt.tzinfo is not None:
-                last_dt = last_dt.replace(tzinfo=None)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=UTC)
             days_since = (now - last_dt).days
             # Scale threshold by importance — more important = shorter threshold
             adjusted_threshold = max(7, int(neglect_days * (1.0 - importance * 0.5)))

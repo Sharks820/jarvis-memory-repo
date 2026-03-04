@@ -7,6 +7,7 @@ active owner session (escalation).
 """
 from __future__ import annotations
 
+import collections
 import logging
 import threading
 from datetime import datetime
@@ -55,7 +56,8 @@ class ScopeEnforcer:
     def __init__(self, owner_session_active: bool = False) -> None:
         self._owner_session_active = owner_session_active
         self._lock = threading.Lock()
-        self._violations: list[dict] = []
+        self._violations: collections.deque[dict] = collections.deque(maxlen=1000)
+        self._total_violation_count: int = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -106,7 +108,7 @@ class ScopeEnforcer:
     def violation_count(self) -> int:
         """Return the total number of violations recorded this session."""
         with self._lock:
-            return len(self._violations)
+            return self._total_violation_count
 
     def recent_violations(self, limit: int = 20) -> list[dict]:
         """Return the most recent violations (up to *limit*).
@@ -132,3 +134,4 @@ class ScopeEnforcer:
         logger.warning("Scope violation: %s.%s — %s", scope, action, reason)
         with self._lock:
             self._violations.append(entry)
+            self._total_violation_count += 1
