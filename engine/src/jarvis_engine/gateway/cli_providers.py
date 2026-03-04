@@ -161,6 +161,63 @@ def _build_messages_text(messages: list[dict[str, str]]) -> str:
     return prompt
 
 
+def _build_claude_cli_prompt(messages: list[dict[str, str]]) -> str:
+    """Build a prompt for Claude Code CLI, stripping persona instructions.
+
+    Claude Code CLI has its own system prompt and confuses persona roleplay
+    instructions (e.g. "You are Jarvis...") with the actual task. It ends up
+    introducing itself as Jarvis instead of answering the user's question.
+
+    This function keeps factual context (KG facts, memories, preferences)
+    but strips the character/persona preamble.
+    """
+    context_parts: list[str] = []
+    conversation_parts: list[str] = []
+    user_count = sum(1 for m in messages if m.get("role", "user") == "user")
+    multi_turn = user_count > 1
+
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if role == "system":
+            # Keep factual context sections, skip persona roleplay lines.
+            # System messages are newline-separated sections. Lines starting
+            # with "You are Jarvis" or containing persona instructions are
+            # the roleplay preamble; the rest is factual context.
+            for section in content.split("\n\n"):
+                section_stripped = section.strip()
+                if not section_stripped:
+                    continue
+                lower = section_stripped.lower()
+                # Skip persona/roleplay instructions
+                if lower.startswith("you are jarvis"):
+                    continue
+                if "speak like" in lower and "butler" in lower:
+                    continue
+                if "keep responses concise and natural" in lower:
+                    continue
+                # Keep everything else (facts, memories, preferences, etc.)
+                context_parts.append(section_stripped)
+        elif role == "assistant":
+            conversation_parts.append(f"Assistant: {content}")
+        else:
+            if multi_turn:
+                conversation_parts.append(f"User: {content}")
+            else:
+                conversation_parts.append(content)
+
+    prompt = ""
+    if context_parts:
+        prompt = "Context:\n" + "\n\n".join(context_parts) + "\n\n"
+    if multi_turn and conversation_parts:
+        prompt += (
+            "IMPORTANT: This is an ongoing multi-turn conversation. "
+            "Respond ONLY to the most recent User message.\n\n"
+        )
+    prompt += "\n\n".join(conversation_parts)
+    return prompt
+
+
 def call_claude_cli(
     messages: list[dict[str, str]],
     max_tokens: int = 1024,
@@ -174,7 +231,7 @@ def call_claude_cli(
 
     Returns dict with keys: text, model, provider, success, error.
     """
-    prompt = _build_messages_text(messages)
+    prompt = _build_claude_cli_prompt(messages)
 
     # Claude Code blocks nested sessions via CLAUDECODE env var.
     # Remove it so Jarvis daemon can call claude freely.

@@ -11,6 +11,7 @@ import hashlib
 import hmac as _hmac_module
 import logging
 import os
+import secrets
 import threading
 import time
 from collections import deque
@@ -35,15 +36,21 @@ class ContainmentLevel(IntEnum):
 _MASTER_PASSWORD_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
 
 
-_PBKDF2_SALT = b"jarvis-containment-recovery-v1"  # fixed salt (env-hash comparison)
 _PBKDF2_ITERATIONS = 600_000
 
 
-def _hash_password(password: str) -> str:
+def _hash_password(password: str, salt: bytes | None = None) -> str:
+    """Hash password with PBKDF2-SHA256.  Returns ``salt_hex:hash_hex``.
+
+    When *salt* is ``None`` a random 32-byte salt is generated (use for
+    creating new hashes).  Pass the original salt to verify.
+    """
+    if salt is None:
+        salt = secrets.token_bytes(32)
     dk = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), _PBKDF2_SALT, _PBKDF2_ITERATIONS,
+        "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS,
     )
-    return dk.hex()
+    return salt.hex() + ":" + dk.hex()
 
 
 class ContainmentEngine:
@@ -67,10 +74,12 @@ class ContainmentEngine:
         forensic_logger: object | None = None,
         ip_tracker: object | None = None,
         session_manager: object | None = None,
+        on_credential_rotate: object | None = None,
     ) -> None:
         self._forensic_logger = forensic_logger
         self._ip_tracker = ip_tracker
         self._session_manager = session_manager
+        self._on_credential_rotate = on_credential_rotate
         self._lock = threading.Lock()
 
         # State tracking
@@ -292,13 +301,19 @@ class ContainmentEngine:
     # ------------------------------------------------------------------
 
     def _rotate_credentials(self) -> str:
-        """Generate a new HMAC signing key and store it on the instance.
+        """Generate a new HMAC signing key, store it, and propagate to server.
 
-        Returns the new key as a hex string.  In production this would
-        persist to secure storage and invalidate old keys.
+        Returns the new key as a hex string.  If ``on_credential_rotate``
+        callback was provided at construction, it is called with the new key
+        so the HTTP server's signing key is updated in real-time.
         """
         new_key = os.urandom(32).hex()
         self._current_hmac_key = new_key
+        if callable(self._on_credential_rotate):
+            try:
+                self._on_credential_rotate(new_key)
+            except Exception as exc:
+                logger.error("Credential rotate callback failed: %s", exc)
         self._log_forensic(
             "credential_rotation",
             severity="CRITICAL",
@@ -312,15 +327,30 @@ class ContainmentEngine:
     # ------------------------------------------------------------------
 
     def _verify_master_password(self, password: str) -> bool:
-        """Check *password* against the stored master password hash."""
-        stored_hash = os.environ.get(_MASTER_PASSWORD_HASH_ENV)
-        if stored_hash is None:
+        """Check *password* against the stored master password hash.
+
+        Supports both the new ``salt_hex:hash_hex`` format and the
+        legacy fixed-salt format for backwards compatibility.
+        """
+        stored = os.environ.get(_MASTER_PASSWORD_HASH_ENV)
+        if stored is None:
             logger.critical(
                 "%s not set — denying recovery (set env var to enable)",
                 _MASTER_PASSWORD_HASH_ENV,
             )
             return False
-        return _hmac_module.compare_digest(_hash_password(password), stored_hash)
+        if ":" in stored:
+            # New format: salt_hex:hash_hex
+            salt_hex, _ = stored.split(":", 1)
+            salt = bytes.fromhex(salt_hex)
+            computed = _hash_password(password, salt=salt)
+            return _hmac_module.compare_digest(computed, stored)
+        # Legacy: fixed salt, bare hash
+        _LEGACY_SALT = b"jarvis-containment-recovery-v1"
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), _LEGACY_SALT, _PBKDF2_ITERATIONS,
+        )
+        return _hmac_module.compare_digest(dk.hex(), stored)
 
     def _log_forensic(self, event_type: str, **kwargs: object) -> None:
         """Write to forensic logger if available."""
