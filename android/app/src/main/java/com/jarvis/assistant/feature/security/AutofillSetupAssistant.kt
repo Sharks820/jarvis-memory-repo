@@ -1,5 +1,6 @@
 package com.jarvis.assistant.feature.security
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
@@ -104,7 +105,20 @@ class AutofillSetupAssistant @Inject constructor(
                 setting.contains("com.lastpass") -> "LastPass"
                 setting.contains("com.onepassword") || setting.contains("com.agilebits") -> "1Password"
                 setting.contains("com.dashlane") -> "Dashlane"
-                else -> setting.substringAfterLast("/").substringBefore(".")
+                else -> {
+                    // Parse the flattened ComponentName to extract a readable app label
+                    val cn = ComponentName.unflattenFromString(setting)
+                    if (cn != null) {
+                        try {
+                            val ai = context.packageManager.getApplicationInfo(cn.packageName, 0)
+                            context.packageManager.getApplicationLabel(ai).toString()
+                        } catch (_: PackageManager.NameNotFoundException) {
+                            cn.packageName
+                        }
+                    } else {
+                        setting.substringAfterLast("/")
+                    }
+                }
             }
         } catch (e: Exception) {
             null
