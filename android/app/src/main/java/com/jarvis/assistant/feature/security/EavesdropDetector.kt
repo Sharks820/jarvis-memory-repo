@@ -4,9 +4,11 @@ import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -90,6 +92,12 @@ class EavesdropDetector @Inject constructor(
             "com.google.android.apps.maps",
             context.packageName,
         )
+
+        // unsafeCheckOpNoThrow requires API 29+; skip on older devices
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.d(TAG, "Skipping $label ops audit — requires API 29+")
+            return findings
+        }
 
         try {
             val pm = context.packageManager
@@ -210,6 +218,8 @@ class EavesdropDetector @Inject constructor(
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
                 ?: return findings
 
+            // NOTE: getRunningServices only returns the calling app's own services on API 26+.
+            // This check is best-effort and may not detect third-party background services.
             @Suppress("DEPRECATION")
             val runningServices = am.getRunningServices(100)
 
@@ -232,14 +242,20 @@ class EavesdropDetector @Inject constructor(
                         pkg,
                         PackageManager.GET_PERMISSIONS,
                     )
-                    val requestedPerms = pkgInfo.requestedPermissions?.toSet() ?: emptySet()
-                    val dangerousCount = requestedPerms.intersect(surveillancePerms).size
-                    if (dangerousCount >= 2) {
+                    val requestedPerms = pkgInfo.requestedPermissions ?: continue
+                    val permFlags = pkgInfo.requestedPermissionsFlags ?: IntArray(0)
+                    // Only count GRANTED surveillance permissions, not just requested
+                    val grantedSurveillance = requestedPerms.filterIndexed { index, perm ->
+                        perm in surveillancePerms &&
+                            index < permFlags.size &&
+                            (permFlags[index] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                    }
+                    if (grantedSurveillance.size >= 2) {
                         findings.add(
                             EavesdropFinding(
                                 category = "Background Service",
                                 appPackage = pkg,
-                                description = "$pkg is running in background with $dangerousCount surveillance-capable permissions",
+                                description = "$pkg is running in background with ${grantedSurveillance.size} granted surveillance permissions",
                                 suspicious = true,
                             ),
                         )

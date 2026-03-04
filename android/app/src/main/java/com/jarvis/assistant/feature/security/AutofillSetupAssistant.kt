@@ -2,7 +2,6 @@ package com.jarvis.assistant.feature.security
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import android.view.autofill.AutofillManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,7 +26,14 @@ class AutofillSetupAssistant @Inject constructor(
         val afm = context.getSystemService(AutofillManager::class.java)
 
         val isSupported = afm?.isAutofillSupported ?: false
-        val hasProvider = afm?.hasEnabledAutofillServices() ?: false
+        // hasEnabledAutofillServices() only checks if the CALLING app is the provider —
+        // use Settings.Secure to detect if ANY autofill provider is configured system-wide.
+        val hasProvider = try {
+            val setting = android.provider.Settings.Secure.getString(
+                context.contentResolver, "autofill_service",
+            )
+            !setting.isNullOrBlank()
+        } catch (e: Exception) { false }
         val securePassInstalled = isSecurePassInstalled()
 
         val state = when {
