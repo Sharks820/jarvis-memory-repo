@@ -3,8 +3,8 @@ package com.jarvis.assistant.feature.security
 import android.app.admin.DevicePolicyManager
 import android.app.KeyguardManager
 import android.content.Context
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -272,19 +272,25 @@ class DeviceSecurityMonitor @Inject constructor(
 
         try {
             val pm = context.packageManager
+            @Suppress("DEPRECATION")
             val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
             for (pkg in packages) {
                 if (pkg.packageName in whitelisted) continue
                 val perms = pkg.requestedPermissions ?: continue
-                val grantedDangerous = perms.filter { it in dangerousPerms }
+                val permFlags = pkg.requestedPermissionsFlags ?: IntArray(0)
+                val grantedDangerous = perms.filterIndexed { index, perm ->
+                    perm in dangerousPerms &&
+                        index < permFlags.size &&
+                        (permFlags[index] and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                }
                 if (grantedDangerous.size >= 3) {
                     findings.add(
                         SecurityFinding(
                             category = "Dangerous Permissions",
-                            description = "${pkg.packageName} requests ${grantedDangerous.size} dangerous permissions: " +
+                            description = "${pkg.packageName} has ${grantedDangerous.size} granted dangerous permissions: " +
                                 grantedDangerous.joinToString { it.substringAfterLast(".") },
                             severity = Severity.WARNING,
-                            recommendation = "Review whether this app needs all requested permissions.",
+                            recommendation = "Review whether this app needs all granted permissions.",
                         ),
                     )
                 }
@@ -295,6 +301,7 @@ class DeviceSecurityMonitor @Inject constructor(
         return findings
     }
 
+    @Suppress("DEPRECATION")
     private fun isPackageInstalled(packageName: String): Boolean {
         return try {
             context.packageManager.getPackageInfo(packageName, 0)

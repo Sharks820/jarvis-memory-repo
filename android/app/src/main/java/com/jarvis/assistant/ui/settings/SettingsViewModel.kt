@@ -779,11 +779,18 @@ class SettingsViewModel @Inject constructor(
         securityScanLoading.value = true
         viewModelScope.launch {
             try {
-                val report = deviceSecurityMonitor.runFullScan()
+                val report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    deviceSecurityMonitor.runFullScan()
+                }
                 securityReport.value = report
-                val eavesdrop = eavesdropDetector.scan()
+                val eavesdrop = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    eavesdropDetector.scan()
+                }
                 eavesdropReport.value = eavesdrop
-                bitdefenderInfo.value = bitdefenderIntegration.getLastScanInfo()
+                val bdInfo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    bitdefenderIntegration.getLastScanInfo()
+                }
+                bitdefenderInfo.value = bdInfo
             } catch (e: Exception) {
                 Log.w(TAG, "Security check failed", e)
             } finally {
