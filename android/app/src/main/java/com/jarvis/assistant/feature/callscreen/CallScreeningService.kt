@@ -22,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Android [CallScreeningService] that intercepts incoming calls before the
@@ -120,7 +122,7 @@ class JarvisCallScreeningService : CallScreeningService() {
             callerDisplayName.contains(it, ignoreCase = true)
         }
         if (carrierFlaggedScam) {
-            Log.i(TAG, "INSTANT BLOCK: Carrier flagged '${callerDisplayName}' for ${maskNumber(number)}")
+            Log.i(TAG, "INSTANT BLOCK: Carrier-flagged call for ${maskNumber(number)}")
             respondToCall(callDetails, CallResponse.Builder()
                 .setDisallowCall(true)
                 .setRejectCall(true)
@@ -137,82 +139,98 @@ class JarvisCallScreeningService : CallScreeningService() {
         // ── Known VoIP gateway domain check ──────────────────────────────
 
         val isKnownVoipGateway = gatewayDomain.isNotBlank() && KNOWN_VOIP_GATEWAYS.any {
-            gatewayDomain.endsWith(it)
+            gatewayDomain == it || gatewayDomain.endsWith(".$it")
         }
 
-        // Score on IO dispatcher since it hits Room DB
+        // Score on IO dispatcher since it hits Room DB, but respondToCall on Main
         serviceScope.launch {
+            val fallbackResponse = CallResponse.Builder().build()
             try {
-                val normalized = spamScorer.normalizeNumber(number)
+                val scored = withTimeoutOrNull(4000L) {
+                    val normalized = spamScorer.normalizeNumber(number)
 
-                // Quick contacts check — bypass scoring for known contacts
-                val contactName = resolveContactName(normalized)
-                if (contactName != null) {
-                    Log.d(TAG, "Allowing call from known contact '${contactName}' ${maskNumber(normalized)}")
-                    respondToCall(callDetails, CallResponse.Builder().build())
-                    reportCallToDesktop(
-                        normalized, stirStatus, presentation, "allow",
-                        callerDisplayName, gatewayDomain, setupLatencyMs, isWifiCall,
-                        contactName = contactName,
+                    // Quick contacts check — bypass scoring for known contacts
+                    val contactName = resolveContactName(normalized)
+                    if (contactName != null) {
+                        Log.d(TAG, "Allowing call from known contact ${maskNumber(normalized)}")
+                        withContext(Dispatchers.Main) {
+                            respondToCall(callDetails, CallResponse.Builder().build())
+                        }
+                        reportCallToDesktop(
+                            normalized, stirStatus, presentation, "allow",
+                            callerDisplayName, gatewayDomain, setupLatencyMs, isWifiCall,
+                            contactName = contactName,
+                        )
+                        return@withTimeoutOrNull true
+                    }
+
+                    val result = spamScorer.score(normalized)
+
+                    // Enhanced scoring with ALL signals
+                    val boostedScore = spamScorer.boostWithAllSignals(
+                        baseScore = result.score,
+                        stirStatus = stirStatus,
+                        presentation = presentation,
+                        isKnownVoipGateway = isKnownVoipGateway,
+                        setupLatencyMs = setupLatencyMs,
+                        isWifiCall = isWifiCall,
                     )
-                    return@launch
+                    val action = spamScorer.actionForScore(boostedScore)
+
+                    Log.d(
+                        TAG,
+                        "Call from ${maskNumber(normalized)} scored ${result.score} " +
+                            "(boosted=$boostedScore) stir=$stirStatus pres=$presentation " +
+                            "gateway=$gatewayDomain latency=${setupLatencyMs}ms wifi=$isWifiCall -> $action",
+                    )
+
+                    val response = when (action) {
+                        "block" -> CallResponse.Builder()
+                            .setDisallowCall(true)
+                            .setRejectCall(true)
+                            .setSkipCallLog(false)
+                            .setSkipNotification(true)
+                            .build()
+
+                        "silence" -> CallResponse.Builder()
+                            .setDisallowCall(false)
+                            .setSilenceCall(true)
+                            .setSkipCallLog(false)
+                            .setSkipNotification(false)
+                            .build()
+
+                        "voicemail" -> CallResponse.Builder()
+                            .setDisallowCall(true)
+                            .setRejectCall(false) // sends to voicemail
+                            .setSkipCallLog(false)
+                            .setSkipNotification(false)
+                            .build()
+
+                        else -> CallResponse.Builder().build() // "allow" -- no action
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        respondToCall(callDetails, response)
+                    }
+
+                    // Async: report call to desktop for campaign analysis
+                    reportCallToDesktop(
+                        normalized, stirStatus, presentation, action,
+                        callerDisplayName, gatewayDomain, setupLatencyMs, isWifiCall,
+                    )
+                    true
                 }
-
-                val result = spamScorer.score(normalized)
-
-                // Enhanced scoring with ALL signals
-                val boostedScore = spamScorer.boostWithAllSignals(
-                    baseScore = result.score,
-                    stirStatus = stirStatus,
-                    presentation = presentation,
-                    isKnownVoipGateway = isKnownVoipGateway,
-                    setupLatencyMs = setupLatencyMs,
-                    isWifiCall = isWifiCall,
-                )
-                val action = spamScorer.actionForScore(boostedScore)
-
-                Log.d(
-                    TAG,
-                    "Call from ${maskNumber(normalized)} scored ${result.score} " +
-                        "(boosted=$boostedScore) stir=$stirStatus pres=$presentation " +
-                        "gateway=$gatewayDomain latency=${setupLatencyMs}ms wifi=$isWifiCall -> $action",
-                )
-
-                val response = when (action) {
-                    "block" -> CallResponse.Builder()
-                        .setDisallowCall(true)
-                        .setRejectCall(true)
-                        .setSkipCallLog(false)
-                        .setSkipNotification(true)
-                        .build()
-
-                    "silence" -> CallResponse.Builder()
-                        .setDisallowCall(false)
-                        .setSilenceCall(true)
-                        .setSkipCallLog(false)
-                        .setSkipNotification(false)
-                        .build()
-
-                    "voicemail" -> CallResponse.Builder()
-                        .setDisallowCall(true)
-                        .setRejectCall(false) // sends to voicemail
-                        .setSkipCallLog(false)
-                        .setSkipNotification(false)
-                        .build()
-
-                    else -> CallResponse.Builder().build() // "allow" -- no action
+                if (scored == null) {
+                    Log.w(TAG, "Call screening timed out for ${maskNumber(number)}, allowing")
+                    withContext(Dispatchers.Main) {
+                        respondToCall(callDetails, fallbackResponse)
+                    }
                 }
-
-                respondToCall(callDetails, response)
-
-                // Async: report call to desktop for campaign analysis
-                reportCallToDesktop(
-                    normalized, stirStatus, presentation, action,
-                    callerDisplayName, gatewayDomain, setupLatencyMs, isWifiCall,
-                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error screening call from ${maskNumber(number)}: ${e.message}")
-                respondToCall(callDetails, CallResponse.Builder().build())
+                withContext(Dispatchers.Main) {
+                    respondToCall(callDetails, fallbackResponse)
+                }
             }
         }
     }
@@ -285,8 +303,8 @@ class JarvisCallScreeningService : CallScreeningService() {
 
         /** Carrier-provided labels that indicate scam/spam (case-insensitive). */
         private val SCAM_LABEL_PATTERNS = listOf(
-            "SCAM", "SPAM", "FRAUD", "TELEMARKETER", "ROBOCALL",
-            "SUSPECTED", "SCAM LIKELY", "SPAM RISK", "POTENTIAL SPAM",
+            "SCAM LIKELY", "SPAM RISK", "POTENTIAL SPAM", "SUSPECTED SPAM",
+            "FRAUD RISK", "TELEMARKETER", "ROBOCALL", "SPAM", "SCAM", "FRAUD",
         )
 
         /** Known VoIP wholesale/gateway domains — calls routed through these are
@@ -343,9 +361,6 @@ fun registerCallScreeningRoleLauncher(
     }
 }
 
-/**
- * Create the intent to request the call screening role.
- */
 /**
  * Create the intent to request the call screening role.
  * Returns null on API < 29 (Q) where RoleManager is unavailable.

@@ -103,7 +103,7 @@ def detect_campaigns(
     now = now_utc or datetime.now(UTC)
     lookback = now - timedelta(hours=window_hours)
 
-    # Group by prefix
+    # Group by prefix — shallow-copy to avoid mutating caller's data
     prefix_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for report in call_reports:
         number = _normalize_number(str(report.get("number", "")))
@@ -115,9 +115,10 @@ def detect_campaigns(
         prefix = _area_key(number)
         if not prefix:
             continue
-        report["_normalized"] = number
-        report["_prefix"] = prefix
-        prefix_groups[prefix].append(report)
+        entry = dict(report)
+        entry["_normalized"] = number
+        entry["_prefix"] = prefix
+        prefix_groups[prefix].append(entry)
 
     campaigns: list[ScamCampaign] = []
     for prefix, reports in prefix_groups.items():
@@ -203,7 +204,11 @@ def detect_campaigns(
         if len(timestamps) >= 3:
             timestamps.sort()
             span = (timestamps[-1] - timestamps[0]).total_seconds()
-            if span > 0 and len(timestamps) / (span / 3600) >= 3:
+            if span == 0:
+                # All calls at exact same second — extreme burst
+                confidence += 0.15
+                signals.append("burst_pattern_instant")
+            elif len(timestamps) / (span / 3600) >= 3:
                 confidence += 0.10
                 signals.append("burst_pattern")
 
@@ -298,9 +303,10 @@ def compute_enhanced_spam_score(
     elif line_type == "voip":
         score += 0.12
 
-    # VoIP gateway domain
+    # VoIP gateway domain (check dot boundary to avoid spoofing)
     if gateway_domain:
-        known_voip = any(gateway_domain.endswith(d) for d in _KNOWN_VOIP_DOMAINS)
+        gw = gateway_domain.lower()
+        known_voip = any(gw == d or gw.endswith("." + d) for d in _KNOWN_VOIP_DOMAINS)
         if known_voip:
             score += 0.15
 
@@ -330,10 +336,10 @@ _KNOWN_VOIP_DOMAINS = frozenset({
     "magicjack.com", "level3.com", "commio.com",
 })
 
-# Carrier-applied scam labels
+# Carrier-applied scam labels (checked via substring match — avoid broad terms)
 _SCAM_LABELS = frozenset({
-    "SCAM", "SPAM", "FRAUD", "TELEMARKETER", "ROBOCALL",
-    "SUSPECTED", "SCAM LIKELY", "SPAM RISK", "POTENTIAL SPAM",
+    "SCAM LIKELY", "SPAM RISK", "POTENTIAL SPAM", "SUSPECTED SPAM",
+    "FRAUD RISK", "TELEMARKETER", "ROBOCALL", "SPAM", "SCAM", "FRAUD",
 })
 
 
@@ -497,14 +503,16 @@ def create_call_intel_report(
 # ---------------------------------------------------------------------------
 
 def save_campaigns(path: Path, campaigns: list[ScamCampaign]) -> None:
-    """Save detected campaigns to a JSON file (thread-safe)."""
+    """Save detected campaigns to a JSON file (thread-safe, atomic write)."""
+    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+
     with _CAMPAIGNS_LOCK:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "updated_utc": datetime.now(UTC).isoformat(),
             "campaigns": [asdict(c) for c in campaigns],
         }
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        _atomic_write_json(path, payload)
 
 
 def load_campaigns(path: Path) -> list[ScamCampaign]:

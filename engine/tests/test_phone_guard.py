@@ -241,9 +241,8 @@ class TestDetectSpamCandidates:
             self._make_call("+14155551234", "missed", 0, "", 30),
         ]
         result = detect_spam_candidates(log, now_utc=now)
-        # Should have burst_day_pattern since 2+ on same day
-        if result:
-            assert "burst_day_pattern" in result[0].reasons
+        assert len(result) == 1
+        assert "burst_day_pattern" in result[0].reasons
 
     def test_candidates_sorted_by_score_descending(self):
         now = datetime(2026, 2, 20, 12, 0, tzinfo=UTC)

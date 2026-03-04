@@ -2800,7 +2800,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         Accepts: {number, stir_status, presentation, duration_sec, answered, contact_name}
         Returns: {ok, campaign_id?, enhanced_score, recommended_action}
         """
-        body = self._read_json_body()
+        body, _ = self._read_json_body(max_content_length=5_000)
         if body is None:
             return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
@@ -2815,16 +2815,17 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 lookup_carrier_cached,
             )
             from jarvis_engine.phone_guard import _normalize_number
+            from jarvis_engine._shared import safe_float as _safe_float
 
             number = str(body.get("number", ""))
             stir_status = str(body.get("stir_status", ""))
             presentation = str(body.get("presentation", ""))
-            duration_sec = float(body.get("duration_sec", 0))
+            duration_sec = _safe_float(body.get("duration_sec", 0))
             answered = bool(body.get("answered", False))
             contact_name = str(body.get("contact_name", ""))
             caller_display_name = str(body.get("caller_display_name", ""))
             gateway_domain = str(body.get("gateway_domain", ""))
-            setup_latency_ms = int(body.get("setup_latency_ms", 0))
+            setup_latency_ms = int(_safe_float(body.get("setup_latency_ms", 0)))
 
             # Create and save intel report
             report = create_call_intel_report(
@@ -2835,9 +2836,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 answered=answered,
                 contact_name=contact_name,
             )
-            # Attach extra signals to the report dict
-            report.carrier = gateway_domain  # reuse carrier field for gateway
-
             intel_path = root / ".planning" / "runtime" / "call_intel.jsonl"
             save_call_intel(intel_path, report)
 
@@ -2854,26 +2852,35 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             all_reports = load_call_intel(intel_path, limit=200)
             campaigns = detect_campaigns(all_reports)
             campaign_path = root / ".planning" / "runtime" / "scam_campaigns.json"
-            if campaigns:
-                save_campaigns(campaign_path, campaigns)
+            save_campaigns(campaign_path, campaigns)
 
             # Check if this number belongs to a campaign
             campaign_id = ""
             campaign_confidence = 0.0
+            campaign_signals: list[str] = []
             normalized = _normalize_number(number)
             for campaign in campaigns:
                 if normalized in campaign.numbers:
                     campaign_id = campaign.campaign_id
                     campaign_confidence = campaign.confidence
+                    campaign_signals = campaign.signals
                     break
 
-            # Time-of-day scoring
+            # Build base score: phone_guard pattern score + time-of-day
             from jarvis_engine.scam_hunter import score_time_of_day
+            from jarvis_engine.phone_guard import detect_spam_candidates
             tod_score = score_time_of_day(normalized)
+            base_score = tod_score
+            # Check if phone_guard has a pattern-based score for this number
+            pg_candidates = detect_spam_candidates(all_reports)
+            for c in pg_candidates:
+                if c.number == normalized:
+                    base_score = max(base_score, c.score)
+                    break
 
             # Compute enhanced score with ALL signals
             enhanced_score = compute_enhanced_spam_score(
-                base_score=tod_score,
+                base_score=base_score,
                 stir_status=stir_status,
                 line_type=line_type,
                 carrier_risk=carrier_risk,
@@ -2903,11 +2910,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 "campaign_confidence": round(campaign_confidence, 4),
                 "line_type": line_type,
                 "stir_status": stir_status,
-                "signals": campaigns[0].signals if campaigns and campaign_id else [],
+                "signals": campaign_signals,
             })
         except Exception as exc:
             logger.warning("Scam report-call failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "enhanced_score": 0.0, "recommended_action": "allow"})
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": str(exc)})
 
     def _handle_post_scam_lookup(self) -> None:
         """Lookup carrier and VoIP status for a phone number.
@@ -2915,7 +2922,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         Accepts: {number}
         Returns: {ok, carrier, line_type, is_voip, campaign_id?, risk_score}
         """
-        body = self._read_json_body()
+        body, _ = self._read_json_body(max_content_length=5_000)
         if body is None:
             return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
@@ -2960,9 +2967,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.OK, result)
         except Exception as exc:
             logger.warning("Scam lookup failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {
-                "ok": True, "number": str(body.get("number", "")),
-                "carrier": "", "line_type": "", "is_voip": False,
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "number": str(body.get("number", "")),
+                "carrier": "", "line_type": "", "is_voip": False, "error": str(exc),
             })
 
     def _handle_get_scam_campaigns(self) -> None:

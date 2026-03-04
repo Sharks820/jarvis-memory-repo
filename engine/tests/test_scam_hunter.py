@@ -22,6 +22,7 @@ from jarvis_engine.scam_hunter import (
     save_call_intel,
     save_campaigns,
     save_carrier_intel,
+    score_time_of_day,
     _generate_campaign_id,
 )
 
@@ -310,3 +311,131 @@ class TestGenerateCampaignId:
     def test_length(self):
         cid = _generate_campaign_id("+1555", ["+15551230001"])
         assert len(cid) == 12
+
+
+# ---------- compute_enhanced_spam_score — new signal coverage ----------
+
+
+class TestEnhancedScoreNewSignals:
+    def test_caller_display_name_scam_label(self):
+        """Carrier SCAM LIKELY label adds +0.50."""
+        score = compute_enhanced_spam_score(0.0, caller_display_name="SCAM LIKELY")
+        assert score == pytest.approx(0.50, abs=0.01)
+
+    def test_caller_display_name_spam_risk(self):
+        score = compute_enhanced_spam_score(0.0, caller_display_name="SPAM RISK")
+        assert score == pytest.approx(0.50, abs=0.01)
+
+    def test_caller_display_name_normal_name_no_boost(self):
+        score = compute_enhanced_spam_score(0.0, caller_display_name="John Smith")
+        assert score == pytest.approx(0.0, abs=0.01)
+
+    def test_gateway_domain_known_voip(self):
+        """Known VoIP gateway domain adds +0.15."""
+        score = compute_enhanced_spam_score(0.0, gateway_domain="sip.twilio.com")
+        assert score == pytest.approx(0.15, abs=0.01)
+
+    def test_gateway_domain_exact_match(self):
+        score = compute_enhanced_spam_score(0.0, gateway_domain="bandwidth.com")
+        assert score == pytest.approx(0.15, abs=0.01)
+
+    def test_gateway_domain_spoofed_no_boost(self):
+        """nottwilio.com should NOT match twilio.com."""
+        score = compute_enhanced_spam_score(0.0, gateway_domain="nottwilio.com")
+        assert score == pytest.approx(0.0, abs=0.01)
+
+    def test_gateway_domain_unknown_no_boost(self):
+        score = compute_enhanced_spam_score(0.0, gateway_domain="example.com")
+        assert score == pytest.approx(0.0, abs=0.01)
+
+    def test_setup_latency_high(self):
+        """VoIP transcoding latency >1500ms adds +0.08."""
+        score = compute_enhanced_spam_score(0.0, setup_latency_ms=2000)
+        assert score == pytest.approx(0.08, abs=0.01)
+
+    def test_setup_latency_normal_no_boost(self):
+        score = compute_enhanced_spam_score(0.0, setup_latency_ms=500)
+        assert score == pytest.approx(0.0, abs=0.01)
+
+    def test_unknown_presentation(self):
+        score = compute_enhanced_spam_score(0.0, presentation="unknown")
+        assert score == pytest.approx(0.05, abs=0.01)
+
+    def test_carrier_risk_factor(self):
+        score = compute_enhanced_spam_score(0.0, carrier_risk=1.0)
+        assert score == pytest.approx(0.15, abs=0.01)
+
+
+# ---------- score_time_of_day ----------
+
+
+class TestScoreTimeOfDay:
+    def test_normal_business_hours(self):
+        """2:00 PM ET (19:00 UTC) should score 0."""
+        call_utc = datetime(2026, 3, 1, 19, 0, tzinfo=UTC)
+        assert score_time_of_day("+12125551234", call_utc) == 0.0
+
+    def test_late_night_caller_time(self):
+        """3:00 AM ET (08:00 UTC) should score 0.15."""
+        call_utc = datetime(2026, 3, 1, 8, 0, tzinfo=UTC)
+        assert score_time_of_day("+12125551234", call_utc) == 0.15
+
+    def test_evening_caller_time(self):
+        """10:00 PM ET (03:00 UTC next day) should score 0.05."""
+        call_utc = datetime(2026, 3, 2, 3, 0, tzinfo=UTC)
+        assert score_time_of_day("+12125551234", call_utc) == 0.05
+
+    def test_pacific_time(self):
+        """2:00 AM PT (10:00 UTC) should score 0.15."""
+        call_utc = datetime(2026, 3, 1, 10, 0, tzinfo=UTC)
+        assert score_time_of_day("+14155551234", call_utc) == 0.15
+
+    def test_unknown_area_code_returns_zero(self):
+        """Area code not in mapping should return 0."""
+        call_utc = datetime(2026, 3, 1, 5, 0, tzinfo=UTC)
+        assert score_time_of_day("+19995551234", call_utc) == 0.0
+
+    def test_short_number_returns_zero(self):
+        assert score_time_of_day("+1", None) == 0.0
+
+    def test_non_us_number_returns_zero(self):
+        assert score_time_of_day("+442012345678", None) == 0.0
+
+
+# ---------- detect_campaigns — input mutation fix ----------
+
+
+class TestDetectCampaignsNoMutation:
+    def test_does_not_mutate_input(self):
+        """detect_campaigns should not add internal keys to caller's dicts."""
+        now = datetime.now(UTC)
+        reports = [
+            {"number": "+15551230001", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "allowed",
+             "duration_sec": 0, "answered": False, "contact_name": ""},
+            {"number": "+15551230002", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "allowed",
+             "duration_sec": 0, "answered": False, "contact_name": ""},
+        ]
+        detect_campaigns(reports, now_utc=now)
+        for r in reports:
+            assert "_normalized" not in r
+            assert "_prefix" not in r
+
+
+# ---------- detect_campaigns — burst pattern with identical timestamps ----------
+
+
+class TestBurstPatternInstant:
+    def test_same_timestamp_burst(self):
+        """3+ reports at the exact same second should trigger burst."""
+        now = datetime.now(UTC)
+        reports = [
+            {"number": f"+1555123000{i}", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "allowed",
+             "duration_sec": 0, "answered": False, "contact_name": ""}
+            for i in range(3)
+        ]
+        campaigns = detect_campaigns(reports, now_utc=now)
+        assert len(campaigns) == 1
+        assert any("burst_pattern" in s for s in campaigns[0].signals)
