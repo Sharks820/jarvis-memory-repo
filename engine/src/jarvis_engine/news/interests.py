@@ -7,10 +7,15 @@ of 30 days ensures stale interests fade naturally.
 Thread-safe via a module-level lock on the JSON backing store.
 """
 import json
+import logging
 import math
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from jarvis_engine._shared import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
 _HALF_LIFE_DAYS = 30.0
@@ -25,11 +30,15 @@ class InterestLearner:
 
     def _load(self) -> dict:
         if self._path.exists():
-            return json.loads(self._path.read_text())
+            try:
+                return json.loads(self._path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Corrupt interests file %s — resetting", self._path)
+                return {}
         return {}
 
     def _save(self, data: dict) -> None:
-        self._path.write_text(json.dumps(data, indent=2))
+        atomic_write_json(self._path, data, secure=False)
 
     def record_interest(self, topic: str, *, weight: float = 0.3) -> None:
         """Record an interest signal for a topic.

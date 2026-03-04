@@ -351,6 +351,7 @@ def create_app(root: Path) -> CommandBus:
     bus.register(PersonaConfigCommand, PersonaConfigHandler(root).handle)
 
     # Defense commands (Wave 9-13 security modules)
+    # Each handler registered individually so one failure doesn't disable all.
     try:
         from jarvis_engine.security.defense_commands import (
             BlockIPCommand,
@@ -380,16 +381,23 @@ def create_app(root: Path) -> CommandBus:
         _sec_lock = __import__("threading").Lock()
         _sec_log_dir = root / ".planning" / "runtime" / "forensic"
 
-        bus.register(SecurityStatusCommand, SecurityStatusHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(ThreatReportCommand, ThreatReportHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(ExportForensicsCommand, ExportForensicsHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(ContainmentOverrideCommand, ContainmentOverrideHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(BlockIPCommand, BlockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(UnblockIPCommand, UnblockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(ReviewQuarantineCommand, ReviewQuarantineHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
-        bus.register(SecurityBriefingCommand, SecurityBriefingHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+        _defense_registrations = [
+            (SecurityStatusCommand, SecurityStatusHandler),
+            (ThreatReportCommand, ThreatReportHandler),
+            (ExportForensicsCommand, ExportForensicsHandler),
+            (ContainmentOverrideCommand, ContainmentOverrideHandler),
+            (BlockIPCommand, BlockIPHandler),
+            (UnblockIPCommand, UnblockIPHandler),
+            (ReviewQuarantineCommand, ReviewQuarantineHandler),
+            (SecurityBriefingCommand, SecurityBriefingHandler),
+        ]
+        for _cmd_cls, _handler_cls in _defense_registrations:
+            try:
+                bus.register(_cmd_cls, _handler_cls(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+            except Exception as exc:
+                logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
     except Exception as exc:
-        logger.warning("Failed to register defense commands: %s", exc)
+        logger.warning("Failed to import defense commands: %s", exc)
 
     # -- Knowledge --
     bus.register(KnowledgeStatusCommand, KnowledgeStatusHandler(root, kg=kg).handle)

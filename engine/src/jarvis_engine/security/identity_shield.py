@@ -229,7 +229,7 @@ class BreachMonitor:
         url = self._HIBP_RANGE_URL.format(prefix=prefix)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Jarvis-IdentityShield"})
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 body = resp.read().decode("utf-8")
         except (urllib.error.URLError, OSError) as exc:
             logger.warning("HIBP password check failed: %s", exc)
@@ -263,7 +263,7 @@ class BreachMonitor:
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code == 404:

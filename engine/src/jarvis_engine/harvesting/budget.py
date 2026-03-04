@@ -93,6 +93,10 @@ class BudgetManager:
         """Set or update budget limit for a provider/period combination."""
         if period not in self._VALID_PERIODS:
             raise ValueError(f"Invalid period {period!r}; must be one of {self._VALID_PERIODS}")
+        if limit_usd < 0:
+            raise ValueError(f"limit_usd must be >= 0, got {limit_usd}")
+        if limit_requests < 0:
+            raise ValueError(f"limit_requests must be >= 0, got {limit_requests}")
         with self._write_lock:
             self._db.execute(
                 "INSERT OR REPLACE INTO harvest_budgets "
@@ -236,6 +240,12 @@ class BudgetManager:
                 self._db.close()
             except Exception:
                 logger.warning("Failed to close BudgetManager database connection")
+
+    def __enter__(self) -> "BudgetManager":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def __del__(self) -> None:
         try:
