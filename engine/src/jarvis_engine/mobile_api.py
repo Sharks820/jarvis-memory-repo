@@ -2822,6 +2822,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             duration_sec = float(body.get("duration_sec", 0))
             answered = bool(body.get("answered", False))
             contact_name = str(body.get("contact_name", ""))
+            caller_display_name = str(body.get("caller_display_name", ""))
+            gateway_domain = str(body.get("gateway_domain", ""))
+            setup_latency_ms = int(body.get("setup_latency_ms", 0))
 
             # Create and save intel report
             report = create_call_intel_report(
@@ -2832,6 +2835,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 answered=answered,
                 contact_name=contact_name,
             )
+            # Attach extra signals to the report dict
+            report.carrier = gateway_domain  # reuse carrier field for gateway
 
             intel_path = root / ".planning" / "runtime" / "call_intel.jsonl"
             save_call_intel(intel_path, report)
@@ -2862,15 +2867,22 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     campaign_confidence = campaign.confidence
                     break
 
-            # Compute enhanced score
+            # Time-of-day scoring
+            from jarvis_engine.scam_hunter import score_time_of_day
+            tod_score = score_time_of_day(normalized)
+
+            # Compute enhanced score with ALL signals
             enhanced_score = compute_enhanced_spam_score(
-                base_score=0.0,
+                base_score=tod_score,
                 stir_status=stir_status,
                 line_type=line_type,
                 carrier_risk=carrier_risk,
                 campaign_confidence=campaign_confidence,
                 presentation=presentation,
                 is_in_contacts=bool(contact_name),
+                caller_display_name=caller_display_name,
+                gateway_domain=gateway_domain,
+                setup_latency_ms=setup_latency_ms,
             )
 
             # Determine action

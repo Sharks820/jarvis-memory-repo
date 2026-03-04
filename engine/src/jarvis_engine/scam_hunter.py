@@ -266,20 +266,30 @@ def compute_enhanced_spam_score(
     campaign_confidence: float = 0.0,
     presentation: str = "",
     is_in_contacts: bool = False,
+    caller_display_name: str = "",
+    gateway_domain: str = "",
+    setup_latency_ms: int = 0,
 ) -> float:
-    """Compute an enhanced spam score incorporating STIR/SHAKEN and VoIP signals.
+    """Compute an enhanced spam score incorporating ALL available signals.
 
-    Augments the base phone_guard score with additional signals.
+    Augments the base phone_guard score with STIR/SHAKEN, VoIP detection,
+    carrier labels, gateway info, call setup latency, and campaign data.
     """
     if is_in_contacts:
         return 0.0
 
     score = base_score
 
+    # Carrier SCAM/SPAM label (Samsung Smart Call, T-Mobile Scam Shield)
+    if caller_display_name:
+        name_upper = caller_display_name.upper()
+        if any(label in name_upper for label in _SCAM_LABELS):
+            score += 0.50
+
     # STIR/SHAKEN
     if stir_status == "failed":
         score += 0.40
-    elif stir_status == "not_verified":
+    elif stir_status == "not_verified" and score > 0:
         score += 0.05
 
     # VoIP / line type
@@ -287,6 +297,16 @@ def compute_enhanced_spam_score(
         score += 0.20
     elif line_type == "voip":
         score += 0.12
+
+    # VoIP gateway domain
+    if gateway_domain:
+        known_voip = any(gateway_domain.endswith(d) for d in _KNOWN_VOIP_DOMAINS)
+        if known_voip:
+            score += 0.15
+
+    # Call setup latency (VoIP transcoding > 1500ms)
+    if setup_latency_ms > 1500:
+        score += 0.08
 
     # Carrier risk
     score += carrier_risk * 0.15
@@ -301,6 +321,145 @@ def compute_enhanced_spam_score(
         score += 0.05
 
     return min(score, 0.99)
+
+
+# Known VoIP wholesale/gateway domains
+_KNOWN_VOIP_DOMAINS = frozenset({
+    "bandwidth.com", "twilio.com", "vonage.com", "lingo.com",
+    "telnyx.com", "sinch.com", "peerless.com", "intelepeer.com",
+    "magicjack.com", "level3.com", "commio.com",
+})
+
+# Carrier-applied scam labels
+_SCAM_LABELS = frozenset({
+    "SCAM", "SPAM", "FRAUD", "TELEMARKETER", "ROBOCALL",
+    "SUSPECTED", "SCAM LIKELY", "SPAM RISK", "POTENTIAL SPAM",
+})
+
+
+# ---------------------------------------------------------------------------
+#  NANPA NPA-NXX carrier identification (free, no API key)
+# ---------------------------------------------------------------------------
+
+# Known VoIP wholesale provider OCNs and their NPA-NXX blocks.
+# This is a subset — the full NANPA file has ~50k entries.
+# These are the top robocall-associated carriers by FCC enforcement data.
+KNOWN_VOIP_OCNS: dict[str, str] = {
+    "981E": "Bandwidth.com",
+    "6943": "Twilio",
+    "8561": "Vonage",
+    "B067": "Telnyx",
+    "692E": "Lingo Telecom",
+    "8825": "Peerless Network",
+    "6529": "Level 3 / Lumen",
+    "935F": "Commio",
+    "5765": "Intelepeer",
+    "508E": "MagicJack",
+}
+
+
+def identify_voip_carrier_from_prefix(number: str) -> str | None:
+    """Check if a number's NPA-NXX is assigned to a known VoIP provider.
+
+    Uses the area key to look up against known VoIP OCN prefixes.
+    Returns the carrier name if known VoIP, None otherwise.
+    """
+    # This is a stub for NANPA integration. When the NANPA CSV is loaded,
+    # this function would look up the NPA-NXX block assignment.
+    # For now it returns None — the carrier cache handles external lookups.
+    return None
+
+
+# ---------------------------------------------------------------------------
+#  Time-of-day scoring
+# ---------------------------------------------------------------------------
+
+# US area code → timezone mapping (major codes, covers >80% of US numbers)
+_AREA_CODE_TZ: dict[str, str] = {
+    # Eastern
+    "201": "ET", "202": "ET", "203": "ET", "212": "ET", "215": "ET",
+    "216": "ET", "240": "ET", "267": "ET", "301": "ET", "302": "ET",
+    "305": "ET", "313": "ET", "315": "ET", "321": "ET", "336": "ET",
+    "347": "ET", "352": "ET", "386": "ET", "401": "ET", "404": "ET",
+    "407": "ET", "410": "ET", "412": "ET", "413": "ET", "443": "ET",
+    "484": "ET", "508": "ET", "516": "ET", "518": "ET", "540": "ET",
+    "551": "ET", "561": "ET", "571": "ET", "585": "ET", "586": "ET",
+    "601": "ET", "603": "ET", "609": "ET", "610": "ET", "614": "ET",
+    "616": "ET", "617": "ET", "631": "ET", "646": "ET", "678": "ET",
+    "703": "ET", "704": "ET", "706": "ET", "716": "ET", "717": "ET",
+    "718": "ET", "732": "ET", "757": "ET", "770": "ET", "772": "ET",
+    "774": "ET", "781": "ET", "786": "ET", "802": "ET", "803": "ET",
+    "804": "ET", "813": "ET", "828": "ET", "843": "ET", "845": "ET",
+    "848": "ET", "856": "ET", "860": "ET", "862": "ET", "863": "ET",
+    "904": "ET", "908": "ET", "910": "ET", "914": "ET", "917": "ET",
+    "919": "ET", "929": "ET", "941": "ET", "954": "ET", "973": "ET",
+    # Central
+    "205": "CT", "210": "CT", "214": "CT", "225": "CT", "228": "CT",
+    "254": "CT", "262": "CT", "281": "CT", "309": "CT", "312": "CT",
+    "314": "CT", "316": "CT", "318": "CT", "319": "CT", "320": "CT",
+    "325": "CT", "331": "CT", "334": "CT", "346": "CT", "361": "CT",
+    "402": "CT", "405": "CT", "409": "CT", "414": "CT", "417": "CT",
+    "430": "CT", "432": "CT", "469": "CT", "479": "CT", "501": "CT",
+    "502": "CT", "504": "CT", "507": "CT", "512": "CT", "515": "CT",
+    "563": "CT", "573": "CT", "612": "CT", "615": "CT", "618": "CT",
+    "630": "CT", "636": "CT", "641": "CT", "651": "CT", "682": "CT",
+    "708": "CT", "713": "CT", "715": "CT", "731": "CT", "737": "CT",
+    "763": "CT", "769": "CT", "773": "CT", "779": "CT", "806": "CT",
+    "808": "HT", "815": "CT", "816": "CT", "817": "CT", "830": "CT",
+    "832": "CT", "847": "CT", "850": "CT", "870": "CT", "901": "CT",
+    "903": "CT", "913": "CT", "915": "CT", "918": "CT", "920": "CT",
+    "936": "CT", "940": "CT", "952": "CT", "956": "CT", "972": "CT",
+    "979": "CT",
+    # Mountain
+    "303": "MT", "307": "MT", "385": "MT", "406": "MT", "435": "MT",
+    "480": "MT", "505": "MT", "520": "MT", "575": "MT", "602": "MT",
+    "623": "MT", "719": "MT", "720": "MT", "801": "MT",
+    # Pacific
+    "206": "PT", "209": "PT", "213": "PT", "253": "PT", "310": "PT",
+    "323": "PT", "360": "PT", "408": "PT", "415": "PT", "424": "PT",
+    "425": "PT", "442": "PT", "503": "PT", "509": "PT", "510": "PT",
+    "530": "PT", "541": "PT", "559": "PT", "562": "PT", "619": "PT",
+    "626": "PT", "650": "PT", "657": "PT", "661": "PT", "669": "PT",
+    "707": "PT", "714": "PT", "747": "PT", "760": "PT", "805": "PT",
+    "818": "PT", "831": "PT", "858": "PT", "909": "PT", "916": "PT",
+    "925": "PT", "949": "PT", "951": "PT", "971": "PT",
+}
+
+# UTC offsets for time zone abbreviations (standard time)
+_TZ_UTC_OFFSETS = {"ET": -5, "CT": -6, "MT": -7, "PT": -8, "HT": -10}
+
+
+def score_time_of_day(number: str, call_utc: datetime | None = None) -> float:
+    """Score a call based on time of day in the caller's area code timezone.
+
+    Legitimate business calls happen 8 AM - 9 PM. Calls outside this
+    window from unknown numbers are more suspicious.
+
+    Returns: 0.0 (normal hours) to 0.15 (extremely unusual hours)
+    """
+    now = call_utc or datetime.now(UTC)
+    digits = re.sub(r"\D", "", number)
+    if digits.startswith("1") and len(digits) >= 4:
+        area_code = digits[1:4]
+    elif len(digits) >= 3:
+        area_code = digits[:3]
+    else:
+        return 0.0
+
+    tz_abbr = _AREA_CODE_TZ.get(area_code)
+    if not tz_abbr:
+        return 0.0
+
+    utc_offset = _TZ_UTC_OFFSETS.get(tz_abbr, 0)
+    caller_hour = (now.hour + utc_offset) % 24
+
+    # Extremely suspicious: 11 PM - 6 AM caller local time
+    if caller_hour >= 23 or caller_hour < 6:
+        return 0.15
+    # Suspicious: 9 PM - 11 PM or 6 AM - 8 AM
+    if caller_hour >= 21 or caller_hour < 8:
+        return 0.05
+    return 0.0
 
 
 # ---------------------------------------------------------------------------

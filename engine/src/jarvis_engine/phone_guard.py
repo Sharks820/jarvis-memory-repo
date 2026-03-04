@@ -271,9 +271,9 @@ def _parse_ts(value: Any) -> datetime | None:
 
 
 def _area_key(number: str) -> str:
-    if number.startswith("+1") and len(number) >= 5:
-        # US/Canada: country + area code
-        return number[:5]
+    if number.startswith("+1") and len(number) >= 8:
+        # US/Canada: country + NPA-NXX (exchange-level precision)
+        return number[:8]
     if number.startswith("+") and len(number) >= 6:
         return number[:6]
     return ""

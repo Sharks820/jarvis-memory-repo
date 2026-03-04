@@ -38,9 +38,15 @@ class TestComputeEnhancedSpamScore:
         score = compute_enhanced_spam_score(0.0, stir_status="failed")
         assert score == pytest.approx(0.40, abs=0.01)
 
-    def test_stir_not_verified_small_boost(self):
+    def test_stir_not_verified_no_boost_when_clean(self):
+        """not_verified only boosts when score is already > 0."""
         score = compute_enhanced_spam_score(0.0, stir_status="not_verified")
-        assert score == pytest.approx(0.05, abs=0.01)
+        assert score == pytest.approx(0.0, abs=0.01)
+
+    def test_stir_not_verified_boosts_suspicious(self):
+        """not_verified adds +0.05 when base score is already > 0."""
+        score = compute_enhanced_spam_score(0.3, stir_status="not_verified")
+        assert score == pytest.approx(0.35, abs=0.01)
 
     def test_stir_passed_no_boost(self):
         score = compute_enhanced_spam_score(0.0, stir_status="passed")
@@ -113,7 +119,7 @@ class TestDetectCampaigns:
         campaigns = detect_campaigns(reports, now_utc=now)
         assert len(campaigns) == 1
         assert len(campaigns[0].numbers) == 2
-        assert campaigns[0].prefix == "+1555"
+        assert campaigns[0].prefix == "+1555123"
 
     def test_sequential_numbers_boost_confidence(self):
         now = datetime.now(UTC)
@@ -198,7 +204,7 @@ class TestCreateCallIntelReport:
     def test_basic_report(self):
         report = create_call_intel_report("+15551234567", stir_status="passed")
         assert report.normalized == "+15551234567"
-        assert report.prefix == "+1555"
+        assert report.prefix == "+1555123"
         assert report.stir_status == "passed"
         assert report.timestamp_utc != ""
 

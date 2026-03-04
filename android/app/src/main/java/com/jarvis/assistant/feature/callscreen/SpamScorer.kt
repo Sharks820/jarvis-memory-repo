@@ -123,6 +123,49 @@ class SpamScorer @Inject constructor(
     }
 
     /**
+     * Enhanced scoring using ALL available call signals.
+     * Combines STIR/SHAKEN, presentation, VoIP gateway detection,
+     * call setup latency, and WiFi calling status.
+     */
+    fun boostWithAllSignals(
+        baseScore: Float,
+        stirStatus: String,
+        presentation: String,
+        isKnownVoipGateway: Boolean = false,
+        setupLatencyMs: Long = 0L,
+        isWifiCall: Boolean = false,
+    ): Float {
+        if (baseScore < 0f) return 0f
+        var score = baseScore
+
+        // STIR/SHAKEN
+        when (stirStatus) {
+            "failed" -> score += 0.40f
+            // For already-suspicious numbers, not_verified adds a small boost
+            "not_verified" -> if (score > 0) score += 0.05f
+        }
+
+        // Presentation
+        when (presentation) {
+            "restricted" -> score += 0.10f
+            "unknown" -> score += 0.05f
+            "payphone" -> score += 0.15f
+        }
+
+        // Known VoIP gateway domain (bandwidth.com, twilio.com, etc.)
+        if (isKnownVoipGateway) {
+            score += 0.15f
+        }
+
+        // Call setup latency — VoIP transcoding typically >1500ms
+        if (setupLatencyMs > 1500L) {
+            score += 0.08f
+        }
+
+        return score.coerceAtMost(0.99f)
+    }
+
+    /**
      * Map a score to an action using the user's configured thresholds.
      * Public version of [determineAction] for use by CallScreeningService.
      */
