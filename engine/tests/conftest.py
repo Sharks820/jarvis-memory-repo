@@ -20,6 +20,31 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+
+@pytest.fixture(autouse=True)
+def _isolate_activity_feed(tmp_path):
+    """Redirect the ActivityFeed singleton to a temp DB for every test.
+
+    Without this, tests that call log_activity() or get_activity_feed()
+    pollute the production activity_feed.db because the singleton resolves
+    repo_root() to the real project directory.
+    """
+    try:
+        import jarvis_engine.activity_feed as _af
+        _af._reset_feed()
+        # Pre-seed the singleton with a temp-path feed so any test that
+        # calls log_activity() / get_activity_feed() writes to tmp, not prod.
+        _af._feed = _af.ActivityFeed(db_path=tmp_path / "test_activity.db")
+    except Exception:
+        pass
+    yield
+    try:
+        from jarvis_engine.activity_feed import _reset_feed
+        _reset_feed()
+    except Exception:
+        pass
+
+
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer

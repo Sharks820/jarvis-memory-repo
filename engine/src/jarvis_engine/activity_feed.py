@@ -274,3 +274,15 @@ def log_activity(
 ) -> str:
     """Convenience: log an event via the module singleton."""
     return get_activity_feed().log(category, summary, details)
+
+
+def _reset_feed() -> None:
+    """Close and discard the module-level singleton.  Test-only."""
+    global _feed
+    with _feed_lock:
+        if _feed is not None:
+            try:
+                _feed.close()
+            except Exception:
+                pass
+            _feed = None

@@ -488,11 +488,49 @@ def _discover_harvest_topics(root: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Conversation history buffer for multi-turn context
+# Conversation history buffer for multi-turn context (persisted to disk)
 # ---------------------------------------------------------------------------
 _conversation_history: list[dict[str, str]] = []
 _conversation_history_lock = threading.Lock()
 _CONVERSATION_MAX_TURNS = 5
+_CONVERSATION_HISTORY_FILE: Path | None = None
+_conversation_history_loaded = False
+
+
+def _conversation_history_path() -> Path:
+    """Return the path for persisted conversation history."""
+    global _CONVERSATION_HISTORY_FILE
+    if _CONVERSATION_HISTORY_FILE is None:
+        _CONVERSATION_HISTORY_FILE = repo_root() / ".planning" / "brain" / "conversation_history.json"
+        _CONVERSATION_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    return _CONVERSATION_HISTORY_FILE
+
+
+def _load_conversation_history() -> None:
+    """Load persisted conversation history from disk (called once at startup)."""
+    global _conversation_history
+    try:
+        path = _conversation_history_path()
+        if path.exists():
+            import json as _json
+            data = _json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                with _conversation_history_lock:
+                    _conversation_history = data[-((_CONVERSATION_MAX_TURNS * 2)):]
+    except Exception as exc:
+        logger.debug("Could not load conversation history: %s", exc)
+
+
+def _save_conversation_history() -> None:
+    """Persist current conversation history to disk."""
+    try:
+        import json as _json
+        path = _conversation_history_path()
+        with _conversation_history_lock:
+            snapshot = list(_conversation_history)
+        path.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    except Exception as exc:
+        logger.debug("Could not save conversation history: %s", exc)
 
 
 def _add_to_history(role: str, content: str) -> None:
@@ -502,10 +540,15 @@ def _add_to_history(role: str, content: str) -> None:
         # Keep only the last N user/assistant pairs
         while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
             _conversation_history.pop(0)
+    _save_conversation_history()
 
 
 def _get_history_messages() -> list[dict[str, str]]:
     """Return conversation history as message list for LLM context."""
+    global _conversation_history_loaded
+    if not _conversation_history_loaded:
+        _conversation_history_loaded = True
+        _load_conversation_history()
     with _conversation_history_lock:
         return list(_conversation_history)
 
@@ -3945,12 +3988,13 @@ def _cmd_voice_run_impl(
         if _llm_model is None:
             try:
                 from jarvis_engine.gateway.classifier import IntentClassifier
-                from jarvis_engine.memory.embeddings import EmbeddingService
-                _cls = IntentClassifier(EmbeddingService())
-                _route, _llm_model, _conf = _cls.classify(text, available_models=_avail_models)
-                logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
+                _embed = getattr(bus, "_embed_service", None)
+                if _embed is not None:
+                    _cls = IntentClassifier(_embed)
+                    _route, _llm_model, _conf = _cls.classify(text, available_models=_avail_models)
+                    logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
             except Exception as exc:
-                logger.debug("Fallback IntentClassifier creation/classification failed: %s", exc)
+                logger.debug("Fallback IntentClassifier classification failed: %s", exc)
         if _llm_model is None:
             for _env_key, _model_alias in [
                 ("GROQ_API_KEY", "kimi-k2"),
