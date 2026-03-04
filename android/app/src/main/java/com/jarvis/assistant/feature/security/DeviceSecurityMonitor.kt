@@ -171,7 +171,8 @@ class DeviceSecurityMonitor @Inject constructor(
     internal fun checkUnknownSources(): List<SecurityFinding> {
         val findings = mutableListOf<SecurityFinding>()
         try {
-            // On API 26+ this is per-app, but the global setting still exists
+            // On API 26+ the global setting is deprecated — per-app install permission
+            // is used instead. Check both: legacy setting and per-app canRequestPackageInstalls.
             val unknownSources = Settings.Secure.getInt(
                 context.contentResolver,
                 Settings.Secure.INSTALL_NON_MARKET_APPS,
@@ -181,9 +182,31 @@ class DeviceSecurityMonitor @Inject constructor(
                 findings.add(
                     SecurityFinding(
                         category = "Unknown Sources",
-                        description = "Installation from unknown sources is enabled",
+                        description = "Installation from unknown sources is enabled (legacy setting)",
                         severity = Severity.WARNING,
                         recommendation = "Disable unknown sources to prevent sideloaded malware.",
+                    ),
+                )
+            }
+
+            // API 26+: check if any non-system apps have per-app install permission
+            val pm = context.packageManager
+            @Suppress("DEPRECATION")
+            val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+            val sideloadApps = packages.filter { pkg ->
+                val isSystem = (pkg.applicationInfo?.flags ?: 0) and
+                    android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
+                !isSystem && pkg.requestedPermissions?.contains(
+                    "android.permission.REQUEST_INSTALL_PACKAGES",
+                ) == true
+            }.map { it.packageName }
+            if (sideloadApps.isNotEmpty()) {
+                findings.add(
+                    SecurityFinding(
+                        category = "Unknown Sources",
+                        description = "${sideloadApps.size} app(s) can install packages: ${sideloadApps.take(3).joinToString()}",
+                        severity = Severity.WARNING,
+                        recommendation = "Review which apps have install permission in Settings > Apps > Special access.",
                     ),
                 )
             }

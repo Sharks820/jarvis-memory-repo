@@ -23,20 +23,27 @@ class BitdefenderIntegration @Inject constructor(
      * Parses scan results, threats, and update status from the notification text.
      */
     fun processNotification(packageName: String, title: String, text: String) {
+        if (!isBitdefenderPackage(packageName)) return
         Log.i(TAG, "Bitdefender notification from $packageName: $title")
 
         val fullText = "$title $text".lowercase()
 
+        // Check THREATS first — "protected" and "scan complete" are too broad and
+        // could match threat-containing notifications if checked first.
         when {
-            // Check clean/safe FIRST — "no threats" contains "threat" so order matters
-            fullText.contains("no threats") || fullText.contains("device is safe") ||
-                fullText.contains("protected") || fullText.contains("scan complete") ||
-                fullText.contains("scan finished") -> {
-                recordScanResult(clean = true, title = title, text = text)
-            }
             fullText.contains("threat") || fullText.contains("malware") ||
                 fullText.contains("virus") || fullText.contains("infected") -> {
-                recordThreatDetection(title, text)
+                // "no threats" also contains "threat", so exclude explicit clean phrases
+                if (fullText.contains("no threats") || fullText.contains("0 threats found")) {
+                    recordScanResult(clean = true, title = title, text = text)
+                } else {
+                    recordThreatDetection(title, text)
+                }
+            }
+            fullText.contains("device is safe") ||
+                fullText.contains("device is protected") || fullText.contains("you are protected") ||
+                fullText.contains("scan complete") || fullText.contains("scan finished") -> {
+                recordScanResult(clean = true, title = title, text = text)
             }
             fullText.contains("update") || fullText.contains("updated") -> {
                 recordUpdateStatus(title, text)
@@ -50,12 +57,16 @@ class BitdefenderIntegration @Inject constructor(
 
     private fun recordThreatDetection(title: String, text: String) {
         val now = System.currentTimeMillis()
+        val detail = "$title: $text"
+        val lastDetail = prefs.getString(KEY_LAST_THREAT_DETAIL, null)
         val threatCount = prefs.getInt(KEY_THREATS_FOUND, 0)
+        // Only increment if this is a different threat than the last one (dedup)
+        val newCount = if (detail == lastDetail) threatCount else threatCount + 1
         prefs.edit()
             .putLong(KEY_LAST_SCAN_TIME, now)
             .putString(KEY_LAST_SCAN_RESULT, "THREAT_DETECTED")
-            .putInt(KEY_THREATS_FOUND, threatCount + 1)
-            .putString(KEY_LAST_THREAT_DETAIL, "$title: $text")
+            .putInt(KEY_THREATS_FOUND, newCount)
+            .putString(KEY_LAST_THREAT_DETAIL, detail)
             .apply()
         Log.w(TAG, "Bitdefender THREAT detected: $title | $text")
     }
