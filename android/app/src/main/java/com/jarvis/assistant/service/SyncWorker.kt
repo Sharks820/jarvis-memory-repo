@@ -26,6 +26,9 @@ import com.jarvis.assistant.feature.automation.RelationshipAutopilot
 import com.jarvis.assistant.feature.finance.IncomeCycleDetector
 import com.jarvis.assistant.feature.health.ScreenTimeAnalyzer
 import com.jarvis.assistant.feature.health.SleepEstimator
+import com.jarvis.assistant.feature.security.DeviceSecurityMonitor
+import com.jarvis.assistant.feature.security.EavesdropDetector
+import com.jarvis.assistant.feature.security.Severity
 import com.jarvis.assistant.feature.social.RelationshipAlertEngine
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -82,6 +85,8 @@ class SyncWorker @AssistedInject constructor(
     private val incomeCycleDetector: IncomeCycleDetector,
     private val sleepEstimator: SleepEstimator,
     private val screenTimeAnalyzer: ScreenTimeAnalyzer,
+    private val deviceSecurityMonitor: DeviceSecurityMonitor,
+    private val eavesdropDetector: EavesdropDetector,
 ) : CoroutineWorker(appContext, params) {
 
     private val prefs by lazy {
@@ -271,6 +276,54 @@ class SyncWorker @AssistedInject constructor(
             }
         }
 
+        // 14. Device security scan: every 6 hours
+        val securityPrefs = applicationContext.getSharedPreferences(
+            DeviceSecurityMonitor.PREFS_NAME, Context.MODE_PRIVATE,
+        )
+        val securityEnabled = securityPrefs.getBoolean(DeviceSecurityMonitor.KEY_ENABLED, true)
+        if (securityEnabled &&
+            now - getLastTimestamp(KEY_LAST_SECURITY_SCAN) >= SECURITY_SCAN_INTERVAL_MS
+        ) {
+            try {
+                val report = deviceSecurityMonitor.runFullScan()
+                securityPrefs.edit()
+                    .putString("last_scan_severity", report.severity.name)
+                    .putInt("last_scan_finding_count", report.findings.size)
+                    .putLong(DeviceSecurityMonitor.KEY_LAST_SCAN, now)
+                    .apply()
+                saveTimestamp(KEY_LAST_SECURITY_SCAN, now)
+                if (report.severity == Severity.CRITICAL) {
+                    Log.w(TAG, "CRITICAL security findings: ${report.findings.size}")
+                } else {
+                    Log.i(TAG, "Security scan completed: ${report.severity}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Device security scan error: ${e.message}")
+            }
+        }
+
+        // 15. Eavesdrop detection: every 2 hours
+        if (securityEnabled &&
+            now - getLastTimestamp(KEY_LAST_EAVESDROP_SCAN) >= EAVESDROP_SCAN_INTERVAL_MS
+        ) {
+            try {
+                val report = eavesdropDetector.scan()
+                securityPrefs.edit()
+                    .putBoolean("last_eavesdrop_suspicious", report.isSuspicious)
+                    .putInt("last_eavesdrop_finding_count", report.findings.size)
+                    .putLong(EavesdropDetector.KEY_LAST_EAVESDROP_SCAN, now)
+                    .apply()
+                saveTimestamp(KEY_LAST_EAVESDROP_SCAN, now)
+                if (report.isSuspicious) {
+                    Log.w(TAG, "Suspicious eavesdrop activity detected: ${report.findings.size} findings")
+                } else {
+                    Log.i(TAG, "Eavesdrop scan completed: clean")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Eavesdrop scan error: ${e.message}")
+            }
+        }
+
         // 13. Database cleanup: every 24 hours (90-day retention)
         if (now - getLastTimestamp(KEY_LAST_CLEANUP) >= CLEANUP_INTERVAL_MS) {
             try {
@@ -317,6 +370,8 @@ class SyncWorker @AssistedInject constructor(
         private const val KEY_LAST_INCOME_CYCLE = "last_income_cycle"
         private const val KEY_LAST_SLEEP_ESTIMATE = "last_sleep_estimate"
         private const val KEY_LAST_SCREEN_TIME = "last_screen_time"
+        private const val KEY_LAST_SECURITY_SCAN = "last_security_scan"
+        private const val KEY_LAST_EAVESDROP_SCAN = "last_eavesdrop_scan"
         private const val KEY_CURRENT_CONTEXT = "current_context"
 
         // Interval constants (same as JarvisService)
@@ -335,6 +390,8 @@ class SyncWorker @AssistedInject constructor(
         private const val INCOME_CYCLE_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val SLEEP_ESTIMATE_INTERVAL_MS = 6L * 60 * 60 * 1000 // 6 hours
         private const val SCREEN_TIME_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
+        private const val SECURITY_SCAN_INTERVAL_MS = 6L * 60 * 60 * 1000 // 6 hours
+        private const val EAVESDROP_SCAN_INTERVAL_MS = 2L * 60 * 60 * 1000 // 2 hours
         private const val RETENTION_PERIOD_MS = 90L * 24 * 60 * 60 * 1000 // 90 days
     }
 }

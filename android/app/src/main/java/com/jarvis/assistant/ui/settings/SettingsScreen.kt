@@ -1369,6 +1369,254 @@ fun SettingsScreen(
             }
         }
 
+        // ── Device Security ──────────────────────────────────
+        item {
+            SectionHeader("Device Security")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    val securityEnabled by viewModel.securityMonitoringEnabled.collectAsState()
+                    val secReport by viewModel.securityReport.collectAsState()
+                    val eavReport by viewModel.eavesdropReport.collectAsState()
+                    val bdInfo by viewModel.bitdefenderInfo.collectAsState()
+                    val scanLoading by viewModel.securityScanLoading.collectAsState()
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Security Monitoring")
+                        Switch(checked = securityEnabled, onCheckedChange = { viewModel.setSecurityMonitoringEnabled(it) })
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Device Security Status
+                    if (secReport != null) {
+                        val report = secReport!!
+                        val statusColor = when (report.severity) {
+                            com.jarvis.assistant.feature.security.Severity.SAFE -> Color(0xFF4CAF50)
+                            com.jarvis.assistant.feature.security.Severity.WARNING -> Color(0xFFFF9800)
+                            com.jarvis.assistant.feature.security.Severity.CRITICAL -> Color(0xFFF44336)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Circle,
+                                contentDescription = null,
+                                tint = statusColor,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                            Text(
+                                "Device: ${report.severity.name} (${report.findings.size} findings)",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        for (finding in report.findings.take(3)) {
+                            Text(
+                                "- ${finding.category}: ${finding.description}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (report.findings.size > 3) {
+                            Text(
+                                "... and ${report.findings.size - 3} more",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    // Eavesdrop Status
+                    if (eavReport != null) {
+                        Spacer(Modifier.height(8.dp))
+                        val eavesdrop = eavReport!!
+                        val eavColor = if (eavesdrop.isSuspicious) Color(0xFFF44336) else Color(0xFF4CAF50)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Circle,
+                                contentDescription = null,
+                                tint = eavColor,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                            Text(
+                                if (eavesdrop.isSuspicious) "Eavesdrop: SUSPICIOUS" else "Eavesdrop: Clean",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        if (eavesdrop.isSuspicious) {
+                            for (finding in eavesdrop.findings.filter { it.suspicious }.take(3)) {
+                                Text(
+                                    "- ${finding.description}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+
+                    // Bitdefender Status
+                    if (bdInfo != null) {
+                        Spacer(Modifier.height(8.dp))
+                        val bd = bdInfo!!
+                        if (bd.isInstalled) {
+                            val bdStatusText = when {
+                                bd.lastResult == "THREAT_DETECTED" -> "Threats detected!"
+                                bd.lastScanTime > 0 -> "Last scan: clean"
+                                else -> "No scan data yet"
+                            }
+                            val bdColor = when {
+                                bd.lastResult == "THREAT_DETECTED" -> Color(0xFFF44336)
+                                bd.lastScanTime > 0 -> Color(0xFF4CAF50)
+                                else -> Color(0xFF9E9E9E)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Circle,
+                                    contentDescription = null,
+                                    tint = bdColor,
+                                    modifier = Modifier.padding(end = 8.dp),
+                                )
+                                Text("Bitdefender: $bdStatusText", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            if (bd.totalThreatsFound > 0) {
+                                Text(
+                                    "Total threats found: ${bd.totalThreatsFound}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            Text(
+                                "Bitdefender not installed",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    FilledTonalButton(
+                        onClick = { viewModel.runSecurityCheck() },
+                        enabled = !scanLoading,
+                    ) {
+                        Text(if (scanLoading) "Scanning..." else "Run Security Check")
+                    }
+                }
+            }
+        }
+
+        // ── Password Manager ──────────────────────────────────
+        item {
+            SectionHeader("Password Manager")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    val afStatus by viewModel.autofillStatus.collectAsState()
+                    val localContext = LocalContext.current
+
+                    // Refresh autofill status when this section becomes visible
+                    LaunchedEffect(Unit) {
+                        viewModel.refreshAutofillStatus()
+                    }
+
+                    if (afStatus != null) {
+                        val status = afStatus!!
+                        val statusColor = when (status.state) {
+                            com.jarvis.assistant.feature.security.AutofillState.SECUREPASS_ACTIVE -> Color(0xFF4CAF50)
+                            com.jarvis.assistant.feature.security.AutofillState.OTHER_PROVIDER_ACTIVE,
+                            com.jarvis.assistant.feature.security.AutofillState.NO_SECUREPASS_OTHER_ACTIVE -> Color(0xFFFF9800)
+                            else -> Color(0xFF9E9E9E)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Circle,
+                                contentDescription = null,
+                                tint = statusColor,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                            Column {
+                                Text(
+                                    when (status.state) {
+                                        com.jarvis.assistant.feature.security.AutofillState.SECUREPASS_ACTIVE ->
+                                            "SecurePass is active"
+                                        com.jarvis.assistant.feature.security.AutofillState.OTHER_PROVIDER_ACTIVE ->
+                                            "Using: ${status.currentProviderLabel ?: "Other provider"}"
+                                        com.jarvis.assistant.feature.security.AutofillState.SECUREPASS_INSTALLED_NOT_CONFIGURED ->
+                                            "SecurePass installed but not configured"
+                                        com.jarvis.assistant.feature.security.AutofillState.NO_SECUREPASS_OTHER_ACTIVE ->
+                                            "SecurePass not installed (using ${status.currentProviderLabel ?: "other"})"
+                                        com.jarvis.assistant.feature.security.AutofillState.NO_AUTOFILL_CONFIGURED ->
+                                            "No autofill provider configured"
+                                        com.jarvis.assistant.feature.security.AutofillState.NOT_SUPPORTED ->
+                                            "Autofill not supported"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        when (status.state) {
+                            com.jarvis.assistant.feature.security.AutofillState.SECUREPASS_INSTALLED_NOT_CONFIGURED,
+                            com.jarvis.assistant.feature.security.AutofillState.OTHER_PROVIDER_ACTIVE -> {
+                                Text(
+                                    "Tap below to set Bitdefender SecurePass as your autofill provider for automatic password prompts.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                FilledTonalButton(onClick = {
+                                    try {
+                                        val intent = android.content.Intent(
+                                            android.provider.Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE,
+                                        )
+                                        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                        localContext.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        // Fallback: open general autofill settings
+                                        try {
+                                            val fallback = android.content.Intent(
+                                                android.provider.Settings.ACTION_SETTINGS,
+                                            )
+                                            fallback.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                            localContext.startActivity(fallback)
+                                        } catch (_: Exception) {}
+                                    }
+                                }) {
+                                    Text("Configure SecurePass")
+                                }
+                            }
+                            com.jarvis.assistant.feature.security.AutofillState.NO_AUTOFILL_CONFIGURED,
+                            com.jarvis.assistant.feature.security.AutofillState.NO_SECUREPASS_OTHER_ACTIVE -> {
+                                Text(
+                                    "Install Bitdefender SecurePass from the Play Store for automatic password autofill.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            com.jarvis.assistant.feature.security.AutofillState.SECUREPASS_ACTIVE -> {
+                                Text(
+                                    "Passwords will be prompted automatically when you encounter login forms.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            else -> {}
+                        }
+                    } else {
+                        Text(
+                            "Loading autofill status...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
         // ── Missions ──────────────────────────────────────
         item {
             SectionHeader("Learning Missions")
