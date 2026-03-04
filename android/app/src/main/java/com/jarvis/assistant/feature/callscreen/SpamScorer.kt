@@ -75,16 +75,21 @@ class SpamScorer @Inject constructor(
     fun normalizeNumber(number: String): String {
         if (number.isBlank()) return ""
 
-        // Strip everything except digits and +, then collapse multiple + to one
+        // Strip everything except digits and leading +
         var cleaned = number.replace(Regex("[^\\d+]"), "")
-        cleaned = cleaned.replace(Regex("\\++"), "+")
+        // Keep only the first + and strip any others
+        if (cleaned.contains("+")) {
+            val firstPlus = cleaned.indexOf('+')
+            cleaned = cleaned.substring(0, firstPlus + 1) +
+                cleaned.substring(firstPlus + 1).replace("+", "")
+        }
 
         // Handle 00 international prefix
         if (cleaned.startsWith("00")) {
             cleaned = "+" + cleaned.substring(2)
         }
 
-        // If already has + and is long enough, return as-is
+        // If already has leading + and is long enough, return as-is
         if (cleaned.startsWith("+") && cleaned.length >= 8) {
             return cleaned
         }
@@ -99,6 +104,61 @@ class SpamScorer @Inject constructor(
             else -> ""
         }
     }
+
+    /**
+     * Enhanced scoring using ALL available call signals.
+     * Combines STIR/SHAKEN, presentation, VoIP gateway detection,
+     * call setup latency, and WiFi calling status.
+     */
+    fun boostWithAllSignals(
+        baseScore: Float,
+        stirStatus: String,
+        presentation: String,
+        isKnownVoipGateway: Boolean = false,
+        setupLatencyMs: Long = 0L,
+        isWifiCall: Boolean = false,
+    ): Float {
+        if (baseScore < 0f) return 0f
+        var score = baseScore
+
+        // STIR/SHAKEN
+        when (stirStatus) {
+            "failed" -> score += 0.40f
+            // For already-suspicious numbers, not_verified adds a small boost
+            "not_verified" -> if (score > 0) score += 0.05f
+        }
+
+        // Presentation
+        when (presentation) {
+            "restricted" -> score += 0.10f
+            "unknown" -> score += 0.05f
+            "payphone" -> score += 0.15f
+        }
+
+        // Known VoIP gateway domain (bandwidth.com, twilio.com, etc.)
+        if (isKnownVoipGateway) {
+            score += 0.15f
+        }
+
+        // Call setup latency — VoIP transcoding typically >1500ms
+        if (setupLatencyMs > 1500L) {
+            score += 0.08f
+        }
+
+        // WiFi calling from unknown number with other spam signals is suspicious
+        // (legitimate WiFi calls come from known contacts typically)
+        if (isWifiCall && score > 0.2f) {
+            score += 0.05f
+        }
+
+        return score.coerceAtMost(0.99f)
+    }
+
+    /**
+     * Map a score to an action using the user's configured thresholds.
+     * Public version of [determineAction] for use by CallScreeningService.
+     */
+    fun actionForScore(score: Float): String = determineAction(score)
 
     // ---- Private helpers ----------------------------------------------------
 

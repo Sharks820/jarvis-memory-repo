@@ -97,11 +97,18 @@ class TestParseTs:
 
 class TestAreaKey:
     def test_us_number(self):
-        assert _area_key("+14155551234") == "+1415"
+        # NPA-NXX precision: +1 + NPA(415) + NXX(555) = 8 chars
+        assert _area_key("+14155551234") == "+1415555"
 
     def test_international_number(self):
         result = _area_key("+442012345678")
         assert result == "+44201"
+
+    def test_short_us_number_falls_through(self):
+        # US numbers shorter than 8 chars fall through to international match
+        assert _area_key("+1415") == ""  # only 5 chars, < 6 required for intl
+        assert _area_key("+14155") == "+14155"  # 6 chars, meets intl threshold
+        assert _area_key("+141555") == "+14155"  # 7 chars, uses 6-char intl match
 
     def test_short_number_returns_empty(self):
         assert _area_key("+123") == ""
@@ -234,9 +241,8 @@ class TestDetectSpamCandidates:
             self._make_call("+14155551234", "missed", 0, "", 30),
         ]
         result = detect_spam_candidates(log, now_utc=now)
-        # Should have burst_day_pattern since 2+ on same day
-        if result:
-            assert "burst_day_pattern" in result[0].reasons
+        assert len(result) == 1
+        assert "burst_day_pattern" in result[0].reasons
 
     def test_candidates_sorted_by_score_descending(self):
         now = datetime(2026, 2, 20, 12, 0, tzinfo=UTC)

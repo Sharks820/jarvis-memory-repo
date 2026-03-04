@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._shared import safe_float as _safe_float
+
+_ACTIONS_LOCK = threading.Lock()
 
 
 @dataclass
@@ -216,10 +219,11 @@ def build_phone_action(action: str, number: str, message: str = "", reason: str 
 
 
 def append_phone_actions(path: Path, actions: list[PhoneAction]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        for action in actions:
-            handle.write(json.dumps(asdict(action), ensure_ascii=True) + "\n")
+    with _ACTIONS_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            for action in actions:
+                handle.write(json.dumps(asdict(action), ensure_ascii=True) + "\n")
 
 
 def write_spam_report(path: Path, candidates: list[SpamCandidate], actions: list[PhoneAction], threshold: float) -> None:
@@ -271,9 +275,9 @@ def _parse_ts(value: Any) -> datetime | None:
 
 
 def _area_key(number: str) -> str:
-    if number.startswith("+1") and len(number) >= 5:
-        # US/Canada: country + area code
-        return number[:5]
+    if number.startswith("+1") and len(number) >= 8:
+        # US/Canada: country + NPA-NXX (exchange-level precision)
+        return number[:8]
     if number.startswith("+") and len(number) >= 6:
         return number[:6]
     return ""
