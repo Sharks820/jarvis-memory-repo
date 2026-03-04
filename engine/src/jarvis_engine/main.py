@@ -536,7 +536,7 @@ def _save_conversation_history() -> None:
         path = _conversation_history_path()
         with _conversation_history_lock:
             snapshot = list(_conversation_history)
-            tmp = path.with_suffix(".tmp")
+            tmp = path.with_suffix(f".tmp.{os.getpid()}")
             tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
             os.replace(str(tmp), str(path))
     except Exception as exc:
@@ -558,8 +558,8 @@ def _get_history_messages() -> list[dict[str, str]]:
     global _conversation_history_loaded
     with _conversation_history_lock:
         if not _conversation_history_loaded:
-            _conversation_history_loaded = True
             _load_conversation_history()
+            _conversation_history_loaded = True
         return list(_conversation_history)
 
 
