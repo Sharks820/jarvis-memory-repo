@@ -121,6 +121,15 @@ logger = logging.getLogger(__name__)
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
 
+
+def _escape_response(msg: str) -> str:
+    """Escape backslashes and newlines so response= stays on one stdout line.
+
+    The mobile API parser splits on newlines — multi-line LLM answers would
+    be truncated without escaping.  The parser unescapes on receipt.
+    """
+    return msg.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+
 # ---------------------------------------------------------------------------
 # Command Bus factory -- respects monkeypatched repo_root() in tests
 # ---------------------------------------------------------------------------
@@ -1186,7 +1195,7 @@ def cmd_growth_audit(history_path: Path, run_index: int) -> int:
         print(f"prompt_sha256={audit_result.get('prompt_sha256', '')}")
         print(f"response_sha256={audit_result.get('response_sha256', '')}")
         print(f"response_source={audit_result.get('response_source', '')}")
-        print(f"response={audit_result.get('response', '')}")
+        print(f"response={_escape_response(audit_result.get('response', ''))}")
     return 0
 
 
@@ -1719,7 +1728,7 @@ def cmd_consolidate(branch: str, max_groups: int, dry_run: bool) -> int:
         print(f"consolidation_errors={len(result.errors)}")
         for e in result.errors:
             print(f"  {e}")
-    print(f"response={result.message}")
+    print(f"response={_escape_response(result.message)}")
     return 0 if not result.errors else 2
 
 
@@ -1776,9 +1785,13 @@ def cmd_runtime_control(
     reset: bool,
     reason: str,
 ) -> int:
-    result = _get_bus().dispatch(RuntimeControlCommand(
+
+    _bus = _get_bus()
+
+    result = _bus.dispatch(RuntimeControlCommand(
         pause=pause, resume=resume, safe_on=safe_on, safe_off=safe_off, reset=reset, reason=reason,
     ))
+
     state = result.state
     print("runtime_control")
     print(f"daemon_paused={bool(state.get('daemon_paused', False))}")
@@ -1993,9 +2006,10 @@ def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_inges
             if snippet:
                 summary_parts.append(f"{snippet} ({domain})" if domain else snippet)
     if summary_parts:
-        print("response=Here's what I found: " + " | ".join(summary_parts))
+        print("response=" + _escape_response("Here's what I found: " + " | ".join(summary_parts)))
     else:
-        print(f"response=I searched the web for '{report.get('query', '')}' but couldn't find clear results.")
+        _query = report.get("query", "")
+        print("response=" + _escape_response(f"I searched the web for '{_query}' but couldn't find clear results."))
 
     if result.auto_ingest_record_id:
         print(f"auto_ingest_record_id={result.auto_ingest_record_id}")
@@ -3154,7 +3168,7 @@ def _web_augmented_llm_conversation(
             return 1
         elif result.text.strip():
             _add_to_history("assistant", result.text.strip())
-            print(f"response={result.text.strip()}")
+            print(f"response={_escape_response(result.text.strip())}")
             print(f"model={result.model}")
             print(f"provider={result.provider}")
             if _web_searched:
@@ -3237,20 +3251,23 @@ def _cmd_voice_run_impl(
         """
         nonlocal _last_response
         _last_response = msg
-        safe = msg.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-        print(f"response={safe}")
+        print(f"response={_escape_response(msg)}")
+
     phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
+
     phone_report = repo_root() / ".planning" / "phone_spam_report.json"
     phone_call_log = Path(os.getenv("JARVIS_CALL_LOG_JSON", str(repo_root() / ".planning" / "phone_call_log.json")))
     owner_guard = read_owner_guard(repo_root())
     master_password_ok = False
     if master_password.strip():
         master_password_ok = verify_master_password(repo_root(), master_password.strip())
+
     read_only_request = _is_read_only_voice_request(
         lowered,
         execute=execute,
         approve_privileged=approve_privileged,
     )
+
 
     def _require_state_mutation_voice_auth() -> bool:
         if voice_auth_wav.strip() or master_password_ok:
@@ -3384,6 +3401,7 @@ def _cmd_voice_run_impl(
             reason="voice_command",
         )
     elif any(k in lowered for k in ["runtime status", "control status", "safe mode status"]):
+
         intent = "runtime_status"
         rc = cmd_runtime_control(
             pause=False,
@@ -4130,22 +4148,32 @@ def _cmd_voice_run_impl(
                 print(f"auto_ingest_record_id={auto_id}")
         except Exception as exc:
             logger.debug("Auto-ingest of voice command memory failed: %s", exc)
-        # Enriched learning for ALL successful commands (not just LLM path)
+        # Enriched learning for ALL successful commands (not just LLM path).
+        # Runs in a daemon thread to avoid blocking the HTTP response — the
+        # enriched pipeline may lazy-load embedding models on first call.
         if intent != "llm_conversation":
-            # Use captured response, or synthesize one from intent for commands
-            # that print structured output directly (brain_context, mission_status, etc.)
             learn_response = _last_response or f"[{intent}] Command executed successfully."
+            # Capture bus reference on current thread (where repo_root override is active)
             try:
                 _learn_bus = _get_bus()
-                _learn_bus.dispatch(LearnInteractionCommand(
+            except Exception:
+                _learn_bus = None
+            if _learn_bus is not None:
+                _learn_cmd = LearnInteractionCommand(
                     user_message=text[:1000],
                     assistant_response=learn_response[:1000],
                     task_id=f"learn-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
                     route=intent,
                     topic=text[:100],
-                ))
-            except Exception as exc:
-                logger.warning("Enriched learning for %s failed: %s", intent, exc)
+                )
+
+                def _bg_learn(_bus: "CommandBus" = _learn_bus, _cmd: "LearnInteractionCommand" = _learn_cmd) -> None:
+                    try:
+                        _bus.dispatch(_cmd)
+                    except Exception as exc:
+                        logger.warning("Background enriched learning failed: %s", exc)
+
+                threading.Thread(target=_bg_learn, daemon=True).start()
     if speak and intent != "llm_conversation":
         persona = load_persona_config(repo_root())
         persona_line = compose_persona_reply(

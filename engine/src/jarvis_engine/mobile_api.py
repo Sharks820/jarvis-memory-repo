@@ -40,7 +40,62 @@ REPLAY_WINDOW_SECONDS = 120.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 2_000_000  # 2 MB (matches sync/push max_content_length)
 
-# Lock for serializing repo_root monkeypatch in multi-threaded HTTP server
+# Thread-local storage for per-thread stdout capture and repo_root override.
+# This replaces the old _repo_root_lock which serialized ALL /command requests.
+_thread_local = threading.local()
+
+
+class _ThreadCapturingStdout:
+    """Wraps real stdout, routing writes to per-thread StringIO when active.
+
+    Install once at server startup via ``_ThreadCapturingStdout.install()``.
+    Each request thread calls ``start_capture()`` / ``stop_capture()`` to
+    redirect its own prints to a thread-local buffer without affecting other
+    threads.
+    """
+
+    _real_stdout = None  # set by install()
+
+    def __init__(self, real_stdout: Any) -> None:
+        object.__setattr__(self, "_real", real_stdout)
+        _ThreadCapturingStdout._real_stdout = real_stdout
+
+    def write(self, s: str) -> int:
+        buf = getattr(_thread_local, "capture_buf", None)
+        if buf is not None:
+            buf.write(s)
+            return len(s)
+        return object.__getattribute__(self, "_real").write(s)
+
+    def flush(self) -> None:
+        buf = getattr(_thread_local, "capture_buf", None)
+        if buf is not None:
+            buf.flush()
+        object.__getattribute__(self, "_real").flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_real"), name)
+
+    @staticmethod
+    def start_capture() -> None:
+        """Begin capturing stdout for the calling thread."""
+        _thread_local.capture_buf = io.StringIO()
+
+    @staticmethod
+    def stop_capture() -> str:
+        """Stop capturing and return the captured text."""
+        buf = getattr(_thread_local, "capture_buf", None)
+        _thread_local.capture_buf = None
+        return buf.getvalue() if buf is not None else ""
+
+    @staticmethod
+    def install() -> None:
+        """Replace sys.stdout once at server startup."""
+        if not isinstance(sys.stdout, _ThreadCapturingStdout):
+            sys.stdout = _ThreadCapturingStdout(sys.stdout)  # type: ignore[assignment]
+
+
+# Kept for backward compatibility — no longer blocks execution
 _repo_root_lock = threading.Lock()
 
 # CORS whitelist: only allow localhost/loopback origins and file:// protocol.
@@ -286,6 +341,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._auto_sync_config: Any = None
         self._memory_engine: Any = None
         self._memory_engine_init_lock = threading.Lock()
+        self._embed_service: Any = None
+        self._embed_init_lock = threading.Lock()
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
@@ -579,17 +636,20 @@ class MobileIngestServer(ThreadingHTTPServer):
         """Lazy-initialize an EmbeddingService for self-test queries.
 
         Returns the EmbeddingService instance, or None on failure.
+        Thread-safe via double-checked locking.
         """
-        _embed = getattr(self, "_embed_service", None)
-        if _embed is not None:
-            return _embed
-        try:
-            from jarvis_engine.memory.embeddings import EmbeddingService
-            self._embed_service = EmbeddingService()
-            logger.info("EmbeddingService lazy-initialized for mobile API self-test")
-        except Exception as exc:
-            logger.warning("Failed to lazy-initialize EmbeddingService: %s", exc)
-            self._embed_service = None
+        if self._embed_service is not None:
+            return self._embed_service
+        with self._embed_init_lock:
+            if self._embed_service is not None:
+                return self._embed_service
+            try:
+                from jarvis_engine.memory.embeddings import EmbeddingService
+                self._embed_service = EmbeddingService()
+                logger.info("EmbeddingService lazy-initialized for mobile API self-test")
+            except Exception as exc:
+                logger.warning("Failed to lazy-initialize EmbeddingService: %s", exc)
+                self._embed_service = None
         return self._embed_service
 
 
@@ -710,32 +770,51 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except ImportError:
             _can_import_in_process = False
         if _can_import_in_process:
-            captured_out = io.StringIO()
             try:
                 import jarvis_engine.main as main_mod
 
-                with _repo_root_lock:
-                    original_repo_root = main_mod.repo_root
-                    main_mod.repo_root = lambda: root  # type: ignore[assignment]
-                    try:
-                        with contextlib.redirect_stdout(captured_out):
-                            rc = main_mod.cmd_voice_run(
-                                text=text,
-                                execute=execute,
-                                approve_privileged=approve_privileged,
-                                speak=speak,
-                                snapshot_path=root / ".planning" / "ops_snapshot.live.json",
-                                actions_path=root / ".planning" / "actions.generated.json",
-                                voice_user=voice_user,
-                                voice_auth_wav=voice_auth_wav,
-                                voice_threshold=voice_threshold,
-                                master_password=master_password,
-                                model_override=model_override,
-                            )
-                    finally:
-                        main_mod.repo_root = original_repo_root  # type: ignore[assignment]
+                # Thread-local repo_root override — no global lock needed.
+                _thread_local.repo_root_override = root
+                original_repo_root = main_mod.repo_root
+                if not hasattr(main_mod, "_original_repo_root"):
+                    main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
+
+                # Install thread-aware repo_root if not already done
+                if not getattr(main_mod, "_repo_root_patched", False):
+                    _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
+
+                    def _thread_aware_repo_root() -> Path:
+                        override = getattr(_thread_local, "repo_root_override", None)
+                        if override is not None:
+                            return override
+                        return _orig()
+
+                    main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
+                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+
+                # Per-thread stdout capture — concurrent requests run in parallel.
+                _ThreadCapturingStdout.install()
+                _ThreadCapturingStdout.start_capture()
+                try:
+                    rc = main_mod.cmd_voice_run(
+                        text=text,
+                        execute=execute,
+                        approve_privileged=approve_privileged,
+                        speak=speak,
+                        snapshot_path=root / ".planning" / "ops_snapshot.live.json",
+                        actions_path=root / ".planning" / "actions.generated.json",
+                        voice_user=voice_user,
+                        voice_auth_wav=voice_auth_wav,
+                        voice_threshold=voice_threshold,
+                        master_password=master_password,
+                        model_override=model_override,
+                    )
+                finally:
+                    _thread_local.repo_root_override = None
             except Exception as exc:
+                _thread_local.repo_root_override = None
                 logger.error("Voice command execution failed: %s", exc)
+                _ThreadCapturingStdout.stop_capture()  # discard
                 return {
                     "ok": False,
                     "error": "Command execution failed.",
@@ -745,7 +824,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     "stderr_tail": [],
                 }
             # Parse captured stdout for intent/reason/status (same as subprocess path)
-            stdout_text = captured_out.getvalue()
+            stdout_text = _ThreadCapturingStdout.stop_capture()
             stdout_lines = stdout_text.splitlines()
             intent = ""
             reason = ""
@@ -2131,6 +2210,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
     def _handle_post_command(self) -> None:
+        with open("C:/Users/Conner/jarvis_debug.log", "a") as _df: _df.write("[DEBUG-POST] _handle_post_command called\n")
         payload, _ = self._read_json_body(max_content_length=25_000)
         if payload is None:
             return
@@ -3095,6 +3175,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     }
 
     def do_POST(self) -> None:  # noqa: N802
+        with open("C:/Users/Conner/jarvis_debug.log", "a") as _df: _df.write(f"[DEBUG-POST] do_POST called, path={self.path}\n")
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
             return
@@ -3302,14 +3383,27 @@ def run_mobile_server(
     def _prewarm() -> None:
         try:
             import jarvis_engine.main as main_mod
-            with _repo_root_lock:
-                original = main_mod.repo_root
-                main_mod.repo_root = lambda: repo_root  # type: ignore[assignment]
+            # Use thread-local override for prewarm thread
+            _thread_local.repo_root_override = repo_root
+            # Install thread-aware repo_root once
+            if not getattr(main_mod, "_repo_root_patched", False):
+                _orig = main_mod.repo_root
+                main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
+
+                def _thread_aware_repo_root() -> Path:
+                    override = getattr(_thread_local, "repo_root_override", None)
+                    if override is not None:
+                        return override
+                    return _orig()
+
+                main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
+                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 main_mod._get_bus()
             finally:
-                with _repo_root_lock:
-                    main_mod.repo_root = original  # type: ignore[assignment]
+                _thread_local.repo_root_override = None
+            # Install thread-capturing stdout for concurrent request handling
+            _ThreadCapturingStdout.install()
             logger.info("CommandBus pre-warmed successfully")
         except Exception as exc:
             logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
