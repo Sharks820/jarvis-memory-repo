@@ -445,6 +445,10 @@ def score_time_of_day(number: str, call_utc: datetime | None = None) -> float:
     """
     now = call_utc or datetime.now(UTC)
     digits = re.sub(r"\D", "", number)
+    # Only handle US/Canadian numbers (country code +1).
+    # Non-US numbers with "+" prefix and a different country code return 0.0.
+    if number.lstrip().startswith("+") and not digits.startswith("1"):
+        return 0.0
     if digits.startswith("1") and len(digits) >= 4:
         area_code = digits[1:4]
     elif len(digits) >= 3:

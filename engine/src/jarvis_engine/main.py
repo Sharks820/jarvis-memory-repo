@@ -3229,10 +3229,16 @@ def _cmd_voice_run_impl(
     _last_response = ""  # Capture assistant response for learning pipeline
 
     def _respond(msg: str) -> None:
-        """Print response= line and capture text for learning pipeline."""
+        """Print response= line and capture text for learning pipeline.
+
+        Newlines in the message are escaped so the entire response stays on
+        one stdout line — the mobile API parser splits on newlines and would
+        otherwise truncate multi-line LLM answers.
+        """
         nonlocal _last_response
         _last_response = msg
-        print(f"response={msg}")
+        safe = msg.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+        print(f"response={safe}")
     phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
     phone_report = repo_root() / ".planning" / "phone_spam_report.json"
     phone_call_log = Path(os.getenv("JARVIS_CALL_LOG_JSON", str(repo_root() / ".planning" / "phone_call_log.json")))
@@ -4130,7 +4136,8 @@ def _cmd_voice_run_impl(
             # that print structured output directly (brain_context, mission_status, etc.)
             learn_response = _last_response or f"[{intent}] Command executed successfully."
             try:
-                bus.dispatch(LearnInteractionCommand(
+                _learn_bus = _get_bus()
+                _learn_bus.dispatch(LearnInteractionCommand(
                     user_message=text[:1000],
                     assistant_response=learn_response[:1000],
                     task_id=f"learn-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",

@@ -321,10 +321,15 @@ class MobileIngestServer(ThreadingHTTPServer):
             self._security_write_lock = threading.Lock()
             forensic_dir = self.repo_root / ".planning" / "runtime" / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
+            def _rotate_signing_key(new_key: str) -> None:
+                self.signing_key = new_key
+                logger.warning("Server signing key rotated by containment engine")
+
             self.security = SecurityOrchestrator(
                 db=self._security_db,
                 write_lock=self._security_write_lock,
                 log_dir=forensic_dir,
+                on_credential_rotate=_rotate_signing_key,
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
         except Exception as exc:
@@ -342,6 +347,9 @@ class MobileIngestServer(ThreadingHTTPServer):
                 session_timeout=int(os.environ.get("JARVIS_SESSION_TIMEOUT", "1800")),
             )
             logger.info("OwnerSessionManager initialized for mobile API")
+            # Share with SecurityOrchestrator to avoid duplicate instances
+            if self.security is not None:
+                self.security.owner_session = self.owner_session
         except Exception as exc:
             logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
@@ -741,6 +749,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             stdout_lines = stdout_text.splitlines()
             intent = ""
             reason = ""
+            response_text = ""
             status_code = str(rc)
             for line in stdout_lines:
                 if line.startswith("intent="):
@@ -749,10 +758,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     reason = line.split("=", 1)[1]
                 elif line.startswith("status_code="):
                     status_code = line.split("=", 1)[1]
+                elif line.startswith("response="):
+                    raw = line.split("=", 1)[1]
+                    response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
             return {
                 "ok": rc == 0,
                 "command_exit_code": rc,
                 "intent": intent,
+                "response": response_text,
                 "status_code": status_code,
                 "reason": reason,
                 "stdout_tail": stdout_lines[-20:] if stdout_lines else [],
@@ -804,6 +817,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         intent = ""
         reason = ""
+        response_text = ""
         status_code = ""
         for line in stdout_lines:
             if line.startswith("intent="):
@@ -812,11 +826,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 reason = line.split("=", 1)[1].strip()
             elif line.startswith("status_code="):
                 status_code = line.split("=", 1)[1].strip()
+            elif line.startswith("response="):
+                raw = line.split("=", 1)[1].strip()
+                response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
 
         return {
             "ok": result.returncode == 0,
             "command_exit_code": result.returncode,
             "intent": intent,
+            "response": response_text,
             "status_code": status_code,
             "reason": reason,
             "stdout_tail": stdout_lines[-20:],
@@ -1075,6 +1093,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             should_persist = True
         if should_persist:
             self.server._persist_nonces()  # type: ignore[attr-defined]
+
+    def _ensure_auto_sync(self) -> "Any":
+        """Thread-safe lazy init of AutoSyncConfig."""
+        auto_sync = self.server._auto_sync_config
+        if auto_sync is not None:
+            return auto_sync
+        with self.server._sync_init_lock:
+            # Double-check after acquiring lock
+            if self.server._auto_sync_config is not None:
+                return self.server._auto_sync_config
+            from jarvis_engine.sync.auto_sync import AutoSyncConfig
+            config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
+            auto_sync = AutoSyncConfig(config_path)
+            self.server._auto_sync_config = auto_sync
+            return auto_sync
 
     def _validate_auth(self, body: bytes) -> bool:
         if len(body) > MAX_AUTH_BODY_SIZE:
@@ -1394,12 +1427,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not self._validate_auth(b""):
             return
         try:
-            auto_sync = self.server._auto_sync_config
-            if auto_sync is None:
-                from jarvis_engine.sync.auto_sync import AutoSyncConfig
-                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
-                auto_sync = AutoSyncConfig(config_path)
-                self.server._auto_sync_config = auto_sync
+            auto_sync = self._ensure_auto_sync()
             device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
             config = auto_sync.get_sync_config_for_device(device_id)
             self._write_json(HTTPStatus.OK, {"ok": True, "config": config})
@@ -1417,12 +1445,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         try:
             device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
-            auto_sync = self.server._auto_sync_config
-            if auto_sync is None:
-                from jarvis_engine.sync.auto_sync import AutoSyncConfig
-                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
-                auto_sync = AutoSyncConfig(config_path)
-                self.server._auto_sync_config = auto_sync
+            auto_sync = self._ensure_auto_sync()
             auto_sync.record_heartbeat(device_id)
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
@@ -2117,6 +2140,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if _sec_orch is not None and result.get("ok"):
             # Build a combined text from the LLM response fields
             _response_parts = []
+            if result.get("response"):
+                _response_parts.append(str(result["response"]))
             if result.get("reason"):
                 _response_parts.append(str(result["reason"]))
             for _line in result.get("stdout_tail", []):
@@ -2125,6 +2150,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if _response_text.strip():
                 _output_check = _sec_orch.scan_output(_response_text)
                 if not _output_check["safe"]:
+                    result["response"] = _output_check["filtered_text"]
                     result["reason"] = _output_check["filtered_text"]
                     result["stdout_tail"] = [_output_check["filtered_text"]]
                     result["security_filtered"] = True
@@ -2214,12 +2240,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
         try:
-            auto_sync = self.server._auto_sync_config
-            if auto_sync is None:
-                from jarvis_engine.sync.auto_sync import AutoSyncConfig
-                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
-                auto_sync = AutoSyncConfig(config_path)
-                self.server._auto_sync_config = auto_sync
+            auto_sync = self._ensure_auto_sync()
             updates = payload.get("config", payload)
             # Only allow known keys to be updated
             from jarvis_engine.sync.auto_sync import DEFAULT_SYNC_CONFIG
@@ -2914,7 +2935,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             })
         except Exception as exc:
             logger.warning("Scam report-call failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": str(exc)})
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": "Scam report processing failed."})
 
     def _handle_post_scam_lookup(self) -> None:
         """Lookup carrier and VoIP status for a phone number.
@@ -2969,11 +2990,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.warning("Scam lookup failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "number": str(body.get("number", "")),
-                "carrier": "", "line_type": "", "is_voip": False, "error": str(exc),
+                "carrier": "", "line_type": "", "is_voip": False, "error": "Scam lookup processing failed.",
             })
 
     def _handle_get_scam_campaigns(self) -> None:
         """Return detected scam campaigns."""
+        if not self._validate_auth(b""):
+            return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
@@ -2996,6 +3019,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_scam_stats(self) -> None:
         """Return scam detection statistics."""
+        if not self._validate_auth(b""):
+            return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import load_campaigns, load_call_intel
