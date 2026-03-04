@@ -507,7 +507,12 @@ def _conversation_history_path() -> Path:
 
 
 def _load_conversation_history() -> None:
-    """Load persisted conversation history from disk (called once at startup)."""
+    """Load persisted conversation history from disk.
+
+    IMPORTANT: Caller must already hold ``_conversation_history_lock``.
+    This function does NOT acquire the lock itself to avoid deadlock with
+    the non-reentrant ``threading.Lock``.
+    """
     global _conversation_history
     try:
         path = _conversation_history_path()
@@ -515,22 +520,25 @@ def _load_conversation_history() -> None:
             import json as _json
             data = _json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                with _conversation_history_lock:
-                    _conversation_history = data[-((_CONVERSATION_MAX_TURNS * 2)):]
+                _conversation_history = data[-((_CONVERSATION_MAX_TURNS * 2)):]
     except Exception as exc:
         logger.debug("Could not load conversation history: %s", exc)
 
 
 def _save_conversation_history() -> None:
-    """Persist current conversation history to disk (atomic write)."""
+    """Persist current conversation history to disk (atomic write).
+
+    The entire temp-write + replace is performed while holding the lock
+    so concurrent callers cannot clobber the shared temp file.
+    """
     try:
         import json as _json
         path = _conversation_history_path()
         with _conversation_history_lock:
             snapshot = list(_conversation_history)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-        os.replace(str(tmp), str(path))
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+            os.replace(str(tmp), str(path))
     except Exception as exc:
         logger.debug("Could not save conversation history: %s", exc)
 
@@ -3121,14 +3129,25 @@ def _web_augmented_llm_conversation(
         except Exception:
             _llm_model = None
     if _llm_model is None:
-        for _env_key, _model_alias in [
-            ("GROQ_API_KEY", "kimi-k2"),
-            ("MISTRAL_API_KEY", "devstral-2"),
-            ("ZAI_API_KEY", "glm-4.7-flash"),
-        ]:
-            if os.environ.get(_env_key, ""):
-                _llm_model = _model_alias
-                break
+        # Privacy guard: if classifier failed, check privacy keywords
+        _privacy_kws = {"password", "ssn", "bank", "credit card", "social security",
+                        "medical", "health", "prescription", "salary", "income",
+                        "secret", "private", "personal", "confidential", "nude",
+                        "naked", "sex", "porn", "drug", "affair"}
+        _lower_text = text.lower()
+        if any(kw in _lower_text for kw in _privacy_kws):
+            _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            _route = "simple_private"
+            logger.debug("Privacy fallback: classifier failed, forcing local for private query")
+        else:
+            for _env_key, _model_alias in [
+                ("GROQ_API_KEY", "kimi-k2"),
+                ("MISTRAL_API_KEY", "devstral-2"),
+                ("ZAI_API_KEY", "glm-4.7-flash"),
+            ]:
+                if os.environ.get(_env_key, ""):
+                    _llm_model = _model_alias
+                    break
     if _llm_model is None:
         _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
 
@@ -3998,14 +4017,26 @@ def _cmd_voice_run_impl(
             except Exception as exc:
                 logger.debug("Fallback IntentClassifier classification failed: %s", exc)
         if _llm_model is None:
-            for _env_key, _model_alias in [
-                ("GROQ_API_KEY", "kimi-k2"),
-                ("MISTRAL_API_KEY", "devstral-2"),
-                ("ZAI_API_KEY", "glm-4.7-flash"),
-            ]:
-                if os.environ.get(_env_key, ""):
-                    _llm_model = _model_alias
-                    break
+            # Privacy guard: if both classifiers failed, check privacy keywords
+            # manually to guarantee private queries never leave the device.
+            _privacy_kws = {"password", "ssn", "bank", "credit card", "social security",
+                            "medical", "health", "prescription", "salary", "income",
+                            "secret", "private", "personal", "confidential", "nude",
+                            "naked", "sex", "porn", "drug", "affair"}
+            _lower_text = text.lower()
+            if any(kw in _lower_text for kw in _privacy_kws):
+                _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+                _route = "simple_private"
+                logger.debug("Privacy fallback: classifier failed, forcing local for private query")
+            else:
+                for _env_key, _model_alias in [
+                    ("GROQ_API_KEY", "kimi-k2"),
+                    ("MISTRAL_API_KEY", "devstral-2"),
+                    ("ZAI_API_KEY", "glm-4.7-flash"),
+                ]:
+                    if os.environ.get(_env_key, ""):
+                        _llm_model = _model_alias
+                        break
         if _llm_model is None:
             _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
 

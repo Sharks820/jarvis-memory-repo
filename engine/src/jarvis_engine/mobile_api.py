@@ -1787,11 +1787,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             import jarvis_engine.main as main_mod
             from jarvis_engine.commands.ops_commands import MissionStatusCommand
             bus = main_mod._get_bus()
-            mission_result = bus.dispatch(MissionStatusCommand(last=5))
+            mission_result = bus.dispatch(MissionStatusCommand(last=100))
             if mission_result.missions:
                 active = [
                     m for m in mission_result.missions
-                    if isinstance(m, dict) and m.get("status", "") not in ("completed", "failed", "cancelled")
+                    if isinstance(m, dict) and m.get("status", "") not in ("completed", "failed", "cancelled", "exhausted")
                 ]
                 metrics["mission_count"] = len(active)
                 metrics["active_missions"] = [
