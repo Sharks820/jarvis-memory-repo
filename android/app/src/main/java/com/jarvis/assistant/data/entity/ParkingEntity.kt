@@ -22,4 +22,7 @@ data class ParkingEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val isActive: Boolean = true,
     val note: String = "",
+    val floor: Int? = null,
+    val meterExpiresAt: Long? = null,
+    val meterNote: String = "",
 )

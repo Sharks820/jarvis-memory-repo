@@ -30,4 +30,7 @@ data class TransactionEntity(
     val date: String,
     val timestamp: Long = System.currentTimeMillis(),
     val notificationHash: String,
+    val direction: String = "debit",
+    val normalizedMerchant: String = "",
+    val counterparty: String = "",
 )
