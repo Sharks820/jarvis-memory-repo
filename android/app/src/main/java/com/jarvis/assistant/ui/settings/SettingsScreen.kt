@@ -1074,6 +1074,263 @@ fun SettingsScreen(
             }
         }
 
+        // ── Mute Jarvis ──────────────────────────────────────
+        item {
+            SectionHeader("Mute Jarvis")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    val muteActive by viewModel.muteActive.collectAsState()
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (muteActive) "Jarvis is muted" else "Jarvis is active",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(
+                            checked = muteActive,
+                            onCheckedChange = { viewModel.setMuted(it) },
+                        )
+                    }
+
+                    if (!muteActive) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Mute with timer:",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FilledTonalButton(onClick = { viewModel.muteFor(30) }) {
+                                Text("30m")
+                            }
+                            FilledTonalButton(onClick = { viewModel.muteFor(60) }) {
+                                Text("1h")
+                            }
+                            FilledTonalButton(onClick = { viewModel.muteFor(120) }) {
+                                Text("2h")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Automation ──────────────────────────────────────
+        item {
+            SectionHeader("Automation")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    val smartReplyEnabled by viewModel.smartReplyEnabled.collectAsState()
+                    val smartReplySend by viewModel.smartReplySendSms.collectAsState()
+                    val contextDigestEnabled by viewModel.contextDigestEnabled.collectAsState()
+                    val meetingPrepEnabled by viewModel.meetingPrepEnabled.collectAsState()
+                    val relationshipAutopilotEnabled by viewModel.relationshipAutopilotEnabled.collectAsState()
+                    val morningBriefingEnabled by viewModel.morningBriefingEnabled.collectAsState()
+                    val morningBriefingSpeak by viewModel.morningBriefingSpeak.collectAsState()
+
+                    Text(
+                        "Smart Missed-Call Reply",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        "Auto-send SMS when you miss a call in meeting/driving/sleep",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enabled", style = MaterialTheme.typography.bodySmall)
+                        Switch(checked = smartReplyEnabled, onCheckedChange = { viewModel.setSmartReplyEnabled(it) })
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Actually send SMS (not just draft)", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = smartReplySend,
+                            onCheckedChange = { viewModel.setSmartReplySendSms(it) },
+                            enabled = smartReplyEnabled,
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text("Context Digest", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Summarize what you missed after leaving meeting/drive",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enabled", style = MaterialTheme.typography.bodySmall)
+                        Switch(checked = contextDigestEnabled, onCheckedChange = { viewModel.setContextDigestEnabled(it) })
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text("Pre-Meeting Intelligence", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "KG-powered briefing 10min before calendar events",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enabled", style = MaterialTheme.typography.bodySmall)
+                        Switch(checked = meetingPrepEnabled, onCheckedChange = { viewModel.setMeetingPrepEnabled(it) })
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text("Relationship Autopilot", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Nudge when important contacts go uncontacted too long",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enabled", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = relationshipAutopilotEnabled,
+                            onCheckedChange = { viewModel.setRelationshipAutopilotEnabled(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text("Morning Briefing", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Auto-briefing when you wake up (calendar, tasks, alerts)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Enabled", style = MaterialTheme.typography.bodySmall)
+                        Switch(checked = morningBriefingEnabled, onCheckedChange = { viewModel.setMorningBriefingEnabled(it) })
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Speak briefing aloud", style = MaterialTheme.typography.bodySmall)
+                        Switch(
+                            checked = morningBriefingSpeak,
+                            onCheckedChange = { viewModel.setMorningBriefingSpeak(it) },
+                            enabled = morningBriefingEnabled,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Missions ──────────────────────────────────────
+        item {
+            SectionHeader("Learning Missions")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    val missions by viewModel.missions.collectAsState()
+                    val missionLoading by viewModel.missionLoading.collectAsState()
+
+                    if (missions.isEmpty() && !missionLoading) {
+                        Text(
+                            "No active missions. Create one to have Jarvis autonomously research a topic.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    for (mission in missions.take(5)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(mission.topic, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "${mission.status} | ${mission.verifiedFindings} findings | ${mission.origin}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    var showCreateMission by remember { mutableStateOf(false) }
+                    var missionTopic by remember { mutableStateOf("") }
+
+                    if (showCreateMission) {
+                        OutlinedTextField(
+                            value = missionTopic,
+                            onValueChange = { missionTopic = it },
+                            label = { Text("Topic to research") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(
+                                onClick = {
+                                    if (missionTopic.isNotBlank()) {
+                                        viewModel.createMission(missionTopic.trim())
+                                        missionTopic = ""
+                                        showCreateMission = false
+                                    }
+                                },
+                            ) {
+                                Text("Create")
+                            }
+                            OutlinedButton(onClick = {
+                                showCreateMission = false
+                                missionTopic = ""
+                            }) {
+                                Text("Cancel")
+                            }
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = { showCreateMission = true }) {
+                                Text("New Mission")
+                            }
+                            OutlinedButton(onClick = { viewModel.loadMissions() }) {
+                                Text("Refresh")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── About ──────────────────────────────────────────
         item {
             SectionHeader("About")

@@ -72,6 +72,7 @@ class MissionCreateCommand:
     topic: str
     objective: str = ""
     sources: list[str] = field(default_factory=list)
+    origin: str = "desktop-manual"
 
 
 @dataclass

@@ -181,6 +181,7 @@ class MissionCreateHandler:
                 topic=cmd.topic,
                 objective=cmd.objective,
                 sources=cmd.sources,
+                origin=cmd.origin,
             )
         except ValueError:
             return MissionCreateResult(return_code=2)

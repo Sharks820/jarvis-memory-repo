@@ -5,8 +5,24 @@ import android.media.AudioManager
 import android.util.Log
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Listener for context transitions. Used by automation features
+ * (ContextDigest, MorningBriefing) to react to context changes
+ * without circular dependency.
+ */
+interface ContextTransitionListener {
+    /** Called when user enters a non-NORMAL context. */
+    suspend fun onContextEntered(context: UserContext)
+    /** Called when user exits a non-NORMAL context back to NORMAL. */
+    suspend fun onContextExited(previousContext: UserContext)
+}
 
 /**
  * Adjusts system behaviour (ringer mode, notification filtering, voice volume)
@@ -51,11 +67,51 @@ class ContextAdjuster @Inject constructor(
             }
         }
 
+    private val transitionListeners = mutableListOf<ContextTransitionListener>()
+    private val listenerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Previous context for detecting transitions. */
+    @Volatile
+    private var previousContext: UserContext = UserContext.NORMAL
+
+    /** Register a listener for context transitions. */
+    fun addTransitionListener(listener: ContextTransitionListener) {
+        synchronized(transitionListeners) {
+            transitionListeners.add(listener)
+        }
+    }
+
     /**
      * Apply system-wide behaviour adjustments for the detected context.
+     * Also fires transition listeners for automation features.
      */
     fun applyContext(state: ContextState) {
-        when (state.context) {
+        val prev = previousContext
+        val current = state.context
+        previousContext = current
+
+        // Detect transitions and fire listeners
+        if (prev != current) {
+            val listeners = synchronized(transitionListeners) { transitionListeners.toList() }
+            if (listeners.isNotEmpty()) {
+                listenerScope.launch {
+                    for (listener in listeners) {
+                        try {
+                            if (current != UserContext.NORMAL && current != UserContext.GAMING) {
+                                listener.onContextEntered(current)
+                            }
+                            if (prev != UserContext.NORMAL && prev != UserContext.GAMING && current == UserContext.NORMAL) {
+                                listener.onContextExited(prev)
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Context transition listener error: ${e.message}")
+                        }
+                    }
+                }
+            }
+        }
+
+        when (current) {
             UserContext.MEETING -> applyMeetingMode()
             UserContext.DRIVING -> applyDrivingMode()
             UserContext.SLEEPING -> applySleepMode()
