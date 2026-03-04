@@ -12,6 +12,8 @@ import com.jarvis.assistant.data.dao.ExtractedEventDao
 import com.jarvis.assistant.data.dao.MedicationDao
 import com.jarvis.assistant.data.dao.DocumentDao
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -80,10 +82,10 @@ class OnDeviceIntelligence @Inject constructor(
      * If Gemini Nano is not available (older device, not downloaded),
      * returns null and we fall back to knowledge-based reasoning.
      */
-    private suspend fun tryGeminiNano(query: String, localContext: String): String? {
+    private suspend fun tryGeminiNano(query: String, localContext: String): String? = withContext(Dispatchers.IO) {
         try {
             // Check availability (cache the result)
-            if (geminiAvailable == false) return null
+            if (geminiAvailable == false) return@withContext null
 
             val cls = Class.forName("com.google.ai.edge.aicore.GenerativeModel")
             if (geminiAvailable == null) {
@@ -112,17 +114,17 @@ class OnDeviceIntelligence @Inject constructor(
             val result = generateMethod.invoke(model, prompt)
             val text = result?.javaClass?.getDeclaredMethod("getText")?.invoke(result) as? String
 
-            return text?.takeIf { it.isNotBlank() }
+            return@withContext text?.takeIf { it.isNotBlank() }
         } catch (e: ClassNotFoundException) {
             // AICore SDK not available on this device
             if (geminiAvailable == null) {
                 geminiAvailable = false
                 Log.i(TAG, "Gemini Nano not available, using knowledge engine")
             }
-            return null
+            return@withContext null
         } catch (e: Exception) {
             Log.w(TAG, "Gemini Nano inference failed: ${e.message}")
-            return null
+            return@withContext null
         }
     }
 
