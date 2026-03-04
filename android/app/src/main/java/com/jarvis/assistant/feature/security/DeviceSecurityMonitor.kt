@@ -204,9 +204,9 @@ class DeviceSecurityMonitor @Inject constructor(
                 findings.add(
                     SecurityFinding(
                         category = "Unknown Sources",
-                        description = "${sideloadApps.size} app(s) can install packages: ${sideloadApps.take(3).joinToString()}",
+                        description = "${sideloadApps.size} app(s) request install-packages permission: ${sideloadApps.take(3).joinToString()}",
                         severity = Severity.WARNING,
-                        recommendation = "Review which apps have install permission in Settings > Apps > Special access.",
+                        recommendation = "Review which apps have install permission in Settings > Apps > Special access > Install unknown apps.",
                     ),
                 )
             }
@@ -246,17 +246,31 @@ class DeviceSecurityMonitor @Inject constructor(
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
             if (dpm != null) {
                 val status = dpm.storageEncryptionStatus
-                if (status != DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE &&
-                    status != DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER
-                ) {
-                    findings.add(
-                        SecurityFinding(
-                            category = "Encryption",
-                            description = "Device storage is not fully encrypted (status=$status)",
-                            severity = Severity.CRITICAL,
-                            recommendation = "Enable full-disk or file-based encryption in device settings.",
-                        ),
-                    )
+                when (status) {
+                    DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE,
+                    DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER -> {
+                        // Fully encrypted — no finding
+                    }
+                    DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_DEFAULT_KEY -> {
+                        findings.add(
+                            SecurityFinding(
+                                category = "Encryption",
+                                description = "Device storage is encrypted but using default key (status=$status)",
+                                severity = Severity.WARNING,
+                                recommendation = "Set a PIN/pattern/password to upgrade from default-key encryption.",
+                            ),
+                        )
+                    }
+                    else -> {
+                        findings.add(
+                            SecurityFinding(
+                                category = "Encryption",
+                                description = "Device storage is not fully encrypted (status=$status)",
+                                severity = Severity.CRITICAL,
+                                recommendation = "Enable full-disk or file-based encryption in device settings.",
+                            ),
+                        )
+                    }
                 }
             }
         } catch (e: Exception) {

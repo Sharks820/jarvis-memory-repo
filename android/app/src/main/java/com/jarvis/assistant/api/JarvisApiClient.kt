@@ -42,7 +42,7 @@ class JarvisApiClient @Inject constructor(
     private val okHttp by lazy {
         OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)   // Reduced: fail fast on LAN, let relay try
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)    // LLM queries can take 60-90s (model loading, web research)
             .writeTimeout(15, TimeUnit.SECONDS)
             .addInterceptor(HmacInterceptor {
                 HmacInterceptor.Credentials(
@@ -70,8 +70,9 @@ class JarvisApiClient @Inject constructor(
                         try {
                             chain.proceed(newRequest)
                         } catch (e2: java.io.IOException) {
-                            // Both LAN and relay failed
-                            throw e
+                            // Both LAN and relay failed — report relay error (more actionable)
+                            Log.d(TAG, "Relay also failed: ${e2.message}")
+                            throw e2
                         }
                     } else {
                         throw e

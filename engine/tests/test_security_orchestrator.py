@@ -56,7 +56,8 @@ class TestInstantiation:
         assert orchestrator.resource_monitor is not None
         assert orchestrator.threat_intel is not None
         assert orchestrator.threat_neutralizer is not None
-        assert orchestrator.owner_session is not None
+        # owner_session is set externally by the server after construction
+        assert orchestrator.owner_session is None
 
     def test_forensic_log_dir_created(self, orchestrator, tmp_path):
         assert (tmp_path / "forensic").is_dir()
@@ -174,7 +175,7 @@ class TestStatus:
         assert "resource_monitor" in status
         assert "threat_intel" in status
         assert "threat_neutralizer" in status
-        assert "owner_session" in status
+        # owner_session is only included when set externally by the server
 
     def test_status_after_honeypot_hit(self, orchestrator):
         orchestrator.check_request(
@@ -207,8 +208,17 @@ class TestStatus:
         status = orchestrator.status()
         assert "cache_size" in status["threat_intel"]
 
-    def test_status_owner_session(self, orchestrator):
-        """Owner session should report no active sessions initially."""
+    def test_status_owner_session_absent_when_not_set(self, orchestrator):
+        """Owner session key absent when no session manager injected."""
+        status = orchestrator.status()
+        assert "owner_session" not in status
+
+    def test_status_owner_session_present_when_set(self, orchestrator):
+        """Owner session key present when session manager is set externally."""
+        from unittest.mock import MagicMock
+        mock_session = MagicMock()
+        mock_session.session_status.return_value = {"active": False, "session_count": 0}
+        orchestrator.owner_session = mock_session
         status = orchestrator.status()
         assert status["owner_session"]["active"] is False
         assert status["owner_session"]["session_count"] == 0

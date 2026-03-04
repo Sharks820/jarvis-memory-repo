@@ -133,6 +133,7 @@ class SecurityOrchestrator:
         write_lock: threading.Lock,
         log_dir: str | Path,
         owner_config: dict[str, Any] | None = None,
+        on_credential_rotate: object | None = None,
     ) -> None:
         log_dir = Path(log_dir)
 
@@ -150,6 +151,7 @@ class SecurityOrchestrator:
         self._containment = ContainmentEngine(
             forensic_logger=self._forensic_logger,
             ip_tracker=self._ip_tracker,
+            on_credential_rotate=on_credential_rotate,
         )
         self._alert_chain = AlertChain(forensic_logger=self._forensic_logger)
 
@@ -210,13 +212,10 @@ class SecurityOrchestrator:
             except Exception as exc:
                 logger.warning("Failed to init ThreatNeutralizer: %s", exc)
 
-        # Owner session (created but not configured with password — done via API)
-        self.owner_session = None
-        if OwnerSessionManager is not None:
-            try:
-                self.owner_session = OwnerSessionManager()
-            except Exception as exc:
-                logger.warning("Failed to init OwnerSessionManager: %s", exc)
+        # Owner session — set externally by the server after creation to avoid
+        # duplicate instances.  Falls back to a local instance only if no
+        # external one is provided.
+        self.owner_session: Any = None
 
         # Note: HeartbeatMonitor and HomeNetworkMonitor are NOT instantiated here.
         # They start background threads and are managed by the daemon startup code.

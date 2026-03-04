@@ -33,8 +33,8 @@ class EavesdropDetector @Inject constructor(
         val findings = mutableListOf<EavesdropFinding>()
         val recommendations = mutableListOf<String>()
 
-        findings.addAll(checkRecentMicAccess())
-        findings.addAll(checkRecentCameraAccess())
+        findings.addAll(checkMicPermissionGrants())
+        findings.addAll(checkCameraPermissionGrants())
         findings.addAll(checkNetworkAnomalies())
         findings.addAll(checkSuspiciousBackgroundServices())
 
@@ -54,8 +54,8 @@ class EavesdropDetector @Inject constructor(
 
     // ── Microphone Access ───────────────────────────────────────────
 
-    internal fun checkRecentMicAccess(): List<EavesdropFinding> {
-        return checkRecentOpsAccess(
+    internal fun checkMicPermissionGrants(): List<EavesdropFinding> {
+        return checkOpsPermissionGrants(
             opName = AppOpsManager.OPSTR_RECORD_AUDIO,
             label = "Microphone",
         )
@@ -63,18 +63,19 @@ class EavesdropDetector @Inject constructor(
 
     // ── Camera Access ───────────────────────────────────────────────
 
-    internal fun checkRecentCameraAccess(): List<EavesdropFinding> {
-        return checkRecentOpsAccess(
+    internal fun checkCameraPermissionGrants(): List<EavesdropFinding> {
+        return checkOpsPermissionGrants(
             opName = AppOpsManager.OPSTR_CAMERA,
             label = "Camera",
         )
     }
 
     /**
-     * Check recent app ops access for the given op across all installed packages.
-     * Flags apps that accessed the resource in the last hour that aren't whitelisted.
+     * Check app ops permission mode for the given op across all installed packages.
+     * Flags non-system, non-whitelisted apps that have the op mode set to ALLOWED.
+     * NOTE: This checks the current permission mode (policy), not actual recent usage.
      */
-    private fun checkRecentOpsAccess(opName: String, label: String): List<EavesdropFinding> {
+    private fun checkOpsPermissionGrants(opName: String, label: String): List<EavesdropFinding> {
         val findings = mutableListOf<EavesdropFinding>()
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return findings
 
@@ -111,16 +112,17 @@ class EavesdropDetector @Inject constructor(
                         pkg.applicationInfo?.uid ?: continue,
                         pkg.packageName,
                     )
-                    if (mode == AppOpsManager.MODE_ALLOWED) {
-                        // Flag non-system apps that have active permission for this op
+                    if (mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_FOREGROUND) {
+                        // Flag non-system apps that have the op mode set to allowed or foreground-only
                         val isSystemApp = (pkg.applicationInfo?.flags ?: 0) and
                             ApplicationInfo.FLAG_SYSTEM != 0
                         if (!isSystemApp) {
+                            val modeLabel = if (mode == AppOpsManager.MODE_FOREGROUND) "FOREGROUND" else "ALLOWED"
                             findings.add(
                                 EavesdropFinding(
-                                    category = "$label Access",
+                                    category = "$label Permission",
                                     appPackage = pkg.packageName,
-                                    description = "${pkg.packageName} has active $label access permission",
+                                    description = "${pkg.packageName} has $label permission granted (op mode: $modeLabel)",
                                     suspicious = false, // Having permission alone isn't suspicious
                                 ),
                             )

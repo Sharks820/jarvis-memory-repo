@@ -166,6 +166,9 @@ class VoiceEngine @Inject constructor(
 
     // ── TTS ────────────────────────────────────────────────────────────
 
+    /** Public entry point for external callers (e.g. MorningBriefing). */
+    fun speak(text: String) = speakResponse(text)
+
     private fun speakResponse(text: String) {
         scope.launch {
             ttsMutex.withLock {
@@ -196,14 +199,21 @@ class VoiceEngine @Inject constructor(
     @Volatile
     private var ttsInitializing = false
 
+    /** Queued TTS block to execute once init completes (prevents speech drops). */
+    @Volatile
+    private var pendingTtsBlock: ((TextToSpeech) -> Unit)? = null
+
     private fun ensureTts(block: (TextToSpeech) -> Unit) {
         val existing = tts
         if (existing != null && ttsReady) {
             block(existing)
             return
         }
-        // Prevent multiple simultaneous TTS initializations
-        if (ttsInitializing) return
+        // Queue the block if TTS is currently initializing (don't silently drop)
+        if (ttsInitializing) {
+            pendingTtsBlock = block
+            return
+        }
         ttsInitializing = true
         tts = TextToSpeech(app) { status ->
             ttsInitializing = false
@@ -213,7 +223,11 @@ class VoiceEngine @Inject constructor(
                 engine.language = Locale.UK  // British persona
                 ttsReady = true
                 block(engine)
+                // Execute any queued block that arrived during init
+                pendingTtsBlock?.invoke(engine)
+                pendingTtsBlock = null
             } else {
+                pendingTtsBlock = null
                 _state.value = VoiceState.Error("TTS initialisation failed")
             }
         }

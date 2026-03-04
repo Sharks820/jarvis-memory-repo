@@ -8,7 +8,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.jarvis.assistant.R
-import com.jarvis.assistant.data.ContactContextDao
+import com.jarvis.assistant.data.dao.ContactContextDao
 import com.jarvis.assistant.feature.notifications.NotificationPriority
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
@@ -44,9 +44,10 @@ class RelationshipAutopilot @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    /** Track last run to avoid running more than once per day. */
-    @Volatile
-    private var lastRunDay: Long = 0
+    /** Track last run to avoid running more than once per day (persisted across process death). */
+    private var lastRunDay: Long
+        get() = prefs.getLong("last_run_day", 0L)
+        set(value) = prefs.edit().putLong("last_run_day", value).apply()
 
     /**
      * Check for neglected contacts and post reminder notifications.

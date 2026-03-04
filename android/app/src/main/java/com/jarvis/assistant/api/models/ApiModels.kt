@@ -14,6 +14,7 @@ data class CommandRequest(
 data class CommandResponse(
     val ok: Boolean = false,
     val intent: String = "",
+    val response: String = "",
     @SerializedName("stdout_tail") val stdoutTail: List<String> = emptyList(),
     @SerializedName("command_exit_code") val commandExitCode: Int = 0,
     @SerializedName("status_code") val statusCode: String = "",

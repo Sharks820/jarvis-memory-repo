@@ -345,7 +345,7 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()  # reset timer for fallback
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic")
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic", privacy_routed=privacy_routed)
                 audit_reason = f"fallback:{reason}"
         elif provider.startswith("cloud:"):
             provider_key = provider.split(":", 1)[1]
@@ -367,7 +367,7 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key)
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key, privacy_routed=privacy_routed)
                 audit_reason = f"fallback:{reason}"
         elif provider.startswith("cli:"):
             cli_key = provider.split(":", 1)[1]
@@ -389,7 +389,7 @@ class ModelGateway:
                     )
                     t0 = time.perf_counter()
                     reason = response.fallback_reason or f"{cli_key}_failed"
-                    response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key)
+                    response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
                     audit_reason = f"fallback:{reason}"
             except Exception as exc:
                 reason = f"{cli_key}: {type(exc).__name__}"
@@ -406,7 +406,7 @@ class ModelGateway:
                     privacy_routed=privacy_routed,
                 )
                 t0 = time.perf_counter()
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key)
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
                 audit_reason = f"fallback:{reason}"
         else:
             response = self._call_ollama(messages, model, max_tokens, temperature)
@@ -430,7 +430,7 @@ class ModelGateway:
                 t0 = time.perf_counter()
                 response = self._fallback_chain(
                     messages, max_tokens, response.fallback_reason or "ollama_failed",
-                    temperature, skip_ollama=True,
+                    temperature, skip_ollama=True, privacy_routed=privacy_routed,
                 )
                 audit_reason = f"fallback:ollama_failed"
 
@@ -677,6 +677,7 @@ class ModelGateway:
         temperature: float = 0.7,
         skip_provider: str = "",
         skip_ollama: bool = False,
+        privacy_routed: bool = False,
     ) -> GatewayResponse:
         """Try remaining cloud providers, then fall back to local Ollama.
 
@@ -685,48 +686,52 @@ class ModelGateway:
 
         When skip_ollama=True, do not retry Ollama at the end of the chain
         (used when Ollama was already the primary and failed).
-        """
-        # Try other cloud providers first
-        priority = ["groq", "mistral", "zai"]
-        for pk in priority:
-            if pk == skip_provider or pk not in self._cloud_keys:
-                continue
-            # Look up the preferred model for this provider (O(1) lookup)
-            model_alias = _PROVIDER_DEFAULT_MODEL.get(pk)
-            if model_alias is None:
-                continue
-            try:
-                resp = self._call_openai_compat(messages, model_alias, max_tokens, pk, temperature)
-                resp.fallback_used = True
-                resp.fallback_reason = reason
-                return resp
-            except Exception as exc:
-                logger.warning("Fallback to %s also failed: %s", pk, exc)
 
-        # Try CLI-based providers as fallback (free via subscription)
-        cli_priority = ["claude-cli", "gemini-cli", "codex-cli", "kimi-cli"]
-        for cli_key in cli_priority:
-            if cli_key == skip_provider or cli_key not in self._cli_providers:
-                continue
-            try:
-                resp = self._call_cli(messages, cli_key, max_tokens, cli_key)
-                if resp.provider != "none":
+        When privacy_routed=True, skip ALL cloud and CLI providers and go
+        directly to local Ollama to prevent private data leaking off-device.
+        """
+        if not privacy_routed:
+            # Try other cloud providers first
+            priority = ["groq", "mistral", "zai"]
+            for pk in priority:
+                if pk == skip_provider or pk not in self._cloud_keys:
+                    continue
+                # Look up the preferred model for this provider (O(1) lookup)
+                model_alias = _PROVIDER_DEFAULT_MODEL.get(pk)
+                if model_alias is None:
+                    continue
+                try:
+                    resp = self._call_openai_compat(messages, model_alias, max_tokens, pk, temperature)
                     resp.fallback_used = True
                     resp.fallback_reason = reason
                     return resp
-                logger.warning("CLI fallback %s returned empty", cli_key)
-            except Exception as exc:
-                logger.warning("CLI fallback %s failed: %s", cli_key, exc)
+                except Exception as exc:
+                    logger.warning("Fallback to %s also failed: %s", pk, exc)
 
-        # Try Anthropic as fallback if available and not the one that failed
-        if self._anthropic is not None and skip_provider != "anthropic":
-            try:
-                resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
-                resp.fallback_used = True
-                resp.fallback_reason = reason
-                return resp
-            except Exception as exc:
-                logger.warning("Fallback to Anthropic also failed: %s", exc)
+            # Try CLI-based providers as fallback (free via subscription)
+            cli_priority = ["claude-cli", "gemini-cli", "codex-cli", "kimi-cli"]
+            for cli_key in cli_priority:
+                if cli_key == skip_provider or cli_key not in self._cli_providers:
+                    continue
+                try:
+                    resp = self._call_cli(messages, cli_key, max_tokens, cli_key)
+                    if resp.provider != "none":
+                        resp.fallback_used = True
+                        resp.fallback_reason = reason
+                        return resp
+                    logger.warning("CLI fallback %s returned empty", cli_key)
+                except Exception as exc:
+                    logger.warning("CLI fallback %s failed: %s", cli_key, exc)
+
+            # Try Anthropic as fallback if available and not the one that failed
+            if self._anthropic is not None and skip_provider != "anthropic":
+                try:
+                    resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
+                    resp.fallback_used = True
+                    resp.fallback_reason = reason
+                    return resp
+                except Exception as exc:
+                    logger.warning("Fallback to Anthropic also failed: %s", exc)
 
         # All cloud providers failed
         if skip_ollama:

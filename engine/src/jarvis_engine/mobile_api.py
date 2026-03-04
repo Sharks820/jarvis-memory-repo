@@ -40,7 +40,62 @@ REPLAY_WINDOW_SECONDS = 120.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 2_000_000  # 2 MB (matches sync/push max_content_length)
 
-# Lock for serializing repo_root monkeypatch in multi-threaded HTTP server
+# Thread-local storage for per-thread stdout capture and repo_root override.
+# This replaces the old _repo_root_lock which serialized ALL /command requests.
+_thread_local = threading.local()
+
+
+class _ThreadCapturingStdout:
+    """Wraps real stdout, routing writes to per-thread StringIO when active.
+
+    Install once at server startup via ``_ThreadCapturingStdout.install()``.
+    Each request thread calls ``start_capture()`` / ``stop_capture()`` to
+    redirect its own prints to a thread-local buffer without affecting other
+    threads.
+    """
+
+    _real_stdout = None  # set by install()
+
+    def __init__(self, real_stdout: Any) -> None:
+        object.__setattr__(self, "_real", real_stdout)
+        _ThreadCapturingStdout._real_stdout = real_stdout
+
+    def write(self, s: str) -> int:
+        buf = getattr(_thread_local, "capture_buf", None)
+        if buf is not None:
+            buf.write(s)
+            return len(s)
+        return object.__getattribute__(self, "_real").write(s)
+
+    def flush(self) -> None:
+        buf = getattr(_thread_local, "capture_buf", None)
+        if buf is not None:
+            buf.flush()
+        object.__getattribute__(self, "_real").flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_real"), name)
+
+    @staticmethod
+    def start_capture() -> None:
+        """Begin capturing stdout for the calling thread."""
+        _thread_local.capture_buf = io.StringIO()
+
+    @staticmethod
+    def stop_capture() -> str:
+        """Stop capturing and return the captured text."""
+        buf = getattr(_thread_local, "capture_buf", None)
+        _thread_local.capture_buf = None
+        return buf.getvalue() if buf is not None else ""
+
+    @staticmethod
+    def install() -> None:
+        """Replace sys.stdout once at server startup."""
+        if not isinstance(sys.stdout, _ThreadCapturingStdout):
+            sys.stdout = _ThreadCapturingStdout(sys.stdout)  # type: ignore[assignment]
+
+
+# Kept for backward compatibility — no longer blocks execution
 _repo_root_lock = threading.Lock()
 
 # CORS whitelist: only allow localhost/loopback origins and file:// protocol.
@@ -286,6 +341,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._auto_sync_config: Any = None
         self._memory_engine: Any = None
         self._memory_engine_init_lock = threading.Lock()
+        self._embed_service: Any = None
+        self._embed_init_lock = threading.Lock()
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
@@ -321,10 +378,15 @@ class MobileIngestServer(ThreadingHTTPServer):
             self._security_write_lock = threading.Lock()
             forensic_dir = self.repo_root / ".planning" / "runtime" / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
+            def _rotate_signing_key(new_key: str) -> None:
+                self.signing_key = new_key
+                logger.warning("Server signing key rotated by containment engine")
+
             self.security = SecurityOrchestrator(
                 db=self._security_db,
                 write_lock=self._security_write_lock,
                 log_dir=forensic_dir,
+                on_credential_rotate=_rotate_signing_key,
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
         except Exception as exc:
@@ -342,6 +404,9 @@ class MobileIngestServer(ThreadingHTTPServer):
                 session_timeout=int(os.environ.get("JARVIS_SESSION_TIMEOUT", "1800")),
             )
             logger.info("OwnerSessionManager initialized for mobile API")
+            # Share with SecurityOrchestrator to avoid duplicate instances
+            if self.security is not None:
+                self.security.owner_session = self.owner_session
         except Exception as exc:
             logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
@@ -571,17 +636,20 @@ class MobileIngestServer(ThreadingHTTPServer):
         """Lazy-initialize an EmbeddingService for self-test queries.
 
         Returns the EmbeddingService instance, or None on failure.
+        Thread-safe via double-checked locking.
         """
-        _embed = getattr(self, "_embed_service", None)
-        if _embed is not None:
-            return _embed
-        try:
-            from jarvis_engine.memory.embeddings import EmbeddingService
-            self._embed_service = EmbeddingService()
-            logger.info("EmbeddingService lazy-initialized for mobile API self-test")
-        except Exception as exc:
-            logger.warning("Failed to lazy-initialize EmbeddingService: %s", exc)
-            self._embed_service = None
+        if self._embed_service is not None:
+            return self._embed_service
+        with self._embed_init_lock:
+            if self._embed_service is not None:
+                return self._embed_service
+            try:
+                from jarvis_engine.memory.embeddings import EmbeddingService
+                self._embed_service = EmbeddingService()
+                logger.info("EmbeddingService lazy-initialized for mobile API self-test")
+            except Exception as exc:
+                logger.warning("Failed to lazy-initialize EmbeddingService: %s", exc)
+                self._embed_service = None
         return self._embed_service
 
 
@@ -702,32 +770,51 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except ImportError:
             _can_import_in_process = False
         if _can_import_in_process:
-            captured_out = io.StringIO()
             try:
                 import jarvis_engine.main as main_mod
 
-                with _repo_root_lock:
-                    original_repo_root = main_mod.repo_root
-                    main_mod.repo_root = lambda: root  # type: ignore[assignment]
-                    try:
-                        with contextlib.redirect_stdout(captured_out):
-                            rc = main_mod.cmd_voice_run(
-                                text=text,
-                                execute=execute,
-                                approve_privileged=approve_privileged,
-                                speak=speak,
-                                snapshot_path=root / ".planning" / "ops_snapshot.live.json",
-                                actions_path=root / ".planning" / "actions.generated.json",
-                                voice_user=voice_user,
-                                voice_auth_wav=voice_auth_wav,
-                                voice_threshold=voice_threshold,
-                                master_password=master_password,
-                                model_override=model_override,
-                            )
-                    finally:
-                        main_mod.repo_root = original_repo_root  # type: ignore[assignment]
+                # Thread-local repo_root override — no global lock needed.
+                _thread_local.repo_root_override = root
+                original_repo_root = main_mod.repo_root
+                if not hasattr(main_mod, "_original_repo_root"):
+                    main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
+
+                # Install thread-aware repo_root if not already done
+                if not getattr(main_mod, "_repo_root_patched", False):
+                    _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
+
+                    def _thread_aware_repo_root() -> Path:
+                        override = getattr(_thread_local, "repo_root_override", None)
+                        if override is not None:
+                            return override
+                        return _orig()
+
+                    main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
+                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+
+                # Per-thread stdout capture — concurrent requests run in parallel.
+                _ThreadCapturingStdout.install()
+                _ThreadCapturingStdout.start_capture()
+                try:
+                    rc = main_mod.cmd_voice_run(
+                        text=text,
+                        execute=execute,
+                        approve_privileged=approve_privileged,
+                        speak=speak,
+                        snapshot_path=root / ".planning" / "ops_snapshot.live.json",
+                        actions_path=root / ".planning" / "actions.generated.json",
+                        voice_user=voice_user,
+                        voice_auth_wav=voice_auth_wav,
+                        voice_threshold=voice_threshold,
+                        master_password=master_password,
+                        model_override=model_override,
+                    )
+                finally:
+                    _thread_local.repo_root_override = None
             except Exception as exc:
+                _thread_local.repo_root_override = None
                 logger.error("Voice command execution failed: %s", exc)
+                _ThreadCapturingStdout.stop_capture()  # discard
                 return {
                     "ok": False,
                     "error": "Command execution failed.",
@@ -737,10 +824,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     "stderr_tail": [],
                 }
             # Parse captured stdout for intent/reason/status (same as subprocess path)
-            stdout_text = captured_out.getvalue()
+            stdout_text = _ThreadCapturingStdout.stop_capture()
             stdout_lines = stdout_text.splitlines()
             intent = ""
             reason = ""
+            response_text = ""
             status_code = str(rc)
             for line in stdout_lines:
                 if line.startswith("intent="):
@@ -749,10 +837,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     reason = line.split("=", 1)[1]
                 elif line.startswith("status_code="):
                     status_code = line.split("=", 1)[1]
+                elif line.startswith("response="):
+                    raw = line.split("=", 1)[1]
+                    response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
             return {
                 "ok": rc == 0,
                 "command_exit_code": rc,
                 "intent": intent,
+                "response": response_text,
                 "status_code": status_code,
                 "reason": reason,
                 "stdout_tail": stdout_lines[-20:] if stdout_lines else [],
@@ -804,6 +896,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         intent = ""
         reason = ""
+        response_text = ""
         status_code = ""
         for line in stdout_lines:
             if line.startswith("intent="):
@@ -812,11 +905,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 reason = line.split("=", 1)[1].strip()
             elif line.startswith("status_code="):
                 status_code = line.split("=", 1)[1].strip()
+            elif line.startswith("response="):
+                raw = line.split("=", 1)[1].strip()
+                response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
 
         return {
             "ok": result.returncode == 0,
             "command_exit_code": result.returncode,
             "intent": intent,
+            "response": response_text,
             "status_code": status_code,
             "reason": reason,
             "stdout_tail": stdout_lines[-20:],
@@ -1075,6 +1172,21 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             should_persist = True
         if should_persist:
             self.server._persist_nonces()  # type: ignore[attr-defined]
+
+    def _ensure_auto_sync(self) -> "Any":
+        """Thread-safe lazy init of AutoSyncConfig."""
+        auto_sync = self.server._auto_sync_config
+        if auto_sync is not None:
+            return auto_sync
+        with self.server._sync_init_lock:
+            # Double-check after acquiring lock
+            if self.server._auto_sync_config is not None:
+                return self.server._auto_sync_config
+            from jarvis_engine.sync.auto_sync import AutoSyncConfig
+            config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
+            auto_sync = AutoSyncConfig(config_path)
+            self.server._auto_sync_config = auto_sync
+            return auto_sync
 
     def _validate_auth(self, body: bytes) -> bool:
         if len(body) > MAX_AUTH_BODY_SIZE:
@@ -1394,12 +1506,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not self._validate_auth(b""):
             return
         try:
-            auto_sync = self.server._auto_sync_config
-            if auto_sync is None:
-                from jarvis_engine.sync.auto_sync import AutoSyncConfig
-                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
-                auto_sync = AutoSyncConfig(config_path)
-                self.server._auto_sync_config = auto_sync
+            auto_sync = self._ensure_auto_sync()
             device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
             config = auto_sync.get_sync_config_for_device(device_id)
             self._write_json(HTTPStatus.OK, {"ok": True, "config": config})
@@ -1417,12 +1524,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         try:
             device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
-            auto_sync = self.server._auto_sync_config
-            if auto_sync is None:
-                from jarvis_engine.sync.auto_sync import AutoSyncConfig
-                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
-                auto_sync = AutoSyncConfig(config_path)
-                self.server._auto_sync_config = auto_sync
+            auto_sync = self._ensure_auto_sync()
             auto_sync.record_heartbeat(device_id)
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
@@ -1927,7 +2029,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 import secrets as _auth_secrets
                 token = _auth_secrets.token_hex(32)
                 with owner_session._lock:
-                    owner_session._sessions[token] = time.time() + owner_session._session_timeout
+                    owner_session._purge_expired()
+                    if len(owner_session._sessions) < owner_session.MAX_SESSIONS:
+                        owner_session._sessions[token] = time.monotonic() + owner_session._session_timeout
+                        owner_session._failure_count = 0
+                    else:
+                        token = None  # session cap reached
                 logger.info("Owner authenticated via master password, session %s... created", token[:8])
         if token is None:
             self._write_json(HTTPStatus.UNAUTHORIZED, {
@@ -2120,6 +2227,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if _sec_orch is not None and result.get("ok"):
             # Build a combined text from the LLM response fields
             _response_parts = []
+            if result.get("response"):
+                _response_parts.append(str(result["response"]))
             if result.get("reason"):
                 _response_parts.append(str(result["reason"]))
             for _line in result.get("stdout_tail", []):
@@ -2128,6 +2237,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if _response_text.strip():
                 _output_check = _sec_orch.scan_output(_response_text)
                 if not _output_check["safe"]:
+                    result["response"] = _output_check["filtered_text"]
                     result["reason"] = _output_check["filtered_text"]
                     result["stdout_tail"] = [_output_check["filtered_text"]]
                     result["security_filtered"] = True
@@ -2217,12 +2327,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
         try:
-            auto_sync = self.server._auto_sync_config
-            if auto_sync is None:
-                from jarvis_engine.sync.auto_sync import AutoSyncConfig
-                config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
-                auto_sync = AutoSyncConfig(config_path)
-                self.server._auto_sync_config = auto_sync
+            auto_sync = self._ensure_auto_sync()
             updates = payload.get("config", payload)
             # Only allow known keys to be updated
             from jarvis_engine.sync.auto_sync import DEFAULT_SYNC_CONFIG
@@ -2917,7 +3022,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             })
         except Exception as exc:
             logger.warning("Scam report-call failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": str(exc)})
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": "Scam report processing failed."})
 
     def _handle_post_scam_lookup(self) -> None:
         """Lookup carrier and VoIP status for a phone number.
@@ -2972,11 +3077,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.warning("Scam lookup failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "number": str(body.get("number", "")),
-                "carrier": "", "line_type": "", "is_voip": False, "error": str(exc),
+                "carrier": "", "line_type": "", "is_voip": False, "error": "Scam lookup processing failed.",
             })
 
     def _handle_get_scam_campaigns(self) -> None:
         """Return detected scam campaigns."""
+        if not self._validate_auth(b""):
+            return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
@@ -2999,6 +3106,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_scam_stats(self) -> None:
         """Return scam detection statistics."""
+        if not self._validate_auth(b""):
+            return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import load_campaigns, load_call_intel
@@ -3280,14 +3389,27 @@ def run_mobile_server(
     def _prewarm() -> None:
         try:
             import jarvis_engine.main as main_mod
-            with _repo_root_lock:
-                original = main_mod.repo_root
-                main_mod.repo_root = lambda: repo_root  # type: ignore[assignment]
+            # Use thread-local override for prewarm thread
+            _thread_local.repo_root_override = repo_root
+            # Install thread-aware repo_root once
+            if not getattr(main_mod, "_repo_root_patched", False):
+                _orig = main_mod.repo_root
+                main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
+
+                def _thread_aware_repo_root() -> Path:
+                    override = getattr(_thread_local, "repo_root_override", None)
+                    if override is not None:
+                        return override
+                    return _orig()
+
+                main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
+                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 main_mod._get_bus()
             finally:
-                with _repo_root_lock:
-                    main_mod.repo_root = original  # type: ignore[assignment]
+                _thread_local.repo_root_override = None
+            # Install thread-capturing stdout for concurrent request handling
+            _ThreadCapturingStdout.install()
             logger.info("CommandBus pre-warmed successfully")
         except Exception as exc:
             logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
