@@ -2839,11 +2839,13 @@ class JarvisDesktopWidget(tk.Tk):
             self._growth_labels["memory"].config(
                 text=f"{mem_records} records", fg=self.TEXT)
 
-            # Learning missions
+            # Learning missions (API now pre-filters to active only)
             missions = m.get("active_missions", [])
+            if isinstance(missions, list):
+                missions = [mi for mi in missions if isinstance(mi, dict) and mi.get("status", "") not in ("completed", "failed", "cancelled")]
             mission_count = int(m.get("mission_count", len(missions) if isinstance(missions, list) else 0))
             if mission_count > 0 and isinstance(missions, list) and missions:
-                topics = [str(mi.get("topic", "?"))[:20] for mi in missions[:3] if isinstance(mi, dict)]
+                topics = [str(mi.get("topic", "?"))[:20] for mi in missions[:3]]
                 self._growth_labels["missions"].config(
                     text=f"{mission_count} active: {', '.join(topics)}", fg=self.ACCENT)
             elif mission_count > 0:

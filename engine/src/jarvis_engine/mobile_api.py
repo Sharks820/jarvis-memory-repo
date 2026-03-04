@@ -1789,11 +1789,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             bus = main_mod._get_bus()
             mission_result = bus.dispatch(MissionStatusCommand(last=5))
             if mission_result.missions:
-                metrics["mission_count"] = mission_result.total_count
+                active = [
+                    m for m in mission_result.missions
+                    if isinstance(m, dict) and m.get("status", "") not in ("completed", "failed", "cancelled")
+                ]
+                metrics["mission_count"] = len(active)
                 metrics["active_missions"] = [
                     {"topic": m.get("topic", ""), "status": m.get("status", ""), "findings": m.get("verified_findings", 0)}
-                    for m in mission_result.missions[:5]
-                    if isinstance(m, dict)
+                    for m in active[:5]
                 ]
             else:
                 metrics["mission_count"] = 0
