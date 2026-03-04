@@ -24,6 +24,7 @@ import com.jarvis.assistant.feature.context.ContextAdjuster
 import com.jarvis.assistant.feature.context.ContextTransitionListener
 import com.jarvis.assistant.feature.context.UserContext
 import com.jarvis.assistant.feature.finance.SpendSummaryWorker
+import com.jarvis.assistant.feature.health.ScreenStateTracker
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import com.jarvis.assistant.data.CommandQueueProcessor
 import com.jarvis.assistant.feature.notifications.ProactiveAlertReceiver
@@ -68,6 +69,7 @@ class JarvisService : Service() {
     @Inject lateinit var contextAdjuster: ContextAdjuster
     @Inject lateinit var contextDigest: ContextDigest
     @Inject lateinit var morningBriefing: MorningBriefing
+    @Inject lateinit var screenStateTracker: ScreenStateTracker
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loopJob: Job? = null
@@ -85,6 +87,7 @@ class JarvisService : Service() {
                 Log.w(TAG, "Failed to register Bluetooth receiver: ${e.message}")
             }
         }
+        screenStateTracker.register()
         try {
             SpendSummaryWorker.enqueue(applicationContext)
         } catch (e: Exception) {
@@ -119,6 +122,7 @@ class JarvisService : Service() {
 
     override fun onDestroy() {
         autoSyncManager.stop()
+        screenStateTracker.unregister()
         parkingMemory.unregisterBluetoothReceiver()
         scope.cancel()
         super.onDestroy()
