@@ -3,11 +3,10 @@ package com.jarvis.assistant.feature.security
 import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.os.Build
-import android.os.Process
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -92,10 +91,9 @@ class EavesdropDetector @Inject constructor(
             context.packageName,
         )
 
-        val oneHourAgo = System.currentTimeMillis() - ONE_HOUR_MS
-
         try {
             val pm = context.packageManager
+            @Suppress("DEPRECATION")
             val packages = pm.getInstalledPackages(0)
             for (pkg in packages) {
                 if (pkg.packageName in whitelisted) continue
@@ -105,17 +103,10 @@ class EavesdropDetector @Inject constructor(
                         pkg.applicationInfo?.uid ?: continue,
                         pkg.packageName,
                     )
-                    // MODE_ALLOWED means the app has been granted access
                     if (mode == AppOpsManager.MODE_ALLOWED) {
-                        // On API 29+, we can check if the op was used recently
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            val ops = appOps.getPackagesForOps(arrayOf(opName))
-                            // The ops list is returned for all packages; filter for our target
-                            // Fall through to note it as a finding
-                        }
-                        // Flag non-system apps that have active mic/camera permission
+                        // Flag non-system apps that have active permission for this op
                         val isSystemApp = (pkg.applicationInfo?.flags ?: 0) and
-                            android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
+                            ApplicationInfo.FLAG_SYSTEM != 0
                         if (!isSystemApp) {
                             findings.add(
                                 EavesdropFinding(
@@ -267,7 +258,6 @@ class EavesdropDetector @Inject constructor(
         private const val TAG = "EavesdropDetector"
         const val KEY_LAST_EAVESDROP_SCAN = "last_eavesdrop_scan"
         const val SCAN_INTERVAL_MS = 2L * 60 * 60 * 1000 // 2 hours
-        private const val ONE_HOUR_MS = 60L * 60 * 1000
     }
 }
 

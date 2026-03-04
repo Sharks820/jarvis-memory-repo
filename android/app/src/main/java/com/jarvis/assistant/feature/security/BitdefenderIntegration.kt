@@ -28,14 +28,15 @@ class BitdefenderIntegration @Inject constructor(
         val fullText = "$title $text".lowercase()
 
         when {
+            // Check clean/safe FIRST — "no threats" contains "threat" so order matters
+            fullText.contains("no threats") || fullText.contains("device is safe") ||
+                fullText.contains("protected") || fullText.contains("scan complete") ||
+                fullText.contains("scan finished") -> {
+                recordScanResult(clean = true, title = title, text = text)
+            }
             fullText.contains("threat") || fullText.contains("malware") ||
                 fullText.contains("virus") || fullText.contains("infected") -> {
                 recordThreatDetection(title, text)
-            }
-            fullText.contains("scan complete") || fullText.contains("scan finished") ||
-                fullText.contains("no threats") || fullText.contains("device is safe") ||
-                fullText.contains("protected") -> {
-                recordScanResult(clean = !fullText.contains("threat"), title = title, text = text)
             }
             fullText.contains("update") || fullText.contains("updated") -> {
                 recordUpdateStatus(title, text)
@@ -61,11 +62,14 @@ class BitdefenderIntegration @Inject constructor(
 
     private fun recordScanResult(clean: Boolean, title: String, text: String) {
         val now = System.currentTimeMillis()
-        prefs.edit()
+        val editor = prefs.edit()
             .putLong(KEY_LAST_SCAN_TIME, now)
             .putString(KEY_LAST_SCAN_RESULT, if (clean) "CLEAN" else "THREAT_DETECTED")
             .putString(KEY_LAST_SCAN_DETAIL, "$title: $text")
-            .apply()
+        if (clean) {
+            editor.putInt(KEY_THREATS_FOUND, 0)
+        }
+        editor.apply()
         Log.i(TAG, "Bitdefender scan result: ${if (clean) "clean" else "threats found"}")
     }
 
@@ -100,6 +104,7 @@ class BitdefenderIntegration @Inject constructor(
     /**
      * Check if any Bitdefender package is installed on the device.
      */
+    @Suppress("DEPRECATION")
     fun isBitdefenderInstalled(): Boolean {
         return BITDEFENDER_PACKAGES.any { pkg ->
             try {
