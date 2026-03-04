@@ -522,13 +522,15 @@ def _load_conversation_history() -> None:
 
 
 def _save_conversation_history() -> None:
-    """Persist current conversation history to disk."""
+    """Persist current conversation history to disk (atomic write)."""
     try:
         import json as _json
         path = _conversation_history_path()
         with _conversation_history_lock:
             snapshot = list(_conversation_history)
-        path.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp), str(path))
     except Exception as exc:
         logger.debug("Could not save conversation history: %s", exc)
 
@@ -546,10 +548,10 @@ def _add_to_history(role: str, content: str) -> None:
 def _get_history_messages() -> list[dict[str, str]]:
     """Return conversation history as message list for LLM context."""
     global _conversation_history_loaded
-    if not _conversation_history_loaded:
-        _conversation_history_loaded = True
-        _load_conversation_history()
     with _conversation_history_lock:
+        if not _conversation_history_loaded:
+            _conversation_history_loaded = True
+            _load_conversation_history()
         return list(_conversation_history)
 
 

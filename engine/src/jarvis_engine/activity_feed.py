@@ -118,6 +118,11 @@ class ActivityFeed:
     # Public API
     # ------------------------------------------------------------------
 
+    def _check_open(self) -> None:
+        """Raise RuntimeError if the feed has been closed."""
+        if self._closed:
+            raise RuntimeError("ActivityFeed is closed")
+
     def log(
         self,
         category: str,
@@ -125,6 +130,7 @@ class ActivityFeed:
         details: dict | None = None,
     ) -> str:
         """Log an activity event and return its event_id.  Thread-safe."""
+        self._check_open()
         event_id = uuid.uuid4().hex
         ts = datetime.now(UTC).isoformat()
         details_json = json.dumps(details or {})
@@ -148,6 +154,7 @@ class ActivityFeed:
         since: str | None = None,
     ) -> list[ActivityEvent]:
         """Query recent events, newest first.  Optional category and since filters."""
+        self._check_open()
         clauses: list[str] = []
         params: list[str | int] = []
 
@@ -185,6 +192,7 @@ class ActivityFeed:
 
     def clear_old(self, keep_days: int = 30) -> int:
         """Prune events older than *keep_days*.  Returns count deleted."""
+        self._check_open()
         cutoff = (datetime.now(UTC) - timedelta(days=keep_days)).isoformat()
         with self._lock:
             cur = self._db.execute(
@@ -195,6 +203,7 @@ class ActivityFeed:
 
     def stats(self) -> dict:
         """Return event count per category for the last 24 hours."""
+        self._check_open()
         cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
         with self._lock:
             rows = self._db.execute(
