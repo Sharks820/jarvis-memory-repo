@@ -7,10 +7,12 @@ import android.content.Intent
 import android.os.Build
 import android.telecom.Call
 import android.telecom.CallScreeningService
+import android.telecom.Connection
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import com.jarvis.assistant.api.JarvisApiClient
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -38,14 +40,18 @@ class JarvisCallScreeningService : CallScreeningService() {
     @InstallIn(SingletonComponent::class)
     interface CallScreenEntryPoint {
         fun spamScorer(): SpamScorer
+        fun apiClient(): JarvisApiClient
     }
 
-    private val spamScorer by lazy {
+    private val entryPoint by lazy {
         EntryPointAccessors.fromApplication(
             application,
             CallScreenEntryPoint::class.java,
-        ).spamScorer()
+        )
     }
+
+    private val spamScorer by lazy { entryPoint.spamScorer() }
+    private val apiClient by lazy { entryPoint.apiClient() }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -70,15 +76,42 @@ class JarvisCallScreeningService : CallScreeningService() {
             return
         }
 
+        // Extract STIR/SHAKEN verification status (API 30+)
+        val stirStatus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            when (callDetails.callerNumberVerificationStatus) {
+                Connection.VERIFICATION_STATUS_PASSED -> "passed"
+                Connection.VERIFICATION_STATUS_FAILED -> "failed"
+                else -> "not_verified"
+            }
+        } else {
+            "not_verified"
+        }
+
+        // Extract presentation type
+        val presentation = when (callDetails.handlePresentation) {
+            android.telecom.TelecomManager.PRESENTATION_RESTRICTED -> "restricted"
+            android.telecom.TelecomManager.PRESENTATION_UNKNOWN -> "unknown"
+            android.telecom.TelecomManager.PRESENTATION_PAYPHONE -> "payphone"
+            else -> "allowed"
+        }
+
         // Score on IO dispatcher since it hits Room DB
         serviceScope.launch {
             try {
                 val normalized = spamScorer.normalizeNumber(number)
                 val result = spamScorer.score(normalized)
 
-                Log.d(TAG, "Call from ${maskNumber(normalized)} scored ${result.score} -> ${result.recommendedAction}")
+                // Boost score with STIR/SHAKEN signal locally
+                val boostedScore = spamScorer.boostWithStir(result.score, stirStatus, presentation)
+                val action = spamScorer.actionForScore(boostedScore)
 
-                val response = when (result.recommendedAction) {
+                Log.d(
+                    TAG,
+                    "Call from ${maskNumber(normalized)} scored ${result.score} " +
+                        "(boosted=$boostedScore) stir=$stirStatus pres=$presentation -> $action",
+                )
+
+                val response = when (action) {
                     "block" -> CallResponse.Builder()
                         .setDisallowCall(true)
                         .setRejectCall(true)
@@ -104,10 +137,41 @@ class JarvisCallScreeningService : CallScreeningService() {
                 }
 
                 respondToCall(callDetails, response)
+
+                // Async: report call to desktop for campaign analysis (fire-and-forget)
+                reportCallToDesktop(normalized, stirStatus, presentation, action)
             } catch (e: Exception) {
                 Log.e(TAG, "Error screening call from ${maskNumber(number)}: ${e.message}")
                 // On error, allow the call through
                 respondToCall(callDetails, CallResponse.Builder().build())
+            }
+        }
+    }
+
+    /**
+     * Report screened call to desktop for scam campaign detection.
+     * Fire-and-forget — failure here never affects call screening.
+     */
+    private fun reportCallToDesktop(
+        number: String,
+        stirStatus: String,
+        presentation: String,
+        action: String,
+    ) {
+        serviceScope.launch {
+            try {
+                apiClient.api().reportScamCall(
+                    mapOf(
+                        "number" to number,
+                        "stir_status" to stirStatus,
+                        "presentation" to presentation,
+                        "duration_sec" to 0,
+                        "answered" to (action == "allow"),
+                        "contact_name" to "",
+                    ),
+                )
+            } catch (e: Exception) {
+                Log.d(TAG, "Scam report-call to desktop failed (non-fatal): ${e.message}")
             }
         }
     }

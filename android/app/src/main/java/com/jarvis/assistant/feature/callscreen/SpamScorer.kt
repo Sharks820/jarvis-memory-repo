@@ -100,6 +100,34 @@ class SpamScorer @Inject constructor(
         }
     }
 
+    /**
+     * Boost a base spam score with STIR/SHAKEN verification and presentation signals.
+     * Used by CallScreeningService for real-time enhanced scoring.
+     */
+    fun boostWithStir(baseScore: Float, stirStatus: String, presentation: String): Float {
+        if (baseScore < 0f) return 0f
+        var score = baseScore
+
+        when (stirStatus) {
+            "failed" -> score += 0.40f
+            // "not_verified" is too common to penalize heavily
+        }
+
+        when (presentation) {
+            "restricted" -> score += 0.10f
+            "unknown" -> score += 0.05f
+            "payphone" -> score += 0.15f
+        }
+
+        return score.coerceAtMost(0.99f)
+    }
+
+    /**
+     * Map a score to an action using the user's configured thresholds.
+     * Public version of [determineAction] for use by CallScreeningService.
+     */
+    fun actionForScore(score: Float): String = determineAction(score)
+
     // ---- Private helpers ----------------------------------------------------
 
     private fun determineAction(score: Float): String {

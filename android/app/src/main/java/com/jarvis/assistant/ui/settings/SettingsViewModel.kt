@@ -259,6 +259,12 @@ class SettingsViewModel @Inject constructor(
         contextPrefs.getBoolean(MorningBriefing.KEY_SPEAK, false),
     )
 
+    // ── Scam Campaign Hunter ─────────────────────────────────────────
+
+    val scamStats = MutableStateFlow(ScamStatsUi())
+    val scamCampaigns = MutableStateFlow<List<com.jarvis.assistant.api.ScamCampaignDto>>(emptyList())
+    val scamLoading = MutableStateFlow(false)
+
     // ── Learning Missions ────────────────────────────────────────────
 
     val missions = MutableStateFlow<List<MissionDto>>(emptyList())
@@ -344,6 +350,7 @@ class SettingsViewModel @Inject constructor(
         loadUnsyncedDocCount()
         loadHabitStatus()
         loadMissions()
+        loadScamIntel()
         checkMuteExpiry()
     }
 
@@ -767,6 +774,41 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ── Scam Campaign Hunter Actions ────────────────────────────────
+
+    fun loadScamIntel() {
+        scamLoading.value = true
+        viewModelScope.launch {
+            try {
+                val statsResponse = apiClient.api().getScamStats()
+                if (statsResponse.ok) {
+                    scamStats.value = ScamStatsUi(
+                        totalScreened = statsResponse.totalScreened,
+                        activeCampaigns = statsResponse.activeCampaigns,
+                        numbersBlocked = statsResponse.numbersBlocked,
+                        stirFailed = statsResponse.stirFailed,
+                        stirPassed = statsResponse.stirPassed,
+                        voipCalls = statsResponse.voipCalls,
+                        totalScamNumbers = statsResponse.totalScamNumbers,
+                        topScamPrefixes = statsResponse.topScamPrefixes,
+                        topScamCarriers = statsResponse.topScamCarriers,
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load scam stats", e)
+            }
+            try {
+                val campaignsResponse = apiClient.api().getScamCampaigns()
+                if (campaignsResponse.ok) {
+                    scamCampaigns.value = campaignsResponse.campaigns
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load scam campaigns", e)
+            }
+            scamLoading.value = false
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -994,3 +1036,16 @@ class SettingsViewModel @Inject constructor(
         private const val KEY_MUTE_UNTIL = "jarvis_mute_until"
     }
 }
+
+/** UI model for scam campaign statistics. */
+data class ScamStatsUi(
+    val totalScreened: Int = 0,
+    val activeCampaigns: Int = 0,
+    val numbersBlocked: Int = 0,
+    val stirFailed: Int = 0,
+    val stirPassed: Int = 0,
+    val voipCalls: Int = 0,
+    val totalScamNumbers: Int = 0,
+    val topScamPrefixes: List<com.jarvis.assistant.api.PrefixStat> = emptyList(),
+    val topScamCarriers: List<com.jarvis.assistant.api.CarrierStat> = emptyList(),
+)
