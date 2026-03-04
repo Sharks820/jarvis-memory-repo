@@ -7,6 +7,7 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.jarvis.assistant.feature.finance.BankNotificationParser
 import com.jarvis.assistant.feature.notifications.NotificationLearner
+import com.jarvis.assistant.feature.security.BitdefenderIntegration
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -37,6 +38,7 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         fun calendarCreator(): CalendarEventCreator
         fun notificationLearner(): NotificationLearner
         fun bankNotificationParser(): BankNotificationParser
+        fun bitdefenderIntegration(): BitdefenderIntegration
     }
 
     private val cueExtractor by lazy {
@@ -65,6 +67,13 @@ class JarvisNotificationListenerService : NotificationListenerService() {
             application,
             SchedulingEntryPoint::class.java,
         ).bankNotificationParser()
+    }
+
+    private val bitdefenderIntegration by lazy {
+        EntryPointAccessors.fromApplication(
+            application,
+            SchedulingEntryPoint::class.java,
+        ).bitdefenderIntegration()
     }
 
     /** Track notification post times for calculating action delay. */
@@ -112,6 +121,17 @@ class JarvisNotificationListenerService : NotificationListenerService() {
                     bankNotificationParser.parseAndStore(pkg, fullText)
                 } catch (e: Exception) {
                     Log.w(TAG, "Bank notification parsing failed: ${e.message}")
+                }
+            }
+        }
+
+        // ── Bitdefender notification parsing ────────────────────
+        if (bitdefenderIntegration.isBitdefenderPackage(pkg)) {
+            scope.launch {
+                try {
+                    bitdefenderIntegration.processNotification(pkg, title, bigText.ifBlank { text })
+                } catch (e: Exception) {
+                    Log.w(TAG, "Bitdefender notification parsing failed: ${e.message}")
                 }
             }
         }
