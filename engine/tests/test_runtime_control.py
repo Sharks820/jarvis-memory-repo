@@ -49,12 +49,14 @@ class TestDefaultControlState:
         assert DEFAULT_CONTROL_STATE["reason"] == ""
         assert DEFAULT_CONTROL_STATE["updated_utc"] == ""
 
-    def test_default_has_four_keys(self) -> None:
+    def test_default_has_six_keys(self) -> None:
         assert set(DEFAULT_CONTROL_STATE.keys()) == {
             "daemon_paused",
             "safe_mode",
             "reason",
             "updated_utc",
+            "muted",
+            "mute_until_utc",
         }
 
 
