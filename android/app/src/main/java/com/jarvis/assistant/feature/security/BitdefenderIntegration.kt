@@ -28,9 +28,14 @@ class BitdefenderIntegration @Inject constructor(
 
         val fullText = "$title $text".lowercase()
 
-        // Check THREATS first — "protected" and "scan complete" are too broad and
-        // could match threat-containing notifications if checked first.
+        // Check UPDATES first — "virus definition updated" contains "virus" which
+        // would otherwise be misclassified as a threat detection.
+        // Then check threats, then clean/safe status.
         when {
+            fullText.contains("update") || fullText.contains("updated") ||
+                fullText.contains("definition") -> {
+                recordUpdateStatus(title, text)
+            }
             fullText.contains("threat") || fullText.contains("malware") ||
                 fullText.contains("virus") || fullText.contains("infected") -> {
                 // "no threats" also contains "threat", so exclude explicit clean phrases
@@ -44,9 +49,6 @@ class BitdefenderIntegration @Inject constructor(
                 fullText.contains("device is protected") || fullText.contains("you are protected") ||
                 fullText.contains("scan complete") || fullText.contains("scan finished") -> {
                 recordScanResult(clean = true, title = title, text = text)
-            }
-            fullText.contains("update") || fullText.contains("updated") -> {
-                recordUpdateStatus(title, text)
             }
             else -> {
                 // General Bitdefender notification — log it

@@ -112,16 +112,17 @@ class EavesdropDetector @Inject constructor(
                         pkg.applicationInfo?.uid ?: continue,
                         pkg.packageName,
                     )
-                    if (mode == AppOpsManager.MODE_ALLOWED) {
-                        // Flag non-system apps that have the op mode set to allowed
+                    if (mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_FOREGROUND) {
+                        // Flag non-system apps that have the op mode set to allowed or foreground-only
                         val isSystemApp = (pkg.applicationInfo?.flags ?: 0) and
                             ApplicationInfo.FLAG_SYSTEM != 0
                         if (!isSystemApp) {
+                            val modeLabel = if (mode == AppOpsManager.MODE_FOREGROUND) "FOREGROUND" else "ALLOWED"
                             findings.add(
                                 EavesdropFinding(
                                     category = "$label Permission",
                                     appPackage = pkg.packageName,
-                                    description = "${pkg.packageName} has $label permission granted (op mode: ALLOWED)",
+                                    description = "${pkg.packageName} has $label permission granted (op mode: $modeLabel)",
                                     suspicious = false, // Having permission alone isn't suspicious
                                 ),
                             )
