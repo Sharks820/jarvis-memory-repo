@@ -23,6 +23,7 @@ import com.jarvis.assistant.feature.habit.PatternDetector
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.automation.MeetingPrepService
 import com.jarvis.assistant.feature.automation.RelationshipAutopilot
+import com.jarvis.assistant.feature.finance.IncomeCycleDetector
 import com.jarvis.assistant.feature.social.RelationshipAlertEngine
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -75,6 +76,7 @@ class SyncWorker @AssistedInject constructor(
     private val nudgeResponseTracker: NudgeResponseTracker,
     private val meetingPrepService: MeetingPrepService,
     private val relationshipAutopilot: RelationshipAutopilot,
+    private val incomeCycleDetector: IncomeCycleDetector,
 ) : CoroutineWorker(appContext, params) {
 
     private val prefs by lazy {
@@ -231,6 +233,16 @@ class SyncWorker @AssistedInject constructor(
             }
         }
 
+        // 13a. Income cycle detection: every 24 hours
+        if (now - getLastTimestamp(KEY_LAST_INCOME_CYCLE) >= INCOME_CYCLE_INTERVAL_MS) {
+            try {
+                incomeCycleDetector.detectCycles()
+                saveTimestamp(KEY_LAST_INCOME_CYCLE, now)
+            } catch (e: Exception) {
+                Log.w(TAG, "Income cycle detection error: ${e.message}")
+            }
+        }
+
         // 13. Database cleanup: every 24 hours (90-day retention)
         if (now - getLastTimestamp(KEY_LAST_CLEANUP) >= CLEANUP_INTERVAL_MS) {
             try {
@@ -274,6 +286,7 @@ class SyncWorker @AssistedInject constructor(
         private const val KEY_LAST_NUDGE_EXPIRY = "last_nudge_expiry"
         private const val KEY_LAST_CLEANUP = "last_cleanup"
         private const val KEY_LAST_MEETING_PREP = "last_meeting_prep"
+        private const val KEY_LAST_INCOME_CYCLE = "last_income_cycle"
         private const val KEY_CURRENT_CONTEXT = "current_context"
 
         // Interval constants (same as JarvisService)
@@ -289,6 +302,7 @@ class SyncWorker @AssistedInject constructor(
         private const val NUDGE_CHECK_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes
         private const val NUDGE_EXPIRY_INTERVAL_MS = 1L * 60 * 60 * 1000 // 1 hour
         private const val CLEANUP_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
+        private const val INCOME_CYCLE_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val RETENTION_PERIOD_MS = 90L * 24 * 60 * 60 * 1000 // 90 days
     }
 }
