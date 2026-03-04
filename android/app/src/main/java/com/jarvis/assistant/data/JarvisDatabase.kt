@@ -20,6 +20,11 @@ import com.jarvis.assistant.data.dao.ContactContextDao
 import com.jarvis.assistant.data.dao.DocumentDao
 import com.jarvis.assistant.data.dao.HabitDao
 import com.jarvis.assistant.data.dao.NudgeLogDao
+import com.jarvis.assistant.data.dao.RecurringPatternDao
+import com.jarvis.assistant.data.dao.SleepSessionDao
+import com.jarvis.assistant.data.dao.ErrandDao
+import com.jarvis.assistant.data.dao.PendingReplyDao
+import com.jarvis.assistant.data.dao.CommuteLogDao
 import com.jarvis.assistant.data.dao.TransactionDao
 import com.jarvis.assistant.data.entity.CallLogEntity
 import com.jarvis.assistant.data.entity.CommandQueueEntity
@@ -36,6 +41,11 @@ import com.jarvis.assistant.data.entity.ScannedDocumentEntity
 import com.jarvis.assistant.data.entity.SpamEntity
 import com.jarvis.assistant.data.entity.HabitPatternEntity
 import com.jarvis.assistant.data.entity.NudgeLogEntity
+import com.jarvis.assistant.data.entity.RecurringPatternEntity
+import com.jarvis.assistant.data.entity.SleepSessionEntity
+import com.jarvis.assistant.data.entity.ErrandEntity
+import com.jarvis.assistant.data.entity.PendingReplyEntity
+import com.jarvis.assistant.data.entity.CommuteLogEntity
 import com.jarvis.assistant.data.entity.TransactionEntity
 import net.sqlcipher.database.SupportFactory
 
@@ -57,8 +67,13 @@ import net.sqlcipher.database.SupportFactory
         CallLogEntity::class,
         HabitPatternEntity::class,
         NudgeLogEntity::class,
+        RecurringPatternEntity::class,
+        SleepSessionEntity::class,
+        ErrandEntity::class,
+        PendingReplyEntity::class,
+        CommuteLogEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class JarvisDatabase : RoomDatabase() {
@@ -78,6 +93,11 @@ abstract class JarvisDatabase : RoomDatabase() {
     abstract fun callLogDao(): CallLogDao
     abstract fun habitDao(): HabitDao
     abstract fun nudgeLogDao(): NudgeLogDao
+    abstract fun recurringPatternDao(): RecurringPatternDao
+    abstract fun sleepSessionDao(): SleepSessionDao
+    abstract fun errandDao(): ErrandDao
+    abstract fun pendingReplyDao(): PendingReplyDao
+    abstract fun commuteLogDao(): CommuteLogDao
 
     companion object {
 
@@ -386,6 +406,100 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        /** v11 -> v12: Add v5.0 Life Automation Butler tables and columns. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // TransactionEntity new columns
+                db.execSQL("ALTER TABLE transactions ADD COLUMN direction TEXT NOT NULL DEFAULT 'debit'")
+                db.execSQL("ALTER TABLE transactions ADD COLUMN normalizedMerchant TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE transactions ADD COLUMN counterparty TEXT NOT NULL DEFAULT ''")
+
+                // ParkingEntity new columns
+                db.execSQL("ALTER TABLE parking_locations ADD COLUMN floor INTEGER")
+                db.execSQL("ALTER TABLE parking_locations ADD COLUMN meterExpiresAt INTEGER")
+                db.execSQL("ALTER TABLE parking_locations ADD COLUMN meterNote TEXT NOT NULL DEFAULT ''")
+
+                // New tables
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `recurring_patterns` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `merchant` TEXT NOT NULL,
+                        `normalizedAmount` REAL NOT NULL,
+                        `period` TEXT NOT NULL,
+                        `direction` TEXT NOT NULL DEFAULT 'debit',
+                        `counterparty` TEXT NOT NULL DEFAULT '',
+                        `lastSeen` TEXT NOT NULL,
+                        `firstSeen` TEXT NOT NULL,
+                        `isActive` INTEGER NOT NULL DEFAULT 1,
+                        `isGhost` INTEGER NOT NULL DEFAULT 0,
+                        `occurrenceCount` INTEGER NOT NULL DEFAULT 2,
+                        `createdAt` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sleep_sessions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `onsetTime` INTEGER NOT NULL,
+                        `wakeTime` INTEGER NOT NULL,
+                        `durationMinutes` INTEGER NOT NULL,
+                        `qualityScore` INTEGER NOT NULL,
+                        `interruptions` INTEGER NOT NULL DEFAULT 0,
+                        `restlessPeriods` INTEGER NOT NULL DEFAULT 0,
+                        `date` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `errands` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `item` TEXT NOT NULL,
+                        `store` TEXT NOT NULL DEFAULT '',
+                        `storeLatitude` REAL,
+                        `storeLongitude` REAL,
+                        `source` TEXT NOT NULL DEFAULT 'conversation',
+                        `confidence` REAL NOT NULL DEFAULT 0.8,
+                        `createdAt` INTEGER NOT NULL DEFAULT 0,
+                        `completedAt` INTEGER,
+                        `snoozedUntil` INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `pending_replies` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `contactName` TEXT NOT NULL,
+                        `phoneNumber` TEXT NOT NULL DEFAULT '',
+                        `packageName` TEXT NOT NULL,
+                        `messagePreview` TEXT NOT NULL,
+                        `receivedAt` INTEGER NOT NULL DEFAULT 0,
+                        `importance` REAL NOT NULL DEFAULT 0.5,
+                        `reminderSentAt` INTEGER,
+                        `resolved` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `commute_log` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `originLabel` TEXT NOT NULL DEFAULT '',
+                        `destinationLabel` TEXT NOT NULL DEFAULT '',
+                        `durationMinutes` INTEGER NOT NULL,
+                        `distanceKm` REAL NOT NULL DEFAULT 0,
+                        `timestamp` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun create(context: Context, passphrase: ByteArray): JarvisDatabase {
             val factory = SupportFactory(passphrase)
             return Room.databaseBuilder(
@@ -405,6 +519,7 @@ abstract class JarvisDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
                 )
                 .build()
         }
