@@ -235,6 +235,124 @@ fun SettingsScreen(
             }
         }
 
+        // ── Scam Campaign Hunter ──────────────────────────
+        item {
+            SectionHeader("Scam Campaign Hunter")
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    val scamStats by viewModel.scamStats.collectAsState()
+                    val scamCampaigns by viewModel.scamCampaigns.collectAsState()
+                    val scamLoading by viewModel.scamLoading.collectAsState()
+
+                    Text(
+                        "Detects scam call centers that rotate numbers",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Stats row
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column {
+                            Text("${scamStats.totalScreened}", style = MaterialTheme.typography.titleLarge)
+                            Text("Screened", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column {
+                            Text("${scamStats.activeCampaigns}", style = MaterialTheme.typography.titleLarge)
+                            Text("Campaigns", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column {
+                            Text("${scamStats.numbersBlocked}", style = MaterialTheme.typography.titleLarge)
+                            Text("Blocked", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column {
+                            Text("${scamStats.stirFailed}", style = MaterialTheme.typography.titleLarge)
+                            Text("Spoofed", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
+                    if (scamCampaigns.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Active Campaigns",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+
+                        for (campaign in scamCampaigns.take(5)) {
+                            Spacer(Modifier.height(4.dp))
+                            Card(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            ) {
+                                Column(Modifier.padding(8.dp)) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "Prefix ${campaign.prefix}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                        Text(
+                                            "${(campaign.confidence * 100).toInt()}% confidence",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (campaign.confidence >= 0.75f) {
+                                                MaterialTheme.colorScheme.error
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                        )
+                                    }
+                                    Text(
+                                        "${campaign.numbers.size} numbers | ${campaign.totalCalls} calls",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    if (campaign.signals.isNotEmpty()) {
+                                        Text(
+                                            campaign.signals.joinToString(", "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                    if (campaign.carrier.isNotBlank()) {
+                                        Text(
+                                            "Carrier: ${campaign.carrier} (${campaign.lineType})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            onClick = { viewModel.loadScamIntel() },
+                            enabled = !scamLoading,
+                        ) {
+                            Text(if (scamLoading) "Loading..." else "Refresh Intel")
+                        }
+                    }
+
+                    if (scamStats.topScamPrefixes.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Top Scam Prefixes", style = MaterialTheme.typography.titleSmall)
+                        for (prefix in scamStats.topScamPrefixes) {
+                            Text(
+                                "${prefix.prefix}: ${prefix.numbers} numbers",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Prescriptions ─────────────────────────────────
         item {
             val activeMeds by viewModel.activeMedications.collectAsState()

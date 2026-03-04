@@ -100,6 +100,24 @@ interface JarvisApi {
     @POST("/smart-reply")
     suspend fun getSmartReply(@Body request: SmartReplyRequest): SmartReplyResponse
 
+    // ── Scam Campaign Hunter endpoints ──────────────────────────────────
+
+    /** Report a screened call with STIR/SHAKEN status for campaign analysis. */
+    @POST("/scam/report-call")
+    suspend fun reportScamCall(@Body body: Map<String, Any>): ScamReportResponse
+
+    /** Lookup carrier/VoIP status for a phone number. */
+    @POST("/scam/lookup")
+    suspend fun scamLookup(@Body body: Map<String, Any>): ScamLookupResponse
+
+    /** Get detected scam campaigns. */
+    @GET("/scam/campaigns")
+    suspend fun getScamCampaigns(): ScamCampaignsResponse
+
+    /** Get scam detection statistics. */
+    @GET("/scam/stats")
+    suspend fun getScamStats(): ScamStatsResponse
+
     // ── Intelligence sync endpoints ─────────────────────────────────────
 
     /**
@@ -274,4 +292,109 @@ data class RecentMemory(
     val about: String = "",
     val summary: String = "",
     val date: String = "",
+)
+
+// ── Scam Campaign Hunter response models ─────────────────────────────────
+
+/** Response from POST /scam/report-call. */
+data class ScamReportResponse(
+    val ok: Boolean = false,
+    @com.google.gson.annotations.SerializedName("enhanced_score")
+    val enhancedScore: Float = 0f,
+    @com.google.gson.annotations.SerializedName("recommended_action")
+    val recommendedAction: String = "allow",
+    @com.google.gson.annotations.SerializedName("campaign_id")
+    val campaignId: String = "",
+    @com.google.gson.annotations.SerializedName("campaign_confidence")
+    val campaignConfidence: Float = 0f,
+    @com.google.gson.annotations.SerializedName("line_type")
+    val lineType: String = "",
+    @com.google.gson.annotations.SerializedName("stir_status")
+    val stirStatus: String = "",
+    val signals: List<String> = emptyList(),
+)
+
+/** Response from POST /scam/lookup. */
+data class ScamLookupResponse(
+    val ok: Boolean = false,
+    val number: String = "",
+    val carrier: String = "",
+    @com.google.gson.annotations.SerializedName("line_type")
+    val lineType: String = "",
+    @com.google.gson.annotations.SerializedName("is_voip")
+    val isVoip: Boolean = false,
+    @com.google.gson.annotations.SerializedName("risk_score")
+    val riskScore: Float = 0f,
+    @com.google.gson.annotations.SerializedName("campaign_id")
+    val campaignId: String = "",
+    @com.google.gson.annotations.SerializedName("campaign_confidence")
+    val campaignConfidence: Float = 0f,
+    @com.google.gson.annotations.SerializedName("campaign_signals")
+    val campaignSignals: List<String> = emptyList(),
+)
+
+/** Response from GET /scam/campaigns. */
+data class ScamCampaignsResponse(
+    val ok: Boolean = false,
+    val campaigns: List<ScamCampaignDto> = emptyList(),
+    @com.google.gson.annotations.SerializedName("block_actions")
+    val blockActions: List<Map<String, Any?>> = emptyList(),
+    @com.google.gson.annotations.SerializedName("total_campaigns")
+    val totalCampaigns: Int = 0,
+    @com.google.gson.annotations.SerializedName("total_scam_numbers")
+    val totalScamNumbers: Int = 0,
+)
+
+data class ScamCampaignDto(
+    @com.google.gson.annotations.SerializedName("campaign_id")
+    val campaignId: String = "",
+    val prefix: String = "",
+    val numbers: List<String> = emptyList(),
+    @com.google.gson.annotations.SerializedName("total_calls")
+    val totalCalls: Int = 0,
+    @com.google.gson.annotations.SerializedName("first_seen_utc")
+    val firstSeenUtc: String = "",
+    @com.google.gson.annotations.SerializedName("last_seen_utc")
+    val lastSeenUtc: String = "",
+    val confidence: Float = 0f,
+    val signals: List<String> = emptyList(),
+    val carrier: String = "",
+    @com.google.gson.annotations.SerializedName("line_type")
+    val lineType: String = "",
+    @com.google.gson.annotations.SerializedName("stir_failed_count")
+    val stirFailedCount: Int = 0,
+    val blocked: Boolean = false,
+)
+
+/** Response from GET /scam/stats. */
+data class ScamStatsResponse(
+    val ok: Boolean = false,
+    @com.google.gson.annotations.SerializedName("total_screened")
+    val totalScreened: Int = 0,
+    @com.google.gson.annotations.SerializedName("stir_failed")
+    val stirFailed: Int = 0,
+    @com.google.gson.annotations.SerializedName("stir_passed")
+    val stirPassed: Int = 0,
+    @com.google.gson.annotations.SerializedName("voip_calls")
+    val voipCalls: Int = 0,
+    @com.google.gson.annotations.SerializedName("active_campaigns")
+    val activeCampaigns: Int = 0,
+    @com.google.gson.annotations.SerializedName("total_scam_numbers")
+    val totalScamNumbers: Int = 0,
+    @com.google.gson.annotations.SerializedName("numbers_blocked")
+    val numbersBlocked: Int = 0,
+    @com.google.gson.annotations.SerializedName("top_scam_prefixes")
+    val topScamPrefixes: List<PrefixStat> = emptyList(),
+    @com.google.gson.annotations.SerializedName("top_scam_carriers")
+    val topScamCarriers: List<CarrierStat> = emptyList(),
+)
+
+data class PrefixStat(
+    val prefix: String = "",
+    val numbers: Int = 0,
+)
+
+data class CarrierStat(
+    val carrier: String = "",
+    val numbers: Int = 0,
 )
