@@ -36,6 +36,8 @@ import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.scheduling.JarvisNotificationListenerService
+import com.jarvis.assistant.feature.security.AutofillSetupAssistant
+import com.jarvis.assistant.feature.security.AutofillStatus
 import com.jarvis.assistant.feature.security.BitdefenderIntegration
 import com.jarvis.assistant.feature.security.BitdefenderScanInfo
 import com.jarvis.assistant.feature.security.DeviceSecurityMonitor
@@ -83,6 +85,7 @@ class SettingsViewModel @Inject constructor(
     private val deviceSecurityMonitor: DeviceSecurityMonitor,
     private val eavesdropDetector: EavesdropDetector,
     private val bitdefenderIntegration: BitdefenderIntegration,
+    private val autofillSetupAssistant: AutofillSetupAssistant,
 ) : ViewModel() {
 
     val desktopUrl = MutableStateFlow(crypto.getBaseUrl())
@@ -253,6 +256,7 @@ class SettingsViewModel @Inject constructor(
     val eavesdropReport = MutableStateFlow<EavesdropReport?>(null)
     val bitdefenderInfo = MutableStateFlow<BitdefenderScanInfo?>(null)
     val securityScanLoading = MutableStateFlow(false)
+    val autofillStatus = MutableStateFlow<AutofillStatus?>(null)
 
     // ── Mute Jarvis Settings ─────────────────────────────────────────
 
@@ -788,10 +792,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun refreshAutofillStatus() {
+        viewModelScope.launch {
+            try {
+                autofillStatus.value = autofillSetupAssistant.getAutofillStatus()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to refresh autofill status", e)
+            }
+        }
+    }
+
     private fun loadSecurityStatus() {
         viewModelScope.launch {
             try {
                 bitdefenderInfo.value = bitdefenderIntegration.getLastScanInfo()
+                autofillStatus.value = autofillSetupAssistant.getAutofillStatus()
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to load security status", e)
             }
