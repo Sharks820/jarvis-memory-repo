@@ -24,6 +24,7 @@ import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.automation.MeetingPrepService
 import com.jarvis.assistant.feature.automation.RelationshipAutopilot
 import com.jarvis.assistant.feature.finance.IncomeCycleDetector
+import com.jarvis.assistant.feature.health.ScreenTimeAnalyzer
 import com.jarvis.assistant.feature.health.SleepEstimator
 import com.jarvis.assistant.feature.social.RelationshipAlertEngine
 import dagger.assisted.Assisted
@@ -80,6 +81,7 @@ class SyncWorker @AssistedInject constructor(
     private val relationshipAutopilot: RelationshipAutopilot,
     private val incomeCycleDetector: IncomeCycleDetector,
     private val sleepEstimator: SleepEstimator,
+    private val screenTimeAnalyzer: ScreenTimeAnalyzer,
 ) : CoroutineWorker(appContext, params) {
 
     private val prefs by lazy {
@@ -256,6 +258,19 @@ class SyncWorker @AssistedInject constructor(
             }
         }
 
+        // 13c. Screen time analysis: every 24 hours
+        if (now - getLastTimestamp(KEY_LAST_SCREEN_TIME) >= SCREEN_TIME_INTERVAL_MS) {
+            try {
+                if (screenTimeAnalyzer.hasPermission()) {
+                    screenTimeAnalyzer.getWeeklyInsights()
+                    saveTimestamp(KEY_LAST_SCREEN_TIME, now)
+                    Log.i(TAG, "Screen time analysis completed")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Screen time analysis error: ${e.message}")
+            }
+        }
+
         // 13. Database cleanup: every 24 hours (90-day retention)
         if (now - getLastTimestamp(KEY_LAST_CLEANUP) >= CLEANUP_INTERVAL_MS) {
             try {
@@ -301,6 +316,7 @@ class SyncWorker @AssistedInject constructor(
         private const val KEY_LAST_MEETING_PREP = "last_meeting_prep"
         private const val KEY_LAST_INCOME_CYCLE = "last_income_cycle"
         private const val KEY_LAST_SLEEP_ESTIMATE = "last_sleep_estimate"
+        private const val KEY_LAST_SCREEN_TIME = "last_screen_time"
         private const val KEY_CURRENT_CONTEXT = "current_context"
 
         // Interval constants (same as JarvisService)
@@ -318,6 +334,7 @@ class SyncWorker @AssistedInject constructor(
         private const val CLEANUP_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val INCOME_CYCLE_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val SLEEP_ESTIMATE_INTERVAL_MS = 6L * 60 * 60 * 1000 // 6 hours
+        private const val SCREEN_TIME_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val RETENTION_PERIOD_MS = 90L * 24 * 60 * 60 * 1000 // 90 days
     }
 }
