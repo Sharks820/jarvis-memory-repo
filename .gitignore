@@ -26,3 +26,4 @@ engine/MagicMock/
 .planning/cache/
 engine/.planning/
 ops_snapshot.live.json
+.worktrees/
