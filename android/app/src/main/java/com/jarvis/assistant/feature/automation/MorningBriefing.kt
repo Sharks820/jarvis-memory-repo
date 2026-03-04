@@ -47,9 +47,10 @@ class MorningBriefing @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    /** Track last briefing day to avoid duplicates. */
-    @Volatile
-    private var lastBriefingDay: Int = -1
+    /** Track last briefing day to avoid duplicates (persisted across process death). */
+    private var lastBriefingDay: Int
+        get() = prefs.getInt("last_briefing_day", -1)
+        set(value) = prefs.edit().putInt("last_briefing_day", value).apply()
 
     /**
      * Called when user exits SLEEPING context.

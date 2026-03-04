@@ -2026,7 +2026,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 import secrets as _auth_secrets
                 token = _auth_secrets.token_hex(32)
                 with owner_session._lock:
-                    owner_session._sessions[token] = time.time() + owner_session._session_timeout
+                    owner_session._purge_expired()
+                    if len(owner_session._sessions) < owner_session.MAX_SESSIONS:
+                        owner_session._sessions[token] = time.monotonic() + owner_session._session_timeout
+                        owner_session._failure_count = 0
+                    else:
+                        token = None  # session cap reached
                 logger.info("Owner authenticated via master password, session %s... created", token[:8])
         if token is None:
             self._write_json(HTTPStatus.UNAUTHORIZED, {
@@ -2210,7 +2215,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
     def _handle_post_command(self) -> None:
-        with open("C:/Users/Conner/jarvis_debug.log", "a") as _df: _df.write("[DEBUG-POST] _handle_post_command called\n")
         payload, _ = self._read_json_body(max_content_length=25_000)
         if payload is None:
             return
@@ -3175,7 +3179,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     }
 
     def do_POST(self) -> None:  # noqa: N802
-        with open("C:/Users/Conner/jarvis_debug.log", "a") as _df: _df.write(f"[DEBUG-POST] do_POST called, path={self.path}\n")
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
             return
