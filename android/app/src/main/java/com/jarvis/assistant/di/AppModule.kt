@@ -17,6 +17,11 @@ import com.jarvis.assistant.data.dao.NotificationLogDao
 import com.jarvis.assistant.data.dao.SpamDao
 import com.jarvis.assistant.data.dao.TransactionDao
 import com.jarvis.assistant.data.dao.CommuteDao
+import com.jarvis.assistant.data.dao.RecurringPatternDao
+import com.jarvis.assistant.data.dao.SleepSessionDao
+import com.jarvis.assistant.data.dao.ErrandDao
+import com.jarvis.assistant.data.dao.PendingReplyDao
+import com.jarvis.assistant.data.dao.CommuteLogDao
 import com.jarvis.assistant.security.CryptoHelper
 import dagger.Module
 import dagger.Provides
@@ -103,4 +108,24 @@ object AppModule {
     @Provides
     fun provideNudgeLogDao(db: JarvisDatabase): NudgeLogDao =
         db.nudgeLogDao()
+
+    @Provides
+    fun provideRecurringPatternDao(db: JarvisDatabase): RecurringPatternDao =
+        db.recurringPatternDao()
+
+    @Provides
+    fun provideSleepSessionDao(db: JarvisDatabase): SleepSessionDao =
+        db.sleepSessionDao()
+
+    @Provides
+    fun provideErrandDao(db: JarvisDatabase): ErrandDao =
+        db.errandDao()
+
+    @Provides
+    fun providePendingReplyDao(db: JarvisDatabase): PendingReplyDao =
+        db.pendingReplyDao()
+
+    @Provides
+    fun provideCommuteLogDao(db: JarvisDatabase): CommuteLogDao =
+        db.commuteLogDao()
 }

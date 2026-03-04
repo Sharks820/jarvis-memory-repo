@@ -18,6 +18,8 @@ data class ParsedTransaction(
     val merchant: String,
     val category: String,
     val rawText: String,
+    val direction: String = "debit",
+    val counterparty: String = "",
 )
 
 /**
@@ -32,6 +34,7 @@ data class ParsedTransaction(
 class BankNotificationParser @Inject constructor(
     private val transactionDao: TransactionDao,
     private val anomalyDetector: AnomalyDetector,
+    private val merchantNormalizer: MerchantNormalizer,
 ) {
 
     /**
@@ -47,12 +50,17 @@ class BankNotificationParser @Inject constructor(
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val today = dateFormat.format(Date())
 
+        val normalized = merchantNormalizer.normalize(parsed.merchant)
+
         var entity = TransactionEntity(
             amount = parsed.amount,
             merchant = parsed.merchant,
+            normalizedMerchant = normalized,
             category = parsed.category,
             sourceApp = packageName,
             rawText = parsed.rawText,
+            direction = parsed.direction,
+            counterparty = parsed.counterparty,
             date = today,
             notificationHash = hash,
         )
@@ -93,6 +101,68 @@ class BankNotificationParser @Inject constructor(
     // ── Internal Parsing ──────────────────────────────────────────────
 
     private fun parse(text: String): ParsedTransaction? {
+        // Try P2P received patterns first
+        for (pattern in P2P_RECEIVED_PATTERNS) {
+            val match = pattern.find(text) ?: continue
+            val groups = match.groupValues
+            // Some patterns have counterparty in group 1, amount in group 2;
+            // "received $X from Y" has amount in group 1, counterparty in group 2
+            val amount: Double
+            val counterparty: String
+            if (groups[1].startsWith("$") || groups[1].all { it.isDigit() || it == ',' || it == '.' }) {
+                amount = groups[1].replace(",", "").toDoubleOrNull() ?: continue
+                counterparty = groups[2].trim()
+            } else {
+                counterparty = groups[1].trim()
+                amount = groups[2].replace(",", "").toDoubleOrNull() ?: continue
+            }
+            return ParsedTransaction(
+                amount = amount,
+                merchant = counterparty,
+                category = "transfer",
+                rawText = text,
+                direction = "credit",
+                counterparty = counterparty,
+            )
+        }
+
+        // Try P2P sent patterns
+        for (pattern in P2P_SENT_PATTERNS) {
+            val match = pattern.find(text) ?: continue
+            val groups = match.groupValues
+            val amount: Double
+            val counterparty: String
+            if (groups[1].startsWith("$") || groups[1].all { it.isDigit() || it == ',' || it == '.' }) {
+                amount = groups[1].replace(",", "").toDoubleOrNull() ?: continue
+                counterparty = groups[2].trim()
+            } else {
+                counterparty = groups[1].trim()
+                amount = groups[2].replace(",", "").toDoubleOrNull() ?: continue
+            }
+            return ParsedTransaction(
+                amount = amount,
+                merchant = counterparty,
+                category = "transfer",
+                rawText = text,
+                direction = "debit",
+                counterparty = counterparty,
+            )
+        }
+
+        // Try income/deposit patterns
+        for (pattern in INCOME_PATTERNS) {
+            val match = pattern.find(text) ?: continue
+            val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: continue
+            return ParsedTransaction(
+                amount = amount,
+                merchant = extractMerchant(text) ?: "Direct Deposit",
+                category = "transfer",
+                rawText = text,
+                direction = "credit",
+            )
+        }
+
+        // Standard bank notification parsing
         val amount = extractAmount(text) ?: return null
         val merchant = extractMerchant(text) ?: "Unknown Merchant"
         val category = classifyCategory(text, merchant)
@@ -153,7 +223,7 @@ class BankNotificationParser @Inject constructor(
     companion object {
         private const val TAG = "BankNotifParser"
 
-        /** Known bank app Android package names. */
+        /** Known bank and P2P app Android package names. */
         private val BANK_PACKAGES = setOf(
             "com.chase.sig.android",
             "com.infonow.bofa",
@@ -162,6 +232,12 @@ class BankNotificationParser @Inject constructor(
             "com.citi.citimobile",
             "com.ally.MobileBanking",
             "com.capitalone.mobile",
+            // P2P payment apps
+            "com.venmo",
+            "com.paypal.android.p2pmobile",
+            "com.squareup.cash",
+            "com.google.android.apps.nbu.paisa.user",
+            "com.zellepay.zelle",
         )
 
         /** Subscription services for category classification. */
@@ -187,6 +263,25 @@ class BankNotificationParser @Inject constructor(
         private val MERCHANT_PATTERNS = listOf(
             // "at Merchant" pattern
             Regex("""(?i)(?:at|from|for)\s+(.+?)(?:\.|$|on\s+\d)"""),
+        )
+
+        /** P2P received (credit) patterns — counterparty in group 1, amount in group 2. */
+        private val P2P_RECEIVED_PATTERNS = listOf(
+            Regex("""(?i)(\w[\w\s]*?)\s+paid\s+you\s+\$([\d,]+\.\d{2})"""),
+            Regex("""(?i)received\s+\$([\d,]+\.\d{2})\s+from\s+(.+?)(?:\.|$)"""),
+            Regex("""(?i)(\w[\w\s]*?)\s+sent\s+you\s+\$([\d,]+\.\d{2})"""),
+        )
+
+        /** P2P sent (debit) patterns — counterparty in group 2 or 1, amount in other group. */
+        private val P2P_SENT_PATTERNS = listOf(
+            Regex("""(?i)you\s+paid\s+(.+?)\s+\$([\d,]+\.\d{2})"""),
+            Regex("""(?i)you\s+sent\s+\$([\d,]+\.\d{2})\s+to\s+(.+?)(?:\.|$)"""),
+        )
+
+        /** Income/deposit detection patterns — amount in group 1. */
+        private val INCOME_PATTERNS = listOf(
+            Regex("""(?i)(?:direct\s+)?deposit\s+(?:of\s+)?\$([\d,]+\.\d{2})"""),
+            Regex("""(?i)payroll\s+(?:of\s+)?\$([\d,]+\.\d{2})"""),
         )
     }
 }
