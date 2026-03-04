@@ -18,6 +18,8 @@ data class ParsedTransaction(
     val merchant: String,
     val category: String,
     val rawText: String,
+    val direction: String = "debit",
+    val counterparty: String = "",
 )
 
 /**
@@ -32,6 +34,7 @@ data class ParsedTransaction(
 class BankNotificationParser @Inject constructor(
     private val transactionDao: TransactionDao,
     private val anomalyDetector: AnomalyDetector,
+    private val merchantNormalizer: MerchantNormalizer,
 ) {
 
     /**
@@ -47,12 +50,17 @@ class BankNotificationParser @Inject constructor(
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val today = dateFormat.format(Date())
 
+        val normalized = merchantNormalizer.normalize(parsed.merchant)
+
         var entity = TransactionEntity(
             amount = parsed.amount,
             merchant = parsed.merchant,
+            normalizedMerchant = normalized,
             category = parsed.category,
             sourceApp = packageName,
             rawText = parsed.rawText,
+            direction = parsed.direction,
+            counterparty = parsed.counterparty,
             date = today,
             notificationHash = hash,
         )
