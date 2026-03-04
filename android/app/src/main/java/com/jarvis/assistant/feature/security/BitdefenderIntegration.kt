@@ -81,6 +81,7 @@ class BitdefenderIntegration @Inject constructor(
             .putString(KEY_LAST_SCAN_DETAIL, "$title: $text")
         if (clean) {
             editor.putInt(KEY_THREATS_FOUND, 0)
+            editor.remove(KEY_LAST_THREAT_DETAIL)
         }
         editor.apply()
         Log.i(TAG, "Bitdefender scan result: ${if (clean) "clean" else "threats found"}")
