@@ -114,8 +114,19 @@ class IntelligenceRouter @Inject constructor(
             desktopReachable = true
 
             if (response.ok) {
-                val responseText = response.intent.ifBlank {
-                    response.stdoutTail.joinToString("\n").ifBlank { "Done." }
+                // Extract the actual LLM response:
+                // 1. Use the dedicated "response" field from the API
+                // 2. Fall back to parsing "response=" lines from stdout_tail
+                // 3. Last resort: join stdout_tail or show "Done."
+                val responseText = response.response.ifBlank {
+                    response.stdoutTail
+                        .lastOrNull { it.startsWith("response=") }
+                        ?.substringAfter("response=")
+                        ?.ifBlank { null }
+                        ?: response.stdoutTail
+                            .filter { !it.startsWith("intent=") && !it.startsWith("reason=") && !it.startsWith("status_code=") }
+                            .joinToString("\n")
+                            .ifBlank { "Done." }
                 }
                 RouteResult(
                     response = responseText,

@@ -191,8 +191,9 @@ class OwnerSessionManager:
                 )
                 return None
 
-            # Success — reset failure counter, create session
+            # Success — reset failure and lockout counters, create session
             self._failure_count = 0
+            self._lockout_count = 0
             token = secrets.token_hex(32)
             self._sessions[token] = time.monotonic() + self._session_timeout
             logger.info("Owner authenticated, session %s... created", token[:8])

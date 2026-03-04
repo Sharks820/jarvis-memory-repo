@@ -122,6 +122,7 @@ class AnomalyDetector @Inject constructor(
 
         val stats = transactionDao.getMerchantStats(transaction.merchant) ?: return null
         if (stats.count <= 1) return null // Need history to detect change
+        if (stats.avgAmount == 0.0) return null // Avoid division by zero
 
         val priceDelta = kotlin.math.abs(transaction.amount - stats.avgAmount) / stats.avgAmount
         if (priceDelta > SUBSCRIPTION_PRICE_CHANGE_THRESHOLD) {

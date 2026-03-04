@@ -41,8 +41,10 @@ class MeetingPrepService @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    /** Track which events we've already briefed to avoid duplicates. */
-    private val briefedEventIds = mutableSetOf<Long>()
+    /** Track which events we've already briefed to avoid duplicates (thread-safe). */
+    private val briefedEventIds: MutableSet<Long> = java.util.Collections.synchronizedSet(
+        LinkedHashSet()
+    )
 
     /**
      * Check for upcoming meetings and post intelligence briefings.

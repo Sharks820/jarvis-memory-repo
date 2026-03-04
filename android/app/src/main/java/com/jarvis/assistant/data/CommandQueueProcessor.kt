@@ -138,7 +138,7 @@ class CommandQueueProcessor @Inject constructor(
                     backoffBase * (1L shl minOf(cmd.retryCount, 10)),
                     backoffMax,
                 )
-                if (cmd.retryCount > 3 && age < cmd.retryCount * backoffBase) {
+                if (cmd.retryCount > 3 && age < backoff) {
                     continue // Not time to retry yet
                 }
             }

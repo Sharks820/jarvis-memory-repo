@@ -229,6 +229,18 @@ class QueryHandler:
                 return_code=2,
             )
 
+        # If all providers failed, resp.text will be empty — treat as error
+        if not resp.text or not resp.text.strip():
+            return QueryResult(
+                text="error: all LLM providers returned empty response",
+                model=resp.model or "none",
+                provider=resp.provider or "none",
+                route_reason=route_reason,
+                fallback_used=resp.fallback_used,
+                fallback_reason=resp.fallback_reason or "all providers exhausted",
+                return_code=2,
+            )
+
         return QueryResult(
             text=resp.text,
             model=resp.model,

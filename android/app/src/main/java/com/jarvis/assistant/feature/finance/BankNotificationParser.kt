@@ -109,7 +109,7 @@ class BankNotificationParser @Inject constructor(
             // "received $X from Y" has amount in group 1, counterparty in group 2
             val amount: Double
             val counterparty: String
-            if (groups[1].startsWith("$") || groups[1].all { it.isDigit() || it == ',' || it == '.' }) {
+            if (groups[1].isNotEmpty() && (groups[1].startsWith("$") || groups[1].all { it.isDigit() || it == ',' || it == '.' })) {
                 amount = groups[1].replace(",", "").toDoubleOrNull() ?: continue
                 counterparty = groups[2].trim()
             } else {
@@ -132,7 +132,7 @@ class BankNotificationParser @Inject constructor(
             val groups = match.groupValues
             val amount: Double
             val counterparty: String
-            if (groups[1].startsWith("$") || groups[1].all { it.isDigit() || it == ',' || it == '.' }) {
+            if (groups[1].isNotEmpty() && (groups[1].startsWith("$") || groups[1].all { it.isDigit() || it == ',' || it == '.' })) {
                 amount = groups[1].replace(",", "").toDoubleOrNull() ?: continue
                 counterparty = groups[2].trim()
             } else {

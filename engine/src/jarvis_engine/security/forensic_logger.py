@@ -212,16 +212,16 @@ class ForensicLogger:
                     lines = tail.strip().splitlines()
                     if not lines:
                         continue
-                    last_line = lines[-1]
-                    # Verify the last line is valid JSON (complete, not truncated)
-                    try:
-                        json.loads(last_line)
-                        return hashlib.sha256(last_line.encode("utf-8")).hexdigest()
-                    except (json.JSONDecodeError, ValueError):
-                        if actual_read >= size:
-                            # We've read the entire file and still can't parse
-                            break
-                        continue  # Try a larger read
+                    # Try lines from end backwards to handle truncated last line
+                    for line in reversed(lines):
+                        try:
+                            json.loads(line)
+                            return hashlib.sha256(line.encode("utf-8")).hexdigest()
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                    if actual_read >= size:
+                        # We've read the entire file and no line parses
+                        break
         except OSError:
             return _ZERO_HASH
 
