@@ -21,6 +21,8 @@ import com.jarvis.assistant.feature.habit.NudgeEngine
 import com.jarvis.assistant.feature.habit.NudgeResponseTracker
 import com.jarvis.assistant.feature.habit.PatternDetector
 import com.jarvis.assistant.feature.prescription.RefillTracker
+import com.jarvis.assistant.feature.automation.MeetingPrepService
+import com.jarvis.assistant.feature.automation.RelationshipAutopilot
 import com.jarvis.assistant.feature.social.RelationshipAlertEngine
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -71,6 +73,8 @@ class SyncWorker @AssistedInject constructor(
     private val patternDetector: PatternDetector,
     private val nudgeEngine: NudgeEngine,
     private val nudgeResponseTracker: NudgeResponseTracker,
+    private val meetingPrepService: MeetingPrepService,
+    private val relationshipAutopilot: RelationshipAutopilot,
 ) : CoroutineWorker(appContext, params) {
 
     private val prefs by lazy {
@@ -174,9 +178,20 @@ class SyncWorker @AssistedInject constructor(
         if (now - getLastTimestamp(KEY_LAST_RELATIONSHIP_CHECK) >= RELATIONSHIP_CHECK_INTERVAL_MS) {
             try {
                 relationshipAlertEngine.checkRelationshipAlerts()
+                relationshipAutopilot.checkNeglectedContacts()
                 saveTimestamp(KEY_LAST_RELATIONSHIP_CHECK, now)
             } catch (e: Exception) {
                 Log.w(TAG, "Relationship alert check error: ${e.message}")
+            }
+        }
+
+        // 9b. Meeting prep: every 2 minutes (checks for events starting in 5-15min)
+        if (now - getLastTimestamp(KEY_LAST_MEETING_PREP) >= MEETING_PREP_INTERVAL_MS) {
+            try {
+                meetingPrepService.checkAndBrief()
+                saveTimestamp(KEY_LAST_MEETING_PREP, now)
+            } catch (e: Exception) {
+                Log.w(TAG, "Meeting prep error: ${e.message}")
             }
         }
 
@@ -258,6 +273,7 @@ class SyncWorker @AssistedInject constructor(
         private const val KEY_LAST_NUDGE_CHECK = "last_nudge_check"
         private const val KEY_LAST_NUDGE_EXPIRY = "last_nudge_expiry"
         private const val KEY_LAST_CLEANUP = "last_cleanup"
+        private const val KEY_LAST_MEETING_PREP = "last_meeting_prep"
         private const val KEY_CURRENT_CONTEXT = "current_context"
 
         // Interval constants (same as JarvisService)
@@ -267,6 +283,7 @@ class SyncWorker @AssistedInject constructor(
         private const val LOCATION_RECORD_INTERVAL_MS = 15L * 60 * 1000 // 15 minutes
         private const val TRAFFIC_CHECK_INTERVAL_MS = 30L * 60 * 1000 // 30 minutes
         private const val DOC_SYNC_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes
+        private const val MEETING_PREP_INTERVAL_MS = 120_000L // 2 minutes
         private const val RELATIONSHIP_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val PATTERN_DETECTION_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
         private const val NUDGE_CHECK_INTERVAL_MS = 5L * 60 * 1000 // 5 minutes

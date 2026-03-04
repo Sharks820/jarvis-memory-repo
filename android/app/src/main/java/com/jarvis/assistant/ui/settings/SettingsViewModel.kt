@@ -23,6 +23,12 @@ import com.jarvis.assistant.data.entity.HabitPatternEntity
 import com.jarvis.assistant.data.entity.MedicationEntity
 import com.jarvis.assistant.feature.callscreen.SpamScorer
 import com.jarvis.assistant.feature.context.ContextDetector
+import com.jarvis.assistant.api.MissionDto
+import com.jarvis.assistant.feature.automation.ContextDigest
+import com.jarvis.assistant.feature.automation.MeetingPrepService
+import com.jarvis.assistant.feature.automation.MorningBriefing
+import com.jarvis.assistant.feature.automation.RelationshipAutopilot
+import com.jarvis.assistant.feature.automation.SmartMissedCallHandler
 import com.jarvis.assistant.feature.habit.BuiltInNudges
 import com.jarvis.assistant.feature.habit.NudgeResponseTracker
 import com.jarvis.assistant.feature.notifications.NotificationLearner
@@ -223,6 +229,41 @@ class SettingsViewModel @Inject constructor(
     val screenBreakEnabled = MutableStateFlow(false)
     val sleepReminderEnabled = MutableStateFlow(false)
 
+    // ── Mute Jarvis Settings ─────────────────────────────────────────
+
+    val muteActive = MutableStateFlow(
+        contextPrefs.getBoolean(KEY_MUTE_ACTIVE, false),
+    )
+
+    // ── Automation Settings ──────────────────────────────────────────
+
+    val smartReplyEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(SmartMissedCallHandler.KEY_ENABLED, true),
+    )
+    val smartReplySendSms = MutableStateFlow(
+        contextPrefs.getBoolean(SmartMissedCallHandler.KEY_ACTUALLY_SEND, false),
+    )
+    val contextDigestEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(ContextDigest.KEY_ENABLED, true),
+    )
+    val meetingPrepEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(MeetingPrepService.KEY_ENABLED, true),
+    )
+    val relationshipAutopilotEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(RelationshipAutopilot.KEY_ENABLED, true),
+    )
+    val morningBriefingEnabled = MutableStateFlow(
+        contextPrefs.getBoolean(MorningBriefing.KEY_ENABLED, true),
+    )
+    val morningBriefingSpeak = MutableStateFlow(
+        contextPrefs.getBoolean(MorningBriefing.KEY_SPEAK, false),
+    )
+
+    // ── Learning Missions ────────────────────────────────────────────
+
+    val missions = MutableStateFlow<List<MissionDto>>(emptyList())
+    val missionLoading = MutableStateFlow(false)
+
     // ── Scheduling Settings ──────────────────────────────────────────
 
     private val schedulingPrefs by lazy {
@@ -302,6 +343,8 @@ class SettingsViewModel @Inject constructor(
         loadCommuteStatus()
         loadUnsyncedDocCount()
         loadHabitStatus()
+        loadMissions()
+        checkMuteExpiry()
     }
 
     fun saveDesktopUrl() {
@@ -610,6 +653,120 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ── Mute Jarvis ─────────────────────────────────────────────────
+
+    fun setMuted(muted: Boolean) {
+        muteActive.value = muted
+        contextPrefs.edit()
+            .putBoolean(KEY_MUTE_ACTIVE, muted)
+            .apply()
+        if (!muted) {
+            contextPrefs.edit().remove(KEY_MUTE_UNTIL).apply()
+        }
+        // Also push to desktop
+        viewModelScope.launch {
+            try {
+                apiClient.api().setSettings(
+                    mapOf("muted" to muted, "mute_until_utc" to ""),
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync mute to desktop", e)
+            }
+        }
+    }
+
+    fun muteFor(minutes: Int) {
+        muteActive.value = true
+        val until = System.currentTimeMillis() + minutes * 60_000L
+        contextPrefs.edit()
+            .putBoolean(KEY_MUTE_ACTIVE, true)
+            .putLong(KEY_MUTE_UNTIL, until)
+            .apply()
+        viewModelScope.launch {
+            try {
+                val isoUntil = java.time.Instant.ofEpochMilli(until).toString()
+                apiClient.api().setSettings(
+                    mapOf("muted" to true, "mute_until_utc" to isoUntil),
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync timed mute to desktop", e)
+            }
+        }
+    }
+
+    // ── Automation Setters ──────────────────────────────────────────
+
+    fun setSmartReplyEnabled(enabled: Boolean) {
+        smartReplyEnabled.value = enabled
+        contextPrefs.edit().putBoolean(SmartMissedCallHandler.KEY_ENABLED, enabled).apply()
+    }
+
+    fun setSmartReplySendSms(enabled: Boolean) {
+        smartReplySendSms.value = enabled
+        contextPrefs.edit().putBoolean(SmartMissedCallHandler.KEY_ACTUALLY_SEND, enabled).apply()
+    }
+
+    fun setContextDigestEnabled(enabled: Boolean) {
+        contextDigestEnabled.value = enabled
+        contextPrefs.edit().putBoolean(ContextDigest.KEY_ENABLED, enabled).apply()
+    }
+
+    fun setMeetingPrepEnabled(enabled: Boolean) {
+        meetingPrepEnabled.value = enabled
+        contextPrefs.edit().putBoolean(MeetingPrepService.KEY_ENABLED, enabled).apply()
+    }
+
+    fun setRelationshipAutopilotEnabled(enabled: Boolean) {
+        relationshipAutopilotEnabled.value = enabled
+        contextPrefs.edit().putBoolean(RelationshipAutopilot.KEY_ENABLED, enabled).apply()
+    }
+
+    fun setMorningBriefingEnabled(enabled: Boolean) {
+        morningBriefingEnabled.value = enabled
+        contextPrefs.edit().putBoolean(MorningBriefing.KEY_ENABLED, enabled).apply()
+    }
+
+    fun setMorningBriefingSpeak(enabled: Boolean) {
+        morningBriefingSpeak.value = enabled
+        contextPrefs.edit().putBoolean(MorningBriefing.KEY_SPEAK, enabled).apply()
+    }
+
+    // ── Learning Mission Actions ────────────────────────────────────
+
+    fun loadMissions() {
+        missionLoading.value = true
+        viewModelScope.launch {
+            try {
+                val response = apiClient.api().getMissionStatus()
+                if (response.ok) {
+                    missions.value = response.missions
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load missions", e)
+            } finally {
+                missionLoading.value = false
+            }
+        }
+    }
+
+    fun createMission(topic: String) {
+        viewModelScope.launch {
+            try {
+                val request = com.jarvis.assistant.api.MissionCreateRequest(
+                    topic = topic,
+                    objective = "",
+                    sources = emptyList(),
+                )
+                val response = apiClient.api().createMission(request)
+                if (response.ok) {
+                    loadMissions()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create mission", e)
+            }
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -731,6 +888,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private fun checkMuteExpiry() {
+        val until = contextPrefs.getLong(KEY_MUTE_UNTIL, 0L)
+        if (until > 0 && System.currentTimeMillis() >= until) {
+            setMuted(false)
+        }
+    }
+
     private fun loadHabitStatus() {
         viewModelScope.launch {
             try {
@@ -826,5 +990,7 @@ class SettingsViewModel @Inject constructor(
         private const val KEY_NEGLECTED_ALERTS = "neglected_alerts_enabled"
         private const val KEY_NEGLECTED_THRESHOLD_DAYS = "neglected_threshold_days"
         private const val KEY_HABIT_NUDGES_ENABLED = "habit_nudges_enabled"
+        private const val KEY_MUTE_ACTIVE = "jarvis_muted"
+        private const val KEY_MUTE_UNTIL = "jarvis_mute_until"
     }
 }

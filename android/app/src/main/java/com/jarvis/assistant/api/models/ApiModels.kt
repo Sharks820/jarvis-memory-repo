@@ -35,10 +35,13 @@ data class SettingsData(
 data class RuntimeControl(
     @SerializedName("daemon_paused") val daemonPaused: Boolean = false,
     @SerializedName("safe_mode") val safeMode: Boolean = false,
+    val muted: Boolean = false,
+    @SerializedName("mute_until_utc") val muteUntilUtc: String = "",
 )
 
 data class GamingMode(
     val enabled: Boolean = false,
+    @SerializedName("auto_detect") val autoDetect: Boolean = false,
 )
 
 /** Response from GET /dashboard */

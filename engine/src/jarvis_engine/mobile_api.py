@@ -1587,6 +1587,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/intelligence/growth": "_handle_get_intelligence_growth",
         "/learning/summary": "_handle_get_learning_summary",
         "/missions/status": "_handle_get_missions_status",
+        "/alerts/pending": "_handle_get_alerts_pending",
+        "/digest": "_handle_get_digest",
+        "/meeting-prep": "_handle_get_meeting_prep",
         "/favicon.ico": "_handle_get_favicon",
     }
 
@@ -2038,18 +2041,24 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         reset = reset_raw
         daemon_paused = payload.get("daemon_paused")
         safe_mode = payload.get("safe_mode")
+        muted = payload.get("muted")
+        mute_until_utc = payload.get("mute_until_utc")
         gaming_enabled = payload.get("gaming_enabled")
         gaming_auto_detect = payload.get("gaming_auto_detect")
 
         for key, value in (
             ("daemon_paused", daemon_paused),
             ("safe_mode", safe_mode),
+            ("muted", muted),
             ("gaming_enabled", gaming_enabled),
             ("gaming_auto_detect", gaming_auto_detect),
         ):
             if value is not None and not isinstance(value, bool):
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Invalid {key}."})
                 return
+        if mute_until_utc is not None and not isinstance(mute_until_utc, str):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid mute_until_utc."})
+            return
 
         root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
         if reset:
@@ -2060,11 +2069,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Unsafe gaming state path."})
                 return
         else:
-            if daemon_paused is not None or safe_mode is not None or reason:
+            if any(v is not None for v in (daemon_paused, safe_mode, muted, mute_until_utc)) or reason:
                 write_control_state(
                     root_path,
                     daemon_paused=daemon_paused if isinstance(daemon_paused, bool) else None,
                     safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
+                    muted=muted if isinstance(muted, bool) else None,
+                    mute_until_utc=mute_until_utc if isinstance(mute_until_utc, str) else None,
                     reason=reason,
                 )
             if gaming_enabled is not None or gaming_auto_detect is not None or reason:
@@ -2449,16 +2460,23 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             import jarvis_engine.main as _main_mod
             from jarvis_engine.commands.ops_commands import MissionCreateCommand
             bus = _main_mod._get_bus()
-            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [])
+            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [], origin="phone")
             result = bus.dispatch(cmd)
+            if result.return_code != 0:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Mission creation failed — invalid parameters."})
+                return
             mission = result.mission if hasattr(result, "mission") else {}
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
                 "mission_id": mission.get("mission_id", ""),
                 "topic": mission.get("topic", ""),
                 "status": mission.get("status", "pending"),
+                "origin": mission.get("origin", "phone"),
                 "sources": mission.get("sources", []),
             })
+        except ValueError as exc:
+            logger.warning("Mission create validation failed: %s", exc)
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
         except Exception as exc:
             logger.error("Mission create failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
@@ -2492,6 +2510,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         "topic": m.get("topic", ""),
                         "objective": m.get("objective", ""),
                         "status": m.get("status", ""),
+                        "origin": m.get("origin", "desktop-manual"),
                         "sources": m.get("sources", []),
                         "verified_findings": m.get("verified_findings", 0),
                         "created_utc": m.get("created_utc", ""),
@@ -2504,6 +2523,272 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.error("Mission status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
+
+    # ── Alert queue endpoint (phone polls this) ───────────────────────────
+
+    def _handle_get_alerts_pending(self) -> None:
+        """Return and drain all pending proactive alerts for the phone."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.proactive.alert_queue import drain_alerts
+            root: Path = self.server.repo_root  # type: ignore[attr-defined]
+            alerts = drain_alerts(root, limit=50)
+            self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
+        except Exception as exc:
+            logger.error("Alert queue drain failed: %s", exc)
+            self._write_json(HTTPStatus.OK, {"ok": True, "alerts": []})
+
+    # ── Digest endpoint (summarize what you missed) ──────────────────────
+
+    def _handle_get_digest(self) -> None:
+        """Return a context-aware digest of what happened while user was busy.
+
+        Query params: ?since=<unix_ts>&context=<meeting|driving|sleeping>
+        """
+        if not self._validate_auth(b""):
+            return
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        qs_parts = self.path.split("?", 1)
+        since_ts = 0
+        context_label = ""
+        if len(qs_parts) > 1:
+            from urllib.parse import parse_qs
+            params = parse_qs(qs_parts[1])
+            try:
+                since_ts = int(params.get("since", ["0"])[0])
+            except (TypeError, ValueError):
+                since_ts = 0
+            context_label = str(params.get("context", [""])[0]).strip()
+
+        digest: dict[str, Any] = {
+            "context": context_label,
+            "since_ts": since_ts,
+            "missed_calls": [],
+            "notifications_summary": "",
+            "calendar_upcoming": [],
+            "proactive_alerts": [],
+            "tasks_changed": [],
+        }
+
+        # Pull pending alerts (peek, don't drain — phone will drain via /alerts/pending)
+        try:
+            from jarvis_engine.proactive.alert_queue import peek_alerts
+            digest["proactive_alerts"] = peek_alerts(root, limit=10)
+        except Exception:
+            pass
+
+        # Get upcoming calendar events for next 2 hours
+        try:
+            snapshot_path = root / ".planning" / "ops_snapshot.live.json"
+            if snapshot_path.exists():
+                import json as _json
+                snap = _json.loads(snapshot_path.read_text(encoding="utf-8"))
+                events = snap.get("calendar_events", [])
+                from datetime import datetime as _dt
+                now = _dt.now().astimezone()
+                upcoming = []
+                for ev in events:
+                    start_str = ev.get("start_time", "")
+                    if not start_str:
+                        continue
+                    try:
+                        start = _dt.fromisoformat(start_str)
+                        if start.tzinfo is None:
+                            start = start.astimezone()
+                        diff_hours = (start - now).total_seconds() / 3600.0
+                        if 0 <= diff_hours <= 2:
+                            upcoming.append({
+                                "title": ev.get("title", ""),
+                                "start_time": start_str,
+                                "minutes_until": int(diff_hours * 60),
+                            })
+                    except (ValueError, TypeError):
+                        continue
+                digest["calendar_upcoming"] = upcoming[:5]
+        except Exception:
+            pass
+
+        # Generate a human-readable summary using the voice command system
+        if context_label:
+            try:
+                import jarvis_engine.main as _main_mod
+                bus = _main_mod._get_bus()
+                from jarvis_engine.commands.ops_commands import OpsBriefCommand
+                result = bus.dispatch(OpsBriefCommand())
+                if hasattr(result, "brief") and result.brief:
+                    digest["notifications_summary"] = result.brief[:1000]
+            except Exception:
+                pass
+
+        self._write_json(HTTPStatus.OK, {"ok": True, "digest": digest})
+
+    # ── Meeting prep endpoint (KG-powered) ───────────────────────────────
+
+    def _handle_get_meeting_prep(self) -> None:
+        """Return KG-powered intelligence briefing for an upcoming meeting.
+
+        Query params: ?title=<meeting_title>&attendees=<comma_separated>
+        """
+        if not self._validate_auth(b""):
+            return
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        qs_parts = self.path.split("?", 1)
+        title = ""
+        attendees: list[str] = []
+        if len(qs_parts) > 1:
+            from urllib.parse import parse_qs, unquote
+            params = parse_qs(qs_parts[1])
+            title = unquote(str(params.get("title", [""])[0]).strip())
+            att_raw = str(params.get("attendees", [""])[0]).strip()
+            if att_raw:
+                attendees = [a.strip() for a in att_raw.split(",") if a.strip()]
+
+        if not title and not attendees:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "title or attendees required"})
+            return
+
+        briefing: dict[str, Any] = {
+            "title": title,
+            "attendees": attendees,
+            "context_facts": [],
+            "recent_memories": [],
+            "suggested_topics": [],
+        }
+
+        # Query KG for facts about attendees and meeting topic
+        try:
+            server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+            mem_engine = server_obj.ensure_memory_engine()
+            if mem_engine is not None:
+                kg = getattr(mem_engine, "_kg", None) or getattr(mem_engine, "kg", None)
+                if kg is not None:
+                    # Look up each attendee in the KG
+                    for person in attendees[:5]:
+                        try:
+                            facts = kg.query_relevant_facts([person], limit=5)
+                            for fact in facts:
+                                briefing["context_facts"].append({
+                                    "about": person,
+                                    "fact": fact.get("label", ""),
+                                    "confidence": round(float(fact.get("confidence", 0)), 2),
+                                })
+                        except Exception:
+                            pass
+                    # Look up meeting topic
+                    if title:
+                        try:
+                            topic_facts = kg.query_relevant_facts(title.split()[:4], limit=5)
+                            for fact in topic_facts:
+                                briefing["context_facts"].append({
+                                    "about": title,
+                                    "fact": fact.get("label", ""),
+                                    "confidence": round(float(fact.get("confidence", 0)), 2),
+                                })
+                        except Exception:
+                            pass
+
+                # Search recent memories about attendees/topic
+                keywords = attendees + ([title] if title else [])
+                for keyword in keywords[:3]:
+                    try:
+                        results = mem_engine.search_fts(keyword, limit=3)
+                        for record_id, _score in results:
+                            rec = mem_engine.get_record(record_id)
+                            if rec:
+                                briefing["recent_memories"].append({
+                                    "about": keyword,
+                                    "summary": str(rec.get("summary", ""))[:200],
+                                    "date": str(rec.get("ts", "")),
+                                })
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.debug("Meeting prep KG query failed: %s", exc)
+
+        # Generate suggested discussion topics from the context
+        if briefing["context_facts"] or briefing["recent_memories"]:
+            topics = set()
+            for fact in briefing["context_facts"]:
+                label = fact.get("fact", "")
+                if label and len(label) > 10:
+                    topics.add(label[:80])
+            for mem in briefing["recent_memories"]:
+                summary = mem.get("summary", "")
+                if summary and len(summary) > 10:
+                    topics.add(summary[:80])
+            briefing["suggested_topics"] = list(topics)[:5]
+
+        self._write_json(HTTPStatus.OK, {"ok": True, "briefing": briefing})
+
+    # ── Smart reply endpoint ─────────────────────────────────────────────
+
+    def _handle_post_smart_reply(self) -> None:
+        """Generate a contextual auto-reply SMS for a missed call.
+
+        Payload: {
+            "contact_name": str,
+            "phone_number": str,
+            "context": "meeting"|"driving"|"sleeping",
+            "meeting_end_time": str?,  // ISO format, optional
+            "eta_minutes": int?,       // for driving context
+        }
+        """
+        payload, _ = self._read_json_body(max_content_length=5_000)
+        if payload is None:
+            return
+        contact_name = str(payload.get("contact_name", "")).strip()[:50]
+        context = str(payload.get("context", "")).strip().lower()
+        meeting_end = str(payload.get("meeting_end_time", "")).strip()
+        eta_minutes = payload.get("eta_minutes")
+
+        if not contact_name:
+            contact_name = "there"
+
+        # Build a contextual reply
+        if context == "meeting":
+            reply = f"Hey {contact_name}, I'm in a meeting right now"
+            if meeting_end:
+                try:
+                    from datetime import datetime as _dt
+                    end_dt = _dt.fromisoformat(meeting_end)
+                    reply += f" until {end_dt.strftime('%I:%M %p')}"
+                except (ValueError, TypeError):
+                    pass
+            reply += ". I'll call you back as soon as I'm free."
+        elif context == "driving":
+            reply = f"Hey {contact_name}, I'm driving right now"
+            if eta_minutes and isinstance(eta_minutes, (int, float)):
+                reply += f" — about {int(eta_minutes)} min until I arrive"
+            reply += ". I'll call you back when I get there."
+        elif context == "sleeping":
+            reply = f"Hey {contact_name}, I'm currently unavailable. I'll get back to you in the morning."
+        else:
+            reply = f"Hey {contact_name}, I missed your call. I'll call you back soon."
+
+        reply += " — Sent by Jarvis"
+
+        # Try to get additional context from KG about this contact
+        contact_context = ""
+        try:
+            root: Path = self.server.repo_root  # type: ignore[attr-defined]
+            server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+            mem_engine = server_obj.ensure_memory_engine()
+            if mem_engine is not None:
+                results = mem_engine.search_fts(contact_name, limit=2)
+                for record_id, _score in results:
+                    rec = mem_engine.get_record(record_id)
+                    if rec:
+                        contact_context = str(rec.get("summary", ""))[:200]
+                        break
+        except Exception:
+            pass
+
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "reply": reply,
+            "contact_context": contact_context,
+        })
 
     # Dispatch dict for POST routes — built once per class, O(1) lookup.
     _POST_DISPATCH: dict[str, str] = {
@@ -2522,6 +2807,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         "/sync/pull": "_handle_post_sync_pull",
         "/sync/push": "_handle_post_sync_push",
         "/sync/config": "_handle_post_sync_config",
+        "/smart-reply": "_handle_post_smart_reply",
         "/self-heal": "_handle_post_self_heal",
         "/feedback": "_handle_post_feedback",
         "/missions/create": "_handle_post_missions_create",

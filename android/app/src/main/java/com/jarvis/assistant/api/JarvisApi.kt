@@ -76,6 +76,30 @@ interface JarvisApi {
     @GET("/missions/status")
     suspend fun getMissionStatus(): MissionStatusResponse
 
+    // ── Automation endpoints ────────────────────────────────────────────
+
+    /** Drain all pending proactive alerts (clears the queue). */
+    @GET("/alerts/pending")
+    suspend fun getAlertsPending(): AlertsPendingResponse
+
+    /** Get a context-aware digest of what happened while user was busy. */
+    @GET("/digest")
+    suspend fun getDigest(
+        @retrofit2.http.Query("since") since: Long = 0,
+        @retrofit2.http.Query("context") context: String = "",
+    ): DigestResponse
+
+    /** Get KG-powered intelligence briefing for an upcoming meeting. */
+    @GET("/meeting-prep")
+    suspend fun getMeetingPrep(
+        @retrofit2.http.Query("title") title: String = "",
+        @retrofit2.http.Query("attendees") attendees: String = "",
+    ): MeetingPrepResponse
+
+    /** Generate a contextual auto-reply SMS for a missed call. */
+    @POST("/smart-reply")
+    suspend fun getSmartReply(@Body request: SmartReplyRequest): SmartReplyResponse
+
     // ── Intelligence sync endpoints ─────────────────────────────────────
 
     /**
@@ -135,6 +159,7 @@ data class MissionCreateResponse(
     val missionId: String = "",
     val topic: String = "",
     val status: String = "",
+    val origin: String = "",
     val sources: List<String> = emptyList(),
 )
 
@@ -145,6 +170,7 @@ data class MissionDto(
     val topic: String = "",
     val objective: String = "",
     val status: String = "",
+    val origin: String = "",
     val sources: List<String> = emptyList(),
     @com.google.gson.annotations.SerializedName("verified_findings")
     val verifiedFindings: Int = 0,
@@ -159,4 +185,93 @@ data class MissionStatusResponse(
     val ok: Boolean = false,
     val total: Int = 0,
     val missions: List<MissionDto> = emptyList(),
+)
+
+// ── Automation response models ──────────────────────────────────────────
+
+/** Response from GET /alerts/pending. */
+data class AlertsPendingResponse(
+    val ok: Boolean = false,
+    val alerts: List<PendingAlert> = emptyList(),
+)
+
+data class PendingAlert(
+    val id: String = "",
+    val type: String = "",
+    val title: String = "",
+    val body: String = "",
+    @com.google.gson.annotations.SerializedName("group_key")
+    val groupKey: String = "",
+    val priority: String = "",
+    val ts: Double = 0.0,
+)
+
+/** Request for POST /smart-reply. */
+data class SmartReplyRequest(
+    @com.google.gson.annotations.SerializedName("contact_name")
+    val contactName: String,
+    @com.google.gson.annotations.SerializedName("phone_number")
+    val phoneNumber: String = "",
+    val context: String = "",
+    @com.google.gson.annotations.SerializedName("meeting_end_time")
+    val meetingEndTime: String = "",
+    @com.google.gson.annotations.SerializedName("eta_minutes")
+    val etaMinutes: Int? = null,
+)
+
+/** Response from POST /smart-reply. */
+data class SmartReplyResponse(
+    val ok: Boolean = false,
+    val reply: String = "",
+    @com.google.gson.annotations.SerializedName("contact_context")
+    val contactContext: String = "",
+)
+
+/** Response from GET /digest. */
+data class DigestResponse(
+    val ok: Boolean = false,
+    val digest: DigestData? = null,
+)
+
+data class DigestData(
+    val context: String = "",
+    @com.google.gson.annotations.SerializedName("since_ts")
+    val sinceTs: Long = 0,
+    @com.google.gson.annotations.SerializedName("missed_calls")
+    val missedCalls: List<Map<String, Any?>> = emptyList(),
+    @com.google.gson.annotations.SerializedName("notifications_summary")
+    val notificationsSummary: String = "",
+    @com.google.gson.annotations.SerializedName("calendar_upcoming")
+    val calendarUpcoming: List<Map<String, Any?>> = emptyList(),
+    @com.google.gson.annotations.SerializedName("proactive_alerts")
+    val proactiveAlerts: List<Map<String, Any?>> = emptyList(),
+)
+
+/** Response from GET /meeting-prep. */
+data class MeetingPrepResponse(
+    val ok: Boolean = false,
+    val briefing: MeetingBriefing? = null,
+)
+
+data class MeetingBriefing(
+    val title: String = "",
+    val attendees: List<String> = emptyList(),
+    @com.google.gson.annotations.SerializedName("context_facts")
+    val contextFacts: List<ContextFact> = emptyList(),
+    @com.google.gson.annotations.SerializedName("recent_memories")
+    val recentMemories: List<RecentMemory> = emptyList(),
+    @com.google.gson.annotations.SerializedName("suggested_topics")
+    val suggestedTopics: List<String> = emptyList(),
+)
+
+data class ContextFact(
+    val about: String = "",
+    val fact: String = "",
+    val confidence: Double = 0.0,
+)
+
+data class RecentMemory(
+    val about: String = "",
+    val summary: String = "",
+    val date: String = "",
 )

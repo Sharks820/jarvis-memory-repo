@@ -270,7 +270,7 @@ class TestWakeWordDetector:
 
 class TestDefaultTriggerRules:
     def test_default_trigger_rules_count(self):
-        assert len(DEFAULT_TRIGGER_RULES) == 4
+        assert len(DEFAULT_TRIGGER_RULES) == 6
 
     def test_rule_ids(self):
         ids = {r.rule_id for r in DEFAULT_TRIGGER_RULES}
@@ -278,6 +278,8 @@ class TestDefaultTriggerRules:
         assert "bill_due_alert" in ids
         assert "calendar_prep" in ids
         assert "urgent_task_alert" in ids
+        assert "contact_neglect" in ids
+        assert "meeting_intelligence" in ids
 
     def test_cooldowns(self):
         cooldowns = {r.rule_id: r.cooldown_minutes for r in DEFAULT_TRIGGER_RULES}
@@ -285,6 +287,8 @@ class TestDefaultTriggerRules:
         assert cooldowns["bill_due_alert"] == 360
         assert cooldowns["calendar_prep"] == 120
         assert cooldowns["urgent_task_alert"] == 180
+        assert cooldowns["contact_neglect"] == 720
+        assert cooldowns["meeting_intelligence"] == 10
 
 
 # ---------- Handlers (command bus integration) ----------

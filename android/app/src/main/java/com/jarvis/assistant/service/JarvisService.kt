@@ -17,7 +17,12 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.jarvis.assistant.MainActivity
 import com.jarvis.assistant.R
+import com.jarvis.assistant.feature.automation.ContextDigest
+import com.jarvis.assistant.feature.automation.MorningBriefing
 import com.jarvis.assistant.feature.commute.ParkingMemory
+import com.jarvis.assistant.feature.context.ContextAdjuster
+import com.jarvis.assistant.feature.context.ContextTransitionListener
+import com.jarvis.assistant.feature.context.UserContext
 import com.jarvis.assistant.feature.finance.SpendSummaryWorker
 import com.jarvis.assistant.feature.notifications.NotificationChannelManager
 import com.jarvis.assistant.data.CommandQueueProcessor
@@ -60,6 +65,9 @@ class JarvisService : Service() {
     @Inject lateinit var processor: CommandQueueProcessor
     @Inject lateinit var proactiveReceiver: ProactiveAlertReceiver
     @Inject lateinit var autoSyncManager: AutoSyncManager
+    @Inject lateinit var contextAdjuster: ContextAdjuster
+    @Inject lateinit var contextDigest: ContextDigest
+    @Inject lateinit var morningBriefing: MorningBriefing
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loopJob: Job? = null
@@ -82,6 +90,19 @@ class JarvisService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to enqueue spend summary worker: ${e.message}")
         }
+
+        // Register automation listeners for context transitions
+        contextAdjuster.addTransitionListener(object : ContextTransitionListener {
+            override suspend fun onContextEntered(context: UserContext) {
+                contextDigest.onContextEnter(context)
+            }
+            override suspend fun onContextExited(previousContext: UserContext) {
+                contextDigest.onContextExit(previousContext)
+                if (previousContext == UserContext.SLEEPING) {
+                    morningBriefing.onWakeUp()
+                }
+            }
+        })
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

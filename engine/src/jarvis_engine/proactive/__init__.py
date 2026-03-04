@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jarvis_engine.proactive.triggers import (
@@ -31,9 +32,10 @@ __all__ = [
 class ProactiveEngine:
     """Evaluate trigger rules against snapshot data and fire notifications."""
 
-    def __init__(self, rules: list[TriggerRule], notifier: Notifier) -> None:
+    def __init__(self, rules: list[TriggerRule], notifier: Notifier, root: Path | None = None) -> None:
         self._rules = rules
         self._notifier = notifier
+        self._root = root
         self._last_fired: dict[str, datetime] = {}
         self._lock = threading.Lock()
 
@@ -90,6 +92,20 @@ class ProactiveEngine:
 
             if new_alerts:
                 self._notifier.send_batch(new_alerts)
+                # Also enqueue for mobile polling
+                if self._root is not None:
+                    try:
+                        from jarvis_engine.proactive.alert_queue import enqueue_alert
+                        for alert in new_alerts:
+                            enqueue_alert(self._root, {
+                                "type": alert.rule_id,
+                                "title": f"Jarvis: {alert.rule_id.replace('_', ' ').title()}",
+                                "body": alert.message,
+                                "group_key": f"jarvis_{alert.rule_id}",
+                                "priority": alert.priority,
+                            })
+                    except Exception as exc:
+                        logger.debug("Alert queue enqueue failed: %s", exc)
             else:
                 # No alerts after dedup — undo reservation
                 with self._lock:
