@@ -36,6 +36,13 @@ import com.jarvis.assistant.feature.commute.ParkingMemory
 import com.jarvis.assistant.feature.prescription.MedicationScheduler
 import com.jarvis.assistant.feature.prescription.RefillTracker
 import com.jarvis.assistant.feature.scheduling.JarvisNotificationListenerService
+import com.jarvis.assistant.feature.security.BitdefenderIntegration
+import com.jarvis.assistant.feature.security.BitdefenderScanInfo
+import com.jarvis.assistant.feature.security.DeviceSecurityMonitor
+import com.jarvis.assistant.feature.security.EavesdropDetector
+import com.jarvis.assistant.feature.security.EavesdropReport
+import com.jarvis.assistant.feature.security.SecurityReport
+import com.jarvis.assistant.feature.security.Severity
 import com.jarvis.assistant.security.CryptoHelper
 import com.google.gson.Gson
 import java.text.SimpleDateFormat
@@ -73,6 +80,9 @@ class SettingsViewModel @Inject constructor(
     private val nudgeLogDao: NudgeLogDao,
     private val nudgeResponseTracker: NudgeResponseTracker,
     private val builtInNudges: BuiltInNudges,
+    private val deviceSecurityMonitor: DeviceSecurityMonitor,
+    private val eavesdropDetector: EavesdropDetector,
+    private val bitdefenderIntegration: BitdefenderIntegration,
 ) : ViewModel() {
 
     val desktopUrl = MutableStateFlow(crypto.getBaseUrl())
@@ -229,6 +239,21 @@ class SettingsViewModel @Inject constructor(
     val screenBreakEnabled = MutableStateFlow(false)
     val sleepReminderEnabled = MutableStateFlow(false)
 
+    // ── Device Security Settings ──────────────────────────────────────
+
+    private val securityPrefs by lazy {
+        app.getSharedPreferences(DeviceSecurityMonitor.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    val securityMonitoringEnabled = MutableStateFlow(
+        securityPrefs.getBoolean(DeviceSecurityMonitor.KEY_ENABLED, true),
+    )
+
+    val securityReport = MutableStateFlow<SecurityReport?>(null)
+    val eavesdropReport = MutableStateFlow<EavesdropReport?>(null)
+    val bitdefenderInfo = MutableStateFlow<BitdefenderScanInfo?>(null)
+    val securityScanLoading = MutableStateFlow(false)
+
     // ── Mute Jarvis Settings ─────────────────────────────────────────
 
     val muteActive = MutableStateFlow(
@@ -352,6 +377,7 @@ class SettingsViewModel @Inject constructor(
         loadMissions()
         loadScamIntel()
         checkMuteExpiry()
+        loadSecurityStatus()
     }
 
     fun saveDesktopUrl() {
@@ -736,6 +762,40 @@ class SettingsViewModel @Inject constructor(
     fun setMorningBriefingSpeak(enabled: Boolean) {
         morningBriefingSpeak.value = enabled
         contextPrefs.edit().putBoolean(MorningBriefing.KEY_SPEAK, enabled).apply()
+    }
+
+    // ── Device Security Actions ─────────────────────────────────────
+
+    fun setSecurityMonitoringEnabled(enabled: Boolean) {
+        securityMonitoringEnabled.value = enabled
+        securityPrefs.edit().putBoolean(DeviceSecurityMonitor.KEY_ENABLED, enabled).apply()
+    }
+
+    fun runSecurityCheck() {
+        securityScanLoading.value = true
+        viewModelScope.launch {
+            try {
+                val report = deviceSecurityMonitor.runFullScan()
+                securityReport.value = report
+                val eavesdrop = eavesdropDetector.scan()
+                eavesdropReport.value = eavesdrop
+                bitdefenderInfo.value = bitdefenderIntegration.getLastScanInfo()
+            } catch (e: Exception) {
+                Log.w(TAG, "Security check failed", e)
+            } finally {
+                securityScanLoading.value = false
+            }
+        }
+    }
+
+    private fun loadSecurityStatus() {
+        viewModelScope.launch {
+            try {
+                bitdefenderInfo.value = bitdefenderIntegration.getLastScanInfo()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load security status", e)
+            }
+        }
     }
 
     // ── Learning Mission Actions ────────────────────────────────────
