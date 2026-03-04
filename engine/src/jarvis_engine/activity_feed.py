@@ -130,13 +130,13 @@ class ActivityFeed:
         details: dict | None = None,
     ) -> str:
         """Log an activity event and return its event_id.  Thread-safe."""
-        self._check_open()
         event_id = uuid.uuid4().hex
         ts = datetime.now(UTC).isoformat()
         details_json = json.dumps(details or {})
         created_at = time.time()
 
         with self._lock:
+            self._check_open()
             self._db.execute(
                 "INSERT INTO activity_log (id, timestamp, category, summary, details, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -154,7 +154,6 @@ class ActivityFeed:
         since: str | None = None,
     ) -> list[ActivityEvent]:
         """Query recent events, newest first.  Optional category and since filters."""
-        self._check_open()
         clauses: list[str] = []
         params: list[str | int] = []
 
@@ -177,6 +176,7 @@ class ActivityFeed:
         params.append(limit)
 
         with self._lock:
+            self._check_open()
             rows = self._db.execute(sql, params).fetchall()
 
         return [
@@ -192,9 +192,9 @@ class ActivityFeed:
 
     def clear_old(self, keep_days: int = 30) -> int:
         """Prune events older than *keep_days*.  Returns count deleted."""
-        self._check_open()
         cutoff = (datetime.now(UTC) - timedelta(days=keep_days)).isoformat()
         with self._lock:
+            self._check_open()
             cur = self._db.execute(
                 "DELETE FROM activity_log WHERE timestamp < ?", (cutoff,)
             )
@@ -203,9 +203,9 @@ class ActivityFeed:
 
     def stats(self) -> dict:
         """Return event count per category for the last 24 hours."""
-        self._check_open()
         cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
         with self._lock:
+            self._check_open()
             rows = self._db.execute(
                 "SELECT category, COUNT(*) AS cnt "
                 "FROM activity_log WHERE timestamp >= ? "

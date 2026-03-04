@@ -2842,7 +2842,7 @@ class JarvisDesktopWidget(tk.Tk):
             # Learning missions (API now pre-filters to active only)
             missions = m.get("active_missions", [])
             if isinstance(missions, list):
-                missions = [mi for mi in missions if isinstance(mi, dict) and mi.get("status", "") not in ("completed", "failed", "cancelled")]
+                missions = [mi for mi in missions if isinstance(mi, dict) and mi.get("status", "") not in ("completed", "failed", "cancelled", "exhausted")]
             mission_count = int(m.get("mission_count", len(missions) if isinstance(missions, list) else 0))
             if mission_count > 0 and isinstance(missions, list) and missions:
                 topics = [str(mi.get("topic", "?"))[:20] for mi in missions[:3]]
