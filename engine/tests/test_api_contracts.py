@@ -141,12 +141,24 @@ class TestValidateContract:
         """A correct /command response should produce no errors."""
         response = {
             "ok": True,
+            "lifecycle_state": "completed",
             "intent": "general",
+            "response": "hello",
+            "response_chunks": ["hello"],
+            "response_truncated": False,
             "stdout_tail": ["line1"],
+            "stdout_truncated": False,
             "command_exit_code": 0,
             "status_code": "0",
             "reason": "",
             "stderr_tail": [],
+            "correlation_id": "abc123",
+            "diagnostic_id": "abc123",
+            "error_code": "",
+            "category": "",
+            "retryable": False,
+            "user_hint": "",
+            "error": "",
         }
         errors = validate_contract("POST /command", response)
         assert errors == []
@@ -521,6 +533,15 @@ class TestContractDriftDetection:
         schema = get_contract_schema("POST /command")
         assert "stdout_tail" in schema["properties"]
         assert schema["properties"]["stdout_tail"]["type"] == "array"
+
+    def test_command_response_has_lifecycle_and_diagnostics(self) -> None:
+        """Command response schema includes lifecycle and diagnostic metadata."""
+        schema = get_contract_schema("POST /command")
+        assert "lifecycle_state" in schema["properties"]
+        assert "correlation_id" in schema["properties"]
+        assert "diagnostic_id" in schema["properties"]
+        assert "error_code" in schema["properties"]
+        assert "retryable" in schema["properties"]
 
     def test_settings_has_nested_settings_object(self) -> None:
         """Settings response wraps data under 'settings' key.

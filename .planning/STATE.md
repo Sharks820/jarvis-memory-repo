@@ -3,19 +3,19 @@
 ## Project Reference
 
 See: .planning/PROJECT.md
-See: .planning/ROADMAP.md (v4.0 Intelligence Activation & Voice Overhaul)
+See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v4.0 COMPLETE — All 5 phases shipped, 31 requirements verified, 4345 tests passing.
+**Current focus:** v5.0 planning + phase-1 reliability execution kickoff.
 
 ## Current Position
 
-Phase: 5 (Mobile App Readiness) -- COMPLETE
-Current Plan: 1 of 1 (all plans complete)
-Status: v4.0 milestone COMPLETE — all 5 phases shipped
-Last activity: 2026-03-04 (comprehensive scan + mobile timeout fixes validated)
+Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
+Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
+Status: v4.0 complete, v5.0 execution initialized
+Last activity: 2026-03-05 (local merge + full scan baseline + v5 plan authored)
 
-Progress (v4.0): [██████████] 100%
+Progress (v5.0): [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -30,6 +30,13 @@ Progress (v4.0): [██████████] 100%
 - Phase 3 (Widget & UI Live Updates): COMPLETE — 2 plans, 5 UI requirements verified, bug scan clean
 - Phase 4 (Platform Stability): COMPLETE — 1 plan, 5 STAB requirements verified, bug scan clean
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
+
+**v5.0 Reliability & Continuity**: INITIALIZED
+- Baseline test run (2026-03-05): 4433 passing, 9 skipped, 0 failures
+- Lint baseline: ruff clean
+- Typed debt baseline: mypy 116 errors across 35 files
+- Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
+- Plan active: `.planning/phases/14-world-class-assistant-reliability/14-01-PLAN.md`
 
 ## Self-Analysis Findings (all resolved)
 
@@ -65,14 +72,25 @@ Progress (v4.0): [██████████] 100%
   - Plan 01: MOB-01 (learning tables in sync changelog with composite PK), MOB-02 (GET /learning/summary), MOB-03 (POST /feedback with record_explicit_feedback), MOB-04/05 (45 tests)
   - Bug scan round 1: 3 CRITICAL + 4 MEDIUM fixed (DB leaks, composite PK, write lock, neutral quality)
   - Bug scan round 2: 1 CRITICAL fixed (SyncEngine._apply_single_change composite PK support)
+- 2026-03-05: Start v5.0 reliability-first program with strict GSD execution and soak-test gating.
+- v5.0 sequencing decision:
+  1. Reliability/resource control first
+  2. Cross-provider context continuity second
+  3. Learning mission truthfulness + live activity third
+  4. Voice correction loop and mobile tasking after core stability
 
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
-- 2026-03-04 comprehensive rescan: mobile timeout regressions fixed and validated (175-pass targeted suite, full lint clean); Bandit/Pip-audit hardening backlog remains (see `.planning/reports/2026-03-04-repo-scan.md`).
-- 2026-03-04 follow-up reliability pass: mission progress instrumentation + continuity/web-freshness guards shipped (see `.planning/reports/2026-03-04-followup-reliability-and-learning.md`).
+- Security/typed quality debt still large despite functional pass baseline:
+  - mypy: 116 errors / 35 files
+  - bandit: 165 findings (1 high, 50 medium, 114 low)
+- User-reported runtime issues persist in real-world usage:
+  - context truncation/HTTP failures on long replies
+  - stability degradation after short command sequences
+  - high memory intensity and mission/activity trust gaps
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: v4.0 milestone COMPLETE — all 5 phases shipped, ready for v5.0 planning
+Last session: 2026-03-05
+Stopped at: v5.0 phase-1 plan authored and ready for implementation commits
 Resume file: None

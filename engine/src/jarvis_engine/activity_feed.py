@@ -47,6 +47,7 @@ class ActivityCategory:
     SECURITY = "security"
     PREFERENCE_LEARNED = "preference_learned"
     MISSION_STATE_CHANGE = "mission_state_change"
+    COMMAND_LIFECYCLE = "command_lifecycle"
 
 
 # ---------------------------------------------------------------------------
