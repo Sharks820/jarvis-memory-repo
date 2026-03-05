@@ -1664,7 +1664,13 @@ def cmd_ops_sync(output_path: Path) -> int:
             raw = json.loads(output_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             raw = {}
-        prompts = raw.get("connector_prompts", []) if isinstance(raw, dict) else []
+        if not isinstance(raw, dict):
+            raw = {}
+        prompts_raw = raw.get("connector_prompts", [])
+        if not isinstance(prompts_raw, list):
+            prompts_raw = []
+        raw["connector_prompts"] = prompts_raw
+        prompts = prompts_raw
         for item in prompts:
             if not isinstance(item, dict):
                 continue

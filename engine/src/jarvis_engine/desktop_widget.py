@@ -152,17 +152,27 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         except (json.JSONDecodeError, OSError):
             raw = {}
 
+    # Normalize optional keys so legacy configs share one read path.
+    raw.setdefault("master_password_protected", "")
+    raw.setdefault("master_password", "")
+    raw.setdefault("token_protected", "")
+    raw.setdefault("token", "")
+    raw.setdefault("signing_key_protected", "")
+    raw.setdefault("signing_key", "")
+    raw.setdefault("base_url", "")
+    raw.setdefault("device_id", "galaxy_s25_primary")
+
     # --- Resolve master password (DPAPI-protected or plaintext legacy) ---
     master_password = ""
     needs_migration = False
-    if "master_password_protected" in raw:
-        b64 = str(raw["master_password_protected"])
+    if str(raw.get("master_password_protected", "")).strip():
+        b64 = str(raw.get("master_password_protected", ""))
         try:
             master_password = _dpapi_decrypt(b64)
         except Exception:
             logger.warning("Failed to decrypt master_password_protected via DPAPI; password unavailable")
-    elif "master_password" in raw:
-        master_password = str(raw["master_password"])
+    elif str(raw.get("master_password", "")).strip():
+        master_password = str(raw.get("master_password", ""))
         if master_password:
             needs_migration = True
 
@@ -179,9 +189,10 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     # --- Resolve token and signing_key (DPAPI-protected or plaintext legacy) ---
     def _resolve_dpapi_field(field: str, fallback: str = "") -> str:
         protected_key = f"{field}_protected"
-        if protected_key in raw:
+        protected_val = str(raw.get(protected_key, "")).strip()
+        if protected_val:
             try:
-                return _dpapi_decrypt(str(raw[protected_key]))
+                return _dpapi_decrypt(protected_val)
             except Exception:
                 logger.warning("Failed to decrypt %s via DPAPI", protected_key)
         val = str(raw.get(field, "")).strip()

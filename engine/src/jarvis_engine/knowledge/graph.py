@@ -680,7 +680,11 @@ class KnowledgeGraph:
             result_map = {}
             for row in rows:
                 d = dict(row)
-                result_map[d["node_id"]] = d
+                node_id = str(d.get("node_id", "")).strip()
+                d["node_id"] = node_id
+                if not node_id:
+                    continue
+                result_map[node_id] = d
             results = []
             for nid in candidate_ids:
                 if nid in result_map:

@@ -173,6 +173,7 @@ class KnowledgeHarvester:
                             "status": "ok",
                             "records_created": 0,
                             "cost_usd": result.cost_usd,
+                            "error": "",
                             "skipped_dedup": True,
                         })
                         continue
@@ -201,6 +202,8 @@ class KnowledgeHarvester:
                     "status": "ok",
                     "records_created": records_created,
                     "cost_usd": result.cost_usd,
+                    "error": "",
+                    "skipped_dedup": False,
                 })
 
             except Exception as exc:
@@ -213,6 +216,7 @@ class KnowledgeHarvester:
                     "error": str(exc),
                     "records_created": 0,
                     "cost_usd": 0.0,
+                    "skipped_dedup": False,
                 })
 
         return {

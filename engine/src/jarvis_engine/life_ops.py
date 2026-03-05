@@ -41,6 +41,18 @@ def load_snapshot(path: Path) -> OpsSnapshot:
     except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to load snapshot from %s: %s", path, exc)
         raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    raw.setdefault("date", "")
+    raw.setdefault("tasks", [])
+    raw.setdefault("calendar_events", [])
+    raw.setdefault("emails", [])
+    raw.setdefault("bills", [])
+    raw.setdefault("subscriptions", [])
+    raw.setdefault("medications", [])
+    raw.setdefault("school_items", [])
+    raw.setdefault("family_items", [])
+    raw.setdefault("projects", [])
     return OpsSnapshot(
         date=str(raw.get("date", "")),
         tasks=list(raw.get("tasks") or []),

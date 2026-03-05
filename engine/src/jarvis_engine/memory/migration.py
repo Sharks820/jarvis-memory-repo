@@ -282,6 +282,16 @@ def migrate_facts(
                 try:
                     if not isinstance(value, dict):
                         value = {"value": str(value), "confidence": 0.5, "updated_utc": datetime.now(UTC).isoformat()}
+                    else:
+                        value = dict(value)
+                    value.setdefault("value", "")
+                    value.setdefault("confidence", 0.0)
+                    value.setdefault("locked", 0)
+                    value.setdefault("updated_utc", datetime.now(UTC).isoformat())
+                    sources = value.get("sources", [])
+                    history = value.get("history", [])
+                    value["sources"] = sources if isinstance(sources, list) else []
+                    value["history"] = history if isinstance(history, list) else []
 
                     engine._db.execute(
                         """
