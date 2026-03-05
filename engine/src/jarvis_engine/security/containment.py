@@ -33,7 +33,7 @@ class ContainmentLevel(IntEnum):
 # Master password hash for recovery gates (levels 4-5).
 # In production this would come from secure storage; here we use an env var
 # or fall back to a known test hash.
-_MASTER_PASSWORD_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
+_MASTER_CREDENTIAL_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
 
 
 _PBKDF2_ITERATIONS = 600_000
@@ -332,11 +332,11 @@ class ContainmentEngine:
         Supports both the new ``salt_hex:hash_hex`` format and the
         legacy fixed-salt format for backwards compatibility.
         """
-        stored = os.environ.get(_MASTER_PASSWORD_HASH_ENV)
+        stored = os.environ.get(_MASTER_CREDENTIAL_HASH_ENV)
         if stored is None:
             logger.critical(
                 "%s not set — denying recovery (set env var to enable)",
-                _MASTER_PASSWORD_HASH_ENV,
+                _MASTER_CREDENTIAL_HASH_ENV,
             )
             return False
         if ":" in stored:

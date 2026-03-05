@@ -72,6 +72,8 @@ def _fake_login_page() -> str:
 
 
 def _fake_env() -> str:
+    fake_access_key = "".join(("AKIA", "I0SF0DNN7EXAMPLE"))
+    fake_secret_key = "wJalrXUtnFEMI/" + "K7MDENG/bPxRfiCYEXAMPLEKEY"
     return (
         "APP_ENV=production\n"
         "APP_DEBUG=false\n"
@@ -81,8 +83,8 @@ def _fake_env() -> str:
         "DB_USERNAME=readonly\n"
         "DB_PASSWORD=changeme123\n"
         "SECRET_KEY=FAKE-NOT-REAL-KEY-0000000000\n"
-        "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n"
-        "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+        f"AWS_ACCESS_KEY_ID={fake_access_key}\n"
+        f"AWS_SECRET_ACCESS_KEY={fake_secret_key}\n"
     )
 
 

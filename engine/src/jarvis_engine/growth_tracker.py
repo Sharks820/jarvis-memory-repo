@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import threading
 from dataclasses import dataclass, field, asdict
@@ -11,10 +10,10 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
-from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import logging
+from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 
 _logger = logging.getLogger(__name__)
 
@@ -269,20 +268,7 @@ _history_lock = threading.RLock()
 
 
 def _is_safe_ollama_endpoint(endpoint: str) -> bool:
-    parsed = urlparse(endpoint)
-    if parsed.scheme not in {"http", "https"}:
-        return False
-    host = (parsed.hostname or "").strip().lower()
-    if not host:
-        return False
-    allow_nonlocal = os.getenv("JARVIS_ALLOW_NONLOCAL_OLLAMA_ENDPOINT", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    if allow_nonlocal:
-        return True
-    return host in {"127.0.0.1", "localhost", "::1"}
+    return is_safe_ollama_endpoint(endpoint)
 
 
 def load_golden_tasks(path: Path) -> list[GoldenTask]:

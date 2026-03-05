@@ -19,16 +19,28 @@ logger = logging.getLogger(__name__)
 def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
     """Compute 7d and 30d local-vs-cloud summaries and append to JSONL history.
 
-    Returns a snapshot dict with date, local_pct, cloud_cost_usd, and total_queries
-    for both 7-day and 30-day windows.
+    Returns a snapshot dict with date, local_pct, cloud_cost_usd, failed metrics,
+    and total_queries for both 7-day and 30-day windows.
     """
     try:
         summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
         summary_30d = cost_tracker.local_vs_cloud_summary(days=30)
     except Exception as exc:
         logger.warning("Cost tracker summary failed: %s", exc)
-        summary_7d = {"local_pct": 0.0, "cloud_cost_usd": 0.0, "total_count": 0}
-        summary_30d = {"local_pct": 0.0, "cloud_cost_usd": 0.0, "total_count": 0}
+        summary_7d = {
+            "local_pct": 0.0,
+            "cloud_cost_usd": 0.0,
+            "failed_count": 0,
+            "failed_cost_usd": 0.0,
+            "total_count": 0,
+        }
+        summary_30d = {
+            "local_pct": 0.0,
+            "cloud_cost_usd": 0.0,
+            "failed_count": 0,
+            "failed_cost_usd": 0.0,
+            "total_count": 0,
+        }
 
     snapshot = {
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
@@ -36,6 +48,10 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
         "30d_local_pct": round(float(summary_30d.get("local_pct", 0.0)), 4),
         "7d_cloud_cost_usd": round(float(summary_7d.get("cloud_cost_usd", 0.0)), 6),
         "30d_cloud_cost_usd": round(float(summary_30d.get("cloud_cost_usd", 0.0)), 6),
+        "7d_failed_count": int(summary_7d.get("failed_count", 0) or 0),
+        "30d_failed_count": int(summary_30d.get("failed_count", 0) or 0),
+        "7d_failed_cost_usd": round(float(summary_7d.get("failed_cost_usd", 0.0)), 6),
+        "30d_failed_cost_usd": round(float(summary_30d.get("failed_cost_usd", 0.0)), 6),
         "7d_total_queries": summary_7d.get("total_count", 0),
         "30d_total_queries": summary_30d.get("total_count", 0),
     }

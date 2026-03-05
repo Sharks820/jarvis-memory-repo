@@ -159,22 +159,32 @@ class CostTracker:
         - period_days: int
         - local_count: int
         - cloud_count: int
+        - failed_count: int
         - total_count: int
         - local_pct: float (rounded to 1 decimal)
         - cloud_cost_usd: float
+        - failed_cost_usd: float
         """
+        empty = {
+            "period_days": 0,
+            "local_count": 0,
+            "cloud_count": 0,
+            "failed_count": 0,
+            "total_count": 0,
+            "local_pct": 0.0,
+            "cloud_cost_usd": 0.0,
+            "failed_cost_usd": 0.0,
+        }
         days = max(1, min(days, 3650))
         if getattr(self, "_closed", False):
-            return {
-                "period_days": days, "local_count": 0, "cloud_count": 0,
-                "total_count": 0, "local_pct": 0.0, "cloud_cost_usd": 0.0,
-            }
+            closed = dict(empty)
+            closed["period_days"] = days
+            return closed
         with self._write_lock:
             if getattr(self, "_closed", False):
-                return {
-                    "period_days": days, "local_count": 0, "cloud_count": 0,
-                    "total_count": 0, "local_pct": 0.0, "cloud_cost_usd": 0.0,
-                }
+                closed = dict(empty)
+                closed["period_days"] = days
+                return closed
             cur = self._db.execute(
                 """
                 SELECT
@@ -193,27 +203,34 @@ class CostTracker:
 
         local_count = 0
         cloud_count = 0
+        failed_count = 0
         cloud_cost = 0.0
+        failed_cost = 0.0
         for row in fetched:
             cat = row["category"]
             cnt = row["cnt"] or 0
             cost = row["total_cost"] or 0.0
             if cat == "local":
                 local_count = cnt
+            elif cat == "cloud":
+                cloud_count = cnt
+                cloud_cost = cost
             else:
-                cloud_count += cnt
-                cloud_cost += cost
+                failed_count = cnt
+                failed_cost = cost
 
-        total = local_count + cloud_count
+        total = local_count + cloud_count + failed_count
         local_pct = round((local_count / total * 100) if total > 0 else 0.0, 1)
 
         return {
             "period_days": days,
             "local_count": local_count,
             "cloud_count": cloud_count,
+            "failed_count": failed_count,
             "total_count": total,
             "local_pct": local_pct,
             "cloud_cost_usd": round(cloud_cost, 6),
+            "failed_cost_usd": round(failed_cost, 6),
         }
 
     def close(self) -> None:

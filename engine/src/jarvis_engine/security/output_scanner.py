@@ -172,7 +172,7 @@ class OutputScanner:
     Usage::
 
         scanner = OutputScanner()
-        result = scanner.scan_output("Here is the API key: AKIAIOSFODNN7EXAMPLE")
+        result = scanner.scan_output("Here is the API key: AKIA************")
         assert not result.safe
     """
 

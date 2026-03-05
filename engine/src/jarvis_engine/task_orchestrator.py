@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, VideoAdapter
 from jarvis_engine.capability import CapabilityGate
 from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 
 TaskType = Literal["image", "code", "video", "model3d"]
 DEFAULT_FALLBACK_MODELS = ["qwen3:14b", "qwen3:latest", "deepseek-r1:8b"]
@@ -395,8 +396,7 @@ class TaskOrchestrator:
 
     @staticmethod
     def _is_safe_ollama_endpoint(endpoint: str) -> bool:
-        from jarvis_engine.growth_tracker import _is_safe_ollama_endpoint
-        return _is_safe_ollama_endpoint(endpoint)
+        return is_safe_ollama_endpoint(endpoint)
 
     def _safe_output_path(self, raw_path: str) -> Path:
         try:

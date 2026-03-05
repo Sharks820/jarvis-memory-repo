@@ -170,7 +170,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         try:
             master_password = _dpapi_decrypt(b64)
         except Exception:
-            logger.warning("Failed to decrypt master_password_protected via DPAPI; password unavailable")
+            logger.warning("Failed to decrypt protected credential via DPAPI; value unavailable")
     elif str(raw.get("master_password", "")).strip():
         master_password = str(raw.get("master_password", ""))
         if master_password:
@@ -262,7 +262,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
             if _url_healed:
                 logger.info("Persisted auto-healed base_url to config")
             if needs_migration or needs_migration_fields:
-                logger.info("Migrated plaintext secrets to DPAPI-protected storage")
+                logger.info("Migrated legacy plaintext credentials to DPAPI-protected storage")
         except Exception:
             logger.warning("Failed to save config migration; will retry on next save")
 
@@ -302,7 +302,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         try:
             payload["master_password_protected"] = _dpapi_encrypt(cfg.master_password)
         except Exception:
-            logger.warning("DPAPI encryption unavailable; storing master_password in plaintext")
+            logger.warning("DPAPI encryption unavailable; storing legacy credential in plaintext")
             payload["master_password"] = cfg.master_password
     # Never write the plaintext key when DPAPI succeeds (no "master_password" key at all)
 

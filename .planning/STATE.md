@@ -13,9 +13,9 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 debt-gate pass 3: desloppify key-flow + dedupe refactors with full scan loop)
+Last activity: 2026-03-05 (v5 debt-gate pass 4: endpoint policy unification + gateway fail-fast + cost-contract coherence)
 
-Progress (v5.0): [█████░░░░░] 50%
+Progress (v5.0): [██████░░░░] 55%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress (v5.0): [█████░░░░░] 50%
 - 2026-03-05: v5 debt-gate pass: desloppify installed, Claude skill updated, and multi-file schema/key-flow fixes applied with scan loop + attested resolutions.
 - 2026-03-05: v5 debt-gate pass 2: fixed `mobile_api` recent_events schema drift (`details`) and `ops_sync` fallback ICS phantom-key reads; focused tests + full suite passed.
 - 2026-03-05: v5 debt-gate pass 3: reduced dict-key drift and constructor duplication (`persona`, `resilience`, `runtime_control`, `mobile_api`, `defense_handlers`, `learning/*`) with repeated excluded-scope scans and green targeted/full test gates.
+- 2026-03-05: v5 debt-gate pass 4: centralized safe Ollama endpoint policy (`security/net_policy.py`), removed gateway import masking, corrected cloud-vs-failed cost accounting contracts through proactive surfaces, and completed targeted regression gates (254 tests) with ruff clean.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -99,5 +100,5 @@ Progress (v5.0): [█████░░░░░] 50%
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: v5 debt-gate pass 3 validated and pushed; continue desloppify `next` burn-down (dupes/facades/subjective backlog)
+Stopped at: v5 debt-gate pass 4 validated; continue runtime reliability tranche for cross-LLM continuity, voice robustness, and mission activity truthfulness with desloppify follow-up burn-down
 Resume file: None

@@ -44,6 +44,8 @@ class CostReductionCommand:
 class CostReductionResult:
     local_pct: float = 0.0
     cloud_cost_usd: float = 0.0
+    failed_count: int = 0
+    failed_cost_usd: float = 0.0
     trend: str = ""
     message: str = ""
 
