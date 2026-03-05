@@ -1,0 +1,20 @@
+{
+  "relay_url": "",
+  "lan_url": "https://192.168.50.156:8787",
+  "enabled": true,
+  "sync_interval_connected": 60,
+  "sync_interval_disconnected": 300,
+  "sync_interval_background": 900,
+  "conflict_strategy": "most_recent",
+  "max_offline_queue_age_hours": 168,
+  "retry_backoff_base_seconds": 30,
+  "retry_backoff_max_seconds": 1800,
+  "sync_on_reconnect": true,
+  "sync_knowledge_graph": true,
+  "sync_preferences": true,
+  "sync_feedback": true,
+  "sync_patterns": true,
+  "phone_cache_responses": true,
+  "phone_cache_max_entries": 500,
+  "phone_cache_ttl_hours": 72
+}
