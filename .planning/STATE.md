@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 debt-gate pass: high-confidence schema/key-flow fixes + full scans)
+Last activity: 2026-03-05 (v5 debt-gate pass 2: mobile activity schema alignment + ICS fallback key hardening)
 
 Progress (v5.0): [█████░░░░░] 50%
 
@@ -32,7 +32,7 @@ Progress (v5.0): [█████░░░░░] 50%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-05): 4443 passing, 13 skipped, 0 failures
+- Latest full test run (2026-03-05): 4441 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 107 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
@@ -77,6 +77,7 @@ Progress (v5.0): [█████░░░░░] 50%
 - 2026-03-05: v5 Step 2 complete (CLI prompt compaction/checkpointing to preserve context under transport limits).
 - 2026-03-05: v5 Step 3 complete (runtime resource budgets/pressure throttling + reliability panel + mission activity telemetry).
 - 2026-03-05: v5 debt-gate pass: desloppify installed, Claude skill updated, and multi-file schema/key-flow fixes applied with scan loop + attested resolutions.
+- 2026-03-05: v5 debt-gate pass 2: fixed `mobile_api` recent_events schema drift (`details`) and `ops_sync` fallback ICS phantom-key reads; focused tests + full suite passed.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -97,5 +98,5 @@ Progress (v5.0): [█████░░░░░] 50%
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: v5 debt-gate pass complete and ready for continued findings burn-down
+Stopped at: v5 debt-gate pass 2 validated; continue desloppify `next` finding burn-down
 Resume file: None

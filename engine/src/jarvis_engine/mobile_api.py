@@ -1932,6 +1932,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     "timestamp": e.timestamp,
                     "category": e.category,
                     "summary": e.summary,
+                    "details": e.details,
                 }
                 for e in events
                 if e.category != ActivityCategory.DAEMON_CYCLE
