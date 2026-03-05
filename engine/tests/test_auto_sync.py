@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
-import tempfile
 import threading
-import time
-from pathlib import Path
 
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +100,7 @@ class TestAutoSyncConfig:
     """Tests for sync config management, persistence, and device tracking."""
 
     def test_default_config_values(self):
-        from jarvis_engine.sync.auto_sync import AutoSyncConfig, DEFAULT_SYNC_CONFIG
+        from jarvis_engine.sync.auto_sync import AutoSyncConfig
         config = AutoSyncConfig()
         assert config.get("enabled") is True
         assert config.get("conflict_strategy") == "most_recent"

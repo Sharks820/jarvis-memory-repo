@@ -1,5 +1,4 @@
 """Tests for the interest learning engine."""
-import pytest
 from jarvis_engine.news.interests import InterestLearner
 
 

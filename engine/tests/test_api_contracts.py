@@ -12,9 +12,7 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,13 +25,7 @@ from jarvis_engine.api_contracts import (
     DashboardResponse,
     ErrorResponse,
     HealthResponse,
-    IngestResponse,
-    ProcessesResponse,
     SettingsResponse,
-    SpamCandidatesResponse,
-    SyncPullResponse,
-    SyncPushResponse,
-    SyncStatusResponse,
     check_android_compatibility,
     get_android_expected_fields,
     get_contract_schema,
@@ -293,7 +285,6 @@ class TestServerResponseMatchesContract:
         Mocks cmd_voice_run to avoid full engine startup and timeout.
         """
         from conftest import http_request, signed_headers
-        from unittest.mock import patch
 
         def _fake_voice_run(**kwargs):
             # Simulate the output format from cmd_voice_run

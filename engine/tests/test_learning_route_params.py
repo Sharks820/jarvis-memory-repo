@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine.commands.learning_commands import (
     LearnInteractionCommand,
-    LearnInteractionResult,
 )
 from jarvis_engine.handlers.learning_handlers import LearnInteractionHandler
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import gzip as _gzip_mod
 import hashlib
 import hmac
@@ -126,7 +125,7 @@ _EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login", "/feedback"}
 _PUBLIC_SAFE_PATHS = frozenset({"/health", "/cert-fingerprint"})
 
 
-def _configure_db(conn: "sqlite3.Connection") -> None:
+def _configure_db(conn: Any) -> None:
     """Apply consistent SQLite PRAGMAs for performance and reliability.
 
     WAL mode, relaxed synchronous, 5s busy timeout, 64MB cache, 256MB mmap,
@@ -1858,23 +1857,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
 
-        # --- On-demand self-test if no history exists and memory engine is available ---
-        if metrics["last_self_test_score"] == 0.0 and metrics["memory_records"] > 0:
-            try:
-                from jarvis_engine.proactive.self_test import AdversarialSelfTest
-                server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
-                mem_engine = server_obj.ensure_memory_engine()
-                embed_svc = server_obj.ensure_embed_service()
-                if mem_engine is not None and embed_svc is not None:
-                    tester = AdversarialSelfTest(mem_engine, embed_svc, score_threshold=0.5)
-                    quiz_result = tester.run_memory_quiz()
-                    self_test_path.parent.mkdir(parents=True, exist_ok=True)
-                    tester.save_quiz_result(quiz_result, self_test_path)
-                    score = quiz_result.get("average_score", 0.0)
-                    metrics["last_self_test_score"] = round(float(score), 3)
-                    logger.info("On-demand self-test completed: score=%.3f", score)
-            except Exception as exc:
-                logger.debug("On-demand self-test failed: %s", exc)
+        # NOTE: do not run on-demand self-tests in request path.
+        # Expensive self-test runs can cause endpoint timeouts.
 
         # --- Capability history for overall trend confirmation ---
         try:
@@ -1891,25 +1875,29 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.debug("Intelligence growth: capability history unavailable: %s", exc)
 
-        # --- Active learning missions ---
+        # --- Active learning missions (file-based, non-blocking) ---
         try:
-            import jarvis_engine.main as main_mod
-            from jarvis_engine.commands.ops_commands import MissionStatusCommand
-            bus = main_mod._get_bus()
-            mission_result = bus.dispatch(MissionStatusCommand(last=100))
-            if mission_result.missions:
-                active = [
-                    m for m in mission_result.missions
-                    if isinstance(m, dict) and m.get("status", "") not in ("completed", "failed", "cancelled", "exhausted")
-                ]
-                metrics["mission_count"] = len(active)
-                metrics["active_missions"] = [
-                    {"topic": m.get("topic", ""), "status": m.get("status", ""), "findings": m.get("verified_findings", 0)}
-                    for m in active[:5]
-                ]
-            else:
-                metrics["mission_count"] = 0
-                metrics["active_missions"] = []
+            mission_file = root / ".planning" / "runtime" / "learning_missions.json"
+            active_missions: list[dict[str, Any]] = []
+            if mission_file.exists():
+                mission_data = json.loads(mission_file.read_text(encoding="utf-8"))
+                if isinstance(mission_data, dict):
+                    rows = mission_data.get("missions", [])
+                    if isinstance(rows, list):
+                        active_missions = [
+                            m for m in rows
+                            if isinstance(m, dict)
+                            and str(m.get("status", "")).lower() not in {"completed", "failed", "cancelled", "exhausted"}
+                        ]
+            metrics["mission_count"] = len(active_missions)
+            metrics["active_missions"] = [
+                {
+                    "topic": str(m.get("topic", "")),
+                    "status": str(m.get("status", "")),
+                    "findings": int(m.get("verified_findings", 0) or 0),
+                }
+                for m in active_missions[:5]
+            ]
         except Exception as exc:
             logger.debug("Intelligence growth: mission status unavailable: %s", exc)
             metrics["mission_count"] = 0
@@ -2379,7 +2367,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             for item in items[:200]:  # Cap at 200 items per merge
                 content = item.get("content", "")
                 category = item.get("category", "general")
-                confidence = float(item.get("confidence", 0.7))
                 source = item.get("source", "phone")
 
                 if not content or len(content) > 5000:
@@ -2427,10 +2414,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
             # Export from knowledge graph
             try:
-                from jarvis_engine.knowledge.graph import KnowledgeGraph
-                from jarvis_engine.memory.store import MemoryStore
-
-                store = MemoryStore(self.server.repo_root)
                 db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
 
                 if db_path.exists():
@@ -2756,7 +2739,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         """
         if not self._validate_auth(b""):
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         qs_parts = self.path.split("?", 1)
         title = ""
         attendees: list[str] = []
@@ -2895,7 +2877,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # Try to get additional context from KG about this contact
         contact_context = ""
         try:
-            root: Path = self.server.repo_root  # type: ignore[attr-defined]
             server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
             mem_engine = server_obj.ensure_memory_engine()
             if mem_engine is not None:
