@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import io
 import json
 import threading
-import time
-from http.client import HTTPResponse
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,6 @@ import sqlite3
 import threading
 from pathlib import Path
 
-import pytest
 
 from jarvis_engine.security.defense_commands import (
     BlockIPCommand,

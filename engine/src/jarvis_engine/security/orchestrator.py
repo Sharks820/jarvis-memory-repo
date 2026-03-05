@@ -29,7 +29,6 @@ from jarvis_engine.security.containment import ContainmentEngine
 from jarvis_engine.security.forensic_logger import ForensicLogger
 from jarvis_engine.security.honeypot import HoneypotEngine
 from jarvis_engine.security.injection_firewall import (
-    InjectionVerdict,
     PromptInjectionFirewall,
 )
 from jarvis_engine.security.ip_tracker import IPTracker
