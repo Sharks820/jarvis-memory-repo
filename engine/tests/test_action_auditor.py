@@ -5,7 +5,6 @@ import json
 import threading
 from pathlib import Path
 
-import pytest
 
 from jarvis_engine.security.action_auditor import ActionAuditor
 

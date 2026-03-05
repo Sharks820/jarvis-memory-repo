@@ -1,15 +1,11 @@
 """Tests for scam_hunter — scam campaign detection and intelligence."""
 from __future__ import annotations
 
-import json
 import pytest
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from jarvis_engine._compat import UTC
 from jarvis_engine.scam_hunter import (
-    CallIntelReport,
     CarrierIntel,
     ScamCampaign,
     build_prefix_block_actions,

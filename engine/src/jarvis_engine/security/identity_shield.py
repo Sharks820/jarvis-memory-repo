@@ -18,7 +18,6 @@ import hashlib
 import json
 import logging
 import socket
-import string
 import threading
 import urllib.error
 import urllib.request

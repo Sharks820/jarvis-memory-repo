@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
 
 from jarvis_engine.security.owner_session import OwnerSessionManager
 

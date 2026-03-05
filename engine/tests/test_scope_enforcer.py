@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import threading
 
-import pytest
 
 from jarvis_engine.security.scope_enforcer import ScopeEnforcer
 

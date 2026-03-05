@@ -635,6 +635,16 @@ def _needs_web_search(query: str) -> bool:
     return matches >= 1
 
 
+def _requires_fresh_web_confirmation(query: str) -> bool:
+    """True when the user explicitly asks for up-to-date/live web confirmation."""
+    q = query.lower().strip()
+    strict_markers = (
+        "latest", "current", "right now", "today", "tonight", "this week",
+        "live", "breaking", "as of", "up to date", "real-time", "real time",
+    )
+    return any(m in q for m in strict_markers)
+
+
 def _build_smart_context(
     bus: "CommandBus",
     query: str,
@@ -1743,10 +1753,13 @@ def cmd_mission_status(last: int) -> int:
         print(
             f"mission_id={mission.get('mission_id','')} "
             f"status={mission.get('status','')} "
+            f"progress_pct={int(mission.get('progress_pct', 0) or 0)} "
             f"topic={mission.get('topic','')} "
             f"verified_findings={mission.get('verified_findings', 0)} "
             f"updated_utc={mission.get('updated_utc','')}"
         )
+        if mission.get("progress_bar"):
+            print(f"progress_bar={mission.get('progress_bar', '')}")
         topic = mission.get("topic", "unknown")
         status = mission.get("status", "unknown")
         findings = mission.get("verified_findings", 0)
@@ -1762,7 +1775,7 @@ def cmd_mission_cancel(mission_id: str) -> int:
         print(f"response=Could not cancel mission: {result.error or 'unknown error'}")
         return 2
     mission = result.mission
-    print(f"mission_cancelled=true")
+    print("mission_cancelled=true")
     print(f"mission_id={mission.get('mission_id', '')}")
     print(f"topic={mission.get('topic', '')}")
     print(f"response=Cancelled mission: {mission.get('topic', '')}")
@@ -3168,6 +3181,7 @@ def _web_augmented_llm_conversation(
     # --- Web search (always performed for this code path) ---
     _web_searched = False
     _web_context_text = ""
+    _web_result: dict[str, object] = {}
     try:
         from jarvis_engine.web_research import run_web_research
         _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
@@ -3201,15 +3215,22 @@ def _web_augmented_llm_conversation(
         system_parts.append(
             "Instructions: You have web search results above. Use them to give a current, accurate answer. "
             "Cite the source when using web search results. "
-            "If the web results don't fully answer the question, say what you found and note what's missing."
+            "If the web results don't fully answer the question, say what you found and note what's missing. "
+            "Do not re-introduce yourself unless explicitly asked."
         )
     else:
         system_parts.append(
             "Instructions: Answer the question using your knowledge. "
             "Do NOT say you cannot access the web or that you are not wired for web access. "
-            "Simply provide the best answer you can with the information available."
+            "Simply provide the best answer you can with the information available. "
+            "Do not re-introduce yourself unless explicitly asked."
         )
     system_prompt = "\n\n".join(system_parts)
+
+    if not _web_searched and _requires_fresh_web_confirmation(text):
+        print("intent=web_confirmation_unavailable")
+        print("reason=Unable to fetch current web results right now. Please retry or check network access.")
+        return 1
 
     # --- Dynamic max_tokens ---
     _max_tokens = max(_MAX_TOKENS_BY_ROUTE.get(_route, 512), 768)
@@ -3227,6 +3248,15 @@ def _web_augmented_llm_conversation(
             history=_hist_tuples,
         ))
         if result.return_code != 0:
+            if _web_searched:
+                fallback_lines = _web_result.get("summary_lines", []) if isinstance(_web_result, dict) else []
+                if isinstance(fallback_lines, list) and fallback_lines:
+                    fallback_text = "Based on live web results: " + " ".join(str(x) for x in fallback_lines[:3])
+                    print(f"response={_escape_response(fallback_text)}")
+                    print("model=web-research-fallback")
+                    print("provider=web")
+                    print("web_search_used=true")
+                    return 0
             print("intent=llm_unavailable")
             print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
             return 1
@@ -4109,7 +4139,8 @@ def _cmd_voice_run_impl(
                 "If the user asks about something you have facts for, use those facts directly. "
                 "You have web search results above -- use them to give current, accurate answers. "
                 "Cite the source when using web search results. "
-                "If you don't have relevant information, say so honestly."
+                "If you don't have relevant information, say so honestly. "
+                "Do not re-introduce yourself unless explicitly asked."
             )
         elif _web_attempted:
             system_parts.append(
@@ -4117,16 +4148,23 @@ def _cmd_voice_run_impl(
                 "If the user asks about something you have facts for, use those facts directly. "
                 "Answer the question using your knowledge. "
                 "Do NOT say you cannot access the web or that you are not wired for web access. "
-                "Simply provide the best answer you can."
+                "Simply provide the best answer you can. "
+                "Do not re-introduce yourself unless explicitly asked."
             )
         else:
             system_parts.append(
                 "Instructions: Reference the user's known facts and memories when relevant. "
                 "If the user asks about something you have facts for, use those facts directly. "
                 "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
-                "If you don't have relevant information, say so honestly."
+                "If you don't have relevant information, say so honestly. "
+                "Do not re-introduce yourself unless explicitly asked."
             )
         system_prompt = "\n\n".join(system_parts)
+
+        if _web_attempted and not _web_searched and _requires_fresh_web_confirmation(text):
+            print("intent=web_confirmation_unavailable")
+            print("reason=Unable to fetch current web results right now. Please retry or check network access.")
+            return 1
 
         # --- Dynamic max_tokens based on query complexity ---
         _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)

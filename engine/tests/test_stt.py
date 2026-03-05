@@ -3459,7 +3459,6 @@ def test_caller_voice_handler_integration():
 def test_caller_proactive_handler_integration():
     """WakeWordStartHandler._on_detected() callback works with new
     record_from_microphone (Silero VAD) and transcribe_smart (fallback chain)."""
-    import threading
     from jarvis_engine.stt import TranscriptionResult
     from jarvis_engine.handlers.proactive_handlers import WakeWordStartHandler
     from jarvis_engine.commands.proactive_commands import WakeWordStartCommand
