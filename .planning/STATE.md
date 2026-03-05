@@ -6,16 +6,16 @@ See: .planning/PROJECT.md
 See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v5.0 phase-1 reliability execution (tasks C/D complete, debt gate next).
+**Current focus:** v5.0 phase-1 reliability execution (debt gate active with desloppify triage loop).
 
 ## Current Position
 
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 step-3 resource guardrails + observability upgrade complete + full scans)
+Last activity: 2026-03-05 (v5 debt-gate pass: high-confidence schema/key-flow fixes + full scans)
 
-Progress (v5.0): [████░░░░░░] 40%
+Progress (v5.0): [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -32,9 +32,9 @@ Progress (v5.0): [████░░░░░░] 40%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-05): 4441 passing, 15 skipped, 0 failures
+- Latest full test run (2026-03-05): 4443 passing, 13 skipped, 0 failures
 - Lint baseline: ruff clean
-- Typed debt baseline: mypy 107 errors across 32 files
+- Typed debt baseline: mypy 107 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
 - Plan active: `.planning/phases/14-world-class-assistant-reliability/14-01-PLAN.md`
 
@@ -76,6 +76,7 @@ Progress (v5.0): [████░░░░░░] 40%
 - 2026-03-05: v5 Step 1 complete (command lifecycle hardening + structured diagnostics on mobile API).
 - 2026-03-05: v5 Step 2 complete (CLI prompt compaction/checkpointing to preserve context under transport limits).
 - 2026-03-05: v5 Step 3 complete (runtime resource budgets/pressure throttling + reliability panel + mission activity telemetry).
+- 2026-03-05: v5 debt-gate pass: desloppify installed, Claude skill updated, and multi-file schema/key-flow fixes applied with scan loop + attested resolutions.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -85,8 +86,9 @@ Progress (v5.0): [████░░░░░░] 40%
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 - Security/typed quality debt still large despite functional pass baseline:
-  - mypy: 108 errors / 33 files
-  - bandit: 166 findings (1 high, 50 medium, 115 low)
+  - mypy: 107 errors / 31 files
+  - bandit: 165 findings (1 high, 50 medium, 114 low)
+- Desloppify strict-score loop currently constrained by subjective batch tooling and scope management; continue debt gate with targeted next/scan cycles.
 - User-reported runtime issues persist in real-world usage:
   - context truncation/HTTP failures on long replies
   - stability degradation after short command sequences
@@ -95,5 +97,5 @@ Progress (v5.0): [████░░░░░░] 40%
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: v5 step-2 complete and ready for step-3 resource guardrails
+Stopped at: v5 debt-gate pass complete and ready for continued findings burn-down
 Resume file: None
