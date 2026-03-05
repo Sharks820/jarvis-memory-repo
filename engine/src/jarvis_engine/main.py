@@ -506,9 +506,27 @@ def _discover_harvest_topics(root: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 _conversation_history: list[dict[str, str]] = []
 _conversation_history_lock = threading.Lock()
-_CONVERSATION_MAX_TURNS = 5
 _CONVERSATION_HISTORY_FILE: Path | None = None
 _conversation_history_loaded = False
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    """Read bounded integer env var, returning fallback on parse errors."""
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+_CONVERSATION_MAX_TURNS = _env_int("JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40)
+_CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
+    "JARVIS_CONVERSATION_MAX_CHARS",
+    2000,
+    minimum=400,
+    maximum=8000,
+)
 
 
 def _conversation_history_path() -> Path:
@@ -560,7 +578,9 @@ def _save_conversation_history() -> None:
 def _add_to_history(role: str, content: str) -> None:
     """Append a message to the conversation history, capping at max turns."""
     with _conversation_history_lock:
-        _conversation_history.append({"role": role, "content": content[:800]})
+        _conversation_history.append(
+            {"role": role, "content": content[:_CONVERSATION_MAX_CHARS_PER_MESSAGE]}
+        )
         # Keep only the last N user/assistant pairs
         while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
             _conversation_history.pop(0)
@@ -648,6 +668,17 @@ def _requires_fresh_web_confirmation(query: str) -> bool:
         "live", "breaking", "as of", "up to date", "real-time", "real time",
     )
     return any(m in q for m in strict_markers)
+
+
+def _current_datetime_prompt_line() -> str:
+    """Provide deterministic current date/time context for model grounding."""
+    now = datetime.now().astimezone()
+    iso_now = now.isoformat(timespec="seconds")
+    human_now = now.strftime("%A, %B %d, %Y %H:%M %Z")
+    return (
+        f"Current date/time: {human_now} (ISO {iso_now}). "
+        "Treat this as the present unless the user explicitly specifies another date."
+    )
 
 
 def _build_smart_context(
@@ -3212,7 +3243,7 @@ def _web_augmented_llm_conversation(
             "You have full access to the internet and web search. "
             "Never say you cannot access the web or that it is outside your protocol."
         )
-    system_parts = [persona_desc]
+    system_parts = [_current_datetime_prompt_line(), persona_desc]
     if fact_lines:
         system_parts.append(
             "Known facts about the user (use these to personalize your response):\n"
@@ -3499,7 +3530,12 @@ def _cmd_voice_run_impl(
                 )
             return 2
 
-    if (execute or approve_privileged) and not voice_auth_wav.strip() and not master_password_ok:
+    if (
+        (execute or approve_privileged)
+        and not read_only_request
+        and not voice_auth_wav.strip()
+        and not master_password_ok
+    ):
         print("intent=voice_auth_required")
         print("reason=execute_or_privileged_voice_actions_require_voice_auth_wav")
         if speak:
@@ -4116,7 +4152,7 @@ def _cmd_voice_run_impl(
                 "You have full access to the internet and web search. "
                 "Never say you cannot access the web or that it is outside your protocol."
             )
-        system_parts = [persona_desc]
+        system_parts = [_current_datetime_prompt_line(), persona_desc]
         if fact_lines:
             system_parts.append(
                 "Known facts about the user (use these to personalize your response):\n"

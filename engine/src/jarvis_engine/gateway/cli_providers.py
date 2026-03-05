@@ -27,8 +27,18 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+def _default_cli_timeout() -> int:
+    """Return CLI timeout seconds from env with safe bounds."""
+    raw = os.environ.get("JARVIS_CLI_TIMEOUT_S", "240").strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 240
+    return max(60, min(value, 900))
+
+
 # Timeout for CLI calls (seconds).  LLM completions can take a while.
-_DEFAULT_TIMEOUT = 120
+_DEFAULT_TIMEOUT = _default_cli_timeout()
 _MAX_PROMPT_CHARS_DEFAULT = 24_000
 _MAX_MESSAGE_CHARS = 2_000
 _CHECKPOINT_LINES = 10
@@ -311,6 +321,70 @@ def _build_claude_cli_prompt(messages: list[dict[str, str]]) -> str:
     return prompt
 
 
+def _extract_claude_text_and_cost(stdout: str) -> tuple[str, float]:
+    """Parse Claude CLI output across legacy and event-stream JSON formats."""
+    raw = (stdout or "").strip()
+    if not raw:
+        return ("", 0.0)
+
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return (raw, 0.0)
+
+    if isinstance(parsed, dict):
+        text = str(parsed.get("result") or parsed.get("text") or "").strip()
+        if not text:
+            message = parsed.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, list):
+                    blocks: list[str] = []
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            val = str(item.get("text", "")).strip()
+                            if val:
+                                blocks.append(val)
+                    text = "\n\n".join(blocks).strip()
+        try:
+            cost = float(parsed.get("total_cost_usd", parsed.get("cost_usd", 0.0)) or 0.0)
+        except (TypeError, ValueError):
+            cost = 0.0
+        return (text, cost)
+
+    if isinstance(parsed, list):
+        assistant_text_chunks: list[str] = []
+        result_text = ""
+        total_cost = 0.0
+        for event in parsed:
+            if not isinstance(event, dict):
+                continue
+            event_type = str(event.get("type", "")).strip().lower()
+            if event_type == "assistant":
+                message = event.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                val = str(block.get("text", "")).strip()
+                                if val:
+                                    assistant_text_chunks.append(val)
+            elif event_type == "result":
+                candidate = str(event.get("result", "")).strip()
+                if candidate:
+                    result_text = candidate
+                try:
+                    total_cost = float(event.get("total_cost_usd", event.get("cost_usd", total_cost)) or total_cost)
+                except (TypeError, ValueError):
+                    pass
+
+        text = result_text or "\n\n".join(assistant_text_chunks).strip()
+        return (text, total_cost)
+
+    return ("", 0.0)
+
+
 def call_claude_cli(
     messages: list[dict[str, str]],
     max_tokens: int = 1024,
@@ -361,21 +435,15 @@ def call_claude_cli(
                 "cost_usd": 0.0,
             }
 
-        # Parse JSON output
-        try:
-            data = json.loads(proc.stdout)
-            text = data.get("result", "") or data.get("text", "") or proc.stdout
-            cost = data.get("cost_usd", 0.0) or 0.0
-        except (json.JSONDecodeError, ValueError, AttributeError):
-            text = proc.stdout.strip()
-            cost = 0.0
+        text, cost = _extract_claude_text_and_cost(proc.stdout)
+        success = bool(text.strip())
 
         return {
             "text": text,
             "model": "claude-cli",
             "provider": "claude-cli",
-            "success": True,
-            "error": "",
+            "success": success,
+            "error": "" if success else "empty response",
             "cost_usd": cost,
         }
     except subprocess.TimeoutExpired:

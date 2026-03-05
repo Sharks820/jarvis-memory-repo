@@ -138,6 +138,50 @@ class TestCallClaudeCli:
         assert result["text"] == "Plain text response"
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_event_array_output_uses_result_payload(self, mock_run: MagicMock) -> None:
+        payload = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "Intermediate"}],
+                },
+            },
+            {
+                "type": "result",
+                "result": "Final answer from Claude",
+                "total_cost_usd": 0.123,
+            },
+        ]
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+        result = call_claude_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is True
+        assert result["text"] == "Final answer from Claude"
+        assert result["cost_usd"] == 0.123
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_event_array_without_result_uses_assistant_text(self, mock_run: MagicMock) -> None:
+        payload = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "Assistant answer"}],
+                },
+            },
+        ]
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+        result = call_claude_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is True
+        assert result["text"] == "Assistant answer"
+
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure_exit_code(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(
             returncode=1,
