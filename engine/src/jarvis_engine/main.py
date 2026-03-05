@@ -10,6 +10,7 @@ import re
 import subprocess
 import threading
 import time
+from urllib.parse import urlparse
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
@@ -125,6 +126,22 @@ logger = logging.getLogger(__name__)
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
+
+
+def _shorten_urls_for_speech(text: str) -> str:
+    """Replace raw URLs with short, speakable references for TTS."""
+
+    def _replacement(match: re.Match[str]) -> str:
+        raw = match.group(1).strip()
+        normalized = raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
+        parsed = urlparse(normalized)
+        host = parsed.netloc.lower().strip()
+        if host.startswith("www."):
+            host = host[4:]
+        host = host or "this source"
+        return f"[{host} link]"
+
+    return URL_RE.sub(_replacement, text)
 
 
 def _escape_response(msg: str) -> str:
@@ -672,12 +689,16 @@ def _requires_fresh_web_confirmation(query: str) -> bool:
 
 def _current_datetime_prompt_line() -> str:
     """Provide deterministic current date/time context for model grounding."""
-    now = datetime.now().astimezone()
-    iso_now = now.isoformat(timespec="seconds")
-    human_now = now.strftime("%A, %B %d, %Y %H:%M %Z")
+    local_now = datetime.now().astimezone()
+    utc_now = local_now.astimezone(UTC)
+    local_iso = local_now.isoformat(timespec="seconds")
+    utc_iso = utc_now.isoformat(timespec="seconds")
+    unix_epoch = int(utc_now.timestamp())
+    human_now = local_now.strftime("%A, %B %d, %Y %H:%M %Z")
     return (
-        f"Current date/time: {human_now} (ISO {iso_now}). "
-        "Treat this as the present unless the user explicitly specifies another date."
+        f"Current date/time: {human_now} (local ISO {local_iso}; UTC {utc_iso}; epoch {unix_epoch}). "
+        "Treat this as the present unless the user explicitly specifies another date. "
+        "If relative-time reasoning conflicts with this clock context, prioritize this clock context."
     )
 
 
@@ -3132,8 +3153,9 @@ def cmd_voice_say(
     output_wav: str,
     rate: int,
 ) -> int:
+    speakable_text = _shorten_urls_for_speech(text)
     result = _get_bus().dispatch(VoiceSayCommand(
-        text=text, profile=profile, voice_pattern=voice_pattern,
+        text=speakable_text, profile=profile, voice_pattern=voice_pattern,
         output_wav=output_wav, rate=rate,
     ))
     print(f"voice={result.voice_name}")
@@ -3168,28 +3190,57 @@ def cmd_voice_verify(user_id: str, wav_path: str, threshold: float) -> int:
     return 0 if result.matched else 2
 
 
+def _emit_voice_listen_state(state: str, *, details: dict[str, object] | None = None) -> None:
+    """Emit voice listening state to stdout + activity feed (best effort)."""
+    print(f"listening_state={state}")
+    try:
+        from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+        payload = {"state": state}
+        if details:
+            payload.update(details)
+        log_activity(
+            ActivityCategory.VOICE,
+            f"Voice listen state: {state}",
+            payload,
+        )
+    except Exception as exc:
+        logger.debug("Voice listen state activity logging failed: %s", exc)
+
+
 def cmd_voice_listen(
     duration: float,
     language: str,
     execute: bool,
 ) -> int:
     """Record from microphone, transcribe, optionally execute as voice command."""
+    _emit_voice_listen_state("arming", details={"duration_s": duration, "language": language, "execute": execute})
+    _emit_voice_listen_state("listening", details={"duration_s": duration, "language": language})
+
     result = _get_bus().dispatch(
         VoiceListenCommand(
             max_duration_seconds=duration,
             language=language,
         )
     )
+
+    _emit_voice_listen_state("processing", details={"duration_s": result.duration_seconds})
+
     if result.message.startswith("error:"):
+        _emit_voice_listen_state("error", details={"reason": result.message[:200]})
         print(result.message)
         return 2
     if not result.text:
+        _emit_voice_listen_state("idle", details={"reason": "no_speech_detected"})
         print("(no speech detected)")
         return 0
+
     print(f"transcription={result.text}")
     print(f"confidence={result.confidence}")
     print(f"duration={result.duration_seconds}s")
+
     if execute and result.text:
+        _emit_voice_listen_state("executing", details={"transcription_chars": len(result.text)})
         print("executing transcribed command...")
         return cmd_voice_run(
             text=result.text,
@@ -3203,6 +3254,8 @@ def cmd_voice_listen(
             voice_threshold=0.82,
             master_password="",
         )
+
+    _emit_voice_listen_state("idle", details={"reason": "transcription_complete", "confidence": result.confidence})
     return 0
 
 
