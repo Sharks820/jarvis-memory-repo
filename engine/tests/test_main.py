@@ -14,6 +14,81 @@ def test_sanitize_memory_content_redacts_credentials() -> None:
     assert "[redacted]" in cleaned
 
 
+def test_current_datetime_prompt_line_includes_utc_and_epoch() -> None:
+    line = main_mod._current_datetime_prompt_line()
+    assert "Current date/time:" in line
+    assert "UTC" in line
+    assert "epoch" in line
+    assert "Treat this as the present" in line
+
+
+def test_shorten_urls_for_speech_replaces_raw_url_with_domain_link() -> None:
+    text = "Check this out: https://docs.example.com/guides/very/long/path?query=1"
+    shortened = main_mod._shorten_urls_for_speech(text)  # type: ignore[attr-defined]
+    assert "https://" not in shortened
+    assert "[docs.example.com link]" in shortened
+
+
+def test_cmd_voice_say_sanitizes_urls_before_dispatch(capsys, monkeypatch) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceSayResult
+
+    captured: dict[str, object] = {}
+
+    class _Bus:
+        def dispatch(self, cmd):
+            captured["text"] = getattr(cmd, "text", "")
+            return VoiceSayResult(voice_name="David", output_wav="", message="Spoken.")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    rc = main_mod.cmd_voice_say(
+        text="source https://www.openai.com/research/latest",
+        profile="jarvis_like",
+        voice_pattern="",
+        output_wav="",
+        rate=-1,
+    )
+    assert rc == 0
+    assert captured["text"] == "source [openai.com link]"
+    out = capsys.readouterr().out
+    assert "voice=David" in out
+
+
+def test_cmd_voice_listen_emits_state_transitions(monkeypatch, capsys) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    class _Bus:
+        def dispatch(self, _cmd):
+            return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
+    assert rc == 0
+
+    out = capsys.readouterr().out
+    assert "listening_state=arming" in out
+    assert "listening_state=listening" in out
+    assert "listening_state=processing" in out
+    assert "listening_state=idle" in out
+    assert "transcription=hello jarvis" in out
+
+
+def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    class _Bus:
+        def dispatch(self, _cmd):
+            return VoiceListenResult(text="", confidence=0.0, duration_seconds=0.0, message="error: microphone unavailable")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "listening_state=error" in out
+    assert "error: microphone unavailable" in out
+
+
 def test_cmd_serve_mobile_requires_token_and_signing_key(monkeypatch) -> None:
     monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
     monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
