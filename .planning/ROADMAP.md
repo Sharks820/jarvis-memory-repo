@@ -1,99 +1,70 @@
-# Roadmap: Jarvis v4.0 — Intelligence Activation & Voice Overhaul
+# Roadmap: Jarvis v5.0 — Reliability, Continuity, and Autonomous Learning
 
 ## Overview
 
-v1.0 Desktop Engine, v2.0 Android App, and v3.0 Hardening are all shipped. v4.0 makes Jarvis actually intelligent: closing the learning feedback loop so accumulated data personalizes responses, completely overhauling voice-to-text for reliable speech understanding, fixing UI live-updating, and preparing for mobile deployment on S25 Ultra.
+v1.0 through v4.0 milestones are shipped. v5.0 is a reliability-first rebuild pass focused on
+eliminating breakage, reducing memory pressure, preserving context across model switches, and
+making learning/activity visibly real in both desktop and mobile experiences.
 
-## Phases
+This roadmap is designed for GSD execution: small plans, strict verification gates, and no
+feature acceptance without production-like soak evidence.
 
-- [x] **Phase 1: Voice-to-Text Overhaul** — Replace failing STT pipeline with best-in-class models. Parakeet TDT 0.6B (local), Deepgram Nova-3 (cloud), Silero VAD, streaming pipeline, fallback chain. (completed 2026-03-03)
-- [x] **Phase 2: Learning System Activation** — Close the write-only feedback loop. Wire preference/feedback/usage tracker reads into QueryHandler, IntentClassifier, and dashboard. Pass route params. Integrate relevance scoring. (completed 2026-03-02)
-- [x] **Phase 3: Widget & UI Live Updates** — Fix brain UI live-updating for all functions. Add activity feed to conversation display. Parse and display all command outputs cleanly. (completed 2026-03-02)
-- [x] **Phase 4: Platform Stability** — Fix db_path gate, add logging to silent blocks, expose MemoryConsolidator via CQRS, proactive trigger diagnostics. End-to-end verification scan. (completed 2026-03-02)
-- [x] **Phase 5: Mobile App Readiness** — Verify mobile-desktop sync, learning sync, offline queue, API surface compatibility. Prepare for S25 Ultra deployment. (completed 2026-03-02)
+## Baseline (2026-03-05)
 
-## Phase Details
+- `pytest engine/tests -q`: 4433 passed, 9 skipped, 0 failed
+- `ruff check engine/src engine/tests`: clean
+- `mypy engine/src`: 116 errors in 35 files (typed quality debt + missing stubs)
+- `bandit -r engine/src/jarvis_engine`: 165 findings (1 high, 50 medium, 114 low)
+- Reported user symptoms:
+  1. Memory/CPU intensity causes instability after 1-2 commands
+  2. Long responses cause context loss and HTTP failures
+  3. Learning missions/activity do not show trustworthy real-time progress
+  4. Cross-provider switching can reset or fragment conversation context
+  5. Voice recognition quality still misses basic utterances in real use
 
-### Phase 1: Voice-to-Text Overhaul
-**Goal**: Reliable voice understanding — commands and conversational speech recognized accurately
-**Requirements**: STT-01 through STT-08
-**Plans:** 5/5 plans complete
+## v5 Phases
 
-Plans:
-- [x] 01-01-PLAN.md — Silero VAD module + record_from_microphone integration
-- [x] 01-02-PLAN.md — NVIDIA Parakeet TDT 0.6B backend via onnx-asr
-- [x] 01-03-PLAN.md — Deepgram Nova-3 backend with keyterm prompting
-- [x] 01-04-PLAN.md — Fallback chain rewrite + wake word VAD integration
-- [x] 01-05-PLAN.md — Integration testing + end-to-end verification
+- [ ] **Phase 1: Reliability Core + Resource Control**
+  - Goal: no hard breaks in normal workflows, bounded resource use, deterministic failure handling
+  - Requirements: REL-01..REL-08, PERF-01..PERF-04
+  - First plan: `phases/14-world-class-assistant-reliability/14-01-PLAN.md`
 
-**Success Criteria**:
-  1. Local STT WER < 8% on conversational speech (currently ~15-20%)
-  2. Cloud STT available as fallback with keyterm prompting
-  3. Silero VAD correctly detects speech start/end (no premature cutoff, no hanging)
-  4. Wake word detection unaffected by VAD change
-  5. Personal vocabulary (names, places) recognized correctly
-  6. Fallback chain works: Parakeet -> Deepgram -> Groq Whisper -> faster-whisper
-**Key Research**: NVIDIA Parakeet TDT 0.6B (onnx-asr), Deepgram Python SDK, Silero VAD
+- [ ] **Phase 2: Context Continuity Across LLM/CLI Providers**
+  - Goal: switch bot/provider without restarting from zero context
+  - Requirements: CTX-01..CTX-06
+  - Planned artifacts: 14-02 and 14-03
 
-### Phase 2: Learning System Activation
-**Goal**: Jarvis actually uses what it learns — preferences shape responses, feedback improves routing, usage patterns drive proactive features
-**Requirements**: LEARN-01 through LEARN-08
-**Depends on**: None (independent of Phase 1)
-**Plans:** 3 plans
+- [ ] **Phase 3: Learning Missions + Live Intelligence Telemetry**
+  - Goal: real mission progress bars, activity stream, measurable intelligence growth
+  - Requirements: LM-01..LM-08, OBS-01..OBS-04
+  - Planned artifacts: 14-04 and 14-05
 
-Plans:
-- [x] 02-01-PLAN.md — Fix data quality (route/topic in LearnInteractionCommand) + bus exposure
-- [x] 02-02-PLAN.md — Wire preferences into prompts, route quality into classifier, usage into daemon
-- [x] 02-03-PLAN.md — Relevance scoring in search, tier management in consolidator, learning dashboard
+- [ ] **Phase 4: Voice Accuracy and Correction Loop**
+  - Goal: robust STT for basic conversational commands in real environments
+  - Requirements: STT-09..STT-14
+  - Planned artifact: 14-06
 
-**Success Criteria**:
-  1. User preferences (detected over time) appear in LLM system prompts
-  2. Routes with poor feedback scores deprioritized in IntentClassifier
-  3. Usage pattern predictions populated with real route/topic data
-  4. Intelligence dashboard shows per-route quality and preference summary
-  5. Relevance scoring ranks memory retrieval results
-  6. Memory consolidator auto-archives stale, promotes hot
+- [ ] **Phase 5: Mobile Tasking + Async Completion Delivery**
+  - Goal: assign task from phone, execute on desktop, return completion (including delivery channels)
+  - Requirements: MOB-06..MOB-12
+  - Planned artifacts: 14-07 and 14-08
 
-### Phase 3: Widget & UI Live Updates
-**Goal**: User always sees what Jarvis is doing — live status updates, activity feed, clean output
-**Requirements**: UI-01 through UI-05
-**Depends on**: Phase 2 (learning events feed into activity display)
-**Success Criteria**:
-  1. Cancelling a mission immediately updates brain status in widget
-  2. Learning events (new preference, fact, memory) show indicator
-  3. Activity feed scrollable in conversation window with timestamps
-  4. All command types produce clean, user-readable output
+- [ ] **Phase 6: Security Expansion + Release Gate**
+  - Goal: strengthen already-solid security with deeper abuse containment and release evidence
+  - Requirements: SEC-01..SEC-06
+  - Planned artifact: 14-09
 
-### Phase 4: Platform Stability
-**Goal**: Zero silent failures, all subsystems properly initialized, comprehensive test coverage
-**Requirements**: STAB-01 through STAB-05
-**Depends on**: Phases 1-3 (stability scan validates all new work)
-**Success Criteria**:
-  1. Fresh install creates DB automatically (no exists() gate)
-  2. Silent except blocks have logging
-  3. MemoryConsolidator accessible via CLI command and mobile API
-  4. Proactive triggers report when no data available
-  5. 4200+ tests passing
+## Completion Gate (v5)
 
-### Phase 5: Mobile App Readiness
-**Goal**: S25 Ultra deployment ready — sync works, learning flows, offline queue reliable
-**Requirements**: MOB-01 through MOB-05
-**Depends on**: Phases 1-4 (desktop must be stable first)
-**Success Criteria**:
-  1. Memory sync bidirectional and verified
-  2. Mobile interactions update desktop learning trackers
-  3. Offline queue caches and flushes correctly
-  4. Android app builds and connects to current API surface
-  5. Voice input on Android reaches desktop and gets accurate STT
+v5 only closes when all are true:
 
-## Progress
+1. 8-hour soak run: zero crashes, zero deadlocks, no unbounded memory growth
+2. Cross-provider context handoff passes all continuity tests
+3. Mission UI shows truthful step/state/progress for all long-running jobs
+4. Voice accuracy acceptance set passes in real-room recordings
+5. Mobile-to-desktop task loop is demonstrably reliable end-to-end
+6. Security, static checks, and bug scans meet enforced thresholds
 
-| Phase | Plans Complete | Status | Date |
-|-------|---------------|--------|------|
-| 1. Voice-to-Text Overhaul | 5/5 | Complete | 2026-03-03 |
-| 2. Learning System Activation | 3/3 | Complete | 2026-03-02 |
-| 3. Widget & UI Live Updates | 2/2 | Complete | 2026-03-02 |
-| 4. Platform Stability | 1/1 | Complete | 2026-03-02 |
-| 5. Mobile App Readiness | 1/1 | Complete | 2026-03-02 |
+## Prior Milestone Status
 
-**v4.0 MILESTONE COMPLETE** — All 5 phases shipped, 31 requirements verified, 4345 tests passing.
+- v4.0 remains complete and archived: 31 requirements verified, all 5 phases shipped.

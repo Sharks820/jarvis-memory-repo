@@ -60,12 +60,23 @@ class BootstrapResponse:
 class CommandResponse:
     """POST /command response."""
     ok: bool = False
+    lifecycle_state: str = ""
     intent: str = ""
+    response: str = ""
+    response_chunks: List[str] = field(default_factory=list)
+    response_truncated: bool = False
     stdout_tail: List[str] = field(default_factory=list)
+    stdout_truncated: bool = False
     command_exit_code: int = 0
     status_code: str = ""
     reason: str = ""
     stderr_tail: List[str] = field(default_factory=list)
+    correlation_id: str = ""
+    diagnostic_id: str = ""
+    error_code: str = ""
+    category: str = ""
+    retryable: bool = False
+    user_hint: str = ""
     error: str = ""
 
 

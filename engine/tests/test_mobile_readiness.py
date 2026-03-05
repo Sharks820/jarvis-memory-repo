@@ -463,6 +463,22 @@ class TestCommandQueueReliability:
         if code == 200:
             assert result.get("ok") is False or "error" in result or "stderr_tail" in result
 
+    def test_command_endpoint_missing_text_has_structured_error_fields(self, mobile_server):
+        """Missing text errors include lifecycle + diagnostic metadata."""
+        payload_bytes = json.dumps({"execute": True}).encode("utf-8")
+        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
+        code, body = http_request("POST", f"{mobile_server.base_url}/command", body=payload_bytes, headers=headers)
+        assert code in (200, 400)
+        result = json.loads(body.decode("utf-8"))
+        if code == 200:
+            assert result.get("ok") is False
+            assert result.get("lifecycle_state") == "failed"
+            assert isinstance(result.get("correlation_id", ""), str)
+            assert isinstance(result.get("diagnostic_id", ""), str)
+            assert isinstance(result.get("error_code", ""), str)
+            assert isinstance(result.get("retryable", False), bool)
+            assert isinstance(result.get("user_hint", ""), str)
+
     def test_command_endpoint_rejects_oversized_text(self, mobile_server):
         """POST /command with text >2000 chars is rejected or errors."""
         huge_text = "x" * 2500

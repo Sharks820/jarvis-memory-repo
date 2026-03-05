@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from http import HTTPStatus
@@ -38,6 +39,13 @@ ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 REPLAY_WINDOW_SECONDS = 120.0
 MAX_NONCES = 100_000
 MAX_AUTH_BODY_SIZE = 2_000_000  # 2 MB (matches sync/push max_content_length)
+MAX_COMMAND_TEXT_CHARS = 2000
+MAX_COMMAND_STDOUT_TAIL_LINES = 30
+MAX_COMMAND_STDOUT_LINE_CHARS = 1200
+MAX_COMMAND_RESPONSE_CHARS = 12_000
+MAX_COMMAND_RESPONSE_CHUNK_CHARS = 800
+MAX_COMMAND_RESPONSE_CHUNKS = 24
+THREAD_CAPTURE_MAX_CHARS = 200_000
 
 # Thread-local storage for per-thread stdout capture and repo_root override.
 # This replaces the old _repo_root_lock which serialized ALL /command requests.
@@ -62,7 +70,19 @@ class _ThreadCapturingStdout:
     def write(self, s: str) -> int:
         buf = getattr(_thread_local, "capture_buf", None)
         if buf is not None:
+            max_chars = int(getattr(_thread_local, "capture_max_chars", THREAD_CAPTURE_MAX_CHARS))
+            used = int(getattr(_thread_local, "capture_chars", 0))
+            remaining = max_chars - used
+            if remaining <= 0:
+                _thread_local.capture_truncated = True
+                return len(s)
+            if len(s) > remaining:
+                buf.write(s[:remaining])
+                _thread_local.capture_chars = max_chars
+                _thread_local.capture_truncated = True
+                return len(s)
             buf.write(s)
+            _thread_local.capture_chars = used + len(s)
             return len(s)
         return object.__getattribute__(self, "_real").write(s)
 
@@ -76,16 +96,23 @@ class _ThreadCapturingStdout:
         return getattr(object.__getattribute__(self, "_real"), name)
 
     @staticmethod
-    def start_capture() -> None:
+    def start_capture(max_chars: int = THREAD_CAPTURE_MAX_CHARS) -> None:
         """Begin capturing stdout for the calling thread."""
         _thread_local.capture_buf = io.StringIO()
+        _thread_local.capture_chars = 0
+        _thread_local.capture_max_chars = max(10_000, int(max_chars))
+        _thread_local.capture_truncated = False
 
     @staticmethod
-    def stop_capture() -> str:
-        """Stop capturing and return the captured text."""
+    def stop_capture() -> tuple[str, bool]:
+        """Stop capturing and return `(captured_text, truncated)`."""
         buf = getattr(_thread_local, "capture_buf", None)
+        truncated = bool(getattr(_thread_local, "capture_truncated", False))
         _thread_local.capture_buf = None
-        return buf.getvalue() if buf is not None else ""
+        _thread_local.capture_chars = 0
+        _thread_local.capture_max_chars = THREAD_CAPTURE_MAX_CHARS
+        _thread_local.capture_truncated = False
+        return (buf.getvalue() if buf is not None else "", truncated)
 
     @staticmethod
     def install() -> None:
@@ -702,6 +729,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self._security_headers()
         if use_gzip:
             self.send_header("Content-Encoding", "gzip")
+        correlation_id = payload.get("correlation_id")
+        if isinstance(correlation_id, str) and correlation_id:
+            self.send_header("X-Jarvis-Correlation-Id", correlation_id[:64])
+        diagnostic_id = payload.get("diagnostic_id")
+        if isinstance(diagnostic_id, str) and diagnostic_id:
+            self.send_header("X-Jarvis-Diagnostic-Id", diagnostic_id[:64])
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -730,13 +763,155 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except OSError:
             return "<h1>Jarvis Quick Panel unavailable.</h1>"
 
-    def _run_voice_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _command_failure_result(
+        self,
+        *,
+        correlation_id: str,
+        error: str,
+        error_code: str,
+        category: str,
+        user_hint: str,
+        retryable: bool,
+        command_exit_code: int = 2,
+        intent: str = "execution_error",
+        reason: str = "",
+        status_code: str = "",
+        stdout_tail: list[str] | None = None,
+        stderr_tail: list[str] | None = None,
+        response: str = "",
+    ) -> dict[str, Any]:
+        diagnostic_id = correlation_id[:12]
+        return {
+            "ok": False,
+            "lifecycle_state": "failed",
+            "correlation_id": correlation_id,
+            "diagnostic_id": diagnostic_id,
+            "error": error,
+            "error_code": error_code,
+            "category": category,
+            "retryable": bool(retryable),
+            "user_hint": user_hint,
+            "command_exit_code": int(command_exit_code),
+            "intent": intent,
+            "status_code": str(status_code or command_exit_code),
+            "reason": reason,
+            "response": response,
+            "stdout_tail": stdout_tail or [],
+            "stderr_tail": stderr_tail or [],
+        }
+
+    def _normalize_command_output(
+        self,
+        *,
+        response_text: str,
+        stdout_lines: list[str],
+    ) -> dict[str, Any]:
+        response_text = response_text or ""
+        stdout_lines = stdout_lines or []
+
+        response_truncated = len(response_text) > MAX_COMMAND_RESPONSE_CHARS
+        if response_truncated:
+            response_text = response_text[:MAX_COMMAND_RESPONSE_CHARS]
+
+        response_chunks = [
+            response_text[i:i + MAX_COMMAND_RESPONSE_CHUNK_CHARS]
+            for i in range(0, len(response_text), MAX_COMMAND_RESPONSE_CHUNK_CHARS)
+        ][:MAX_COMMAND_RESPONSE_CHUNKS]
+
+        normalized_stdout: list[str] = []
+        stdout_truncated = False
+        for line in stdout_lines:
+            if len(normalized_stdout) >= MAX_COMMAND_STDOUT_TAIL_LINES:
+                stdout_truncated = True
+                break
+            if len(line) > MAX_COMMAND_STDOUT_LINE_CHARS:
+                normalized_stdout.append(line[:MAX_COMMAND_STDOUT_LINE_CHARS])
+                stdout_truncated = True
+            else:
+                normalized_stdout.append(line)
+
+        return {
+            "response": response_text,
+            "response_chunks": response_chunks,
+            "response_truncated": response_truncated,
+            "stdout_tail": normalized_stdout,
+            "stdout_truncated": stdout_truncated,
+        }
+
+    def _log_command_lifecycle_event(
+        self,
+        *,
+        lifecycle_state: str,
+        correlation_id: str,
+        payload: dict[str, Any],
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+            text = str(payload.get("text", "")).strip()
+            details: dict[str, Any] = {
+                "correlation_id": correlation_id,
+                "lifecycle_state": lifecycle_state,
+                "command_len": len(text),
+                "command_preview": text[:120],
+            }
+            if result is not None:
+                details.update(
+                    {
+                        "ok": bool(result.get("ok", False)),
+                        "intent": str(result.get("intent", ""))[:80],
+                        "status_code": str(result.get("status_code", ""))[:32],
+                        "error_code": str(result.get("error_code", ""))[:80],
+                        "retryable": bool(result.get("retryable", False)),
+                        "diagnostic_id": str(result.get("diagnostic_id", ""))[:64],
+                    }
+                )
+            log_activity(
+                ActivityCategory.COMMAND_LIFECYCLE,
+                f"Command {lifecycle_state}",
+                details,
+            )
+        except Exception:
+            # Activity feed must never break command execution.
+            pass
+
+    def _run_voice_command(
+        self,
+        payload: dict[str, Any],
+        *,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not correlation_id:
+            correlation_id = uuid.uuid4().hex
         # Validate required field: text (string, non-empty, <= 2000 chars)
         if "text" not in payload:
-            return {"ok": False, "error": "Missing required field: text."}
+            return self._command_failure_result(
+                correlation_id=correlation_id,
+                error="Missing required field: text.",
+                error_code="missing_text",
+                category="validation",
+                user_hint="Provide a non-empty 'text' field in the request payload.",
+                retryable=False,
+                command_exit_code=1,
+                intent="validation_error",
+                reason="missing required field",
+                status_code="400",
+            )
         text = str(payload.get("text", "")).strip()
-        if not text or len(text) > 2000:
-            return {"ok": False, "error": "Invalid text command."}
+        if not text or len(text) > MAX_COMMAND_TEXT_CHARS:
+            return self._command_failure_result(
+                correlation_id=correlation_id,
+                error="Invalid text command.",
+                error_code="invalid_text",
+                category="validation",
+                user_hint=f"Command text must be 1..{MAX_COMMAND_TEXT_CHARS} characters.",
+                retryable=False,
+                command_exit_code=1,
+                intent="validation_error",
+                reason="invalid text command",
+                status_code="400",
+            )
 
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
 
@@ -745,14 +920,36 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         speak = _parse_bool(payload.get("speak", False))
         voice_user = str(payload.get("voice_user", "conner")).strip() or "conner"
         if not re.fullmatch(r"[a-zA-Z0-9._-]{1,64}", voice_user):
-            return {"ok": False, "error": "Invalid voice_user."}
+            return self._command_failure_result(
+                correlation_id=correlation_id,
+                error="Invalid voice_user.",
+                error_code="invalid_voice_user",
+                category="validation",
+                user_hint="voice_user must match [a-zA-Z0-9._-]{1,64}.",
+                retryable=False,
+                command_exit_code=1,
+                intent="validation_error",
+                reason="invalid voice_user",
+                status_code="400",
+            )
         voice_auth_wav = str(payload.get("voice_auth_wav", "")).strip()
         if voice_auth_wav:
             try:
                 wav_resolved = Path(voice_auth_wav).resolve()
                 wav_resolved.relative_to(root.resolve())
             except (ValueError, OSError):
-                return {"ok": False, "error": "voice_auth_wav path outside project root."}
+                return self._command_failure_result(
+                    correlation_id=correlation_id,
+                    error="voice_auth_wav path outside project root.",
+                    error_code="invalid_voice_auth_path",
+                    category="validation",
+                    user_hint="Use a project-local path for voice_auth_wav.",
+                    retryable=False,
+                    command_exit_code=1,
+                    intent="validation_error",
+                    reason="voice_auth_wav path outside project root",
+                    status_code="400",
+                )
         master_password = str(payload.get("master_password", "")).strip()
         model_override = str(payload.get("model_override", "")).strip()
         voice_threshold_raw = payload.get("voice_threshold", 0.82)
@@ -814,16 +1011,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 _thread_local.repo_root_override = None
                 logger.error("Voice command execution failed: %s", exc)
                 _ThreadCapturingStdout.stop_capture()  # discard
-                return {
-                    "ok": False,
-                    "error": "Command execution failed.",
-                    "intent": "execution_error",
-                    "reason": "internal error",
-                    "stdout_tail": [],
-                    "stderr_tail": [],
-                }
+                return self._command_failure_result(
+                    correlation_id=correlation_id,
+                    error="Command execution failed.",
+                    error_code="execution_exception",
+                    category="execution",
+                    user_hint="Retry once. If this keeps failing, inspect diagnostic_id in server logs.",
+                    retryable=True,
+                    intent="execution_error",
+                    reason="internal error",
+                    status_code="500",
+                )
             # Parse captured stdout for intent/reason/status (same as subprocess path)
-            stdout_text = _ThreadCapturingStdout.stop_capture()
+            stdout_text, capture_truncated = _ThreadCapturingStdout.stop_capture()
             stdout_lines = stdout_text.splitlines()
             intent = ""
             reason = ""
@@ -839,15 +1039,32 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 elif line.startswith("response="):
                     raw = line.split("=", 1)[1]
                     response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+            normalized = self._normalize_command_output(
+                response_text=response_text,
+                stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
+            )
+            if capture_truncated:
+                normalized["stdout_truncated"] = True
             return {
                 "ok": rc == 0,
+                "lifecycle_state": "completed" if rc == 0 else "failed",
+                "correlation_id": correlation_id,
+                "diagnostic_id": correlation_id[:12],
                 "command_exit_code": rc,
                 "intent": intent,
-                "response": response_text,
+                "response": normalized["response"],
+                "response_chunks": normalized["response_chunks"],
+                "response_truncated": normalized["response_truncated"],
                 "status_code": status_code,
                 "reason": reason,
-                "stdout_tail": stdout_lines[-20:] if stdout_lines else [],
+                "stdout_tail": normalized["stdout_tail"],
+                "stdout_truncated": normalized["stdout_truncated"],
                 "stderr_tail": [],
+                "error": "" if rc == 0 else (reason or "Command execution failed."),
+                "error_code": "" if rc == 0 else "command_failed",
+                "category": "" if rc == 0 else "execution",
+                "retryable": rc != 0,
+                "user_hint": "" if rc == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
             }
 
         cmd = [
@@ -889,7 +1106,17 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             logger.error("Voice subprocess failed: %s", exc)
-            return {"ok": False, "error": "Command execution failed."}
+            return self._command_failure_result(
+                correlation_id=correlation_id,
+                error="Command execution failed.",
+                error_code="subprocess_failure",
+                category="execution",
+                user_hint="Retry once. If persistent, check engine process and logs.",
+                retryable=True,
+                intent="execution_error",
+                reason="subprocess failed",
+                status_code="500",
+            )
 
         stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
@@ -907,16 +1134,31 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             elif line.startswith("response="):
                 raw = line.split("=", 1)[1].strip()
                 response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+        normalized = self._normalize_command_output(
+            response_text=response_text,
+            stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
+        )
 
         return {
             "ok": result.returncode == 0,
+            "lifecycle_state": "completed" if result.returncode == 0 else "failed",
+            "correlation_id": correlation_id,
+            "diagnostic_id": correlation_id[:12],
             "command_exit_code": result.returncode,
             "intent": intent,
-            "response": response_text,
+            "response": normalized["response"],
+            "response_chunks": normalized["response_chunks"],
+            "response_truncated": normalized["response_truncated"],
             "status_code": status_code,
             "reason": reason,
-            "stdout_tail": stdout_lines[-20:],
+            "stdout_tail": normalized["stdout_tail"],
+            "stdout_truncated": normalized["stdout_truncated"],
             "stderr_tail": stderr_lines[-20:],
+            "error": "" if result.returncode == 0 else (reason or "Command execution failed."),
+            "error_code": "" if result.returncode == 0 else "command_failed",
+            "category": "" if result.returncode == 0 else "execution",
+            "retryable": result.returncode != 0,
+            "user_hint": "" if result.returncode == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
         }
 
     def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
@@ -2223,7 +2465,28 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         payload, _ = self._read_json_body(max_content_length=25_000)
         if payload is None:
             return
-        result = self._run_voice_command(payload)
+        correlation_id = uuid.uuid4().hex
+        self._log_command_lifecycle_event(
+            lifecycle_state="accepted",
+            correlation_id=correlation_id,
+            payload=payload,
+        )
+        self._log_command_lifecycle_event(
+            lifecycle_state="running",
+            correlation_id=correlation_id,
+            payload=payload,
+        )
+        result = self._run_voice_command(payload, correlation_id=correlation_id)
+        result.setdefault("correlation_id", correlation_id)
+        result.setdefault("diagnostic_id", correlation_id[:12])
+        result.setdefault("lifecycle_state", "completed" if result.get("ok") else "failed")
+        result.setdefault("error_code", "")
+        result.setdefault("category", "")
+        result.setdefault("retryable", False)
+        result.setdefault("user_hint", "")
+        result.setdefault("response_chunks", [])
+        result.setdefault("response_truncated", False)
+        result.setdefault("stdout_truncated", False)
         # Scan LLM output for security issues (credential leaks, exfiltration, etc.)
         _sec_orch = getattr(self.server, "security", None)
         if _sec_orch is not None and result.get("ok"):
@@ -2243,7 +2506,22 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     result["reason"] = _output_check["filtered_text"]
                     result["stdout_tail"] = [_output_check["filtered_text"]]
                     result["security_filtered"] = True
+                    normalized = self._normalize_command_output(
+                        response_text=str(result.get("response", "")),
+                        stdout_lines=[str(x) for x in result.get("stdout_tail", [])],
+                    )
+                    result["response"] = normalized["response"]
+                    result["response_chunks"] = normalized["response_chunks"]
+                    result["response_truncated"] = normalized["response_truncated"]
+                    result["stdout_tail"] = normalized["stdout_tail"]
+                    result["stdout_truncated"] = normalized["stdout_truncated"]
                     logger.warning("Output filtered: %s", _output_check["findings"][:3])
+        self._log_command_lifecycle_event(
+            lifecycle_state=str(result.get("lifecycle_state", "failed")),
+            correlation_id=str(result.get("correlation_id", correlation_id)),
+            payload=payload,
+            result=result,
+        )
         self._write_json(HTTPStatus.OK, result)
 
     def _handle_post_sync_deprecated(self) -> None:
