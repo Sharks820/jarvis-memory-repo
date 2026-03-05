@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,6 +28,18 @@ logger = logging.getLogger(__name__)
 
 # Timeout for CLI calls (seconds).  LLM completions can take a while.
 _DEFAULT_TIMEOUT = 120
+_MAX_PROMPT_CHARS_DEFAULT = 24_000
+_MAX_MESSAGE_CHARS = 2_000
+_CHECKPOINT_LINES = 10
+
+
+def _max_prompt_chars() -> int:
+    raw = os.environ.get("JARVIS_CLI_PROMPT_MAX_CHARS", str(_MAX_PROMPT_CHARS_DEFAULT)).strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return _MAX_PROMPT_CHARS_DEFAULT
+    return max(6_000, min(value, 120_000))
 
 
 @dataclass
@@ -123,6 +136,7 @@ def _build_messages_text(messages: list[dict[str, str]]) -> str:
     Multi-turn history is formatted with User:/Assistant: prefixes so CLIs
     can distinguish conversation turns even though they receive flat text.
     """
+    messages = _compact_messages_for_cli(messages)
     parts: list[str] = []
     system_parts: list[str] = []
     # Count user messages to detect multi-turn conversations
@@ -159,6 +173,85 @@ def _build_messages_text(messages: list[dict[str, str]]) -> str:
     return prompt
 
 
+def _squash_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _build_checkpoint(dropped_messages: list[dict[str, str]]) -> str:
+    if not dropped_messages:
+        return ""
+    lines = [
+        "Conversation checkpoint from earlier turns (compressed):",
+        "Keep continuity with this context and do not restart from scratch.",
+    ]
+    for item in dropped_messages[-_CHECKPOINT_LINES:]:
+        role = str(item.get("role", "user")).strip().lower()
+        role_label = "User" if role == "user" else "Assistant"
+        content = _squash_whitespace(str(item.get("content", "")))
+        if not content:
+            continue
+        lines.append(f"- {role_label}: {content[:220]}")
+    return "\n".join(lines)
+
+
+def _compact_messages_for_cli(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Keep continuity while bounding prompt size for CLI transport stability."""
+    if not messages:
+        return messages
+
+    max_chars = _max_prompt_chars()
+    normalized: list[dict[str, str]] = []
+    for message in messages:
+        role = str(message.get("role", "user"))
+        content = str(message.get("content", ""))
+        if len(content) > _MAX_MESSAGE_CHARS:
+            content = content[:_MAX_MESSAGE_CHARS]
+        normalized.append({"role": role, "content": content})
+
+    estimated = sum(len(m.get("content", "")) + 16 for m in normalized)
+    if estimated <= max_chars:
+        return normalized
+
+    system_messages = [m for m in normalized if m.get("role") == "system"]
+    convo_messages = [m for m in normalized if m.get("role") != "system"]
+
+    sys_budget = max(2_000, int(max_chars * 0.35))
+    kept_system: list[dict[str, str]] = []
+    used = 0
+    for msg in system_messages:
+        content = msg.get("content", "")
+        remaining = sys_budget - used
+        if remaining <= 0:
+            break
+        clipped = content[:remaining]
+        kept_system.append({"role": "system", "content": clipped})
+        used += len(clipped)
+
+    convo_budget = max(2_500, max_chars - used - 1_500)
+    kept_convo_rev: list[dict[str, str]] = []
+    dropped_rev: list[dict[str, str]] = []
+    convo_used = 0
+    for msg in reversed(convo_messages):
+        content = msg.get("content", "")
+        clipped = content[:_MAX_MESSAGE_CHARS]
+        cost = len(clipped) + 16
+        # Always keep at least the last 3 conversation turns.
+        if convo_used + cost <= convo_budget or len(kept_convo_rev) < 3:
+            kept_convo_rev.append({"role": msg.get("role", "user"), "content": clipped})
+            convo_used += cost
+        else:
+            dropped_rev.append(msg)
+
+    kept_convo = list(reversed(kept_convo_rev))
+    dropped = list(reversed(dropped_rev))
+    checkpoint = _build_checkpoint(dropped)
+    if checkpoint:
+        kept_system.append({"role": "system", "content": checkpoint})
+
+    compacted = [*kept_system, *kept_convo]
+    return compacted if compacted else normalized[-3:]
+
+
 def _build_claude_cli_prompt(messages: list[dict[str, str]]) -> str:
     """Build a prompt for Claude Code CLI, stripping persona instructions.
 
@@ -169,6 +262,7 @@ def _build_claude_cli_prompt(messages: list[dict[str, str]]) -> str:
     This function keeps factual context (KG facts, memories, preferences)
     but strips the character/persona preamble.
     """
+    messages = _compact_messages_for_cli(messages)
     context_parts: list[str] = []
     conversation_parts: list[str] = []
     user_count = sum(1 for m in messages if m.get("role", "user") == "user")

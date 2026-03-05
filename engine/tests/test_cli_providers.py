@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 from jarvis_engine.gateway.cli_providers import (
+    _build_claude_cli_prompt,
     _build_messages_text,
     call_claude_cli,
     call_codex_cli,
@@ -49,6 +50,32 @@ class TestBuildMessagesText:
 
     def test_empty_messages(self) -> None:
         assert _build_messages_text([]) == ""
+
+    @patch.dict("os.environ", {"JARVIS_CLI_PROMPT_MAX_CHARS": "6000"}, clear=False)
+    def test_large_conversation_compacts_with_checkpoint(self) -> None:
+        msgs = [{"role": "system", "content": "System context " + ("x" * 4000)}]
+        for i in range(40):
+            msgs.append({"role": "user", "content": f"user turn {i} " + ("y" * 280)})
+            msgs.append({"role": "assistant", "content": f"assistant turn {i} " + ("z" * 280)})
+        msgs.append({"role": "user", "content": "FINAL_USER_TURN keep this context"})
+
+        text = _build_messages_text(msgs)
+        assert "Conversation checkpoint from earlier turns" in text
+        assert "FINAL_USER_TURN keep this context" in text
+        # Soft upper bound: formatter adds role labels/preamble around compacted payload.
+        assert len(text) <= 9000
+
+    @patch.dict("os.environ", {"JARVIS_CLI_PROMPT_MAX_CHARS": "6000"}, clear=False)
+    def test_claude_prompt_compaction_keeps_recent_turn(self) -> None:
+        msgs = [{"role": "system", "content": "You are Jarvis. " + ("persona " * 300)}]
+        for i in range(30):
+            msgs.append({"role": "user", "content": f"historic user {i} " + ("a" * 220)})
+            msgs.append({"role": "assistant", "content": f"historic assistant {i} " + ("b" * 220)})
+        msgs.append({"role": "user", "content": "LATEST_USER_REQUEST please continue"})
+
+        text = _build_claude_cli_prompt(msgs)
+        assert "LATEST_USER_REQUEST please continue" in text
+        assert len(text) <= 9000
 
 
 # ---------------------------------------------------------------------------
