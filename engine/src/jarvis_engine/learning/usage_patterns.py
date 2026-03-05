@@ -9,10 +9,12 @@ from collections import Counter
 from datetime import datetime
 from jarvis_engine._compat import UTC
 
+from jarvis_engine.learning._tracker_base import LearningTrackerBase
+
 logger = logging.getLogger(__name__)
 
 
-class UsagePatternTracker:
+class UsagePatternTracker(LearningTrackerBase):
     """Learn when the user asks certain types of questions by time of day/week."""
 
     def __init__(
@@ -21,9 +23,7 @@ class UsagePatternTracker:
         write_lock: threading.Lock | None = None,
         db_lock: threading.Lock | None = None,
     ) -> None:
-        self._db = db
-        self._write_lock = write_lock or threading.Lock()
-        self._db_lock = db_lock or threading.Lock()
+        super().__init__(db, write_lock, db_lock)
         self._init_schema()
 
     def _init_schema(self) -> None:

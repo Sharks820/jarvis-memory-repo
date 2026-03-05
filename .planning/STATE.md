@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 debt-gate pass 2: mobile activity schema alignment + ICS fallback key hardening)
+Last activity: 2026-03-05 (v5 debt-gate pass 3: desloppify key-flow + dedupe refactors with full scan loop)
 
 Progress (v5.0): [█████░░░░░] 50%
 
@@ -34,7 +34,7 @@ Progress (v5.0): [█████░░░░░] 50%
 **v5.0 Reliability & Continuity**: IN PROGRESS
 - Latest full test run (2026-03-05): 4441 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
-- Typed debt baseline: mypy 107 errors across 31 files
+- Typed debt baseline: mypy 105 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
 - Plan active: `.planning/phases/14-world-class-assistant-reliability/14-01-PLAN.md`
 
@@ -78,6 +78,7 @@ Progress (v5.0): [█████░░░░░] 50%
 - 2026-03-05: v5 Step 3 complete (runtime resource budgets/pressure throttling + reliability panel + mission activity telemetry).
 - 2026-03-05: v5 debt-gate pass: desloppify installed, Claude skill updated, and multi-file schema/key-flow fixes applied with scan loop + attested resolutions.
 - 2026-03-05: v5 debt-gate pass 2: fixed `mobile_api` recent_events schema drift (`details`) and `ops_sync` fallback ICS phantom-key reads; focused tests + full suite passed.
+- 2026-03-05: v5 debt-gate pass 3: reduced dict-key drift and constructor duplication (`persona`, `resilience`, `runtime_control`, `mobile_api`, `defense_handlers`, `learning/*`) with repeated excluded-scope scans and green targeted/full test gates.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -87,7 +88,7 @@ Progress (v5.0): [█████░░░░░] 50%
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 - Security/typed quality debt still large despite functional pass baseline:
-  - mypy: 107 errors / 31 files
+  - mypy: 105 errors / 31 files
   - bandit: 165 findings (1 high, 50 medium, 114 low)
 - Desloppify strict-score loop currently constrained by subjective batch tooling and scope management; continue debt gate with targeted next/scan cycles.
 - User-reported runtime issues persist in real-world usage:
@@ -98,5 +99,5 @@ Progress (v5.0): [█████░░░░░] 50%
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: v5 debt-gate pass 2 validated; continue desloppify `next` finding burn-down
+Stopped at: v5 debt-gate pass 3 validated and pushed; continue desloppify `next` burn-down (dupes/facades/subjective backlog)
 Resume file: None

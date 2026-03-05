@@ -42,6 +42,10 @@ def _ensure_mobile_security_config(root: Path) -> dict[str, Any]:
                 raw = loaded
         except (json.JSONDecodeError, OSError):
             raw = {}
+    raw = {
+        "token": raw.get("token", ""),
+        "signing_key": raw.get("signing_key", ""),
+    }
     token = str(raw.get("token", "")).strip()
     signing_key = str(raw.get("signing_key", "")).strip()
     repaired = False

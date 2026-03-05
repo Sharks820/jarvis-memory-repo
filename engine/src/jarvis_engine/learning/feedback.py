@@ -8,10 +8,12 @@ import threading
 from datetime import datetime
 from jarvis_engine._compat import UTC
 
+from jarvis_engine.learning._tracker_base import LearningTrackerBase
+
 logger = logging.getLogger(__name__)
 
 
-class ResponseFeedbackTracker:
+class ResponseFeedbackTracker(LearningTrackerBase):
     """Detect implicit feedback signals from conversation patterns."""
 
     CORRECTION_SIGNALS = [
@@ -44,9 +46,7 @@ class ResponseFeedbackTracker:
         write_lock: threading.Lock | None = None,
         db_lock: threading.Lock | None = None,
     ) -> None:
-        self._db = db
-        self._write_lock = write_lock or threading.Lock()
-        self._db_lock = db_lock or threading.Lock()
+        super().__init__(db, write_lock, db_lock)
         self._init_schema()
 
     def _init_schema(self) -> None:

@@ -39,13 +39,8 @@ from jarvis_engine.security.defense_commands import (
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# SecurityStatusHandler
-# ---------------------------------------------------------------------------
-
-
-class SecurityStatusHandler:
-    """Return aggregate security dashboard via SecurityOrchestrator.status()."""
+class _DefenseHandlerBase:
+    """Shared dependency wiring for defense command handlers."""
 
     def __init__(
         self,
@@ -58,6 +53,24 @@ class SecurityStatusHandler:
         self._db = db
         self._write_lock = write_lock
         self._log_dir = log_dir
+
+
+# ---------------------------------------------------------------------------
+# SecurityStatusHandler
+# ---------------------------------------------------------------------------
+
+
+class SecurityStatusHandler(_DefenseHandlerBase):
+    """Return aggregate security dashboard via SecurityOrchestrator.status()."""
+
+    def __init__(
+        self,
+        root: Path,
+        db: sqlite3.Connection,
+        write_lock: threading.Lock,
+        log_dir: Path,
+    ) -> None:
+        super().__init__(root, db, write_lock, log_dir)
         self._orchestrator = None
         try:
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
@@ -100,20 +113,8 @@ class SecurityStatusHandler:
 # ---------------------------------------------------------------------------
 
 
-class ThreatReportHandler:
+class ThreatReportHandler(_DefenseHandlerBase):
     """Return threat report for a specific IP or all tracked IPs."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: ThreatReportCommand) -> ThreatReportResult:
         try:
@@ -154,20 +155,8 @@ class ThreatReportHandler:
 # ---------------------------------------------------------------------------
 
 
-class ExportForensicsHandler:
+class ExportForensicsHandler(_DefenseHandlerBase):
     """Export forensic log entries to a ZIP archive."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: ExportForensicsCommand) -> ExportForensicsResult:
         try:
@@ -202,20 +191,8 @@ class ExportForensicsHandler:
 # ---------------------------------------------------------------------------
 
 
-class ContainmentOverrideHandler:
+class ContainmentOverrideHandler(_DefenseHandlerBase):
     """Override containment level or initiate recovery."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: ContainmentOverrideCommand) -> ContainmentOverrideResult:
         try:
@@ -269,20 +246,8 @@ class ContainmentOverrideHandler:
 # ---------------------------------------------------------------------------
 
 
-class BlockIPHandler:
+class BlockIPHandler(_DefenseHandlerBase):
     """Manually block an IP address."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: BlockIPCommand) -> BlockIPResult:
         if not cmd.ip.strip():
@@ -314,20 +279,8 @@ class BlockIPHandler:
 # ---------------------------------------------------------------------------
 
 
-class UnblockIPHandler:
+class UnblockIPHandler(_DefenseHandlerBase):
     """Manually unblock an IP address."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: UnblockIPCommand) -> UnblockIPResult:
         if not cmd.ip.strip():
@@ -357,20 +310,8 @@ class UnblockIPHandler:
 # ---------------------------------------------------------------------------
 
 
-class ReviewQuarantineHandler:
+class ReviewQuarantineHandler(_DefenseHandlerBase):
     """Return quarantined memory records from MemoryProvenance."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: ReviewQuarantineCommand) -> ReviewQuarantineResult:
         try:
@@ -395,20 +336,8 @@ class ReviewQuarantineHandler:
 # ---------------------------------------------------------------------------
 
 
-class SecurityBriefingHandler:
+class SecurityBriefingHandler(_DefenseHandlerBase):
     """Return a human-readable security briefing."""
-
-    def __init__(
-        self,
-        root: Path,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        log_dir: Path,
-    ) -> None:
-        self._root = root
-        self._db = db
-        self._write_lock = write_lock
-        self._log_dir = log_dir
 
     def handle(self, cmd: SecurityBriefingCommand) -> SecurityBriefingResult:
         try:

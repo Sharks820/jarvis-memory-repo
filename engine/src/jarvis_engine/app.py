@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Any, Callable, cast
 
 logger = logging.getLogger(__name__)
 
@@ -381,19 +382,19 @@ def create_app(root: Path) -> CommandBus:
         _sec_lock = __import__("threading").Lock()
         _sec_log_dir = root / ".planning" / "runtime" / "forensic"
 
-        _defense_registrations = [
-            (SecurityStatusCommand, SecurityStatusHandler),
-            (ThreatReportCommand, ThreatReportHandler),
-            (ExportForensicsCommand, ExportForensicsHandler),
-            (ContainmentOverrideCommand, ContainmentOverrideHandler),
-            (BlockIPCommand, BlockIPHandler),
-            (UnblockIPCommand, UnblockIPHandler),
-            (ReviewQuarantineCommand, ReviewQuarantineHandler),
-            (SecurityBriefingCommand, SecurityBriefingHandler),
+        _defense_registrations: list[tuple[type[object], Callable[..., Any]]] = [
+            (SecurityStatusCommand, SecurityStatusHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (ThreatReportCommand, ThreatReportHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (ExportForensicsCommand, ExportForensicsHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (ContainmentOverrideCommand, ContainmentOverrideHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (BlockIPCommand, BlockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (UnblockIPCommand, UnblockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (ReviewQuarantineCommand, ReviewQuarantineHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (SecurityBriefingCommand, SecurityBriefingHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
         ]
-        for _cmd_cls, _handler_cls in _defense_registrations:
+        for _cmd_cls, _handler in _defense_registrations:
             try:
-                bus.register(_cmd_cls, _handler_cls(root, _sec_db, _sec_lock, _sec_log_dir).handle)
+                bus.register(_cmd_cls, cast(Callable[..., Any], _handler))
             except Exception as exc:
                 logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
     except Exception as exc:
