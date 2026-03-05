@@ -240,7 +240,12 @@ def _parse_ics_fallback(text: str, target_date: date | None = None) -> list[dict
     target_str = target_date.strftime("%Y%m%d") if target_date is not None else None
     for line in lines:
         if line == "BEGIN:VEVENT":
-            current = {}
+            current = {
+                "SUMMARY": "",
+                "DTSTART": "",
+                "LOCATION": "",
+                "DESCRIPTION": "",
+            }
             continue
         if line == "END:VEVENT":
             if current is not None:
@@ -258,7 +263,7 @@ def _parse_ics_fallback(text: str, target_date: date | None = None) -> list[dict
                     time_str = "all-day"
                 events.append(
                     {
-                        "title": current.get("SUMMARY", "Untitled event"),
+                        "title": str(current.get("SUMMARY", "")).strip() or "Untitled event",
                         "time": time_str,
                         "location": current.get("LOCATION", ""),
                         "description": current.get("DESCRIPTION", "")[:200],
