@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import math
+import os
 import re
 import ssl
 import subprocess
@@ -381,6 +382,26 @@ def _get_ssl_context(url: str) -> ssl.SSLContext | None:
     return None
 
 
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    """Read bounded integer env var, returning fallback on parse errors."""
+    raw = os.environ.get(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _http_timeout_seconds(path: str) -> int:
+    """Return HTTP timeout for a widget API path."""
+    default_timeout = _env_int("JARVIS_WIDGET_HTTP_TIMEOUT_S", 60, minimum=10, maximum=600)
+    long_timeout = _env_int("JARVIS_WIDGET_COMMAND_TIMEOUT_S", 300, minimum=30, maximum=900)
+    normalized = (path or "").strip().lower()
+    if normalized.startswith("/command") or normalized.startswith("/self-heal"):
+        return long_timeout
+    return default_timeout
+
+
 def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if not _is_safe_widget_base_url(cfg.base_url):
         raise RuntimeError("Widget base_url must use HTTPS for non-localhost hosts.")
@@ -408,7 +429,7 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
         req = Request(url=f"{base.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
         ssl_ctx = _get_ssl_context(base)
         try:
-            with urlopen(req, timeout=60, context=ssl_ctx) as resp:
+            with urlopen(req, timeout=_http_timeout_seconds(path), context=ssl_ctx) as resp:
                 raw = resp.read().decode("utf-8")
             try:
                 parsed = json.loads(raw)
@@ -806,6 +827,12 @@ class JarvisDesktopWidget(tk.Tk):
         self._model_index: int = 0  # Index into MODEL_ROTATION (0 = Auto)
         self._model_label: tk.Label | None = None  # Model indicator label widget
         self._seen_event_ids: dict[str, None] = {}  # Ordered dedup for activity feed events
+        self._processing_timeout_ms = _env_int(
+            "JARVIS_WIDGET_PROCESSING_TIMEOUT_MS",
+            300_000,
+            minimum=30_000,
+            maximum=1_800_000,
+        )
 
         self.title("Jarvis Unlimited")
         # Restore saved panel position if available and on-screen
@@ -2295,11 +2322,12 @@ class JarvisDesktopWidget(tk.Tk):
             self._processing_timeout_id = None
 
     def _processing_timed_out(self) -> None:
-        """Safety net: force-reset stuck processing state after 120s."""
+        """Safety net: force-reset stuck processing state after configured timeout."""
         self._processing_timeout_id = None
         if self._widget_state == "processing":
             self._hide_thinking()
-            self._log("Command timed out (120s). Ready for new commands.", role="error")
+            timeout_s = max(1, self._processing_timeout_ms // 1000)
+            self._log(f"Command timed out ({timeout_s}s). Ready for new commands.", role="error")
             self.command_text.config(state=tk.NORMAL)
             self._set_state("idle")
 
@@ -2329,9 +2357,9 @@ class JarvisDesktopWidget(tk.Tk):
         # Generation counter: prevents stale worker callbacks from corrupting state
         self._cmd_generation += 1
         gen = self._cmd_generation
-        # Start safety timeout: force-reset after 120 seconds
+        # Start safety timeout: force-reset after configured timeout
         self._cancel_processing_timeout()
-        self._processing_timeout_id = self.after(120_000, self._processing_timed_out)
+        self._processing_timeout_id = self.after(self._processing_timeout_ms, self._processing_timed_out)
         # Read all tkinter vars on the main thread before spawning background thread
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())

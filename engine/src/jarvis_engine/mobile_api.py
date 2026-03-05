@@ -2571,6 +2571,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             import jarvis_engine.main as _main_mod
             with _main_mod._conversation_history_lock:
                 _main_mod._conversation_history.clear()
+                _main_mod._conversation_history_loaded = True
+            try:
+                _main_mod._save_conversation_history()
+            except Exception as save_exc:
+                logger.debug("Conversation history save-after-clear failed: %s", save_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
         except Exception as exc:
             logger.error("Conversation history clear failed: %s", exc)
