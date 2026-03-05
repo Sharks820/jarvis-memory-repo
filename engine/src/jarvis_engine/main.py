@@ -1144,7 +1144,10 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
                 _now_utc = datetime.now(tz=_created_dt.tzinfo) if _created_dt.tzinfo else datetime.now(UTC)
                 _age_days = (_now_utc - _created_dt).days
                 if _age_days > 90:
-                    print(f"warning: mobile API token is {_age_days} days old. Consider rotating via: delete {config_file} and restart")
+                    print(
+                        f"warning: mobile API credential bundle is {_age_days} days old. "
+                        f"Consider rotating via: delete {config_file} and restart"
+                    )
         except (ValueError, OSError, KeyError, TypeError):
             pass  # Non-fatal: skip warning if config can't be parsed
 
@@ -4456,6 +4459,8 @@ def cmd_cost_reduction(days: int) -> int:
     result = _get_bus().dispatch(CostReductionCommand(days=days))
     print(f"local_pct={result.local_pct}")
     print(f"cloud_cost_usd={result.cloud_cost_usd}")
+    print(f"failed_count={result.failed_count}")
+    print(f"failed_cost_usd={result.failed_cost_usd}")
     print(f"trend={result.trend}")
     print(f"message={result.message}")
     return 0

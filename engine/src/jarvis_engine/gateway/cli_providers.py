@@ -4,7 +4,8 @@ Uses subprocess to call CLI tools in non-interactive mode.  This lets Jarvis
 leverage subscription-based CLI plans (Claude Code 20x Max, Codex Pro, etc.)
 without needing separate API keys.
 
-Each provider is auto-detected at import time via ``shutil.which``.
+Provider detection is lazy: ``detect_cli_providers()`` is called during
+gateway initialization so CLI availability reflects runtime PATH/auth state.
 
 **Windows note:** npm-installed CLIs create ``.CMD`` batch wrappers that
 ``subprocess.run`` cannot execute by bare name (CreateProcess doesn't search

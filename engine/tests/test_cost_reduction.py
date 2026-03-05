@@ -59,9 +59,11 @@ def test_local_vs_cloud_summary_empty_db(cost_db: CostTracker) -> None:
     result = cost_db.local_vs_cloud_summary()
     assert result["local_count"] == 0
     assert result["cloud_count"] == 0
+    assert result["failed_count"] == 0
     assert result["total_count"] == 0
     assert result["local_pct"] == 0.0
     assert result["cloud_cost_usd"] == 0.0
+    assert result["failed_cost_usd"] == 0.0
     assert result["period_days"] == 30
 
 
@@ -73,8 +75,10 @@ def test_local_vs_cloud_summary_local_only(cost_db: CostTracker) -> None:
     result = cost_db.local_vs_cloud_summary()
     assert result["local_count"] == 5
     assert result["cloud_count"] == 0
+    assert result["failed_count"] == 0
     assert result["local_pct"] == 100.0
     assert result["cloud_cost_usd"] == 0.0
+    assert result["failed_cost_usd"] == 0.0
 
 
 def test_local_vs_cloud_summary_cloud_only(cost_db: CostTracker) -> None:
@@ -85,8 +89,10 @@ def test_local_vs_cloud_summary_cloud_only(cost_db: CostTracker) -> None:
     result = cost_db.local_vs_cloud_summary()
     assert result["local_count"] == 0
     assert result["cloud_count"] == 4
+    assert result["failed_count"] == 0
     assert result["local_pct"] == 0.0
     assert result["cloud_cost_usd"] == pytest.approx(0.04, abs=1e-6)
+    assert result["failed_cost_usd"] == 0.0
 
 
 def test_local_vs_cloud_summary_mixed(cost_db: CostTracker) -> None:
@@ -99,9 +105,11 @@ def test_local_vs_cloud_summary_mixed(cost_db: CostTracker) -> None:
     result = cost_db.local_vs_cloud_summary()
     assert result["local_count"] == 3
     assert result["cloud_count"] == 7
+    assert result["failed_count"] == 0
     assert result["total_count"] == 10
     assert result["local_pct"] == 30.0
     assert result["cloud_cost_usd"] == pytest.approx(0.035, abs=1e-6)
+    assert result["failed_cost_usd"] == 0.0
 
 
 def test_local_vs_cloud_summary_respects_days(cost_db: CostTracker) -> None:
@@ -122,6 +130,7 @@ def test_local_vs_cloud_summary_respects_days(cost_db: CostTracker) -> None:
     result = cost_db.local_vs_cloud_summary(days=7)
     assert result["local_count"] == 1
     assert result["cloud_count"] == 0
+    assert result["failed_count"] == 0
     assert result["local_pct"] == 100.0
 
     # 90d window should see both
@@ -163,6 +172,10 @@ def test_cost_reduction_snapshot_structure(
         "30d_local_pct",
         "7d_cloud_cost_usd",
         "30d_cloud_cost_usd",
+        "7d_failed_count",
+        "30d_failed_count",
+        "7d_failed_cost_usd",
+        "30d_failed_cost_usd",
         "7d_total_queries",
         "30d_total_queries",
     }

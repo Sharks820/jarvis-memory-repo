@@ -2,8 +2,9 @@
 
 Exports the orchestrator, command/result types, all provider classes,
 session ingestors, and budget management.
-Provider imports are wrapped in try/except for graceful degradation when
-optional SDKs (openai, google-genai) are not installed.
+Provider modules handle optional SDK availability internally; this package
+imports the public harvesting surface directly and fails fast on internal
+import regressions.
 """
 
 from jarvis_engine.harvesting.budget import BudgetManager

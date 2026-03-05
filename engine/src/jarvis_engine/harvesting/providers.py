@@ -25,7 +25,7 @@ class HarvesterProvider:
     def __init__(
         self,
         name: str,
-        api_key_env: str,
+        credential_env_var: str,
         base_url: str,
         model: str,
         input_cost_per_mtok: float,
@@ -37,8 +37,8 @@ class HarvesterProvider:
         self.input_cost_per_mtok = input_cost_per_mtok
         self.output_cost_per_mtok = output_cost_per_mtok
 
-        self._api_key_env = api_key_env
-        self._api_key = os.environ.get(api_key_env, "")
+        self._credential_env_var = credential_env_var
+        self._api_key = os.environ.get(credential_env_var, "")
         self._available = bool(self._api_key)
         self._client = None
 
@@ -117,7 +117,7 @@ class MiniMaxProvider(HarvesterProvider):
     def __init__(self) -> None:
         super().__init__(
             name="minimax",
-            api_key_env="MINIMAX_API_KEY",
+            credential_env_var="MINIMAX_API_KEY",
             base_url="https://api.minimax.io/v1",
             model="MiniMax-M2.5",
             input_cost_per_mtok=0.30,
@@ -131,7 +131,7 @@ class KimiProvider(HarvesterProvider):
     def __init__(self) -> None:
         super().__init__(
             name="kimi",
-            api_key_env="KIMI_API_KEY",
+            credential_env_var="KIMI_API_KEY",
             base_url="https://api.moonshot.cn/v1",
             model="kimi-k2.5",
             input_cost_per_mtok=0.60,
@@ -145,7 +145,7 @@ class KimiNvidiaProvider(HarvesterProvider):
     def __init__(self) -> None:
         super().__init__(
             name="kimi_nvidia",
-            api_key_env="NVIDIA_API_KEY",
+            credential_env_var="NVIDIA_API_KEY",
             base_url="https://integrate.api.nvidia.com/v1",
             model="moonshotai/kimi-k2-5",
             input_cost_per_mtok=0.00,

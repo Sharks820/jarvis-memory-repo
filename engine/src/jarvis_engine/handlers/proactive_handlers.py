@@ -258,14 +258,26 @@ class CostReductionHandler:
 
         history = load_cost_history(history_path)
         trend_info = cost_reduction_trend(history)
+        failed_count = int(summary.get("failed_count", 0) or 0)
+        failed_cost_usd = float(summary.get("failed_cost_usd", 0.0) or 0.0)
+        failed_fragment = ""
+        if failed_count > 0:
+            failed_fragment = (
+                f", failed {failed_count} "
+                f"(${failed_cost_usd:.4f})"
+            )
 
         return CostReductionResult(
-            local_pct=summary["local_pct"],
-            cloud_cost_usd=summary["cloud_cost_usd"],
-            trend=trend_info["trend"],
+            local_pct=float(summary.get("local_pct", 0.0)),
+            cloud_cost_usd=float(summary.get("cloud_cost_usd", 0.0)),
+            failed_count=failed_count,
+            failed_cost_usd=failed_cost_usd,
+            trend=str(trend_info.get("trend", "stable")),
             message=(
-                f"{summary['local_pct']}% local ({summary['local_count']}/{summary['total_count']} queries), "
-                f"cloud cost ${summary['cloud_cost_usd']:.4f}, trend: {trend_info['trend']}"
+                f"{summary.get('local_pct', 0.0)}% local "
+                f"({summary.get('local_count', 0)}/{summary.get('total_count', 0)} queries), "
+                f"cloud cost ${float(summary.get('cloud_cost_usd', 0.0)):.4f}"
+                f"{failed_fragment}, trend: {trend_info.get('trend', 'stable')}"
             ),
         )
 

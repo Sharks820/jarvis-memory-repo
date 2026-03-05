@@ -159,9 +159,11 @@ class TestLocalVsCloud:
         s = tracker.local_vs_cloud_summary()
         assert s["local_count"] == 0
         assert s["cloud_count"] == 0
+        assert s["failed_count"] == 0
         assert s["total_count"] == 0
         assert s["local_pct"] == 0.0
         assert s["cloud_cost_usd"] == 0.0
+        assert s["failed_cost_usd"] == 0.0
         tracker.close()
 
     def test_mixed_local_and_cloud(self, tmp_path: Path) -> None:
@@ -172,9 +174,11 @@ class TestLocalVsCloud:
         s = tracker.local_vs_cloud_summary(days=1)
         assert s["local_count"] == 2
         assert s["cloud_count"] == 1
+        assert s["failed_count"] == 0
         assert s["total_count"] == 3
         assert s["local_pct"] == pytest.approx(66.7)
         assert s["cloud_cost_usd"] == pytest.approx(0.05)
+        assert s["failed_cost_usd"] == 0.0
         tracker.close()
 
     def test_all_local(self, tmp_path: Path) -> None:
@@ -183,6 +187,22 @@ class TestLocalVsCloud:
         s = tracker.local_vs_cloud_summary()
         assert s["local_pct"] == 100.0
         assert s["cloud_cost_usd"] == 0.0
+        assert s["failed_count"] == 0
+        assert s["failed_cost_usd"] == 0.0
+        tracker.close()
+
+    def test_failed_queries_not_counted_as_cloud(self, tmp_path: Path) -> None:
+        tracker = _make_tracker(tmp_path)
+        tracker.log("phi3", "ollama", 100, 50, cost_usd=0.0)
+        tracker.log("fallback", "none", 20, 10, cost_usd=0.12)
+        tracker.log("fallback", "", 20, 10, cost_usd=0.03)
+        s = tracker.local_vs_cloud_summary()
+        assert s["local_count"] == 1
+        assert s["cloud_count"] == 0
+        assert s["failed_count"] == 2
+        assert s["total_count"] == 3
+        assert s["cloud_cost_usd"] == 0.0
+        assert s["failed_cost_usd"] == pytest.approx(0.15)
         tracker.close()
 
 
