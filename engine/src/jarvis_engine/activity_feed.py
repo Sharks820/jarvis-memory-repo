@@ -48,6 +48,7 @@ class ActivityCategory:
     PREFERENCE_LEARNED = "preference_learned"
     MISSION_STATE_CHANGE = "mission_state_change"
     COMMAND_LIFECYCLE = "command_lifecycle"
+    RESOURCE_PRESSURE = "resource_pressure"
 
 
 # ---------------------------------------------------------------------------

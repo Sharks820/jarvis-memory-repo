@@ -29,7 +29,12 @@ from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
-from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
+from jarvis_engine.runtime_control import (
+    read_control_state,
+    read_resource_pressure_state,
+    reset_control_state,
+    write_control_state,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -1642,13 +1647,86 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
 
+    def _build_reliability_panel(self, root: Path) -> dict[str, Any]:
+        panel: dict[str, Any] = {
+            "sampled_commands": 0,
+            "command_success_rate_pct": 0.0,
+            "retry_count": 0,
+            "timeout_count": 0,
+            "memory_pressure_incidents": 0,
+            "last_pressure_level": "none",
+            "resource_snapshot": {},
+        }
+        try:
+            from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+
+            feed = get_activity_feed()
+            command_events = feed.query(limit=500, category=ActivityCategory.COMMAND_LIFECYCLE)
+            terminal = []
+            retry_count = 0
+            timeout_count = 0
+            for event in command_events:
+                details = event.details if isinstance(event.details, dict) else {}
+                state = str(details.get("lifecycle_state", "")).lower()
+                if state in {"completed", "failed"}:
+                    terminal.append(event)
+                if bool(details.get("retryable", False)):
+                    retry_count += 1
+                error_code = str(details.get("error_code", "")).lower()
+                status_code = str(details.get("status_code", "")).lower()
+                if "timeout" in error_code or status_code in {"408", "timeout"}:
+                    timeout_count += 1
+
+            successful = 0
+            for event in terminal:
+                details = event.details if isinstance(event.details, dict) else {}
+                if str(details.get("lifecycle_state", "")).lower() == "completed":
+                    successful += 1
+
+            panel["sampled_commands"] = len(terminal)
+            if terminal:
+                panel["command_success_rate_pct"] = round((successful / len(terminal)) * 100.0, 2)
+            panel["retry_count"] = retry_count
+            panel["timeout_count"] = timeout_count
+
+            pressure_events = feed.query(limit=200, category=ActivityCategory.RESOURCE_PRESSURE)
+            incidents = 0
+            for event in pressure_events:
+                details = event.details if isinstance(event.details, dict) else {}
+                level = str(details.get("pressure_level", "")).lower()
+                if level in {"mild", "severe"}:
+                    incidents += 1
+            panel["memory_pressure_incidents"] = incidents
+            if pressure_events:
+                details = pressure_events[0].details if isinstance(pressure_events[0].details, dict) else {}
+                panel["last_pressure_level"] = str(details.get("pressure_level", "none"))
+        except Exception as exc:
+            logger.debug("Reliability panel activity aggregation unavailable: %s", exc)
+
+        try:
+            pressure_state = read_resource_pressure_state(root)
+            if isinstance(pressure_state, dict):
+                metrics = pressure_state.get("metrics", {})
+                panel["last_pressure_level"] = str(pressure_state.get("pressure_level", panel["last_pressure_level"]))
+                panel["resource_snapshot"] = {
+                    "captured_utc": pressure_state.get("captured_utc", ""),
+                    "process_memory_mb": (metrics.get("process_memory_mb", {}) or {}).get("current", 0.0),
+                    "process_cpu_pct": (metrics.get("process_cpu_pct", {}) or {}).get("current", 0.0),
+                    "embedding_cache_mb": (metrics.get("embedding_cache_mb", {}) or {}).get("current", 0.0),
+                }
+        except Exception as exc:
+            logger.debug("Reliability panel runtime snapshot unavailable: %s", exc)
+        return panel
+
     def _handle_get_dashboard(self) -> None:
         if not self._validate_auth(b""):
             return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        dashboard = build_intelligence_dashboard(root)
+        dashboard["reliability_panel"] = self._build_reliability_panel(root)
         self._write_json(
             HTTPStatus.OK,
-            {"ok": True, "dashboard": build_intelligence_dashboard(root)},
+            {"ok": True, "dashboard": dashboard},
         )
 
     def _handle_get_security_status(self) -> None:
@@ -1680,7 +1758,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             "security_status": sec.status(),
             "recent_actions": sec.action_auditor.recent_actions(20) if hasattr(sec, "action_auditor") and sec.action_auditor else [],
             "scope_violations": sec.scope_enforcer.recent_violations(10) if hasattr(sec, "scope_enforcer") and sec.scope_enforcer else [],
-            "resource_usage": sec.resource_monitor.summary() if hasattr(sec, "resource_monitor") and sec.resource_monitor else {},
+            "resource_usage": sec.resource_monitor.status() if hasattr(sec, "resource_monitor") and sec.resource_monitor else {},
             "heartbeat": sec.heartbeat.status() if hasattr(sec, "heartbeat") and sec.heartbeat else {},
             "threat_intel": sec.threat_intel.status() if hasattr(sec, "threat_intel") and sec.threat_intel else {},
         }
@@ -1839,6 +1917,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             combined["alerts"] = dash.get("proactive_alerts", [])
         except Exception:
             combined["alerts"] = []
+        try:
+            combined["reliability"] = self._build_reliability_panel(root_ws)
+        except Exception:
+            combined["reliability"] = {}
         # Recent activity events for UI live updates (UI-03/04)
         try:
             from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
@@ -2012,6 +2094,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             "branches": {},
             "growth_trend": "stable",
             "last_self_test_score": 0.0,
+            "command_success_rate_pct": 0.0,
+            "timeout_count": 0,
+            "memory_pressure_incidents": 0,
         }
 
         # --- Knowledge graph metrics from KG history (same source as dashboard) ---
@@ -2058,9 +2143,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
 
-        # --- Activity feed: corrections and consolidations ---
+        # --- Activity feed: corrections, reliability, and pressure ---
         try:
-            from jarvis_engine.activity_feed import get_activity_feed
+            from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
             feed = get_activity_feed()
             stats = feed.stats()
             if isinstance(stats, dict):
@@ -2075,6 +2160,39 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 metrics["corrections_last_7d"] = len(recent_events)
             except Exception as exc:
                 logger.debug("intelligence growth metric failed: %s", exc)
+            try:
+                command_events = feed.query(limit=500, category=ActivityCategory.COMMAND_LIFECYCLE)
+                terminal = []
+                timeout_count = 0
+                for event in command_events:
+                    details = event.details if isinstance(event.details, dict) else {}
+                    lifecycle_state = str(details.get("lifecycle_state", "")).lower()
+                    if lifecycle_state in {"completed", "failed"}:
+                        terminal.append(details)
+                    error_code = str(details.get("error_code", "")).lower()
+                    status_code = str(details.get("status_code", "")).lower()
+                    if "timeout" in error_code or status_code in {"408", "timeout"}:
+                        timeout_count += 1
+                if terminal:
+                    successful = sum(
+                        1
+                        for details in terminal
+                        if str(details.get("lifecycle_state", "")).lower() == "completed"
+                    )
+                    metrics["command_success_rate_pct"] = round((successful / len(terminal)) * 100.0, 2)
+                metrics["timeout_count"] = timeout_count
+            except Exception as exc:
+                logger.debug("intelligence growth reliability metric failed: %s", exc)
+            try:
+                pressure_events = feed.query(limit=200, category=ActivityCategory.RESOURCE_PRESSURE)
+                incidents = 0
+                for event in pressure_events:
+                    details = event.details if isinstance(event.details, dict) else {}
+                    if str(details.get("pressure_level", "")).lower() in {"mild", "severe"}:
+                        incidents += 1
+                metrics["memory_pressure_incidents"] = incidents
+            except Exception as exc:
+                logger.debug("intelligence growth pressure metric failed: %s", exc)
         except Exception as exc:
             logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
 

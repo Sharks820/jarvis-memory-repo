@@ -365,3 +365,7 @@ class TestActivityCategoryConstants:
     def test_mission_state_change_constant(self):
         from jarvis_engine.activity_feed import ActivityCategory
         assert ActivityCategory.MISSION_STATE_CHANGE == "mission_state_change"
+
+    def test_resource_pressure_constant(self):
+        from jarvis_engine.activity_feed import ActivityCategory
+        assert ActivityCategory.RESOURCE_PRESSURE == "resource_pressure"

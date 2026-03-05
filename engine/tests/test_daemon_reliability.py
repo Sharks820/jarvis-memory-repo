@@ -123,6 +123,66 @@ class TestDaemonReliability:
         assert autopilot_calls == 2  # Autopilot still ran despite mission failures
 
 
+class TestDaemonResourceGuardrails:
+    """Resource pressure controls should throttle and skip heavy subsystems."""
+
+    def test_daemon_uses_throttled_sleep(self, tmp_path: Path, monkeypatch) -> None:
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        sleeps: list[int] = []
+
+        monkeypatch.setattr(
+            main_mod,
+            "capture_runtime_resource_snapshot",
+            lambda root: {"pressure_level": "mild", "metrics": {}, "throttle": {}},
+        )
+        monkeypatch.setattr(main_mod, "write_resource_pressure_state", lambda root, snap: snap)
+        monkeypatch.setattr(
+            main_mod,
+            "recommend_daemon_sleep",
+            lambda base, snap: {
+                "base_sleep_s": base,
+                "sleep_s": 777,
+                "pressure_level": "mild",
+                "skip_heavy_tasks": False,
+            },
+        )
+        monkeypatch.setattr(main_mod.time, "sleep", lambda s: sleeps.append(int(s)))
+
+        rc = _run_daemon_impl(tmp_path, max_cycles=2)
+        assert rc == 0
+        assert 777 in sleeps
+
+    def test_daemon_skips_self_test_when_pressure_severe(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+
+        monkeypatch.setattr(
+            main_mod,
+            "capture_runtime_resource_snapshot",
+            lambda root: {"pressure_level": "severe", "metrics": {}, "throttle": {}},
+        )
+        monkeypatch.setattr(main_mod, "write_resource_pressure_state", lambda root, snap: snap)
+        monkeypatch.setattr(
+            main_mod,
+            "recommend_daemon_sleep",
+            lambda base, snap: {
+                "base_sleep_s": base,
+                "sleep_s": base,
+                "pressure_level": "severe",
+                "skip_heavy_tasks": True,
+            },
+        )
+
+        with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_self_test:
+            rc = _run_daemon_impl(tmp_path, max_cycles=1, self_test_every_cycles=1)
+
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "self_test_skipped=resource_pressure" in captured.out
+        mock_self_test.assert_not_called()
+
+
 class TestSTTReliability:
     """Test suite for STT (Speech-to-Text) reliability."""
 
