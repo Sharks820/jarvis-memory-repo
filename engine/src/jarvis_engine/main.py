@@ -3453,6 +3453,7 @@ def _cmd_voice_run_impl(
     voice_threshold: float,
     master_password: str,
     model_override: str = "",
+    skip_voice_auth_guard: bool = False,
 ) -> int:
     """Implementation body for voice-run (called by handler via callback)."""
     lowered = text.lower().strip()
@@ -3488,6 +3489,8 @@ def _cmd_voice_run_impl(
 
 
     def _require_state_mutation_voice_auth() -> bool:
+        if skip_voice_auth_guard:
+            return True
         if voice_auth_wav.strip() or master_password_ok:
             return True
         print("intent=voice_auth_required")
@@ -3517,7 +3520,12 @@ def _cmd_voice_run_impl(
                     rate=-1,
                 )
             return 2
-        if not voice_auth_wav.strip() and not master_password_ok and not read_only_request:
+        if (
+            not skip_voice_auth_guard
+            and not voice_auth_wav.strip()
+            and not master_password_ok
+            and not read_only_request
+        ):
             print("intent=owner_guard_blocked")
             print("reason=voice_auth_required_when_owner_guard_enabled")
             if speak:
@@ -3533,6 +3541,7 @@ def _cmd_voice_run_impl(
     if (
         (execute or approve_privileged)
         and not read_only_request
+        and not skip_voice_auth_guard
         and not voice_auth_wav.strip()
         and not master_password_ok
     ):
@@ -4448,6 +4457,7 @@ def cmd_voice_run(
     voice_threshold: float,
     master_password: str,
     model_override: str = "",
+    skip_voice_auth_guard: bool = False,
 ) -> int:
     result = _get_bus().dispatch(VoiceRunCommand(
         text=text, execute=execute, approve_privileged=approve_privileged,
@@ -4455,6 +4465,7 @@ def cmd_voice_run(
         voice_user=voice_user, voice_auth_wav=voice_auth_wav,
         voice_threshold=voice_threshold, master_password=master_password,
         model_override=model_override,
+        skip_voice_auth_guard=skip_voice_auth_guard,
     ))
     return result.return_code
 
@@ -4926,6 +4937,16 @@ def main() -> int:
         "--actions-path",
         default=str(repo_root() / ".planning" / "actions.generated.json"),
     )
+    p_voice_run.add_argument(
+        "--model-override",
+        default="",
+        help="Optional explicit model alias to force for this command.",
+    )
+    p_voice_run.add_argument(
+        "--skip-voice-auth-guard",
+        action="store_true",
+        help="Bypass voice-auth requirement guard (owner identity checks still apply).",
+    )
 
     p_voice_listen = sub.add_parser("voice-listen", help="Record from microphone and transcribe speech-to-text.")
     p_voice_listen.add_argument("--duration", type=float, default=30.0, help="Max recording duration in seconds.")
@@ -5280,6 +5301,8 @@ def main() -> int:
             voice_auth_wav=args.voice_auth_wav,
             voice_threshold=args.voice_threshold,
             master_password=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or args.master_password,
+            model_override=args.model_override,
+            skip_voice_auth_guard=args.skip_voice_auth_guard,
         )
     if args.command == "voice-listen":
         return cmd_voice_listen(

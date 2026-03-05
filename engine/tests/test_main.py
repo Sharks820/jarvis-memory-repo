@@ -164,6 +164,64 @@ def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(tmp_path: Pa
     assert rc == 2
 
 
+def test_cmd_voice_run_skip_voice_auth_guard_allows_owner_mutation(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    rc_owner = main_mod.cmd_owner_guard(
+        enable=True,
+        disable=False,
+        owner_user="conner",
+        trust_device="",
+        revoke_device="",
+        set_master_password_value="",
+        clear_master_password_value=False,
+    )
+    assert rc_owner == 0
+
+    rc = main_mod.cmd_voice_run(
+        text="Jarvis, pause daemon",
+        execute=False,
+        approve_privileged=False,
+        speak=False,
+        snapshot_path=tmp_path / "ops_snapshot.live.json",
+        actions_path=tmp_path / "actions.generated.json",
+        voice_user="conner",
+        voice_auth_wav="",
+        voice_threshold=0.82,
+        master_password="",
+        skip_voice_auth_guard=True,
+    )
+    assert rc == 0
+
+
+def test_cmd_voice_run_skip_voice_auth_guard_still_blocks_non_owner(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    rc_owner = main_mod.cmd_owner_guard(
+        enable=True,
+        disable=False,
+        owner_user="conner",
+        trust_device="",
+        revoke_device="",
+        set_master_password_value="",
+        clear_master_password_value=False,
+    )
+    assert rc_owner == 0
+
+    rc = main_mod.cmd_voice_run(
+        text="Jarvis, runtime status",
+        execute=False,
+        approve_privileged=False,
+        speak=False,
+        snapshot_path=tmp_path / "ops_snapshot.live.json",
+        actions_path=tmp_path / "actions.generated.json",
+        voice_user="other_user",
+        voice_auth_wav="",
+        voice_threshold=0.82,
+        master_password="",
+        skip_voice_auth_guard=True,
+    )
+    assert rc == 2
+
+
 def test_cmd_voice_run_owner_guard_allows_bare_wake_word(tmp_path: Path, monkeypatch, capsys) -> None:
     """Bare wake words like 'Jarvis' should not be blocked by owner guard."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
@@ -2612,11 +2670,14 @@ class TestConversationHistory:
         assert hist[-1]["content"] == f"message {max_entries + 5}"
 
     def test_history_truncates_long_content(self):
-        """Content is truncated to 800 characters."""
+        """Content is truncated to configured max chars per message."""
         long_msg = "x" * 2000
         main_mod._add_to_history("user", long_msg)
         hist = main_mod._get_history_messages()
-        assert len(hist[0]["content"]) == 800
+        assert len(hist[0]["content"]) == min(
+            len(long_msg),
+            main_mod._CONVERSATION_MAX_CHARS_PER_MESSAGE,
+        )
 
     def test_get_history_returns_copy(self):
         """_get_history_messages returns a copy, not the original list."""
@@ -2626,9 +2687,9 @@ class TestConversationHistory:
         # Original should be unaffected
         assert len(main_mod._get_history_messages()) == 1
 
-    def test_conversation_max_turns_is_5(self):
-        """_CONVERSATION_MAX_TURNS is set to 5."""
-        assert main_mod._CONVERSATION_MAX_TURNS == 5
+    def test_conversation_max_turns_within_supported_bounds(self):
+        """_CONVERSATION_MAX_TURNS follows bounded env configuration."""
+        assert 4 <= main_mod._CONVERSATION_MAX_TURNS <= 40
 
 
 # ===========================================================================

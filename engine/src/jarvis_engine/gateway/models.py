@@ -121,6 +121,16 @@ for _alias, (_pk, _) in CLOUD_MODEL_MAP.items():
     _PROVIDER_DEFAULT_MODEL.setdefault(_pk, _alias)
 
 
+def _cli_refresh_interval_seconds() -> float:
+    """Return CLI provider refresh cadence in seconds."""
+    raw = os.environ.get("JARVIS_CLI_PROVIDER_REFRESH_S", "5").strip()
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 5.0
+    return max(1.0, min(value, 300.0))
+
+
 @dataclass
 class GatewayResponse:
     """Response from a ModelGateway completion call."""
@@ -190,10 +200,10 @@ class ModelGateway:
         self._http = httpx.Client(timeout=60.0)
 
         # Detect CLI-based LLM providers (Claude Code, Codex, Gemini, Kimi)
+        self._cli_refresh_interval_s = _cli_refresh_interval_seconds()
+        self._last_cli_refresh_monotonic = 0.0
         self._cli_providers: dict[str, CLIProviderInfo] = {}
-        for key, info in detect_cli_providers().items():
-            if info.available:
-                self._cli_providers[key] = info
+        self._refresh_cli_providers(force=True)
 
         # Log available providers
         available = []
@@ -240,8 +250,41 @@ class ModelGateway:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    def _refresh_cli_providers(self, *, force: bool = False) -> None:
+        """Refresh installed CLI provider availability without restarting."""
+        now = time.monotonic()
+        if not force and (now - self._last_cli_refresh_monotonic) < self._cli_refresh_interval_s:
+            return
+        self._last_cli_refresh_monotonic = now
+        try:
+            detected = detect_cli_providers()
+        except Exception as exc:
+            logger.debug("CLI provider refresh failed: %s", exc)
+            return
+
+        refreshed: dict[str, CLIProviderInfo] = {}
+        for key, info in detected.items():
+            if info.available:
+                refreshed[key] = info
+
+        if refreshed == self._cli_providers:
+            return
+
+        previous_keys = set(self._cli_providers.keys())
+        refreshed_keys = set(refreshed.keys())
+        added = sorted(refreshed_keys - previous_keys)
+        removed = sorted(previous_keys - refreshed_keys)
+        if added or removed:
+            logger.info(
+                "CLI provider availability updated: added=%s removed=%s",
+                added,
+                removed,
+            )
+        self._cli_providers = refreshed
+
     def _resolve_provider(self, model: str) -> str:
         """Determine which provider to use for a given model."""
+        self._refresh_cli_providers()
         # CLI models take precedence (exact match) — before startswith checks
         if model in CLI_MODEL_MAP:
             cli_key = CLI_MODEL_MAP[model]
@@ -651,7 +694,10 @@ class ModelGateway:
         cli_key: str,
     ) -> GatewayResponse:
         """Call a CLI-based LLM provider (Claude Code, Codex, Gemini, Kimi)."""
-        result = call_cli_provider(cli_key, messages, max_tokens)
+        model_override = None
+        if model and model not in CLI_MODEL_MAP and model != cli_key:
+            model_override = model
+        result = call_cli_provider(cli_key, messages, max_tokens, model=model_override)
         if not result.get("success"):
             error = result.get("error", "unknown CLI error")
             logger.warning("CLI provider %s failed: %s", cli_key, error)
@@ -691,6 +737,7 @@ class ModelGateway:
         directly to local Ollama to prevent private data leaking off-device.
         """
         if not privacy_routed:
+            self._refresh_cli_providers()
             # Try other cloud providers first
             priority = ["groq", "mistral", "zai"]
             for pk in priority:
@@ -834,6 +881,7 @@ class ModelGateway:
 
     def check_cli(self) -> dict[str, bool]:
         """Check which CLI-based LLM providers are available."""
+        self._refresh_cli_providers()
         return {k: True for k in self._cli_providers}
 
     def available_model_names(self) -> set[str]:
@@ -842,6 +890,7 @@ class ModelGateway:
         Useful for passing to IntentClassifier.classify(available_models=...)
         so it only routes to models that are actually available.
         """
+        self._refresh_cli_providers()
         models: set[str] = set()
         # Anthropic models
         if self._anthropic is not None:
@@ -860,6 +909,7 @@ class ModelGateway:
 
     def available_providers(self) -> list[str]:
         """Return list of all available provider names."""
+        self._refresh_cli_providers()
         providers = []
         if self._anthropic is not None:
             providers.append("anthropic")

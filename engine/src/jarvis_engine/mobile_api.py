@@ -1009,6 +1009,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         voice_threshold=voice_threshold,
                         master_password=master_password,
                         model_override=model_override,
+                        skip_voice_auth_guard=True,
                     )
                 finally:
                     _thread_local.repo_root_override = None
@@ -1092,6 +1093,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             cmd.append("--speak")
         if voice_auth_wav:
             cmd.extend(["--voice-auth-wav", voice_auth_wav])
+        if model_override:
+            cmd.extend(["--model-override", model_override])
+        cmd.append("--skip-voice-auth-guard")
 
         engine_dir = root / "engine"
         env = os.environ.copy()
@@ -2581,6 +2585,43 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.error("Conversation history clear failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
+    def _best_effort_learn_command_result(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+        """Record failed/empty command outcomes so learning does not stall on guard paths."""
+        user_text = str(payload.get("text", "")).strip()
+        if not user_text:
+            return
+        if bool(result.get("ok")) and str(result.get("response", "")).strip():
+            return
+
+        intent = str(result.get("intent", "")).strip() or "command_failed"
+        reason = str(result.get("reason", "")).strip() or str(result.get("error", "")).strip()
+        if not reason:
+            reason = f"Command failed with exit code {result.get('command_exit_code', 'unknown')}."
+        assistant_response = f"[{intent}] {reason}"
+
+        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        try:
+            import jarvis_engine.main as main_mod
+            from jarvis_engine.commands.learning_commands import LearnInteractionCommand
+
+            _thread_local.repo_root_override = root
+            try:
+                bus = main_mod._get_bus()
+                bus.dispatch(
+                    LearnInteractionCommand(
+                        user_message=user_text[:1000],
+                        assistant_response=assistant_response[:1000],
+                        task_id=f"mobile-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        route=intent,
+                        topic=user_text[:100],
+                    )
+                )
+            finally:
+                _thread_local.repo_root_override = None
+        except Exception as exc:
+            _thread_local.repo_root_override = None
+            logger.debug("Best-effort command learning fallback failed: %s", exc)
+
     def _handle_post_command(self) -> None:
         payload, _ = self._read_json_body(max_content_length=25_000)
         if payload is None:
@@ -2607,6 +2648,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         result.setdefault("response_chunks", [])
         result.setdefault("response_truncated", False)
         result.setdefault("stdout_truncated", False)
+        self._best_effort_learn_command_result(payload, result)
         # Scan LLM output for security issues (credential leaks, exfiltration, etc.)
         _sec_orch = getattr(self.server, "security", None)
         if _sec_orch is not None and result.get("ok"):

@@ -53,6 +53,20 @@ def _max_prompt_chars() -> int:
     return max(6_000, min(value, 120_000))
 
 
+def _claude_cli_max_budget_usd() -> str | None:
+    """Return optional Claude CLI max budget from env, or None to omit the flag."""
+    raw = os.environ.get("JARVIS_CLAUDE_CLI_MAX_BUDGET_USD", "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return f"{value:.2f}"
+
+
 @dataclass
 class CLIProviderInfo:
     """Metadata about a CLI-based LLM provider."""
@@ -413,8 +427,10 @@ def call_claude_cli(
         "--output-format", "json",
         "--no-session-persistence",
         "--max-turns", "1",
-        "--max-budget-usd", "0.50",
     ]
+    budget = _claude_cli_max_budget_usd()
+    if budget is not None:
+        cmd.extend(["--max-budget-usd", budget])
 
     try:
         proc = subprocess.run(

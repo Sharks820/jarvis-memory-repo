@@ -80,6 +80,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: v5 debt-gate pass 2: fixed `mobile_api` recent_events schema drift (`details`) and `ops_sync` fallback ICS phantom-key reads; focused tests + full suite passed.
 - 2026-03-05: v5 debt-gate pass 3: reduced dict-key drift and constructor duplication (`persona`, `resilience`, `runtime_control`, `mobile_api`, `defense_handlers`, `learning/*`) with repeated excluded-scope scans and green targeted/full test gates.
 - 2026-03-05: v5 debt-gate pass 4: centralized safe Ollama endpoint policy (`security/net_policy.py`), removed gateway import masking, corrected cloud-vs-failed cost accounting contracts through proactive surfaces, and completed targeted regression gates (254 tests) with ruff clean.
+- 2026-03-05: reliability hardening tranche: added authenticated mobile `/command` voice-auth-guard bypass plumbing (`skip_voice_auth_guard`) while preserving owner identity checks; added mobile best-effort learning fallback for failed/blocked commands; refreshed CLI provider availability dynamically in gateway without restart; made Claude CLI max-budget flag env-driven to avoid hardcoded budget failures; full regression suite clean (4456 passed, 14 skipped).
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
