@@ -1861,6 +1861,17 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.error("sync/heartbeat failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Heartbeat failed."})
 
+    @staticmethod
+    def _serialize_activity_event(event: Any) -> dict[str, Any]:
+        details = event.details if isinstance(getattr(event, "details", None), dict) else {}
+        return dict(
+            event_id=event.event_id,
+            timestamp=event.timestamp,
+            category=event.category,
+            summary=event.summary,
+            details=details,
+        )
+
     def _handle_get_activity(self) -> None:
         if not self._validate_auth(b""):
             return
@@ -1885,16 +1896,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             stats = feed.stats()
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
-                "events": [
-                    {
-                        "event_id": e.event_id,
-                        "timestamp": e.timestamp,
-                        "category": e.category,
-                        "summary": e.summary,
-                        "details": e.details,
-                    }
-                    for e in events
-                ],
+                "events": [self._serialize_activity_event(e) for e in events],
                 "stats": stats,
             })
         except Exception as exc:
@@ -1927,13 +1929,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             feed = get_activity_feed()
             events = feed.query(limit=10)
             combined["recent_events"] = [
-                {
-                    "event_id": e.event_id,
-                    "timestamp": e.timestamp,
-                    "category": e.category,
-                    "summary": e.summary,
-                    "details": e.details,
-                }
+                self._serialize_activity_event(e)
                 for e in events
                 if e.category != ActivityCategory.DAEMON_CYCLE
             ][:10]

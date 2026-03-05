@@ -160,6 +160,13 @@ def _process_usage() -> tuple[float, float]:
     return round(max(0.0, memory_mb), 3), round(max(0.0, cpu_pct), 3)
 
 
+def _metric_is_over_budget(metrics: dict[str, Any], key: str) -> bool:
+    metric = metrics.get(key)
+    if not isinstance(metric, dict):
+        return False
+    return bool(metric.get("over_budget", False))
+
+
 def capture_runtime_resource_snapshot(root: Path) -> dict[str, Any]:
     budgets = read_resource_budgets(root)
     memory_mb, cpu_pct = _process_usage()
@@ -192,7 +199,9 @@ def capture_runtime_resource_snapshot(root: Path) -> dict[str, Any]:
             "over_budget": over_budget,
         }
 
-    if metrics["process_memory_mb"]["over_budget"] or metrics["process_cpu_pct"]["over_budget"] or over_budget_count >= 3:
+    process_memory_over = _metric_is_over_budget(metrics, "process_memory_mb")
+    process_cpu_over = _metric_is_over_budget(metrics, "process_cpu_pct")
+    if process_memory_over or process_cpu_over or over_budget_count >= 3:
         pressure_level = "severe"
     elif over_budget_count >= 1:
         pressure_level = "mild"

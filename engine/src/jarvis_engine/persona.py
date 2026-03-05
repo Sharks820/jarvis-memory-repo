@@ -125,6 +125,13 @@ def load_persona_config(root: Path) -> PersonaConfig:
         raw = {}
     if not isinstance(raw, dict):
         raw = {}
+    raw = {
+        "mode": raw.get("mode", "jarvis_british"),
+        "enabled": raw.get("enabled", True),
+        "humor_level": raw.get("humor_level", 2),
+        "style": raw.get("style", "historically_witty_secret_agent"),
+        "updated_utc": raw.get("updated_utc", ""),
+    }
     try:
         humor_val = int(raw.get("humor_level", 2))
     except (ValueError, TypeError):
