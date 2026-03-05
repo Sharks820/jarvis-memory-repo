@@ -357,6 +357,7 @@ def call_claude_cli(
                 "provider": "claude-cli",
                 "success": False,
                 "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
+                "cost_usd": 0.0,
             }
 
         # Parse JSON output
@@ -383,6 +384,7 @@ def call_claude_cli(
             "provider": "claude-cli",
             "success": False,
             "error": f"timeout after {timeout}s",
+            "cost_usd": 0.0,
         }
     except FileNotFoundError:
         return {
@@ -391,6 +393,7 @@ def call_claude_cli(
             "provider": "claude-cli",
             "success": False,
             "error": "claude CLI not found on PATH",
+            "cost_usd": 0.0,
         }
     except OSError as exc:
         return {
@@ -399,6 +402,7 @@ def call_claude_cli(
             "provider": "claude-cli",
             "success": False,
             "error": f"OS error (prompt too long?): {exc}",
+            "cost_usd": 0.0,
         }
 
 
@@ -431,6 +435,7 @@ def call_codex_cli(
             "provider": "codex-cli",
             "success": False,
             "error": f"Failed to create temp file: {exc}",
+            "cost_usd": 0.0,
         }
 
     cmd = [
@@ -467,6 +472,7 @@ def call_codex_cli(
                 "provider": "codex-cli",
                 "success": False,
                 "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
+                "cost_usd": 0.0,
             }
 
         final_text = text or proc.stdout.strip()
@@ -476,6 +482,7 @@ def call_codex_cli(
             "provider": "codex-cli",
             "success": bool(final_text),
             "error": "" if final_text else "empty response",
+            "cost_usd": 0.0,
         }
     except subprocess.TimeoutExpired:
         return {
@@ -484,6 +491,7 @@ def call_codex_cli(
             "provider": "codex-cli",
             "success": False,
             "error": f"timeout after {timeout}s",
+            "cost_usd": 0.0,
         }
     except FileNotFoundError:
         return {
@@ -492,6 +500,7 @@ def call_codex_cli(
             "provider": "codex-cli",
             "success": False,
             "error": "codex CLI not found on PATH",
+            "cost_usd": 0.0,
         }
     except OSError as exc:
         return {
@@ -500,6 +509,7 @@ def call_codex_cli(
             "provider": "codex-cli",
             "success": False,
             "error": f"OS error (prompt too long?): {exc}",
+            "cost_usd": 0.0,
         }
     finally:
         # Always clean up temp file, regardless of how we exit
@@ -542,6 +552,7 @@ def call_gemini_cli(
                 "provider": "gemini-cli",
                 "success": False,
                 "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
+                "cost_usd": 0.0,
             }
 
         text = proc.stdout.strip()
@@ -551,6 +562,7 @@ def call_gemini_cli(
             "provider": "gemini-cli",
             "success": bool(text),
             "error": "" if text else "empty response",
+            "cost_usd": 0.0,
         }
     except subprocess.TimeoutExpired:
         return {
@@ -559,6 +571,7 @@ def call_gemini_cli(
             "provider": "gemini-cli",
             "success": False,
             "error": f"timeout after {timeout}s",
+            "cost_usd": 0.0,
         }
     except FileNotFoundError:
         return {
@@ -567,6 +580,7 @@ def call_gemini_cli(
             "provider": "gemini-cli",
             "success": False,
             "error": "gemini CLI not found on PATH",
+            "cost_usd": 0.0,
         }
     except OSError as exc:
         return {
@@ -575,6 +589,7 @@ def call_gemini_cli(
             "provider": "gemini-cli",
             "success": False,
             "error": f"OS error (prompt too long?): {exc}",
+            "cost_usd": 0.0,
         }
 
 
@@ -612,6 +627,7 @@ def call_kimi_cli(
                 "provider": "kimi-cli",
                 "success": False,
                 "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
+                "cost_usd": 0.0,
             }
 
         text = proc.stdout.strip()
@@ -621,6 +637,7 @@ def call_kimi_cli(
             "provider": "kimi-cli",
             "success": bool(text),
             "error": "" if text else "empty response",
+            "cost_usd": 0.0,
         }
     except subprocess.TimeoutExpired:
         return {
@@ -629,6 +646,7 @@ def call_kimi_cli(
             "provider": "kimi-cli",
             "success": False,
             "error": f"timeout after {timeout}s",
+            "cost_usd": 0.0,
         }
     except FileNotFoundError:
         return {
@@ -637,6 +655,7 @@ def call_kimi_cli(
             "provider": "kimi-cli",
             "success": False,
             "error": "kimi CLI not found on PATH",
+            "cost_usd": 0.0,
         }
     except OSError as exc:
         return {
@@ -645,6 +664,7 @@ def call_kimi_cli(
             "provider": "kimi-cli",
             "success": False,
             "error": f"OS error (prompt too long?): {exc}",
+            "cost_usd": 0.0,
         }
 
 
@@ -688,6 +708,7 @@ def call_cli_provider(
             "provider": provider_key,
             "success": False,
             "error": f"unknown CLI provider: {provider_key}",
+            "cost_usd": 0.0,
         }
     # Forward model kwarg to providers that accept it (claude, codex)
     if model is not None and provider_key in ("claude-cli", "codex-cli"):

@@ -164,6 +164,13 @@ class ContradictionManager:
                 }
 
             contradiction = dict(row)
+            contradiction["status"] = str(contradiction.get("status", "")).strip()
+            contradiction["node_id"] = str(contradiction.get("node_id", ""))
+            contradiction["existing_value"] = str(contradiction.get("existing_value", ""))
+            contradiction["incoming_value"] = str(contradiction.get("incoming_value", ""))
+            contradiction["incoming_confidence"] = float(
+                contradiction.get("incoming_confidence", 0.0) or 0.0,
+            )
             if contradiction["status"] != "pending":
                 return {
                     "success": False,
@@ -175,6 +182,7 @@ class ContradictionManager:
             node_id = contradiction["node_id"]
             existing_value = contradiction["existing_value"]
             incoming_value = contradiction["incoming_value"]
+            incoming_confidence = contradiction["incoming_confidence"]
             now = datetime.now(UTC).isoformat()
             # Load current node for history
             node_row = self._db.execute(
@@ -205,7 +213,7 @@ class ContradictionManager:
                        SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
                            confidence = ?, updated_at = datetime('now')
                        WHERE node_id = ?""",
-                    (incoming_value, contradiction["incoming_confidence"], node_id),
+                    (incoming_value, incoming_confidence, node_id),
                 )
                 # Update FTS5 + vec indexes (defensive — no-ops if tables missing)
                 self._update_fts_index(node_id, incoming_value)
@@ -263,7 +271,9 @@ class ContradictionManager:
 
             # Invalidate NetworkX cache if kg_nodes was modified
             if resolution in ("accept_new", "merge") and self._kg is not None:
-                self._kg._mutation_counter += 1
+                counter = getattr(self._kg, "_mutation_counter", 0)
+                if isinstance(counter, int):
+                    setattr(self._kg, "_mutation_counter", counter + 1)
 
         logger.info(
             "Contradiction %d resolved: %s for node %s",
