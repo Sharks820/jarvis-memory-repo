@@ -298,8 +298,6 @@ class TestLoadWidgetCfg:
 
     def test_auto_heal_stale_ip_to_localhost(self, _mock_urlopen, tmp_path):
         """When saved URL is unreachable but localhost works, auto-heal to localhost."""
-        from io import BytesIO
-        from http.client import HTTPResponse
 
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)

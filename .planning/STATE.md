@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v4.0 Intelligence Activation & Voice Overhaul)
 Phase: 5 (Mobile App Readiness) -- COMPLETE
 Current Plan: 1 of 1 (all plans complete)
 Status: v4.0 milestone COMPLETE — all 5 phases shipped
-Last activity: 2026-03-02
+Last activity: 2026-03-04 (comprehensive scan + mobile timeout fixes validated)
 
 Progress (v4.0): [██████████] 100%
 
@@ -68,6 +68,8 @@ Progress (v4.0): [██████████] 100%
 
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
+- 2026-03-04 comprehensive rescan: mobile timeout regressions fixed and validated (175-pass targeted suite, full lint clean); Bandit/Pip-audit hardening backlog remains (see `.planning/reports/2026-03-04-repo-scan.md`).
+- 2026-03-04 follow-up reliability pass: mission progress instrumentation + continuity/web-freshness guards shipped (see `.planning/reports/2026-03-04-followup-reliability-and-learning.md`).
 
 ## Session Continuity
 

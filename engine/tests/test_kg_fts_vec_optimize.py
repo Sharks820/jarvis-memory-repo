@@ -10,11 +10,8 @@ Covers:
 from __future__ import annotations
 
 import hashlib
-import math
 import sqlite3
-import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 

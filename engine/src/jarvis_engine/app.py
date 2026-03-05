@@ -252,7 +252,6 @@ def create_app(root: Path) -> CommandBus:
     try:
         from jarvis_engine.gateway.costs import CostTracker
         from jarvis_engine.gateway.models import ModelGateway
-        from jarvis_engine.gateway.classifier import IntentClassifier
 
         cost_tracker = CostTracker(db_path)
         gateway = ModelGateway(
@@ -263,8 +262,9 @@ def create_app(root: Path) -> CommandBus:
             zai_api_key=os.environ.get("ZAI_API_KEY"),
             audit_path=root / ".planning" / "runtime" / "gateway_audit.jsonl",
         )
-        if embed_service is not None:
-            intent_classifier = IntentClassifier(embed_service)
+        # Keep classifier lazy to avoid heavy startup latency in request paths.
+        # It will be instantiated on-demand where needed (e.g. voice fallback).
+        intent_classifier = None
     except Exception as exc:
         logger.warning("Failed to initialize Intelligence Gateway, continuing without: %s", exc)
         gateway = None

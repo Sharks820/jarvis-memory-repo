@@ -59,6 +59,36 @@ def _save_missions(root: Path, missions: list[dict[str, Any]]) -> None:
     _atomic_write_json(_missions_path(root), missions, secure=False)
 
 
+def _progress_bar(pct: int) -> str:
+    pct = max(0, min(100, int(pct)))
+    filled = pct // 10
+    return "[" + ("█" * filled) + ("░" * (10 - filled)) + f"] {pct}%"
+
+
+def _update_mission_progress(
+    root: Path,
+    mission_id: str,
+    *,
+    status: str,
+    progress_pct: int,
+    status_detail: str,
+) -> None:
+    with _MISSIONS_LOCK:
+        missions = load_missions(root)
+        for mission in missions:
+            if str(mission.get("mission_id", "")) != mission_id:
+                continue
+            if str(mission.get("status", "")).lower() == "cancelled":
+                return
+            mission["status"] = status
+            mission["progress_pct"] = max(0, min(100, int(progress_pct)))
+            mission["status_detail"] = status_detail[:180]
+            mission["progress_bar"] = _progress_bar(mission["progress_pct"])
+            mission["updated_utc"] = datetime.now(UTC).isoformat()
+            _save_missions(root, missions)
+            return
+
+
 def create_learning_mission(
     root: Path,
     *,
@@ -82,6 +112,9 @@ def create_learning_mission(
         "updated_utc": datetime.now(UTC).isoformat(),
         "last_report_path": "",
         "verified_findings": 0,
+        "progress_pct": 0,
+        "status_detail": "Queued",
+        "progress_bar": _progress_bar(0),
     }
     with _MISSIONS_LOCK:
         missions = load_missions(root)
@@ -266,6 +299,7 @@ def run_learning_mission(
             continue
         selected.append((url, domain))
     scanned_urls = [url for url, _domain in selected]
+    _update_mission_progress(root, mission_id, status="running", progress_pct=45, status_detail=f"Scanning {len(scanned_urls)} pages")
     workers = max(1, min(4, len(selected)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         future_map = {
@@ -285,6 +319,7 @@ def run_learning_mission(
             for statement in candidates:
                 candidate_rows.append({"statement": statement, "url": url, "domain": domain})
 
+    _update_mission_progress(root, mission_id, status="running", progress_pct=75, status_detail=f"Verifying {len(candidate_rows)} candidate findings")
     verified = _verify_candidates(candidate_rows)
     report = {
         "mission_id": mission_id,
@@ -301,6 +336,7 @@ def run_learning_mission(
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
+    _update_mission_progress(root, mission_id, status="running", progress_pct=90, status_detail="Finalizing mission report")
 
     # Re-read under lock to avoid TOCTOU overwrites from concurrent creates/runs.
     with _MISSIONS_LOCK:
@@ -319,6 +355,9 @@ def run_learning_mission(
             return report
         if verified:
             target["status"] = "completed"
+            target["progress_pct"] = 100
+            target["status_detail"] = "Completed"
+            target["progress_bar"] = _progress_bar(100)
             # Fire proactive alert so the phone gets notified
             try:
                 from jarvis_engine.proactive.alert_queue import enqueue_alert
@@ -336,6 +375,9 @@ def run_learning_mission(
             # retries tracks how many times retry_failed_missions re-queued this.
             retries = int(target.get("retries", 0))
             target["status"] = "failed" if retries < 2 else "exhausted"
+            target["progress_pct"] = 100
+            target["status_detail"] = "Completed with no verified findings"
+            target["progress_bar"] = _progress_bar(100)
         target["updated_utc"] = datetime.now(UTC).isoformat()
         target["last_report_path"] = str(report_path)
         target["verified_findings"] = len(verified)
@@ -370,6 +412,8 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
 
         target["status"] = "cancelled"
         target["updated_utc"] = datetime.now(UTC).isoformat()
+        target["status_detail"] = "Cancelled"
+        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
 
     # Log activity event for mission state change
@@ -421,6 +465,9 @@ def retry_failed_missions(root: Path) -> int:
             mission["retries"] = retries + 1
             mission["status"] = "pending"
             mission["updated_utc"] = datetime.now(UTC).isoformat()
+            mission["progress_pct"] = 0
+            mission["status_detail"] = "Retry queued"
+            mission["progress_bar"] = _progress_bar(0)
             re_queued += 1
             modified = True
         if modified:
