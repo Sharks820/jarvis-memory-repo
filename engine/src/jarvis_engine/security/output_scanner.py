@@ -6,7 +6,6 @@ exfiltration markers, instruction injection, and persona violations.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from typing import Any

@@ -150,7 +150,7 @@ def detect_campaigns(
             signals.append(f"multiple_numbers_{len(distinct_numbers)}")
         else:
             confidence += 0.15
-            signals.append(f"number_pair")
+            signals.append("number_pair")
 
         # Signal: sequential last-4 detection
         last4_values = []

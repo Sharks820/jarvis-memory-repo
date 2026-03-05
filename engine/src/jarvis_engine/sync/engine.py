@@ -6,7 +6,6 @@ with field-level conflict resolution (desktop wins ties, DELETE wins over UPDATE
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import threading

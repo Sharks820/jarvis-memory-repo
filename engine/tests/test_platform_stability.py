@@ -10,14 +10,9 @@ STAB-05: Meta — this test file itself contributes to 4200+ test target
 from __future__ import annotations
 
 import json
-import logging
 import sqlite3
-import tempfile
-from dataclasses import dataclass
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 # ---------------------------------------------------------------------------

@@ -12,11 +12,8 @@ import json
 import sqlite3
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from unittest.mock import patch
 
-import pytest
 
 from conftest import http_request, signed_headers
 

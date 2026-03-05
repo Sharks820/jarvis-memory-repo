@@ -7,9 +7,8 @@ import math
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from jarvis_engine._compat import UTC
 
