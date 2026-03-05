@@ -92,6 +92,7 @@ class VoiceRunCommand:
     voice_threshold: float = 0.82
     master_password: str = ""
     model_override: str = ""
+    skip_voice_auth_guard: bool = False
 
 
 @dataclass

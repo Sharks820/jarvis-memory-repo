@@ -1458,6 +1458,8 @@ class TestWidgetStateMachine:
         widget._thread = MagicMock()
         widget._cancel_event = threading.Event()
         widget._cmd_generation = 0
+        widget._processing_timeout_ms = 60_000
+        widget.after = MagicMock(return_value="after-id")
 
         JarvisDesktopWidget._send_command_async(widget)
 

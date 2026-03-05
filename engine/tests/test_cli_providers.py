@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 from jarvis_engine.gateway.cli_providers import (
+    CLIProviderInfo,
     _build_claude_cli_prompt,
     _build_messages_text,
     call_claude_cli,
@@ -213,6 +214,34 @@ class TestCallClaudeCli:
         result = call_claude_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert "OS error" in result["error"]
+
+    @patch.dict("os.environ", {"JARVIS_CLAUDE_CLI_MAX_BUDGET_USD": ""}, clear=False)
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_budget_flag_omitted_when_env_not_set(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"result": "ok", "cost_usd": 0.0}),
+            stderr="",
+        )
+        result = call_claude_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is True
+        cmd = mock_run.call_args[0][0]
+        assert "--max-budget-usd" not in cmd
+
+    @patch.dict("os.environ", {"JARVIS_CLAUDE_CLI_MAX_BUDGET_USD": "0.25"}, clear=False)
+    @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
+    def test_budget_flag_added_when_env_set(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"result": "ok", "cost_usd": 0.0}),
+            stderr="",
+        )
+        result = call_claude_cli([{"role": "user", "content": "hi"}])
+        assert result["success"] is True
+        cmd = mock_run.call_args[0][0]
+        assert "--max-budget-usd" in cmd
+        idx = cmd.index("--max-budget-usd") + 1
+        assert cmd[idx] == "0.25"
 
 
 # ---------------------------------------------------------------------------
@@ -545,6 +574,33 @@ class TestGatewayCliIntegration:
             assert provider == "cli:claude-cli", (
                 f"claude-cli should route to CLI even without Anthropic API key, not {provider}"
             )
+        finally:
+            gw.close()
+
+    @patch("jarvis_engine.gateway.models.detect_cli_providers")
+    def test_gateway_refreshes_cli_providers_without_restart(self, mock_detect: MagicMock) -> None:
+        codex_info = CLIProviderInfo(
+            name="Codex CLI",
+            executable="/usr/bin/codex",
+            available=True,
+            model="codex-cli",
+        )
+        state = {"installed": False}
+
+        def _fake_detect() -> dict[str, CLIProviderInfo]:
+            if state["installed"]:
+                return {"codex-cli": codex_info}
+            return {}
+
+        mock_detect.side_effect = _fake_detect
+
+        from jarvis_engine.gateway.models import ModelGateway
+        gw = ModelGateway()
+        try:
+            assert "codex-cli" not in gw.check_cli()
+            state["installed"] = True
+            gw._refresh_cli_providers(force=True)
+            assert "codex-cli" in gw.check_cli()
         finally:
             gw.close()
 

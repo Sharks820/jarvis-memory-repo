@@ -380,6 +380,7 @@ class TestVoiceRunHandler:
                 voice_threshold=0.9,
                 master_password="secret",
                 model_override="kimi-k2",
+                skip_voice_auth_guard=True,
             )
         )
 
@@ -395,6 +396,7 @@ class TestVoiceRunHandler:
             voice_threshold=0.9,
             master_password="secret",
             model_override="kimi-k2",
+            skip_voice_auth_guard=True,
         )
 
 

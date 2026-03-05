@@ -1631,9 +1631,80 @@ def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobil
         cmd = captured_cmds[0]
         assert "--master-password" not in cmd
         assert "SuperSecret123!" not in cmd
+        assert "--skip-voice-auth-guard" in cmd
         # But the env var SHOULD be set
         env = captured_envs[0]
         assert env.get("JARVIS_MASTER_PASSWORD") == "SuperSecret123!"
+
+
+def test_run_voice_command_in_process_sets_skip_voice_auth_guard(mobile_server, monkeypatch) -> None:
+    """In-process /command execution should bypass voice-auth guard after API auth."""
+    import jarvis_engine.main as main_mod
+
+    captured: dict[str, object] = {}
+
+    def fake_cmd_voice_run(**kwargs):
+        captured.update(kwargs)
+        print("intent=runtime_status")
+        print("status_code=0")
+        return 0
+
+    monkeypatch.setattr(main_mod, "cmd_voice_run", fake_cmd_voice_run)
+
+    handler = MobileIngestHandler.__new__(MobileIngestHandler)
+    handler.server = mobile_server.server
+    result = handler._run_voice_command({"text": "Jarvis, runtime status"})
+
+    assert result["ok"] is True
+    assert captured.get("skip_voice_auth_guard") is True
+
+
+def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch) -> None:
+    import jarvis_engine.main as main_mod
+
+    dispatched: list[object] = []
+
+    class _FakeBus:
+        def dispatch(self, cmd):  # noqa: ANN001, ANN202
+            dispatched.append(cmd)
+            return None
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _FakeBus())
+
+    handler = MobileIngestHandler.__new__(MobileIngestHandler)
+    handler.server = mobile_server.server
+
+    handler._best_effort_learn_command_result(
+        payload={"text": "pause daemon"},
+        result={
+            "ok": False,
+            "intent": "owner_guard_blocked",
+            "reason": "voice_auth_required_when_owner_guard_enabled",
+            "command_exit_code": 2,
+        },
+    )
+
+    assert len(dispatched) == 1
+    cmd = dispatched[0]
+    assert getattr(cmd, "route") == "owner_guard_blocked"
+    assert "voice_auth_required_when_owner_guard_enabled" in getattr(cmd, "assistant_response")
+
+
+def test_best_effort_learning_skips_success_with_response(mobile_server, monkeypatch) -> None:
+    import jarvis_engine.main as main_mod
+
+    class _FakeBus:
+        def dispatch(self, cmd):  # noqa: ANN001, ANN202
+            raise AssertionError("dispatch should not be called for successful response")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _FakeBus())
+
+    handler = MobileIngestHandler.__new__(MobileIngestHandler)
+    handler.server = mobile_server.server
+    handler._best_effort_learn_command_result(
+        payload={"text": "runtime status"},
+        result={"ok": True, "response": "All systems normal.", "intent": "runtime_status"},
+    )
 
 
 # ---------------------------------------------------------------------------
