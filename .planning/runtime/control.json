@@ -1,6 +1,8 @@
 {
   "daemon_paused": false,
   "safe_mode": false,
+  "muted": false,
+  "mute_until_utc": "",
   "reason": "voice_command",
-  "updated_utc": "2026-03-03T01:07:50.038835+00:00"
+  "updated_utc": "2026-03-04T05:03:06.132118+00:00"
 }
