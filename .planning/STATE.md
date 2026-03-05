@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 voice observability tranche: listening-state lifecycle telemetry + CLI state output)
+Last activity: 2026-03-05 (v5 planning expansion: 14-02 large-scope continuity/voice/mission/telemetry/autofix + desloppify baseline refresh)
 
 Progress (v5.0): [██████░░░░] 55%
 
