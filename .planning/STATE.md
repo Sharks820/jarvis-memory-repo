@@ -11,9 +11,9 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 ## Current Position
 
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
-Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
+Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 debt-gate pass 4: endpoint policy unification + gateway fail-fast + cost-contract coherence)
+Last activity: 2026-03-05 (v5 planning expansion: 14-02 large-scope continuity/voice/mission/telemetry/autofix + desloppify baseline refresh)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -81,6 +81,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: v5 debt-gate pass 3: reduced dict-key drift and constructor duplication (`persona`, `resilience`, `runtime_control`, `mobile_api`, `defense_handlers`, `learning/*`) with repeated excluded-scope scans and green targeted/full test gates.
 - 2026-03-05: v5 debt-gate pass 4: centralized safe Ollama endpoint policy (`security/net_policy.py`), removed gateway import masking, corrected cloud-vs-failed cost accounting contracts through proactive surfaces, and completed targeted regression gates (254 tests) with ruff clean.
 - 2026-03-05: reliability hardening tranche: added authenticated mobile `/command` voice-auth-guard bypass plumbing (`skip_voice_auth_guard`) while preserving owner identity checks; added mobile best-effort learning fallback for failed/blocked commands; refreshed CLI provider availability dynamically in gateway without restart; made Claude CLI max-budget flag env-driven to avoid hardcoded budget failures; full regression suite clean (4456 passed, 14 skipped).
+- 2026-03-05: ran repo-wide desloppify baseline scan under Python 3.12 (`PYENV_VERSION=3.12.12`) with build/cache excludes; captured 889 findings / strict 33.2 and created Plan 14-02 to drive large-scope continuity, date-grounding, realtime voice UX, mission transparency, autonomous approval-gated autofix, memory hygiene, and score-to-100 execution.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
