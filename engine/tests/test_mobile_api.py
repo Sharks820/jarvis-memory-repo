@@ -417,6 +417,16 @@ def test_dashboard_endpoint_returns_payload(mobile_server) -> None:
     assert payload["ok"] is True
     assert "dashboard" in payload
     assert "ranking" in payload["dashboard"]
+    assert "reliability_panel" in payload["dashboard"]
+    assert "command_success_rate_pct" in payload["dashboard"]["reliability_panel"]
+
+
+def test_widget_status_includes_reliability_panel(mobile_server) -> None:
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/widget-status", headers=headers)
+    assert code == 200
+    payload = json.loads(body.decode("utf-8"))
+    assert "reliability" in payload
 
 
 def test_command_endpoint_executes_voice_route(mobile_server) -> None:

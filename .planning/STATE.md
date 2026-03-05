@@ -6,16 +6,16 @@ See: .planning/PROJECT.md
 See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning)
 
 **Core value:** Jarvis learns from everything, never forgets, never regresses, and becomes more useful every single day.
-**Current focus:** v5.0 phase-1 reliability execution (tasks A/B in flight).
+**Current focus:** v5.0 phase-1 reliability execution (tasks C/D complete, debt gate next).
 
 ## Current Position
 
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-01 (Reliability Baseline and Execution Control Plane)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 step-2 context transport resilience complete + full scans)
+Last activity: 2026-03-05 (v5 step-3 resource guardrails + observability upgrade complete + full scans)
 
-Progress (v5.0): [██░░░░░░░░] 20%
+Progress (v5.0): [████░░░░░░] 40%
 
 ## Performance Metrics
 
@@ -32,10 +32,10 @@ Progress (v5.0): [██░░░░░░░░] 20%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-05): 4432 passing, 14 skipped, 0 failures
+- Latest full test run (2026-03-05): 4441 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
-- Typed debt baseline: mypy 108 errors across 33 files
-- Security scan baseline: bandit 166 findings (1 high, 50 medium, 115 low)
+- Typed debt baseline: mypy 107 errors across 32 files
+- Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
 - Plan active: `.planning/phases/14-world-class-assistant-reliability/14-01-PLAN.md`
 
 ## Self-Analysis Findings (all resolved)
@@ -75,6 +75,7 @@ Progress (v5.0): [██░░░░░░░░] 20%
 - 2026-03-05: Start v5.0 reliability-first program with strict GSD execution and soak-test gating.
 - 2026-03-05: v5 Step 1 complete (command lifecycle hardening + structured diagnostics on mobile API).
 - 2026-03-05: v5 Step 2 complete (CLI prompt compaction/checkpointing to preserve context under transport limits).
+- 2026-03-05: v5 Step 3 complete (runtime resource budgets/pressure throttling + reliability panel + mission activity telemetry).
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second

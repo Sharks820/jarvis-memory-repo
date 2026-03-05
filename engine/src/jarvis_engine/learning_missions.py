@@ -73,20 +73,66 @@ def _update_mission_progress(
     progress_pct: int,
     status_detail: str,
 ) -> None:
+    event_payload: dict[str, Any] | None = None
+    cancelled = False
     with _MISSIONS_LOCK:
         missions = load_missions(root)
         for mission in missions:
             if str(mission.get("mission_id", "")) != mission_id:
                 continue
             if str(mission.get("status", "")).lower() == "cancelled":
-                return
+                cancelled = True
+                break
             mission["status"] = status
             mission["progress_pct"] = max(0, min(100, int(progress_pct)))
             mission["status_detail"] = status_detail[:180]
             mission["progress_bar"] = _progress_bar(mission["progress_pct"])
             mission["updated_utc"] = datetime.now(UTC).isoformat()
             _save_missions(root, missions)
-            return
+            event_payload = {
+                "topic": str(mission.get("topic", "")),
+                "status": status,
+                "progress_pct": int(mission["progress_pct"]),
+                "status_detail": str(mission["status_detail"]),
+            }
+            break
+    if cancelled or event_payload is None:
+        return
+    if event_payload is not None:
+        _log_mission_activity(
+            mission_id=mission_id,
+            topic=event_payload["topic"],
+            status=event_payload["status"],
+            progress_pct=event_payload["progress_pct"],
+            step=event_payload["status_detail"],
+        )
+
+
+def _log_mission_activity(
+    *,
+    mission_id: str,
+    topic: str,
+    status: str,
+    progress_pct: int,
+    step: str,
+) -> None:
+    try:
+        from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+        log_activity(
+            ActivityCategory.MISSION_STATE_CHANGE,
+            f"Mission {status}: {topic}",
+            {
+                "mission_id": mission_id,
+                "provider": "web_research",
+                "step": step[:180],
+                "progress_pct": max(0, min(100, int(progress_pct))),
+                "correlation_id": f"mission-{mission_id}",
+                "status": status,
+            },
+        )
+    except Exception:
+        logger.debug("Mission activity logging failed for %s", mission_id)
 
 
 def create_learning_mission(
@@ -120,6 +166,13 @@ def create_learning_mission(
         missions = load_missions(root)
         missions.append(mission)
         _save_missions(root, missions)
+    _log_mission_activity(
+        mission_id=mission_id,
+        topic=str(mission.get("topic", "")),
+        status="pending",
+        progress_pct=0,
+        step="Queued",
+    )
     return mission
 
 
@@ -381,7 +434,18 @@ def run_learning_mission(
         target["updated_utc"] = datetime.now(UTC).isoformat()
         target["last_report_path"] = str(report_path)
         target["verified_findings"] = len(verified)
+        final_status = str(target.get("status", "completed"))
+        final_progress = int(target.get("progress_pct", 100) or 100)
+        final_detail = str(target.get("status_detail", "Completed"))
+        final_topic = str(target.get("topic", ""))
         _save_missions(root, missions)
+    _log_mission_activity(
+        mission_id=mission_id,
+        topic=final_topic,
+        status=final_status,
+        progress_pct=final_progress,
+        step=final_detail,
+    )
     return report
 
 
@@ -417,16 +481,13 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         _save_missions(root, missions)
 
     # Log activity event for mission state change
-    try:
-        from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
-        log_activity(
-            ActivityCategory.MISSION_STATE_CHANGE,
-            f"Mission cancelled: {target.get('topic', '')}",
-            {"mission_id": mission_id, "new_status": "cancelled"},
-        )
-    except Exception:
-        pass
+    _log_mission_activity(
+        mission_id=mission_id,
+        topic=str(target.get("topic", "")),
+        status="cancelled",
+        progress_pct=int(target.get("progress_pct", 0) or 0),
+        step="Cancelled",
+    )
 
     return target
 
