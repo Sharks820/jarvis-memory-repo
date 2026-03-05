@@ -3,11 +3,8 @@ immediate dashboard refresh, response= output (UI-01 through UI-05)."""
 
 from __future__ import annotations
 
-import threading
-import tkinter as tk
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 # ---------------------------------------------------------------------------

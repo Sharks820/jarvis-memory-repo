@@ -432,7 +432,7 @@ class ModelGateway:
                     messages, max_tokens, response.fallback_reason or "ollama_failed",
                     temperature, skip_ollama=True, privacy_routed=privacy_routed,
                 )
-                audit_reason = f"fallback:ollama_failed"
+                audit_reason = "fallback:ollama_failed"
 
         latency_ms = (time.perf_counter() - t0) * 1000
 

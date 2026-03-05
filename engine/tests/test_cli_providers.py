@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from jarvis_engine.gateway.cli_providers import (
-    CLIProviderInfo,
     _build_messages_text,
     call_claude_cli,
     call_codex_cli,

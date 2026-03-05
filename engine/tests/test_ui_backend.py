@@ -5,13 +5,11 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine._compat import UTC
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +272,6 @@ class TestResponseOutputLines:
 
     def test_brain_status_emits_response(self, capsys):
         """cmd_brain_status prints a response= line."""
-        from jarvis_engine.commands.memory_commands import BrainStatusCommand
 
         mock_bus = MagicMock()
         mock_result = MagicMock()
