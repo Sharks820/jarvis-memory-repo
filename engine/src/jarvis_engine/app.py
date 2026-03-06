@@ -379,12 +379,15 @@ def create_app(root: Path) -> CommandBus:
             UnblockIPHandler,
         )
 
+        import sqlite3
+        import threading
+
         _sec_db_path = root / ".planning" / "brain" / "security.db"
         _sec_db_path.parent.mkdir(parents=True, exist_ok=True)
-        _sec_db = __import__("sqlite3").connect(str(_sec_db_path), check_same_thread=False)
+        _sec_db = sqlite3.connect(str(_sec_db_path), check_same_thread=False)
         from jarvis_engine._db_pragmas import configure_sqlite
         configure_sqlite(_sec_db)
-        _sec_lock = __import__("threading").Lock()
+        _sec_lock = threading.Lock()
         _sec_log_dir = _runtime_dir(root) / "forensic"
 
         # Create a single shared orchestrator for all defense handlers

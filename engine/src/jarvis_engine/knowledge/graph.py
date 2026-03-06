@@ -65,29 +65,24 @@ class KnowledgeGraph:
 
     @property
     def db(self) -> "sqlite3.Connection":
-        """Public accessor for the SQLite connection."""
         return self._db
 
     @property
     def write_lock(self) -> "threading.Lock":
-        """Public accessor for the shared write lock."""
         return self._write_lock
 
     @property
     def db_lock(self) -> "threading.Lock":
-        """Public accessor for the shared DB read lock."""
         return self._db_lock
 
     @property
     def db_path(self) -> "Path":
-        """Path to the underlying SQLite database file."""
         from pathlib import Path
 
         return Path(self._engine.db_path)
 
     @property
     def mutation_counter(self) -> int:
-        """Current mutation counter (increments on every graph write)."""
         return self._mutation_counter
 
     def invalidate_cache(self) -> None:

@@ -83,6 +83,7 @@ class _DefenseHandlerBase:
         self._write_lock = write_lock
         self._log_dir = log_dir
         self._orchestrator = orchestrator
+        self._cached_forensic_logger: "ForensicLogger | None" = None
 
     def _ensure_orchestrator(self) -> "SecurityOrchestrator | None":
         """Return the shared orchestrator, creating one if needed."""
@@ -94,7 +95,7 @@ class _DefenseHandlerBase:
 
     @property
     def _forensic_logger(self):
-        if not hasattr(self, "_cached_forensic_logger"):
+        if self._cached_forensic_logger is None:
             from jarvis_engine.security.forensic_logger import ForensicLogger
 
             self._cached_forensic_logger = ForensicLogger(self._log_dir)

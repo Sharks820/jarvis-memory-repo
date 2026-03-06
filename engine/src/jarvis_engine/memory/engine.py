@@ -68,22 +68,18 @@ class MemoryEngine:
 
     @property
     def db_path(self) -> Path:
-        """The path to the SQLite database file (read-only accessor)."""
         return self._db_path
 
     @property
     def db(self) -> sqlite3.Connection:
-        """The underlying SQLite connection (read-only accessor)."""
         return self._db
 
     @property
     def write_lock(self) -> threading.Lock:
-        """Lock for serialising database writes (read-only accessor)."""
         return self._write_lock
 
     @property
     def db_lock(self) -> threading.Lock:
-        """Lock to prevent cursor interleaving on shared connection (read-only accessor)."""
         return self._db_lock
 
     def _check_open(self) -> None:
