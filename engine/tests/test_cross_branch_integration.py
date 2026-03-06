@@ -137,12 +137,13 @@ class TestBuildSmartContextCrossBranch:
     def test_returns_four_tuple(self):
         """_build_smart_context returns (memory, facts, cross_branch, preferences)."""
         import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
 
         from jarvis_engine.command_bus import AppContext
         bus = MagicMock(spec=[])  # No engine attribute
         bus.ctx = AppContext()  # All None defaults
         with patch.object(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ):
             result = main_mod._build_smart_context(bus, "test query")
@@ -245,13 +246,14 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_skipped_when_no_engine(self):
         """Cross-branch query is not attempted when engine is unavailable."""
         import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock(spec=[])
         bus.ctx = AppContext()  # engine=None by default
 
         with patch.object(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ), patch(
             "jarvis_engine.learning.cross_branch.cross_branch_query"
@@ -264,6 +266,7 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_skipped_when_no_embed_service(self):
         """Cross-branch query is not attempted when embed_service is unavailable."""
         import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock()
@@ -273,7 +276,7 @@ class TestBuildSmartContextCrossBranch:
         mock_kg_instance.query_relevant_facts.return_value = []
 
         with patch.object(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ), patch(
             "jarvis_engine.knowledge.graph.KnowledgeGraph",

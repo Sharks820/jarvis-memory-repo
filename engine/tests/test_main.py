@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 
 from jarvis_engine import main as main_mod
+from jarvis_engine import voice_pipeline as voice_pipeline_mod
+from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext
 
 
@@ -91,7 +94,7 @@ def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
 
 
 def test_conversation_continuity_instruction_on_model_switch(monkeypatch) -> None:
-    monkeypatch.setattr(main_mod, "_last_routed_model", "kimi-k2")
+    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model","kimi-k2")
     line = main_mod._conversation_continuity_instruction("gemma3:4b", history_len=3)  # type: ignore[attr-defined]
     assert line is not None
     assert "previous turn used model 'kimi-k2'" in line
@@ -99,7 +102,7 @@ def test_conversation_continuity_instruction_on_model_switch(monkeypatch) -> Non
 
 
 def test_conversation_continuity_instruction_no_history_or_same_model(monkeypatch) -> None:
-    monkeypatch.setattr(main_mod, "_last_routed_model", "gemma3:4b")
+    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model","gemma3:4b")
     assert main_mod._conversation_continuity_instruction("gemma3:4b", history_len=3) is None  # type: ignore[attr-defined]
     assert main_mod._conversation_continuity_instruction("kimi-k2", history_len=0) is None  # type: ignore[attr-defined]
 
@@ -118,7 +121,7 @@ def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
     fake_mod = types.SimpleNamespace(ActivityCategory=_Cat, log_activity=_fake_log_activity)
     monkeypatch.setitem(__import__("sys").modules, "jarvis_engine.activity_feed", fake_mod)
 
-    monkeypatch.setattr(main_mod, "_last_routed_model", None)
+    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model",None)
     main_mod._mark_routed_model("kimi-k2", "groq")  # type: ignore[attr-defined]
     main_mod._mark_routed_model("gemma3:4b", "ollama")  # type: ignore[attr-defined]
 
@@ -195,6 +198,9 @@ def test_cmd_voice_run_state_mutation_requires_voice_auth() -> None:
 
 def test_cmd_voice_run_owner_guard_blocks_non_owner(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -223,6 +229,9 @@ def test_cmd_voice_run_owner_guard_blocks_non_owner(tmp_path: Path, monkeypatch)
 
 def test_cmd_voice_run_owner_guard_allows_read_only_without_voice_auth(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -251,6 +260,9 @@ def test_cmd_voice_run_owner_guard_allows_read_only_without_voice_auth(tmp_path:
 
 def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -279,6 +291,9 @@ def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(tmp_path: Pa
 
 def test_cmd_voice_run_skip_voice_auth_guard_allows_owner_mutation(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -308,6 +323,9 @@ def test_cmd_voice_run_skip_voice_auth_guard_allows_owner_mutation(tmp_path: Pat
 
 def test_cmd_voice_run_skip_voice_auth_guard_still_blocks_non_owner(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -338,6 +356,9 @@ def test_cmd_voice_run_skip_voice_auth_guard_still_blocks_non_owner(tmp_path: Pa
 def test_cmd_voice_run_owner_guard_allows_bare_wake_word(tmp_path: Path, monkeypatch, capsys) -> None:
     """Bare wake words like 'Jarvis' should not be blocked by owner guard."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -372,6 +393,9 @@ def test_cmd_voice_run_owner_guard_allows_bare_wake_word(tmp_path: Path, monkeyp
 def test_cmd_voice_run_owner_guard_allows_with_master_password(tmp_path: Path, monkeypatch) -> None:
     """Master password should bypass owner guard for any command."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_owner = main_mod.cmd_owner_guard(
         enable=True,
         disable=False,
@@ -400,6 +424,9 @@ def test_cmd_voice_run_owner_guard_allows_with_master_password(tmp_path: Path, m
 
 def test_cmd_phone_spam_guard_can_run_without_queue(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     call_log_path = tmp_path / "calls.json"
     report_path = tmp_path / "report.json"
     queue_path = tmp_path / "queue.jsonl"
@@ -428,6 +455,9 @@ def test_cmd_phone_spam_guard_can_run_without_queue(tmp_path: Path, monkeypatch)
 
 def test_cmd_gaming_mode_persists_state(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc = main_mod.cmd_gaming_mode(enable=True, reason="gaming", auto_detect="")
     assert rc == 0
 
@@ -445,7 +475,10 @@ def test_cmd_gaming_mode_persists_state(tmp_path: Path, monkeypatch) -> None:
 
 def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-    monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 10.0)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -459,7 +492,7 @@ def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeyp
         sleeps.append(seconds)
 
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
-    monkeypatch.setattr(main_mod.time, "sleep", fake_sleep)
+    monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
         interval_s=120,
@@ -480,8 +513,11 @@ def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeyp
 
 def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_gaming_mode(enable=True, reason="session", auto_detect="")
-    monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -495,7 +531,7 @@ def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path
         sleeps.append(seconds)
 
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
-    monkeypatch.setattr(main_mod.time, "sleep", fake_sleep)
+    monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
         interval_s=120,
@@ -516,9 +552,12 @@ def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path
 
 def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_gaming_mode(enable=False, reason="auto", auto_detect="on")
-    monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (True, "fortniteclient-win64-shipping.exe"))
+    monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (True, "fortniteclient-win64-shipping.exe"))
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -532,7 +571,7 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
         sleeps.append(seconds)
 
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
-    monkeypatch.setattr(main_mod.time, "sleep", fake_sleep)
+    monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
         interval_s=120,
@@ -553,6 +592,9 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
 
 def test_cmd_runtime_control_persists_state(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc = main_mod.cmd_runtime_control(
         pause=True,
         resume=False,
@@ -575,6 +617,9 @@ def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
     import jarvis_engine.auto_ingest as _auto_ingest_mod
 
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(_auto_ingest_mod, "repo_root", lambda: tmp_path)
 
     # Mock EmbeddingService to avoid loading real nomic-bert model
@@ -587,8 +632,8 @@ def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
         lambda *a, **kw: fake_embed,
     )
     # Clear cached bus so it rebuilds with mock
-    monkeypatch.setattr(main_mod, "_cached_bus", None)
-    monkeypatch.setattr(main_mod, "_cached_bus_root", None)
+    monkeypatch.setattr(bus_mod, "_cached_bus", None)
+    monkeypatch.setattr(bus_mod, "_cached_bus_root", None)
     monkeypatch.setattr(_auto_ingest_mod, "_auto_ingest_store", None)
 
     rid = _auto_ingest_mod.auto_ingest_memory_sync(
@@ -613,6 +658,9 @@ def test_cmd_brain_status_and_context(tmp_path: Path, monkeypatch) -> None:
 
 def test_cmd_memory_snapshot_create_and_verify(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc_create = main_mod.cmd_memory_snapshot(create=True, verify_path=None, note="test")
     assert rc_create == 0
 
@@ -626,12 +674,18 @@ def test_cmd_memory_snapshot_create_and_verify(tmp_path: Path, monkeypatch) -> N
 
 def test_cmd_memory_maintenance(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc = main_mod.cmd_memory_maintenance(keep_recent=500, snapshot_note="nightly")
     assert rc == 0
 
 
 def test_cmd_persona_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc = main_mod.cmd_persona_config(
         enable=True,
         disable=False,
@@ -644,6 +698,9 @@ def test_cmd_persona_config(tmp_path: Path, monkeypatch) -> None:
 
 def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_runtime_control(
         pause=True,
         resume=False,
@@ -652,8 +709,8 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
         reset=False,
         reason="pause test",
     )
-    monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -667,7 +724,7 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
         sleeps.append(seconds)
 
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
-    monkeypatch.setattr(main_mod.time, "sleep", fake_sleep)
+    monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
         interval_s=120,
@@ -688,6 +745,9 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
 
 def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_runtime_control(
         pause=False,
         resume=False,
@@ -696,8 +756,8 @@ def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monke
         reset=False,
         reason="safe",
     )
-    monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
 
     observed: dict[str, bool] = {"execute": True, "approve_privileged": True}
 
@@ -746,6 +806,9 @@ def test_cmd_voice_run_routes_web_research(monkeypatch, capsys) -> None:
 
 def test_cmd_mobile_desktop_sync_and_self_heal(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     widget_cfg = tmp_path / ".planning" / "security" / "desktop_widget.json"
     widget_cfg.parent.mkdir(parents=True, exist_ok=True)
     widget_cfg.write_text("{}", encoding="utf-8")
@@ -2019,6 +2082,9 @@ class TestIntelligenceDashboard:
         bus = _make_bus_mock(result)
         monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         rc = main_mod.cmd_intelligence_dashboard(last_runs=20, output_path="", as_json=True)
         assert rc == 0
         parsed = json.loads(capsys.readouterr().out)
@@ -2038,6 +2104,9 @@ class TestIntelligenceDashboard:
         bus = _make_bus_mock(result)
         monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         rc = main_mod.cmd_intelligence_dashboard(last_runs=20, output_path="", as_json=False)
         assert rc == 0
         out = capsys.readouterr().out
@@ -2310,6 +2379,9 @@ class TestAutoIngestMemory:
     def test_auto_ingest_disabled_by_env(self, monkeypatch, tmp_path):
         monkeypatch.setenv("JARVIS_AUTO_INGEST_DISABLE", "1")
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         result = main_mod._auto_ingest_memory(
             source="user", kind="semantic", task_id="test", content="Test content",
         )
@@ -2318,6 +2390,9 @@ class TestAutoIngestMemory:
     def test_auto_ingest_invalid_source(self, monkeypatch, tmp_path):
         monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         result = main_mod._auto_ingest_memory(
             source="invalid_source", kind="semantic", task_id="test", content="Test",
         )
@@ -2326,6 +2401,9 @@ class TestAutoIngestMemory:
     def test_auto_ingest_invalid_kind(self, monkeypatch, tmp_path):
         monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         result = main_mod._auto_ingest_memory(
             source="user", kind="bogus", task_id="test", content="Test",
         )
@@ -2334,6 +2412,9 @@ class TestAutoIngestMemory:
     def test_auto_ingest_empty_content(self, monkeypatch, tmp_path):
         monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         result = main_mod._auto_ingest_memory(
             source="user", kind="semantic", task_id="test", content="",
         )
@@ -2345,11 +2426,17 @@ class TestGamingProcessHelpers:
 
     def test_read_gaming_mode_default(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         state = main_mod._read_gaming_mode_state()
         assert state["enabled"] is False
 
     def test_read_gaming_mode_corrupted(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         path = tmp_path / ".planning" / "runtime" / "gaming_mode.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("corrupt json!", encoding="utf-8")
@@ -2358,6 +2445,9 @@ class TestGamingProcessHelpers:
 
     def test_load_gaming_processes_default(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         processes = main_mod._load_gaming_processes()
         assert len(processes) > 0
@@ -2370,6 +2460,9 @@ class TestGamingProcessHelpers:
 
     def test_load_gaming_processes_from_file_dict(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2379,6 +2472,9 @@ class TestGamingProcessHelpers:
 
     def test_load_gaming_processes_from_file_list(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2388,6 +2484,9 @@ class TestGamingProcessHelpers:
 
     def test_load_gaming_processes_empty_falls_back(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2617,6 +2716,9 @@ class TestIntelligenceDashboardOutputPath:
         bus = _make_bus_mock(result)
         monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         # Use a path clearly outside repo root
         rc = main_mod.cmd_intelligence_dashboard(
             last_runs=5, output_path="/tmp/totally/outside/dashboard.json", as_json=True,
@@ -2632,6 +2734,9 @@ class TestIntelligenceDashboardOutputPath:
         bus = _make_bus_mock(result)
         monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         out_path = str(tmp_path / "output" / "dash.json")
         rc = main_mod.cmd_intelligence_dashboard(last_runs=5, output_path=out_path, as_json=True)
         assert rc == 0
@@ -2649,9 +2754,12 @@ class TestDaemonSelfTest:
                          self_test_every_cycles=1, max_cycles=1):
         """Helper: run _cmd_daemon_run_impl with heavy mocking."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 10.0)
+        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
         monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda **kw: 0)
-        monkeypatch.setattr(main_mod.time, "sleep", lambda s: None)
+        monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         # Ensure runtime dir exists for self_test_history.jsonl
         (tmp_path / ".planning" / "runtime").mkdir(parents=True, exist_ok=True)
         return main_mod._cmd_daemon_run_impl(
@@ -2680,7 +2788,7 @@ class TestDaemonSelfTest:
         mock_embed = MagicMock()
         mock_bus = MagicMock()
         mock_bus.ctx = AppContext(engine=mock_engine, embed_service=mock_embed)
-        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
+        monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",
                     return_value=mock_tester) as mock_cls:
@@ -2701,7 +2809,7 @@ class TestDaemonSelfTest:
         """Verify no self-test activity when self_test_every_cycles=0."""
         mock_bus = MagicMock()
         mock_bus.ctx = AppContext(engine=MagicMock(), embed_service=MagicMock())
-        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
+        monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
             rc = self._run_daemon_impl(tmp_path, monkeypatch,
@@ -2717,7 +2825,7 @@ class TestDaemonSelfTest:
         """Verify 'skipped' message when engine or embed_svc is None on bus."""
         mock_bus = MagicMock()
         mock_bus.ctx = AppContext(engine=None, embed_service=None)
-        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
+        monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
             rc = self._run_daemon_impl(tmp_path, monkeypatch,
@@ -2732,7 +2840,7 @@ class TestDaemonSelfTest:
         """Verify error is caught and printed, daemon continues running."""
         mock_bus = MagicMock()
         mock_bus.ctx = AppContext(engine=MagicMock(), embed_service=MagicMock())
-        monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
+        monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",
                     side_effect=RuntimeError("quiz DB corrupt")):
@@ -2886,7 +2994,7 @@ class TestBuildSmartContext:
         }
 
         monkeypatch.setattr(
-            main_mod, "build_context_packet", lambda *a, **kw: fake_packet
+            voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
         memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "anything")
@@ -2904,7 +3012,7 @@ class TestBuildSmartContext:
             "selected": [{"summary": "Fallback memory"}]
         }
         monkeypatch.setattr(
-            main_mod, "build_context_packet", lambda *a, **kw: fake_packet
+            voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
         memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "test query")
@@ -2917,7 +3025,7 @@ class TestBuildSmartContext:
 
         # Legacy path returns empty for memory
         monkeypatch.setattr(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
@@ -2939,7 +3047,7 @@ class TestBuildSmartContext:
         bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
 
         monkeypatch.setattr(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
@@ -2961,7 +3069,7 @@ class TestBuildSmartContext:
         bus.ctx = AppContext()  # all None defaults
 
         monkeypatch.setattr(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             MagicMock(side_effect=RuntimeError("DB broken")),
         )
 

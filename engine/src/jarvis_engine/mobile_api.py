@@ -2540,12 +2540,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         # Clear server-side conversation history
         try:
-            import jarvis_engine.main as _main_mod
-            with _main_mod._conversation_history_lock:
-                _main_mod._conversation_history.clear()
-                _main_mod._conversation_history_loaded = True
+            import jarvis_engine.voice_pipeline as _vp_mod
+            with _vp_mod._conversation_history_lock:
+                _vp_mod._conversation_history.clear()
+                _vp_mod._conversation_history_loaded = True
             try:
-                _main_mod._save_conversation_history()
+                _vp_mod._save_conversation_history()
             except Exception as save_exc:
                 logger.debug("Conversation history save-after-clear failed: %s", save_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
