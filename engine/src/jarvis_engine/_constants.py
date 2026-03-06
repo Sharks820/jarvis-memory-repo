@@ -17,10 +17,21 @@ from jarvis_engine._compat import UTC
 # ---------------------------------------------------------------------------
 
 PRIVACY_KEYWORDS: frozenset[str] = frozenset({
-    "password", "ssn", "bank", "credit card", "social security",
-    "medical", "health", "prescription", "salary", "income",
-    "secret", "private", "personal", "confidential", "nude",
-    "naked", "sex", "porn", "drug", "affair",
+    # Identity / contact
+    "address", "phone number", "social security", "ssn",
+    # Financial
+    "account", "bank", "bank account", "bill", "bills", "credit card",
+    "credential", "income", "insurance", "payment", "pin", "salary",
+    # Medical / health
+    "allergy", "blood type", "diagnosis", "doctor", "health", "medical",
+    "medication", "medications", "medicine", "pill", "prescription",
+    "surgery", "symptom", "therapist", "therapy", "treatment",
+    # Family / personal
+    "appointment", "calendar", "daughter", "family", "husband", "son", "wife",
+    # Auth / secrets
+    "confidential", "password", "personal", "private", "secret",
+    # Sensitive content
+    "affair", "drug", "naked", "nude", "porn", "sex",
 })
 
 

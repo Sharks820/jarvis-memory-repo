@@ -20,6 +20,8 @@ import os
 import re
 from typing import TYPE_CHECKING
 
+from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -157,50 +159,7 @@ class IntentClassifier:
         "web_research": ["kimi-k2", "claude-cli", "kimi-cli"],
     }
 
-    PRIVACY_KEYWORDS: set[str] = {
-        "calendar",
-        "medication",
-        "medications",
-        "medicine",
-        "pill",
-        "prescription",
-        "bill",
-        "bills",
-        "payment",
-        "password",
-        "personal",
-        "private",
-        "salary",
-        "bank",
-        "account",
-        "doctor",
-        "appointment",
-        "family",
-        "wife",
-        "husband",
-        "son",
-        "daughter",
-        "address",
-        "phone number",
-        "social security",
-        "therapist",
-        "therapy",
-        "health",
-        "diagnosis",
-        "medical",
-        "symptom",
-        "treatment",
-        "surgery",
-        "ssn",
-        "insurance",
-        "credit card",
-        "pin",
-        "bank account",
-        "credential",
-        "income",
-        "blood type",
-        "allergy",
-    }
+    PRIVACY_KEYWORDS: frozenset[str] = _CANONICAL_PRIVACY_KEYWORDS
 
     CONFIDENCE_THRESHOLD: float = 0.35
 

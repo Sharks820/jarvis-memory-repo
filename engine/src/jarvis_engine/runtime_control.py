@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONTROL_STATE = {
     "daemon_paused": False,
@@ -71,8 +74,8 @@ def read_control_state(root: Path) -> dict[str, Any]:
             if datetime.now(UTC) >= mute_until:
                 state["muted"] = False
                 state["mute_until_utc"] = ""
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as exc:
+            logger.debug("Mute-expiry parse failed: %s", exc)
     return state
 
 

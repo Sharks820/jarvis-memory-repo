@@ -5,6 +5,7 @@ Consolidates duplicated helpers to a single source of truth:
 - safe_float / safe_int: type coercion with defaults
 - check_path_within_root: path traversal guard
 - win_hidden_subprocess_kwargs: Windows subprocess window suppression
+- load_personal_vocab_lines: personal_vocab.txt reader (used by stt + stt_postprocess)
 """
 
 from __future__ import annotations
@@ -125,3 +126,80 @@ def set_process_title(name: str) -> None:
         setproctitle.setproctitle(name)
     except ImportError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Personal vocabulary loader (shared by stt.py and stt_postprocess.py)
+# ---------------------------------------------------------------------------
+
+_personal_vocab_raw_cache: list[str] | None = None
+_personal_vocab_stripped_cache: list[str] | None = None
+
+
+def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
+    """Load personal vocabulary lines from ``data/personal_vocab.txt``.
+
+    The file is located relative to the ``jarvis_engine`` package directory.
+    Results are cached per variant (raw vs stripped) so the file is read at
+    most once per process lifetime.
+
+    Parameters
+    ----------
+    strip_parens:
+        If ``True``, parenthetical annotations are removed from each line.
+        For example ``"Conner (not Connor)"`` becomes ``"Conner"``.
+        Used by the Deepgram keyterm loader in :mod:`jarvis_engine.stt`.
+        If ``False``, lines are returned as-is (stripped of leading/trailing
+        whitespace only).  Used by the LLM post-correction vocab loader in
+        :mod:`jarvis_engine.stt_postprocess`.
+    """
+    global _personal_vocab_raw_cache, _personal_vocab_stripped_cache
+
+    if strip_parens:
+        if _personal_vocab_stripped_cache is not None:
+            return _personal_vocab_stripped_cache
+    else:
+        if _personal_vocab_raw_cache is not None:
+            return _personal_vocab_raw_cache
+
+    # Locate the file relative to the jarvis_engine package
+    vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
+    if not vocab_path.exists():
+        if strip_parens:
+            _personal_vocab_stripped_cache = []
+            return _personal_vocab_stripped_cache
+        else:
+            _personal_vocab_raw_cache = []
+            return _personal_vocab_raw_cache
+
+    try:
+        lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
+    except OSError:
+        if strip_parens:
+            _personal_vocab_stripped_cache = []
+            return _personal_vocab_stripped_cache
+        else:
+            _personal_vocab_raw_cache = []
+            return _personal_vocab_raw_cache
+
+    # Build raw list (always needed)
+    raw: list[str] = [line.strip() for line in lines if line.strip()]
+
+    if _personal_vocab_raw_cache is None:
+        _personal_vocab_raw_cache = raw
+
+    # Build stripped list on demand
+    if strip_parens:
+        stripped: list[str] = []
+        for entry in raw:
+            paren_idx = entry.find("(")
+            if paren_idx > 0:
+                term = entry[:paren_idx].strip()
+            else:
+                term = entry
+            if term:
+                stripped.append(term)
+        _personal_vocab_stripped_cache = stripped
+        return _personal_vocab_stripped_cache
+
+    return _personal_vocab_raw_cache

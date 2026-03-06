@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from jarvis_engine._constants import PRIVACY_KEYWORDS as _PRIVACY_KW
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -86,18 +87,9 @@ Output: [{"entity": "owner", "relationship": "socializes_with", "value": "Mike",
 Now extract facts from the following text:
 """
 
-# Build privacy regex from IntentClassifier.PRIVACY_KEYWORDS at import time
-# to avoid circular import of the full classifier (which needs numpy/embeddings).
-_PRIVACY_KEYWORDS: set[str] = {
-    "calendar", "medication", "medications", "medicine", "pill",
-    "prescription", "bill", "bills", "payment", "password",
-    "personal", "private", "salary", "bank", "account", "doctor",
-    "appointment", "family", "wife", "husband", "son", "daughter",
-    "address", "phone number", "social security",
-}
-
+# Build privacy regex from the canonical PRIVACY_KEYWORDS in _constants.py.
 _PRIVACY_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(kw) for kw in _PRIVACY_KEYWORDS) + r")\b",
+    r"\b(?:" + "|".join(re.escape(kw) for kw in _PRIVACY_KW) + r")\b",
     re.IGNORECASE,
 )
 

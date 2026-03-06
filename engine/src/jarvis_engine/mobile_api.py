@@ -1333,72 +1333,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _unauthorized(self, message: str) -> None:
         self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": message})
 
-    def _read_json_body(self, *, max_content_length: int) -> tuple[dict[str, Any] | None, bytes | None]:
-        # Use cached body from do_POST if available (already read for security scan)
-        cached = getattr(self, "_cached_post_body", None)
-        if cached is not None:
-            body = cached
-            self._cached_post_body = None  # consume once
-            content_length = len(body)
-        else:
-            raw_content_length = self.headers.get("Content-Length", "0")
-            try:
-                content_length = int(raw_content_length)
-            except (TypeError, ValueError):
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Invalid content length."},
-                )
-                return None, None
-
-            if content_length <= 0 or content_length > max_content_length:
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Invalid content length."},
-                )
-                return None, None
-
-            try:
-                self.connection.settimeout(15.0)
-            except OSError:
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Connection closed."},
-                )
-                return None, None
-            try:
-                body = self.rfile.read(content_length)
-            except (OSError, ConnectionError):
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Connection reset during read."},
-                )
-                return None, None
-
-        if content_length <= 0 or content_length > max_content_length:
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Invalid content length."},
-            )
-            return None, None
-
-        if not self._validate_auth(body):
-            return None, None
-
-        try:
-            payload = json.loads(body.decode("utf-8"))
-        except UnicodeDecodeError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."})
-            return None, None
-        except json.JSONDecodeError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."})
-            return None, None
-        if not isinstance(payload, dict):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."})
-            return None, None
-        return payload, body
-
-    def _read_json_body_noauth(self, *, max_content_length: int) -> tuple[dict[str, Any] | None, bytes | None]:
+    def _read_json_body(
+        self, *, max_content_length: int, auth: bool = True,
+    ) -> tuple[dict[str, Any] | None, bytes | None]:
         # Use cached body from do_POST if available (already read for security scan)
         cached = getattr(self, "_cached_post_body", None)
         if cached is not None:
@@ -1412,9 +1349,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
                 return None, None
-            if content_length < 0 or content_length > max_content_length:
+
+            min_length = 1 if auth else 0
+            if content_length < min_length or content_length > max_content_length:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
                 return None, None
+
             try:
                 self.connection.settimeout(15.0)
             except OSError:
@@ -1423,14 +1363,17 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             try:
                 body = self.rfile.read(content_length) if content_length > 0 else b"{}"
             except (OSError, ConnectionError):
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Connection reset during read."},
-                )
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection reset during read."})
                 return None, None
-        if content_length < 0 or content_length > max_content_length:
+
+        min_length = 1 if auth else 0
+        if content_length < min_length or content_length > max_content_length:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
             return None, None
+
+        if auth and not self._validate_auth(body):
+            return None, None
+
         try:
             payload = json.loads(body.decode("utf-8"))
         except UnicodeDecodeError:
@@ -2326,7 +2269,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_post_bootstrap(self) -> None:
-        payload, _ = self._read_json_body_noauth(max_content_length=6_000)
+        payload, _ = self._read_json_body(auth=False,max_content_length=6_000)
         if payload is None:
             return
         # Bootstrap returns credentials so restrict to localhost first.
@@ -2404,7 +2347,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         owner_session = self._require_owner_session()
         if owner_session is None:
             return
-        payload, _ = self._read_json_body_noauth(max_content_length=2_000)
+        payload, _ = self._read_json_body(auth=False,max_content_length=2_000)
         if payload is None:
             return
         password = str(payload.get("password", "")).strip()

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import DEFAULT_API_PORT
+
 
 @dataclass(frozen=True)
 class StatusCommand:
@@ -39,7 +41,7 @@ class LogResult:
 @dataclass(frozen=True)
 class ServeMobileCommand:
     host: str = "127.0.0.1"
-    port: int = 8787  # Matches _constants.DEFAULT_API_PORT
+    port: int = DEFAULT_API_PORT
     token: str | None = None
     signing_key: str | None = None
     tls: bool | None = None  # None = auto-detect

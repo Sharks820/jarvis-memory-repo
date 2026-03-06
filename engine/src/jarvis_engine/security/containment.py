@@ -278,8 +278,8 @@ class ContainmentEngine:
             for _unblock_ip in _ips_to_unblock:
                 try:
                     self._ip_tracker.unblock_ip(_unblock_ip)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("IP unblock during recovery failed: %s", exc)
 
         self._log_forensic(
             "recovery_executed",

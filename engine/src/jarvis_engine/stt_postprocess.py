@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import re
 import zlib
-from pathlib import Path
 
 import numpy as np
 
@@ -305,18 +304,9 @@ def _load_personal_vocab() -> list[str]:
     global _personal_vocab_cache
     if _personal_vocab_cache is not None:
         return _personal_vocab_cache
-
-    vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
-    if not vocab_path.exists():
-        _personal_vocab_cache = []
-        return _personal_vocab_cache
-    try:
-        lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
-        _personal_vocab_cache = [line.strip() for line in lines if line.strip()]
-        return _personal_vocab_cache
-    except OSError:
-        _personal_vocab_cache = []
-        return _personal_vocab_cache
+    from jarvis_engine._shared import load_personal_vocab_lines
+    _personal_vocab_cache = load_personal_vocab_lines(strip_parens=False)
+    return _personal_vocab_cache
 
 
 def correct_with_llm(
@@ -388,8 +378,8 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
         try:
             code = jellyfish.metaphone(entity)
             phonetic_map[code] = entity
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
 
     _PUNCT = ".,!?;:'\""
     words = text.split()
@@ -420,8 +410,8 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
                 if similarity > 0.75:
                     corrected_words.append(prefix + canonical + suffix)
                     continue
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Jaro-winkler similarity failed: %s", exc)
 
         corrected_words.append(word)
 

@@ -83,30 +83,9 @@ def _load_keyterms() -> list[str]:
     global _keyterms_cache
     if _keyterms_cache is not None:
         return _keyterms_cache
-    vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
-    if not vocab_path.exists():
-        _keyterms_cache = []
-        return _keyterms_cache
-    try:
-        lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
-        terms: list[str] = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            # Strip parenthetical annotations: "Conner (not Connor)" -> "Conner"
-            paren_idx = line.find("(")
-            if paren_idx > 0:
-                term = line[:paren_idx].strip()
-            else:
-                term = line
-            if term:
-                terms.append(term)
-        _keyterms_cache = terms
-        return _keyterms_cache
-    except OSError:
-        _keyterms_cache = []
-        return _keyterms_cache
+    from jarvis_engine._shared import load_personal_vocab_lines
+    _keyterms_cache = load_personal_vocab_lines(strip_parens=True)
+    return _keyterms_cache
 
 
 def _log_stt_metric(

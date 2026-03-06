@@ -258,8 +258,8 @@ class CorrectionDetector:
                             target_id=existing_new_id,
                             relation="superseded",
                         )
-                    except Exception:
-                        pass  # best-effort audit edge
+                    except Exception as exc:
+                        logger.debug("KG audit edge failed: %s", exc)
                     return True
 
             # Update the fact label and confidence

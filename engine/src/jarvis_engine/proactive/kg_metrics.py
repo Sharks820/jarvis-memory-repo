@@ -102,9 +102,9 @@ def collect_kg_metrics(kg) -> dict:
                 tb[key] += r[1]
             metrics["temporal_breakdown"] = tb
             metrics["expired_facts"] = tb.get("expired", 0)
-        except Exception:
+        except Exception as exc:
             # Column may not exist if temporal migration has not run
-            pass
+            logger.debug("Temporal query failed: %s", exc)
 
         db.execute("COMMIT")
 
