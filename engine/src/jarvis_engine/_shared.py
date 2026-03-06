@@ -164,23 +164,12 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
 
     # Locate the file relative to the jarvis_engine package
     vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
-    if not vocab_path.exists():
-        if strip_parens:
-            _personal_vocab_stripped_cache = []
-            return _personal_vocab_stripped_cache
-        else:
-            _personal_vocab_raw_cache = []
-            return _personal_vocab_raw_cache
-
     try:
         lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
     except OSError:
-        if strip_parens:
-            _personal_vocab_stripped_cache = []
-            return _personal_vocab_stripped_cache
-        else:
-            _personal_vocab_raw_cache = []
-            return _personal_vocab_raw_cache
+        _personal_vocab_raw_cache = []
+        _personal_vocab_stripped_cache = []
+        return []
 
     # Build raw list (always needed)
     raw: list[str] = [line.strip() for line in lines if line.strip()]

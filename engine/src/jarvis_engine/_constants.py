@@ -107,7 +107,7 @@ DEFAULT_API_PORT: int = 8787
 # ---------------------------------------------------------------------------
 
 ENV_MODEL_PRIORITY: list[tuple[str, str]] = [
-    ("GROQ_API_KEY", "kimi-k2"),
+    ("GROQ_API_KEY", DEFAULT_CLOUD_MODEL),
     ("MISTRAL_API_KEY", "devstral-2"),
     ("ZAI_API_KEY", "glm-4.7-flash"),
 ]

@@ -2559,9 +2559,10 @@ def test_try_parakeet_confidence_baseline():
 # ===========================================================================
 
 def _reset_keyterms_cache():
-    """Reset _keyterms_cache so tests start with a clean state."""
-    import jarvis_engine.stt as stt_mod
-    stt_mod._keyterms_cache = None
+    """Reset personal vocab caches so tests start with a clean state."""
+    import jarvis_engine._shared as shared_mod
+    shared_mod._personal_vocab_stripped_cache = None
+    shared_mod._personal_vocab_raw_cache = None
 
 
 # ---------------------------------------------------------------------------
@@ -2594,14 +2595,14 @@ def test_load_keyterms():
 def test_load_keyterms_caching():
     """_load_keyterms caches results: second call returns same list without re-reading."""
     _reset_keyterms_cache()
-    import jarvis_engine.stt as stt_mod
+    import jarvis_engine._shared as shared_mod
     from jarvis_engine.stt import _load_keyterms
 
     # First call: loads from file
     terms1 = _load_keyterms()
-    assert stt_mod._keyterms_cache is not None
+    assert shared_mod._personal_vocab_stripped_cache is not None
 
-    # Second call: returns cached
+    # Second call: returns cached (same object from shared cache)
     terms2 = _load_keyterms()
     assert terms1 is terms2  # Same object (cached)
     _reset_keyterms_cache()

@@ -66,9 +66,6 @@ JARVIS_DEFAULT_PROMPT = (
 # Keyterm loading for Deepgram prompting
 # ---------------------------------------------------------------------------
 
-_keyterms_cache: list[str] | None = None
-
-
 def _load_keyterms() -> list[str]:
     """Load keyterms from personal_vocab.txt for Deepgram prompting.
 
@@ -77,15 +74,10 @@ def _load_keyterms() -> list[str]:
     primary term before the parenthetical is extracted for use as a
     Deepgram keyword.
 
-    Keyterms are cached after the first read so the file is only
-    opened once per process lifetime.
+    Results are cached in ``_shared.load_personal_vocab_lines``.
     """
-    global _keyterms_cache
-    if _keyterms_cache is not None:
-        return _keyterms_cache
     from jarvis_engine._shared import load_personal_vocab_lines
-    _keyterms_cache = load_personal_vocab_lines(strip_parens=True)
-    return _keyterms_cache
+    return load_personal_vocab_lines(strip_parens=True)
 
 
 def _log_stt_metric(

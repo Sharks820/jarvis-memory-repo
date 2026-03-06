@@ -298,17 +298,13 @@ Rules:
 {vocab_section}"""
 
 
-_personal_vocab_cache: list[str] | None = None
-
-
 def _load_personal_vocab() -> list[str]:
-    """Load personal vocabulary from data file (cached after first load)."""
-    global _personal_vocab_cache
-    if _personal_vocab_cache is not None:
-        return _personal_vocab_cache
+    """Load personal vocabulary from data file.
+
+    Results are cached in ``_shared.load_personal_vocab_lines``.
+    """
     from jarvis_engine._shared import load_personal_vocab_lines
-    _personal_vocab_cache = load_personal_vocab_lines(strip_parens=False)
-    return _personal_vocab_cache
+    return load_personal_vocab_lines(strip_parens=False)
 
 
 def correct_with_llm(

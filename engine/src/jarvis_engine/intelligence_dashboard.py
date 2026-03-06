@@ -355,9 +355,8 @@ def _safe_gateway_summary(root: Path) -> dict[str, Any]:
         from jarvis_engine._constants import runtime_dir, GATEWAY_AUDIT_LOG
         from jarvis_engine.gateway.audit import GatewayAudit
         audit_path = runtime_dir(root) / GATEWAY_AUDIT_LOG
-        if audit_path.exists():
-            audit = GatewayAudit(audit_path)
-            return audit.summary(hours=24)
+        audit = GatewayAudit(audit_path)
+        return audit.summary(hours=24)
     except Exception:
         logger.debug("Failed to collect gateway audit summary (audit log may not exist)")
     return {}

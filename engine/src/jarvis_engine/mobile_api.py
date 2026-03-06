@@ -1352,11 +1352,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
                 return None, None
 
-            min_length = 1 if auth else 0
-            if content_length < min_length or content_length > max_content_length:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
-                return None, None
-
             try:
                 self.connection.settimeout(15.0)
             except OSError:
@@ -1654,16 +1649,15 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # Include intelligence regression status from self-test history
         self_test_history_path = _runtime_dir(self._root) / _SELF_TEST_HISTORY
         intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
-        if self_test_history_path.exists():
-            try:
-                lines = self_test_history_path.read_text(encoding="utf-8").strip().split("\n")
-                if lines and lines[-1].strip():
-                    latest = json.loads(lines[-1])
-                    intelligence_status["score"] = latest.get("average_score", 0.0)
-                    intelligence_status["last_test"] = latest.get("timestamp", "")
-                    intelligence_status["regression"] = latest.get("below_threshold", False)
-            except Exception as exc:
-                logger.debug("self-test history parse failed: %s", exc)
+        try:
+            lines = self_test_history_path.read_text(encoding="utf-8").strip().split("\n")
+            if lines and lines[-1].strip():
+                latest = json.loads(lines[-1])
+                intelligence_status["score"] = latest.get("average_score", 0.0)
+                intelligence_status["last_test"] = latest.get("timestamp", "")
+                intelligence_status["regression"] = latest.get("below_threshold", False)
+        except Exception as exc:
+            logger.debug("self-test history parse failed: %s", exc)
         self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
 
     def _handle_get_cert_fingerprint(self) -> None:
@@ -1781,23 +1775,22 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         audit_path = _runtime_dir(self._root) / _GATEWAY_AUDIT_LOG
         records: list[dict[str, Any]] = []
-        if audit_path.exists():
-            try:
-                # Tail-read: only read last ~64KB to avoid loading the entire file.
-                _MAX_TAIL = 65_536
-                fsize = audit_path.stat().st_size
-                with open(audit_path, "r", encoding="utf-8") as f:
-                    if fsize > _MAX_TAIL:
-                        f.seek(fsize - _MAX_TAIL)
-                        f.readline()  # skip partial first line
-                    lines = f.read().strip().splitlines()
-                for line in lines[-50:]:
-                    try:
-                        records.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-            except OSError:
-                pass
+        try:
+            # Tail-read: only read last ~64KB to avoid loading the entire file.
+            _MAX_TAIL = 65_536
+            fsize = audit_path.stat().st_size
+            with open(audit_path, "r", encoding="utf-8") as f:
+                if fsize > _MAX_TAIL:
+                    f.seek(fsize - _MAX_TAIL)
+                    f.readline()  # skip partial first line
+                lines = f.read().strip().splitlines()
+            for line in lines[-50:]:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        except OSError:
+            pass
         self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})
 
     def _handle_get_processes(self) -> None:
@@ -2271,7 +2264,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_post_bootstrap(self) -> None:
-        payload, _ = self._read_json_body(auth=False,max_content_length=6_000)
+        payload, _ = self._read_json_body(auth=False, max_content_length=6_000)
         if payload is None:
             return
         # Bootstrap returns credentials so restrict to localhost first.
@@ -2349,7 +2342,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         owner_session = self._require_owner_session()
         if owner_session is None:
             return
-        payload, _ = self._read_json_body(auth=False,max_content_length=2_000)
+        payload, _ = self._read_json_body(auth=False, max_content_length=2_000)
         if payload is None:
             return
         password = str(payload.get("password", "")).strip()
