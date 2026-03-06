@@ -42,7 +42,7 @@ class HealthRoutesMixin:
                     "process_cpu_pct": (metrics.get("process_cpu_pct", {}) or {}).get("current", 0.0),
                     "embedding_cache_mb": (metrics.get("embedding_cache_mb", {}) or {}).get("current", 0.0),
                 }
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
             logger.debug("Reliability panel runtime snapshot unavailable: %s", exc)
         return panel
 
@@ -61,7 +61,7 @@ class HealthRoutesMixin:
                 intelligence_status["score"] = latest.get("average_score", 0.0)
                 intelligence_status["last_test"] = latest.get("timestamp", "")
                 intelligence_status["regression"] = latest.get("below_threshold", False)
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
             logger.debug("self-test history parse failed: %s", exc)
         self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
 
@@ -146,18 +146,18 @@ class HealthRoutesMixin:
         combined: dict[str, Any] = {"ok": True}
         try:
             combined["growth"] = self._gather_intelligence_growth(reliability_cache=_reliability)
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
             logger.debug("Intelligence growth gather failed: %s", exc)
             combined["growth"] = {}
         try:
             dash = build_intelligence_dashboard(self._root)
             combined["alerts"] = dash.get("proactive_alerts", [])
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
             logger.debug("Proactive alerts gather failed: %s", exc)
             combined["alerts"] = []
         try:
             combined["reliability"] = self._build_reliability_panel(self._root, reliability_cache=_reliability)
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
             logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}
         try:
@@ -171,7 +171,7 @@ class HealthRoutesMixin:
                 for e in events
                 if e.category != ActivityCategory.DAEMON_CYCLE
             ][:10]
-        except Exception as exc:
+        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Recent activity events gather failed: %s", exc)
             combined["recent_events"] = []
         self._write_json(HTTPStatus.OK, combined)

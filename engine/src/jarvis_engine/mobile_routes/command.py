@@ -9,7 +9,12 @@ from jarvis_engine._constants import (
     OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME,
     make_task_id as _make_task_id,
 )
-from jarvis_engine.mobile_routes._helpers import _parse_bool, _thread_local
+from jarvis_engine.mobile_routes._helpers import (
+    _get_int_param,
+    _parse_bool,
+    _parse_query_params,
+    _thread_local,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -253,16 +258,8 @@ class CommandRoutesMixin:
             from jarvis_engine.commands.ops_commands import MissionStatusCommand
 
             bus = get_bus()
-            last = 15
-            qs = self.path.split("?", 1)
-            if len(qs) > 1:
-                from urllib.parse import parse_qs
-
-                params = parse_qs(qs[1])
-                try:
-                    last = min(int(params.get("last", ["15"])[0]), 50)
-                except (TypeError, ValueError):
-                    last = 15
+            qs = _parse_query_params(self.path)
+            last = _get_int_param(qs, "last", 15, max_val=50)
             result = bus.dispatch(MissionStatusCommand(last=last))
             missions = result.missions if hasattr(result, "missions") else []
             total = result.total_count if hasattr(result, "total_count") else 0
@@ -293,18 +290,9 @@ class CommandRoutesMixin:
         """Return a context-aware digest of what happened while user was busy."""
         if not self._validate_auth(b""):
             return
-        qs_parts = self.path.split("?", 1)
-        since_ts = 0
-        context_label = ""
-        if len(qs_parts) > 1:
-            from urllib.parse import parse_qs
-
-            params = parse_qs(qs_parts[1])
-            try:
-                since_ts = int(params.get("since", ["0"])[0])
-            except (TypeError, ValueError):
-                since_ts = 0
-            context_label = str(params.get("context", [""])[0]).strip()
+        qs = _parse_query_params(self.path)
+        since_ts = _get_int_param(qs, "since", 0, min_val=0, max_val=2**31)
+        context_label = str(qs.get("context", [""])[0]).strip()
         digest: dict[str, Any] = {
             "context": context_label,
             "since_ts": since_ts,
@@ -369,17 +357,12 @@ class CommandRoutesMixin:
         """Return KG-powered intelligence briefing for an upcoming meeting."""
         if not self._validate_auth(b""):
             return
-        qs_parts = self.path.split("?", 1)
-        title = ""
-        attendees: list[str] = []
-        if len(qs_parts) > 1:
-            from urllib.parse import parse_qs, unquote
+        qs = _parse_query_params(self.path)
+        from urllib.parse import unquote
 
-            params = parse_qs(qs_parts[1])
-            title = unquote(str(params.get("title", [""])[0]).strip())
-            att_raw = str(params.get("attendees", [""])[0]).strip()
-            if att_raw:
-                attendees = [a.strip() for a in att_raw.split(",") if a.strip()]
+        title = unquote(str(qs.get("title", [""])[0]).strip())
+        att_raw = str(qs.get("attendees", [""])[0]).strip()
+        attendees: list[str] = [a.strip() for a in att_raw.split(",") if a.strip()] if att_raw else []
         if not title and not attendees:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "title or attendees required"})
             return

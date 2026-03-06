@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from typing import Any
@@ -78,9 +79,9 @@ class IntelligenceRoutesMixin:
                                 metrics["growth_trend"] = "declining"
                             else:
                                 metrics["growth_trend"] = "stable"
-                except Exception as exc:
+                except (ValueError, TypeError, KeyError) as exc:
                     logger.debug("intelligence growth metric failed: %s", exc)
-        except Exception as exc:
+        except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
 
         # --- Activity feed: corrections ---
@@ -96,9 +97,9 @@ class IntelligenceRoutesMixin:
             try:
                 recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
                 metrics["corrections_last_7d"] = len(recent_events)
-            except Exception as exc:
+            except (ImportError, RuntimeError, ValueError, TypeError) as exc:
                 logger.debug("intelligence growth metric failed: %s", exc)
-        except Exception as exc:
+        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
 
         # --- Command reliability and pressure ---
@@ -113,7 +114,7 @@ class IntelligenceRoutesMixin:
             mem_engine = server.ensure_memory_engine()
             if mem_engine is not None:
                 metrics["memory_records"] = mem_engine.count_records()
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError) as exc:
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         # --- Self-test score ---
@@ -126,7 +127,7 @@ class IntelligenceRoutesMixin:
                 latest_test = tail[-1]
                 score = latest_test.get("average_score", 0.0)
                 metrics["last_self_test_score"] = round(float(score), 3)
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
 
         # --- Capability history for overall trend confirmation ---
@@ -142,7 +143,7 @@ class IntelligenceRoutesMixin:
                     metrics["growth_trend"] = "increasing"
                 elif latest_score < prev_score:
                     metrics["growth_trend"] = "declining"
-        except Exception as exc:
+        except (ImportError, OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.debug("Intelligence growth: capability history unavailable: %s", exc)
 
         # --- Active learning missions ---
@@ -168,7 +169,7 @@ class IntelligenceRoutesMixin:
                 }
                 for m in active_missions[:5]
             ]
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Intelligence growth: mission status unavailable: %s", exc)
             metrics["mission_count"] = 0
             metrics["active_missions"] = []
@@ -207,14 +208,14 @@ class IntelligenceRoutesMixin:
 
                 pt = PreferenceTracker(lrn_db)
                 summary["preferences"] = pt.get_preferences()
-            except Exception as exc:
+            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
                 logger.debug("Learning summary: preferences unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
                 ft = ResponseFeedbackTracker(lrn_db)
                 summary["route_quality"] = ft.get_all_route_quality()
-            except Exception as exc:
+            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
                 logger.debug("Learning summary: route quality unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.usage_patterns import UsagePatternTracker
@@ -224,7 +225,7 @@ class IntelligenceRoutesMixin:
                 summary["hourly_distribution"] = ut.get_hourly_distribution()
                 now = datetime.now(UTC)
                 summary["current_context"] = ut.predict_context(now.hour, now.weekday())
-            except Exception as exc:
+            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
                 logger.debug("Learning summary: usage patterns unavailable: %s", exc)
         except Exception as exc:
             logger.debug("Learning summary: DB unavailable: %s", exc)
@@ -266,7 +267,7 @@ class IntelligenceRoutesMixin:
                         branch="phone-intelligence",
                     )
                     merged += 1
-                except Exception as exc:
+                except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
                     logger.debug("Phone intelligence merge failed: %s", exc)
 
             self._write_json(HTTPStatus.OK, {
@@ -314,7 +315,7 @@ class IntelligenceRoutesMixin:
                                 "category": "knowledge",
                                 "confidence": row["confidence"],
                             })
-                    except Exception as exc:
+                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
                         logger.warning("KG nodes export failure: %s", exc)
 
                     # Memory records
@@ -331,7 +332,7 @@ class IntelligenceRoutesMixin:
                                 "category": row["kind"] or "memory",
                                 "confidence": row["confidence"],
                             })
-                    except Exception as exc:
+                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
                         logger.warning("Memory records export failure: %s", exc)
 
                     # User preferences
@@ -347,7 +348,7 @@ class IntelligenceRoutesMixin:
                                 "category": "preference",
                                 "confidence": min(row["score"] / 10.0, 1.0),
                             })
-                    except Exception as exc:
+                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
                         logger.warning("Preferences export failure: %s", exc)
                 finally:
                     db.close()

@@ -77,6 +77,30 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
     return None
 
 
+def _parse_query_params(path: str) -> dict[str, list[str]]:
+    """Parse URL query string parameters from a request path."""
+    import urllib.parse
+
+    if "?" not in path:
+        return {}
+    return urllib.parse.parse_qs(path.split("?", 1)[1])
+
+
+def _get_int_param(
+    params: dict[str, list[str]],
+    key: str,
+    default: int,
+    min_val: int = 1,
+    max_val: int = 500,
+) -> int:
+    """Extract an integer parameter with bounds clamping."""
+    try:
+        value = int(params.get(key, [str(default)])[0])
+    except (TypeError, ValueError):
+        value = default
+    return max(min_val, min(value, max_val))
+
+
 def _serialize_activity_event(event: Any) -> dict[str, Any]:
     """Serialize an activity feed event to a JSON-safe dict."""
     details = event.details if isinstance(getattr(event, "details", None), dict) else {}
@@ -130,6 +154,6 @@ def _compute_command_reliability() -> dict[str, Any]:
             latest_details = getattr(pressure_events[0], "details", {})
             if isinstance(latest_details, dict):
                 result["last_pressure_level"] = str(latest_details.get("level", "none"))
-    except Exception as exc:
+    except (ImportError, RuntimeError, ValueError, TypeError) as exc:
         logger.debug("Command reliability metrics unavailable: %s", exc)
     return result

@@ -11,6 +11,8 @@ from jarvis_engine.mobile_routes._helpers import (
     ALLOWED_KINDS,
     ALLOWED_SOURCES,
     _configure_db,
+    _get_int_param,
+    _parse_query_params,
     _serialize_activity_event,
 )
 
@@ -102,13 +104,8 @@ class DataRoutesMixin:
             self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})
             return
         # Parse query params
-        import urllib.parse as _urlparse
-        qs = _urlparse.parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
-        try:
-            limit = int(qs.get("limit", ["50"])[0])
-        except (TypeError, ValueError):
-            limit = 50
-        limit = max(1, min(limit, 500))
+        qs = _parse_query_params(self.path)
+        limit = _get_int_param(qs, "limit", 50)
         category = qs.get("category", [None])[0]
         since = qs.get("since", [None])[0]
         try:
