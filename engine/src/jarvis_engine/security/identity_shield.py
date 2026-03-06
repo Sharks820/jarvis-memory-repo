@@ -570,7 +570,8 @@ class ImpersonationDetector:
                         idx = futures[future]
                         try:
                             res = future.result()
-                        except Exception:
+                        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+                            logger.debug("Platform check failed: %s", exc)
                             res = None
                         ordered[idx] = res
                     checks = [r for r in ordered if r is not None]

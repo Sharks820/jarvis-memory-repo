@@ -232,12 +232,12 @@ class ModelGateway:
         self._closed = True
         try:
             self._http.close()
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("Failed to close httpx client: %s", exc)
         if hasattr(self, "_anthropic") and self._anthropic is not None:
             try:
                 self._anthropic.close()
-            except Exception as exc:
+            except OSError as exc:
                 logger.debug("Failed to close Anthropic client: %s", exc)
 
     def __del__(self) -> None:
@@ -260,7 +260,7 @@ class ModelGateway:
         self._last_cli_refresh_monotonic = now
         try:
             detected = detect_cli_providers()
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             logger.debug("CLI provider refresh failed: %s", exc)
             return
 
@@ -385,7 +385,7 @@ class ModelGateway:
             try:
                 response = self._call_openai_compat(messages, model, max_tokens, provider_key, temperature)
                 audit_reason = route_reason or f"primary:cloud:{provider_key}"
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 reason = f"{provider_key}: {type(exc).__name__}"
                 logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
                 t0 = self._audit_failed_attempt(provider_key, model, route_reason, t0, privacy_routed)
@@ -402,7 +402,7 @@ class ModelGateway:
                     reason = response.fallback_reason or f"{cli_key}_failed"
                     response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
                     audit_reason = f"fallback:{reason}"
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 reason = f"{cli_key}: {type(exc).__name__}"
                 logger.warning("CLI provider %s failed, falling back: %s", cli_key, exc)
                 t0 = self._audit_failed_attempt(cli_key, model, route_reason or f"primary:cli:{cli_key}", t0, privacy_routed)
@@ -457,7 +457,7 @@ class ModelGateway:
                 _log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
                     "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
                 })
-            except Exception as exc:
+            except (OSError, ValueError, TypeError) as exc:
                 logger.debug("Activity feed logging failed: %s", exc)
 
         return response
@@ -631,7 +631,7 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason="Ollama error",
             )
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError) as exc:
             # Catch httpx transport/timeout errors that don't inherit from builtins
             logger.warning("Ollama call failed (unexpected): %s", exc)
             return GatewayResponse(
@@ -720,7 +720,7 @@ class ModelGateway:
                     resp.fallback_used = True
                     resp.fallback_reason = reason
                     return resp
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError, KeyError) as exc:
                     logger.warning("Fallback to %s also failed: %s", pk, exc)
 
             # Try CLI-based providers as fallback (free via subscription)
@@ -735,7 +735,7 @@ class ModelGateway:
                         resp.fallback_reason = reason
                         return resp
                     logger.warning("CLI fallback %s returned empty", cli_key)
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError) as exc:
                     logger.warning("CLI fallback %s failed: %s", cli_key, exc)
 
             # Try Anthropic as fallback if available and not the one that failed
@@ -745,7 +745,7 @@ class ModelGateway:
                     resp.fallback_used = True
                     resp.fallback_reason = reason
                     return resp
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError) as exc:
                     logger.warning("Fallback to Anthropic also failed: %s", exc)
 
         # All cloud providers failed
@@ -815,7 +815,7 @@ class ModelGateway:
                 fallback_used=True,
                 fallback_reason=full_reason,
             )
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError) as exc:
             full_reason = f"{reason} -> Ollama also failed: {type(exc).__name__}"
             logger.error("All providers failed: %s -> %s", reason, exc)
             return GatewayResponse(
@@ -836,7 +836,7 @@ class ModelGateway:
         try:
             self._ollama.list()
             return True
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, OSError) as exc:
             logger.debug("Ollama health check failed: %s", exc)
             return False
 

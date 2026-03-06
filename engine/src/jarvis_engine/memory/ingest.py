@@ -114,8 +114,9 @@ class EnrichedIngestPipeline:
                 all_embeddings = self._embed_service.embed_batch(
                     valid_chunks, prefix="search_document"
                 )
-            except Exception:
+            except (RuntimeError, OSError, ValueError) as exc:
                 # Fallback to individual calls if batch fails
+                logger.debug("Batch embedding failed, falling back to individual: %s", exc)
                 all_embeddings = [
                     self._embed_service.embed(chunk, prefix="search_document")
                     for chunk in valid_chunks
@@ -174,7 +175,7 @@ class EnrichedIngestPipeline:
                 if self._kg is not None:
                     try:
                         self._extract_facts(chunk, source, branch, record_id)
-                    except Exception as exc:
+                    except (RuntimeError, OSError, ValueError, KeyError) as exc:
                         logger.warning(
                             "Fact extraction failed for record %s: %s",
                             record_id,
@@ -195,7 +196,7 @@ class EnrichedIngestPipeline:
                                     source_record=record_id,
                                     node_type=fact.category or "fact",
                                 )
-                    except Exception as exc:
+                    except (OSError, RuntimeError, ValueError) as exc:
                         logger.warning("LLM fact extraction failed: %s", exc)
 
         return inserted_ids
@@ -268,7 +269,7 @@ class EnrichedIngestPipeline:
 
             for fact_id in created_fact_ids:
                 create_cross_branch_edges(self._kg, fact_id, record_id)
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError, KeyError) as exc:
             logger.debug("Cross-branch edge creation failed: %s", exc)
 
     def _sanitize(self, content: str) -> str:

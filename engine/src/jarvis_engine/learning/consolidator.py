@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -116,7 +117,7 @@ class MemoryConsolidator:
         # Step 1 -- fetch recent episodic records
         try:
             records = self._fetch_episodic_records(branch, limit=500)
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             result.errors.append(f"fetch failed: {exc}")
             return result
 
@@ -126,7 +127,7 @@ class MemoryConsolidator:
         # Step 2 -- compute embeddings
         try:
             embeddings = self._compute_embeddings(records)
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError) as exc:
             result.errors.append(f"embedding failed: {exc}")
             return result
 
@@ -137,7 +138,7 @@ class MemoryConsolidator:
         # Step 3 -- cluster
         try:
             groups = self._cluster_records(records, embeddings)
-        except Exception as exc:
+        except (ValueError, TypeError, ArithmeticError) as exc:
             result.errors.append(f"clustering failed: {exc}")
             return result
 
@@ -150,7 +151,7 @@ class MemoryConsolidator:
             # Summarise via LLM (or concatenation fallback)
             try:
                 summary = self._consolidate_group(group_records)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
                 result.errors.append(f"summarisation failed: {exc}")
                 continue
 
@@ -165,7 +166,7 @@ class MemoryConsolidator:
             # Store the new consolidated record
             try:
                 new_id = self._store_consolidated(summary, group_records, branch)
-            except Exception as exc:
+            except (sqlite3.Error, OSError) as exc:
                 result.errors.append(f"store failed: {exc}")
                 continue
 
@@ -176,7 +177,7 @@ class MemoryConsolidator:
             # Tag originals
             try:
                 self._tag_originals(group_records, new_id)
-            except Exception as exc:
+            except (sqlite3.Error, OSError) as exc:
                 result.errors.append(f"tag failed: {exc}")
                 # The consolidated record was still created, so count it.
 
@@ -190,7 +191,7 @@ class MemoryConsolidator:
                 tier_changes = self._update_tiers(records)
                 if tier_changes > 0:
                     logger.info("Updated %d record tiers based on relevance scoring", tier_changes)
-            except Exception as exc:
+            except (sqlite3.Error, OSError, ImportError) as exc:
                 logger.warning("Tier update pass failed: %s", exc)
                 result.errors.append(f"tier update failed: {exc}")
 

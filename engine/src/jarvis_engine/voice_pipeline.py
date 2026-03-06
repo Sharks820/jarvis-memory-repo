@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -130,7 +131,7 @@ class ConversationState:
                     if isinstance(data, list):
                         self._conversation_history.clear()
                         self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
-            except Exception as exc:
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
                 logger.debug("Could not load conversation history: %s", exc)
 
     def save_conversation_history(self) -> None:
@@ -147,7 +148,7 @@ class ConversationState:
                 tmp = path.with_suffix(f".tmp.{os.getpid()}")
                 tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
                 os.replace(str(tmp), str(path))
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("Could not save conversation history: %s", exc)
 
     # -- add / get history ---------------------------------------------------
@@ -196,7 +197,7 @@ class ConversationState:
                         "event": "conversation_model_switch",
                     },
                 )
-            except Exception as exc:
+            except (ImportError, OSError, ValueError) as exc:
                 logger.debug("Model continuity telemetry logging failed: %s", exc)
 
     def conversation_continuity_instruction(self, target_model: str, history_len: int) -> str | None:
@@ -305,7 +306,7 @@ def _learn_conversation(
             route=route,
             topic=text[:100],
         ))
-    except Exception as exc_learn:
+    except (OSError, RuntimeError, ValueError) as exc_learn:
         logger.warning("Enriched learning failed for conversation: %s", exc_learn)
         try:
             _auto_ingest_memory(
@@ -317,7 +318,7 @@ def _learn_conversation(
                     f"Jarvis responded ({model}): {response[:600]}"
                 ),
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Auto-ingest fallback also failed: %s", exc)
 
 
@@ -445,7 +446,7 @@ def _build_smart_context(
                 summary = str(record.get("summary", "")).strip()
                 if summary:
                     memory_lines.append(summary)
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
             logger.debug("Hybrid search failed, falling back to legacy: %s", exc)
 
     # --- Path 2: Legacy token-overlap fallback ---
@@ -461,7 +462,7 @@ def _build_smart_context(
                         summary = str(row.get("summary", "")).strip()
                         if summary:
                             memory_lines.append(summary)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.debug("Legacy context packet fallback failed: %s", exc)
 
     # --- KG facts: personal knowledge about the user ---
@@ -508,9 +509,9 @@ def _build_smart_context(
                             fact_lines.append(label)
                             if nid:
                                 seen_node_ids[nid] = conf
-                    except Exception as sem_exc:
+                    except (ImportError, OSError, RuntimeError, ValueError, KeyError) as sem_exc:
                         logger.debug("KG semantic fact query failed: %s", sem_exc)
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, KeyError) as exc:
             logger.debug("KG fact query failed: %s", exc)
 
     # --- Cross-branch connections: link knowledge across life domains ---
@@ -534,7 +535,7 @@ def _build_smart_context(
                 cross_branch_lines.append(
                     f"[{src_branch}] \"{src}\" relates to [{tgt_branch}] \"{tgt}\" via {relation}"
                 )
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
             logger.debug("Cross-branch query failed: %s", exc)
 
     # --- User preferences: personalize responses (LEARN-01) ---
@@ -546,7 +547,7 @@ def _build_smart_context(
             if prefs:
                 pref_str = ", ".join(f"{k}: {v}" for k, v in prefs.items())
                 preference_lines.append(pref_str)
-        except Exception as exc:
+        except (OSError, RuntimeError, KeyError) as exc:
             logger.debug("Preference retrieval failed: %s", exc)
 
     return memory_lines, fact_lines, cross_branch_lines, preference_lines
@@ -614,7 +615,8 @@ def _classify_and_route(
         try:
             route, llm_model, conf = intent_cls.classify(text, available_models=avail_models)
             logger.debug("Intent route: %s model=%s confidence=%.2f", route, llm_model, conf)
-        except Exception:
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.debug("Intent classification failed: %s", exc)
             llm_model = None
     if llm_model is None and try_fallback_classifier:
         try:
@@ -625,7 +627,7 @@ def _classify_and_route(
                 cls = IntentClassifier(embed)
                 route, llm_model, conf = cls.classify(text, available_models=avail_models)
                 logger.debug("Fallback route: %s model=%s confidence=%.2f", route, llm_model, conf)
-        except Exception as exc:
+        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Fallback IntentClassifier classification failed: %s", exc)
     if llm_model is None:
         if _is_privacy_sensitive(text):
@@ -882,7 +884,7 @@ def _web_augmented_llm_conversation(
             logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
         else:
             logger.warning("Web search returned no summary lines for query: %s", text[:80])
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
         logger.warning("Web search failed for query %r: %s", text[:80], exc)
 
     # --- Instructions ---
@@ -956,7 +958,7 @@ def _web_augmented_llm_conversation(
             print("intent=llm_empty_response")
             print("reason=LLM returned empty response.")
             return 1
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
         print("intent=llm_error")
         print(f"reason={exc}")
         if speak:
@@ -1706,7 +1708,7 @@ def cmd_voice_run_impl(
                     logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
                 else:
                     logger.warning("Web search returned no summary lines for query: %s", text[:80])
-            except Exception as exc:
+            except (ImportError, OSError, RuntimeError, ValueError) as exc:
                 logger.warning("Web search augmentation failed for %r: %s", text[:80], exc)
 
         # --- Finalize system prompt with context-aware instructions ---
@@ -1786,7 +1788,7 @@ def cmd_voice_run_impl(
                 print("intent=llm_empty_response")
                 print("reason=LLM returned empty response.")
                 rc = 1
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
             print("intent=llm_error")
             print(f"reason={exc}")
             if speak:
@@ -1810,7 +1812,7 @@ def cmd_voice_run_impl(
             )
             if auto_id:
                 print(f"auto_ingest_record_id={auto_id}")
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.debug("Auto-ingest of voice command memory failed: %s", exc)
         # Enriched learning for ALL successful commands (not just LLM path).
         # Runs in a daemon thread to avoid blocking the HTTP response — the
@@ -1820,7 +1822,8 @@ def cmd_voice_run_impl(
             # Capture bus reference on current thread (where repo_root override is active)
             try:
                 _learn_bus = get_bus()
-            except Exception:
+            except (OSError, RuntimeError) as exc:
+                logger.debug("get_bus() failed for background learning: %s", exc)
                 _learn_bus = None
             if _learn_bus is not None:
                 _learn_cmd = LearnInteractionCommand(
@@ -1834,7 +1837,7 @@ def cmd_voice_run_impl(
                 def _bg_learn(_bus: "CommandBus" = _learn_bus, _cmd: "LearnInteractionCommand" = _learn_cmd) -> None:
                     try:
                         _bus.dispatch(_cmd)
-                    except Exception as exc:
+                    except (OSError, RuntimeError, ValueError) as exc:
                         logger.warning("Background enriched learning failed: %s", exc)
 
                 threading.Thread(target=_bg_learn, daemon=True).start()
