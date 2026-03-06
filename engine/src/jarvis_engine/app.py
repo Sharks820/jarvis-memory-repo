@@ -207,11 +207,13 @@ def create_app(root: Path) -> CommandBus:
     # -- Ensure required directories exist --
     brain_dir = root / ".planning" / "brain"
     brain_dir.mkdir(parents=True, exist_ok=True)
-    (root / ".planning" / "runtime" / "pids").mkdir(parents=True, exist_ok=True)
+    from jarvis_engine._constants import runtime_dir as _runtime_dir
+    (_runtime_dir(root) / "pids").mkdir(parents=True, exist_ok=True)
     (root / ".planning" / "logs").mkdir(parents=True, exist_ok=True)
 
     # -- Check for SQLite memory engine --
-    db_path = brain_dir / "jarvis_memory.db"
+    from jarvis_engine._constants import memory_db_path as _memory_db_path
+    db_path = _memory_db_path(root)
     engine = None
     embed_service = None
     pipeline = None
@@ -261,7 +263,7 @@ def create_app(root: Path) -> CommandBus:
             groq_api_key=os.environ.get("GROQ_API_KEY"),
             mistral_api_key=os.environ.get("MISTRAL_API_KEY"),
             zai_api_key=os.environ.get("ZAI_API_KEY"),
-            audit_path=root / ".planning" / "runtime" / "gateway_audit.jsonl",
+            audit_path=_runtime_dir(root) / "gateway_audit.jsonl",
         )
         # Keep classifier lazy to avoid heavy startup latency in request paths.
         # It will be instantiated on-demand where needed (e.g. voice fallback).
@@ -383,7 +385,7 @@ def create_app(root: Path) -> CommandBus:
         from jarvis_engine._db_pragmas import configure_sqlite
         configure_sqlite(_sec_db)
         _sec_lock = __import__("threading").Lock()
-        _sec_log_dir = root / ".planning" / "runtime" / "forensic"
+        _sec_log_dir = _runtime_dir(root) / "forensic"
 
         _defense_registrations: list[tuple[type[object], Callable[..., Any]]] = [
             (SecurityStatusCommand, SecurityStatusHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),

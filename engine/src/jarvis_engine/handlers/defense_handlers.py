@@ -167,7 +167,8 @@ class ExportForensicsHandler(_DefenseHandlerBase):
             start_date = cmd.start_date or "2020-01-01"
             end_date = cmd.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
-            export_dir = self._root / ".planning" / "runtime" / "forensic_exports"
+            from jarvis_engine._constants import runtime_dir
+            export_dir = runtime_dir(self._root) / "forensic_exports"
             export_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             output_path = export_dir / f"forensic_export_{timestamp}.zip"

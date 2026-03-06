@@ -9,6 +9,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
+from jarvis_engine._constants import runtime_dir as _runtime_dir
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,7 @@ def _default_targets(root: Path) -> list[Path]:
         root / ".planning" / "brain",
         root / ".planning" / "events.jsonl",
         root / ".planning" / "capability_history.jsonl",
-        root / ".planning" / "runtime",
+        _runtime_dir(root),
     ]
 
 
@@ -143,7 +144,8 @@ def create_signed_snapshot(
         from jarvis_engine.knowledge.graph import KnowledgeGraph
         from jarvis_engine.memory.engine import MemoryEngine
 
-        db_path = root_resolved / ".planning" / "brain" / "jarvis_memory.db"
+        from jarvis_engine._constants import memory_db_path as _memory_db_path
+        db_path = _memory_db_path(root_resolved)
         if db_path.exists():
             _kg_engine = MemoryEngine(db_path)
             try:
@@ -279,7 +281,8 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
                 from jarvis_engine.memory.engine import MemoryEngine
 
-                db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+                from jarvis_engine._constants import memory_db_path as _memory_db_path
+                db_path = _memory_db_path(root)
                 if db_path.exists():
                     _kg_engine = MemoryEngine(db_path)
                     try:

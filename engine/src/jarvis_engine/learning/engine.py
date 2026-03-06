@@ -116,8 +116,8 @@ class ConversationLearningEngine:
                                 f"Learned preference: {key}={value}",
                                 {"key": key, "value": value},
                             )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Preference activity logging failed: %s", exc)
             except Exception as exc:
                 logger.warning("Failed to observe preferences: %s", exc)
 

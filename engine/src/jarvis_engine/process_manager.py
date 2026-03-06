@@ -37,7 +37,8 @@ _GRACEFUL_TIMEOUT_S = 5.0
 # ---------------------------------------------------------------------------
 
 def _pids_dir(root: Path) -> Path:
-    return root / ".planning" / "runtime" / "pids"
+    from jarvis_engine._constants import runtime_dir
+    return runtime_dir(root) / "pids"
 
 
 def _pid_path(service: str, root: Path) -> Path:

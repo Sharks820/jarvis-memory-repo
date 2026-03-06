@@ -188,7 +188,8 @@ class EntityResolver:
                 # Fallback to individual calls if embed_batch unavailable
                 for node_id, label in members:
                     embed_cache[node_id] = self._embed_service.embed(label)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Batch embedding failed, falling back to individual calls: %s", exc)
             # Batch failed — fall back to individual calls
             embed_cache.clear()
             for node_id, label in members:
@@ -527,8 +528,8 @@ class EntityResolver:
                 self._kg.db.execute(
                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (remove_id,)
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Vec embedding delete for removed node %s failed: %s", remove_id, exc)
 
         self._kg.db.execute(
             "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)

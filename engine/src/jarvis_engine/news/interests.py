@@ -25,7 +25,8 @@ class InterestLearner:
     """Learns and decays user interest topics for news personalization."""
 
     def __init__(self, root: Path) -> None:
-        self._path = root / ".planning" / "runtime" / "interests.json"
+        from jarvis_engine._constants import runtime_dir
+        self._path = runtime_dir(root) / "interests.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     def _load(self) -> dict:

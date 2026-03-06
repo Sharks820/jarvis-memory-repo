@@ -24,6 +24,9 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import make_task_id as _make_task_id
+from jarvis_engine._constants import memory_db_path as _memory_db_path
+from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
@@ -245,8 +248,8 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
             der_bytes = _b64.b64decode("".join(der_lines))
             digest = hashlib.sha256(der_bytes).hexdigest().upper()
             return ":".join(digest[i:i + 2] for i in range(0, len(digest), 2))
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("TLS certificate fingerprint extraction failed: %s", exc)
     return None
 
 
@@ -333,6 +336,11 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
     return None, None
 
 
+def _unescape_response(text: str) -> str:
+    """Reverse the ``response=`` line escaping applied by the CLI."""
+    return text.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+
+
 def _parse_bool(value: Any) -> bool:
     """Safely parse a boolean from JSON payload (handles string "false"/"true")."""
     if isinstance(value, bool):
@@ -375,7 +383,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
         self.nonce_cleanup_interval_s = 30.0
-        self._nonce_cache_path = repo_root / ".planning" / "runtime" / "nonce_cache.jsonl"
+        self._nonce_cache_path = _runtime_dir(repo_root) / "nonce_cache.jsonl"
         self._load_nonces()
         # Bootstrap rate-limiter: {ip: [timestamp, ...]}
         self._bootstrap_attempts: dict[str, list[float]] = {}
@@ -404,7 +412,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             self._security_db = _sec_sqlite3.connect(str(security_db_path), check_same_thread=False)
             _configure_db(self._security_db)
             self._security_write_lock = threading.Lock()
-            forensic_dir = self.repo_root / ".planning" / "runtime" / "forensic"
+            forensic_dir = _runtime_dir(self.repo_root) / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
             def _rotate_signing_key(new_key: str) -> None:
                 self.signing_key = new_key
@@ -642,7 +650,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         with self._sync_init_lock:
             if self._sync_engine is not None:
                 return self._sync_engine
-            db_path = self.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+            db_path = _memory_db_path(self.repo_root)
             if not db_path.exists():
                 return None
             try:
@@ -690,7 +698,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         with self._memory_engine_init_lock:
             if self._memory_engine is not None:
                 return self._memory_engine
-            db_path = self.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+            db_path = _memory_db_path(self.repo_root)
             if not db_path.exists():
                 return None
             try:
@@ -915,9 +923,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 f"Command {lifecycle_state}",
                 details,
             )
-        except Exception:
+        except Exception as exc:
             # Activity feed must never break command execution.
-            pass
+            logger.debug("Activity feed logging failed: %s", exc)
 
     def _run_voice_command(
         self,
@@ -1082,7 +1090,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     status_code = line.split("=", 1)[1]
                 elif line.startswith("response="):
                     raw = line.split("=", 1)[1]
-                    response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+                    response_text = _unescape_response(raw)
             normalized = self._normalize_command_output(
                 response_text=response_text,
                 stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
@@ -1180,7 +1188,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 status_code = line.split("=", 1)[1].strip()
             elif line.startswith("response="):
                 raw = line.split("=", 1)[1].strip()
-                response_text = raw.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+                response_text = _unescape_response(raw)
         normalized = self._normalize_command_output(
             response_text=response_text,
             stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
@@ -1382,7 +1390,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _gaming_state_path(self) -> Path:
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
         root_resolved = root.resolve()
-        path = root_resolved / ".planning" / "runtime" / "gaming_mode.json"
+        path = _runtime_dir(root_resolved) / "gaming_mode.json"
         resolved = path.resolve(strict=False)
         try:
             resolved.relative_to(root_resolved)
@@ -1635,7 +1643,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_health(self) -> None:
         # Include intelligence regression status from self-test history
-        self_test_history_path = self.server.repo_root / ".planning" / "runtime" / "self_test_history.jsonl"  # type: ignore[attr-defined]
+        self_test_history_path = _runtime_dir(self.server.repo_root) / "self_test_history.jsonl"  # type: ignore[attr-defined]
         intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
         if self_test_history_path.exists():
             try:
@@ -1810,7 +1818,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not self._validate_auth(b""):
             return
         root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
-        audit_path = root_path / ".planning" / "runtime" / "gateway_audit.jsonl"
+        audit_path = _runtime_dir(root_path) / "gateway_audit.jsonl"
         records: list[dict[str, Any]] = []
         if audit_path.exists():
             try:
@@ -1838,7 +1846,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
         services = list_services(root_p)
         control = {}
-        ctrl_path = root_p / ".planning" / "runtime" / "control.json"
+        ctrl_path = _runtime_dir(root_p) / "control.json"
         if ctrl_path.exists():
             try:
                 control = json.loads(ctrl_path.read_text(encoding="utf-8"))
@@ -1954,16 +1962,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         combined: dict[str, Any] = {"ok": True}
         try:
             combined["growth"] = self._gather_intelligence_growth()
-        except Exception:
+        except Exception as exc:
+            logger.debug("Intelligence growth gather failed: %s", exc)
             combined["growth"] = {}
         try:
             dash = build_intelligence_dashboard(root_ws)
             combined["alerts"] = dash.get("proactive_alerts", [])
-        except Exception:
+        except Exception as exc:
+            logger.debug("Proactive alerts gather failed: %s", exc)
             combined["alerts"] = []
         try:
             combined["reliability"] = self._build_reliability_panel(root_ws)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}
         # Recent activity events for UI live updates (UI-03/04)
         try:
@@ -1975,7 +1986,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 for e in events
                 if e.category != ActivityCategory.DAEMON_CYCLE
             ][:10]
-        except Exception:
+        except Exception as exc:
+            logger.debug("Recent activity events gather failed: %s", exc)
             combined["recent_events"] = []
         self._write_json(HTTPStatus.OK, combined)
 
@@ -1988,7 +2000,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not self._validate_auth(b""):
             return
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        db_path = _memory_db_path(root)
         summary: dict[str, Any] = {
             "preferences": {},
             "route_quality": {},
@@ -2150,7 +2162,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # --- Knowledge graph metrics from KG history (same source as dashboard) ---
         try:
             from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
-            history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
+            history_path = _runtime_dir(root) / "kg_metrics.jsonl"
             history = load_kg_history(history_path, limit=50)
             if history:
                 latest = history[-1]
@@ -2254,7 +2266,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         # --- Self-test score from growth tracker history ---
-        self_test_path = root / ".planning" / "runtime" / "self_test_history.jsonl"
+        self_test_path = _runtime_dir(root) / "self_test_history.jsonl"
         try:
             if self_test_path.exists():
                 lines = self_test_path.read_text(encoding="utf-8").strip().split("\n")
@@ -2285,7 +2297,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
         # --- Active learning missions (file-based, non-blocking) ---
         try:
-            mission_file = root / ".planning" / "runtime" / "learning_missions.json"
+            mission_file = _runtime_dir(root) / "learning_missions.json"
             active_missions: list[dict[str, Any]] = []
             if mission_file.exists():
                 mission_data = json.loads(mission_file.read_text(encoding="utf-8"))
@@ -2658,7 +2670,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     LearnInteractionCommand(
                         user_message=user_text[:1000],
                         assistant_response=assistant_response[:1000],
-                        task_id=f"mobile-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        task_id=_make_task_id(f"mobile-{intent}"),
                         route=intent,
                         topic=user_text[:100],
                     )
@@ -2869,8 +2881,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         branch="phone-intelligence",
                     )
                     merged += 1
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Phone intelligence merge failed: %s", exc)
 
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
@@ -2901,7 +2913,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
             # Export from knowledge graph
             try:
-                db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+                db_path = _memory_db_path(self.server.repo_root)
 
                 if db_path.exists():
                     import sqlite3
@@ -2942,7 +2954,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
             # Export user preferences
             try:
-                db_path = self.server.repo_root / ".planning" / "brain" / "jarvis_memory.db"
+                db_path = _memory_db_path(self.server.repo_root)
                 if db_path.exists():
                     import sqlite3
 
@@ -3009,7 +3021,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         route = str(payload.get("route", "")).strip()[:100]
         comment = str(payload.get("comment", "")).strip()[:500]
         root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        db_path = _memory_db_path(root)
         if not db_path.exists():
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": False, "reason": "DB not available"})
             return
@@ -3169,8 +3181,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         try:
             from jarvis_engine.proactive.alert_queue import peek_alerts
             digest["proactive_alerts"] = peek_alerts(root, limit=10)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Peek alerts for digest failed: %s", exc)
 
         # Get upcoming calendar events for next 2 hours
         try:
@@ -3200,8 +3212,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     except (ValueError, TypeError):
                         continue
                 digest["calendar_upcoming"] = upcoming[:5]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Calendar upcoming for digest failed: %s", exc)
 
         # Generate a human-readable summary using the voice command system
         if context_label:
@@ -3212,8 +3224,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 result = bus.dispatch(OpsBriefCommand())
                 if hasattr(result, "brief") and result.brief:
                     digest["notifications_summary"] = result.brief[:1000]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ops brief for digest failed: %s", exc)
 
         self._write_json(HTTPStatus.OK, {"ok": True, "digest": digest})
 
@@ -3266,8 +3278,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                                     "fact": fact.get("label", ""),
                                     "confidence": round(float(fact.get("confidence", 0)), 2),
                                 })
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("KG person fact lookup failed for %s: %s", person, exc)
                     # Look up meeting topic
                     if title:
                         try:
@@ -3278,8 +3290,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                                     "fact": fact.get("label", ""),
                                     "confidence": round(float(fact.get("confidence", 0)), 2),
                                 })
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("KG topic fact lookup failed: %s", exc)
 
                 # Search recent memories about attendees/topic
                 keywords = attendees + ([title] if title else [])
@@ -3294,8 +3306,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                                     "summary": str(rec.get("summary", ""))[:200],
                                     "date": str(rec.get("ts", "")),
                                 })
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Memory search for meeting keyword %s failed: %s", keyword, exc)
         except Exception as exc:
             logger.debug("Meeting prep KG query failed: %s", exc)
 
@@ -3373,8 +3385,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     if rec:
                         contact_context = str(rec.get("summary", ""))[:200]
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Contact context memory lookup failed: %s", exc)
 
         self._write_json(HTTPStatus.OK, {
             "ok": True,
@@ -3426,11 +3438,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 answered=answered,
                 contact_name=contact_name,
             )
-            intel_path = root / ".planning" / "runtime" / "call_intel.jsonl"
+            intel_path = _runtime_dir(root) / "call_intel.jsonl"
             save_call_intel(intel_path, report)
 
             # Check carrier cache
-            carrier_cache_path = root / ".planning" / "runtime" / "carrier_cache.json"
+            carrier_cache_path = _runtime_dir(root) / "carrier_cache.json"
             carrier = lookup_carrier_cached(carrier_cache_path, report.normalized)
             carrier_risk = 0.0
             line_type = ""
@@ -3441,7 +3453,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             # Run campaign detection on recent data
             all_reports = load_call_intel(intel_path, limit=200)
             campaigns = detect_campaigns(all_reports)
-            campaign_path = root / ".planning" / "runtime" / "scam_campaigns.json"
+            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
             save_campaigns(campaign_path, campaigns)
 
             # Check if this number belongs to a campaign
@@ -3527,11 +3539,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             normalized = _normalize_number(number)
 
             # Check carrier cache
-            carrier_cache_path = root / ".planning" / "runtime" / "carrier_cache.json"
+            carrier_cache_path = _runtime_dir(root) / "carrier_cache.json"
             carrier = lookup_carrier_cached(carrier_cache_path, normalized)
 
             # Check campaigns
-            campaign_path = root / ".planning" / "runtime" / "scam_campaigns.json"
+            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             campaign_id = ""
             campaign_confidence = 0.0
@@ -3571,7 +3583,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
             from dataclasses import asdict
 
-            campaign_path = root / ".planning" / "runtime" / "scam_campaigns.json"
+            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             block_actions = build_prefix_block_actions(campaigns)
 
@@ -3594,8 +3606,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         try:
             from jarvis_engine.scam_hunter import load_campaigns, load_call_intel
 
-            campaign_path = root / ".planning" / "runtime" / "scam_campaigns.json"
-            intel_path = root / ".planning" / "runtime" / "call_intel.jsonl"
+            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
+            intel_path = _runtime_dir(root) / "call_intel.jsonl"
             campaigns = load_campaigns(campaign_path)
             all_intel = load_call_intel(intel_path, limit=500)
 
@@ -3696,7 +3708,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if self._cached_post_body:
             try:
                 _body_text = self._cached_post_body.decode("utf-8", errors="replace")
-            except Exception:
+            except Exception as exc:
+                logger.debug("POST body decode failed: %s", exc)
                 _body_text = ""
         if not self._run_security_check(path, body=_body_text):
             return
@@ -3787,7 +3800,7 @@ def run_mobile_server(
         logger.warning("Failed to initialize auto-sync config: %s", exc)
 
     # Initialize sync engine and transport if memory DB exists
-    db_path = repo_root / ".planning" / "brain" / "jarvis_memory.db"
+    db_path = repo__memory_db_path(root)
     if db_path.exists():
         try:
             from jarvis_engine.sync.changelog import install_changelog_triggers

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from jarvis_engine._compat import UTC
+from jarvis_engine._constants import make_task_id as _make_task_id
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class RunTaskHandler:
             auto_id = _main_mod._auto_ingest_memory(
                 source="task_outcome",
                 kind="episodic",
-                task_id=f"task-{cmd.task_type}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                task_id=_make_task_id(f"task-{cmd.task_type}"),
                 content=(
                     f"Task type={cmd.task_type}; execute={cmd.execute}; approved={cmd.approve_privileged}; "
                     f"allowed={result.allowed}; provider={result.provider}; reason={result.reason}; "
@@ -158,7 +159,7 @@ class WebResearchHandler:
                     auto_id = _main_mod._auto_ingest_memory(
                         source="task_outcome",
                         kind="semantic",
-                        task_id=f"web-research-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        task_id=_make_task_id("web-research"),
                         content=(
                             f"Web research query: {cleaned}\n"
                             f"Top domains: {domain_text}\n"

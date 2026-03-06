@@ -22,7 +22,8 @@ _QUEUE_LOCK = threading.Lock()
 
 
 def _queue_path(root: Path) -> Path:
-    return root / ".planning" / "runtime" / "pending_alerts.jsonl"
+    from jarvis_engine._constants import runtime_dir
+    return runtime_dir(root) / "pending_alerts.jsonl"
 
 
 def enqueue_alert(

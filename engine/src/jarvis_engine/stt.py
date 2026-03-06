@@ -121,7 +121,8 @@ def _log_stt_metric(
     """Log STT quality metric for tracking improvement over time."""
     if root_dir is None:
         return
-    metrics_path = root_dir / ".planning" / "runtime" / "stt_metrics.jsonl"
+    from jarvis_engine._constants import runtime_dir
+    metrics_path = runtime_dir(root_dir) / "stt_metrics.jsonl"
     record = {
         "ts": datetime.now(UTC).isoformat(),
         "backend": backend,

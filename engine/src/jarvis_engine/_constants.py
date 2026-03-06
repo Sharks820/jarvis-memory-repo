@@ -6,6 +6,10 @@ Centralises values that were previously duplicated across multiple modules.
 from __future__ import annotations
 
 import os
+from datetime import datetime
+from pathlib import Path
+
+from jarvis_engine._compat import UTC
 
 # ---------------------------------------------------------------------------
 # Privacy keywords — used by IntentClassifier and manual fallback routing
@@ -79,3 +83,26 @@ STOP_WORDS: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 
 DEFAULT_API_PORT: int = 8787
+
+
+# ---------------------------------------------------------------------------
+# Common path helpers
+# ---------------------------------------------------------------------------
+
+def memory_db_path(root: Path) -> Path:
+    """Return the canonical path to the main Jarvis memory database."""
+    return root / ".planning" / "brain" / "jarvis_memory.db"
+
+
+def runtime_dir(root: Path) -> Path:
+    """Return the canonical path to the runtime data directory."""
+    return root / ".planning" / "runtime"
+
+
+# ---------------------------------------------------------------------------
+# Task ID generation
+# ---------------------------------------------------------------------------
+
+def make_task_id(prefix: str) -> str:
+    """Generate a timestamped task ID like ``prefix-20260305143000``."""
+    return f"{prefix}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"

@@ -127,7 +127,8 @@ class PersonaConfig:
 
 
 def _persona_path(root: Path) -> Path:
-    return root / ".planning" / "runtime" / "persona.json"
+    from jarvis_engine._constants import runtime_dir
+    return runtime_dir(root) / "persona.json"
 
 
 def load_persona_config(root: Path) -> PersonaConfig:

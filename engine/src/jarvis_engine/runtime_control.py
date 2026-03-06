@@ -29,19 +29,20 @@ _MB = 1024.0 * 1024.0
 _DEFAULT_THROTTLE = {"mild_scale": 1.35, "severe_scale": 2.0, "max_sleep_s": 1800}
 
 
+from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
 
 def control_state_path(root: Path) -> Path:
-    return root / ".planning" / "runtime" / "control.json"
+    return _runtime_dir(root) / "control.json"
 
 
 def resource_budgets_path(root: Path) -> Path:
-    return root / ".planning" / "runtime" / "resource_budgets.json"
+    return _runtime_dir(root) / "resource_budgets.json"
 
 
 def resource_pressure_path(root: Path) -> Path:
-    return root / ".planning" / "runtime" / "resource_pressure.json"
+    return _runtime_dir(root) / "resource_pressure.json"
 
 
 def read_control_state(root: Path) -> dict[str, Any]:

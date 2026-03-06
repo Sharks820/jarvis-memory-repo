@@ -421,8 +421,8 @@ def run_learning_mission(
                     "group_key": "jarvis_missions",
                     "priority": "important",
                 })
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Mission completion notification failed: %s", exc)
         else:
             # No verified findings — mark as failed for retry.
             # retries tracks how many times retry_failed_missions re-queued this.
@@ -599,7 +599,8 @@ def auto_generate_missions(
         return len(candidates) >= max_new
 
     if db_path is None:
-        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+        from jarvis_engine._constants import memory_db_path as _memory_db_path
+        db_path = _memory_db_path(root)
 
     conn = None
     try:

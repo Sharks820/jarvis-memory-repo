@@ -8,6 +8,7 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine.brain_memory import brain_regression_report, brain_status
 from jarvis_engine.memory_snapshots import run_memory_maintenance
 from jarvis_engine.owner_guard import read_owner_guard
@@ -112,7 +113,7 @@ def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
         },
         "checks": checks,
     }
-    report_path = root / ".planning" / "runtime" / "mobile_desktop_sync.json"
+    report_path = _runtime_dir(root) / "mobile_desktop_sync.json"
     _atomic_write_json(report_path, report)
     report["report_path"] = str(report_path)
     return report
@@ -204,7 +205,7 @@ def run_self_heal(
         "sync": sync_report,
         "log_scan": logs,
     }
-    report_path = root / ".planning" / "runtime" / "self_heal_report.json"
+    report_path = _runtime_dir(root) / "self_heal_report.json"
     _atomic_write_json(report_path, report)
     report["report_path"] = str(report_path)
     return report

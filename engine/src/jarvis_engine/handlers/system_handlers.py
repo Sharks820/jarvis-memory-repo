@@ -283,7 +283,8 @@ class MigrateMemoryHandler:
         from jarvis_engine.memory.migration import run_full_migration
 
         embed_service = EmbeddingService()
-        db_path = self._root / ".planning" / "brain" / "jarvis_memory.db"
+        from jarvis_engine._constants import memory_db_path as _memory_db_path
+        db_path = _memory_db_path(self._root)
         summary = run_full_migration(self._root, db_path, embed_service)
         rc = 0 if summary.get("status") == "ok" else 2
         return MigrateMemoryResult(summary=summary, return_code=rc)

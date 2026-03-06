@@ -219,7 +219,8 @@ def _safe_knowledge_snapshot(kg: Any = None, engine: Any = None) -> dict[str, An
     try:
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
         return capture_knowledge_metrics(kg, engine)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Knowledge snapshot capture failed: %s", exc)
         return {}
 
 
@@ -328,7 +329,8 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
     """Collect KG metrics safely (returns empty dict on failure)."""
     try:
         from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
-        history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
+        from jarvis_engine._constants import runtime_dir
+        history_path = runtime_dir(root) / "kg_metrics.jsonl"
         history = load_kg_history(history_path, limit=50)
         if history:
             latest = history[-1]
@@ -350,8 +352,9 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
 def _safe_gateway_summary(root: Path) -> dict[str, Any]:
     """Summarize recent gateway decisions safely."""
     try:
+        from jarvis_engine._constants import runtime_dir
         from jarvis_engine.gateway.audit import GatewayAudit
-        audit_path = root / ".planning" / "runtime" / "gateway_audit.jsonl"
+        audit_path = runtime_dir(root) / "gateway_audit.jsonl"
         if audit_path.exists():
             audit = GatewayAudit(audit_path)
             return audit.summary(hours=24)

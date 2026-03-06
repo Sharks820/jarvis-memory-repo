@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import subprocess
 import threading
 import time
@@ -232,6 +233,9 @@ from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_API_PORT  # no
 from jarvis_engine._constants import STOP_WORDS as _HARVEST_STOP_WORDS  # noqa: E402
 from jarvis_engine._constants import get_local_model as _get_local_model  # noqa: E402
 from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensitive  # noqa: E402
+from jarvis_engine._constants import memory_db_path as _memory_db_path  # noqa: E402
+from jarvis_engine._constants import make_task_id as _make_task_id  # noqa: E402
+from jarvis_engine._constants import runtime_dir as _runtime_dir  # noqa: E402
 
 
 def _extract_topic_phrases(text: str) -> list[str]:
@@ -334,7 +338,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
     import sqlite3 as _sqlite3
     from datetime import timedelta
 
-    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+    db_path = _memory_db_path(root)
     conn = None
     try:
         if db_path.exists():
@@ -366,7 +370,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                             break
                     if len(candidates) >= _MAX_TOPICS:
                         break
-            except Exception:
+            except sqlite3.OperationalError:
                 pass  # Memory tables may not exist yet
 
         if len(candidates) >= _MAX_TOPICS:
@@ -425,7 +429,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                                     break
                         if len(candidates) >= _MAX_TOPICS:
                             break
-            except Exception:
+            except sqlite3.OperationalError:
                 pass  # KG tables may not exist yet
 
         if len(candidates) >= _MAX_TOPICS:
@@ -916,7 +920,7 @@ def _build_system_parts(
 
 
 def _auto_ingest_dedupe_path() -> Path:
-    return repo_root() / ".planning" / "runtime" / "auto_ingest_dedupe.json"
+    return _runtime_dir(repo_root()) / "auto_ingest_dedupe.json"
 
 
 def _sanitize_memory_content(content: str) -> str:
@@ -1053,7 +1057,7 @@ def _windows_idle_seconds() -> float | None:
 
 
 def _gaming_mode_state_path() -> Path:
-    return repo_root() / ".planning" / "runtime" / "gaming_mode.json"
+    return _runtime_dir(repo_root()) / "gaming_mode.json"
 
 
 def _gaming_processes_path() -> Path:
@@ -2268,7 +2272,7 @@ def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
         rec_id = _auto_ingest_memory(
             source="task_outcome",
             kind="episodic",
-            task_id=f"sync-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+            task_id=_make_task_id("sync"),
             content=(
                 f"Mobile/Desktop sync executed. "
                 f"sync_ok={report.get('sync_ok', False)}; "
@@ -2405,7 +2409,7 @@ def cmd_memory_eval() -> int:
     from jarvis_engine.config import repo_root as _repo_root
 
     root = _repo_root()
-    db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+    db_path = _memory_db_path(root)
 
     engine = None
     embed_service = None
@@ -2905,7 +2909,7 @@ def _cmd_daemon_run_impl(
                     try:
                         import sqlite3 as _sqlite3
                         from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
-                        db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+                        db_path = _memory_db_path(root)
                         if db_path.exists():
                             _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
                             from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
@@ -2920,7 +2924,7 @@ def _cmd_daemon_run_impl(
                                 _kg_conn.close()
                         else:
                             metrics = {"node_count": 0, "edge_count": 0}
-                        history_path = root / ".planning" / "runtime" / "kg_metrics.jsonl"
+                        history_path = _runtime_dir(root) / "kg_metrics.jsonl"
                         append_kg_metrics(metrics, history_path)
                         print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
                     except Exception as exc:  # noqa: BLE001
@@ -2938,7 +2942,7 @@ def _cmd_daemon_run_impl(
                         if engine is not None and embed_svc is not None:
                             tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
                             quiz_result = tester.run_memory_quiz()
-                            quiz_history = root / ".planning" / "runtime" / "self_test_history.jsonl"
+                            quiz_history = _runtime_dir(root) / "self_test_history.jsonl"
                             tester.save_quiz_result(quiz_result, quiz_history)
                             regression = tester.check_regression(quiz_history)
                             print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
@@ -2995,7 +2999,7 @@ def _cmd_daemon_run_impl(
                             )
                             # Auto-restore from backup on failure
                             if comparison["status"] == "fail":
-                                backup_dir = root / ".planning" / "runtime" / "kg_backups"
+                                backup_dir = _runtime_dir(root) / "kg_backups"
                                 if backup_dir.exists():
                                     backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
                                     if backups:
@@ -3099,7 +3103,7 @@ def _cmd_daemon_run_impl(
                         harvest_topics = _discover_harvest_topics(root)
                         if harvest_topics:
                             # Build harvester with ingest pipeline so results are stored
-                            harvest_db_path = root / ".planning" / "brain" / "jarvis_memory.db"
+                            harvest_db_path = _memory_db_path(root)
                             h_budget = None
                             if harvest_db_path.exists():
                                 h_budget = BudgetManager(harvest_db_path)
@@ -3513,7 +3517,7 @@ def _web_augmented_llm_conversation(
                 bus.dispatch(LearnInteractionCommand(
                     user_message=text[:1000],
                     assistant_response=result.text.strip()[:1000],
-                    task_id=f"conv-web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                    task_id=_make_task_id("conv-web"),
                     route=_route,
                     topic=text[:100],
                 ))
@@ -3523,7 +3527,7 @@ def _web_augmented_llm_conversation(
                     _auto_ingest_memory(
                         source="conversation",
                         kind="episodic",
-                        task_id=f"conv-web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        task_id=_make_task_id("conv-web"),
                         content=(
                             f"User asked: {text[:400]}\n"
                             f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
@@ -4180,7 +4184,7 @@ def _cmd_voice_run_impl(
         rc = cmd_ingest(
             source="user",
             kind="episodic",
-            task_id=f"voice-remember-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+            task_id=_make_task_id("voice-remember"),
             content=content,
         )
         if rc == 0:
@@ -4417,7 +4421,7 @@ def _cmd_voice_run_impl(
                     bus.dispatch(LearnInteractionCommand(
                         user_message=text[:1000],
                         assistant_response=result.text.strip()[:1000],
-                        task_id=f"conv-{_route}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                        task_id=_make_task_id(f"conv-{_route}"),
                         route=_route,
                         topic=text[:100],
                     ))
@@ -4428,7 +4432,7 @@ def _cmd_voice_run_impl(
                         _auto_ingest_memory(
                             source="conversation",
                             kind="episodic",
-                            task_id=f"conv-{_route}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                            task_id=_make_task_id(f"conv-{_route}"),
                             content=(
                                 f"User asked: {text[:400]}\n"
                                 f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
@@ -4469,7 +4473,7 @@ def _cmd_voice_run_impl(
             auto_id = _auto_ingest_memory(
                 source="user",
                 kind="episodic",
-                task_id=f"voice-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                task_id=_make_task_id(f"voice-{intent}"),
                 content=(
                     f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
                     f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
@@ -4493,7 +4497,7 @@ def _cmd_voice_run_impl(
                 _learn_cmd = LearnInteractionCommand(
                     user_message=text[:1000],
                     assistant_response=learn_response[:1000],
-                    task_id=f"learn-{intent}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+                    task_id=_make_task_id(f"learn-{intent}"),
                     route=intent,
                     topic=text[:100],
                 )

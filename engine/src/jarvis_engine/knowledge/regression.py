@@ -147,7 +147,8 @@ class RegressionChecker:
                     tmp_dst = dst_path.with_suffix(".db-restore-tmp")
                     try:
                         shutil.copy2(str(backup_path), str(tmp_dst))
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Backup copy to temp failed: %s", exc)
                         # Copy failed -- live DB is still open and valid
                         try:
                             tmp_dst.unlink(missing_ok=True)
@@ -159,8 +160,8 @@ class RegressionChecker:
                     old_db = self._kg._engine._db
                     try:
                         old_db.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Old DB close failed during restore: %s", exc)
 
                     # Delete stale WAL/SHM files before swapping in the backup.
                     # These belong to the old connection and would corrupt the
@@ -175,7 +176,8 @@ class RegressionChecker:
                     # Swap temp copy into the live path
                     try:
                         shutil.move(str(tmp_dst), str(dst_path))
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Backup swap into live path failed: %s", exc)
                         # Swap failed -- reopen the original DB to avoid
                         # leaving the KG with a closed connection
                         try:
@@ -207,8 +209,8 @@ class RegressionChecker:
                             sqlite_vec.load(new_db)
                         finally:
                             new_db.enable_load_extension(False)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("sqlite-vec reload after restore failed: %s", exc)
                     # Update ALL references (engine, KG, lock manager)
                     self._kg._engine._db = new_db
                     self._kg._db = new_db
