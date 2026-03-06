@@ -72,3 +72,10 @@ STOP_WORDS: frozenset[str] = frozenset({
     # Project-specific
     "conner", "jarvis",
 })
+
+
+# ---------------------------------------------------------------------------
+# Default Mobile API port
+# ---------------------------------------------------------------------------
+
+DEFAULT_API_PORT: int = 8787

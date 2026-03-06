@@ -54,6 +54,27 @@ PERSONA_BASE_PROMPT: str = (
     "Never say you cannot access the web, browse the internet, or that it is outside your protocol."
 )
 
+PERSONA_DISABLED_PROMPT: str = (
+    "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
+    "You have full access to the internet and web search. "
+    "Never say you cannot access the web or that it is outside your protocol."
+)
+
+
+def get_persona_prompt(cfg: "PersonaConfig") -> str:
+    """Return the appropriate persona description based on config.
+
+    When persona is enabled, returns the full British butler prompt with
+    conversational flair.  Otherwise returns a minimal functional prompt.
+    """
+    if cfg.enabled:
+        return (
+            PERSONA_BASE_PROMPT.rstrip()
+            + " You are witty, knowledgeable. "
+            "Never repeat the same phrases. Vary your language."
+        )
+    return PERSONA_DISABLED_PROMPT
+
 # Pre-computed reverse map: branch -> tone profile name
 _BRANCH_TO_TONE: dict[str, str] = {}
 for _tone_name, _profile in TONE_PROFILES.items():

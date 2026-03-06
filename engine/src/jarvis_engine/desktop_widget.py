@@ -22,6 +22,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,7 +210,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     # Auto-detect scheme: use HTTPS when TLS certs exist (matches server auto-detection).
     _tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (_security_dir(root) / "tls_key.pem").exists()
     _default_scheme = "https" if _tls_available else "http"
-    _default_base = f"{_default_scheme}://127.0.0.1:8787"
+    _default_base = f"{_default_scheme}://127.0.0.1:{_DEFAULT_PORT}"
 
     # Auto-upgrade saved http:// base_url to https:// when TLS certs exist.
     _saved_url = str(raw.get("base_url", "")).strip()
@@ -223,23 +225,24 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     _parsed = _ul_parse(_base_url)
     if _parsed.hostname not in ("127.0.0.1", "localhost", "::1", None):
         _probe_url = f"{_base_url.rstrip('/')}/health"
-        _local_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or 8787}/health"
+        _local_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or _DEFAULT_PORT}/health"
         _stale = False
         try:
             _ctx = _make_ssl_context_for_self_signed() if _parsed.scheme == "https" else None
             with urlopen(Request(url=_probe_url, method="GET"), timeout=3, context=_ctx):
                 pass  # Saved URL works fine
-        except Exception:
+        except Exception as exc:
+            logger.debug("Saved base_url %s unreachable: %s — trying localhost", _probe_url, exc)
             # Saved URL unreachable — try localhost
             try:
                 _ctx_l = _make_ssl_context_for_self_signed() if _default_scheme == "https" else None
                 with urlopen(Request(url=_local_url, method="GET"), timeout=3, context=_ctx_l):
                     _stale = True  # localhost works, saved URL is stale
-            except Exception:
-                pass  # Neither works — keep saved URL, user will see OFFLINE
+            except Exception as exc2:
+                logger.debug("Localhost fallback %s also unreachable: %s", _local_url, exc2)
         if _stale:
             _old_url = _base_url
-            _base_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or 8787}"
+            _base_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or _DEFAULT_PORT}"
             logger.info("Auto-healed stale base_url %s → %s", _old_url, _base_url)
 
     cfg = WidgetConfig(
@@ -285,7 +288,8 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         if value:
             try:
                 payload[f"{field}_protected"] = _dpapi_encrypt(value)
-            except Exception:
+            except Exception as exc:
+                logger.debug("DPAPI encrypt failed for %s, storing plaintext: %s", field, exc)
                 payload[field] = value
 
     # Persist window positions if set
@@ -351,8 +355,8 @@ def _is_safe_widget_base_url(url: str) -> bool:
         # not publicly routable and Tailscale treats it as a private mesh.
         if addr in _CGNAT_NETWORK:
             return True
-    except ValueError:
-        pass
+    except ValueError as exc:
+        logger.debug("Could not parse host %r as IP address: %s", host, exc)
     return False
 
 
@@ -414,7 +418,7 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
     _is_localhost = _parsed_url.hostname in ("127.0.0.1", "localhost", "::1")
     _urls_to_try = [cfg.base_url]
     if not _is_localhost:
-        _fallback = f"{_parsed_url.scheme}://127.0.0.1:{_parsed_url.port or 8787}"
+        _fallback = f"{_parsed_url.scheme}://127.0.0.1:{_parsed_url.port or _DEFAULT_PORT}"
         _urls_to_try.append(_fallback)
 
     last_exc: Exception | None = None
@@ -483,7 +487,8 @@ from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_su
 def _http_error_details(exc: HTTPError) -> str:
     try:
         raw = exc.read().decode("utf-8", errors="replace").strip()
-    except Exception:
+    except Exception as exc2:
+        logger.debug("Failed to read HTTP error response body: %s", exc2)
         raw = ""
     if raw:
         short = raw[:420].replace("\n", " ")
@@ -504,9 +509,9 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
             language="en",
         )
         return result.text.strip()
-    except RuntimeError:
+    except RuntimeError as exc:
         # faster-whisper or sounddevice not available -- fall back to System.Speech
-        pass
+        logger.debug("Whisper STT unavailable, falling back to System.Speech: %s", exc)
     except Exception as exc:
         logger.warning("Whisper STT failed, falling back to System.Speech: %s", exc)
     # Fallback: Windows System.Speech via PowerShell
@@ -539,8 +544,8 @@ def _voice_dictate_system_speech(timeout_s: int = 8) -> str:
         try:
             proc.kill()
             proc.wait(timeout=5)
-        except OSError:
-            pass
+        except OSError as kill_exc:
+            logger.debug("Failed to kill timed-out voice dictation process: %s", kill_exc)
         raise RuntimeError("Voice dictation timed out") from exc
     if proc.returncode != 0:
         raise RuntimeError((stderr or "").strip() or "Voice dictation failed")
@@ -678,7 +683,7 @@ def _snap_to_edge(
     try:
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
-    except Exception:
+    except Exception:  # Widget may be destroyed
         return x, y
     # Left edge
     if 0 <= x <= snap_dist:
@@ -703,7 +708,7 @@ def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
     try:
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
-    except Exception:
+    except Exception:  # Widget may be destroyed
         return False
     return -100 <= x <= screen_w and -100 <= y <= screen_h
 
@@ -1004,7 +1009,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._position_save_id is not None:
             try:
                 self.after_cancel(self._position_save_id)
-            except Exception:
+            except Exception:  # Widget may be destroyed
                 pass
         self._position_save_id = self.after(300, self._save_panel_position)
 
@@ -1013,20 +1018,20 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             x = self.winfo_x()
             y = self.winfo_y()
-        except Exception:
+        except Exception:  # Widget may be destroyed
             return
         x, y = _snap_to_edge(x, y, self.winfo_width(), self.winfo_height(), self)
         # Apply snapped position
         try:
             self.geometry(f"+{x}+{y}")
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
         self.cfg.panel_x = x
         self.cfg.panel_y = y
         try:
             _save_widget_cfg(self.root_path, self.cfg)
-        except Exception:
-            logger.debug("Failed to save widget position to config")
+        except Exception as exc:
+            logger.debug("Failed to save widget position to config: %s", exc)
 
     def _save_launcher_position(self) -> None:
         """Save the current launcher orb position to config."""
@@ -1035,19 +1040,19 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             x = self.launcher_win.winfo_x()
             y = self.launcher_win.winfo_y()
-        except Exception:
+        except Exception:  # Widget may be destroyed
             return
         x, y = _snap_to_edge(x, y, self._launcher_size, self._launcher_size, self)
         try:
             self.launcher_win.geometry(f"+{x}+{y}")
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
         self.cfg.launcher_x = x
         self.cfg.launcher_y = y
         try:
             _save_widget_cfg(self.root_path, self.cfg)
-        except Exception:
-            logger.debug("Failed to save launcher position to config")
+        except Exception as exc:
+            logger.debug("Failed to save launcher position to config: %s", exc)
 
     def _build_launcher(self) -> None:
         launcher = tk.Toplevel(self)
@@ -1180,7 +1185,7 @@ class JarvisDesktopWidget(tk.Tk):
         """Tray menu: Show Widget (also handles double-click)."""
         try:
             self.after(0, self._show_panel)
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
 
     def _tray_voice_dictate(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
@@ -1188,7 +1193,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._show_panel)
             self.after(100, self._voice_dictate)
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
 
     def _tray_ops_brief(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
@@ -1196,14 +1201,14 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._show_panel)
             self.after(100, lambda: self._send_text("ops brief"))
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
 
     def _tray_quit(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
         """Tray menu: Quit."""
         try:
             self.after(0, self._confirm_exit)
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
 
     def _stop_tray_icon(self) -> None:
@@ -1636,8 +1641,8 @@ class JarvisDesktopWidget(tk.Tk):
         def worker() -> None:
             try:
                 _http_json(cfg, "/conversation/clear", method="POST", payload={})
-            except Exception:
-                pass  # Best-effort clear
+            except Exception as exc:
+                logger.debug("Best-effort conversation clear failed: %s", exc)
 
         self._thread(worker)
 
@@ -1920,8 +1925,8 @@ class JarvisDesktopWidget(tk.Tk):
             return
         try:
             self.after(0, self._log, message, role)
-        except Exception:
-            pass  # Widget destroyed
+        except Exception:  # Widget may be destroyed
+            pass
 
     def _show_thinking(self) -> None:
         """Show animated 'Jarvis is thinking...' indicator as a Label widget.
@@ -1952,7 +1957,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._thinking_after_id is not None:
             try:
                 self.after_cancel(self._thinking_after_id)
-            except Exception:
+            except Exception:  # Widget may be destroyed
                 pass
             self._thinking_after_id = None
         try:
@@ -2095,8 +2100,8 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             if self.notify_var.get():
                 _show_toast(title, message, icon)
-        except Exception:
-            pass  # Widget may be destroyed
+        except Exception:  # Widget may be destroyed; toast is best-effort
+            pass
 
     def _set_command_text(self, value: str) -> None:
         self.command_text.delete("1.0", tk.END)
@@ -2106,7 +2111,7 @@ class JarvisDesktopWidget(tk.Tk):
         self.after(0, self._set_command_text, value)
 
     def _current_cfg(self) -> WidgetConfig:
-        _fallback = f"{'https' if (_security_dir(self.root_path) / 'tls_cert.pem').exists() else 'http'}://127.0.0.1:8787"
+        _fallback = f"{'https' if (_security_dir(self.root_path) / 'tls_cert.pem').exists() else 'http'}://127.0.0.1:{_DEFAULT_PORT}"
         return WidgetConfig(
             base_url=self.base_var.get().strip() or _fallback,
             token=self.token_var.get().strip(),
@@ -2182,7 +2187,8 @@ class JarvisDesktopWidget(tk.Tk):
                     health_data = _http_json(cfg, "/health", method="GET")
                     health_ok = bool(health_data.get("ok", False))
                     self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Diagnostics health check failed: %s", exc)
                     self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
                     self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
                     return
@@ -2306,8 +2312,8 @@ class JarvisDesktopWidget(tk.Tk):
                  "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
                 capture_output=True, timeout=5,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to kill TTS/speech processes during cancel: %s", exc)
         self.command_text.config(state=tk.NORMAL)
         self._log("Command cancelled.", role="system")
         self._set_state("idle")
@@ -2317,7 +2323,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._processing_timeout_id is not None:
             try:
                 self.after_cancel(self._processing_timeout_id)
-            except Exception:
+            except Exception:  # Widget may be destroyed
                 pass
             self._processing_timeout_id = None
 
@@ -2492,8 +2498,8 @@ class JarvisDesktopWidget(tk.Tk):
                         self.after(0, self._update_growth_labels, growth_data)
                         if recent_evts:
                             self.after(0, self._update_activity_events, recent_evts)
-                    except Exception:
-                        pass  # Best-effort immediate refresh
+                    except Exception as exc:
+                        logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
                 if not ok:
                     self._set_error_briefly_async()
                 else:
@@ -2542,7 +2548,7 @@ class JarvisDesktopWidget(tk.Tk):
                 if not self._cancel_event.is_set():
                     try:
                         self.after(0, _cleanup)
-                    except Exception:
+                    except Exception:  # Widget may be destroyed
                         pass
 
         self._thread(worker)
@@ -2587,8 +2593,8 @@ class JarvisDesktopWidget(tk.Tk):
                     if self._prev_svc_running.get(name, False):
                         self._notify_toast("Jarvis Service Down", f"{name} has stopped", "Warning")
                 self._prev_svc_running[name] = svc["running"]
-        except Exception:
-            logger.debug("Failed to refresh service status: list_services unavailable or errored")
+        except Exception as exc:
+            logger.debug("Failed to refresh service status: %s", exc)
         # Re-schedule every 10 seconds
         self.after(10000, self._refresh_services)
 
@@ -2710,13 +2716,13 @@ class JarvisDesktopWidget(tk.Tk):
             def _read() -> None:
                 try:
                     result[0] = bool(self.hotword_var.get())
-                except Exception:
+                except Exception:  # Widget may be destroyed
                     result[0] = False
                 ready.set()
 
             try:
                 self.after(0, _read)
-            except Exception:
+            except Exception:  # Widget may be destroyed
                 return False
             ready.wait(timeout=2.0)
             return result[0]
@@ -2729,8 +2735,8 @@ class JarvisDesktopWidget(tk.Tk):
                         self.after(0, self._show_panel)
                         self._log_async("Wake word detected.")
                         self.after(0, self._dictate_async)
-                    except Exception:
-                        return  # Widget destroyed
+                    except Exception:  # Widget may be destroyed
+                        return
             except Exception as exc:
                 logger.warning("Hotword detection error: %s", exc)
             # Cooldown: 10s after wake word to avoid re-triggering during processing
@@ -2754,8 +2760,8 @@ class JarvisDesktopWidget(tk.Tk):
 
             try:
                 self.after(0, _read_cfg)
-            except Exception:
-                return  # Widget destroyed
+            except Exception:  # Widget may be destroyed
+                return
             ready.wait(timeout=5.0)
             cfg = cfg_holder[0]
             if cfg is None:
@@ -2767,8 +2773,8 @@ class JarvisDesktopWidget(tk.Tk):
             if not _is_safe_widget_base_url(cfg.base_url):
                 try:
                     self.after(0, self._set_online, False)
-                except Exception:
-                    return  # Widget destroyed
+                except Exception:  # Widget may be destroyed
+                    return
                 for _ in range(16):
                     if self.stop_event.is_set():
                         return
@@ -2779,7 +2785,7 @@ class JarvisDesktopWidget(tk.Tk):
             _pu = _urlparse(cfg.base_url)
             _health_urls = [f"{cfg.base_url.rstrip('/')}/health"]
             if _pu.hostname not in ("127.0.0.1", "localhost", "::1"):
-                _health_urls.append(f"{_pu.scheme}://127.0.0.1:{_pu.port or 8787}/health")
+                _health_urls.append(f"{_pu.scheme}://127.0.0.1:{_pu.port or _DEFAULT_PORT}/health")
 
             resp = None
             ok = False
@@ -2797,13 +2803,14 @@ class JarvisDesktopWidget(tk.Tk):
                                 health_payload = json.loads(body)
                                 if isinstance(health_payload, dict) and "intelligence" in health_payload:
                                     intel_data = health_payload["intelligence"]
-                            except Exception:
-                                pass  # Parsing intelligence is best-effort
+                            except Exception as exc:
+                                logger.debug("Failed to parse intelligence from health response: %s", exc)
                         resp.close()
                         resp = None
                         if ok:
                             break
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Health poll request failed: %s", exc)
                         ok = False
                     finally:
                         if resp is not None:
@@ -2837,8 +2844,8 @@ class JarvisDesktopWidget(tk.Tk):
             if not self.stop_event.is_set():
                 try:
                     self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
-                except Exception:
-                    return  # Widget destroyed
+                except Exception:  # Widget may be destroyed
+                    return
             for _ in range(16):
                 if self.stop_event.is_set():
                     return
@@ -2985,8 +2992,8 @@ class JarvisDesktopWidget(tk.Tk):
             return
         try:
             self.after(0, self._set_state, state)
-        except Exception:
-            pass  # Widget destroyed
+        except Exception:  # Widget may be destroyed
+            pass
 
     def _set_error_briefly(self) -> None:
         """Set error state for 2 seconds, then revert to idle."""
@@ -2995,7 +3002,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._error_clear_id is not None:
             try:
                 self.after_cancel(self._error_clear_id)
-            except Exception:
+            except Exception:  # Widget may be destroyed
                 pass
         self._error_clear_id = self.after(2000, self._set_state, "idle")
 
@@ -3005,7 +3012,7 @@ class JarvisDesktopWidget(tk.Tk):
             return
         try:
             self.after(0, self._set_error_briefly)
-        except Exception:
+        except Exception:  # Widget may be destroyed
             pass
 
     def _refresh_status_view(self) -> None:
@@ -3056,7 +3063,7 @@ class JarvisDesktopWidget(tk.Tk):
             if self._orb_sweep is not None:
                 self.orb_canvas.itemconfig(self._orb_sweep, start=sweep_angle, outline=color)
             self._orb_after_id = self.after(33, self._animate_orb)
-        except Exception:
+        except Exception:  # Widget may be destroyed
             return
 
     def _animate_launcher(self) -> None:
@@ -3160,7 +3167,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self.launcher_canvas.itemconfig(self._l_glow, outline=glow_c)
 
             self._launcher_after_id = self.after(33, self._animate_launcher)
-        except Exception:
+        except Exception:  # Widget may be destroyed
             return
 
 

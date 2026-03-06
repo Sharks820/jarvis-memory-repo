@@ -228,6 +228,7 @@ _daemon_kg_prev_metrics: dict | None = None
 # Auto-harvest topic discovery for daemon cycle
 # ---------------------------------------------------------------------------
 
+from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_API_PORT  # noqa: E402
 from jarvis_engine._constants import STOP_WORDS as _HARVEST_STOP_WORDS  # noqa: E402
 from jarvis_engine._constants import get_local_model as _get_local_model  # noqa: E402
 from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensitive  # noqa: E402
@@ -888,23 +889,9 @@ def _build_system_parts(
     Called from both ``_web_augmented_llm_conversation`` and
     ``_cmd_voice_run_impl`` to avoid duplicate prompt construction.
     """
+    from jarvis_engine.persona import get_persona_prompt
     persona = load_persona_config(repo_root())
-    if persona.enabled:
-        persona_desc = (
-            "You are Jarvis, an intelligent personal AI assistant. "
-            "You are witty, knowledgeable, and speak like a refined British butler "
-            "with dry humor. Keep responses concise and natural. "
-            "Never repeat the same phrases. Vary your language. "
-            "You have full access to the internet and web search. "
-            "Never say you cannot access the web or that it is outside your protocol."
-        )
-    else:
-        persona_desc = (
-            "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
-            "You have full access to the internet and web search. "
-            "Never say you cannot access the web or that it is outside your protocol."
-        )
-    parts = [_current_datetime_prompt_line(), persona_desc]
+    parts = [_current_datetime_prompt_line(), get_persona_prompt(persona)]
     if fact_lines:
         parts.append(
             "Known facts about the user (use these to personalize your response):\n"
@@ -2659,7 +2646,7 @@ def _restart_mobile_api(service_name: str) -> None:
     engine_src = str(root / "engine" / "src")
     cmd = [
         python, "-m", "jarvis_engine.main", "serve-mobile",
-        "--host", "127.0.0.1", "--port", "8787",
+        "--host", "127.0.0.1", "--port", str(_DEFAULT_API_PORT),
         "--config-file", str(config_path),
     ]
     env = os.environ.copy()
@@ -4641,7 +4628,7 @@ def main() -> int:
 
     p_mobile = sub.add_parser("serve-mobile", help="Run secure mobile ingestion API.")
     p_mobile.add_argument("--host", default="127.0.0.1")
-    p_mobile.add_argument("--port", type=int, default=8787)
+    p_mobile.add_argument("--port", type=int, default=_DEFAULT_API_PORT)
     p_mobile.add_argument("--token", help="Shared token. Falls back to JARVIS_MOBILE_TOKEN env var.")
     p_mobile.add_argument(
         "--signing-key",
