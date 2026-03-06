@@ -143,6 +143,34 @@ def http_request(
         return exc.code, exc.read()
 
 
+def _make_bus_mock(result_obj):
+    """Create a mock bus that returns *result_obj* from dispatch().
+
+    Shared across test_main*.py modules.
+    """
+    from unittest.mock import MagicMock
+
+    bus = MagicMock()
+    bus.dispatch.return_value = result_obj
+    return bus
+
+
+@pytest.fixture()
+def mock_bus(monkeypatch):
+    """Fixture that creates a mock bus and patches _get_bus to return it.
+
+    Shared across test_main*.py modules.
+    """
+    from jarvis_engine import main as main_mod
+
+    def _factory(result_obj):
+        bus = _make_bus_mock(result_obj)
+        monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
+        return bus
+
+    return _factory
+
+
 @pytest.fixture()
 def mobile_server(tmp_path: Path) -> TestServer:
     root = tmp_path / "repo"
