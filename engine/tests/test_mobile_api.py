@@ -430,6 +430,18 @@ def test_widget_status_includes_reliability_panel(mobile_server) -> None:
 
 
 def test_command_endpoint_executes_voice_route(mobile_server) -> None:
+    from unittest.mock import patch
+
+    def _mock_run_voice(self, payload, *, correlation_id=None):
+        return {
+            "ok": True,
+            "command_exit_code": 0,
+            "intent": "runtime_status",
+            "response": "System running.",
+            "reason": "ok",
+            "stdout_tail": [],
+        }
+
     payload = {
         "text": "Jarvis, runtime status",
         "execute": False,
@@ -438,7 +450,8 @@ def test_command_endpoint_executes_voice_route(mobile_server) -> None:
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+    with patch("jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command", _mock_run_voice):
+        code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is True
@@ -447,13 +460,18 @@ def test_command_endpoint_executes_voice_route(mobile_server) -> None:
 
 def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> None:
     from unittest.mock import patch
-    from jarvis_engine.gateway.models import GatewayResponse
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
 
-    def _mock_complete(self, messages, model="claude-sonnet-4-5-20250929", max_tokens=1024, route_reason=""):
-        return GatewayResponse(
-            text="", model=model, provider="none",
-            fallback_used=True, fallback_reason="mocked for test",
-        )
+    def _mock_run_voice_fail(self, payload, *, correlation_id=None):
+        return {
+            "ok": False,
+            "command_exit_code": 1,
+            "intent": "unknown",
+            "response": "",
+            "reason": "LLM returned empty response",
+            "stdout_tail": [],
+        }
 
     payload = {
         "text": "Jarvis, this intent does not exist",
@@ -463,13 +481,18 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    mock_cls = type("MockClassifier", (), {
-        "classify": lambda self, q: ("routine", "mock-model", 0.9),
-    })
-    with patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
-         patch("jarvis_engine.main._build_smart_context", return_value=([], [], [], [])), \
-         patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
-        code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+    with patch("jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command", _mock_run_voice_fail):
+        req = Request(
+            url=f"{mobile_server.base_url}/command",
+            method="POST",
+            data=raw,
+            headers=headers,
+        )
+        try:
+            with urlopen(req, timeout=15) as resp:
+                code, body = resp.getcode(), resp.read()
+        except HTTPError as exc:
+            code, body = exc.code, exc.read()
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is False

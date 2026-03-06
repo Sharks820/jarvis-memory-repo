@@ -304,8 +304,8 @@ class SelfTestHandler:
             logger.warning("self_test module not available: %s", exc)
             return SelfTestResult(message="Self-test module not available.")
 
-        from jarvis_engine._constants import runtime_dir
-        history_path = runtime_dir(self._root) / "self_test_history.jsonl"
+        from jarvis_engine._constants import runtime_dir, SELF_TEST_HISTORY
+        history_path = runtime_dir(self._root) / SELF_TEST_HISTORY
 
         tester = AdversarialSelfTest(
             self._engine,

@@ -758,8 +758,8 @@ class KnowledgeGraph:
                                 f"DELETE FROM vec_kg_nodes WHERE node_id IN ({placeholders})",
                                 chunk,
                             )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("KG chunk extraction failed: %s", exc)
 
                 self._db.commit()
                 if retracted > 0:

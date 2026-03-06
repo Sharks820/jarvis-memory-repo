@@ -554,8 +554,8 @@ def _try_parakeet(
                 if logprobs:
                     avg_logprob = sum(logprobs) / len(logprobs)
                     confidence = min(1.0, max(0.0, 1.0 + avg_logprob))
-        except Exception:
-            pass  # Fall through to baseline confidence
+        except Exception as exc:
+            logger.debug("Parakeet logprob confidence extraction failed: %s", exc)
 
         return TranscriptionResult(
             text=text,
@@ -1041,8 +1041,8 @@ def record_from_microphone(
         from jarvis_engine.stt_vad import get_vad_detector
         _vad_detector = get_vad_detector(sampling_rate=sample_rate)
         _use_silero = _vad_detector.available
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("VAD detector initialization failed: %s", exc)
 
     if _use_silero:
         logger.info("Using Silero VAD for speech detection")

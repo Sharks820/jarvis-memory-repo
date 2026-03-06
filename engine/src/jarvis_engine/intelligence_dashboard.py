@@ -329,8 +329,8 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
     """Collect KG metrics safely (returns empty dict on failure)."""
     try:
         from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
-        from jarvis_engine._constants import runtime_dir
-        history_path = runtime_dir(root) / "kg_metrics.jsonl"
+        from jarvis_engine._constants import runtime_dir, KG_METRICS_LOG
+        history_path = runtime_dir(root) / KG_METRICS_LOG
         history = load_kg_history(history_path, limit=50)
         if history:
             latest = history[-1]
@@ -352,9 +352,9 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
 def _safe_gateway_summary(root: Path) -> dict[str, Any]:
     """Summarize recent gateway decisions safely."""
     try:
-        from jarvis_engine._constants import runtime_dir
+        from jarvis_engine._constants import runtime_dir, GATEWAY_AUDIT_LOG
         from jarvis_engine.gateway.audit import GatewayAudit
-        audit_path = runtime_dir(root) / "gateway_audit.jsonl"
+        audit_path = runtime_dir(root) / GATEWAY_AUDIT_LOG
         if audit_path.exists():
             audit = GatewayAudit(audit_path)
             return audit.summary(hours=24)

@@ -7,7 +7,6 @@ to track and enforce daily/monthly spend limits per harvesting provider.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 from pathlib import Path
 

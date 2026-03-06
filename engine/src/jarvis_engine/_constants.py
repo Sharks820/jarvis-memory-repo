@@ -97,6 +97,15 @@ ENV_MODEL_PRIORITY: list[tuple[str, str]] = [
 
 
 # ---------------------------------------------------------------------------
+# Runtime data filenames (used with runtime_dir())
+# ---------------------------------------------------------------------------
+
+SELF_TEST_HISTORY = "self_test_history.jsonl"
+GATEWAY_AUDIT_LOG = "gateway_audit.jsonl"
+KG_METRICS_LOG = "kg_metrics.jsonl"
+
+
+# ---------------------------------------------------------------------------
 # Common path helpers
 # ---------------------------------------------------------------------------
 

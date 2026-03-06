@@ -207,7 +207,7 @@ def create_app(root: Path) -> CommandBus:
     # -- Ensure required directories exist --
     brain_dir = root / ".planning" / "brain"
     brain_dir.mkdir(parents=True, exist_ok=True)
-    from jarvis_engine._constants import runtime_dir as _runtime_dir
+    from jarvis_engine._constants import GATEWAY_AUDIT_LOG, runtime_dir as _runtime_dir
     (_runtime_dir(root) / "pids").mkdir(parents=True, exist_ok=True)
     (root / ".planning" / "logs").mkdir(parents=True, exist_ok=True)
 
@@ -263,7 +263,7 @@ def create_app(root: Path) -> CommandBus:
             groq_api_key=os.environ.get("GROQ_API_KEY"),
             mistral_api_key=os.environ.get("MISTRAL_API_KEY"),
             zai_api_key=os.environ.get("ZAI_API_KEY"),
-            audit_path=_runtime_dir(root) / "gateway_audit.jsonl",
+            audit_path=_runtime_dir(root) / GATEWAY_AUDIT_LOG,
         )
         # Keep classifier lazy to avoid heavy startup latency in request paths.
         # It will be instantiated on-demand where needed (e.g. voice fallback).

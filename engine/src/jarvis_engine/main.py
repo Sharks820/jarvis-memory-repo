@@ -236,6 +236,9 @@ from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensiti
 from jarvis_engine._constants import memory_db_path as _memory_db_path  # noqa: E402
 from jarvis_engine._constants import make_task_id as _make_task_id  # noqa: E402
 from jarvis_engine._constants import ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY  # noqa: E402
+from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG  # noqa: E402
+from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG  # noqa: E402
+from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY  # noqa: E402
 from jarvis_engine._shared import set_process_title as _set_process_title  # noqa: E402
 from jarvis_engine._constants import runtime_dir as _runtime_dir  # noqa: E402
 
@@ -2946,7 +2949,7 @@ def _cmd_daemon_run_impl(
                                 _kg_conn.close()
                         else:
                             metrics = {"node_count": 0, "edge_count": 0}
-                        history_path = _runtime_dir(root) / "kg_metrics.jsonl"
+                        history_path = _runtime_dir(root) / _KG_METRICS_LOG
                         append_kg_metrics(metrics, history_path)
                         print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
                     except Exception as exc:  # noqa: BLE001
@@ -2964,7 +2967,7 @@ def _cmd_daemon_run_impl(
                         if engine is not None and embed_svc is not None:
                             tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
                             quiz_result = tester.run_memory_quiz()
-                            quiz_history = _runtime_dir(root) / "self_test_history.jsonl"
+                            quiz_history = _runtime_dir(root) / _SELF_TEST_HISTORY
                             tester.save_quiz_result(quiz_result, quiz_history)
                             regression = tester.check_regression(quiz_history)
                             print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")

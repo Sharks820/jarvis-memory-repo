@@ -24,6 +24,9 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG
+from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG
+from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
 from jarvis_engine._constants import make_task_id as _make_task_id
 from jarvis_engine._constants import memory_db_path as _memory_db_path
 from jarvis_engine._constants import runtime_dir as _runtime_dir
@@ -1704,7 +1707,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_health(self) -> None:
         # Include intelligence regression status from self-test history
-        self_test_history_path = _runtime_dir(self._root) / "self_test_history.jsonl"
+        self_test_history_path = _runtime_dir(self._root) / _SELF_TEST_HISTORY
         intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
         if self_test_history_path.exists():
             try:
@@ -1831,7 +1834,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _handle_get_audit(self) -> None:
         if not self._validate_auth(b""):
             return
-        audit_path = _runtime_dir(self._root) / "gateway_audit.jsonl"
+        audit_path = _runtime_dir(self._root) / _GATEWAY_AUDIT_LOG
         records: list[dict[str, Any]] = []
         if audit_path.exists():
             try:
@@ -2172,7 +2175,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # --- Knowledge graph metrics from KG history (same source as dashboard) ---
         try:
             from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
-            history_path = _runtime_dir(root) / "kg_metrics.jsonl"
+            history_path = _runtime_dir(root) / _KG_METRICS_LOG
             history = load_kg_history(history_path, limit=50)
             if history:
                 latest = history[-1]
@@ -2247,7 +2250,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         # --- Self-test score from growth tracker history ---
-        self_test_path = _runtime_dir(root) / "self_test_history.jsonl"
+        self_test_path = _runtime_dir(root) / _SELF_TEST_HISTORY
         try:
             if self_test_path.exists():
                 lines = self_test_path.read_text(encoding="utf-8").strip().split("\n")

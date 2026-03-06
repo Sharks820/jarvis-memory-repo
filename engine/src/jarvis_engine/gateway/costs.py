@@ -7,7 +7,6 @@ Provides per-model cost summaries over configurable time periods.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 from pathlib import Path
 
