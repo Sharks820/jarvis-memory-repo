@@ -200,7 +200,8 @@ class KnowledgeRegressionHandler:
             try:
                 meta = json.loads(snap_path.read_text(encoding="utf-8"))
                 prev_metrics = meta.get("kg_metrics")
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Failed to load snapshot metadata from %s: %s", snap_path, exc)
                 return KnowledgeRegressionResult(
                     report={
                         "status": "error",

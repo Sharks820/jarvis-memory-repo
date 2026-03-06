@@ -2781,8 +2781,8 @@ def _cmd_daemon_run_impl(
                     f"Daemon cycle {cycles} started",
                     {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
                 )
-            except Exception:  # noqa: BLE001
-                pass  # Activity feed is optional; never crash daemon
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Activity feed cycle-start log failed: %s", exc)
             print(f"daemon_paused={daemon_paused}")
             print(f"safe_mode={safe_mode}")
             print(f"gaming_mode={gaming_mode_enabled}")
@@ -2869,6 +2869,7 @@ def _cmd_daemon_run_impl(
                     mission_rc = _run_next_pending_mission()
                 except Exception as exc:  # noqa: BLE001
                     mission_rc = 2
+                    logger.warning("Daemon mission cycle failed: %s", exc)
                     print(f"mission_cycle_error={exc}")
                 else:
                     print(f"mission_cycle_rc={mission_rc}")
@@ -2892,12 +2893,14 @@ def _cmd_daemon_run_impl(
                                 topics = ", ".join(m.get("topic", "") for m in generated)
                                 print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
                         except Exception as exc:  # noqa: BLE001
+                            logger.warning("Daemon mission auto-generation failed: %s", exc)
                             print(f"mission_autogen_error={exc}")
             if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
                 try:
                     sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
                 except Exception as exc:  # noqa: BLE001
                     sync_rc = 2
+                    logger.warning("Daemon sync cycle failed: %s", exc)
                     print(f"sync_cycle_error={exc}")
                 else:
                     print(f"sync_cycle_rc={sync_rc}")
@@ -2909,6 +2912,7 @@ def _cmd_daemon_run_impl(
                     if dead:
                         print(f"watchdog_dead_services={','.join(dead)}")
                 except Exception as exc:  # noqa: BLE001
+                    logger.warning("Daemon watchdog check failed: %s", exc)
                     print(f"watchdog_error={exc}")
             if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
                 if skip_heavy_tasks:
@@ -2923,6 +2927,7 @@ def _cmd_daemon_run_impl(
                         )
                     except Exception as exc:  # noqa: BLE001
                         heal_rc = 2
+                        logger.warning("Daemon self-heal cycle failed: %s", exc)
                         print(f"self_heal_cycle_error={exc}")
                     else:
                         print(f"self_heal_cycle_rc={heal_rc}")
@@ -2949,6 +2954,7 @@ def _cmd_daemon_run_impl(
                         append_kg_metrics(metrics, history_path)
                         print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
                     except Exception as exc:  # noqa: BLE001
+                        logger.warning("Daemon KG metrics collection failed: %s", exc)
                         print(f"kg_metrics_error={exc}")
             # --- Adversarial self-test: memory quiz + regression detection ---
             if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
@@ -2973,6 +2979,7 @@ def _cmd_daemon_run_impl(
                         else:
                             print("self_test_skipped=engine_not_initialized")
                     except Exception as exc:  # noqa: BLE001
+                        logger.warning("Daemon self-test failed: %s", exc)
                         print(f"self_test_error={exc}")
             # --- SQLite optimize: ANALYZE every 100 cycles, VACUUM every 500 ---
             if cycles % 100 == 0:
@@ -2993,6 +3000,7 @@ def _cmd_daemon_run_impl(
                         else:
                             print("db_optimize_skipped=engine_not_initialized")
                     except Exception as exc:  # noqa: BLE001
+                        logger.warning("Daemon DB optimize failed: %s", exc)
                         print(f"db_optimize_error={exc}")
             # --- Knowledge graph regression check (every 10 cycles) ---
             if cycles % 10 == 0:
@@ -3034,6 +3042,7 @@ def _cmd_daemon_run_impl(
                     else:
                         print("kg_regression_skipped=kg_not_initialized")
                 except Exception as exc:  # noqa: BLE001
+                    logger.warning("Daemon KG regression check failed: %s", exc)
                     print(f"kg_regression_error={exc}")
             # --- Usage pattern prediction (LEARN-03, every 10 cycles) ---
             if cycles % 10 == 0:
@@ -3050,6 +3059,7 @@ def _cmd_daemon_run_impl(
                                 print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
                             print(f"usage_interaction_count={prediction['interaction_count']}")
                 except Exception as exc:  # noqa: BLE001
+                    logger.warning("Daemon usage prediction failed: %s", exc)
                     print(f"usage_prediction_error={exc}")
             # --- Memory consolidation (every 50 cycles) ---
             if cycles % 50 == 0:
@@ -3065,6 +3075,7 @@ def _cmd_daemon_run_impl(
                         if result.errors:
                             print(f"consolidation_errors={len(result.errors)}")
                     except Exception as exc:  # noqa: BLE001
+                        logger.warning("Daemon memory consolidation failed: %s", exc)
                         print(f"consolidation_error={exc}")
             # --- Entity resolution (every 100 cycles) ---
             if cycles % 100 == 0:
@@ -3085,6 +3096,7 @@ def _cmd_daemon_run_impl(
                                 rc_checker.backup_graph(tag="pre-entity-resolve")
                                 print("entity_resolve_kg_backup=ok")
                             except Exception as exc:  # noqa: BLE001
+                                logger.warning("Daemon entity resolve KG backup failed: %s", exc)
                                 print(f"entity_resolve_kg_backup_error={exc}")
                             resolver = EntityResolver(kg, embed_service=embed_svc)
                             resolve_result = resolver.auto_resolve()
@@ -3104,6 +3116,7 @@ def _cmd_daemon_run_impl(
                         else:
                             print("entity_resolve_skipped=kg_not_initialized")
                     except Exception as exc:  # noqa: BLE001
+                        logger.warning("Daemon entity resolution failed: %s", exc)
                         print(f"entity_resolve_error={exc}")
             # --- Auto-harvest: autonomous knowledge growth (every 200 cycles) ---
             if cycles % 200 == 0:
@@ -3177,6 +3190,7 @@ def _cmd_daemon_run_impl(
                         else:
                             print("auto_harvest_skipped=no_topics_discovered")
                     except Exception as exc:  # noqa: BLE001
+                        logger.warning("Daemon auto-harvest failed: %s", exc)
                         print(f"auto_harvest_error={exc}")
             # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
@@ -3193,6 +3207,7 @@ def _cmd_daemon_run_impl(
                 )
             except Exception as exc:  # noqa: BLE001
                 rc = 2
+                logger.warning("Daemon autopilot cycle failed: %s", exc)
                 print(f"cycle_error={exc}")
             print(f"cycle_rc={rc}")
             # --- Activity feed: log cycle end ---
@@ -3203,8 +3218,8 @@ def _cmd_daemon_run_impl(
                     f"Daemon cycle {cycles} ended (rc={rc})",
                     {"cycle": cycles, "rc": rc, "phase": "end"},
                 )
-            except Exception:  # noqa: BLE001
-                pass  # Activity feed is optional; never crash daemon
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Activity feed cycle-end log failed: %s", exc)
             # Circuit breaker: only autopilot (rc) counts toward consecutive failures.
             # Mission, sync, and self-heal failures are logged but never trigger shutdown.
             if rc == 0:
@@ -4264,11 +4279,7 @@ def _cmd_voice_run_impl(
                 _route = "simple_private"
                 logger.debug("Privacy fallback: classifier failed, forcing local for private query")
             else:
-                for _env_key, _model_alias in [
-                    ("GROQ_API_KEY", _DEFAULT_CLOUD_MODEL),
-                    ("MISTRAL_API_KEY", "devstral-2"),
-                    ("ZAI_API_KEY", "glm-4.7-flash"),
-                ]:
+                for _env_key, _model_alias in _ENV_MODEL_PRIORITY:
                     if os.environ.get(_env_key, ""):
                         _llm_model = _model_alias
                         break

@@ -71,7 +71,7 @@ from jarvis_engine.handlers.knowledge_handlers import (
 )
 from jarvis_engine.handlers.harvest_handlers import (
     HarvestBudgetHandler,
-    HarvestHandler,
+    HarvestTopicHandler,
     IngestSessionHandler,
 )
 from jarvis_engine.handlers.proactive_handlers import (
@@ -166,7 +166,7 @@ __all__ = [
     "KnowledgeStatusHandler",
     # Harvesting
     "HarvestBudgetHandler",
-    "HarvestHandler",
+    "HarvestTopicHandler",
     "IngestSessionHandler",
     # Proactive
     "CostReductionHandler",

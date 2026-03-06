@@ -98,9 +98,11 @@ class ServeMobileHandler:
             )
         except KeyboardInterrupt:
             pass
-        except RuntimeError:
+        except RuntimeError as exc:
+            logger.warning("Mobile server RuntimeError: %s", exc)
             return ServeMobileResult(return_code=3)
-        except OSError:
+        except OSError as exc:
+            logger.warning("Mobile server OSError: %s", exc)
             return ServeMobileResult(return_code=3)
         return ServeMobileResult(return_code=0)
 
@@ -170,7 +172,8 @@ class DesktopWidgetHandler:
     def handle(self, cmd: DesktopWidgetCommand) -> DesktopWidgetResult:
         try:
             from jarvis_engine.desktop_widget import run_desktop_widget
-        except ImportError:
+        except ImportError as exc:
+            logger.warning("desktop_widget module not available: %s", exc)
             return DesktopWidgetResult(return_code=2)
         run_desktop_widget()
         return DesktopWidgetResult(return_code=0)

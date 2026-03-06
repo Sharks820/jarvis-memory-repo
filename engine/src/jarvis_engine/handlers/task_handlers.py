@@ -67,7 +67,7 @@ class RunTaskHandler:
                 ),
             )
         except Exception as exc:
-            logger.debug("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
+            logger.warning("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
         return RunTaskResult(
             allowed=result.allowed,
             provider=result.provider,
@@ -127,7 +127,8 @@ class WebResearchHandler:
                 max_pages=max(1, min(cmd.max_pages, 20)),
                 max_summary_lines=6,
             )
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("Web research ValueError for query %r: %s", cleaned, exc)
             return WebResearchResult(return_code=2)
         except Exception:
             logger.warning("Web research failed for query %r", cleaned, exc_info=True)
@@ -165,7 +166,7 @@ class WebResearchHandler:
                         ),
                     )
             except Exception as exc:
-                logger.debug("Auto-ingest failed for web research: %s", exc)
+                logger.warning("Auto-ingest failed for web research: %s", exc)
         return WebResearchResult(return_code=0, report=report, auto_ingest_record_id=auto_id)
 
 

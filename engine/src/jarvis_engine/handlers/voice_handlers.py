@@ -87,7 +87,8 @@ class VoiceEnrollHandler:
                 wav_path=cmd.wav_path,
                 replace=cmd.replace,
             )
-        except (ValueError, OSError):
+        except (ValueError, OSError) as exc:
+            logger.warning("Voice enrollment failed: %s", exc)
             return VoiceEnrollResult(message="error: voice enrollment failed.")
         return VoiceEnrollResult(
             user_id=result.user_id,
@@ -112,7 +113,8 @@ class VoiceVerifyHandler:
                 wav_path=cmd.wav_path,
                 threshold=cmd.threshold,
             )
-        except (ValueError, OSError):
+        except (ValueError, OSError) as exc:
+            logger.warning("Voice verification failed: %s", exc)
             return VoiceVerifyResult(message="error: voice verification failed.")
         return VoiceVerifyResult(
             user_id=result.user_id,
@@ -169,7 +171,8 @@ class VoiceListenHandler:
     def handle(self, cmd: VoiceListenCommand) -> VoiceListenResult:
         try:
             from jarvis_engine.stt import listen_and_transcribe
-        except ImportError:
+        except ImportError as exc:
+            logger.warning("STT module not available: %s", exc)
             return VoiceListenResult(message="error: STT module not available.")
 
         try:
@@ -180,7 +183,7 @@ class VoiceListenHandler:
                 gateway=self._gateway,
             )
         except Exception as exc:
-            logger.debug("Voice listen failed: %s", exc)
+            logger.warning("Voice listen failed: %s", exc)
             return VoiceListenResult(message="error: voice listen failed.")
 
         return VoiceListenResult(
@@ -239,7 +242,7 @@ class PersonaComposeHandler:
                 route_reason="persona_reply",
             )
         except Exception as exc:
-            logger.debug("Persona compose failed: %s", exc)
+            logger.warning("Persona compose failed: %s", exc)
             return PersonaComposeResult(
                 branch=cmd.branch,
                 tone=tone,

@@ -125,7 +125,8 @@ class OpsAutopilotHandler:
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("OpsAutopilot path check failed: %s", exc)
             return OpsAutopilotResult(return_code=2)
         rc = _main_mod._cmd_ops_autopilot_impl(
             snapshot_path=cmd.snapshot_path,
@@ -155,7 +156,8 @@ class AutomationRunHandler:
 
         try:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("AutomationRun path check failed: %s", exc)
             return AutomationRunResult()
         store = self._get_store()
         executor = AutomationExecutor(store)
@@ -183,7 +185,8 @@ class MissionCreateHandler:
                 sources=cmd.sources,
                 origin=cmd.origin,
             )
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("Mission creation failed: %s", exc)
             return MissionCreateResult(return_code=2)
         return MissionCreateResult(mission=mission, return_code=0)
 
@@ -245,7 +248,8 @@ class MissionRunHandler:
                 max_search_results=cmd.max_results,
                 max_pages=cmd.max_pages,
             )
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("Mission run failed: %s", exc)
             return MissionRunResult(return_code=2)
 
         ingested_ids: list[str] = []
@@ -292,7 +296,8 @@ class GrowthEvalHandler:
         try:
             _check_path_within_root(cmd.tasks_path, self._root, "tasks_path")
             _check_path_within_root(cmd.history_path, self._root, "history_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("GrowthEval path check failed: %s", exc)
             return GrowthEvalResult()
         try:
             tasks = load_golden_tasks(cmd.tasks_path)
@@ -327,7 +332,8 @@ class GrowthReportHandler:
 
         try:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("GrowthReport path check failed: %s", exc)
             return GrowthReportResult()
         rows = read_history(cmd.history_path)
         summary = summarize_history(rows, last=cmd.last)
@@ -343,12 +349,14 @@ class GrowthAuditHandler:
 
         try:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("GrowthAudit path check failed: %s", exc)
             return GrowthAuditResult()
         rows = read_history(cmd.history_path)
         try:
             run = audit_run(rows, run_index=cmd.run_index)
-        except (RuntimeError, IndexError):
+        except (RuntimeError, IndexError) as exc:
+            logger.warning("GrowthAudit run lookup failed: %s", exc)
             return GrowthAuditResult()
         return GrowthAuditResult(run=run)
 

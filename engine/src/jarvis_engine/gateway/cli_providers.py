@@ -209,6 +209,8 @@ def _run_cli_subprocess(
     display = cli_display_name or provider
 
     try:
+        from jarvis_engine._shared import win_hidden_subprocess_kwargs
+
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -216,6 +218,7 @@ def _run_cli_subprocess(
             timeout=timeout,
             env=env,
             cwd=tempfile.gettempdir(),
+            **win_hidden_subprocess_kwargs(),
         )
         if proc.returncode != 0:
             return _cli_result(
@@ -584,12 +587,15 @@ def call_codex_cli(
     ]
 
     try:
+        from jarvis_engine._shared import win_hidden_subprocess_kwargs
+
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
             cwd=tempfile.gettempdir(),
+            **win_hidden_subprocess_kwargs(),
         )
 
         # Read output file

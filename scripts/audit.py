@@ -20,12 +20,11 @@ issues = []
 
 # Regex patterns
 # Python SQL Injection (f-strings in execute)
-py_sql_inject = re.compile(r'execute\(f["'][^"']*?\{')
+py_sql_inject = re.compile(r"execute\(f[\"'][^\"']*?\{")
 # Naked except
 py_naked_except = re.compile(r'except\s+Exception\s*(?:as\s+\w+)?\s*:')
 # Pass in except
-py_empty_except = re.compile(r'except[^:]*:\s*
-\s*pass')
+py_empty_except = re.compile(r'except[^:]*:\s*\n\s*pass')
 # bad comparison
 py_bad_cmp = re.compile(r'==\s+None|!=\s+None')
 # global mutations
@@ -95,8 +94,7 @@ for pf in py_files:
     with open(pf, "r", encoding="utf-8") as f:
         content = f.read()
         for match in py_empty_except.finditer(content):
-            line_no = content[:match.start()].count("
-") + 1
+            line_no = content[:match.start()].count("\n") + 1
             issues.append(f"[PyEmptyExcept] {pf}:{line_no}")
 
 for iss in issues:

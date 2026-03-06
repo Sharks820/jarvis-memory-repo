@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HarvestHandler:
+class HarvestTopicHandler:
     """Delegates HarvestTopicCommand to KnowledgeHarvester."""
 
     def __init__(self, harvester: Any = None) -> None:
@@ -184,3 +184,7 @@ class HarvestBudgetHandler:
             summary=summary,
             return_code=0,
         )
+
+
+# Backward-compat alias
+HarvestHandler = HarvestTopicHandler

@@ -156,7 +156,7 @@ from jarvis_engine.commands.harvest_commands import (
 )
 from jarvis_engine.handlers.harvest_handlers import (
     HarvestBudgetHandler,
-    HarvestHandler,
+    HarvestTopicHandler,
     IngestSessionHandler,
 )
 from jarvis_engine.commands.proactive_commands import (
@@ -566,12 +566,12 @@ def create_app(root: Path) -> CommandBus:
             budget_manager=budget_manager,
         )
 
-        bus.register(HarvestTopicCommand, HarvestHandler(harvester=harvester).handle)
+        bus.register(HarvestTopicCommand, HarvestTopicHandler(harvester=harvester).handle)
         bus.register(IngestSessionCommand, IngestSessionHandler(pipeline=pipeline).handle)
         bus.register(HarvestBudgetCommand, HarvestBudgetHandler(budget_manager=budget_manager).handle)
     except Exception as exc:
         logger.warning("Failed to initialize Harvesting subsystem, continuing without: %s", exc)
-        bus.register(HarvestTopicCommand, HarvestHandler().handle)
+        bus.register(HarvestTopicCommand, HarvestTopicHandler().handle)
         bus.register(IngestSessionCommand, IngestSessionHandler().handle)
         bus.register(HarvestBudgetCommand, HarvestBudgetHandler().handle)
 
