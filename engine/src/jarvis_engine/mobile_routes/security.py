@@ -1,0 +1,78 @@
+"""Security status, dashboard, and audit endpoints."""
+
+from __future__ import annotations
+
+import json
+import logging
+from http import HTTPStatus
+from typing import Any
+
+from jarvis_engine._constants import (
+    GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG,
+    runtime_dir as _runtime_dir,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class SecurityRoutesMixin:
+    """Security status, dashboard, and gateway audit log endpoints."""
+
+    def _handle_get_security_status(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        _sec_orch = getattr(self.server, "security", None)
+        if _sec_orch is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Security orchestrator not available.",
+            })
+            return
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "security": _sec_orch.status(),
+        })
+
+    def _handle_get_security_dashboard(self) -> None:
+        if not self._validate_auth_flexible(b""):
+            return
+        server_obj = self.server
+        sec = getattr(server_obj, "security", None)
+        if sec is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False, "error": "Security orchestrator not available"
+            })
+            return
+        dashboard = {
+            "security_status": sec.status(),
+            "recent_actions": sec.action_auditor.recent_actions(20) if hasattr(sec, "action_auditor") and sec.action_auditor else [],
+            "scope_violations": sec.scope_enforcer.recent_violations(10) if hasattr(sec, "scope_enforcer") and sec.scope_enforcer else [],
+            "resource_usage": sec.resource_monitor.status() if hasattr(sec, "resource_monitor") and sec.resource_monitor else {},
+            "heartbeat": sec.heartbeat.status() if hasattr(sec, "heartbeat") and sec.heartbeat else {},
+            "threat_intel": sec.threat_intel.status() if hasattr(sec, "threat_intel") and sec.threat_intel else {},
+        }
+        self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})
+
+    def _handle_get_audit(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        audit_path = _runtime_dir(self._root) / _GATEWAY_AUDIT_LOG
+        records: list[dict[str, Any]] = []
+        try:
+            # Tail-read: only read last ~64KB to avoid loading the entire file.
+            _MAX_TAIL = 65_536
+            fsize = audit_path.stat().st_size
+            with open(audit_path, "r", encoding="utf-8") as f:
+                if fsize > _MAX_TAIL:
+                    f.seek(fsize - _MAX_TAIL)
+                    f.readline()  # skip partial first line
+                lines = f.read().strip().splitlines()
+            for line in lines[-50:]:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    logger.debug("Skipping malformed audit log line")
+                    continue
+        except OSError as exc:
+            logger.debug("Failed to read audit log: %s", exc)
+        self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})

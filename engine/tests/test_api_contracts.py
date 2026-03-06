@@ -35,8 +35,8 @@ from jarvis_engine.mobile_api import (
     _build_san_string,
     _detect_lan_ips,
     _ensure_tls_cert,
-    _get_cert_fingerprint,
 )
+from jarvis_engine.mobile_routes._helpers import _get_cert_fingerprint
 
 
 # ---------------------------------------------------------------------------
