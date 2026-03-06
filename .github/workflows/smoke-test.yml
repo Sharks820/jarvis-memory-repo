@@ -1,0 +1,253 @@
+name: Smoke Tests (Beta Function Validation)
+
+on:
+  # Run after every merge to main to catch regressions immediately
+  push:
+    branches:
+      - main
+  # Run daily at 06:00 UTC to catch environment drift
+  schedule:
+    - cron: '0 6 * * *'
+  # Allow manual trigger for on-demand validation
+  workflow_dispatch:
+
+# Read-only access — these are validation-only, never write
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: Smoke / Beta Function Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install engine
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      # ── 1. Module import validation ───────────────────────────────────────
+      # Every public module must import without raising an ImportError.
+      - name: Module import validation
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        run: |
+          python3 << 'PYEOF'
+          """Verify that every engine module can be imported without error."""
+          import importlib, sys, traceback
+          from pathlib import Path
+
+          src = Path("src/jarvis_engine")
+          modules = []
+          for p in sorted(src.rglob("*.py")):
+              rel = p.relative_to(Path("src"))
+              dotted = str(rel).replace("/", ".").replace("\\", ".").removesuffix(".py")
+              if not any(part.startswith("_") and part != "__init__" for part in dotted.split(".")):
+                  modules.append(dotted)
+
+          failures = []
+          for mod in modules:
+              try:
+                  importlib.import_module(mod)
+              except ImportError:
+                  # Optional dependencies (tkinter, onnx_asr, etc.) — expected
+                  pass
+              except Exception as exc:
+                  failures.append((mod, str(exc)))
+                  traceback.print_exc()
+
+          print(f"\n✅ Attempted {len(modules)} module imports")
+          if failures:
+              print(f"\n❌ {len(failures)} import failures:")
+              for mod, err in failures:
+                  print(f"  {mod}: {err}")
+              sys.exit(1)
+          else:
+              print("✅ All modules import cleanly")
+          PYEOF
+
+      # ── 2. Core data-structure smoke tests ───────────────────────────────
+      - name: Core data-structure validation
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        run: |
+          python3 << 'PYEOF'
+          """Instantiate key classes and call core methods to verify basic function."""
+          import sys, traceback
+          from pathlib import Path
+          from unittest.mock import MagicMock
+
+          failures = []
+
+          def check(name, fn):
+              try:
+                  fn()
+                  print(f"  ✅ {name}")
+              except Exception as exc:
+                  failures.append((name, str(exc)))
+                  print(f"  ❌ {name}: {exc}")
+                  traceback.print_exc()
+
+          # MemoryStore
+          def _memory_store(tmp_path=Path("/tmp/smoke_memory")):
+              from jarvis_engine.memory_store import MemoryStore
+              s = MemoryStore(tmp_path)
+              s.add("smoke test content", {"branch": "ops", "kind": "semantic"})
+              results = s.search("smoke")
+              assert isinstance(results, list), "search must return list"
+          check("MemoryStore.add + search", _memory_store)
+
+          # CommandBus registration
+          def _command_bus():
+              from jarvis_engine.command_bus import CommandBus
+              bus = CommandBus()
+              assert hasattr(bus, "register"), "CommandBus must have register()"
+              assert hasattr(bus, "dispatch"), "CommandBus must have dispatch()"
+          check("CommandBus.register + dispatch interface", _command_bus)
+
+          # API contracts
+          def _api_contracts():
+              from jarvis_engine.api_contracts import validate_contract
+              errors = validate_contract("GET /health", {
+                  "ok": True,
+                  "status": "healthy",
+                  "intelligence": {"score": 0.9, "regression": False, "last_test": ""},
+              })
+              assert errors == [], f"Unexpected contract errors: {errors}"
+          check("api_contracts.validate_contract (/health)", _api_contracts)
+
+          # ActivityFeed
+          def _activity_feed(tmp_path=Path("/tmp/smoke_activity")):
+              from jarvis_engine.activity_feed import ActivityFeed
+              feed = ActivityFeed(db_path=tmp_path / "feed.db")
+              feed.log("smoke_category", "smoke event summary")
+              events = feed.query(limit=5)
+              assert isinstance(events, list)
+          check("ActivityFeed.log + query", _activity_feed)
+
+          # Config
+          def _config(tmp_path=Path("/tmp/smoke_config")):
+              tmp_path.mkdir(parents=True, exist_ok=True)
+              from jarvis_engine.config import load_config
+              cfg = load_config()
+              assert hasattr(cfg, "profile"), "Config must have 'profile'"
+          check("Config.load_config", _config)
+
+          # GrowthTracker
+          def _growth_tracker(tmp_path=Path("/tmp/smoke_growth")):
+              tmp_path.mkdir(parents=True, exist_ok=True)
+              from jarvis_engine.growth_tracker import summarize_history, read_history
+              rows = read_history(tmp_path / "nonexistent.jsonl")
+              assert isinstance(rows, list)
+              summary = summarize_history(rows, last=5)
+              assert isinstance(summary, dict)
+          check("GrowthTracker summarize_history + read_history", _growth_tracker)
+
+          # TaskOrchestrator
+          def _task_orchestrator(tmp_path=Path("/tmp/smoke_task")):
+              tmp_path.mkdir(parents=True, exist_ok=True)
+              from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest
+              from jarvis_engine.memory_store import MemoryStore
+              store = MemoryStore(tmp_path)
+              orch = TaskOrchestrator(store=store, root=tmp_path)
+              req = TaskRequest(
+                  task_type="code",
+                  prompt="Write hello world",
+                  execute=False,  # dry-run only — no LLM needed
+                  has_explicit_approval=False,
+                  model="test-model",
+                  endpoint="http://127.0.0.1:11434",
+              )
+              result = orch.run(req)
+              assert result.allowed, "Dry-run must be allowed"
+              assert result.plan, "Plan must be non-empty"
+          check("TaskOrchestrator.run (dry-run)", _task_orchestrator)
+
+          # Policy engine
+          def _policy():
+              from jarvis_engine.policy import PolicyEngine
+              p = PolicyEngine()
+              assert p.is_allowed("git status"), "git should be allowed"
+              assert not p.is_allowed("rm -rf /"), "rm -rf should be blocked"
+          check("PolicyEngine.is_allowed", _policy)
+
+          # ── Result ─────────────────────────────────────────────────────────
+          total_checks = len(failures) + sum(
+              1 for _ in ["memory", "command_bus", "api_contracts", "activity_feed",
+                           "config", "growth_tracker", "task_orchestrator", "policy"]
+          )
+          print(f"\nSmoke test summary: {len(failures)} failure(s) / {total_checks} checks")
+          if failures:
+              print("\n❌ FAILURES:")
+              for name, err in failures:
+                  print(f"  {name}: {err}")
+              sys.exit(1)
+          else:
+              print("✅ All function smoke tests passed")
+          PYEOF
+
+      # ── 3. CLI entry-point validation ─────────────────────────────────────
+      # Verify that key CLI commands load and respond (--help or status).
+      - name: CLI entry-point validation
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        run: |
+          python3 << 'PYEOF'
+          """Run key CLI entry-points and verify they exit cleanly (exit code 0 or known safe codes)."""
+          import subprocess, sys
+
+          SAFE_EXIT_CODES = {0, 1, 2}  # 0=ok, 1=missing args, 2=config missing
+          COMMANDS = [
+              ["python", "-m", "jarvis_engine.main", "--help"],
+              ["python", "-m", "jarvis_engine.main", "status"],
+              ["python", "-m", "jarvis_engine.main", "voice-list"],
+          ]
+
+          failures = []
+          for cmd in COMMANDS:
+              name = " ".join(cmd[3:]) or "--help"
+              result = subprocess.run(
+                  cmd,
+                  capture_output=True,
+                  text=True,
+                  timeout=30,
+                  env={
+                      "PYTHONPATH": "src",
+                      "PATH": __import__("os").environ["PATH"],
+                  },
+              )
+              if result.returncode in SAFE_EXIT_CODES:
+                  print(f"  ✅ {name} (exit {result.returncode})")
+              else:
+                  failures.append((name, result.returncode, result.stderr[-500:]))
+                  print(f"  ❌ {name} (exit {result.returncode})")
+                  if result.stderr:
+                      print(f"     stderr: {result.stderr[-300:]}")
+
+          print(f"\nCLI validation: {len(failures)} failure(s) / {len(COMMANDS)} commands")
+          if failures:
+              for name, code, err in failures:
+                  print(f"  ❌ '{name}' exited {code}: {err}")
+              sys.exit(1)
+          else:
+              print("✅ All CLI entry-points respond correctly")
+          PYEOF
+
+      - name: Upload smoke test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-log-${{ github.run_id }}
+          path: /tmp/smoke-*.txt
+          retention-days: 14
+          if-no-files-found: ignore

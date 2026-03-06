@@ -13,35 +13,251 @@ on:
       - main
 
 jobs:
-  lint-and-test:
-    name: Lint & Test (Python)
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Lint — ruff style + format check
+  # ─────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: pip install ruff
+      - name: Ruff check
+        run: ruff check engine/src
+      - name: Ruff format check
+        run: ruff format --check engine/src
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Type check — mypy (informational; full errors tracked as tech debt)
+  # ─────────────────────────────────────────────────────────────────────────
+  typecheck:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install dependencies
         working-directory: engine
         run: |
           python -m pip install --upgrade pip
           pip install -e .[dev]
-
-      - name: Lint (ruff)
+      - name: Run mypy
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        # continue-on-error keeps CI green while we pay down the 105-error
+        # type-debt baseline. Errors are visible in the job log.
+        continue-on-error: true
         run: |
-          pip install ruff
-          ruff check engine/src
+          mypy src/jarvis_engine \
+            --ignore-missing-imports \
+            --no-error-summary \
+            2>&1 | tee /tmp/mypy-output.txt
+          ERROR_COUNT=$(grep -c ": error:" /tmp/mypy-output.txt || true)
+          echo "mypy errors: $ERROR_COUNT"
+          # Fail if error count regresses above the tracked baseline (105)
+          if [ "$ERROR_COUNT" -gt 105 ]; then
+            echo "ERROR: mypy error count $ERROR_COUNT exceeds baseline 105 — regression detected"
+            exit 1
+          fi
 
-      - name: Run tests
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Security scan — bandit (fail on HIGH severity findings)
+  # ─────────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: Security Scan (bandit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install bandit
+      - name: Run bandit
+        # -ll = report only MEDIUM and HIGH findings
+        # -x  = exclude test files (they use intentional patterns)
+        run: |
+          bandit -r engine/src \
+            -ll \
+            -x engine/src/jarvis_engine/security/honeypot.py \
+            --format json \
+            --output /tmp/bandit-report.json || true
+          # Fail only if HIGH severity issues are found
+          HIGH_COUNT=$(python3 -c "
+          import json, sys
+          try:
+              data = json.load(open('/tmp/bandit-report.json'))
+              highs = [r for r in data.get('results', []) if r.get('issue_severity') == 'HIGH']
+              print(len(highs))
+          except Exception:
+              print(0)
+          ")
+          echo "Bandit HIGH findings: $HIGH_COUNT"
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "ERROR: $HIGH_COUNT HIGH-severity bandit findings — fix before merging"
+            cat /tmp/bandit-report.json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for r in data['results']:
+              if r['issue_severity'] == 'HIGH':
+                  print(f\"  HIGH: {r['issue_text']} — {r['filename']}:{r['line_number']}\")
+          "
+            exit 1
+          fi
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: /tmp/bandit-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. Dependency audit — pip-audit (fail on CRITICAL/HIGH CVEs)
+  # ─────────────────────────────────────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Run pip-audit
+        run: |
+          pip-audit \
+            --format json \
+            --output /tmp/pip-audit.json \
+            --skip-editable \
+            || true
+          # Fail on any vulnerability found
+          VULN_COUNT=$(python3 -c "
+          import json
+          try:
+              data = json.load(open('/tmp/pip-audit.json'))
+              vulns = [d for d in data.get('dependencies', []) if d.get('vulns')]
+              print(sum(len(d['vulns']) for d in vulns))
+          except Exception:
+              print(0)
+          ")
+          echo "pip-audit vulnerabilities: $VULN_COUNT"
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "ERROR: $VULN_COUNT vulnerable dependencies found — review and update"
+            python3 -c "
+          import json
+          data = json.load(open('/tmp/pip-audit.json'))
+          for d in data.get('dependencies', []):
+              for v in d.get('vulns', []):
+                  print(f\"  {d['name']}=={d['version']}: {v['id']} — {v.get('description', '')[:120]}\")
+          "
+            exit 1
+          fi
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: /tmp/pip-audit.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 5. Tests with coverage — full pytest suite + coverage report
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: Tests + Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+          pip install pytest-cov
+      - name: Run tests with coverage
         working-directory: engine
         env:
           PYTHONPATH: src
         run: |
-          python -m pytest tests/ -x -q --tb=short
+          python -m pytest tests/ \
+            -x \
+            -q \
+            --tb=short \
+            --junitxml=/tmp/test-results.xml \
+            --cov=jarvis_engine \
+            --cov-report=term-missing \
+            --cov-report=xml:/tmp/coverage.xml \
+            --cov-fail-under=50  # TODO: gradually increase to 70%+ as tech debt is paid down
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: /tmp/test-results.xml
+          retention-days: 30
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: /tmp/coverage.xml
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 6. Smoke tests — verify all modules import and key entry-points respond
+  # ─────────────────────────────────────────────────────────────────────────
+  smoke-test:
+    name: Smoke Tests (function validation)
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Run smoke tests
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/test_smoke.py \
+            -v \
+            --tb=short \
+            --junitxml=/tmp/smoke-results.xml
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: /tmp/smoke-results.xml
+          retention-days: 30

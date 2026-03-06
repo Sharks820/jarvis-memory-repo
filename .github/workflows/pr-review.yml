@@ -1,0 +1,252 @@
+name: PR Review Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+# The bot posts a structured review comment on every PR.
+# It runs bandit + mypy on changed Python files and summarises findings.
+# Pull-requests write permission is needed to post comments.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  automated-review:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so git diff works against base
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install review tools
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+          pip install ruff
+
+      # ── Identify changed Python files ─────────────────────────────────────
+      - name: Identify changed Python files
+        id: changed
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          git diff --name-only "$BASE" "$HEAD" \
+            | grep '\.py$' \
+            | grep '^engine/src/' \
+            > /tmp/changed_py_files.txt || true
+          COUNT=$(wc -l < /tmp/changed_py_files.txt | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Changed Python files ($COUNT):"
+          cat /tmp/changed_py_files.txt
+
+      # ── Ruff on changed files ─────────────────────────────────────────────
+      - name: Ruff lint on changed files
+        id: ruff
+        if: steps.changed.outputs.count != '0'
+        run: |
+          FILES=$(cat /tmp/changed_py_files.txt | tr '\n' ' ')
+          if [ -n "$FILES" ]; then
+            ruff check $FILES \
+              --output-format json \
+              > /tmp/ruff-output.json 2>&1 || true
+          else
+            echo "[]" > /tmp/ruff-output.json
+          fi
+          ISSUE_COUNT=$(python3 -c "
+          import json
+          try:
+              data = json.load(open('/tmp/ruff-output.json'))
+              print(len(data) if isinstance(data, list) else 0)
+          except Exception:
+              print(0)
+          ")
+          echo "ruff_issues=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
+
+      # ── Bandit on changed files ───────────────────────────────────────────
+      - name: Bandit security scan on changed files
+        id: bandit
+        if: steps.changed.outputs.count != '0'
+        run: |
+          FILES=$(cat /tmp/changed_py_files.txt | tr '\n' ' ')
+          if [ -n "$FILES" ]; then
+            bandit $FILES \
+              -ll \
+              --format json \
+              --output /tmp/bandit-pr.json 2>/dev/null || true
+          else
+            echo '{"results": []}' > /tmp/bandit-pr.json
+          fi
+          python3 -c "
+          import json
+          data = json.load(open('/tmp/bandit-pr.json'))
+          results = data.get('results', [])
+          medium = [r for r in results if r['issue_severity'] in ('MEDIUM', 'HIGH')]
+          high = [r for r in results if r['issue_severity'] == 'HIGH']
+          print(f'medium_plus={len(medium)}')
+          print(f'high={len(high)}')
+          " >> "$GITHUB_OUTPUT"
+
+      # ── Mypy on changed files ─────────────────────────────────────────────
+      - name: Mypy type check on changed files
+        id: mypy
+        if: steps.changed.outputs.count != '0'
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        run: |
+          FILES=$(cat /tmp/changed_py_files.txt | sed 's|engine/||g' | tr '\n' ' ')
+          if [ -n "$FILES" ]; then
+            mypy $FILES \
+              --ignore-missing-imports \
+              --no-error-summary \
+              > /tmp/mypy-pr.txt 2>&1 || true
+          else
+            touch /tmp/mypy-pr.txt
+          fi
+          ERROR_COUNT=$(grep -c ": error:" /tmp/mypy-pr.txt || true)
+          echo "errors=$ERROR_COUNT" >> "$GITHUB_OUTPUT"
+
+      # ── Post review comment ───────────────────────────────────────────────
+      - name: Post review comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          CHANGED_COUNT: ${{ steps.changed.outputs.count }}
+          RUFF_ISSUES: ${{ steps.ruff.outputs.ruff_issues || '0' }}
+          BANDIT_MEDIUM: ${{ steps.bandit.outputs.medium_plus || '0' }}
+          BANDIT_HIGH: ${{ steps.bandit.outputs.high || '0' }}
+          MYPY_ERRORS: ${{ steps.mypy.outputs.errors || '0' }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request, urllib.parse
+
+          changed = int(os.environ.get("CHANGED_COUNT", "0"))
+          ruff    = int(os.environ.get("RUFF_ISSUES", "0"))
+          bandit_m = int(os.environ.get("BANDIT_MEDIUM", "0"))
+          bandit_h = int(os.environ.get("BANDIT_HIGH", "0"))
+          mypy    = int(os.environ.get("MYPY_ERRORS", "0"))
+
+          def status(n, zero_label="✅ None"):
+              return zero_label if n == 0 else f"⚠️ {n}"
+
+          def critical(n):
+              return "✅ None" if n == 0 else f"🚨 {n}"
+
+          # ── Ruff detail (top 10 issues) ──────────────────────────────────
+          ruff_detail = ""
+          try:
+              data = json.load(open("/tmp/ruff-output.json"))
+              if isinstance(data, list) and data:
+                  lines = []
+                  for item in data[:10]:
+                      loc  = item.get("location", {})
+                      code = item.get("code", "")
+                      msg  = item.get("message", "")
+                      row  = loc.get("row", "?")
+                      fn   = item.get("filename", "?").replace("engine/src/", "")
+                      lines.append(f"  - `{fn}:{row}` **{code}** — {msg}")
+                  ruff_detail = "\n".join(lines)
+                  if len(data) > 10:
+                      ruff_detail += f"\n  - _…and {len(data)-10} more_"
+          except Exception:
+              pass
+
+          # ── Bandit detail (HIGH/MEDIUM) ───────────────────────────────────
+          bandit_detail = ""
+          try:
+              bdata = json.load(open("/tmp/bandit-pr.json"))
+              results = [r for r in bdata.get("results", []) if r["issue_severity"] in ("MEDIUM","HIGH")]
+              if results:
+                  lines = []
+                  for r in results[:10]:
+                      sev  = r["issue_severity"]
+                      icon = "🚨" if sev == "HIGH" else "⚠️"
+                      fn   = r["filename"].replace("engine/src/", "")
+                      lines.append(f"  - {icon} `{fn}:{r['line_number']}` [{sev}] {r['issue_text']}")
+                  bandit_detail = "\n".join(lines)
+                  if len(results) > 10:
+                      bandit_detail += f"\n  - _…and {len(results)-10} more_"
+          except Exception:
+              pass
+
+          # ── Mypy detail (top 10 errors) ──────────────────────────────────
+          mypy_detail = ""
+          try:
+              lines = open("/tmp/mypy-pr.txt").readlines()
+              errors = [l.rstrip() for l in lines if ": error:" in l]
+              if errors:
+                  mypy_detail = "\n".join(f"  - `{e}`" for e in errors[:10])
+                  if len(errors) > 10:
+                      mypy_detail += f"\n  - _…and {len(errors)-10} more_"
+          except Exception:
+              pass
+
+          # ── Build overall verdict ─────────────────────────────────────────
+          has_blocking = (ruff > 0) or (bandit_h > 0)
+          if has_blocking:
+              verdict = "🔴 **Changes requested** — blocking issues found. Fix before merging."
+          elif bandit_m > 0 or mypy > 0:
+              verdict = "🟡 **Review needed** — non-blocking issues found. Address or acknowledge."
+          else:
+              verdict = "🟢 **Looks good** — no automated issues found."
+
+          body_parts = [
+              "## 🤖 Automated Code Review",
+              "",
+              f"> {verdict}",
+              "",
+              f"| Check | Files Analysed | Findings |",
+              f"|---|---|---|",
+              f"| 🔍 Ruff (style/lint) | {changed} | {status(ruff)} |",
+              f"| 🔒 Bandit (security) | {changed} | HIGH: {critical(bandit_h)}  MEDIUM: {status(bandit_m)} |",
+              f"| 🔠 Mypy (types) | {changed} | {status(mypy)} |",
+              "",
+          ]
+
+          if ruff_detail:
+              body_parts += ["<details>", "<summary>Ruff findings</summary>", "", ruff_detail, "", "</details>", ""]
+          if bandit_detail:
+              body_parts += ["<details>", "<summary>Bandit findings</summary>", "", bandit_detail, "", "</details>", ""]
+          if mypy_detail:
+              body_parts += ["<details>", "<summary>Mypy errors</summary>", "", mypy_detail, "", "</details>", ""]
+
+          body_parts += [
+              "---",
+              "_This review was generated automatically by the PR Review Bot. "
+              "See `.github/workflows/pr-review.yml` for configuration._",
+          ]
+
+          body = "\n".join(body_parts)
+
+          # ── Post comment via GitHub API ───────────────────────────────────
+          token  = os.environ["GITHUB_TOKEN"]
+          repo   = os.environ["REPO"]
+          pr_num = os.environ["PR_NUMBER"]
+          url    = f"https://api.github.com/repos/{repo}/issues/{pr_num}/comments"
+          payload = json.dumps({"body": body}).encode()
+          req = urllib.request.Request(
+              url,
+              data=payload,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "Content-Type": "application/json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req) as resp:
+              print(f"Comment posted: HTTP {resp.status}")
+          PYEOF
