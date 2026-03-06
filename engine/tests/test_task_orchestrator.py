@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from jarvis_engine.memory_store import MemoryStore
+from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest, run_shell_command
 
 
@@ -340,20 +341,20 @@ class TestSafeOutputPath:
 class TestIsSafeOllamaEndpoint:
 
     def test_localhost_is_safe(self):
-        assert TaskOrchestrator._is_safe_ollama_endpoint("http://127.0.0.1:11434") is True
+        assert is_safe_ollama_endpoint("http://127.0.0.1:11434") is True
 
     def test_localhost_name_is_safe(self):
-        assert TaskOrchestrator._is_safe_ollama_endpoint("http://localhost:11434") is True
+        assert is_safe_ollama_endpoint("http://localhost:11434") is True
 
     def test_ftp_scheme_rejected(self):
-        assert TaskOrchestrator._is_safe_ollama_endpoint("ftp://127.0.0.1:11434") is False
+        assert is_safe_ollama_endpoint("ftp://127.0.0.1:11434") is False
 
     def test_empty_endpoint_rejected(self):
-        assert TaskOrchestrator._is_safe_ollama_endpoint("") is False
+        assert is_safe_ollama_endpoint("") is False
 
     def test_external_host_rejected_by_default(self):
         with patch.dict(os.environ, {"JARVIS_ALLOW_NONLOCAL_OLLAMA_ENDPOINT": ""}):
-            assert TaskOrchestrator._is_safe_ollama_endpoint("http://evil.com:11434") is False
+            assert is_safe_ollama_endpoint("http://evil.com:11434") is False
 
 
 # ---------------------------------------------------------------------------

@@ -50,8 +50,8 @@ def atomic_write_json(
             if secure:
                 try:
                     os.chmod(str(path), 0o600)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("chmod 0o600 failed for %s: %s", path, exc)
             return
         except PermissionError as exc:
             last_error = exc
@@ -60,8 +60,8 @@ def atomic_write_json(
             try:
                 if tmp.exists():
                     tmp.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up temp file %s: %s", tmp, exc)
     if last_error is not None:
         raise last_error
 
@@ -143,7 +143,7 @@ def set_process_title(name: str) -> None:
         import setproctitle
         setproctitle.setproctitle(name)
     except ImportError:
-        pass
+        logger.debug("setproctitle not available; process title unchanged")
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +220,29 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
 # Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
 FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
 FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
+
+
+def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
+    """Read the last *limit* JSON objects from a JSONL file.
+
+    Blank lines and malformed JSON lines are silently skipped.
+    Returns an empty list if the file does not exist.
+    """
+    if not path.exists():
+        return []
+
+    entries: list[dict] = []
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                entries.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                continue
+
+    return entries[-limit:]
 
 
 def sanitize_fts_query(query: str) -> str:

@@ -52,6 +52,7 @@ class OpsBriefHandler:
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
         except ValueError as exc:
+            logger.warning("OpsBrief snapshot path check failed: %s", exc)
             return OpsBriefResult(brief=str(exc))
         snapshot = load_snapshot(cmd.snapshot_path)
         brief = ""
@@ -68,6 +69,7 @@ class OpsBriefHandler:
             try:
                 _check_path_within_root(cmd.output_path, self._root, "output_path")
             except ValueError as exc:
+                logger.warning("OpsBrief output path check failed: %s", exc)
                 return OpsBriefResult(brief=str(exc))
             cmd.output_path.parent.mkdir(parents=True, exist_ok=True)
             cmd.output_path.write_text(brief, encoding="utf-8")
@@ -215,6 +217,7 @@ class MissionCancelHandler:
         try:
             mission = cancel_mission(self._root, mission_id=cmd.mission_id)
         except ValueError as exc:
+            logger.warning("Mission cancel failed: %s", exc)
             return MissionCancelResult(error=str(exc))
         return MissionCancelResult(cancelled=True, mission=mission)
 

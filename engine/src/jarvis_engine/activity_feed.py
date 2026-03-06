@@ -214,7 +214,11 @@ class ActivityFeed:
         return {row["category"]: row["cnt"] for row in rows}
 
     def close(self) -> None:
-        """Close the database connection (idempotent)."""
+        """Close the database connection (idempotent).
+
+        Returns silently even on error to support safe cleanup in finally blocks.
+        Errors are logged at warning level for observability.
+        """
         with self._lock:
             if self._closed:
                 return
@@ -222,7 +226,7 @@ class ActivityFeed:
             try:
                 self._db.close()
             except Exception as exc:
-                logger.debug("Failed to close activity feed database connection: %s", exc)
+                logger.warning("Failed to close activity feed database connection: %s", exc)
 
     # ------------------------------------------------------------------
     # Internals
@@ -292,5 +296,5 @@ def _reset_feed() -> None:
             try:
                 _feed.close()
             except Exception as exc:
-                logger.debug("Failed to close activity feed singleton: %s", exc)
+                logger.warning("Failed to close activity feed singleton during reset: %s", exc)
             _feed = None

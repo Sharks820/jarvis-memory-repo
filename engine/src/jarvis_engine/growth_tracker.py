@@ -268,10 +268,6 @@ class EvalRun:
 _history_lock = threading.RLock()
 
 
-def _is_safe_ollama_endpoint(endpoint: str) -> bool:
-    return is_safe_ollama_endpoint(endpoint)
-
-
 def load_golden_tasks(path: Path) -> list[GoldenTask]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
@@ -318,7 +314,7 @@ def _generate(
     think: bool | None,
     timeout_s: int,
 ) -> dict[str, Any]:
-    if not _is_safe_ollama_endpoint(endpoint):
+    if not is_safe_ollama_endpoint(endpoint):
         raise ValueError(f"Unsafe Ollama endpoint: {endpoint}")
 
     effective_prompt = prompt

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.security.net_policy import is_safe_ollama_endpoint as _is_safe_ollama_endpoint
 from jarvis_engine.growth_tracker import (
     BRANCH_TASK_MAP,
     DEFAULT_MEMORY_TASKS,
@@ -19,7 +20,6 @@ from jarvis_engine.growth_tracker import (
     MemoryRecallResult,
     MemoryRecallTask,
     TaskEval,
-    _is_safe_ollama_endpoint,
     append_history,
     audit_run,
     compute_run_sha256,

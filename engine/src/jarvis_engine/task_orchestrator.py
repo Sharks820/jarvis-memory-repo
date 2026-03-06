@@ -363,7 +363,7 @@ class TaskOrchestrator:
         options: dict[str, Any],
         timeout_s: int,
     ) -> tuple[dict[str, Any] | None, str]:
-        if not self._is_safe_ollama_endpoint(endpoint):
+        if not is_safe_ollama_endpoint(endpoint):
             return None, f"Unsafe Ollama endpoint: {endpoint}"
 
         payload = {
@@ -393,10 +393,6 @@ class TaskOrchestrator:
             return None, f"Timed out after {timeout_s}s."
         except json.JSONDecodeError:
             return None, "Invalid JSON response from Ollama."
-
-    @staticmethod
-    def _is_safe_ollama_endpoint(endpoint: str) -> bool:
-        return is_safe_ollama_endpoint(endpoint)
 
     def _safe_output_path(self, raw_path: str) -> Path:
         try:

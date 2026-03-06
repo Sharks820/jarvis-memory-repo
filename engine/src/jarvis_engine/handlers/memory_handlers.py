@@ -231,7 +231,8 @@ class MemorySnapshotHandler:
             target = Path(cmd.verify_path).resolve()
             try:
                 target.relative_to(self._root.resolve())
-            except ValueError:
+            except ValueError as exc:
+                logger.warning("Snapshot verify path check failed: %s", exc)
                 return MemorySnapshotResult(
                     verified=True, ok=False, reason="Path outside project root",
                 )

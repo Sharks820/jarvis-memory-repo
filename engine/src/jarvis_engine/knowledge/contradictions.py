@@ -14,24 +14,13 @@ import sqlite3
 import threading
 from datetime import datetime
 from jarvis_engine._compat import UTC
+from jarvis_engine.knowledge._base import KGManagerBase
 
 logger = logging.getLogger(__name__)
 
 
-class ContradictionManager:
+class ContradictionManager(KGManagerBase):
     """Manages contradiction quarantine entries for owner review."""
-
-    def __init__(
-        self,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        db_lock: threading.Lock | None = None,
-        kg: "object | None" = None,
-    ) -> None:
-        self._db = db
-        self._write_lock = write_lock
-        self._db_lock = db_lock or threading.Lock()
-        self._kg = kg
 
     # ------------------------------------------------------------------
     # Internal helpers

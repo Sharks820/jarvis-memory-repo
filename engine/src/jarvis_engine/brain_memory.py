@@ -554,8 +554,8 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, A
         try:
             if tmp.exists():
                 tmp.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Failed to clean up temp file %s: %s", tmp, exc)
 
     branch_state: dict[str, dict[str, Any]] = {}
     hash_map: dict[str, str] = {}

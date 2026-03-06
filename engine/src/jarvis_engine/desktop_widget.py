@@ -765,8 +765,8 @@ class JarvisDesktopWidget(tk.Tk):
 
     # Model rotation: (alias, display_name, best_use_title, accent_color)
     # "auto" lets IntentClassifier decide; others override the model choice.
-    # (alias, display_name, best_use_title, color)
-    MODEL_ROTATION: list[tuple[str, str, str, str]] = [
+    # Immutable tuple-of-tuples to prevent accidental mutation of shared state.
+    MODEL_ROTATION: tuple[tuple[str, str, str, str], ...] = (
         ("auto", "Auto", "Smart Router", "#12c9b1"),
         # CLI-based models (subscription plans, no API keys needed)
         ("claude-cli", "Claude CLI", "Opus 4.6 · Code & Architecture", "#d946ef"),
@@ -784,7 +784,7 @@ class JarvisDesktopWidget(tk.Tk):
         ("claude-haiku", "Claude Haiku", "Rapid Responder (API)", "#22c55e"),
         # Specialty aliases
         ("claude-cli", "Planner", "Opus 4.6 · Strategy & Research", "#c084fc"),
-    ]
+    )
 
     def __init__(self, root_path: Path) -> None:
         super().__init__()
@@ -2740,9 +2740,9 @@ class JarvisDesktopWidget(tk.Tk):
             cfg_holder: list[WidgetConfig | None] = [None]
             ready = threading.Event()
 
-            def _read_cfg() -> None:
-                cfg_holder[0] = self._current_cfg()
-                ready.set()
+            def _read_cfg(_h=cfg_holder, _r=ready) -> None:
+                _h[0] = self._current_cfg()
+                _r.set()
 
             try:
                 self.after(0, _read_cfg)

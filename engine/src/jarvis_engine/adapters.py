@@ -270,17 +270,19 @@ class Model3DAdapter(AdapterBase):
             "faces": faces,
             "created_utc": datetime.now(UTC).isoformat(),
         }
+        meta_note = f"metadata={meta_path.resolve()}"
         try:
             meta_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
         except OSError as exc:
             logger.warning("Failed to write mesh metadata to %s: %s", meta_path, exc)
+            meta_note = f"metadata_write_failed={exc}"
         return AdapterResult(
             ok=True,
             provider=self.provider,
             plan=self.plan(prompt),
             reason=f"3D {mesh_kind} mesh generated locally.",
             output_path=str(out_path.resolve()),
-            output_text=f"metadata={meta_path.resolve()}",
+            output_text=meta_note,
         )
 
 

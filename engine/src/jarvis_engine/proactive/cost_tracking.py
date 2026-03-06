@@ -65,21 +65,9 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
 
 def load_cost_history(history_path: Path, limit: int = 90) -> list[dict]:
     """Read the last N snapshot entries from the JSONL history file."""
-    if not history_path.exists():
-        return []
+    from jarvis_engine._shared import load_jsonl_tail
 
-    entries: list[dict] = []
-    with history_path.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                entries.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                continue
-
-    return entries[-limit:]
+    return load_jsonl_tail(history_path, limit=limit)
 
 
 def cost_reduction_trend(history: list[dict]) -> dict:
