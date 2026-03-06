@@ -733,6 +733,11 @@ class MobileIngestServer(ThreadingHTTPServer):
 class MobileIngestHandler(BaseHTTPRequestHandler):
     server_version = "JarvisMobileAPI/0.1"
 
+    @property
+    def _root(self) -> Path:
+        """Shortcut for the server's repository root."""
+        return self.server.repo_root  # type: ignore[attr-defined]
+
     def _cors_headers(self) -> None:
         """Add CORS headers to every response for browser-based clients.
 
@@ -802,8 +807,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _quick_panel_path(self) -> Path:
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        return root / "mobile" / "quick_access.html"
+        return self._root / "mobile" / "quick_access.html"
 
     def _quick_panel_html(self) -> str:
         path = self._quick_panel_path()
@@ -964,7 +968,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 status_code="400",
             )
 
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root = self._root
 
         execute = _parse_bool(payload.get("execute", False))
         approve_privileged = _parse_bool(payload.get("approve_privileged", False))
@@ -1216,7 +1220,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         }
 
     def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root: Path = getattr(self, "_root", None) or self.server.repo_root  # type: ignore[union-attr]
         engine_dir = root / "engine"
         if not engine_dir.exists():
             return {"ok": False, "error": "Engine directory not found.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": []}
@@ -1387,7 +1391,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return False
 
     def _gaming_state_path(self) -> Path:
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root: Path = getattr(self, "_root", None) or self.server.repo_root  # type: ignore[union-attr]
         root_resolved = root.resolve()
         path = _runtime_dir(root_resolved) / "gaming_mode.json"
         resolved = path.resolve(strict=False)
@@ -1437,10 +1441,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         return state
 
     def _settings_payload(self) -> dict[str, Any]:
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        control = read_control_state(root)
+        control = read_control_state(self._root)
         gaming = self._read_gaming_state()
-        owner_guard = read_owner_guard(root)
+        owner_guard = read_owner_guard(self._root)
         return {
             "runtime_control": control,
             "gaming_mode": gaming,
@@ -1478,7 +1481,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             if self.server._auto_sync_config is not None:
                 return self.server._auto_sync_config
             from jarvis_engine.sync.auto_sync import AutoSyncConfig
-            config_path = self.server.repo_root / ".planning" / "sync" / "auto_sync_config.json"
+            config_path = self._root / ".planning" / "sync" / "auto_sync_config.json"
             auto_sync = AutoSyncConfig(config_path)
             self.server._auto_sync_config = auto_sync
             return auto_sync
@@ -1546,7 +1549,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             # the client can retry with the same nonce or a fallback URL.
             nonce_seen[nonce] = now
 
-        owner_guard = read_owner_guard(self.server.repo_root)  # type: ignore[attr-defined]
+        owner_guard = read_owner_guard(self._root)
         if bool(owner_guard.get("enabled", False)):
             trusted = {
                 str(device_id).strip()
@@ -1574,8 +1577,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         )
                         return False
                     server.record_master_pw_attempt(client_ip)
-                    if verify_master_password(self.server.repo_root, master_password):  # type: ignore[attr-defined]
-                        trust_mobile_device(self.server.repo_root, device_id)  # type: ignore[attr-defined]
+                    if verify_master_password(self._root, master_password):
+                        trust_mobile_device(self._root, device_id)
                     else:
                         with self.server.nonce_lock:  # type: ignore[attr-defined]
                             self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
@@ -1618,7 +1621,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         owner_session = getattr(self.server, "owner_session", None)
         if session_token and owner_session and owner_session.validate_session(session_token):
             # Session token is valid — now enforce device trust
-            owner_guard = read_owner_guard(self.server.repo_root)  # type: ignore[attr-defined]
+            owner_guard = read_owner_guard(self._root)
             if bool(owner_guard.get("enabled", False)):
                 trusted = {
                     str(did).strip()
@@ -1642,7 +1645,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_health(self) -> None:
         # Include intelligence regression status from self-test history
-        self_test_history_path = _runtime_dir(self.server.repo_root) / "self_test_history.jsonl"  # type: ignore[attr-defined]
+        self_test_history_path = _runtime_dir(self._root) / "self_test_history.jsonl"
         intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
         if self_test_history_path.exists():
             try:
@@ -1770,9 +1773,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _handle_get_dashboard(self) -> None:
         if not self._validate_auth(b""):
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        dashboard = build_intelligence_dashboard(root)
-        dashboard["reliability_panel"] = self._build_reliability_panel(root)
+        dashboard = build_intelligence_dashboard(self._root)
+        dashboard["reliability_panel"] = self._build_reliability_panel(self._root)
         self._write_json(
             HTTPStatus.OK,
             {"ok": True, "dashboard": dashboard},
@@ -1816,8 +1818,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _handle_get_audit(self) -> None:
         if not self._validate_auth(b""):
             return
-        root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
-        audit_path = _runtime_dir(root_path) / "gateway_audit.jsonl"
+        audit_path = _runtime_dir(self._root) / "gateway_audit.jsonl"
         records: list[dict[str, Any]] = []
         if audit_path.exists():
             try:
@@ -1842,10 +1843,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not self._validate_auth(b""):
             return
         from jarvis_engine.process_manager import list_services
-        root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
-        services = list_services(root_p)
+        services = list_services(self._root)
         control = {}
-        ctrl_path = _runtime_dir(root_p) / "control.json"
+        ctrl_path = _runtime_dir(self._root) / "control.json"
         if ctrl_path.exists():
             try:
                 control = json.loads(ctrl_path.read_text(encoding="utf-8"))
@@ -1957,7 +1957,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # Replaces 3 separate calls per widget poll cycle.
         if not self._validate_auth(b""):
             return
-        root_ws: Path = self.server.repo_root  # type: ignore[attr-defined]
         combined: dict[str, Any] = {"ok": True}
         try:
             combined["growth"] = self._gather_intelligence_growth()
@@ -1965,13 +1964,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             logger.debug("Intelligence growth gather failed: %s", exc)
             combined["growth"] = {}
         try:
-            dash = build_intelligence_dashboard(root_ws)
+            dash = build_intelligence_dashboard(self._root)
             combined["alerts"] = dash.get("proactive_alerts", [])
         except Exception as exc:
             logger.debug("Proactive alerts gather failed: %s", exc)
             combined["alerts"] = []
         try:
-            combined["reliability"] = self._build_reliability_panel(root_ws)
+            combined["reliability"] = self._build_reliability_panel(self._root)
         except Exception as exc:
             logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}
@@ -1998,8 +1997,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _handle_get_learning_summary(self) -> None:
         if not self._validate_auth(b""):
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        db_path = _memory_db_path(root)
+        db_path = _memory_db_path(self._root)
         summary: dict[str, Any] = {
             "preferences": {},
             "route_quality": {},
@@ -2139,7 +2137,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _gather_intelligence_growth(self) -> dict[str, Any]:
         """Collect real intelligence growth metrics from all subsystems."""
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root = self._root
         metrics: dict[str, Any] = {
             "facts_total": 0,
             "facts_last_7d": 0,
@@ -2369,7 +2367,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not master_password:
             self._unauthorized("Master password is required.")
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root = self._root
         if not verify_master_password(root, master_password):
             server.record_bootstrap_attempt(client_ip)
             self._unauthorized("Invalid master password.")
@@ -2438,8 +2436,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if token is None:
             # Fall back to owner_guard master password verification.
             # If it passes, create a session token manually.
-            root_auth: Path = self.server.repo_root  # type: ignore[attr-defined]
-            if verify_master_password(root_auth, password):
+            if verify_master_password(self._root, password):
                 import secrets as _auth_secrets
                 token = _auth_secrets.token_hex(32)
                 with owner_session._lock:
@@ -2516,8 +2513,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if service_name not in SERVICES:
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Unknown service: {service_name}"})
             return
-        root_p: Path = self.server.repo_root  # type: ignore[attr-defined]
-        killed = kill_service(service_name, root_p)
+        killed = kill_service(service_name, self._root)
         self._write_json(HTTPStatus.OK, {"ok": True, "service": service_name, "killed": killed})
 
     def _handle_post_ingest(self) -> None:
@@ -2593,9 +2589,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid mute_until_utc."})
             return
 
-        root_path: Path = self.server.repo_root  # type: ignore[attr-defined]
         if reset:
-            reset_control_state(root_path)
+            reset_control_state(self._root)
             try:
                 self._write_gaming_state(enabled=False, auto_detect=False, reason=reason)
             except PermissionError:
@@ -2604,7 +2599,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         else:
             if any(v is not None for v in (daemon_paused, safe_mode, muted, mute_until_utc)) or reason:
                 write_control_state(
-                    root_path,
+                    self._root,
                     daemon_paused=daemon_paused if isinstance(daemon_paused, bool) else None,
                     safe_mode=safe_mode if isinstance(safe_mode, bool) else None,
                     muted=muted if isinstance(muted, bool) else None,
@@ -2657,12 +2652,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             reason = f"Command failed with exit code {result.get('command_exit_code', 'unknown')}."
         assistant_response = f"[{intent}] {reason}"
 
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             import jarvis_engine.main as main_mod
             from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 
-            _thread_local.repo_root_override = root
+            _thread_local.repo_root_override = self._root
             try:
                 bus = main_mod._get_bus()
                 bus.dispatch(
@@ -2859,7 +2853,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
             merged = 0
             from jarvis_engine.memory.store import MemoryStore
-            store = MemoryStore(self.server.repo_root)
+            store = MemoryStore(self._root)
 
             for item in items[:200]:  # Cap at 200 items per merge
                 content = item.get("content", "")
@@ -2911,7 +2905,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
             # Export from knowledge graph
             try:
-                db_path = _memory_db_path(self.server.repo_root)
+                db_path = _memory_db_path(self._root)
 
                 if db_path.exists():
                     import sqlite3
@@ -2952,7 +2946,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
             # Export user preferences
             try:
-                db_path = _memory_db_path(self.server.repo_root)
+                db_path = _memory_db_path(self._root)
                 if db_path.exists():
                     import sqlite3
 
@@ -3018,8 +3012,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         route = str(payload.get("route", "")).strip()[:100]
         comment = str(payload.get("comment", "")).strip()[:500]
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
-        db_path = _memory_db_path(root)
+        db_path = _memory_db_path(self._root)
         if not db_path.exists():
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": False, "reason": "DB not available"})
             return
@@ -3136,8 +3129,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         try:
             from jarvis_engine.proactive.alert_queue import drain_alerts
-            root: Path = self.server.repo_root  # type: ignore[attr-defined]
-            alerts = drain_alerts(root, limit=50)
+            alerts = drain_alerts(self._root, limit=50)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
         except Exception as exc:
             logger.error("Alert queue drain failed: %s", exc)
@@ -3152,7 +3144,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         """
         if not self._validate_auth(b""):
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         qs_parts = self.path.split("?", 1)
         since_ts = 0
         context_label = ""
@@ -3178,13 +3169,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # Pull pending alerts (peek, don't drain — phone will drain via /alerts/pending)
         try:
             from jarvis_engine.proactive.alert_queue import peek_alerts
-            digest["proactive_alerts"] = peek_alerts(root, limit=10)
+            digest["proactive_alerts"] = peek_alerts(self._root, limit=10)
         except Exception as exc:
             logger.debug("Peek alerts for digest failed: %s", exc)
 
         # Get upcoming calendar events for next 2 hours
         try:
-            snapshot_path = root / ".planning" / "ops_snapshot.live.json"
+            snapshot_path = self._root / ".planning" / "ops_snapshot.live.json"
             if snapshot_path.exists():
                 import json as _json
                 snap = _json.loads(snapshot_path.read_text(encoding="utf-8"))
@@ -3403,7 +3394,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         body, _ = self._read_json_body(max_content_length=5_000)
         if body is None:
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
+        root = self._root
         try:
             from jarvis_engine.scam_hunter import (
                 create_call_intel_report,
@@ -3525,7 +3516,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         body, _ = self._read_json_body(max_content_length=5_000)
         if body is None:
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import (
                 lookup_carrier_cached,
@@ -3537,11 +3527,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             normalized = _normalize_number(number)
 
             # Check carrier cache
-            carrier_cache_path = _runtime_dir(root) / "carrier_cache.json"
+            carrier_cache_path = _runtime_dir(self._root) / "carrier_cache.json"
             carrier = lookup_carrier_cached(carrier_cache_path, normalized)
 
             # Check campaigns
-            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
+            campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             campaign_id = ""
             campaign_confidence = 0.0
@@ -3576,12 +3566,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         """Return detected scam campaigns."""
         if not self._validate_auth(b""):
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
             from dataclasses import asdict
 
-            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
+            campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             block_actions = build_prefix_block_actions(campaigns)
 
@@ -3600,12 +3589,11 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         """Return scam detection statistics."""
         if not self._validate_auth(b""):
             return
-        root: Path = self.server.repo_root  # type: ignore[attr-defined]
         try:
             from jarvis_engine.scam_hunter import load_campaigns, load_call_intel
 
-            campaign_path = _runtime_dir(root) / "scam_campaigns.json"
-            intel_path = _runtime_dir(root) / "call_intel.jsonl"
+            campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
+            intel_path = _runtime_dir(self._root) / "call_intel.jsonl"
             campaigns = load_campaigns(campaign_path)
             all_intel = load_call_intel(intel_path, limit=500)
 
@@ -3798,7 +3786,7 @@ def run_mobile_server(
         logger.warning("Failed to initialize auto-sync config: %s", exc)
 
     # Initialize sync engine and transport if memory DB exists
-    db_path = repo__memory_db_path(root)
+    db_path = _memory_db_path(repo_root)
     if db_path.exists():
         try:
             from jarvis_engine.sync.changelog import install_changelog_triggers

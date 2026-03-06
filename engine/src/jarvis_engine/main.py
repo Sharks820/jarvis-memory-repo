@@ -235,6 +235,8 @@ from jarvis_engine._constants import get_local_model as _get_local_model  # noqa
 from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensitive  # noqa: E402
 from jarvis_engine._constants import memory_db_path as _memory_db_path  # noqa: E402
 from jarvis_engine._constants import make_task_id as _make_task_id  # noqa: E402
+from jarvis_engine._constants import ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY  # noqa: E402
+from jarvis_engine._shared import set_process_title as _set_process_title  # noqa: E402
 from jarvis_engine._constants import runtime_dir as _runtime_dir  # noqa: E402
 
 
@@ -1307,11 +1309,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
             pass  # Non-fatal: skip warning if config can't be parsed
 
     # Set descriptive process title for Task Manager visibility
-    try:
-        import setproctitle
-        setproctitle.setproctitle("jarvis-mobile-api")
-    except ImportError:
-        pass
+    _set_process_title("jarvis-mobile-api")
 
     root = repo_root()
     # Register PID file for duplicate detection and dashboard visibility
@@ -1732,11 +1730,7 @@ def cmd_persona_config(
 
 
 def cmd_desktop_widget() -> int:
-    try:
-        import setproctitle
-        setproctitle.setproctitle("jarvis-widget")
-    except ImportError:
-        pass
+    _set_process_title("jarvis-widget")
     root = repo_root()
     from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
     if is_service_running("widget", root):
@@ -2735,11 +2729,7 @@ def _cmd_daemon_run_impl(
 ) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
     # Set descriptive process title for Task Manager visibility
-    try:
-        import setproctitle
-        setproctitle.setproctitle("jarvis-daemon")
-    except ImportError:
-        pass
+    _set_process_title("jarvis-daemon")
 
     root = repo_root()
     # Register PID file for duplicate detection and dashboard visibility
@@ -3439,11 +3429,7 @@ def _web_augmented_llm_conversation(
             _route = "simple_private"
             logger.debug("Privacy fallback: classifier failed, forcing local for private query")
         else:
-            for _env_key, _model_alias in [
-                ("GROQ_API_KEY", "kimi-k2"),
-                ("MISTRAL_API_KEY", "devstral-2"),
-                ("ZAI_API_KEY", "glm-4.7-flash"),
-            ]:
+            for _env_key, _model_alias in _ENV_MODEL_PRIORITY:
                 if os.environ.get(_env_key, ""):
                     _llm_model = _model_alias
                     break

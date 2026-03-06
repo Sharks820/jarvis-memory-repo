@@ -110,3 +110,12 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
     except Exception as exc:
         logger.debug("Failed to configure STARTUPINFO for hidden window: %s", exc)
     return kwargs
+
+
+def set_process_title(name: str) -> None:
+    """Set the OS process title (requires ``setproctitle``; no-op if absent)."""
+    try:
+        import setproctitle
+        setproctitle.setproctitle(name)
+    except ImportError:
+        pass

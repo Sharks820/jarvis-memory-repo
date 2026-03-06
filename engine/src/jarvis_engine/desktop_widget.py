@@ -2337,6 +2337,12 @@ class JarvisDesktopWidget(tk.Tk):
             self.command_text.config(state=tk.NORMAL)
             self._set_state("idle")
 
+    def _handle_command_error(self, message: str) -> None:
+        """Log a command error with a ready prompt and briefly flash the error state."""
+        self._log_async(message, role="error")
+        self._log_async("Ready for next command.", role="system")
+        self._set_error_briefly_async()
+
     def _send_command_async(self) -> None:
         # Guard: warn if already processing but don't silently drop
         if getattr(self, "_widget_state", "idle") == "processing":
@@ -2507,29 +2513,15 @@ class JarvisDesktopWidget(tk.Tk):
                 # Prompt for continuation
                 self._log_async("Ready for next command. Say 'done' or click End Conversation when finished.", role="system")
             except HTTPError as exc:
-                self.after(0, self._hide_thinking)
-                self.after(0, self._cancel_processing_timeout)
-                self._log_async(f"Command failed: {_http_error_details(exc)}", role="error")
-                self._log_async("Ready for next command.", role="system")
-                self._set_error_briefly_async()
+                self._handle_command_error(f"Command failed: {_http_error_details(exc)}")
             except URLError:
-                self.after(0, self._hide_thinking)
-                self.after(0, self._cancel_processing_timeout)
                 self._log_async("Cannot connect to Jarvis services.", role="error")
                 self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
                 self._set_error_briefly_async()
             except (RuntimeError, TimeoutError) as exc:
-                self.after(0, self._hide_thinking)
-                self.after(0, self._cancel_processing_timeout)
-                self._log_async(f"Command failed: {exc}", role="error")
-                self._log_async("Ready for next command.", role="system")
-                self._set_error_briefly_async()
+                self._handle_command_error(f"Command failed: {exc}")
             except Exception as exc:  # noqa: BLE001
-                self.after(0, self._hide_thinking)
-                self.after(0, self._cancel_processing_timeout)
-                self._log_async(f"Command failed: {exc}", role="error")
-                self._log_async("Ready for next command.", role="system")
-                self._set_error_briefly_async()
+                self._handle_command_error(f"Command failed: {exc}")
             finally:
                 # Always clean up: hide thinking, re-enable input, reset state.
                 # Check generation to avoid corrupting state from a newer command.
