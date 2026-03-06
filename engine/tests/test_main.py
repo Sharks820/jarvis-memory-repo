@@ -6,29 +6,30 @@ from pathlib import Path
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext
 
 
 def test_sanitize_memory_content_redacts_credentials() -> None:
     content = "master password: ExamplePass123! token=abc123"
-    cleaned = main_mod._sanitize_memory_content(content)  # type: ignore[attr-defined]
+    cleaned = auto_ingest_mod.sanitize_memory_content(content)
     assert "ExamplePass123!" not in cleaned
     assert "abc123" not in cleaned
     assert "[redacted]" in cleaned
 
 
 def test_current_datetime_prompt_line_includes_utc_and_epoch() -> None:
-    line = main_mod._current_datetime_prompt_line()
+    line = voice_pipeline_mod._current_datetime_prompt_line()
     assert "Current date/time:" in line
     assert "UTC" in line
     assert "epoch" in line
     assert "Treat this as the present" in line
 
 
-def test_shorten_urls_for_speech_replaces_raw_url_with_domain_link() -> None:
+def testshorten_urls_for_speech_replaces_raw_url_with_domain_link() -> None:
     text = "Check this out: https://docs.example.com/guides/very/long/path?query=1"
-    shortened = main_mod._shorten_urls_for_speech(text)  # type: ignore[attr-defined]
+    shortened = voice_pipeline_mod.shorten_urls_for_speech(text)
     assert "https://" not in shortened
     assert "[docs.example.com link]" in shortened
 
@@ -95,7 +96,7 @@ def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
 
 def test_conversation_continuity_instruction_on_model_switch(monkeypatch) -> None:
     monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model","kimi-k2")
-    line = main_mod._conversation_continuity_instruction("gemma3:4b", history_len=3)  # type: ignore[attr-defined]
+    line = voice_pipeline_mod._conversation_continuity_instruction("gemma3:4b", history_len=3)
     assert line is not None
     assert "previous turn used model 'kimi-k2'" in line
     assert "uses 'gemma3:4b'" in line
@@ -103,8 +104,8 @@ def test_conversation_continuity_instruction_on_model_switch(monkeypatch) -> Non
 
 def test_conversation_continuity_instruction_no_history_or_same_model(monkeypatch) -> None:
     monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model","gemma3:4b")
-    assert main_mod._conversation_continuity_instruction("gemma3:4b", history_len=3) is None  # type: ignore[attr-defined]
-    assert main_mod._conversation_continuity_instruction("kimi-k2", history_len=0) is None  # type: ignore[attr-defined]
+    assert voice_pipeline_mod._conversation_continuity_instruction("gemma3:4b", history_len=3) is None
+    assert voice_pipeline_mod._conversation_continuity_instruction("kimi-k2", history_len=0) is None
 
 
 def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
@@ -122,8 +123,8 @@ def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
     monkeypatch.setitem(__import__("sys").modules, "jarvis_engine.activity_feed", fake_mod)
 
     monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model",None)
-    main_mod._mark_routed_model("kimi-k2", "groq")  # type: ignore[attr-defined]
-    main_mod._mark_routed_model("gemma3:4b", "ollama")  # type: ignore[attr-defined]
+    voice_pipeline_mod._mark_routed_model("kimi-k2", "groq")
+    voice_pipeline_mod._mark_routed_model("gemma3:4b", "ollama")
 
     assert len(calls) == 1
     assert "kimi-k2 -> gemma3:4b" in calls[0][1]
@@ -557,7 +558,7 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_gaming_mode(enable=False, reason="auto", auto_detect="on")
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (True, "fortniteclient-win64-shipping.exe"))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (True, "fortniteclient-win64-shipping.exe"))
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -710,7 +711,7 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
         reason="pause test",
     )
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
     calls: dict[str, object] = {"ops": 0, "sleep": []}
 
@@ -757,7 +758,7 @@ def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monke
         reason="safe",
     )
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 0.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
     observed: dict[str, bool] = {"execute": True, "approve_privileged": True}
 
@@ -2275,101 +2276,101 @@ class TestHelperFunctions:
     """Tests for private helper functions in main.py."""
 
     def test_extract_first_phone_number(self):
-        assert main_mod._extract_first_phone_number("Call +14155551234 please") == "+14155551234"
-        assert main_mod._extract_first_phone_number("no number here") == ""
-        assert main_mod._extract_first_phone_number("dial 555-123-4567") == "555-123-4567"
+        assert voice_pipeline_mod._extract_first_phone_number("Call +14155551234 please") == "+14155551234"
+        assert voice_pipeline_mod._extract_first_phone_number("no number here") == ""
+        assert voice_pipeline_mod._extract_first_phone_number("dial 555-123-4567") == "555-123-4567"
         # Truncation at 256 chars
         long_text = "x" * 300 + "+14155551234"
-        assert main_mod._extract_first_phone_number(long_text) == ""
+        assert voice_pipeline_mod._extract_first_phone_number(long_text) == ""
 
     def test_extract_weather_location(self):
-        assert main_mod._extract_weather_location("weather in Austin, TX") == "Austin, TX"
-        assert main_mod._extract_weather_location("weather for New York") == "New York"
-        assert main_mod._extract_weather_location("forecast at Chicago") == "Chicago"
+        assert voice_pipeline_mod._extract_weather_location("weather in Austin, TX") == "Austin, TX"
+        assert voice_pipeline_mod._extract_weather_location("weather for New York") == "New York"
+        assert voice_pipeline_mod._extract_weather_location("forecast at Chicago") == "Chicago"
         # Noise words stripped
-        loc = main_mod._extract_weather_location("weather today")
+        loc = voice_pipeline_mod._extract_weather_location("weather today")
         assert "today" not in loc.lower().split()
 
     def test_extract_web_query(self):
-        assert "python" in main_mod._extract_web_query("search the web for python asyncio")
-        assert "ml" in main_mod._extract_web_query("research ML frameworks")
-        assert "rust" in main_mod._extract_web_query("look up rust programming")
-        assert "react" in main_mod._extract_web_query("find on the web react hooks")
+        assert "python" in voice_pipeline_mod._extract_web_query("search the web for python asyncio")
+        assert "ml" in voice_pipeline_mod._extract_web_query("research ML frameworks")
+        assert "rust" in voice_pipeline_mod._extract_web_query("look up rust programming")
+        assert "react" in voice_pipeline_mod._extract_web_query("find on the web react hooks")
 
     def test_extract_first_url(self):
-        assert main_mod._extract_first_url("go to https://example.com") == "https://example.com"
-        assert main_mod._extract_first_url("visit www.google.com") == "https://www.google.com"
-        assert main_mod._extract_first_url("no url here") == ""
+        assert voice_pipeline_mod._extract_first_url("go to https://example.com") == "https://example.com"
+        assert voice_pipeline_mod._extract_first_url("visit www.google.com") == "https://www.google.com"
+        assert voice_pipeline_mod._extract_first_url("no url here") == ""
         # Long text truncation
         long_text = "x" * 1300 + "https://late.com"
-        assert main_mod._extract_first_url(long_text) == ""
+        assert voice_pipeline_mod._extract_first_url(long_text) == ""
 
     def test_is_read_only_voice_request(self):
-        assert main_mod._is_read_only_voice_request(
+        assert voice_pipeline_mod._is_read_only_voice_request(
             "runtime status", execute=False, approve_privileged=False
         ) is True
-        assert main_mod._is_read_only_voice_request(
+        assert voice_pipeline_mod._is_read_only_voice_request(
             "pause daemon", execute=False, approve_privileged=False
         ) is False
         # execute flag forces non-read-only
-        assert main_mod._is_read_only_voice_request(
+        assert voice_pipeline_mod._is_read_only_voice_request(
             "runtime status", execute=True, approve_privileged=False
         ) is False
         # Bare wake words treated as read-only
-        assert main_mod._is_read_only_voice_request(
+        assert voice_pipeline_mod._is_read_only_voice_request(
             "jarvis", execute=False, approve_privileged=False
         ) is True
-        assert main_mod._is_read_only_voice_request(
+        assert voice_pipeline_mod._is_read_only_voice_request(
             "hey jarvis", execute=False, approve_privileged=False
         ) is True
         # Conversational fallthrough is read-only
-        assert main_mod._is_read_only_voice_request(
+        assert voice_pipeline_mod._is_read_only_voice_request(
             "what is the meaning of life", execute=False, approve_privileged=False
         ) is True
 
     def test_sanitize_memory_content_truncation(self):
         long_content = "a" * 200_000
-        cleaned = main_mod._sanitize_memory_content(long_content)
+        cleaned = auto_ingest_mod.sanitize_memory_content(long_content)
         assert len(cleaned) <= 2000
 
     def test_sanitize_memory_content_json_redaction(self):
         content = '{"api_key": "sk-secret123", "data": "normal"}'
-        cleaned = main_mod._sanitize_memory_content(content)
+        cleaned = auto_ingest_mod.sanitize_memory_content(content)
         assert "sk-secret123" not in cleaned
         assert "[redacted]" in cleaned
 
     def test_sanitize_memory_content_bearer_redaction(self):
         content = "Authorization: bearer sk-my-token-abc"
-        cleaned = main_mod._sanitize_memory_content(content)
+        cleaned = auto_ingest_mod.sanitize_memory_content(content)
         assert "sk-my-token-abc" not in cleaned
 
     def test_valid_sources_and_kinds(self):
-        assert "user" in main_mod._VALID_SOURCES
-        assert "claude" in main_mod._VALID_SOURCES
-        assert "episodic" in main_mod._VALID_KINDS
-        assert "semantic" in main_mod._VALID_KINDS
-        assert "procedural" in main_mod._VALID_KINDS
+        assert "user" in auto_ingest_mod.VALID_SOURCES
+        assert "claude" in auto_ingest_mod.VALID_SOURCES
+        assert "episodic" in auto_ingest_mod.VALID_KINDS
+        assert "semantic" in auto_ingest_mod.VALID_KINDS
+        assert "procedural" in auto_ingest_mod.VALID_KINDS
 
     def test_load_auto_ingest_hashes_missing_file(self, tmp_path):
-        result = main_mod._load_auto_ingest_hashes(tmp_path / "nonexistent.json")
+        result = auto_ingest_mod._load_auto_ingest_hashes(tmp_path / "nonexistent.json")
         assert result == []
 
     def test_load_auto_ingest_hashes_corrupted(self, tmp_path):
         path = tmp_path / "bad.json"
         path.write_text("not json at all", encoding="utf-8")
-        result = main_mod._load_auto_ingest_hashes(path)
+        result = auto_ingest_mod._load_auto_ingest_hashes(path)
         assert result == []
 
     def test_load_auto_ingest_hashes_valid(self, tmp_path):
         path = tmp_path / "dedupe.json"
         path.write_text(json.dumps({"hashes": ["abc", "def"]}), encoding="utf-8")
-        result = main_mod._load_auto_ingest_hashes(path)
+        result = auto_ingest_mod._load_auto_ingest_hashes(path)
         assert result == ["abc", "def"]
 
     def test_load_auto_ingest_hashes_wrong_type(self, tmp_path):
         path = tmp_path / "dedupe.json"
         path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
-        result = main_mod._load_auto_ingest_hashes(path)
+        result = auto_ingest_mod._load_auto_ingest_hashes(path)
         assert result == []
 
 
@@ -2382,7 +2383,7 @@ class TestAutoIngestMemory:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = main_mod._auto_ingest_memory(
+        result = auto_ingest_mod.auto_ingest_memory(
             source="user", kind="semantic", task_id="test", content="Test content",
         )
         assert result == ""
@@ -2393,7 +2394,7 @@ class TestAutoIngestMemory:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = main_mod._auto_ingest_memory(
+        result = auto_ingest_mod.auto_ingest_memory(
             source="invalid_source", kind="semantic", task_id="test", content="Test",
         )
         assert result == ""
@@ -2404,7 +2405,7 @@ class TestAutoIngestMemory:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = main_mod._auto_ingest_memory(
+        result = auto_ingest_mod.auto_ingest_memory(
             source="user", kind="bogus", task_id="test", content="Test",
         )
         assert result == ""
@@ -2415,7 +2416,7 @@ class TestAutoIngestMemory:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = main_mod._auto_ingest_memory(
+        result = auto_ingest_mod.auto_ingest_memory(
             source="user", kind="semantic", task_id="test", content="",
         )
         assert result == ""
@@ -2429,7 +2430,7 @@ class TestGamingProcessHelpers:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        state = main_mod._read_gaming_mode_state()
+        state = daemon_loop_mod.read_gaming_mode_state()
         assert state["enabled"] is False
 
     def test_read_gaming_mode_corrupted(self, tmp_path, monkeypatch):
@@ -2440,25 +2441,25 @@ class TestGamingProcessHelpers:
         path = tmp_path / ".planning" / "runtime" / "gaming_mode.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("corrupt json!", encoding="utf-8")
-        state = main_mod._read_gaming_mode_state()
+        state = daemon_loop_mod.read_gaming_mode_state()
         assert state["enabled"] is False
 
-    def test_load_gaming_processes_default(self, tmp_path, monkeypatch):
+    def testload_gaming_processes_default(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
-        processes = main_mod._load_gaming_processes()
+        processes = daemon_loop_mod.load_gaming_processes()
         assert len(processes) > 0
         assert any("FortniteClient" in p for p in processes)
 
-    def test_load_gaming_processes_from_env(self, monkeypatch):
+    def testload_gaming_processes_from_env(self, monkeypatch):
         monkeypatch.setenv("JARVIS_GAMING_PROCESSES", "game1.exe,game2.exe")
-        processes = main_mod._load_gaming_processes()
+        processes = daemon_loop_mod.load_gaming_processes()
         assert processes == ["game1.exe", "game2.exe"]
 
-    def test_load_gaming_processes_from_file_dict(self, tmp_path, monkeypatch):
+    def testload_gaming_processes_from_file_dict(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -2467,10 +2468,10 @@ class TestGamingProcessHelpers:
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"processes": ["custom.exe"]}), encoding="utf-8")
-        processes = main_mod._load_gaming_processes()
+        processes = daemon_loop_mod.load_gaming_processes()
         assert processes == ["custom.exe"]
 
-    def test_load_gaming_processes_from_file_list(self, tmp_path, monkeypatch):
+    def testload_gaming_processes_from_file_list(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -2479,10 +2480,10 @@ class TestGamingProcessHelpers:
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(["listgame.exe"]), encoding="utf-8")
-        processes = main_mod._load_gaming_processes()
+        processes = daemon_loop_mod.load_gaming_processes()
         assert processes == ["listgame.exe"]
 
-    def test_load_gaming_processes_empty_falls_back(self, tmp_path, monkeypatch):
+    def testload_gaming_processes_empty_falls_back(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -2491,8 +2492,8 @@ class TestGamingProcessHelpers:
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"processes": []}), encoding="utf-8")
-        processes = main_mod._load_gaming_processes()
-        assert len(processes) == len(main_mod.DEFAULT_GAMING_PROCESSES)
+        processes = daemon_loop_mod.load_gaming_processes()
+        assert len(processes) == len(daemon_loop_mod.DEFAULT_GAMING_PROCESSES)
 
 
 # ===========================================================================
@@ -2752,7 +2753,7 @@ class TestDaemonSelfTest:
 
     def _run_daemon_impl(self, tmp_path, monkeypatch, *,
                          self_test_every_cycles=1, max_cycles=1):
-        """Helper: run _cmd_daemon_run_impl with heavy mocking."""
+        """Helper: run cmd_daemon_run_impl with heavy mocking."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -2762,7 +2763,7 @@ class TestDaemonSelfTest:
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         # Ensure runtime dir exists for self_test_history.jsonl
         (tmp_path / ".planning" / "runtime").mkdir(parents=True, exist_ok=True)
-        return main_mod._cmd_daemon_run_impl(
+        return daemon_loop_mod.cmd_daemon_run_impl(
             interval_s=120,
             snapshot_path=tmp_path / "ops_snapshot.live.json",
             actions_path=tmp_path / "actions.generated.json",
@@ -2870,33 +2871,33 @@ class TestConversationHistory:
 
     def setup_method(self):
         """Reset module-level conversation history before each test."""
-        main_mod._conversation_history.clear()
+        voice_pipeline_mod._conversation_history.clear()
 
     def test_add_to_history_appends_message(self):
         """_add_to_history appends a dict with role and content."""
-        main_mod._add_to_history("user", "Hello Jarvis")
-        hist = main_mod._get_history_messages()
+        voice_pipeline_mod._add_to_history("user", "Hello Jarvis")
+        hist = voice_pipeline_mod._get_history_messages()
         assert len(hist) == 1
         assert hist[0] == {"role": "user", "content": "Hello Jarvis"}
 
     def test_add_to_history_multiple_messages(self):
         """Multiple calls build up the history list."""
-        main_mod._add_to_history("user", "What is the weather?")
-        main_mod._add_to_history("assistant", "It is sunny.")
-        hist = main_mod._get_history_messages()
+        voice_pipeline_mod._add_to_history("user", "What is the weather?")
+        voice_pipeline_mod._add_to_history("assistant", "It is sunny.")
+        hist = voice_pipeline_mod._get_history_messages()
         assert len(hist) == 2
         assert hist[0]["role"] == "user"
         assert hist[1]["role"] == "assistant"
 
     def test_history_caps_at_max_turns_times_2(self):
         """History is capped at _CONVERSATION_MAX_TURNS * 2 entries."""
-        max_entries = main_mod._CONVERSATION_MAX_TURNS * 2
+        max_entries = voice_pipeline_mod._CONVERSATION_MAX_TURNS * 2
         # Add more than the cap
         for i in range(max_entries + 6):
             role = "user" if i % 2 == 0 else "assistant"
-            main_mod._add_to_history(role, f"message {i}")
+            voice_pipeline_mod._add_to_history(role, f"message {i}")
 
-        hist = main_mod._get_history_messages()
+        hist = voice_pipeline_mod._get_history_messages()
         assert len(hist) == max_entries
         # Oldest messages should have been evicted; latest should be present
         assert hist[-1]["content"] == f"message {max_entries + 5}"
@@ -2904,24 +2905,24 @@ class TestConversationHistory:
     def test_history_truncates_long_content(self):
         """Content is truncated to configured max chars per message."""
         long_msg = "x" * 2000
-        main_mod._add_to_history("user", long_msg)
-        hist = main_mod._get_history_messages()
+        voice_pipeline_mod._add_to_history("user", long_msg)
+        hist = voice_pipeline_mod._get_history_messages()
         assert len(hist[0]["content"]) == min(
             len(long_msg),
-            main_mod._CONVERSATION_MAX_CHARS_PER_MESSAGE,
+            voice_pipeline_mod._CONVERSATION_MAX_CHARS_PER_MESSAGE,
         )
 
     def test_get_history_returns_copy(self):
         """_get_history_messages returns a copy, not the original list."""
-        main_mod._add_to_history("user", "test")
-        hist = main_mod._get_history_messages()
+        voice_pipeline_mod._add_to_history("user", "test")
+        hist = voice_pipeline_mod._get_history_messages()
         hist.clear()
         # Original should be unaffected
-        assert len(main_mod._get_history_messages()) == 1
+        assert len(voice_pipeline_mod._get_history_messages()) == 1
 
     def test_conversation_max_turns_within_supported_bounds(self):
         """_CONVERSATION_MAX_TURNS follows bounded env configuration."""
-        assert 4 <= main_mod._CONVERSATION_MAX_TURNS <= 40
+        assert 4 <= voice_pipeline_mod._CONVERSATION_MAX_TURNS <= 40
 
 
 # ===========================================================================
@@ -2933,20 +2934,20 @@ class TestMaxTokensByRoute:
     """Tests for _MAX_TOKENS_BY_ROUTE configuration."""
 
     def test_max_tokens_math_logic(self):
-        assert main_mod._MAX_TOKENS_BY_ROUTE["math_logic"] == 1024
+        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["math_logic"] == 1024
 
     def test_max_tokens_complex(self):
-        assert main_mod._MAX_TOKENS_BY_ROUTE["complex"] == 1024
+        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["complex"] == 1024
 
     def test_max_tokens_routine(self):
-        assert main_mod._MAX_TOKENS_BY_ROUTE["routine"] == 512
+        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["routine"] == 512
 
     def test_max_tokens_simple_private(self):
-        assert main_mod._MAX_TOKENS_BY_ROUTE["simple_private"] == 1024
+        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["simple_private"] == 1024
 
     def test_max_tokens_unknown_route_returns_none(self):
         """Unknown routes are not in the dict (caller uses .get with default)."""
-        assert main_mod._MAX_TOKENS_BY_ROUTE.get("unknown_route") is None
+        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE.get("unknown_route") is None
 
 
 # ===========================================================================
@@ -2969,13 +2970,13 @@ class TestBuildSmartContext:
             {"summary": "User takes metformin daily"},
         ]
 
-        with patch("jarvis_engine.main.hybrid_search", create=True) as mock_hs:
+        with patch("jarvis_engine.voice_pipeline.hybrid_search", create=True) as mock_hs:
             # hybrid_search is imported inside _build_smart_context, so patch the import target
             with patch.dict("sys.modules", {}):
                 pass
             # Patch at the location where it's imported inside the function
             with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_records):
-                memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "health")
+                memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"health")
 
         # Memory lines come from hybrid_search results
         assert "User likes hiking on weekends" in memory_lines
@@ -2997,7 +2998,7 @@ class TestBuildSmartContext:
             voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
-        memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "anything")
+        memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"anything")
         assert "Legacy memory entry 1" in memory_lines
         assert "Legacy memory entry 2" in memory_lines
 
@@ -3015,7 +3016,7 @@ class TestBuildSmartContext:
             voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
-        memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "test query")
+        memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"test query")
         assert "Fallback memory" in memory_lines
 
     def test_kg_facts_injected_when_engine_available(self, monkeypatch, tmp_path):
@@ -3037,7 +3038,7 @@ class TestBuildSmartContext:
         ]
 
         with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
-            memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "tell me about allergies")
+            memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"tell me about allergies")
 
         assert "User is allergic to peanuts" in fact_lines
 
@@ -3058,7 +3059,7 @@ class TestBuildSmartContext:
         ]
 
         with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
-            memory_lines, fact_lines, _cb, _prefs = main_mod._build_smart_context(bus, "some query")
+            memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"some query")
 
         assert "High confidence fact" in fact_lines
         assert "Low confidence fact" not in fact_lines
@@ -3073,7 +3074,7 @@ class TestBuildSmartContext:
             MagicMock(side_effect=RuntimeError("DB broken")),
         )
 
-        memory_lines, fact_lines, cross_branch_lines, pref_lines = main_mod._build_smart_context(bus, "broken query")
+        memory_lines, fact_lines, cross_branch_lines, pref_lines = voice_pipeline_mod._build_smart_context(bus, "broken query")
         assert memory_lines == []
         assert fact_lines == []
         assert cross_branch_lines == []

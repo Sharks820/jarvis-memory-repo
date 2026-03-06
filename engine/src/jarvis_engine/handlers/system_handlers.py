@@ -114,9 +114,9 @@ class DaemonRunHandler:
         self._root = root
 
     def handle(self, cmd: DaemonRunCommand) -> DaemonRunResult:
-        from jarvis_engine import main as _main_mod
+        from jarvis_engine import daemon_loop as _daemon_loop_mod
 
-        rc = _main_mod._cmd_daemon_run_impl(
+        rc = _daemon_loop_mod.cmd_daemon_run_impl(
             interval_s=cmd.interval_s,
             snapshot_path=cmd.snapshot_path,
             actions_path=cmd.actions_path,
@@ -184,9 +184,9 @@ class GamingModeHandler:
         self._root = root
 
     def handle(self, cmd: GamingModeCommand) -> GamingModeResult:
-        from jarvis_engine import main as _main_mod
+        from jarvis_engine import daemon_loop as _daemon_loop_mod
 
-        state = _main_mod._read_gaming_mode_state()
+        state = _daemon_loop_mod.read_gaming_mode_state()
         changed = False
         if cmd.enable is not None:
             state["enabled"] = cmd.enable
@@ -201,12 +201,12 @@ class GamingModeHandler:
             from jarvis_engine._compat import UTC
 
             state["updated_utc"] = datetime.now(UTC).isoformat()
-            state = _main_mod._write_gaming_mode_state(state)
+            state = _daemon_loop_mod.write_gaming_mode_state(state)
 
         detected = False
         detected_process = ""
         if bool(state.get("auto_detect", False)):
-            detected, detected_process = _main_mod._detect_active_game_process()
+            detected, detected_process = _daemon_loop_mod.detect_active_game_process()
         effective_enabled = bool(state.get("enabled", False)) or detected
 
         return GamingModeResult(

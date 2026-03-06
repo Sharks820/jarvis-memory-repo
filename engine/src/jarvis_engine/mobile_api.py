@@ -2545,7 +2545,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 _vp_mod._conversation_history.clear()
                 _vp_mod._conversation_history_loaded = True
             try:
-                _vp_mod._save_conversation_history()
+                _vp_mod.save_conversation_history()
             except Exception as save_exc:
                 logger.debug("Conversation history save-after-clear failed: %s", save_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
@@ -2568,12 +2568,12 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         assistant_response = f"[{intent}] {reason}"
 
         try:
-            import jarvis_engine.main as main_mod
+            from jarvis_engine._bus import get_bus
             from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 
             _thread_local.repo_root_override = self._root
             try:
-                bus = main_mod._get_bus()
+                bus = get_bus()
                 bus.dispatch(
                     LearnInteractionCommand(
                         user_message=user_text[:1000],
@@ -2969,9 +2969,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 return
             sources = [str(s).strip() for s in sources if str(s).strip()][:6]
         try:
-            import jarvis_engine.main as _main_mod
+            from jarvis_engine._bus import get_bus
             from jarvis_engine.commands.ops_commands import MissionCreateCommand
-            bus = _main_mod._get_bus()
+            bus = get_bus()
             cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [], origin="phone")
             result = bus.dispatch(cmd)
             if result.return_code != 0:
@@ -2998,9 +2998,9 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if not self._validate_auth(b""):
             return
         try:
-            import jarvis_engine.main as _main_mod
+            from jarvis_engine._bus import get_bus
             from jarvis_engine.commands.ops_commands import MissionStatusCommand
-            bus = _main_mod._get_bus()
+            bus = get_bus()
             last = 15
             qs = self.path.split("?", 1)
             if len(qs) > 1:
@@ -3123,8 +3123,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # Generate a human-readable summary using the voice command system
         if context_label:
             try:
-                import jarvis_engine.main as _main_mod
-                bus = _main_mod._get_bus()
+                from jarvis_engine._bus import get_bus
+                bus = get_bus()
                 from jarvis_engine.commands.ops_commands import OpsBriefCommand
                 result = bus.dispatch(OpsBriefCommand())
                 if hasattr(result, "brief") and result.brief:
@@ -3787,7 +3787,8 @@ def run_mobile_server(
                 main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
                 main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
-                main_mod._get_bus()
+                from jarvis_engine._bus import get_bus
+                get_bus()
             finally:
                 _thread_local.repo_root_override = None
             # Install thread-capturing stdout for concurrent request handling

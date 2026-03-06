@@ -677,7 +677,7 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
     # Temporarily lower the limit for testing
     with _mock.patch.object(mobile_api, "_API_RATE_LIMIT_EXPENSIVE", 2), \
          _mock.patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
-         _mock.patch("jarvis_engine.main._build_smart_context", return_value=([], [], [], [])), \
+         _mock.patch("jarvis_engine.voice_pipeline._build_smart_context", return_value=([], [], [], [])), \
          _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
         # Clear any existing rate state for our IP
         mobile_server.server._api_rate_normal.clear()
@@ -1683,7 +1683,7 @@ def test_run_voice_command_in_process_sets_skip_voice_auth_guard(mobile_server, 
 
 
 def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch) -> None:
-    import jarvis_engine.main as main_mod
+    import jarvis_engine._bus as bus_mod
 
     dispatched: list[object] = []
 
@@ -1692,7 +1692,7 @@ def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch)
             dispatched.append(cmd)
             return None
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _FakeBus())
+    monkeypatch.setattr(bus_mod, "get_bus", lambda: _FakeBus())
 
     handler = MobileIngestHandler.__new__(MobileIngestHandler)
     handler.server = mobile_server.server
@@ -1714,13 +1714,13 @@ def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch)
 
 
 def test_best_effort_learning_skips_success_with_response(mobile_server, monkeypatch) -> None:
-    import jarvis_engine.main as main_mod
+    import jarvis_engine._bus as bus_mod
 
     class _FakeBus:
         def dispatch(self, cmd):  # noqa: ANN001, ANN202
             raise AssertionError("dispatch should not be called for successful response")
 
-    monkeypatch.setattr(main_mod, "_get_bus", lambda: _FakeBus())
+    monkeypatch.setattr(bus_mod, "get_bus", lambda: _FakeBus())
 
     handler = MobileIngestHandler.__new__(MobileIngestHandler)
     handler.server = mobile_server.server
@@ -1968,8 +1968,8 @@ def test_missions_create_success(mobile_server, monkeypatch) -> None:
         def dispatch(self, cmd):
             return MissionCreateResult(mission=mock_mission)
 
-    import jarvis_engine.main as _main_mod
-    monkeypatch.setattr(_main_mod, "_get_bus", lambda: FakeBus())
+    import jarvis_engine._bus as _bus_mod
+    monkeypatch.setattr(_bus_mod, "get_bus", lambda: FakeBus())
 
     body = json.dumps({"topic": "quantum computing basics"}).encode()
     headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
@@ -1999,8 +1999,8 @@ def test_missions_create_with_objective_and_sources(mobile_server, monkeypatch) 
                 "sources": cmd.sources or ["google", "reddit"],
             })
 
-    import jarvis_engine.main as _main_mod
-    monkeypatch.setattr(_main_mod, "_get_bus", lambda: FakeBus())
+    import jarvis_engine._bus as _bus_mod
+    monkeypatch.setattr(_bus_mod, "get_bus", lambda: FakeBus())
 
     body = json.dumps({
         "topic": "rust async patterns",
@@ -2059,8 +2059,8 @@ def test_missions_status_returns_structure(mobile_server, monkeypatch) -> None:
         def dispatch(self, cmd):
             return MissionStatusResult(missions=mock_missions, total_count=2)
 
-    import jarvis_engine.main as _main_mod
-    monkeypatch.setattr(_main_mod, "_get_bus", lambda: FakeBus())
+    import jarvis_engine._bus as _bus_mod
+    monkeypatch.setattr(_bus_mod, "get_bus", lambda: FakeBus())
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
     code, resp = http_request("GET", f"{mobile_server.base_url}/missions/status", headers=headers)

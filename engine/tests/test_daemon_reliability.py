@@ -24,7 +24,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
         call_count = 0
 
@@ -63,7 +63,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
         def always_failing_autopilot(*args, **kwargs) -> int:
             raise RuntimeError("Always fails")
@@ -102,7 +102,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
         autopilot_calls = 0
 
@@ -380,7 +380,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
     # Reset module-level KG regression state so tests are isolated
@@ -388,7 +388,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
 
 
 def _run_daemon_impl(tmp_path: Path, **kwargs) -> int:
-    """Call _cmd_daemon_run_impl directly, bypassing the command bus dispatch.
+    """Call cmd_daemon_run_impl directly, bypassing the command bus dispatch.
 
     This allows tests to mock _get_daemon_bus() (used by subsystems inside the loop)
     without breaking the bus dispatch that cmd_daemon_run() depends on.
@@ -409,7 +409,7 @@ def _run_daemon_impl(tmp_path: Path, **kwargs) -> int:
         self_test_every_cycles=0,
     )
     defaults.update(kwargs)
-    return main_mod._cmd_daemon_run_impl(**defaults)
+    return daemon_loop_mod.cmd_daemon_run_impl(**defaults)
 
 
 class TestDaemonActivityLogging:
@@ -776,7 +776,7 @@ class TestDaemonAutoHarvest:
         with patch.object(daemon_loop_mod, "load_missions", side_effect=lambda r: json.loads(
             (r / ".planning" / "missions.json").read_text(encoding="utf-8")
         )):
-            topics = main_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
         assert len(topics) <= 3
@@ -788,7 +788,7 @@ class TestDaemonAutoHarvest:
         self, tmp_path: Path
     ) -> None:
         """_discover_harvest_topics should return [] when no data sources exist."""
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
         assert len(topics) <= 3
 
@@ -859,7 +859,7 @@ class TestDaemonAutoHarvest:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)
         # Should have found multi-word topics from sparse KG nodes
         assert len(topics) >= 1
@@ -1094,7 +1094,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert len(topics) >= 1
         assert len(topics) <= 3
         for t in topics:
@@ -1122,7 +1122,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         for t in topics:
             assert len(t.split()) >= 2, f"Single-word topic not allowed: {t!r}"
 
@@ -1150,7 +1150,7 @@ class TestImprovedTopicDiscovery:
             daemon_loop_mod, "_get_recently_harvested_topics",
             return_value={"python async patterns"},
         ):
-            topics = main_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         # The exact phrase "Python async patterns" should be deduplicated
         for t in topics:
@@ -1190,7 +1190,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert len(topics) >= 1
         # All should be multi-word
         for t in topics:
@@ -1223,7 +1223,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         # Should find at least one complementary topic with a suffix
         found_expanded = False
         for t in topics:
@@ -1267,7 +1267,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert len(topics) <= 3, f"Expected at most 3 topics, got {len(topics)}: {topics}"
         assert len(topics) >= 1, "Expected at least 1 topic from rich data"
 
@@ -1276,7 +1276,7 @@ class TestImprovedTopicDiscovery:
     ) -> None:
         """When all data sources are empty, should return [] without errors."""
         # tmp_path has no brain directory, no missions, no activity feed
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert topics == []
 
     def test_fallback_chain_only_missions_available(
@@ -1287,7 +1287,7 @@ class TestImprovedTopicDiscovery:
         with patch.object(daemon_loop_mod, "load_missions", return_value=[
             {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},
         ]):
-            topics = main_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
         assert "quantum computing fundamentals" in topics
@@ -1313,7 +1313,7 @@ class TestImprovedTopicDiscovery:
         conn.commit()
         conn.close()
 
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         # The old memory topic should not appear (it's beyond 7-day window)
         for t in topics:
             assert "sumerian" not in t.lower(), \
@@ -1321,7 +1321,7 @@ class TestImprovedTopicDiscovery:
 
     def test_extract_topic_phrases_utility(self) -> None:
         """_extract_topic_phrases should produce multi-word phrases from text."""
-        phrases = main_mod._extract_topic_phrases(
+        phrases = daemon_loop_mod._extract_topic_phrases(
             "How do Python async patterns work with coroutines and event loops"
         )
         assert len(phrases) >= 1
@@ -1331,14 +1331,14 @@ class TestImprovedTopicDiscovery:
 
     def test_extract_topic_phrases_filters_stopwords(self) -> None:
         """_extract_topic_phrases should filter common stop words."""
-        phrases = main_mod._extract_topic_phrases("the is a an of in to for with on")
+        phrases = daemon_loop_mod._extract_topic_phrases("the is a an of in to for with on")
         # All stop words — should produce no phrases
         assert phrases == []
 
     def test_extract_topic_phrases_handles_empty_input(self) -> None:
         """_extract_topic_phrases should handle empty and whitespace input."""
-        assert main_mod._extract_topic_phrases("") == []
-        assert main_mod._extract_topic_phrases("   ") == []
+        assert daemon_loop_mod._extract_topic_phrases("") == []
+        assert daemon_loop_mod._extract_topic_phrases("   ") == []
 
     def test_single_word_mission_topics_are_skipped(
         self, tmp_path: Path
@@ -1348,7 +1348,7 @@ class TestImprovedTopicDiscovery:
             {"mission_id": "m-1", "topic": "Python", "status": "completed"},
             {"mission_id": "m-2", "topic": "AI", "status": "done"},
         ]):
-            topics = main_mod._discover_harvest_topics(tmp_path)
+            topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         # Single-word topics should be skipped
         for t in topics:
@@ -1364,5 +1364,5 @@ class TestImprovedTopicDiscovery:
         db_path.write_bytes(b"not a real sqlite database")
 
         # Should NOT raise
-        topics = main_mod._discover_harvest_topics(tmp_path)
+        topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert isinstance(topics, list)

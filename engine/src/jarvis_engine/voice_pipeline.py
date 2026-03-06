@@ -41,7 +41,7 @@ PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
 
 
-def _shorten_urls_for_speech(text: str) -> str:
+def shorten_urls_for_speech(text: str) -> str:
     """Replace raw URLs with short, speakable references for TTS."""
 
     def _replacement(match: re.Match[str]) -> str:
@@ -57,7 +57,7 @@ def _shorten_urls_for_speech(text: str) -> str:
     return URL_RE.sub(_replacement, text)
 
 
-def _escape_response(msg: str) -> str:
+def escape_response(msg: str) -> str:
     """Escape backslashes and newlines so response= stays on one stdout line.
 
     The mobile API parser splits on newlines — multi-line LLM answers would
@@ -112,7 +112,7 @@ def _load_conversation_history() -> None:
         logger.debug("Could not load conversation history: %s", exc)
 
 
-def _save_conversation_history() -> None:
+def save_conversation_history() -> None:
     """Persist current conversation history to disk (atomic write).
 
     The entire temp-write + replace is performed while holding the lock
@@ -139,7 +139,7 @@ def _add_to_history(role: str, content: str) -> None:
         # Keep only the last N user/assistant pairs
         while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
             _conversation_history.pop(0)
-    _save_conversation_history()
+    save_conversation_history()
 
 
 def _get_history_messages() -> list[dict[str, str]]:
@@ -463,7 +463,7 @@ def _build_system_parts(
     """Assemble the system prompt parts for an LLM conversation.
 
     Called from both ``_web_augmented_llm_conversation`` and
-    ``_cmd_voice_run_impl`` to avoid duplicate prompt construction.
+    ``cmd_voice_run_impl`` to avoid duplicate prompt construction.
     """
     from jarvis_engine.persona import get_persona_prompt
     persona = load_persona_config(repo_root())
@@ -806,7 +806,7 @@ def _web_augmented_llm_conversation(
                 fallback_lines = _web_result.get("summary_lines", []) if isinstance(_web_result, dict) else []
                 if isinstance(fallback_lines, list) and fallback_lines:
                     fallback_text = "Based on live web results: " + " ".join(str(x) for x in fallback_lines[:3])
-                    print(f"response={_escape_response(fallback_text)}")
+                    print(f"response={escape_response(fallback_text)}")
                     print("model=web-research-fallback")
                     print("provider=web")
                     print("web_search_used=true")
@@ -816,7 +816,7 @@ def _web_augmented_llm_conversation(
             return 1
         elif _response:
             _add_to_history("assistant", _response)
-            print(f"response={_escape_response(_response)}")
+            print(f"response={escape_response(_response)}")
             print(f"model={result.model}")
             print(f"provider={result.provider}")
             _mark_routed_model(result.model, result.provider)
@@ -844,7 +844,7 @@ def _web_augmented_llm_conversation(
 # Main voice-run implementation
 # ---------------------------------------------------------------------------
 
-def _cmd_voice_run_impl(
+def cmd_voice_run_impl(
     text: str,
     execute: bool,
     approve_privileged: bool,
@@ -885,7 +885,7 @@ def _cmd_voice_run_impl(
         """
         nonlocal _last_response
         _last_response = msg
-        print(f"response={_escape_response(msg)}")
+        print(f"response={escape_response(msg)}")
 
     phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
 

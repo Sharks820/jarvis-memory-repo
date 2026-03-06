@@ -108,17 +108,8 @@ from jarvis_engine._bus import get_bus as _get_bus  # noqa: E402
 # ---------------------------------------------------------------------------
 # Auto-ingest: delegated to jarvis_engine.auto_ingest (public module)
 # ---------------------------------------------------------------------------
-# Keep thin private wrappers so existing call sites in this file continue to
-# work without modification.
 from jarvis_engine.auto_ingest import (  # noqa: E402
     auto_ingest_memory as _auto_ingest_memory,
-    auto_ingest_memory_sync as _auto_ingest_memory_sync,
-    sanitize_memory_content as _sanitize_memory_content,
-    VALID_SOURCES as _VALID_SOURCES,
-    VALID_KINDS as _VALID_KINDS,
-    _auto_ingest_dedupe_path,  # re-exported for backward compat (tests)
-    _load_auto_ingest_hashes,  # re-exported for backward compat (tests)
-    _store_auto_ingest_hashes,  # re-exported for backward compat (tests)
 )
 
 # ---------------------------------------------------------------------------
@@ -132,53 +123,13 @@ from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILE
 from jarvis_engine._shared import set_process_title as _set_process_title  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Re-exports from extracted modules (backward compat for tests/handlers)
+# Imports from extracted modules (only symbols used by cmd_* in this file)
 # ---------------------------------------------------------------------------
-from jarvis_engine._bus import (  # noqa: E402, F401
-    _cached_bus,
-    _cached_bus_root,
+from jarvis_engine.voice_pipeline import (  # noqa: E402
+    escape_response,
+    shorten_urls_for_speech,
 )
-from jarvis_engine.voice_pipeline import (  # noqa: E402, F401
-    _CONVERSATION_MAX_CHARS_PER_MESSAGE,
-    _CONVERSATION_MAX_TURNS,
-    _MAX_TOKENS_BY_ROUTE,
-    _add_to_history,
-    _build_smart_context,
-    _cmd_voice_run_impl,
-    _conversation_continuity_instruction,
-    _conversation_history,
-    _conversation_history_loaded,
-    _conversation_history_lock,
-    _current_datetime_prompt_line,
-    _escape_response,
-    _extract_first_phone_number,
-    _extract_first_url,
-    _extract_weather_location,
-    _extract_web_query,
-    _get_history_messages,
-    _is_read_only_voice_request,
-    _last_routed_model,
-    _mark_routed_model,
-    _save_conversation_history,
-    _shorten_urls_for_speech,
-)
-from jarvis_engine.daemon_loop import (  # noqa: E402, F401
-    DEFAULT_GAMING_PROCESSES,
-    _cmd_daemon_run_impl,
-    _daemon_kg_prev_metrics,
-    _detect_active_game_process,
-    _discover_harvest_topics,
-    _extract_topic_phrases,
-    _gaming_mode_state_path,
-    _gaming_processes_path,
-    _get_daemon_bus,
-    _get_recently_harvested_topics,
-    _load_gaming_processes,
-    _read_gaming_mode_state,
-    _run_next_pending_mission,
-    _windows_idle_seconds,
-    _write_gaming_mode_state,
-)
+from jarvis_engine.daemon_loop import gaming_processes_path  # noqa: E402
 
 
 def cmd_gaming_mode(enable: bool | None, reason: str, auto_detect: str) -> int:
@@ -195,7 +146,7 @@ def cmd_gaming_mode(enable: bool | None, reason: str, auto_detect: str) -> int:
     if state.get("reason", ""):
         print(f"reason={state.get('reason', '')}")
     print("effect=daemon_autopilot_paused_when_enabled")
-    print(f"process_config={_gaming_processes_path()}")
+    print(f"process_config={gaming_processes_path()}")
     return 0
 
 
@@ -391,7 +342,7 @@ def cmd_growth_audit(history_path: Path, run_index: int) -> int:
         print(f"prompt_sha256={audit_result.get('prompt_sha256', '')}")
         print(f"response_sha256={audit_result.get('response_sha256', '')}")
         print(f"response_source={audit_result.get('response_source', '')}")
-        print(f"response={_escape_response(audit_result.get('response', ''))}")
+        print(f"response={escape_response(audit_result.get('response', ''))}")
     return 0
 
 
@@ -957,7 +908,7 @@ def cmd_consolidate(branch: str, max_groups: int, dry_run: bool) -> int:
         print(f"consolidation_errors={len(result.errors)}")
         for e in result.errors:
             print(f"  {e}")
-    print(f"response={_escape_response(result.message)}")
+    print(f"response={escape_response(result.message)}")
     return 0 if not result.errors else 2
 
 
@@ -1217,10 +1168,10 @@ def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_inges
             if snippet:
                 summary_parts.append(f"{snippet} ({domain})" if domain else snippet)
     if summary_parts:
-        print("response=" + _escape_response("Here's what I found: " + " | ".join(summary_parts)))
+        print("response=" + escape_response("Here's what I found: " + " | ".join(summary_parts)))
     else:
         _query = report.get("query", "")
-        print("response=" + _escape_response(f"I searched the web for '{_query}' but couldn't find clear results."))
+        print("response=" + escape_response(f"I searched the web for '{_query}' but couldn't find clear results."))
 
     if result.auto_ingest_record_id:
         print(f"auto_ingest_record_id={result.auto_ingest_record_id}")
@@ -1482,7 +1433,7 @@ def cmd_voice_say(
     output_wav: str = "",
     rate: int = -1,
 ) -> int:
-    speakable_text = _shorten_urls_for_speech(text)
+    speakable_text = shorten_urls_for_speech(text)
     result = _get_bus().dispatch(VoiceSayCommand(
         text=speakable_text, profile=profile, voice_pattern=voice_pattern,
         output_wav=output_wav, rate=rate,

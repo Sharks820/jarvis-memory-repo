@@ -137,7 +137,7 @@ class WebResearchHandler:
         auto_id = ""
         summary_lines = report.get("summary_lines", [])
         findings = report.get("findings", [])
-        if cmd.auto_ingest and isinstance(summary_lines, list) and summary_lines:
+        if cmd.auto_ingest and summary_lines:
             try:
                 from jarvis_engine.auto_ingest import auto_ingest_memory
 
@@ -148,12 +148,10 @@ class WebResearchHandler:
                         lines.append(f"- {value}")
                 if lines:
                     top_domains = []
-                    if isinstance(findings, list):
-                        for row in findings[:4]:
-                            if isinstance(row, dict):
-                                domain = str(row.get("domain", "")).strip()
-                                if domain:
-                                    top_domains.append(domain)
+                    for row in findings[:4]:
+                        domain = str(row.get("domain", "")).strip()
+                        if domain:
+                            top_domains.append(domain)
                     domain_text = ", ".join(dict.fromkeys(top_domains))
                     auto_id = auto_ingest_memory(
                         source="task_outcome",

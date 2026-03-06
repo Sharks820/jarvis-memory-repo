@@ -257,12 +257,10 @@ class MissionRunHandler:
 
         ingested_ids: list[str] = []
         verified = report.get("verified_findings", [])
-        if cmd.auto_ingest and isinstance(verified, list) and verified:
+        if cmd.auto_ingest and verified:
             pipeline = self._get_ingest_pipeline()
             # Ingest each finding individually for better KG fact extraction
             for finding in verified[:20]:
-                if not isinstance(finding, dict):
-                    continue
                 statement = str(finding.get("statement", "")).strip()
                 domains = ",".join(str(x) for x in finding.get("source_domains", []))
                 if not statement:

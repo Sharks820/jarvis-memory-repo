@@ -142,9 +142,9 @@ class VoiceRunHandler:
         # identical behaviour.  The cmd_voice_run function will internally
         # call other cmd_* functions which may themselves dispatch through
         # the bus -- that is fine because the bus is module-level singleton.
-        from jarvis_engine import main as _main_mod
+        from jarvis_engine import voice_pipeline as _voice_pipeline_mod
 
-        rc = _main_mod._cmd_voice_run_impl(
+        rc = _voice_pipeline_mod.cmd_voice_run_impl(
             text=cmd.text,
             execute=cmd.execute,
             approve_privileged=cmd.approve_privileged,

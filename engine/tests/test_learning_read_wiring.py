@@ -26,7 +26,7 @@ class TestPreferenceInjection:
         return bus
 
     def test_returns_four_elements(self):
-        from jarvis_engine.main import _build_smart_context
+        from jarvis_engine.voice_pipeline import _build_smart_context
 
         pref = MagicMock()
         pref.get_preferences.return_value = {
@@ -43,7 +43,7 @@ class TestPreferenceInjection:
         assert "lists" in preference_lines[0]
 
     def test_no_tracker_returns_empty_prefs(self):
-        from jarvis_engine.main import _build_smart_context
+        from jarvis_engine.voice_pipeline import _build_smart_context
 
         bus = self._make_bus()
         result = _build_smart_context(bus, "test")
@@ -51,7 +51,7 @@ class TestPreferenceInjection:
         assert result[3] == []
 
     def test_tracker_error_graceful(self):
-        from jarvis_engine.main import _build_smart_context
+        from jarvis_engine.voice_pipeline import _build_smart_context
 
         pref = MagicMock()
         pref.get_preferences.side_effect = RuntimeError("db error")
@@ -61,7 +61,7 @@ class TestPreferenceInjection:
         assert result[3] == []
 
     def test_empty_preferences_returns_empty_list(self):
-        from jarvis_engine.main import _build_smart_context
+        from jarvis_engine.voice_pipeline import _build_smart_context
 
         pref = MagicMock()
         pref.get_preferences.return_value = {}

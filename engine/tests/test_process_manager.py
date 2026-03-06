@@ -262,7 +262,7 @@ class TestDuplicatePrevention:
     def test_daemon_returns_error_4_when_already_running(
         self, tmp_root: Path
     ) -> None:
-        """Simulate the duplicate check in _cmd_daemon_run_impl."""
+        """Simulate the duplicate check in cmd_daemon_run_impl."""
         write_pid_file("daemon", tmp_root)
         # The actual code checks is_service_running and returns 4
         assert is_service_running("daemon", tmp_root) is True

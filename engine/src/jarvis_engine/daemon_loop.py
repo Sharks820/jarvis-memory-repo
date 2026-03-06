@@ -372,11 +372,11 @@ def _windows_idle_seconds() -> float | None:
         return None
 
 
-def _gaming_mode_state_path() -> Path:
+def gaming_mode_state_path() -> Path:
     return _runtime_dir(repo_root()) / "gaming_mode.json"
 
 
-def _gaming_processes_path() -> Path:
+def gaming_processes_path() -> Path:
     return repo_root() / ".planning" / "gaming_processes.json"
 
 
@@ -392,8 +392,8 @@ DEFAULT_GAMING_PROCESSES = (
 )
 
 
-def _read_gaming_mode_state() -> dict[str, object]:
-    path = _gaming_mode_state_path()
+def read_gaming_mode_state() -> dict[str, object]:
+    path = gaming_mode_state_path()
     default: dict[str, object] = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
     if not path.exists():
         return default
@@ -411,10 +411,10 @@ def _read_gaming_mode_state() -> dict[str, object]:
     }
 
 
-def _write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
+def write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
     from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
-    path = _gaming_mode_state_path()
+    path = gaming_mode_state_path()
     payload = {
         "enabled": bool(state.get("enabled", False)),
         "auto_detect": bool(state.get("auto_detect", False)),
@@ -425,12 +425,12 @@ def _write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
     return payload
 
 
-def _load_gaming_processes() -> list[str]:
+def load_gaming_processes() -> list[str]:
     env_override = os.getenv("JARVIS_GAMING_PROCESSES", "").strip()
     if env_override:
         return [item.strip() for item in env_override.split(",") if item.strip()]
 
-    path = _gaming_processes_path()
+    path = gaming_processes_path()
     if not path.exists():
         return list(DEFAULT_GAMING_PROCESSES)
     try:
@@ -451,10 +451,10 @@ def _load_gaming_processes() -> list[str]:
     return processes or list(DEFAULT_GAMING_PROCESSES)
 
 
-def _detect_active_game_process() -> tuple[bool, str]:
+def detect_active_game_process() -> tuple[bool, str]:
     if os.name != "nt":
         return False, ""
-    patterns = [name.lower() for name in _load_gaming_processes()]
+    patterns = [name.lower() for name in load_gaming_processes()]
     if not patterns:
         return False, ""
     try:
@@ -604,7 +604,7 @@ def _restart_mobile_api(service_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _cmd_daemon_run_impl(
+def cmd_daemon_run_impl(
     interval_s: int,
     snapshot_path: Path,
     actions_path: Path,
@@ -662,13 +662,13 @@ def _cmd_daemon_run_impl(
             sleep_seconds = int(throttle.get("sleep_s", sleep_seconds))
             pressure_level = str(throttle.get("pressure_level", "none"))
             skip_heavy_tasks = bool(throttle.get("skip_heavy_tasks", False))
-            gaming_state = _read_gaming_mode_state()
+            gaming_state = read_gaming_mode_state()
             control_state = read_control_state(repo_root())
             auto_detect = bool(gaming_state.get("auto_detect", False))
             auto_detect_hit = False
             detected_process = ""
             if auto_detect:
-                auto_detect_hit, detected_process = _detect_active_game_process()
+                auto_detect_hit, detected_process = detect_active_game_process()
             gaming_mode_enabled = bool(gaming_state.get("enabled", False)) or auto_detect_hit
             daemon_paused = bool(control_state.get("daemon_paused", False))
             safe_mode = bool(control_state.get("safe_mode", False))

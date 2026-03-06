@@ -3510,9 +3510,9 @@ def test_caller_proactive_handler_integration():
          patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time:
         mock_time.sleep = MagicMock()
         mock_time.time.return_value = 0.0
-        # The callback will try to dispatch via _cmd_voice_run_impl
-        with patch("jarvis_engine.main._cmd_voice_run_impl"):
-            with patch("jarvis_engine.main.repo_root", return_value=Path(".")):
+        # The callback will try to dispatch via cmd_voice_run_impl
+        with patch("jarvis_engine.voice_pipeline.cmd_voice_run_impl"):
+            with patch("jarvis_engine.config.repo_root", return_value=Path(".")):
                 captured_callback["fn"]()
 
     # If we got here without error, the callback worked with the new pipeline

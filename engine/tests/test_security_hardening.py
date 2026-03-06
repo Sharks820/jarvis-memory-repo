@@ -9,6 +9,7 @@ import pytest
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
+from jarvis_engine import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
 
 
@@ -28,7 +29,7 @@ class TestPathTraversalProtection:
         
         # Try to create a file outside the repo (simulated)
         # The function should resolve and validate the path
-        path = main_mod._gaming_mode_state_path()
+        path = daemon_loop_mod.gaming_mode_state_path()
         
         # Path should be within repo_root
         assert path.resolve().is_relative_to(tmp_path.resolve())
@@ -56,7 +57,7 @@ class TestPathTraversalProtection:
         gaming_file.symlink_to(outside_target)
         
         # Should detect the traversal
-        path = main_mod._gaming_mode_state_path()
+        path = daemon_loop_mod.gaming_mode_state_path()
         resolved = path.resolve()
 
         # Verify resolved path is still within bounds
@@ -100,7 +101,7 @@ class TestGamingModeSecurity:
         monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: SuspiciousTasklist())
         
         # Should not crash on suspicious process names
-        detected, process = main_mod._detect_active_game_process()
+        detected, process = daemon_loop_mod.detect_active_game_process()
         
         # Should handle gracefully (either detect or not, but not crash)
         assert isinstance(detected, bool)
@@ -120,7 +121,7 @@ class TestAutoIngestSecurity:
         # Content with password
         content_with_password = "User set master password: secret123 and token: abcdef"
         
-        sanitized = main_mod._sanitize_memory_content(content_with_password)
+        sanitized = auto_ingest_mod.sanitize_memory_content(content_with_password)
         
         # Password should be redacted
         assert "secret123" not in sanitized
@@ -135,14 +136,14 @@ class TestAutoIngestSecurity:
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
         # Create many entries
-        dedupe_path = main_mod._auto_ingest_dedupe_path()
+        dedupe_path = auto_ingest_mod._auto_ingest_dedupe_path()
         
         # Add more than the limit (400)
         hashes = [f"hash_{i:04d}" for i in range(500)]
-        main_mod._store_auto_ingest_hashes(dedupe_path, hashes)
+        auto_ingest_mod._store_auto_ingest_hashes(dedupe_path, hashes)
         
         # Load and verify limit
-        loaded = main_mod._load_auto_ingest_hashes(dedupe_path)
+        loaded = auto_ingest_mod._load_auto_ingest_hashes(dedupe_path)
         assert len(loaded) <= 400, f"Expected max 400 hashes, got {len(loaded)}"
         
         # Should keep most recent
@@ -156,7 +157,7 @@ class TestAutoIngestSecurity:
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setenv("JARVIS_AUTO_INGEST_DISABLE", "true")
         
-        result = main_mod._auto_ingest_memory(
+        result = auto_ingest_mod.auto_ingest_memory(
             source="user",
             kind="episodic",
             task_id="test",
@@ -268,8 +269,8 @@ class TestDaemonSecurity:
             reason="test",
         )
         
-        monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
         
         observed_execute = True
         observed_approve = True
@@ -281,7 +282,7 @@ class TestDaemonSecurity:
             return 0
         
         monkeypatch.setattr(main_mod, "cmd_ops_autopilot", capturing_autopilot)
-        monkeypatch.setattr(main_mod.time, "sleep", lambda s: None)
+        monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         
         main_mod.cmd_daemon_run(
             interval_s=120,
@@ -306,8 +307,8 @@ class TestDaemonSecurity:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(main_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(main_mod, "_detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
         
         cycle_count = 0
         
@@ -317,7 +318,7 @@ class TestDaemonSecurity:
             return 0
         
         monkeypatch.setattr(main_mod, "cmd_ops_autopilot", counting_autopilot)
-        monkeypatch.setattr(main_mod.time, "sleep", lambda s: None)
+        monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         
         main_mod.cmd_daemon_run(
             interval_s=120,
