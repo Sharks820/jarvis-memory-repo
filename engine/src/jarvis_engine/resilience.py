@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import re
 import secrets
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +14,7 @@ from jarvis_engine.runtime_control import read_control_state
 
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import safe_int as _safe_int
 
@@ -60,7 +59,7 @@ def _ensure_mobile_security_config(root: Path) -> dict[str, Any]:
             {
                 "token": token,
                 "signing_key": signing_key,
-                "updated_utc": datetime.now(UTC).isoformat(),
+                "updated_utc": _now_iso(),
                 "source": "resilience_repair",
             },
         )
@@ -92,7 +91,7 @@ def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
     sync_ok = all(bool(item.get("ok", False)) for item in checks)
     report = {
         "sync_ok": sync_ok,
-        "generated_utc": datetime.now(UTC).isoformat(),
+        "generated_utc": _now_iso(),
         "security": security,
         "owner_guard": {
             "enabled": bool(owner_guard.get("enabled", False)),
@@ -156,7 +155,7 @@ def run_self_heal(
     snapshot_note: str = "self-heal",
     force_maintenance: bool = False,
 ) -> dict[str, Any]:
-    now = datetime.now(UTC).isoformat()
+    now = _now_iso()
     actions: list[str] = []
     security = _ensure_mobile_security_config(root)
     if bool(security.get("repaired", False)):

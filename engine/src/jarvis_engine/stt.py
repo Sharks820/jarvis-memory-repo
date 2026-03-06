@@ -21,12 +21,11 @@ import struct
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +94,7 @@ def _log_stt_metric(
     from jarvis_engine._constants import runtime_dir
     metrics_path = runtime_dir(root_dir) / "stt_metrics.jsonl"
     record = {
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": _now_iso(),
         "backend": backend,
         "confidence": round(confidence, 3),
         "latency_ms": round(latency_ms, 1),

@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
 
@@ -75,7 +74,7 @@ class PreferenceTracker(LearningTrackerBase):
         return detected
 
     def _update_preference(self, category: str, preference: str) -> None:
-        now = datetime.now(UTC).isoformat()
+        now = _now_iso()
         with self._write_lock:
             self._db.execute("""
                 INSERT INTO user_preferences (category, preference, score, evidence_count, last_observed)

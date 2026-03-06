@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class IntelligenceRoutesMixin:
     """Endpoint handlers for intelligence growth, learning, and knowledge export."""
 
-    def _gather_intelligence_growth(self) -> dict[str, Any]:
+    def _gather_intelligence_growth(self, *, reliability_cache: dict[str, Any] | None = None) -> dict[str, Any]:
         """Collect real intelligence growth metrics from all subsystems."""
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
 
@@ -102,7 +102,7 @@ class IntelligenceRoutesMixin:
             logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
 
         # --- Command reliability and pressure ---
-        reliability = _compute_command_reliability()
+        reliability = reliability_cache if reliability_cache is not None else _compute_command_reliability()
         metrics["command_success_rate_pct"] = reliability["command_success_rate_pct"]
         metrics["timeout_count"] = reliability["timeout_count"]
         metrics["memory_pressure_incidents"] = reliability["memory_pressure_incidents"]
@@ -117,14 +117,15 @@ class IntelligenceRoutesMixin:
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
         # --- Self-test score ---
-        self_test_path = _runtime_dir(root) / _SELF_TEST_HISTORY
         try:
-            if self_test_path.exists():
-                lines = self_test_path.read_text(encoding="utf-8").strip().split("\n")
-                if lines and lines[-1].strip():
-                    latest_test = json.loads(lines[-1])
-                    score = latest_test.get("average_score", 0.0)
-                    metrics["last_self_test_score"] = round(float(score), 3)
+            from jarvis_engine._shared import load_jsonl_tail
+
+            self_test_path = _runtime_dir(root) / _SELF_TEST_HISTORY
+            tail = load_jsonl_tail(self_test_path, limit=1)
+            if tail:
+                latest_test = tail[-1]
+                score = latest_test.get("average_score", 0.0)
+                metrics["last_self_test_score"] = round(float(score), 3)
         except Exception as exc:
             logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
 
@@ -291,15 +292,16 @@ class IntelligenceRoutesMixin:
             limit = min(int(payload.get("limit", 200)), 500)
             items = []
 
-            # Export from knowledge graph
-            try:
-                db_path = _memory_db_path(self._root)
+            # Export from knowledge graph and user preferences
+            db_path = _memory_db_path(self._root)
+            if db_path.exists():
+                import sqlite3
 
-                if db_path.exists():
-                    import sqlite3
-
-                    db = sqlite3.connect(str(db_path))
+                db = sqlite3.connect(str(db_path))
+                try:
                     _configure_db(db)
+
+                    # KG nodes
                     try:
                         rows = db.execute(
                             "SELECT label, node_type, confidence FROM kg_nodes "
@@ -312,7 +314,11 @@ class IntelligenceRoutesMixin:
                                 "category": "knowledge",
                                 "confidence": row["confidence"],
                             })
+                    except Exception as exc:
+                        logger.warning("KG nodes export failure: %s", exc)
 
+                    # Memory records
+                    try:
                         rows = db.execute(
                             "SELECT summary, kind, tags, confidence FROM records "
                             "WHERE confidence >= 0.5 AND summary != '' "
@@ -325,19 +331,10 @@ class IntelligenceRoutesMixin:
                                 "category": row["kind"] or "memory",
                                 "confidence": row["confidence"],
                             })
-                    finally:
-                        db.close()
-            except Exception as exc:
-                logger.warning("KG export partial failure: %s", exc)
+                    except Exception as exc:
+                        logger.warning("Memory records export failure: %s", exc)
 
-            # Export user preferences
-            try:
-                db_path = _memory_db_path(self._root)
-                if db_path.exists():
-                    import sqlite3
-
-                    db = sqlite3.connect(str(db_path))
-                    _configure_db(db)
+                    # User preferences
                     try:
                         rows = db.execute(
                             "SELECT category, preference, score FROM user_preferences "
@@ -350,10 +347,10 @@ class IntelligenceRoutesMixin:
                                 "category": "preference",
                                 "confidence": min(row["score"] / 10.0, 1.0),
                             })
-                    finally:
-                        db.close()
-            except Exception as exc:
-                logger.warning("Preferences export failure: %s", exc)
+                    except Exception as exc:
+                        logger.warning("Preferences export failure: %s", exc)
+                finally:
+                    db.close()
 
             self._write_json(HTTPStatus.OK, {
                 "ok": True,

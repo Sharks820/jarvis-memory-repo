@@ -22,7 +22,7 @@ import struct
 import threading
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import sanitize_fts_query
+from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -735,9 +735,7 @@ class KnowledgeGraph:
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("label LIKE ? ESCAPE '\\'")
             like_params.append(f"%{sanitized}%")
-        from datetime import datetime
-        from jarvis_engine._compat import UTC
-        now = datetime.now(UTC).isoformat()
+        now = _now_iso()
 
         where_clause = " OR ".join(clauses)
 

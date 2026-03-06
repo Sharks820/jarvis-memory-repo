@@ -11,6 +11,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any
 
@@ -150,7 +151,7 @@ def _load_index(root: Path) -> dict[str, Any]:
 
 
 def _save_index(root: Path, payload: dict[str, Any]) -> None:
-    payload["updated_utc"] = datetime.now(UTC).isoformat()
+    payload["updated_utc"] = _now_iso()
     _atomic_write_json(_index_path(root), payload)
 
 
@@ -171,7 +172,7 @@ def _load_facts(root: Path) -> dict[str, Any]:
 
 
 def _save_facts(root: Path, payload: dict[str, Any]) -> None:
-    payload["updated_utc"] = datetime.now(UTC).isoformat()
+    payload["updated_utc"] = _now_iso()
     _atomic_write_json(_facts_path(root), payload)
 
 
@@ -328,7 +329,7 @@ def ingest_brain_record(
             existing_id = str(known[content_hash])
             return BrainRecord(
                 record_id=existing_id,
-                ts=datetime.now(UTC).isoformat(),
+                ts=_now_iso(),
                 source=source,
                 kind=kind,
                 task_id=task_id,
@@ -343,7 +344,7 @@ def ingest_brain_record(
         branch = _pick_branch(tokens)
         summary = _summarize(cleaned)
         unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
-        ts = datetime.now(UTC).isoformat()
+        ts = _now_iso()
         material = f"{source}|{kind}|{task_id}|{content_hash}|{ts}".encode("utf-8")
         record_id = hashlib.sha256(material).hexdigest()[:32]
 
@@ -537,7 +538,7 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, A
         for (branch, month), summaries in grouped.items():
             sample = [s for s in summaries if s][:3]
             payload = {
-                "ts": datetime.now(UTC).isoformat(),
+                "ts": _now_iso(),
                 "branch": branch,
                 "month": month,
                 "count": len(summaries),
@@ -639,7 +640,7 @@ def brain_regression_report(root: Path) -> dict[str, Any]:
         "branch_count": len(counts),
         "unresolved_conflicts": unresolved,
         "conflict_total": len(conflicts),
-        "generated_utc": datetime.now(UTC).isoformat(),
+        "generated_utc": _now_iso(),
     }
 
 

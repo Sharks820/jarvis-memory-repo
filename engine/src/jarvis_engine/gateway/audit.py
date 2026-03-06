@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class GatewayAudit:
     ) -> None:
         """Append a routing decision record to the JSONL audit log."""
         record = {
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": _now_iso(),
             "provider": provider,
             "model": model,
             "reason": reason,

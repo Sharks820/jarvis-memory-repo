@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +131,7 @@ def create_signed_snapshot(
 
     metadata: dict[str, Any] = {
         "snapshot_file": snapshot_path.name,
-        "created_utc": datetime.now(UTC).isoformat(),
+        "created_utc": _now_iso(),
         "sha256": digest,
         "hmac_alg": "sha256",
         "signature_file": signature_path.name,
@@ -297,7 +298,7 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
         logger.warning("KG regression comparison failed: %s", exc)
 
     report = {
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": _now_iso(),
         "keep_recent": keep_recent,
         "compact": compact_result,
         "regression": regression,

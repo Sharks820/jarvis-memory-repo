@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine.phone_guard import _area_key, _normalize_number, _parse_ts
 
@@ -495,7 +496,7 @@ def create_call_intel_report(
         number=number,
         normalized=normalized,
         prefix=prefix,
-        timestamp_utc=datetime.now(UTC).isoformat(),
+        timestamp_utc=_now_iso(),
         stir_status=stir_status,
         presentation=presentation,
         duration_sec=duration_sec,
@@ -516,7 +517,7 @@ def save_campaigns(path: Path, campaigns: list[ScamCampaign]) -> None:
     with _CAMPAIGNS_LOCK:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "updated_utc": datetime.now(UTC).isoformat(),
+            "updated_utc": _now_iso(),
             "campaigns": [asdict(c) for c in campaigns],
         }
         _atomic_write_json(path, payload)
@@ -633,7 +634,7 @@ def build_prefix_block_actions(
                 "campaign_id": campaign.campaign_id,
                 "prefix": campaign.prefix,
                 "confidence": campaign.confidence,
-                "created_utc": datetime.now(UTC).isoformat(),
+                "created_utc": _now_iso(),
             })
         # If high confidence, recommend prefix-level silencing
         if campaign.confidence >= 0.75 and len(campaign.numbers) >= 3:
@@ -643,7 +644,7 @@ def build_prefix_block_actions(
                 "reason": f"high_confidence_scam_campaign_{campaign.campaign_id}",
                 "campaign_id": campaign.campaign_id,
                 "confidence": campaign.confidence,
-                "created_utc": datetime.now(UTC).isoformat(),
+                "created_utc": _now_iso(),
             })
     return actions
 

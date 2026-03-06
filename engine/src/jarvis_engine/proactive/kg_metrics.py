@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ def collect_kg_metrics(kg) -> dict:
         - temporal_breakdown: {permanent: N, time_sensitive: N, expired: N, unknown: N}
     """
     metrics: dict = {
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": _now_iso(),
         "node_count": 0,
         "edge_count": 0,
         "branch_counts": {},

@@ -10,6 +10,7 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import safe_float as _safe_float
 
 _ACTIONS_LOCK = threading.Lock()
@@ -182,7 +183,7 @@ def build_spam_block_actions(
                 action="block_number",
                 number=candidate.number,
                 message="",
-                created_utc=datetime.now(UTC).isoformat(),
+                created_utc=_now_iso(),
                 reason="spam_guard",
             )
         )
@@ -192,7 +193,7 @@ def build_spam_block_actions(
                 action="silence_unknown_callers",
                 number="",
                 message="duration=24h",
-                created_utc=datetime.now(UTC).isoformat(),
+                created_utc=_now_iso(),
                 reason="high_spam_volume_detected",
             )
         )
@@ -213,7 +214,7 @@ def build_phone_action(action: str, number: str, message: str = "", reason: str 
         action=action,
         number=normalized,
         message=message.strip(),
-        created_utc=datetime.now(UTC).isoformat(),
+        created_utc=_now_iso(),
         reason=reason,
     )
 
@@ -228,7 +229,7 @@ def append_phone_actions(path: Path, actions: list[PhoneAction]) -> None:
 
 def write_spam_report(path: Path, candidates: list[SpamCandidate], actions: list[PhoneAction], threshold: float) -> None:
     payload = {
-        "generated_utc": datetime.now(UTC).isoformat(),
+        "generated_utc": _now_iso(),
         "threshold": threshold,
         "candidates": [asdict(c) for c in candidates],
         "actions": [asdict(a) for a in actions],

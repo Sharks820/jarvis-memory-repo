@@ -10,11 +10,9 @@ import collections
 import json
 import logging
 import threading
-from datetime import datetime
 from pathlib import Path
 
-from jarvis_engine._compat import UTC
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +68,7 @@ class ActionAuditor:
         input_hash = sha256_hex(detail)[:16]
 
         entry: dict = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
             "action_type": action_type,
             "detail": truncated_detail,
             "trigger": trigger,
@@ -117,7 +115,7 @@ class ActionAuditor:
         with self._lock:
             entries = list(self._recent)
 
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        today = _now_iso()[:10]
         by_type: dict[str, int] = {}
         by_trigger: dict[str, int] = {}
         total = 0

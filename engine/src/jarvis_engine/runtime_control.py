@@ -34,6 +34,7 @@ _DEFAULT_THROTTLE = {"mild_scale": 1.35, "severe_scale": 2.0, "max_sleep_s": 180
 
 from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
 
 
 def control_state_path(root: Path) -> Path:
@@ -214,7 +215,7 @@ def capture_runtime_resource_snapshot(root: Path) -> dict[str, Any]:
         pressure_level = "none"
 
     return {
-        "captured_utc": datetime.now(UTC).isoformat(),
+        "captured_utc": _now_iso(),
         "pressure_level": pressure_level,
         "over_budget_count": over_budget_count,
         "should_throttle": pressure_level in {"mild", "severe"},
@@ -272,7 +273,7 @@ def write_control_state(
         state["mute_until_utc"] = mute_until_utc.strip()
     if reason.strip():
         state["reason"] = reason.strip()[:200]
-    state["updated_utc"] = datetime.now(UTC).isoformat()
+    state["updated_utc"] = _now_iso()
 
     path = control_state_path(root)
     _atomic_write_json(path, state)
@@ -281,7 +282,7 @@ def write_control_state(
 
 def reset_control_state(root: Path) -> dict[str, Any]:
     state = dict(DEFAULT_CONTROL_STATE)
-    state["updated_utc"] = datetime.now(UTC).isoformat()
+    state["updated_utc"] = _now_iso()
     path = control_state_path(root)
     _atomic_write_json(path, state)
     return state

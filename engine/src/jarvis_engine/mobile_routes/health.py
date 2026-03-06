@@ -24,11 +24,11 @@ class HealthRoutesMixin:
         except OSError:
             return "<h1>Jarvis Quick Panel unavailable.</h1>"
 
-    def _build_reliability_panel(self, root: Path) -> dict[str, Any]:
+    def _build_reliability_panel(self, root: Path, *, reliability_cache: dict[str, Any] | None = None) -> dict[str, Any]:
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
         from jarvis_engine.runtime_control import read_resource_pressure_state
 
-        panel = _compute_command_reliability()
+        panel = reliability_cache if reliability_cache is not None else _compute_command_reliability()
         panel.setdefault("resource_snapshot", {})
 
         try:
@@ -50,12 +50,14 @@ class HealthRoutesMixin:
         from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
         from jarvis_engine._constants import runtime_dir as _runtime_dir
 
+        from jarvis_engine._shared import load_jsonl_tail
+
         self_test_history_path = _runtime_dir(self._root) / _SELF_TEST_HISTORY
         intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
         try:
-            lines = self_test_history_path.read_text(encoding="utf-8").strip().split("\n")
-            if lines and lines[-1].strip():
-                latest = json.loads(lines[-1])
+            tail = load_jsonl_tail(self_test_history_path, limit=1)
+            if tail:
+                latest = tail[0]
                 intelligence_status["score"] = latest.get("average_score", 0.0)
                 intelligence_status["last_test"] = latest.get("timestamp", "")
                 intelligence_status["regression"] = latest.get("below_threshold", False)
@@ -138,10 +140,12 @@ class HealthRoutesMixin:
         if not self._validate_auth(b""):
             return
         from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
+        from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
 
+        _reliability = _compute_command_reliability()
         combined: dict[str, Any] = {"ok": True}
         try:
-            combined["growth"] = self._gather_intelligence_growth()
+            combined["growth"] = self._gather_intelligence_growth(reliability_cache=_reliability)
         except Exception as exc:
             logger.debug("Intelligence growth gather failed: %s", exc)
             combined["growth"] = {}
@@ -152,17 +156,18 @@ class HealthRoutesMixin:
             logger.debug("Proactive alerts gather failed: %s", exc)
             combined["alerts"] = []
         try:
-            combined["reliability"] = self._build_reliability_panel(self._root)
+            combined["reliability"] = self._build_reliability_panel(self._root, reliability_cache=_reliability)
         except Exception as exc:
             logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}
         try:
             from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+            from jarvis_engine.mobile_routes._helpers import _serialize_activity_event
 
             feed = get_activity_feed()
             events = feed.query(limit=10)
             combined["recent_events"] = [
-                self._serialize_activity_event(e)
+                _serialize_activity_event(e)
                 for e in events
                 if e.category != ActivityCategory.DAEMON_CYCLE
             ][:10]

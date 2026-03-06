@@ -9,12 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.classify import BranchClassifier
@@ -166,7 +164,7 @@ def migrate_brain_records(
             else:
                 record_id = original_id[:32]
 
-            ts = str(record_data.get("ts", datetime.now(UTC).isoformat()))
+            ts = str(record_data.get("ts", _now_iso()))
             confidence = 0.72
             try:
                 confidence = float(record_data.get("confidence", 0.72))
@@ -283,13 +281,13 @@ def migrate_facts(
             for key, value in facts_data.items():
                 try:
                     if not isinstance(value, dict):
-                        value = {"value": str(value), "confidence": 0.5, "updated_utc": datetime.now(UTC).isoformat()}
+                        value = {"value": str(value), "confidence": 0.5, "updated_utc": _now_iso()}
                     else:
                         value = dict(value)
                     value.setdefault("value", "")
                     value.setdefault("confidence", 0.0)
                     value.setdefault("locked", 0)
-                    value.setdefault("updated_utc", datetime.now(UTC).isoformat())
+                    value.setdefault("updated_utc", _now_iso())
                     sources = value.get("sources", [])
                     history = value.get("history", [])
                     value["sources"] = sources if isinstance(sources, list) else []
@@ -305,7 +303,7 @@ def migrate_facts(
                             str(value.get("value", "")),
                             float(value.get("confidence", 0.0)),
                             int(value.get("locked", 0)),
-                            str(value.get("updated_utc", datetime.now(UTC).isoformat())),
+                            str(value.get("updated_utc", _now_iso())),
                             json.dumps(value.get("sources", [])),
                             json.dumps(value.get("history", [])),
                         ),
@@ -385,7 +383,7 @@ def migrate_events(
             branch = classifier.classify(embedding)
 
             content_hash = sha256_hex(summary)
-            ts = str(event.get("ts", datetime.now(UTC).isoformat()))
+            ts = str(event.get("ts", _now_iso()))
             id_material = f"event_log|episodic|{ts}|{content_hash}".encode("utf-8")
             record_id = hashlib.sha256(id_material).hexdigest()[:32]
 

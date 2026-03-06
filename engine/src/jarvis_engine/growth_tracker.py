@@ -5,14 +5,13 @@ import json
 import re
 import threading
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 import logging
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import sha256_hex
 from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 
@@ -425,7 +424,7 @@ def run_eval(
     avg_latency = round(sum(r.total_duration_s for r in results) / len(results), 3)
 
     return EvalRun(
-        ts=datetime.now(UTC).isoformat(),
+        ts=_now_iso(),
         model=model,
         tasks=len(results),
         score_pct=score_pct,

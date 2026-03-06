@@ -10,9 +10,8 @@ from __future__ import annotations
 import collections
 import logging
 import threading
-from datetime import datetime
 
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +125,7 @@ class ScopeEnforcer:
 
     def _record_violation(self, scope: str, action: str, reason: str) -> None:
         entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
             "scope": scope,
             "action": action,
             "reason": reason,

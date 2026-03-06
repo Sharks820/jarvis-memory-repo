@@ -17,11 +17,9 @@ import time
 import urllib.parse
 import urllib.request
 from collections import deque
-from datetime import datetime
 from typing import Any
 
-from jarvis_engine._compat import UTC
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +205,7 @@ class ThreatNeutralizer:
             "ip": ip,
             "category": category,
             "actions_taken": list(actions_taken),
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
         }
         with self._lock:
             self._total_neutralized += 1
@@ -387,7 +385,7 @@ class ThreatNeutralizer:
 
         # Build attack timeline from evidence
         timeline: list[dict] = []
-        timestamp = evidence.get("timestamp", datetime.now(UTC).isoformat())
+        timestamp = evidence.get("timestamp", _now_iso())
         timeline.append({
             "timestamp": timestamp,
             "event": f"Attack detected from {ip}",

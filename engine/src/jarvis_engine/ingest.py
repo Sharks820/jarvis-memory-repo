@@ -5,8 +5,7 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, asdict
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from typing import Literal
 
 from jarvis_engine.memory_store import MemoryStore
@@ -63,7 +62,7 @@ class IngestionPipeline:
                 logger.debug("Deduplicated ingest: content_hash=%s existing_id=%s", content_hash, existing_id)
                 return IngestRecord(
                     record_id=existing_id,
-                    ts=datetime.now(UTC).isoformat(),
+                    ts=_now_iso(),
                     source=source,
                     kind=kind,
                     task_id=task_id,
@@ -71,7 +70,7 @@ class IngestionPipeline:
                     deduplicated=True,
                 )
 
-        ts = datetime.now(UTC).isoformat()
+        ts = _now_iso()
         # Use content hash as record_id for deterministic deduplication
         record_id = content_hash
         rec = IngestRecord(

@@ -12,11 +12,10 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._constants import runtime_dir
 from jarvis_engine.config import repo_root
 
@@ -96,7 +95,7 @@ def _load_auto_ingest_hashes(path: Path) -> list[str]:
 def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
     from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
-    payload = {"hashes": hashes[-400:], "updated_utc": datetime.now(UTC).isoformat()}
+    payload = {"hashes": hashes[-400:], "updated_utc": _now_iso()}
     _atomic_write_json(path, payload)
 
 

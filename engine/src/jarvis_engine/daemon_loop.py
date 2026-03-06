@@ -16,6 +16,7 @@ from pathlib import Path
 
 from jarvis_engine._bus import get_bus
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._constants import (
     DEFAULT_API_PORT as _DEFAULT_API_PORT,
     STOP_WORDS as _HARVEST_STOP_WORDS,
@@ -425,7 +426,7 @@ def write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
     payload = {
         "enabled": bool(state.get("enabled", False)),
         "auto_detect": bool(state.get("auto_detect", False)),
-        "updated_utc": str(state.get("updated_utc", "")) or datetime.now(UTC).isoformat(),
+        "updated_utc": str(state.get("updated_utc", "")) or _now_iso(),
         "reason": str(state.get("reason", "")).strip()[:200],
     }
     _atomic_write_json(path, payload)
@@ -679,7 +680,7 @@ def cmd_daemon_run_impl(
             gaming_mode_enabled = bool(gaming_state.get("enabled", False)) or auto_detect_hit
             daemon_paused = bool(control_state.get("daemon_paused", False))
             safe_mode = bool(control_state.get("safe_mode", False))
-            cycle_start_ts = datetime.now(UTC).isoformat()
+            cycle_start_ts = _now_iso()
             print(f"cycle={cycles} ts={cycle_start_ts}")
             # --- Activity feed: log cycle start ---
             try:

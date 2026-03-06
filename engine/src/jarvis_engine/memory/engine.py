@@ -16,12 +16,10 @@ import logging
 import sqlite3
 import struct
 import threading
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import sanitize_fts_query
+from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
@@ -506,7 +504,7 @@ class MemoryEngine:
         Returns True if the record existed and was updated, False otherwise.
         """
         self._check_open()
-        now = datetime.now(UTC).isoformat()
+        now = _now_iso()
         with self._write_lock:
             cur = self._db.execute(
                 """
@@ -525,7 +523,7 @@ class MemoryEngine:
         self._check_open()
         if not record_ids:
             return
-        now = datetime.now(UTC).isoformat()
+        now = _now_iso()
         with self._write_lock:
             self._db.executemany(
                 """

@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
 
@@ -88,7 +87,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         feedback = self.detect_feedback(user_message)
         if feedback == "neutral":
             return feedback
-        now = datetime.now(UTC).isoformat()
+        now = _now_iso()
         snippet = user_message[:200]
         with self._write_lock:
             self._db.execute(
@@ -110,7 +109,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         """
         if quality not in ("positive", "negative", "neutral"):
             raise ValueError(f"quality must be 'positive', 'negative', or 'neutral', got {quality!r}")
-        now_str = datetime.now(UTC).isoformat()
+        now_str = _now_iso()
         snippet = comment[:200] if comment else ""
         with self._write_lock:
             self._db.execute(

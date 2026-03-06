@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from http import HTTPStatus
 from typing import Any
@@ -56,23 +55,8 @@ class SecurityRoutesMixin:
     def _handle_get_audit(self) -> None:
         if not self._validate_auth(b""):
             return
+        from jarvis_engine._shared import load_jsonl_tail
+
         audit_path = _runtime_dir(self._root) / _GATEWAY_AUDIT_LOG
-        records: list[dict[str, Any]] = []
-        try:
-            # Tail-read: only read last ~64KB to avoid loading the entire file.
-            _MAX_TAIL = 65_536
-            fsize = audit_path.stat().st_size
-            with open(audit_path, "r", encoding="utf-8") as f:
-                if fsize > _MAX_TAIL:
-                    f.seek(fsize - _MAX_TAIL)
-                    f.readline()  # skip partial first line
-                lines = f.read().strip().splitlines()
-            for line in lines[-50:]:
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    logger.debug("Skipping malformed audit log line")
-                    continue
-        except OSError as exc:
-            logger.debug("Failed to read audit log: %s", exc)
+        records = load_jsonl_tail(audit_path, limit=50)
         self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})

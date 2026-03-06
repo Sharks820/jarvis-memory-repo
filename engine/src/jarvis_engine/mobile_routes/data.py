@@ -7,24 +7,18 @@ from http import HTTPStatus
 from typing import Any
 
 from jarvis_engine._constants import memory_db_path as _memory_db_path
-from jarvis_engine.mobile_routes._helpers import ALLOWED_KINDS, ALLOWED_SOURCES, _configure_db
+from jarvis_engine.mobile_routes._helpers import (
+    ALLOWED_KINDS,
+    ALLOWED_SOURCES,
+    _configure_db,
+    _serialize_activity_event,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class DataRoutesMixin:
     """Ingest, feedback, activity feed, and alert queue endpoints."""
-
-    @staticmethod
-    def _serialize_activity_event(event: Any) -> dict[str, Any]:
-        details = event.details if isinstance(getattr(event, "details", None), dict) else {}
-        return dict(
-            event_id=event.event_id,
-            timestamp=event.timestamp,
-            category=event.category,
-            summary=event.summary,
-            details=details,
-        )
 
     def _handle_post_ingest(self) -> None:
         payload, _ = self._read_json_body(max_content_length=50_000)
@@ -123,7 +117,7 @@ class DataRoutesMixin:
             stats = feed.stats()
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
-                "events": [self._serialize_activity_event(e) for e in events],
+                "events": [_serialize_activity_event(e) for e in events],
                 "stats": stats,
             })
         except Exception as exc:

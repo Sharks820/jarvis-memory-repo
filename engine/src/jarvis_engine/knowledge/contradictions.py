@@ -11,8 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine.knowledge._base import KGManagerBase
 
 logger = logging.getLogger(__name__)
@@ -215,7 +214,7 @@ class ContradictionManager(KGManagerBase):
             existing_value = contradiction["existing_value"]
             incoming_value = contradiction["incoming_value"]
             incoming_confidence = contradiction["incoming_confidence"]
-            now = datetime.now(UTC).isoformat()
+            now = _now_iso()
             # Load current node for history
             node_row = self._db.execute(
                 "SELECT label, history FROM kg_nodes WHERE node_id = ?",

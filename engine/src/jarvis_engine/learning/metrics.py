@@ -7,8 +7,7 @@ branch distribution, and temporal distribution from the knowledge graph.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,7 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
         Dict with: total_records, total_facts, total_edges, locked_facts,
         branches_populated, branch_distribution, temporal_distribution, captured_at.
     """
-    captured_at = datetime.now(UTC).isoformat()
+    captured_at = _now_iso()
 
     # -- Record counts from engine --
     total_records = 0

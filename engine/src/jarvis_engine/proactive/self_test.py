@@ -9,8 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +76,7 @@ class AdversarialSelfTest:
             "average_score": avg_score,
             "below_threshold": below,
             "per_task_scores": per_task_scores,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": _now_iso(),
         }
 
     def save_quiz_result(self, result: dict, history_path: Path) -> None:

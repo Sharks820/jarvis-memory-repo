@@ -12,11 +12,9 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -98,7 +96,7 @@ class EnrichedIngestPipeline:
                 return []
 
         # Step 3 & 4: Process each chunk
-        ts = datetime.now(UTC).isoformat()
+        ts = _now_iso()
         tag_list = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
         tag_str = json.dumps(tag_list)
         inserted_ids: list[str] = []

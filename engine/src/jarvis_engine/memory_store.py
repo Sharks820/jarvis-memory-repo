@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass, asdict
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Iterable
 
@@ -28,7 +27,7 @@ class MemoryStore:
 
     def append(self, event_type: str, message: str) -> MemoryEvent:
         event = MemoryEvent(
-            ts=datetime.now(UTC).isoformat(),
+            ts=_now_iso(),
             event_type=event_type,
             message=message,
         )

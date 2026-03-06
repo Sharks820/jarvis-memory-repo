@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import random
 from dataclasses import dataclass
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
 
 # ---------------------------------------------------------------------------
 # Tone profiles: map branch domains to personality instructions
@@ -188,7 +187,7 @@ def save_persona_config(
         "enabled": current.enabled if enabled is None else bool(enabled),
         "humor_level": humor_val,
         "style": current.style if style is None else str(style).strip()[:80] or current.style,
-        "updated_utc": datetime.now(UTC).isoformat(),
+        "updated_utc": _now_iso(),
     }
     _atomic_write_json(_persona_path(root), payload)
     return load_persona_config(root)

@@ -8,6 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -87,7 +88,7 @@ def _update_mission_progress(
             mission["progress_pct"] = max(0, min(100, int(progress_pct)))
             mission["status_detail"] = status_detail[:180]
             mission["progress_bar"] = _progress_bar(mission["progress_pct"])
-            mission["updated_utc"] = datetime.now(UTC).isoformat()
+            mission["updated_utc"] = _now_iso()
             _save_missions(root, missions)
             event_payload = {
                 "topic": str(mission.get("topic", "")),
@@ -154,8 +155,8 @@ def create_learning_mission(
         "sources": sources or list(MISSION_DEFAULT_SOURCES),
         "status": "pending",
         "origin": origin,
-        "created_utc": datetime.now(UTC).isoformat(),
-        "updated_utc": datetime.now(UTC).isoformat(),
+        "created_utc": _now_iso(),
+        "updated_utc": _now_iso(),
         "last_report_path": "",
         "verified_findings": 0,
         "progress_pct": 0,
@@ -327,7 +328,7 @@ def run_learning_mission(
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
         target["status"] = "running"
-        target["updated_utc"] = datetime.now(UTC).isoformat()
+        target["updated_utc"] = _now_iso()
         _save_missions(root, missions)
         # Copy fields under lock to avoid referencing the shared dict outside.
         _topic = str(target.get("topic", "")).strip()
@@ -383,7 +384,7 @@ def run_learning_mission(
         "candidate_count": len(candidate_rows),
         "verified_findings": verified,
         "verified_count": len(verified),
-        "completed_utc": datetime.now(UTC).isoformat(),
+        "completed_utc": _now_iso(),
     }
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
@@ -431,7 +432,7 @@ def run_learning_mission(
             target["progress_pct"] = 100
             target["status_detail"] = "Completed with no verified findings"
             target["progress_bar"] = _progress_bar(100)
-        target["updated_utc"] = datetime.now(UTC).isoformat()
+        target["updated_utc"] = _now_iso()
         target["last_report_path"] = str(report_path)
         target["verified_findings"] = len(verified)
         final_status = str(target.get("status", "completed"))
@@ -475,7 +476,7 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
             raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
 
         target["status"] = "cancelled"
-        target["updated_utc"] = datetime.now(UTC).isoformat()
+        target["updated_utc"] = _now_iso()
         target["status_detail"] = "Cancelled"
         target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
@@ -512,7 +513,7 @@ def retry_failed_missions(root: Path) -> int:
             retries = int(mission.get("retries", 0))
             if retries >= 2:
                 mission["status"] = "exhausted"
-                mission["updated_utc"] = datetime.now(UTC).isoformat()
+                mission["updated_utc"] = _now_iso()
                 modified = True
                 continue
             # Broaden search: add alternative query phrasing
@@ -525,7 +526,7 @@ def retry_failed_missions(root: Path) -> int:
             mission["sources"] = sources
             mission["retries"] = retries + 1
             mission["status"] = "pending"
-            mission["updated_utc"] = datetime.now(UTC).isoformat()
+            mission["updated_utc"] = _now_iso()
             mission["progress_pct"] = 0
             mission["status_detail"] = "Retry queued"
             mission["progress_bar"] = _progress_bar(0)

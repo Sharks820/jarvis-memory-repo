@@ -58,19 +58,35 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
                     return line.split("=", 1)[1].strip()
     except (OSError, subprocess.TimeoutExpired):
         pass
-    # Fallback: compute from raw DER bytes
+    # Fallback: pure-Python PEM -> DER -> SHA-256
     try:
-        result = subprocess.run(
-            ["openssl", "x509", "-in", cert_path, "-outform", "DER"],
-            capture_output=True,
-            timeout=10,
-        )
-        if result.returncode == 0 and result.stdout:
-            digest = hashlib.sha256(result.stdout).hexdigest().upper()
-            return ":".join(digest[i : i + 2] for i in range(0, len(digest), 2))
-    except (OSError, subprocess.TimeoutExpired):
+        import base64
+        from pathlib import Path
+
+        pem_data = Path(cert_path).read_text(encoding="utf-8")
+        # Strip PEM header/footer and decode base64
+        lines = [
+            line for line in pem_data.splitlines()
+            if line and not line.startswith("-----")
+        ]
+        der_bytes = base64.b64decode("".join(lines))
+        digest = hashlib.sha256(der_bytes).hexdigest().upper()
+        return ":".join(digest[i : i + 2] for i in range(0, len(digest), 2))
+    except (OSError, ValueError):
         pass
     return None
+
+
+def _serialize_activity_event(event: Any) -> dict[str, Any]:
+    """Serialize an activity feed event to a JSON-safe dict."""
+    details = event.details if isinstance(getattr(event, "details", None), dict) else {}
+    return dict(
+        event_id=event.event_id,
+        timestamp=event.timestamp,
+        category=event.category,
+        summary=event.summary,
+        details=details,
+    )
 
 
 def _compute_command_reliability() -> dict[str, Any]:

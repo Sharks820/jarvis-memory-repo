@@ -4,11 +4,11 @@ import json
 import re
 import wave
 from dataclasses import dataclass
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 
 import numpy as np
+
+from jarvis_engine._shared import now_iso as _now_iso
 
 
 @dataclass
@@ -58,7 +58,7 @@ def enroll_voiceprint(
         "user_id": safe_user,
         "samples": existing_samples,
         "embedding": embedding.tolist(),
-        "created_utc": datetime.now(UTC).isoformat(),
+        "created_utc": _now_iso(),
     }
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")

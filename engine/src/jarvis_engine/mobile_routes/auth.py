@@ -4,13 +4,12 @@ import json
 import logging
 import os
 import socket
-from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._compat import UTC
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.runtime_control import (
     read_control_state,
@@ -19,6 +18,13 @@ from jarvis_engine.runtime_control import (
 )
 
 logger = logging.getLogger(__name__)
+
+_GAMING_STATE_DEFAULT: dict[str, Any] = {
+    "enabled": False,
+    "auto_detect": False,
+    "reason": "",
+    "updated_utc": "",
+}
 
 
 class AuthRoutesMixin:
@@ -51,15 +57,15 @@ class AuthRoutesMixin:
         try:
             path = self._gaming_state_path()
         except PermissionError:
-            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+            return dict(_GAMING_STATE_DEFAULT)
         if not path.exists():
-            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+            return dict(_GAMING_STATE_DEFAULT)
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+            return dict(_GAMING_STATE_DEFAULT)
         if not isinstance(raw, dict):
-            return {"enabled": False, "auto_detect": False, "reason": "", "updated_utc": ""}
+            return dict(_GAMING_STATE_DEFAULT)
         return {
             "enabled": bool(raw.get("enabled", False)),
             "auto_detect": bool(raw.get("auto_detect", False)),
@@ -81,7 +87,7 @@ class AuthRoutesMixin:
             state["auto_detect"] = auto_detect
         if reason.strip():
             state["reason"] = reason.strip()[:200]
-        state["updated_utc"] = datetime.now(UTC).isoformat()
+        state["updated_utc"] = _now_iso()
         path = self._gaming_state_path()
         _atomic_write_json(path, state)
         return state

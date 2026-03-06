@@ -13,6 +13,7 @@ import threading
 from datetime import datetime, timedelta
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class IPTracker:
         - 10 attempts -> BLOCK 24 hours
         - 20+ attempts -> permanent BLOCK
         """
-        now_str = datetime.now(UTC).isoformat()
+        now_str = _now_iso()
         with self._lock:
             row = self._db.execute(
                 "SELECT total_attempts, attack_types FROM threat_ips WHERE ip = ?",
@@ -223,7 +224,7 @@ class IPTracker:
 
     def block_ip(self, ip: str, duration_hours: int | None = None) -> None:
         """Manually block an IP.  *None* = permanent block."""
-        now_str = datetime.now(UTC).isoformat()
+        now_str = _now_iso()
         if duration_hours is None:
             blocked_until = "permanent"
         else:

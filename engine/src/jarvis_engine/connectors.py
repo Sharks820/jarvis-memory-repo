@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
-from datetime import datetime
-from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any
 
@@ -110,7 +109,7 @@ def grant_connector_permission(repo_root: Path, connector_id: str, scopes: list[
     connectors[connector_id] = {
         "granted": True,
         "scopes": [s.strip() for s in scopes if s.strip()],
-        "granted_utc": datetime.now(UTC).isoformat(),
+        "granted_utc": _now_iso(),
     }
     save_connector_permissions(repo_root, data)
     return connectors[connector_id]

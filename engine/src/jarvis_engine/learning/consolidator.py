@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 import numpy as np
 
@@ -379,7 +379,7 @@ class MemoryConsolidator:
         id_material = f"consolidated|{content_hash}"
         record_id = sha256_hex(id_material)[:32]
 
-        ts = datetime.now(UTC).isoformat()
+        ts = _now_iso()
         resolved_branch = branch or (
             group_records[0].get("branch", "general") if group_records else "general"
         )

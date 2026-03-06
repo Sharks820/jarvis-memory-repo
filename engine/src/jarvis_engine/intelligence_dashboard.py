@@ -5,6 +5,7 @@ import logging
 import math
 from datetime import datetime
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any
 
@@ -278,7 +279,7 @@ def build_intelligence_dashboard(
         unlocked = []
     unlocked_ids = {str(item.get("id", "")) for item in unlocked if isinstance(item, dict)}
     new_unlocks: list[dict[str, Any]] = []
-    now = datetime.now(UTC).isoformat()
+    now = _now_iso()
     for milestone in MILESTONES:
         milestone_score = _to_float(milestone.get("score", 0.0), 0.0)
         milestone_id = str(milestone.get("id", ""))

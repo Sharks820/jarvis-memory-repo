@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._shared import atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +210,7 @@ def write_pid_file(service: str, root: Path) -> None:
         payload = {
             "pid": os.getpid(),
             "service": service,
-            "started_utc": datetime.now(timezone.utc).isoformat(),
+            "started_utc": _now_iso(),
             "python": sys.executable,
         }
         if create_ts is not None:

@@ -13,10 +13,10 @@ import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
-from jarvis_engine._compat import UTC
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import safe_int as _safe_int
+from jarvis_engine._compat import UTC
+from jarvis_engine._shared import now_iso as _now_iso, safe_int as _safe_int
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -75,7 +75,7 @@ class RegressionChecker:
             "locked_count": locked_count,
             "graph_hash": graph_hash,
             "node_labels": node_labels,
-            "captured_at": datetime.now(UTC).isoformat(),
+            "captured_at": _now_iso(),
         }
 
     # ------------------------------------------------------------------

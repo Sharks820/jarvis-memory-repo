@@ -5,8 +5,6 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +20,7 @@ DEFAULT_OWNER_GUARD = {
 
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import safe_int as _safe_int
 
 
@@ -69,7 +68,7 @@ def write_owner_guard(
         state["trusted_mobile_devices"] = [
             str(d).strip()[:128] for d in trusted_mobile_devices if str(d).strip()
         ]
-    state["updated_utc"] = datetime.now(UTC).isoformat()
+    state["updated_utc"] = _now_iso()
     _atomic_write_json(owner_guard_path(root), state)
     return state
 
@@ -92,7 +91,7 @@ def set_master_password(root: Path, password: str, *, iterations: int = 200000) 
         salt=salt,
         iterations=int(state["master_password_iterations"]),
     )
-    state["updated_utc"] = datetime.now(UTC).isoformat()
+    state["updated_utc"] = _now_iso()
     _atomic_write_json(owner_guard_path(root), state)
     return state
 
