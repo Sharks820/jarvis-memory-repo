@@ -2196,74 +2196,71 @@ class TestRunTask:
 class TestHelperFunctions:
     """Tests for private helper functions in main.py."""
 
-    def test_extract_first_phone_number(self):
-        assert voice_pipeline_mod._extract_first_phone_number("Call +14155551234 please") == "+14155551234"
-        assert voice_pipeline_mod._extract_first_phone_number("no number here") == ""
-        assert voice_pipeline_mod._extract_first_phone_number("dial 555-123-4567") == "555-123-4567"
-        # Truncation at 256 chars
-        long_text = "x" * 300 + "+14155551234"
-        assert voice_pipeline_mod._extract_first_phone_number(long_text) == ""
+    @pytest.mark.parametrize("text,expected", [
+        pytest.param("Call +14155551234 please", "+14155551234", id="international_format"),
+        pytest.param("no number here", "", id="no_number"),
+        pytest.param("dial 555-123-4567", "555-123-4567", id="dashed_format"),
+        pytest.param("x" * 300 + "+14155551234", "", id="truncation_at_256_chars"),
+    ])
+    def test_extract_first_phone_number(self, text, expected):
+        assert voice_pipeline_mod._extract_first_phone_number(text) == expected
 
-    def test_extract_weather_location(self):
-        assert voice_pipeline_mod._extract_weather_location("weather in Austin, TX") == "Austin, TX"
-        assert voice_pipeline_mod._extract_weather_location("weather for New York") == "New York"
-        assert voice_pipeline_mod._extract_weather_location("forecast at Chicago") == "Chicago"
-        # Noise words stripped
+    @pytest.mark.parametrize("text,expected", [
+        pytest.param("weather in Austin, TX", "Austin, TX", id="city_state"),
+        pytest.param("weather for New York", "New York", id="city_for"),
+        pytest.param("forecast at Chicago", "Chicago", id="forecast_at"),
+    ])
+    def test_extract_weather_location(self, text, expected):
+        assert voice_pipeline_mod._extract_weather_location(text) == expected
+
+    def test_extract_weather_location_strips_noise_words(self):
         loc = voice_pipeline_mod._extract_weather_location("weather today")
         assert "today" not in loc.lower().split()
 
-    def test_extract_web_query(self):
-        assert "python" in voice_pipeline_mod._extract_web_query("search the web for python asyncio")
-        assert "ml" in voice_pipeline_mod._extract_web_query("research ML frameworks")
-        assert "rust" in voice_pipeline_mod._extract_web_query("look up rust programming")
-        assert "react" in voice_pipeline_mod._extract_web_query("find on the web react hooks")
+    @pytest.mark.parametrize("text,expected_substr", [
+        pytest.param("search the web for python asyncio", "python", id="search_web"),
+        pytest.param("research ML frameworks", "ml", id="research"),
+        pytest.param("look up rust programming", "rust", id="look_up"),
+        pytest.param("find on the web react hooks", "react", id="find_on_web"),
+    ])
+    def test_extract_web_query(self, text, expected_substr):
+        assert expected_substr in voice_pipeline_mod._extract_web_query(text)
 
-    def test_extract_first_url(self):
-        assert voice_pipeline_mod._extract_first_url("go to https://example.com") == "https://example.com"
-        assert voice_pipeline_mod._extract_first_url("visit www.google.com") == "https://www.google.com"
-        assert voice_pipeline_mod._extract_first_url("no url here") == ""
-        # Long text truncation
-        long_text = "x" * 1300 + "https://late.com"
-        assert voice_pipeline_mod._extract_first_url(long_text) == ""
+    @pytest.mark.parametrize("text,expected", [
+        pytest.param("go to https://example.com", "https://example.com", id="https_url"),
+        pytest.param("visit www.google.com", "https://www.google.com", id="www_url"),
+        pytest.param("no url here", "", id="no_url"),
+        pytest.param("x" * 1300 + "https://late.com", "", id="truncation_at_1024_chars"),
+    ])
+    def test_extract_first_url(self, text, expected):
+        assert voice_pipeline_mod._extract_first_url(text) == expected
 
-    def test_is_read_only_voice_request(self):
+    @pytest.mark.parametrize("text,execute,approve,expected", [
+        pytest.param("runtime status", False, False, True, id="read_only_status"),
+        pytest.param("pause daemon", False, False, False, id="mutation_pause"),
+        pytest.param("runtime status", True, False, False, id="execute_flag_forces_non_readonly"),
+        pytest.param("jarvis", False, False, True, id="bare_wake_word"),
+        pytest.param("hey jarvis", False, False, True, id="hey_wake_word"),
+        pytest.param("what is the meaning of life", False, False, True, id="conversational_fallthrough"),
+    ])
+    def test_is_read_only_voice_request(self, text, execute, approve, expected):
         assert voice_pipeline_mod._is_read_only_voice_request(
-            "runtime status", execute=False, approve_privileged=False
-        ) is True
-        assert voice_pipeline_mod._is_read_only_voice_request(
-            "pause daemon", execute=False, approve_privileged=False
-        ) is False
-        # execute flag forces non-read-only
-        assert voice_pipeline_mod._is_read_only_voice_request(
-            "runtime status", execute=True, approve_privileged=False
-        ) is False
-        # Bare wake words treated as read-only
-        assert voice_pipeline_mod._is_read_only_voice_request(
-            "jarvis", execute=False, approve_privileged=False
-        ) is True
-        assert voice_pipeline_mod._is_read_only_voice_request(
-            "hey jarvis", execute=False, approve_privileged=False
-        ) is True
-        # Conversational fallthrough is read-only
-        assert voice_pipeline_mod._is_read_only_voice_request(
-            "what is the meaning of life", execute=False, approve_privileged=False
-        ) is True
+            text, execute=execute, approve_privileged=approve
+        ) is expected
 
     def test_sanitize_memory_content_truncation(self):
         long_content = "a" * 200_000
         cleaned = auto_ingest_mod.sanitize_memory_content(long_content)
         assert len(cleaned) <= 2000
 
-    def test_sanitize_memory_content_json_redaction(self):
-        content = '{"api_key": "sk-secret123", "data": "normal"}'
+    @pytest.mark.parametrize("content,forbidden_substr", [
+        pytest.param('{"api_key": "sk-secret123", "data": "normal"}', "sk-secret123", id="json_api_key"),
+        pytest.param("Authorization: bearer sk-my-token-abc", "sk-my-token-abc", id="bearer_token"),
+        pytest.param("master password: ExamplePass123! token=abc123", "ExamplePass123!", id="master_password"),
+    ])
+    def test_sanitize_memory_content_redacts_secrets(self, content, forbidden_substr):
         cleaned = auto_ingest_mod.sanitize_memory_content(content)
-        assert "sk-secret123" not in cleaned
-        assert "[redacted]" in cleaned
-
-    def test_sanitize_memory_content_bearer_redaction(self):
-        content = "Authorization: bearer sk-my-token-abc"
-        cleaned = auto_ingest_mod.sanitize_memory_content(content)
-        assert "sk-my-token-abc" not in cleaned
+        assert forbidden_substr not in cleaned
 
     def test_valid_sources_and_kinds(self):
         assert "user" in auto_ingest_mod.VALID_SOURCES
@@ -2272,73 +2269,41 @@ class TestHelperFunctions:
         assert "semantic" in auto_ingest_mod.VALID_KINDS
         assert "procedural" in auto_ingest_mod.VALID_KINDS
 
-    def test_load_auto_ingest_hashes_missing_file(self, tmp_path):
-        result = auto_ingest_mod._load_auto_ingest_hashes(tmp_path / "nonexistent.json")
-        assert result == []
-
-    def test_load_auto_ingest_hashes_corrupted(self, tmp_path):
-        path = tmp_path / "bad.json"
-        path.write_text("not json at all", encoding="utf-8")
-        result = auto_ingest_mod._load_auto_ingest_hashes(path)
-        assert result == []
-
-    def test_load_auto_ingest_hashes_valid(self, tmp_path):
+    @pytest.mark.parametrize("file_content,expected", [
+        pytest.param(None, [], id="missing_file"),
+        pytest.param("not json at all", [], id="corrupted_json"),
+        pytest.param(json.dumps(["not", "a", "dict"]), [], id="wrong_type_list"),
+        pytest.param(json.dumps({"hashes": ["abc", "def"]}), ["abc", "def"], id="valid_hashes"),
+    ])
+    def test_load_auto_ingest_hashes(self, tmp_path, file_content, expected):
         path = tmp_path / "dedupe.json"
-        path.write_text(json.dumps({"hashes": ["abc", "def"]}), encoding="utf-8")
+        if file_content is not None:
+            path.write_text(file_content, encoding="utf-8")
         result = auto_ingest_mod._load_auto_ingest_hashes(path)
-        assert result == ["abc", "def"]
-
-    def test_load_auto_ingest_hashes_wrong_type(self, tmp_path):
-        path = tmp_path / "dedupe.json"
-        path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
-        result = auto_ingest_mod._load_auto_ingest_hashes(path)
-        assert result == []
+        assert result == expected
 
 
 class TestAutoIngestMemory:
     """Tests for _auto_ingest_memory."""
 
-    def test_auto_ingest_disabled_by_env(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("JARVIS_AUTO_INGEST_DISABLE", "1")
+    @pytest.mark.parametrize("env_disable,source,kind,content", [
+        pytest.param("1", "user", "semantic", "Test content", id="disabled_by_env"),
+        pytest.param(None, "invalid_source", "semantic", "Test", id="invalid_source"),
+        pytest.param(None, "user", "bogus", "Test", id="invalid_kind"),
+        pytest.param(None, "user", "semantic", "", id="empty_content"),
+    ])
+    def test_auto_ingest_returns_empty(self, monkeypatch, tmp_path,
+                                        env_disable, source, kind, content):
+        if env_disable is not None:
+            monkeypatch.setenv("JARVIS_AUTO_INGEST_DISABLE", env_disable)
+        else:
+            monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         result = auto_ingest_mod.auto_ingest_memory(
-            source="user", kind="semantic", task_id="test", content="Test content",
-        )
-        assert result == ""
-
-    def test_auto_ingest_invalid_source(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
-        monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = auto_ingest_mod.auto_ingest_memory(
-            source="invalid_source", kind="semantic", task_id="test", content="Test",
-        )
-        assert result == ""
-
-    def test_auto_ingest_invalid_kind(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
-        monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = auto_ingest_mod.auto_ingest_memory(
-            source="user", kind="bogus", task_id="test", content="Test",
-        )
-        assert result == ""
-
-    def test_auto_ingest_empty_content(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
-        monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
-        monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        result = auto_ingest_mod.auto_ingest_memory(
-            source="user", kind="semantic", task_id="test", content="",
+            source=source, kind=kind, task_id="test", content=content,
         )
         assert result == ""
 
@@ -2843,17 +2808,14 @@ class TestConversationHistory:
 class TestMaxTokensByRoute:
     """Tests for _MAX_TOKENS_BY_ROUTE configuration."""
 
-    def test_max_tokens_math_logic(self):
-        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["math_logic"] == 1024
-
-    def test_max_tokens_complex(self):
-        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["complex"] == 1024
-
-    def test_max_tokens_routine(self):
-        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["routine"] == 512
-
-    def test_max_tokens_simple_private(self):
-        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE["simple_private"] == 1024
+    @pytest.mark.parametrize("route,expected", [
+        pytest.param("math_logic", 1024, id="math_logic"),
+        pytest.param("complex", 1024, id="complex"),
+        pytest.param("routine", 512, id="routine"),
+        pytest.param("simple_private", 1024, id="simple_private"),
+    ])
+    def test_max_tokens_by_route(self, route, expected):
+        assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE[route] == expected
 
     def test_max_tokens_unknown_route_returns_none(self):
         """Unknown routes are not in the dict (caller uses .get with default)."""
