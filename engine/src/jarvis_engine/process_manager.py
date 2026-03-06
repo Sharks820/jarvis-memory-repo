@@ -16,6 +16,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from jarvis_engine._shared import atomic_write_json
@@ -406,7 +407,7 @@ def list_services(root: Path) -> list[dict[str, Any]]:
 
 def check_and_restart_services(
     root: Path,
-    restart_callback: Any | None = None,
+    restart_callback: Callable[[str], None] | None = None,
 ) -> list[str]:
     """Check for crashed services and optionally restart them.
 

@@ -730,11 +730,11 @@ class _Tooltip:
         widget.bind("<Enter>", self._schedule, add="+")
         widget.bind("<Leave>", self._cancel, add="+")
 
-    def _schedule(self, _event: Any = None) -> None:
+    def _schedule(self, _event: tk.Event[Any] | None = None) -> None:
         self._cancel()
         self._after_id = self._widget.after(self._delay, self._show)
 
-    def _cancel(self, _event: Any = None) -> None:
+    def _cancel(self, _event: tk.Event[Any] | None = None) -> None:
         if self._after_id:
             self._widget.after_cancel(self._after_id)
             self._after_id = None
@@ -1771,7 +1771,7 @@ class JarvisDesktopWidget(tk.Tk):
         )
         send_btn.pack(fill=tk.BOTH, expand=True)
 
-        def _popout_send(event: Any = None) -> None:
+        def _popout_send(event: tk.Event[Any] | None = None) -> None:
             text = popout_cmd.get("1.0", tk.END).strip()
             if not text:
                 return
@@ -1781,7 +1781,7 @@ class JarvisDesktopWidget(tk.Tk):
             self._send_command_async()
             return "break"
 
-        def _popout_key(event: Any) -> str | None:
+        def _popout_key(event: tk.Event[Any]) -> str | None:
             if event.keysym == "Return" and not event.state & 0x1:  # Enter without Shift
                 _popout_send()
                 return "break"
@@ -2274,7 +2274,7 @@ class JarvisDesktopWidget(tk.Tk):
     def _thread(self, fn) -> None:  # type: ignore[no-untyped-def]
         threading.Thread(target=fn, daemon=True).start()
 
-    def _on_tab_cycle_model(self, event: Any = None) -> str:
+    def _on_tab_cycle_model(self, event: tk.Event[Any] | None = None) -> str:
         """Tab key in command text: cycle through model rotation."""
         self._model_index = (self._model_index + 1) % len(self.MODEL_ROTATION)
         self._update_model_label()

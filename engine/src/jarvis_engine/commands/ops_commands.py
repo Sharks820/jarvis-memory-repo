@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.automation import ActionOutcome
+    from jarvis_engine.growth_tracker import EvalRun
+    from jarvis_engine.ops_sync import SyncSummary
 
 
 @dataclass(frozen=True)
@@ -40,7 +45,7 @@ class OpsSyncCommand:
 
 @dataclass
 class OpsSyncResult:
-    summary: Any = None  # OpsSyncSummary from ops_sync module
+    summary: SyncSummary | None = None
     message: str = ""
 
 
@@ -68,7 +73,7 @@ class AutomationRunCommand:
 
 @dataclass
 class AutomationRunResult:
-    outcomes: list[Any] = field(default_factory=list)
+    outcomes: list[ActionOutcome] = field(default_factory=list)
     message: str = ""
 
 
@@ -130,7 +135,7 @@ class GrowthEvalCommand:
 
 @dataclass
 class GrowthEvalResult:
-    run: Any = None  # EvalRun from growth_tracker
+    run: EvalRun | None = None
     message: str = ""
 
 

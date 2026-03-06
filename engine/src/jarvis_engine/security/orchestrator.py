@@ -20,7 +20,10 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.security.owner_session import OwnerSessionManager
 
 from jarvis_engine.security.adaptive_defense import AdaptiveDefenseEngine
 from jarvis_engine.security.alert_chain import AlertChain
@@ -158,7 +161,7 @@ class SecurityOrchestrator:
         # Owner session — set externally by the server after creation to avoid
         # duplicate instances.  Falls back to a local instance only if no
         # external one is provided.
-        self.owner_session: Any = None
+        self.owner_session: OwnerSessionManager | None = None
 
         # Note: HeartbeatMonitor and HomeNetworkMonitor are NOT instantiated here.
         # They start background threads and are managed by the daemon startup code.

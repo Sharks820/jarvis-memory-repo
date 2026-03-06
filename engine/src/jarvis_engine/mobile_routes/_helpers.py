@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import sqlite3
 import subprocess
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.activity_feed import ActivityEvent
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +27,8 @@ ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
 _thread_local = threading.local()
 
 
-def _configure_db(conn: Any) -> None:
+def _configure_db(conn: sqlite3.Connection) -> None:
     """Apply consistent SQLite PRAGMAs and Row factory."""
-    import sqlite3
-
     from jarvis_engine._db_pragmas import configure_sqlite
 
     conn.row_factory = sqlite3.Row
@@ -101,7 +103,7 @@ def _get_int_param(
     return max(min_val, min(value, max_val))
 
 
-def _serialize_activity_event(event: Any) -> dict[str, Any]:
+def _serialize_activity_event(event: ActivityEvent) -> dict[str, Any]:
     """Serialize an activity feed event to a JSON-safe dict."""
     details = event.details if isinstance(getattr(event, "details", None), dict) else {}
     return dict(

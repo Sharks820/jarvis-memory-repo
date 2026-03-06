@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -164,10 +168,10 @@ class IngestHandler:
     def __init__(self, root: Path, pipeline: Any = None) -> None:
         self._root = root
         self._pipeline = pipeline
-        self._fallback_store: Any = None
-        self._fallback_pipeline: Any = None
+        self._fallback_store: MemoryStore | None = None
+        self._fallback_pipeline: IngestionPipeline | None = None
 
-    def _get_fallback_pipeline(self) -> Any:
+    def _get_fallback_pipeline(self) -> IngestionPipeline:
         """Lazily create and cache the fallback MemoryStore + IngestionPipeline."""
         if self._fallback_pipeline is None:
             from jarvis_engine.ingest import IngestionPipeline

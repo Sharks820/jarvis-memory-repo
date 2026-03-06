@@ -22,7 +22,18 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from pathlib import Path
-from typing import Any
+from typing import IO, TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import sqlite3
+
+    from jarvis_engine.memory.embeddings import EmbeddingService
+    from jarvis_engine.memory.engine import MemoryEngine
+    from jarvis_engine.security.orchestrator import SecurityOrchestrator
+    from jarvis_engine.security.owner_session import OwnerSessionManager
+    from jarvis_engine.sync.auto_sync import AutoSyncConfig
+    from jarvis_engine.sync.engine import SyncEngine
+    from jarvis_engine.sync.transport import SyncTransport
 
 from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
@@ -78,7 +89,7 @@ class _ThreadCapturingStdout:
 
     _real_stdout = None  # set by install()
 
-    def __init__(self, real_stdout: Any) -> None:
+    def __init__(self, real_stdout: IO[str]) -> None:
         object.__setattr__(self, "_real", real_stdout)
         _ThreadCapturingStdout._real_stdout = real_stdout
 
@@ -333,15 +344,15 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.pipeline = pipeline
         self.repo_root = repo_root
         self.tls_active = False
-        self._sync_engine: Any = None
-        self._sync_transport: Any = None
+        self._sync_engine: SyncEngine | None = None
+        self._sync_transport: SyncTransport | None = None
         self._sync_init_attempted = False
         self._sync_init_lock = threading.Lock()
         # Auto-sync config for relay URLs, sync scheduling, phone autonomy
-        self._auto_sync_config: Any = None
-        self._memory_engine: Any = None
+        self._auto_sync_config: AutoSyncConfig | None = None
+        self._memory_engine: MemoryEngine | None = None
         self._memory_engine_init_lock = threading.Lock()
-        self._embed_service: Any = None
+        self._embed_service: EmbeddingService | None = None
         self._embed_init_lock = threading.Lock()
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
@@ -364,8 +375,8 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._master_pw_rate_lock = threading.Lock()
         # Security orchestrator — FAIL CLOSED: if init fails, reject all
         # non-essential requests (security subsystem must be operational).
-        self.security: Any = None
-        self._security_db: Any = None
+        self.security: SecurityOrchestrator | None = None
+        self._security_db: sqlite3.Connection | None = None
         self._security_write_lock: threading.Lock | None = None
         self._security_degraded: bool = False
         try:
@@ -396,7 +407,7 @@ class MobileIngestServer(ThreadingHTTPServer):
 
         # Owner session manager — FAIL CLOSED: if init fails, reject
         # session-dependent requests.
-        self.owner_session: Any = None
+        self.owner_session: OwnerSessionManager | None = None
         self._session_degraded: bool = False
         try:
             from jarvis_engine.security.owner_session import OwnerSessionManager
@@ -564,7 +575,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             except OSError as cleanup_exc:
                 logger.debug("Failed to remove nonce cache temp file: %s", cleanup_exc)
 
-    def ensure_sync_engine(self) -> Any:
+    def ensure_sync_engine(self) -> SyncEngine | None:
         """Lazy-initialize sync engine when DB becomes available.
 
         The sync engine uses a dedicated SQLite connection with WAL mode
@@ -616,7 +627,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 self._sync_init_attempted = True  # Only prevent retry on failure
             return self._sync_engine
 
-    def ensure_memory_engine(self) -> Any:
+    def ensure_memory_engine(self) -> MemoryEngine | None:
         """Lazy-initialize a MemoryEngine for read-only metric queries.
 
         Returns the MemoryEngine instance, or None if the DB doesn't exist
@@ -638,7 +649,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
 
-    def ensure_embed_service(self) -> Any:
+    def ensure_embed_service(self) -> EmbeddingService | None:
         """Lazy-initialize an EmbeddingService for self-test queries.
 
         Returns the EmbeddingService instance, or None on failure.

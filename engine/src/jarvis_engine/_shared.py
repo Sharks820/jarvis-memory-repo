@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +35,7 @@ def now_iso() -> str:
 
 def make_thread_aware_repo_root(
     original_fn: Callable[[], Path],
-    thread_local: Any,
+    thread_local: threading.local,
 ) -> Callable[[], Path]:
     """Create a thread-aware wrapper around ``repo_root()``.
 

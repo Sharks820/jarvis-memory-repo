@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.connectors import ConnectorStatus
+    from jarvis_engine.persona import PersonaConfig
+    from jarvis_engine.phone_guard import PhoneAction
 
 
 @dataclass(frozen=True)
@@ -48,7 +53,7 @@ class ConnectStatusCommand:
 
 @dataclass
 class ConnectStatusResult:
-    statuses: list[Any] = field(default_factory=list)
+    statuses: list[ConnectorStatus] = field(default_factory=list)
     prompts: list[dict[str, Any]] = field(default_factory=list)
     ready: int = 0
     pending: int = 0
@@ -91,7 +96,7 @@ class PhoneActionCommand:
 
 @dataclass
 class PhoneActionResult:
-    record: Any = None
+    record: PhoneAction | None = None
     return_code: int = 0
     message: str = ""
 
@@ -124,5 +129,5 @@ class PersonaConfigCommand:
 
 @dataclass
 class PersonaConfigResult:
-    config: Any = None
+    config: PersonaConfig | dict[str, str] | None = None
     message: str = ""

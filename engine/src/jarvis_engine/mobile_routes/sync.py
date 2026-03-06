@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 import time
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.sync.auto_sync import AutoSyncConfig
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +14,7 @@ logger = logging.getLogger(__name__)
 class SyncRoutesMixin:
     """Endpoint handlers for sync operations."""
 
-    def _ensure_auto_sync(self) -> Any:
+    def _ensure_auto_sync(self) -> AutoSyncConfig:
         """Thread-safe lazy init of AutoSyncConfig."""
         auto_sync = self.server._auto_sync_config
         if auto_sync is not None:

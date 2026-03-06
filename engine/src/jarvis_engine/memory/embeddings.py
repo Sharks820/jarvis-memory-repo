@@ -9,7 +9,10 @@ This module is created in Plan 01 but wired into the memory engine in Plan 02.
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 class EmbeddingService:
@@ -21,10 +24,10 @@ class EmbeddingService:
     MODEL_REVISION = None
 
     def __init__(self) -> None:
-        self._model: Any = None
+        self._model: SentenceTransformer | None = None
         self._lock = threading.Lock()
 
-    def _ensure_model(self) -> Any:
+    def _ensure_model(self) -> SentenceTransformer:
         if self._model is not None:
             return self._model
         with self._lock:
