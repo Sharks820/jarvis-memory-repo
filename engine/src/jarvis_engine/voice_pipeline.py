@@ -97,7 +97,7 @@ class ConversationState:
 
     def __init__(self, history_file: "Path | None" = None) -> None:
         self._conversation_history: list[dict[str, str]] = []
-        self._conversation_history_lock = threading.Lock()
+        self._conversation_history_lock = threading.RLock()
         self._history_file: Path | None = history_file
         self._conversation_history_loaded = False
         self._last_routed_model: str | None = None
@@ -117,20 +117,21 @@ class ConversationState:
     def load_conversation_history(self) -> None:
         """Load persisted conversation history from disk.
 
-        IMPORTANT: Caller must already hold the conversation history lock.
-        This method does NOT acquire the lock itself to avoid deadlock with
-        the non-reentrant ``threading.Lock``.
+        Acquires the conversation history lock (reentrant) so callers
+        do not need to hold it beforehand.  Safe to call from within
+        ``get_history_messages`` which already holds the same lock.
         """
-        try:
-            path = self._conversation_history_path()
-            if path.exists():
-                import json as _json
-                data = _json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    self._conversation_history.clear()
-                    self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
-        except Exception as exc:
-            logger.debug("Could not load conversation history: %s", exc)
+        with self._conversation_history_lock:
+            try:
+                path = self._conversation_history_path()
+                if path.exists():
+                    import json as _json
+                    data = _json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(data, list):
+                        self._conversation_history.clear()
+                        self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
+            except Exception as exc:
+                logger.debug("Could not load conversation history: %s", exc)
 
     def save_conversation_history(self) -> None:
         """Persist current conversation history to disk (atomic write).
@@ -267,9 +268,8 @@ def _conversation_history_path() -> Path:
 def _load_conversation_history() -> None:
     """Load persisted conversation history from disk.
 
-    IMPORTANT: Caller must already hold ``_conversation_history_lock``.
-    This function does NOT acquire the lock itself to avoid deadlock with
-    the non-reentrant ``threading.Lock``.
+    The underlying method acquires the reentrant conversation history
+    lock, so callers do not need to hold it beforehand.
     """
     _state.load_conversation_history()
 

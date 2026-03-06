@@ -31,6 +31,7 @@ class Tier(Enum):
     HOT = "hot"
     WARM = "warm"
     COLD = "cold"
+    ARCHIVE = "archive"
 
 
 class TierManager:
@@ -88,7 +89,7 @@ class TierManager:
         """
         records = engine.get_all_records_for_tier_maintenance()
         changes = {"total": len(records), "promoted": 0, "demoted": 0, "unchanged": 0}
-        tier_order = {"cold": 0, "warm": 1, "hot": 2}
+        tier_order = {"archive": -1, "cold": 0, "warm": 1, "hot": 2}
         updates: list[tuple[str, str]] = []
 
         for record in records:

@@ -26,34 +26,60 @@ class ContradictionManager(KGManagerBase):
     # ------------------------------------------------------------------
 
     def _update_fts_index(self, node_id: str, label: str) -> None:
-        """Update fts_kg_nodes for a node. Silently no-ops if table missing."""
-        try:
-            self._db.execute(
-                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-            )
-            self._db.execute(
-                "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                (node_id, label),
-            )
-        except sqlite3.OperationalError as exc:
-            if "no such table" in str(exc):
-                logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
-            else:
-                raise
+        """Update fts_kg_nodes for a node. Silently no-ops if table missing.
 
-    def _update_vec_embedding(self, node_id: str, label: str) -> None:
-        """Update vec_kg_nodes embedding for a node. Silently no-ops if unavailable."""
+        Acquires ``_db_lock`` to prevent cursor interleaving on the shared
+        SQLite connection.  Safe to call whether or not the caller already
+        holds ``_write_lock`` (the two locks are independent).
+        """
+        with self._db_lock:
+            try:
+                self._db.execute(
+                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+                )
+                self._db.execute(
+                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                    (node_id, label),
+                )
+            except sqlite3.OperationalError as exc:
+                if "no such table" in str(exc):
+                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+                else:
+                    raise
+
+    def _precompute_vec_embedding(self, label: str) -> bytes | None:
+        """Pre-compute a vec embedding blob for *label* WITHOUT holding any lock.
+
+        Returns the packed blob ready for DB insertion, or ``None`` when the
+        embedding service is unavailable or the computation fails.  Call this
+        OUTSIDE ``_write_lock`` / ``_db_lock`` so the potentially slow model
+        call does not block other operations.
+        """
         if self._kg is None:
-            return
+            return None
         embed_service = getattr(self._kg, "_embed_service", None)
         vec_available = getattr(self._kg, "_vec_available", False)
         if embed_service is None or not vec_available:
-            return
+            return None
         try:
             import struct
             embedding = embed_service.embed(label, prefix="search_document")
             if len(embedding) == 768:
-                blob = struct.pack(f"{len(embedding)}f", *embedding)
+                return struct.pack(f"{len(embedding)}f", *embedding)
+        except Exception as exc:
+            logger.debug("Vec embedding pre-compute for label %r failed: %s", label[:50], exc)
+        return None
+
+    def _write_vec_embedding(self, node_id: str, blob: bytes | None) -> None:
+        """Write a pre-computed vec embedding blob to the DB.
+
+        Acquires ``_db_lock`` for the DB write.  *blob* should come from
+        :meth:`_precompute_vec_embedding`.  No-ops when *blob* is ``None``.
+        """
+        if blob is None:
+            return
+        try:
+            with self._db_lock:
                 self._db.execute(
                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
                 )
@@ -62,7 +88,7 @@ class ContradictionManager(KGManagerBase):
                     (node_id, blob),
                 )
         except Exception as exc:
-            logger.debug("Vec embedding update for node %s failed: %s", node_id, exc)
+            logger.debug("Vec embedding write for node %s failed: %s", node_id, exc)
 
     # ------------------------------------------------------------------
     # List operations
@@ -136,6 +162,24 @@ class ContradictionManager(KGManagerBase):
                 "message": "merge_value is required when resolution is 'merge'.",
             }
 
+        # Pre-compute embedding OUTSIDE the write lock to avoid blocking
+        # other operations during the potentially slow embedding model call.
+        vec_blob: bytes | None = None
+        if resolution == "accept_new":
+            # We need the incoming_value for embedding, but we don't have
+            # it yet (it's in the DB).  For accept_new we know we'll need
+            # an embedding for *some* value -- pre-load contradiction first
+            # to get the value, compute embedding, then acquire write lock.
+            with self._db_lock:
+                pre_row = self._db.execute(
+                    "SELECT incoming_value FROM kg_contradictions WHERE contradiction_id = ?",
+                    (contradiction_id,),
+                ).fetchone()
+            if pre_row is not None:
+                vec_blob = self._precompute_vec_embedding(str(pre_row[0] or ""))
+        elif resolution == "merge" and merge_value.strip():
+            vec_blob = self._precompute_vec_embedding(merge_value.strip())
+
         with self._write_lock:
             # Load the contradiction inside write lock to prevent TOCTOU race
             row = self._db.execute(
@@ -203,9 +247,10 @@ class ContradictionManager(KGManagerBase):
                        WHERE node_id = ?""",
                     (incoming_value, incoming_confidence, node_id),
                 )
-                # Update FTS5 + vec indexes (defensive — no-ops if tables missing)
+                # Update FTS5 index (defensive — no-ops if table missing)
                 self._update_fts_index(node_id, incoming_value)
-                self._update_vec_embedding(node_id, incoming_value)
+                # Write pre-computed vec embedding (no-ops if blob is None)
+                self._write_vec_embedding(node_id, vec_blob)
                 history.append({
                     "action": "accept_new",
                     "previous_value": current_label,
@@ -231,9 +276,10 @@ class ContradictionManager(KGManagerBase):
                        WHERE node_id = ?""",
                     (merge_value, node_id),
                 )
-                # Update FTS5 + vec indexes (defensive — no-ops if tables missing)
+                # Update FTS5 index (defensive — no-ops if table missing)
                 self._update_fts_index(node_id, merge_value)
-                self._update_vec_embedding(node_id, merge_value)
+                # Write pre-computed vec embedding (no-ops if blob is None)
+                self._write_vec_embedding(node_id, vec_blob)
                 history.append({
                     "action": "merge",
                     "previous_value": current_label,

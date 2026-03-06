@@ -114,7 +114,7 @@ class ProactiveCheckHandler:
 
         return ProactiveCheckResult(
             alerts_fired=len(alerts),
-            alerts=json.dumps(alerts_dicts),
+            alerts=alerts_dicts,
             message=message,
             diagnostics=diagnostics_str,
         )

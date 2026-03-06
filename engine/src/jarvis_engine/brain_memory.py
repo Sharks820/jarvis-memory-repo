@@ -644,30 +644,35 @@ def brain_regression_report(root: Path) -> dict[str, Any]:
 
 
 def brain_status(root: Path) -> dict[str, Any]:
+    # Hold the lock for the entire operation so that the index/facts snapshot
+    # and the regression report are computed from the same data.  The lock is
+    # an RLock (reentrant), so brain_regression_report() can safely re-acquire
+    # it within this same thread.
     with _brain_io_lock:
         index = _load_index(root)
         facts_state = _load_facts(root)
 
-    branches_raw = index.get("branches", {})
-    branches: list[dict[str, Any]] = []
-    if isinstance(branches_raw, dict):
-        for name, state in branches_raw.items():
-            if not isinstance(state, dict):
-                continue
-            branches.append(
-                {
-                    "branch": str(name),
-                    "count": int(state.get("count", 0)),
-                    "last_ts": str(state.get("last_ts", "")),
-                    "last_summary": str(state.get("last_summary", "")),
-                }
-            )
-    branches.sort(key=lambda item: item["count"], reverse=True)
+        branches_raw = index.get("branches", {})
+        branches: list[dict[str, Any]] = []
+        if isinstance(branches_raw, dict):
+            for name, state in branches_raw.items():
+                if not isinstance(state, dict):
+                    continue
+                branches.append(
+                    {
+                        "branch": str(name),
+                        "count": int(state.get("count", 0)),
+                        "last_ts": str(state.get("last_ts", "")),
+                        "last_summary": str(state.get("last_summary", "")),
+                    }
+                )
+        branches.sort(key=lambda item: item["count"], reverse=True)
 
-    facts_raw = facts_state.get("facts", {})
-    fact_count = len(facts_raw) if isinstance(facts_raw, dict) else 0
+        facts_raw = facts_state.get("facts", {})
+        fact_count = len(facts_raw) if isinstance(facts_raw, dict) else 0
 
-    report = brain_regression_report(root)
+        report = brain_regression_report(root)
+
     return {
         "updated_utc": str(index.get("updated_utc", "")),
         "branch_count": len(branches),

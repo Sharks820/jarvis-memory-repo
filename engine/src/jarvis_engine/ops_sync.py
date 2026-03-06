@@ -160,13 +160,22 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
     if ics_url:
         if not allow_remote_url:
             return []
-        if not _is_safe_calendar_url(ics_url):
+        safe_result = _is_safe_calendar_url(ics_url)
+        if not safe_result:
             return []
+        # Pin the resolved IP to prevent DNS rebinding between validation
+        # and actual connection.  Replace the hostname with the validated IP
+        # and pass the original hostname via Host header.
+        pinned_ip, original_host = safe_result
+        parsed_ics = urlparse(ics_url)
+        pinned_url = parsed_ics._replace(netloc=f"{pinned_ip}:{parsed_ics.port or 443}").geturl()
         try:
             # Use a no-redirect opener to prevent SSRF bypass via HTTP redirect
             # to internal IPs after initial URL validation.
             opener = _build_no_redirect_opener()
-            with opener.open(ics_url, timeout=15) as resp:  # nosec B310
+            from urllib.request import Request as _IcsRequest
+            pinned_req = _IcsRequest(pinned_url, headers={"Host": original_host})
+            with opener.open(pinned_req, timeout=15) as resp:  # nosec B310
                 payload = resp.read(MAX_ICS_BYTES + 1)
                 if len(payload) > MAX_ICS_BYTES:
                     return []
@@ -429,27 +438,36 @@ def _build_no_redirect_opener():
     return build_opener(_NoRedirectHandler)
 
 
-def _is_safe_calendar_url(url: str) -> bool:
+def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
+    """Validate a calendar URL for SSRF safety.
+
+    Returns ``(pinned_ip, original_host)`` on success so the caller can
+    connect directly to the validated IP (preventing DNS rebinding).
+    Returns ``None`` if the URL is unsafe.
+    """
     parsed = urlparse(url)
     if parsed.scheme != "https":
-        return False
+        return None
     host = (parsed.hostname or "").strip().lower()
     if not host or host in {"localhost"}:
-        return False
+        return None
     try:
         ip = ip_address(host)
-        return not (ip.is_private or ip.is_loopback or ip.is_link_local
-                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return None
+        return (host, host)
     except ValueError:
         pass
-    old_timeout = socket.getdefaulttimeout()
+    # Resolve DNS without using the process-global socket.setdefaulttimeout()
+    # which would affect all sockets in the process.  The resolved IP is
+    # returned so the caller can pin it for the actual connection, preventing
+    # DNS rebinding between validation and use.
     try:
-        socket.setdefaulttimeout(10)
         resolved = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, OSError):
-        return False
-    finally:
-        socket.setdefaulttimeout(old_timeout)
+        return None
+    first_safe_ip: str | None = None
     for item in resolved:
         if not item[4]:
             continue
@@ -457,8 +475,12 @@ def _is_safe_calendar_url(url: str) -> bool:
         try:
             ip = ip_address(raw_ip)
         except ValueError:
-            return False
+            return None
         if (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            return False
-    return True
+            return None
+        if first_safe_ip is None:
+            first_safe_ip = raw_ip
+    if first_safe_ip is None:
+        return None
+    return (first_safe_ip, host)

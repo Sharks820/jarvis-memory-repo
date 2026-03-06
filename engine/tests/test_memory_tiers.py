@@ -65,7 +65,10 @@ class TestTierEnum:
         assert Tier.COLD.value == "cold"
 
     def test_tier_members_count(self):
-        assert len(Tier) == 3
+        assert len(Tier) == 4
+
+    def test_archive_value(self):
+        assert Tier.ARCHIVE.value == "archive"
 
 
 # ---------------------------------------------------------------------------

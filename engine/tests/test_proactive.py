@@ -103,19 +103,32 @@ class TestCheckCalendarPrep:
         start = (now + timedelta(hours=1)).isoformat()
         snapshot = {
             "calendar_events": [
-                {"title": "Team Meeting", "prep_needed": True, "start_time": start},
+                {"title": "Team Meeting", "prep_needed": True, "time": start},
             ]
         }
         alerts = check_calendar_prep(snapshot)
         assert len(alerts) == 1
         assert "Team Meeting" in alerts[0]
 
+    def test_event_prep_needed_start_time_fallback(self):
+        """Backward compat: start_time field still works when time is absent."""
+        now = datetime.now(timezone.utc)
+        start = (now + timedelta(hours=1)).isoformat()
+        snapshot = {
+            "calendar_events": [
+                {"title": "Standup", "prep_needed": True, "start_time": start},
+            ]
+        }
+        alerts = check_calendar_prep(snapshot)
+        assert len(alerts) == 1
+        assert "Standup" in alerts[0]
+
     def test_event_no_prep(self):
         now = datetime.now(timezone.utc)
         start = (now + timedelta(hours=1)).isoformat()
         snapshot = {
             "calendar_events": [
-                {"title": "Lunch", "prep_needed": False, "start_time": start},
+                {"title": "Lunch", "prep_needed": False, "time": start},
             ]
         }
         alerts = check_calendar_prep(snapshot)

@@ -334,13 +334,38 @@ class UnblockIPHandler(_DefenseHandlerBase):
 
 
 class ReviewQuarantineHandler(_DefenseHandlerBase):
-    """Return quarantined memory records from MemoryProvenance."""
+    """Return quarantined memory records from MemoryProvenance.
+
+    Uses the shared ``MemoryProvenance`` instance from the bus/engine rather
+    than creating a fresh (empty) one each call.
+    """
+
+    _shared_provenance: "MemoryProvenance | None" = None
+
+    def set_provenance(self, provenance: object) -> None:
+        """Inject the shared ``MemoryProvenance`` instance.
+
+        Called during handler registration so that ``handle()`` queries
+        the same provenance tracker the rest of the engine writes to.
+        """
+        self._shared_provenance = provenance  # type: ignore[assignment]
 
     def handle(self, cmd: ReviewQuarantineCommand) -> ReviewQuarantineResult:
         try:
-            from jarvis_engine.security.memory_provenance import MemoryProvenance
-
-            provenance = MemoryProvenance()
+            provenance = self._shared_provenance
+            if provenance is None:
+                # Fallback: try to get it from the orchestrator
+                orch = self._ensure_orchestrator()
+                if orch is not None and hasattr(orch, "memory_provenance"):
+                    provenance = orch.memory_provenance
+            if provenance is None:
+                # Last resort: create one, but warn that it will be empty
+                from jarvis_engine.security.memory_provenance import MemoryProvenance
+                logger.warning(
+                    "ReviewQuarantineHandler: no shared MemoryProvenance available, "
+                    "creating empty instance (quarantine data will not be visible)"
+                )
+                provenance = MemoryProvenance()
             records = provenance.get_quarantined(limit=50)
             return ReviewQuarantineResult(
                 records=records,

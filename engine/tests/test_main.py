@@ -1189,7 +1189,7 @@ class TestProactiveCheck:
 
     def test_proactive_no_alerts(self, capsys, mock_bus):
         from jarvis_engine.commands.proactive_commands import ProactiveCheckResult
-        result = ProactiveCheckResult(alerts_fired=0, alerts="[]", message="No alerts.")
+        result = ProactiveCheckResult(alerts_fired=0, alerts=[], message="No alerts.")
         bus = mock_bus(result)
         rc = main_mod.cmd_proactive_check(snapshot_path="")
         assert rc == 0
@@ -1198,8 +1198,8 @@ class TestProactiveCheck:
 
     def test_proactive_with_alerts(self, capsys, mock_bus):
         from jarvis_engine.commands.proactive_commands import ProactiveCheckResult
-        alerts_json = json.dumps([{"rule_id": "bill_due", "message": "Electric bill due tomorrow"}])
-        result = ProactiveCheckResult(alerts_fired=1, alerts=alerts_json, message="1 alert triggered.")
+        alerts_list = [{"rule_id": "bill_due", "message": "Electric bill due tomorrow"}]
+        result = ProactiveCheckResult(alerts_fired=1, alerts=alerts_list, message="1 alert triggered.")
         bus = mock_bus(result)
         rc = main_mod.cmd_proactive_check(snapshot_path="/tmp/snapshot.json")
         assert rc == 0

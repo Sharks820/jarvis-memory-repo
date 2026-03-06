@@ -2339,15 +2339,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             # Fall back to owner_guard master password verification.
             # If it passes, create a session token manually.
             if verify_master_password(self._root, password):
-                import secrets as _auth_secrets
-                token = _auth_secrets.token_hex(32)
-                with owner_session._lock:
-                    owner_session._purge_expired()
-                    if len(owner_session._sessions) < owner_session.MAX_SESSIONS:
-                        owner_session._sessions[token] = time.monotonic() + owner_session._session_timeout
-                        owner_session._failure_count = 0
-                    else:
-                        token = None  # session cap reached
+                token = owner_session.create_external_session()
                 if token is not None:
                     logger.info("Owner authenticated via master password, session ...%s created", token[-4:])
         if token is None:
@@ -2805,7 +2797,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     import sqlite3
 
                     db = sqlite3.connect(str(db_path))
-                    db.row_factory = sqlite3.Row
+                    _configure_db(db)
                     try:
                         # Export high-confidence KG facts
                         rows = db.execute(
@@ -2845,7 +2837,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     import sqlite3
 
                     db = sqlite3.connect(str(db_path))
-                    db.row_factory = sqlite3.Row
+                    _configure_db(db)
                     try:
                         rows = db.execute(
                             "SELECT category, preference, score FROM user_preferences "

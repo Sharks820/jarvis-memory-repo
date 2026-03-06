@@ -106,6 +106,7 @@ class ContainmentEngine:
             raise ValueError(f"Invalid containment level: {level}")
 
         _do_block_ip = False
+        _do_rotate_credentials = False
         with self._lock:
             actions: list[str] = []
             credentials_rotated = False
@@ -133,7 +134,9 @@ class ContainmentEngine:
                 self._lockdown_active = True
                 if self._session_manager is not None:
                     self._session_manager.terminate_all_sessions()
-                self._rotate_credentials()
+                # Defer credential rotation to outside the lock to avoid
+                # deadlock if the callback acquires this or another lock.
+                _do_rotate_credentials = True
                 credentials_rotated = True
                 actions.append("LOCKDOWN: mobile API shut down, credentials rotated")
                 actions.append("LOCKDOWN: all sessions invalidated")
@@ -161,6 +164,10 @@ class ContainmentEngine:
                 result["credentials_rotated"] = True
 
             self._containment_history.append(result)
+
+        # Credential rotation (outside lock — callback may acquire other locks)
+        if _do_rotate_credentials:
+            self._rotate_credentials()
 
         # IP tracker operations (outside lock — avoids lock-ordering deadlock)
         if _do_block_ip and self._ip_tracker is not None:
@@ -248,30 +255,41 @@ class ContainmentEngine:
         with self._lock:
             actions: list[str] = []
 
-            # Undo level-specific containment
-            if level >= ContainmentLevel.FULL_KILL:
+            # Only recover if the current containment level is at or below
+            # the requested recovery level.  Each branch clears its own
+            # level's state without touching higher levels.
+
+            if level >= ContainmentLevel.FULL_KILL and self._killed:
                 self._killed = False
                 actions.append("Services restart permitted")
 
-            if level >= ContainmentLevel.LOCKDOWN:
+            if level >= ContainmentLevel.LOCKDOWN and self._lockdown_active:
                 self._lockdown_active = False
                 actions.append("Lockdown lifted, API re-enabled")
 
-            if level >= ContainmentLevel.ISOLATE:
+            if level >= ContainmentLevel.ISOLATE and self._isolated_endpoints:
                 self._isolated_endpoints.clear()
                 actions.append("All endpoint isolations removed")
 
             _ips_to_unblock: list[str] = []
-            if level >= ContainmentLevel.BLOCK:
+            if level >= ContainmentLevel.BLOCK and self._blocked_ips:
                 _ips_to_unblock = list(self._blocked_ips)
                 self._blocked_ips.clear()
                 actions.append("All IP blocks cleared")
 
-            if level >= ContainmentLevel.THROTTLE:
+            if level >= ContainmentLevel.THROTTLE and self._throttled_ips:
                 self._throttled_ips.clear()
                 actions.append("All throttles cleared")
 
-            self._current_level = 0
+            # Only lower the current level if we recovered at or above it.
+            # If recovering level 2 but containment is at level 4, the
+            # current level drops to 3 (next level above the recovered one).
+            if self._current_level <= level:
+                self._current_level = 0
+            else:
+                # Higher containment levels remain; adjust current level to
+                # the next level above what was recovered.
+                self._current_level = level + 1 if level < ContainmentLevel.FULL_KILL else 0
 
         # IP tracker operations (outside lock — avoids lock-ordering deadlock)
         if _ips_to_unblock and self._ip_tracker is not None:

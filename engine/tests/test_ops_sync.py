@@ -455,7 +455,7 @@ class TestLoadCalendarEvents:
         mock_opener = MagicMock()
         mock_opener.open.return_value = mock_resp
 
-        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: True)
+        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
         monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", lambda: mock_opener)
 
         events = load_calendar_events(target_date=date(2026, 3, 1))
@@ -476,7 +476,7 @@ class TestLoadCalendarEvents:
         mock_opener = MagicMock()
         mock_opener.open.return_value = mock_resp
 
-        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: True)
+        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
         monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", lambda: mock_opener)
 
         assert load_calendar_events() == []
@@ -492,7 +492,7 @@ class TestLoadCalendarEvents:
         mock_opener = MagicMock()
         mock_opener.open.side_effect = URLError("connection refused")
 
-        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: True)
+        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
         monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", lambda: mock_opener)
 
         assert load_calendar_events() == []
@@ -510,37 +510,41 @@ class TestLoadCalendarEvents:
 
 class TestIsSafeCalendarUrl:
     def test_http_rejected(self) -> None:
-        assert _is_safe_calendar_url("http://example.com/cal.ics") is False
+        assert _is_safe_calendar_url("http://example.com/cal.ics") is None
 
     def test_ftp_rejected(self) -> None:
-        assert _is_safe_calendar_url("ftp://example.com/cal.ics") is False
+        assert _is_safe_calendar_url("ftp://example.com/cal.ics") is None
 
     def test_empty_host(self) -> None:
-        assert _is_safe_calendar_url("https:///cal.ics") is False
+        assert _is_safe_calendar_url("https:///cal.ics") is None
 
     def test_localhost_rejected(self) -> None:
-        assert _is_safe_calendar_url("https://localhost/cal.ics") is False
+        assert _is_safe_calendar_url("https://localhost/cal.ics") is None
 
     def test_private_ip_rejected(self) -> None:
-        assert _is_safe_calendar_url("https://192.168.1.1/cal.ics") is False
+        assert _is_safe_calendar_url("https://192.168.1.1/cal.ics") is None
 
     def test_loopback_ip_rejected(self) -> None:
-        assert _is_safe_calendar_url("https://127.0.0.1/cal.ics") is False
+        assert _is_safe_calendar_url("https://127.0.0.1/cal.ics") is None
 
     def test_link_local_rejected(self) -> None:
-        assert _is_safe_calendar_url("https://169.254.1.1/cal.ics") is False
+        assert _is_safe_calendar_url("https://169.254.1.1/cal.ics") is None
 
     @patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 443))])
     def test_public_hostname_allowed(self, mock_dns) -> None:
-        assert _is_safe_calendar_url("https://example.com/cal.ics") is True
+        result = _is_safe_calendar_url("https://example.com/cal.ics")
+        assert result is not None
+        pinned_ip, host = result
+        assert pinned_ip == "93.184.216.34"
+        assert host == "example.com"
 
     @patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("10.0.0.1", 443))])
     def test_hostname_resolving_to_private_ip(self, mock_dns) -> None:
-        assert _is_safe_calendar_url("https://evil.internal/cal.ics") is False
+        assert _is_safe_calendar_url("https://evil.internal/cal.ics") is None
 
     @patch("socket.getaddrinfo", side_effect=socket.gaierror("DNS failure"))
     def test_dns_failure(self, mock_dns) -> None:
-        assert _is_safe_calendar_url("https://doesnotresolve.invalid/cal.ics") is False
+        assert _is_safe_calendar_url("https://doesnotresolve.invalid/cal.ics") is None
 
     @patch("socket.getaddrinfo", return_value=[
         (2, 1, 6, "", ("93.184.216.34", 443)),
@@ -548,7 +552,7 @@ class TestIsSafeCalendarUrl:
     ])
     def test_mixed_public_private_rejected(self, mock_dns) -> None:
         """If any resolved IP is private, the URL is unsafe."""
-        assert _is_safe_calendar_url("https://dual-homed.example.com/cal.ics") is False
+        assert _is_safe_calendar_url("https://dual-homed.example.com/cal.ics") is None
 
 
 # ===========================================================================

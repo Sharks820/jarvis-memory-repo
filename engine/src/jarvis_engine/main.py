@@ -1600,10 +1600,7 @@ def cmd_proactive_check(snapshot_path: str) -> int:
     result, _ = _dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
     print(f"alerts_fired={result.alerts_fired}")
     if result.alerts_fired:
-        try:
-            alerts = json.loads(result.alerts)
-        except (json.JSONDecodeError, TypeError):
-            alerts = []
+        alerts = result.alerts if isinstance(result.alerts, list) else []
         for a in alerts:
             if not isinstance(a, dict):
                 continue

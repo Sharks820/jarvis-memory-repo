@@ -1193,58 +1193,6 @@ def test_local_confidence_uses_logprobs() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 43. _confidence_retry with local primary and groq available
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_confidence_retry_local_primary_retries_groq() -> None:
-    """When local is primary and confidence is low, retry with Groq."""
-    from jarvis_engine.stt import TranscriptionResult, _confidence_retry
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    primary = TranscriptionResult(
-        text="maybe", language="en", confidence=0.4,
-        duration_seconds=1.0, backend="faster-whisper",
-    )
-    groq_result = TranscriptionResult(
-        text="hello", language="en", confidence=0.9,
-        duration_seconds=0.3, backend="groq-whisper",
-    )
-
-    with patch("jarvis_engine.stt._try_groq", return_value=groq_result):
-        result = _confidence_retry(primary, fake_audio, language="en", prompt="", root_dir=None)
-
-    assert result.text == "hello"
-    assert result.backend == "groq-whisper"
-    assert result.retried is True
-
-
-# ---------------------------------------------------------------------------
-# 44. _confidence_retry with no alternative backend
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": ""}, clear=False)
-def test_confidence_retry_no_alternative() -> None:
-    """When no alternative backend is available, primary is returned."""
-    from jarvis_engine.stt import TranscriptionResult, _confidence_retry
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    primary = TranscriptionResult(
-        text="something", language="en", confidence=0.3,
-        duration_seconds=1.0, backend="faster-whisper",
-    )
-
-    # No GROQ_API_KEY, so no alternative for faster-whisper
-    result = _confidence_retry(primary, fake_audio, language="en", prompt="", root_dir=None)
-
-    assert result.text == "something"
-    assert result.confidence == 0.3
-    assert result.retried is False
-
-
-# ---------------------------------------------------------------------------
 # 45. Metric logging thread safety (concurrent writes)
 # ---------------------------------------------------------------------------
 

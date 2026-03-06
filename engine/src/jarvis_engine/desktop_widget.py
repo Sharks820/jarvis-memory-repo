@@ -439,7 +439,10 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
                 raise RuntimeError("Invalid response payload")
             return parsed
         except HTTPError as exc:
-            last_exc = RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}")
+            # HTTP errors (401, 403, 500, etc.) indicate the server IS
+            # reachable but rejected the request.  Do NOT fall back to
+            # localhost — the issue is auth/server-side, not connectivity.
+            raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
         except (URLError, TimeoutError, OSError) as exc:
             last_exc = RuntimeError(f"HTTP request failed: {exc}")
             if base != _urls_to_try[-1]:

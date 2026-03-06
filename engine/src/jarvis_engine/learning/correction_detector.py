@@ -197,96 +197,117 @@ class CorrectionDetector:
             )
 
         with self._kg._write_lock:
-            # Read current confidence and lock state
-            row = self._kg._db.execute(
-                "SELECT confidence, locked FROM kg_nodes WHERE node_id = ?",
-                (node_id,),
-            ).fetchone()
-            if row is None:
-                return False
+            try:
+                # Read current confidence and lock state
+                row = self._kg._db.execute(
+                    "SELECT confidence, locked FROM kg_nodes WHERE node_id = ?",
+                    (node_id,),
+                ).fetchone()
+                if row is None:
+                    return False
 
-            existing_confidence = row[0] if isinstance(row[0], float) else float(row[0])
-            is_locked = bool(row[1]) if row[1] is not None else False
+                existing_confidence = row[0] if isinstance(row[0], float) else float(row[0])
+                is_locked = bool(row[1]) if row[1] is not None else False
 
-            # Respect fact locks -- never modify a locked node
-            if is_locked:
-                logger.warning(
-                    "Correction skipped: node %s is locked (label=%r)",
-                    node_id,
-                    correction.new_claim,
-                )
-                return False
+                # Respect fact locks -- never modify a locked node
+                if is_locked:
+                    logger.warning(
+                        "Correction skipped: node %s is locked (label=%r)",
+                        node_id,
+                        correction.new_claim,
+                    )
+                    return False
 
-            new_confidence = min(max(existing_confidence + 0.1, 0.9), 1.0)
+                new_confidence = min(max(existing_confidence + 0.1, 0.9), 1.0)
 
-            # Check if a node with new_claim already exists to avoid duplication
-            if pre_new_matches:
-                existing_new_id = pre_new_matches[0]["node_id"]
-                if existing_new_id != node_id:
-                    # A node with the new claim already exists — merge instead of duplicating.
-                    # Boost the existing node's confidence to the max of both.
-                    existing_new_row = self._kg._db.execute(
-                        "SELECT confidence FROM kg_nodes WHERE node_id = ?",
-                        (existing_new_id,),
-                    ).fetchone()
-                    if existing_new_row is not None:
-                        existing_new_conf = float(existing_new_row[0])
-                        merged_confidence = min(max(existing_new_conf, new_confidence), 1.0)
+                # Check if a node with new_claim already exists to avoid duplication
+                if pre_new_matches:
+                    existing_new_id = pre_new_matches[0]["node_id"]
+                    if existing_new_id != node_id:
+                        # A node with the new claim already exists — merge instead of duplicating.
+                        # Boost the existing node's confidence to the max of both.
+                        existing_new_row = self._kg._db.execute(
+                            "SELECT confidence FROM kg_nodes WHERE node_id = ?",
+                            (existing_new_id,),
+                        ).fetchone()
+                        if existing_new_row is not None:
+                            existing_new_conf = float(existing_new_row[0])
+                            merged_confidence = min(max(existing_new_conf, new_confidence), 1.0)
+                            self._kg._db.execute(
+                                """UPDATE kg_nodes
+                                   SET confidence = ?, updated_at = datetime('now')
+                                   WHERE node_id = ?""",
+                                (merged_confidence, existing_new_id),
+                            )
+                        # Retract the old node (set confidence to 0) rather than deleting
                         self._kg._db.execute(
                             """UPDATE kg_nodes
-                               SET confidence = ?, updated_at = datetime('now')
+                               SET confidence = 0, updated_at = datetime('now')
                                WHERE node_id = ?""",
-                            (merged_confidence, existing_new_id),
+                            (node_id,),
                         )
-                    # Retract the old node (set confidence to 0) rather than deleting
+                        # Clean up FTS5 index for the retracted node
+                        try:
+                            self._kg._db.execute(
+                                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+                            )
+                        except Exception as exc:
+                            if "no such table" not in str(exc):
+                                raise
+                            logger.debug("FTS5 table not available, skipping cleanup for retracted node %s", node_id)
+                        # Clean up vec index for the retracted node
+                        if getattr(self._kg, "_vec_available", False):
+                            try:
+                                self._kg._db.execute(
+                                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                                )
+                            except Exception as exc:
+                                logger.debug("Vec cleanup for retracted node %s failed: %s", node_id, exc)
+                        self._kg._db.commit()
+                        self._kg._mutation_counter += 1
+                        logger.info(
+                            "Correction merged: node %s retracted, existing node %s boosted to %.2f",
+                            node_id, existing_new_id, merged_confidence if existing_new_row else new_confidence,
+                        )
+                        # Add superseded edge for historical audit trail
+                        try:
+                            self._kg.add_edge(
+                                source_id=node_id,
+                                target_id=existing_new_id,
+                                relation="superseded",
+                            )
+                        except Exception as exc:
+                            logger.debug("KG audit edge failed: %s", exc)
+                        return True
+
+                # Update the fact label and confidence
+                self._kg._db.execute(
+                    """UPDATE kg_nodes
+                       SET label = ?, confidence = ?, updated_at = datetime('now')
+                       WHERE node_id = ?""",
+                    (correction.new_claim, new_confidence, node_id),
+                )
+
+                # Maintain FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
+                try:
                     self._kg._db.execute(
-                        """UPDATE kg_nodes
-                           SET confidence = 0, updated_at = datetime('now')
-                           WHERE node_id = ?""",
-                        (node_id,),
+                        "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
                     )
-                    self._kg._db.commit()
-                    self._kg._mutation_counter += 1
-                    logger.info(
-                        "Correction merged: node %s retracted, existing node %s boosted to %.2f",
-                        node_id, existing_new_id, merged_confidence if existing_new_row else new_confidence,
+                    self._kg._db.execute(
+                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                        (node_id, correction.new_claim),
                     )
-                    # Add superseded edge for historical audit trail
-                    try:
-                        self._kg.add_edge(
-                            source_id=node_id,
-                            target_id=existing_new_id,
-                            relation="superseded",
-                        )
-                    except Exception as exc:
-                        logger.debug("KG audit edge failed: %s", exc)
-                    return True
+                except Exception as exc:
+                    if "no such table" not in str(exc):
+                        raise
+                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
 
-            # Update the fact label and confidence
-            self._kg._db.execute(
-                """UPDATE kg_nodes
-                   SET label = ?, confidence = ?, updated_at = datetime('now')
-                   WHERE node_id = ?""",
-                (correction.new_claim, new_confidence, node_id),
-            )
-
-            # Maintain FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-            try:
-                self._kg._db.execute(
-                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-                )
-                self._kg._db.execute(
-                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                    (node_id, correction.new_claim),
-                )
-            except Exception as exc:
-                if "no such table" not in str(exc):
-                    raise
-                logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
-
-            self._kg._db.commit()
-            # Invalidate NetworkX cache (bypassed add_fact)
-            self._kg._mutation_counter += 1
+                self._kg._db.commit()
+                # Invalidate NetworkX cache (bypassed add_fact)
+                self._kg._mutation_counter += 1
+            except Exception:
+                self._kg._db.rollback()
+                raise
 
         logger.info(
             "Correction applied: node %s updated to %r (confidence %.2f)",

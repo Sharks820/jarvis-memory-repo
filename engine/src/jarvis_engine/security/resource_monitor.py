@@ -91,10 +91,12 @@ class ResourceMonitor:
             if window is None:
                 window = collections.deque(maxlen=self._window_size)
                 self._windows[metric] = window
-            window.append(value)
 
-            # Z-score anomaly check.
+            # Z-score anomaly check — computed BEFORE appending the current
+            # value so the test value is not part of the reference distribution.
             self._anomalous[metric] = self._compute_anomaly(window, value)
+
+            window.append(value)
 
     def check_cap(self, metric: str) -> tuple[bool, float]:
         """Check whether *metric* is within its hard cap.
@@ -175,9 +177,13 @@ class ResourceMonitor:
     def _compute_anomaly(self, window: collections.deque[float], value: float) -> bool:
         """Return ``True`` if *value* is a z-score anomaly within *window*.
 
-        Requires at least ``_MIN_WINDOW_FOR_ZSCORE`` values in the window.
+        Requires at least ``_MIN_WINDOW_FOR_ZSCORE - 1`` previous values in the
+        window (the test *value* itself is not yet in the window, so N-1
+        reference points are needed to form the 10-observation threshold).
+        The *value* being tested must NOT already be in *window* -- the caller
+        is responsible for computing the anomaly before appending.
         """
-        if len(window) < _MIN_WINDOW_FOR_ZSCORE:
+        if len(window) < _MIN_WINDOW_FOR_ZSCORE - 1:
             return False
 
         n = len(window)
@@ -186,7 +192,9 @@ class ResourceMonitor:
         stddev = math.sqrt(variance)
 
         if stddev == 0.0:
-            return False
+            # All values in the window are identical.  Any different value is
+            # anomalous by definition (infinite z-score).
+            return value != mean
 
         z_score = abs((value - mean) / stddev)
         return z_score > self._z_threshold

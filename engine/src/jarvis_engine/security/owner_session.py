@@ -281,6 +281,30 @@ class OwnerSessionManager:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def create_external_session(self) -> str | None:
+        """Create a session token for an externally-verified owner.
+
+        Use this when the owner has been authenticated through an
+        alternative mechanism (e.g. master password verification) and
+        needs a session token without going through the internal
+        password check.
+
+        Returns ``None`` if the session cap has been reached.
+        """
+        with self._lock:
+            self._purge_expired()
+            if len(self._sessions) >= self.MAX_SESSIONS:
+                logger.warning(
+                    "Session cap reached (%d) — rejecting new external session",
+                    self.MAX_SESSIONS,
+                )
+                return None
+            self._failure_count = 0
+            token = secrets.token_hex(32)
+            self._sessions[token] = time.monotonic() + self._session_timeout
+            logger.info("External session ...%s created", token[-4:])
+            return token
+
     def _verify_password_internal(self, password: str) -> bool:
         """Verify *password* against stored hash.  Caller must hold lock."""
         if self._hash_algo == "argon2":

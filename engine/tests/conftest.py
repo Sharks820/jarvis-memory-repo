@@ -116,7 +116,7 @@ def signed_headers(
     timestamp: float | None = None,
     nonce: str | None = None,
 ) -> dict[str, str]:
-    ts = time.time() if timestamp is None else timestamp
+    ts = int(time.time()) if timestamp is None else int(timestamp)
     nonce_value = uuid.uuid4().hex if nonce is None else nonce
     signing_material = f"{ts}\n{nonce_value}\n".encode("utf-8") + raw_body
     sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()

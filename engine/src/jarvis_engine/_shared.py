@@ -225,15 +225,34 @@ FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
 def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
     """Read the last *limit* JSON objects from a JSONL file.
 
+    Uses a seek-from-end strategy to avoid reading the entire file into
+    memory for large JSONL files.  Falls back to a full read for small
+    files or when the tail chunk doesn't contain enough lines.
+
     Blank lines and malformed JSON lines are silently skipped.
     Returns an empty list if the file does not exist.
     """
     if not path.exists():
         return []
 
-    entries: list[dict] = []
-    with path.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
+    try:
+        file_size = path.stat().st_size
+    except OSError:
+        return []
+
+    if file_size == 0:
+        return []
+
+    # For small files (< 64KB) or when we need many lines, just read all.
+    # Otherwise, seek from the end and read a chunk that should contain
+    # enough lines.  Average JSONL line ~200-500 bytes, so 1KB per line
+    # is a safe overestimate.
+    _SMALL_FILE_THRESHOLD = 64 * 1024
+    _BYTES_PER_LINE_ESTIMATE = 1024
+
+    def _parse_lines(text: str) -> list[dict]:
+        entries: list[dict] = []
+        for line in text.splitlines():
             stripped = line.strip()
             if not stripped:
                 continue
@@ -242,8 +261,47 @@ def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
             except json.JSONDecodeError:
                 logger.debug("Skipping malformed JSONL line in %s", path)
                 continue
+        return entries
 
-    return entries[-limit:]
+    if file_size <= _SMALL_FILE_THRESHOLD:
+        # Small file: read everything (avoids partial-line issues)
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+        return _parse_lines(text)[-limit:]
+
+    # Large file: seek from the end to read only the tail portion.
+    # Request extra lines to account for blank/malformed lines being skipped.
+    chunk_size = min(file_size, _BYTES_PER_LINE_ESTIMATE * (limit + 20))
+    try:
+        with path.open("rb") as f:
+            f.seek(max(0, file_size - chunk_size))
+            raw = f.read()
+    except OSError:
+        return []
+
+    text = raw.decode("utf-8", errors="replace")
+
+    # If we seeked into the middle of the file, discard the first
+    # (potentially partial) line.
+    if file_size > chunk_size:
+        newline_pos = text.find("\n")
+        if newline_pos >= 0:
+            text = text[newline_pos + 1:]
+
+    entries = _parse_lines(text)
+
+    if len(entries) >= limit:
+        return entries[-limit:]
+
+    # Rare edge case: not enough valid lines in the tail chunk.
+    # Fall back to reading the entire file.
+    try:
+        full_text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return entries[-limit:]
+    return _parse_lines(full_text)[-limit:]
 
 
 def sanitize_fts_query(query: str) -> str:
