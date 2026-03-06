@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,109 @@ def _get_executable(provider_key: str, bare_name: str) -> str:
     On Windows, .CMD wrappers require the full path for subprocess.run().
     """
     return _RESOLVED_PATHS.get(provider_key, bare_name)
+
+
+# ---------------------------------------------------------------------------
+# Common result / subprocess helpers
+# ---------------------------------------------------------------------------
+
+def _cli_result(
+    provider: str,
+    model: str,
+    *,
+    text: str = "",
+    success: bool = False,
+    error: str = "",
+    cost_usd: float = 0.0,
+) -> dict[str, Any]:
+    """Construct a standardised CLI provider result dict."""
+    return {
+        "text": text,
+        "model": model,
+        "provider": provider,
+        "success": success,
+        "error": error,
+        "cost_usd": cost_usd,
+    }
+
+
+def _run_cli_subprocess(
+    cmd: list[str],
+    provider: str,
+    model: str,
+    *,
+    timeout: int = _DEFAULT_TIMEOUT,
+    cli_display_name: str = "",
+    env: dict[str, str] | None = None,
+    parse_output: Callable[[str], tuple[str, float]] | None = None,
+) -> dict[str, Any]:
+    """Run a CLI subprocess and return a standardised result dict.
+
+    Handles the common subprocess.run + error-catching pattern shared by all
+    CLI providers.  Provider-specific stdout parsing is delegated to the
+    optional *parse_output* callback.
+
+    Args:
+        cmd: The subprocess command list.
+        provider: Provider key (e.g. ``"claude-cli"``).
+        model: Model key for the result dict.
+        timeout: Subprocess timeout in seconds.
+        cli_display_name: Human-readable CLI name for error messages
+            (e.g. ``"claude"``).  Falls back to *provider* if empty.
+        env: Optional environment dict for ``subprocess.run``.
+        parse_output: Optional ``(stdout) -> (text, cost_usd)`` callback.
+            When *None*, the default behaviour is ``(stdout.strip(), 0.0)``.
+
+    Returns:
+        Standardised result dict with keys: text, model, provider, success,
+        error, cost_usd.
+    """
+    display = cli_display_name or provider
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+            cwd=tempfile.gettempdir(),
+        )
+        if proc.returncode != 0:
+            return _cli_result(
+                provider, model,
+                error=f"exit {proc.returncode}: {proc.stderr[:500]}",
+            )
+
+        if parse_output is not None:
+            text, cost = parse_output(proc.stdout)
+        else:
+            text = proc.stdout.strip()
+            cost = 0.0
+
+        success = bool(text.strip())
+        return _cli_result(
+            provider, model,
+            text=text,
+            success=success,
+            error="" if success else "empty response",
+            cost_usd=cost,
+        )
+    except subprocess.TimeoutExpired:
+        return _cli_result(
+            provider, model,
+            error=f"timeout after {timeout}s",
+        )
+    except FileNotFoundError:
+        return _cli_result(
+            provider, model,
+            error=f"{display} CLI not found on PATH",
+        )
+    except OSError as exc:
+        return _cli_result(
+            provider, model,
+            error=f"OS error (prompt too long?): {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -432,63 +536,13 @@ def call_claude_cli(
     if budget is not None:
         cmd.extend(["--max-budget-usd", budget])
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            cwd=tempfile.gettempdir(),
-        )
-        if proc.returncode != 0:
-            return {
-                "text": "",
-                "model": "claude-cli",
-                "provider": "claude-cli",
-                "success": False,
-                "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
-                "cost_usd": 0.0,
-            }
-
-        text, cost = _extract_claude_text_and_cost(proc.stdout)
-        success = bool(text.strip())
-
-        return {
-            "text": text,
-            "model": "claude-cli",
-            "provider": "claude-cli",
-            "success": success,
-            "error": "" if success else "empty response",
-            "cost_usd": cost,
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "text": "",
-            "model": "claude-cli",
-            "provider": "claude-cli",
-            "success": False,
-            "error": f"timeout after {timeout}s",
-            "cost_usd": 0.0,
-        }
-    except FileNotFoundError:
-        return {
-            "text": "",
-            "model": "claude-cli",
-            "provider": "claude-cli",
-            "success": False,
-            "error": "claude CLI not found on PATH",
-            "cost_usd": 0.0,
-        }
-    except OSError as exc:
-        return {
-            "text": "",
-            "model": "claude-cli",
-            "provider": "claude-cli",
-            "success": False,
-            "error": f"OS error (prompt too long?): {exc}",
-            "cost_usd": 0.0,
-        }
+    return _run_cli_subprocess(
+        cmd, "claude-cli", "claude-cli",
+        timeout=timeout,
+        cli_display_name="claude",
+        env=env,
+        parse_output=_extract_claude_text_and_cost,
+    )
 
 
 def call_codex_cli(
@@ -514,14 +568,10 @@ def call_codex_cli(
         ) as tmp:
             out_path = tmp.name
     except OSError as exc:
-        return {
-            "text": "",
-            "model": "codex-cli",
-            "provider": "codex-cli",
-            "success": False,
-            "error": f"Failed to create temp file: {exc}",
-            "cost_usd": 0.0,
-        }
+        return _cli_result(
+            "codex-cli", "codex-cli",
+            error=f"Failed to create temp file: {exc}",
+        )
 
     cmd = [
         _get_executable("codex-cli", "codex"),
@@ -551,51 +601,33 @@ def call_codex_cli(
             pass
 
         if proc.returncode != 0 and not text:
-            return {
-                "text": "",
-                "model": "codex-cli",
-                "provider": "codex-cli",
-                "success": False,
-                "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
-                "cost_usd": 0.0,
-            }
+            return _cli_result(
+                "codex-cli", "codex-cli",
+                error=f"exit {proc.returncode}: {proc.stderr[:500]}",
+            )
 
         final_text = text or proc.stdout.strip()
-        return {
-            "text": final_text,
-            "model": "codex-cli",
-            "provider": "codex-cli",
-            "success": bool(final_text),
-            "error": "" if final_text else "empty response",
-            "cost_usd": 0.0,
-        }
+        return _cli_result(
+            "codex-cli", "codex-cli",
+            text=final_text,
+            success=bool(final_text),
+            error="" if final_text else "empty response",
+        )
     except subprocess.TimeoutExpired:
-        return {
-            "text": "",
-            "model": "codex-cli",
-            "provider": "codex-cli",
-            "success": False,
-            "error": f"timeout after {timeout}s",
-            "cost_usd": 0.0,
-        }
+        return _cli_result(
+            "codex-cli", "codex-cli",
+            error=f"timeout after {timeout}s",
+        )
     except FileNotFoundError:
-        return {
-            "text": "",
-            "model": "codex-cli",
-            "provider": "codex-cli",
-            "success": False,
-            "error": "codex CLI not found on PATH",
-            "cost_usd": 0.0,
-        }
+        return _cli_result(
+            "codex-cli", "codex-cli",
+            error="codex CLI not found on PATH",
+        )
     except OSError as exc:
-        return {
-            "text": "",
-            "model": "codex-cli",
-            "provider": "codex-cli",
-            "success": False,
-            "error": f"OS error (prompt too long?): {exc}",
-            "cost_usd": 0.0,
-        }
+        return _cli_result(
+            "codex-cli", "codex-cli",
+            error=f"OS error (prompt too long?): {exc}",
+        )
     finally:
         # Always clean up temp file, regardless of how we exit
         if out_path is not None:
@@ -622,60 +654,11 @@ def call_gemini_cli(
         "-o", "text",
     ]
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=tempfile.gettempdir(),
-        )
-        if proc.returncode != 0:
-            return {
-                "text": "",
-                "model": "gemini-cli",
-                "provider": "gemini-cli",
-                "success": False,
-                "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
-                "cost_usd": 0.0,
-            }
-
-        text = proc.stdout.strip()
-        return {
-            "text": text,
-            "model": "gemini-cli",
-            "provider": "gemini-cli",
-            "success": bool(text),
-            "error": "" if text else "empty response",
-            "cost_usd": 0.0,
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "text": "",
-            "model": "gemini-cli",
-            "provider": "gemini-cli",
-            "success": False,
-            "error": f"timeout after {timeout}s",
-            "cost_usd": 0.0,
-        }
-    except FileNotFoundError:
-        return {
-            "text": "",
-            "model": "gemini-cli",
-            "provider": "gemini-cli",
-            "success": False,
-            "error": "gemini CLI not found on PATH",
-            "cost_usd": 0.0,
-        }
-    except OSError as exc:
-        return {
-            "text": "",
-            "model": "gemini-cli",
-            "provider": "gemini-cli",
-            "success": False,
-            "error": f"OS error (prompt too long?): {exc}",
-            "cost_usd": 0.0,
-        }
+    return _run_cli_subprocess(
+        cmd, "gemini-cli", "gemini-cli",
+        timeout=timeout,
+        cli_display_name="gemini",
+    )
 
 
 def call_kimi_cli(
@@ -697,60 +680,11 @@ def call_kimi_cli(
         "-p", prompt,
     ]
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=tempfile.gettempdir(),
-        )
-        if proc.returncode != 0:
-            return {
-                "text": "",
-                "model": "kimi-cli",
-                "provider": "kimi-cli",
-                "success": False,
-                "error": f"exit {proc.returncode}: {proc.stderr[:500]}",
-                "cost_usd": 0.0,
-            }
-
-        text = proc.stdout.strip()
-        return {
-            "text": text,
-            "model": "kimi-cli",
-            "provider": "kimi-cli",
-            "success": bool(text),
-            "error": "" if text else "empty response",
-            "cost_usd": 0.0,
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "text": "",
-            "model": "kimi-cli",
-            "provider": "kimi-cli",
-            "success": False,
-            "error": f"timeout after {timeout}s",
-            "cost_usd": 0.0,
-        }
-    except FileNotFoundError:
-        return {
-            "text": "",
-            "model": "kimi-cli",
-            "provider": "kimi-cli",
-            "success": False,
-            "error": "kimi CLI not found on PATH",
-            "cost_usd": 0.0,
-        }
-    except OSError as exc:
-        return {
-            "text": "",
-            "model": "kimi-cli",
-            "provider": "kimi-cli",
-            "success": False,
-            "error": f"OS error (prompt too long?): {exc}",
-            "cost_usd": 0.0,
-        }
+    return _run_cli_subprocess(
+        cmd, "kimi-cli", "kimi-cli",
+        timeout=timeout,
+        cli_display_name="kimi",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -787,14 +721,10 @@ def call_cli_provider(
     """
     caller = _CLI_CALLERS.get(provider_key)
     if caller is None:
-        return {
-            "text": "",
-            "model": provider_key,
-            "provider": provider_key,
-            "success": False,
-            "error": f"unknown CLI provider: {provider_key}",
-            "cost_usd": 0.0,
-        }
+        return _cli_result(
+            provider_key, provider_key,
+            error=f"unknown CLI provider: {provider_key}",
+        )
     # Forward model kwarg to providers that accept it (claude, codex)
     if model is not None and provider_key in ("claude-cli", "codex-cli"):
         return caller(messages, max_tokens, timeout, model=model)

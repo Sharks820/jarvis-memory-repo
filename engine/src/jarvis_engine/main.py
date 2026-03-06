@@ -613,6 +613,38 @@ def _get_history_messages() -> list[dict[str, str]]:
         return list(_conversation_history)
 
 
+def _learn_conversation(
+    bus: "CommandBus",
+    text: str,
+    response: str,
+    route: str,
+    model: str,
+) -> None:
+    """Dispatch a LearnInteractionCommand with JSONL fallback on failure."""
+    try:
+        bus.dispatch(LearnInteractionCommand(
+            user_message=text[:1000],
+            assistant_response=response[:1000],
+            task_id=_make_task_id(f"conv-{route}"),
+            route=route,
+            topic=text[:100],
+        ))
+    except Exception as exc_learn:
+        logger.warning("Enriched learning failed for conversation: %s", exc_learn)
+        try:
+            _auto_ingest_memory(
+                source="conversation",
+                kind="episodic",
+                task_id=_make_task_id(f"conv-{route}"),
+                content=(
+                    f"User asked: {text[:400]}\n"
+                    f"Jarvis responded ({model}): {response[:600]}"
+                ),
+            )
+        except Exception as exc:
+            logger.warning("Auto-ingest fallback also failed: %s", exc)
+
+
 _last_routed_model: str | None = None
 _last_routed_model_lock = threading.Lock()
 
@@ -3254,10 +3286,10 @@ def cmd_voice_list() -> int:
 
 def cmd_voice_say(
     text: str,
-    profile: str,
-    voice_pattern: str,
-    output_wav: str,
-    rate: int,
+    profile: str = "jarvis_like",
+    voice_pattern: str = "",
+    output_wav: str = "",
+    rate: int = -1,
 ) -> int:
     speakable_text = _shorten_urls_for_speech(text)
     result = _get_bus().dispatch(VoiceSayCommand(
@@ -3491,6 +3523,7 @@ def _web_augmented_llm_conversation(
             model=_llm_model,
             history=_hist_tuples,
         ))
+        _response = result.text.strip()
         if result.return_code != 0:
             if _web_searched:
                 fallback_lines = _web_result.get("summary_lines", []) if isinstance(_web_result, dict) else []
@@ -3502,47 +3535,19 @@ def _web_augmented_llm_conversation(
                     print("web_search_used=true")
                     return 0
             print("intent=llm_unavailable")
-            print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
+            print(f"reason={_response or 'LLM gateway not available.'}")
             return 1
-        elif result.text.strip():
-            _add_to_history("assistant", result.text.strip())
-            print(f"response={_escape_response(result.text.strip())}")
+        elif _response:
+            _add_to_history("assistant", _response)
+            print(f"response={_escape_response(_response)}")
             print(f"model={result.model}")
             print(f"provider={result.provider}")
             _mark_routed_model(result.model, result.provider)
             if _web_searched:
                 print("web_search_used=true")
-            # Auto-learn
-            try:
-                bus.dispatch(LearnInteractionCommand(
-                    user_message=text[:1000],
-                    assistant_response=result.text.strip()[:1000],
-                    task_id=_make_task_id("conv-web"),
-                    route=_route,
-                    topic=text[:100],
-                ))
-            except Exception as exc_learn:
-                logger.warning("Enriched learning failed for web conversation: %s", exc_learn)
-                try:
-                    _auto_ingest_memory(
-                        source="conversation",
-                        kind="episodic",
-                        task_id=_make_task_id("conv-web"),
-                        content=(
-                            f"User asked: {text[:400]}\n"
-                            f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
-                        ),
-                    )
-                except Exception as exc:
-                    logger.warning("Auto-ingest fallback also failed for web conversation: %s", exc)
+            _learn_conversation(bus, text, _response, _route, result.model)
             if speak:
-                cmd_voice_say(
-                    text=result.text.strip(),
-                    profile="jarvis_like",
-                    voice_pattern="",
-                    output_wav="",
-                    rate=-1,
-                )
+                cmd_voice_say(text=_response)
             return 0
         else:
             print("intent=llm_empty_response")
@@ -3554,10 +3559,6 @@ def _web_augmented_llm_conversation(
         if speak:
             cmd_voice_say(
                 text="I'm having trouble connecting to my language model. Please try again.",
-                profile="jarvis_like",
-                voice_pattern="",
-                output_wav="",
-                rate=-1,
             )
         return 1
 
@@ -3619,10 +3620,6 @@ def _cmd_voice_run_impl(
         if speak:
             cmd_voice_say(
                 text="Voice authentication is required for state changing commands.",
-                profile="jarvis_like",
-                voice_pattern="",
-                output_wav="",
-                rate=-1,
             )
         return False
 
@@ -3635,10 +3632,6 @@ def _cmd_voice_run_impl(
             if speak:
                 cmd_voice_say(
                     text="Owner guard blocked this command.",
-                    profile="jarvis_like",
-                    voice_pattern="",
-                    output_wav="",
-                    rate=-1,
                 )
             return 2
         if (
@@ -3652,10 +3645,6 @@ def _cmd_voice_run_impl(
             if speak:
                 cmd_voice_say(
                     text="Owner guard requires voice authentication for state-changing commands.",
-                    profile="jarvis_like",
-                    voice_pattern="",
-                    output_wav="",
-                    rate=-1,
                 )
             return 2
 
@@ -3671,10 +3660,6 @@ def _cmd_voice_run_impl(
         if speak:
             cmd_voice_say(
                 text="Voice authentication is required for executable commands.",
-                profile="jarvis_like",
-                voice_pattern="",
-                output_wav="",
-                rate=-1,
             )
         return 2
 
@@ -3689,10 +3674,6 @@ def _cmd_voice_run_impl(
             if speak:
                 cmd_voice_say(
                     text="Voice authentication failed. Command blocked.",
-                    profile="jarvis_like",
-                    voice_pattern="",
-                    output_wav="",
-                    rate=-1,
                 )
             return 2
 
@@ -4403,51 +4384,22 @@ def _cmd_voice_run_impl(
                 model=_llm_model,
                 history=_hist_tuples,
             ))
+            _response = result.text.strip()
             if result.return_code != 0:
                 print("intent=llm_unavailable")
-                print(f"reason={result.text.strip() or 'LLM gateway not available.'}")
+                print(f"reason={_response or 'LLM gateway not available.'}")
                 rc = 1
-            elif result.text.strip():
-                _add_to_history("assistant", result.text.strip())
-                _respond(result.text.strip())
+            elif _response:
+                _add_to_history("assistant", _response)
+                _respond(_response)
                 print(f"model={result.model}")
                 print(f"provider={result.provider}")
                 _mark_routed_model(result.model, result.provider)
                 if _web_searched:
                     print("web_search_used=true")
-                # Auto-learn: ingest through enriched pipeline (embeddings + KG)
-                # when available, with legacy JSONL fallback
-                try:
-                    bus.dispatch(LearnInteractionCommand(
-                        user_message=text[:1000],
-                        assistant_response=result.text.strip()[:1000],
-                        task_id=_make_task_id(f"conv-{_route}"),
-                        route=_route,
-                        topic=text[:100],
-                    ))
-                except Exception as exc_learn:
-                    logger.warning("Enriched learning failed for conversation: %s", exc_learn)
-                    # Fallback to legacy JSONL ingest
-                    try:
-                        _auto_ingest_memory(
-                            source="conversation",
-                            kind="episodic",
-                            task_id=_make_task_id(f"conv-{_route}"),
-                            content=(
-                                f"User asked: {text[:400]}\n"
-                                f"Jarvis responded ({result.model}): {result.text.strip()[:600]}"
-                            ),
-                        )
-                    except Exception as exc:
-                        logger.warning("Legacy JSONL auto-ingest fallback also failed: %s", exc)
+                _learn_conversation(bus, text, _response, _route, result.model)
                 if speak:
-                    cmd_voice_say(
-                        text=result.text.strip(),
-                        profile="jarvis_like",
-                        voice_pattern="",
-                        output_wav="",
-                        rate=-1,
-                    )
+                    cmd_voice_say(text=_response)
                 rc = 0
             else:
                 print("intent=llm_empty_response")
@@ -4459,10 +4411,6 @@ def _cmd_voice_run_impl(
             if speak:
                 cmd_voice_say(
                     text="I'm having trouble connecting to my language model. Please try again.",
-                    profile="jarvis_like",
-                    voice_pattern="",
-                    output_wav="",
-                    rate=-1,
                 )
             rc = 1
 
@@ -4519,10 +4467,6 @@ def _cmd_voice_run_impl(
         )
         cmd_voice_say(
             text=persona_line,
-            profile="jarvis_like",
-            voice_pattern="",
-            output_wav="",
-            rate=-1,
         )
     return rc
 

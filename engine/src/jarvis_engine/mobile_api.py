@@ -1060,7 +1060,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 finally:
                     _thread_local.repo_root_override = None
             except Exception as exc:
-                _thread_local.repo_root_override = None
                 logger.error("Voice command execution failed: %s", exc)
                 _ThreadCapturingStdout.stop_capture()  # discard
                 return self._command_failure_result(
@@ -2678,7 +2677,6 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             finally:
                 _thread_local.repo_root_override = None
         except Exception as exc:
-            _thread_local.repo_root_override = None
             logger.debug("Best-effort command learning fallback failed: %s", exc)
 
     def _handle_post_command(self) -> None:

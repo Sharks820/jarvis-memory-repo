@@ -54,6 +54,22 @@ class _DefenseHandlerBase:
         self._write_lock = write_lock
         self._log_dir = log_dir
 
+    @property
+    def _ip_tracker(self):
+        if not hasattr(self, "_cached_ip_tracker"):
+            from jarvis_engine.security.ip_tracker import IPTracker
+
+            self._cached_ip_tracker = IPTracker(self._db, self._write_lock)
+        return self._cached_ip_tracker
+
+    @property
+    def _forensic_logger(self):
+        if not hasattr(self, "_cached_forensic_logger"):
+            from jarvis_engine.security.forensic_logger import ForensicLogger
+
+            self._cached_forensic_logger = ForensicLogger(self._log_dir)
+        return self._cached_forensic_logger
+
 
 # ---------------------------------------------------------------------------
 # SecurityStatusHandler
@@ -118,9 +134,7 @@ class ThreatReportHandler(_DefenseHandlerBase):
 
     def handle(self, cmd: ThreatReportCommand) -> ThreatReportResult:
         try:
-            from jarvis_engine.security.ip_tracker import IPTracker
-
-            tracker = IPTracker(self._db, self._write_lock)
+            tracker = self._ip_tracker
 
             if cmd.ip:
                 report = tracker.get_threat_report(cmd.ip)
@@ -160,9 +174,7 @@ class ExportForensicsHandler(_DefenseHandlerBase):
 
     def handle(self, cmd: ExportForensicsCommand) -> ExportForensicsResult:
         try:
-            from jarvis_engine.security.forensic_logger import ForensicLogger
-
-            fl = ForensicLogger(self._log_dir)
+            fl = self._forensic_logger
 
             start_date = cmd.start_date or "2020-01-01"
             end_date = cmd.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
@@ -198,14 +210,10 @@ class ContainmentOverrideHandler(_DefenseHandlerBase):
     def handle(self, cmd: ContainmentOverrideCommand) -> ContainmentOverrideResult:
         try:
             from jarvis_engine.security.containment import ContainmentEngine
-            from jarvis_engine.security.forensic_logger import ForensicLogger
-            from jarvis_engine.security.ip_tracker import IPTracker
 
-            fl = ForensicLogger(self._log_dir)
-            ip_tracker = IPTracker(self._db, self._write_lock)
             engine = ContainmentEngine(
-                forensic_logger=fl,
-                ip_tracker=ip_tracker,
+                forensic_logger=self._forensic_logger,
+                ip_tracker=self._ip_tracker,
             )
 
             if cmd.action == "recover":
@@ -257,9 +265,7 @@ class BlockIPHandler(_DefenseHandlerBase):
                 message="IP address must not be empty.",
             )
         try:
-            from jarvis_engine.security.ip_tracker import IPTracker
-
-            tracker = IPTracker(self._db, self._write_lock)
+            tracker = self._ip_tracker
             duration = cmd.duration_hours if cmd.duration_hours > 0 else None
             tracker.block_ip(cmd.ip, duration_hours=duration)
             duration_str = f"{cmd.duration_hours}h" if cmd.duration_hours > 0 else "permanent"
@@ -290,9 +296,7 @@ class UnblockIPHandler(_DefenseHandlerBase):
                 message="IP address must not be empty.",
             )
         try:
-            from jarvis_engine.security.ip_tracker import IPTracker
-
-            tracker = IPTracker(self._db, self._write_lock)
+            tracker = self._ip_tracker
             tracker.unblock_ip(cmd.ip)
             return UnblockIPResult(
                 success=True,
@@ -344,13 +348,11 @@ class SecurityBriefingHandler(_DefenseHandlerBase):
         try:
             from jarvis_engine.security.adaptive_defense import AdaptiveDefenseEngine
             from jarvis_engine.security.attack_memory import AttackPatternMemory
-            from jarvis_engine.security.ip_tracker import IPTracker
 
-            ip_tracker = IPTracker(self._db, self._write_lock)
             attack_memory = AttackPatternMemory(self._db, self._write_lock)
             adaptive = AdaptiveDefenseEngine(
                 attack_memory=attack_memory,
-                ip_tracker=ip_tracker,
+                ip_tracker=self._ip_tracker,
             )
             briefing = adaptive.generate_briefing()
             return SecurityBriefingResult(
