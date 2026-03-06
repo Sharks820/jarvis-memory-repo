@@ -277,10 +277,14 @@ def build_narrative_brief(
     if gateway is None:
         return build_daily_brief(snapshot)
 
+    from jarvis_engine.temporal import get_datetime_prompt
+
     local_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
     # Sanitize memory_context to prevent prompt injection
     safe_context = (memory_context or "No additional context.")[:2000]
+    datetime_line = get_datetime_prompt()
     prompt = (
+        f"{datetime_line}\n\n"
         "You are Jarvis, a personal AI assistant. Generate a concise, actionable "
         "morning briefing for the owner based on this data. Prioritize by urgency. "
         "Be specific about times and actions needed. Keep it under 250 words.\n"

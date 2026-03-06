@@ -138,7 +138,9 @@ class TestBuildSmartContextCrossBranch:
         """_build_smart_context returns (memory, facts, cross_branch, preferences)."""
         import jarvis_engine.main as main_mod
 
-        bus = MagicMock(spec=[])  # No _engine attribute
+        from jarvis_engine.command_bus import AppContext
+        bus = MagicMock(spec=[])  # No engine attribute
+        bus.ctx = AppContext()  # All None defaults
         with patch.object(
             main_mod, "build_context_packet",
             return_value={"selected": []},
@@ -156,11 +158,12 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_lines_populated_when_connections_found(self):
         """Cross-branch connections are formatted and included when available."""
         import jarvis_engine.main as main_mod
+        from jarvis_engine.command_bus import AppContext
 
+        mock_embed = MagicMock()
+        mock_embed.embed_query.return_value = [0.1, 0.2]
         bus = MagicMock()
-        bus._engine = MagicMock()
-        bus._embed_service = MagicMock()
-        bus._embed_service.embed_query.return_value = [0.1, 0.2]
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
 
         mock_kg_instance = MagicMock()
         mock_kg_instance.query_relevant_facts.return_value = []
@@ -193,11 +196,12 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_empty_when_no_connections(self):
         """Cross-branch lines are empty when no connections found."""
         import jarvis_engine.main as main_mod
+        from jarvis_engine.command_bus import AppContext
 
+        mock_embed = MagicMock()
+        mock_embed.embed_query.return_value = [0.1, 0.2]
         bus = MagicMock()
-        bus._engine = MagicMock()
-        bus._embed_service = MagicMock()
-        bus._embed_service.embed_query.return_value = [0.1, 0.2]
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
 
         mock_kg_instance = MagicMock()
         mock_kg_instance.query_relevant_facts.return_value = []
@@ -218,11 +222,12 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_query_failure_returns_empty_lines(self):
         """When cross_branch_query raises, cross_branch_lines is empty (graceful degradation)."""
         import jarvis_engine.main as main_mod
+        from jarvis_engine.command_bus import AppContext
 
+        mock_embed = MagicMock()
+        mock_embed.embed_query.return_value = [0.1, 0.2]
         bus = MagicMock()
-        bus._engine = MagicMock()
-        bus._embed_service = MagicMock()
-        bus._embed_service.embed_query.return_value = [0.1, 0.2]
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
 
         mock_kg_instance = MagicMock()
         mock_kg_instance.query_relevant_facts.return_value = []
@@ -240,8 +245,10 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_skipped_when_no_engine(self):
         """Cross-branch query is not attempted when engine is unavailable."""
         import jarvis_engine.main as main_mod
+        from jarvis_engine.command_bus import AppContext
 
-        bus = MagicMock(spec=[])  # No _engine
+        bus = MagicMock(spec=[])
+        bus.ctx = AppContext()  # engine=None by default
 
         with patch.object(
             main_mod, "build_context_packet",
@@ -257,10 +264,10 @@ class TestBuildSmartContextCrossBranch:
     def test_cross_branch_skipped_when_no_embed_service(self):
         """Cross-branch query is not attempted when embed_service is unavailable."""
         import jarvis_engine.main as main_mod
+        from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock()
-        bus._engine = MagicMock()
-        bus._embed_service = None
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
 
         mock_kg_instance = MagicMock()
         mock_kg_instance.query_relevant_facts.return_value = []

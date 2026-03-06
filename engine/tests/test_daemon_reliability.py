@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine import main as main_mod
+from jarvis_engine.command_bus import AppContext
 
 
 class TestDaemonReliability:
@@ -458,7 +459,7 @@ class TestDaemonRegressionCheck:
         capture_calls: list[int] = []
         mock_bus = MagicMock()
         mock_kg = MagicMock()
-        mock_bus._kg = mock_kg
+        mock_bus.ctx = AppContext(kg=mock_kg)
 
         def mock_capture(*a, **kw):
             capture_calls.append(1)
@@ -502,7 +503,7 @@ class TestDaemonRegressionCheck:
 
         mock_bus = MagicMock()
         mock_kg = MagicMock()
-        mock_bus._kg = mock_kg
+        mock_bus.ctx = AppContext(kg=mock_kg)
 
         mock_checker = MagicMock()
         mock_checker.capture_metrics.return_value = {
@@ -552,7 +553,7 @@ class TestDaemonRegressionCheck:
 
         def exploding_get_bus():
             bus = MagicMock()
-            bus._kg = MagicMock()
+            bus.ctx = AppContext(kg=MagicMock())
             return bus
 
         with patch.object(main_mod, "_get_daemon_bus", side_effect=exploding_get_bus), \
@@ -578,10 +579,12 @@ class TestDaemonConsolidation:
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 
         mock_bus = MagicMock()
-        mock_bus._engine = MagicMock()
-        mock_bus._kg = MagicMock()
-        mock_bus._gateway = None
-        mock_bus._embed_service = None
+        mock_bus.ctx = AppContext(
+            engine=MagicMock(),
+            kg=MagicMock(),
+            gateway=None,
+            embed_service=None,
+        )
 
         consolidation_result = ConsolidateMemoryResult(
             groups_found=3, records_consolidated=9, new_facts_created=2,
@@ -626,8 +629,7 @@ class TestDaemonConsolidation:
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 
         mock_bus = MagicMock()
-        mock_bus._engine = None
-        mock_bus._kg = None
+        mock_bus.ctx = AppContext(engine=None, kg=None)
 
         # Bus dispatch returns a result with 0 groups (handler sees engine=None)
         consolidation_result = ConsolidateMemoryResult(
@@ -656,8 +658,7 @@ class TestDaemonEntityResolution:
 
         mock_bus = MagicMock()
         mock_kg = MagicMock()
-        mock_bus._kg = mock_kg
-        mock_bus._embed_service = None
+        mock_bus.ctx = AppContext(kg=mock_kg, embed_service=None)
 
         mock_resolve_result = MagicMock()
         mock_resolve_result.candidates_found = 5
@@ -709,7 +710,7 @@ class TestDaemonEntityResolution:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
         mock_bus = MagicMock(spec=[])
-        mock_bus._kg = None
+        mock_bus.ctx = AppContext(kg=None)
 
         with patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
@@ -869,9 +870,11 @@ class TestDaemonAutoHarvest:
         mock_provider.is_available = True
 
         mock_bus = MagicMock()
-        mock_bus._engine = MagicMock()
-        mock_bus._embed_service = MagicMock()
-        mock_bus._kg = MagicMock()
+        mock_bus.ctx = AppContext(
+            engine=MagicMock(),
+            embed_service=MagicMock(),
+            kg=MagicMock(),
+        )
 
         with patch.object(main_mod, "_discover_harvest_topics", return_value=["test topic"]), \
              patch.object(main_mod, "_get_daemon_bus", return_value=mock_bus), \

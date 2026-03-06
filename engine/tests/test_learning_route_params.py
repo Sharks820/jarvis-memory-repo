@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-
+from jarvis_engine.command_bus import AppContext
 from jarvis_engine.commands.learning_commands import (
     LearnInteractionCommand,
 )
@@ -134,26 +134,30 @@ class TestEngineForwardsToTrackers:
 
 
 class TestBusExposesTrackers:
-    """Test that trackers are accessible via bus attributes."""
+    """Test that trackers are accessible via bus.ctx attributes."""
 
     def test_bus_tracker_attributes_pattern(self):
-        """Verify the attribute pattern works with a mock bus."""
-        bus = MagicMock()
-        bus._pref_tracker = MagicMock()
-        bus._feedback_tracker = MagicMock()
-        bus._usage_tracker = MagicMock()
+        """Verify the attribute pattern works with AppContext on a mock bus."""
+        mock_pref = MagicMock()
+        mock_feedback = MagicMock()
+        mock_usage = MagicMock()
 
-        assert getattr(bus, "_pref_tracker", None) is not None
-        assert getattr(bus, "_feedback_tracker", None) is not None
-        assert getattr(bus, "_usage_tracker", None) is not None
+        bus = MagicMock()
+        bus.ctx = AppContext(
+            pref_tracker=mock_pref,
+            feedback_tracker=mock_feedback,
+            usage_tracker=mock_usage,
+        )
+
+        assert bus.ctx.pref_tracker is not None
+        assert bus.ctx.feedback_tracker is not None
+        assert bus.ctx.usage_tracker is not None
 
     def test_bus_missing_tracker_returns_none(self):
-        """Verify graceful fallback when tracker not set."""
+        """Verify graceful fallback when tracker not set (AppContext defaults)."""
+        bus = MagicMock()
+        bus.ctx = AppContext()
 
-        class SimpleBus:
-            pass
-
-        bus = SimpleBus()
-        assert getattr(bus, "_pref_tracker", None) is None
-        assert getattr(bus, "_feedback_tracker", None) is None
-        assert getattr(bus, "_usage_tracker", None) is None
+        assert bus.ctx.pref_tracker is None
+        assert bus.ctx.feedback_tracker is None
+        assert bus.ctx.usage_tracker is None

@@ -641,11 +641,13 @@ class TestPersonaComposeHandler:
         messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
-        assert messages[0]["content"] == "Be formal."
+        # System prompt now includes datetime grounding prepended to persona prompt
+        assert "Be formal." in messages[0]["content"]
+        assert "Current date/time" in messages[0]["content"]
         assert messages[1]["role"] == "user"
 
     def test_system_prompt_omitted_when_empty(self, tmp_path: Path) -> None:
-        """When compose_persona_system_prompt returns empty, no system message."""
+        """When compose_persona_system_prompt returns empty, datetime-only system message."""
         mock_gateway = MagicMock()
         mock_gateway.complete.return_value = SimpleNamespace(text="ok")
 
@@ -668,8 +670,11 @@ class TestPersonaComposeHandler:
 
         call_kwargs = mock_gateway.complete.call_args
         messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
-        assert len(messages) == 1
-        assert messages[0]["role"] == "user"
+        # Even with empty persona prompt, datetime grounding is injected
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert "Current date/time" in messages[0]["content"]
+        assert messages[1]["role"] == "user"
 
 
 # ---------------------------------------------------------------------------

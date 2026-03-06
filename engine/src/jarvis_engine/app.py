@@ -273,8 +273,10 @@ def create_app(root: Path) -> CommandBus:
         cost_tracker = None
 
     # Wire gateway into ingest pipeline for LLM fact extraction
+    # (pipeline is constructed before gateway is available; gateway is a
+    # documented constructor parameter so this late-binding is intentional)
     if pipeline is not None and gateway is not None:
-        pipeline._gateway = gateway
+        pipeline._gateway = gateway  # matches constructor param `gateway`
 
     # -- Memory (dual-path: MemoryEngine or adapter shim) --
     bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine, kg=kg).handle)
@@ -378,7 +380,8 @@ def create_app(root: Path) -> CommandBus:
         _sec_db_path = root / ".planning" / "brain" / "security.db"
         _sec_db_path.parent.mkdir(parents=True, exist_ok=True)
         _sec_db = __import__("sqlite3").connect(str(_sec_db_path), check_same_thread=False)
-        _sec_db.execute("PRAGMA journal_mode=WAL")
+        from jarvis_engine._db_pragmas import configure_sqlite
+        configure_sqlite(_sec_db)
         _sec_lock = __import__("threading").Lock()
         _sec_log_dir = root / ".planning" / "runtime" / "forensic"
 
@@ -447,11 +450,11 @@ def create_app(root: Path) -> CommandBus:
             ).handle,
         )
 
-        # Expose learning trackers on bus for downstream read access
-        bus._pref_tracker = pref_tracker        # type: ignore[attr-defined]
-        bus._feedback_tracker = feedback_tracker  # type: ignore[attr-defined]
-        bus._usage_tracker = usage_tracker        # type: ignore[attr-defined]
-        bus._learning_engine = learning_engine    # type: ignore[attr-defined]
+        # Expose learning trackers via typed AppContext
+        bus.ctx.pref_tracker = pref_tracker
+        bus.ctx.feedback_tracker = feedback_tracker
+        bus.ctx.usage_tracker = usage_tracker
+        bus.ctx.learning_engine = learning_engine
 
         # Wire feedback tracker into IntentClassifier for route quality penalty (LEARN-02)
         # Classifier is created before learning subsystem, so we set it after the fact
@@ -600,12 +603,12 @@ def create_app(root: Path) -> CommandBus:
         SelfTestHandler(root, engine=engine, embed_service=embed_service).handle,
     )
 
-    # Expose subsystem references for daemon self-test and smart context access
-    bus._engine = engine  # type: ignore[attr-defined]
-    bus._embed_service = embed_service  # type: ignore[attr-defined]
-    bus._intent_classifier = intent_classifier  # type: ignore[attr-defined]
-    bus._kg = kg  # type: ignore[attr-defined]
-    bus._gateway = gateway  # type: ignore[attr-defined]
+    # Expose subsystem references via typed AppContext
+    bus.ctx.engine = engine
+    bus.ctx.embed_service = embed_service
+    bus.ctx.intent_classifier = intent_classifier
+    bus.ctx.kg = kg
+    bus.ctx.gateway = gateway
 
     # Warm embedding model in background (first embed call loads the ~300MB model)
     if embed_service is not None:

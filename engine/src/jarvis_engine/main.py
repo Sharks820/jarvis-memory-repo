@@ -348,9 +348,16 @@ def _discover_harvest_topics(root: Path) -> list[str]:
     conn = None
     try:
         if db_path.exists():
-            conn = _sqlite3.connect(str(db_path), timeout=5)
-            conn.execute("PRAGMA busy_timeout=5000")
-            conn.row_factory = _sqlite3.Row
+            try:
+                conn = _sqlite3.connect(str(db_path), timeout=5)
+                from jarvis_engine._db_pragmas import configure_sqlite
+                configure_sqlite(conn)
+                conn.row_factory = _sqlite3.Row
+            except Exception:
+                # Corrupt or inaccessible DB — skip all DB-based sources
+                if conn is not None:
+                    conn.close()
+                conn = None
 
         # --- Source 1: Conversation-derived topics from recent memories ---
         if conn is not None:
@@ -738,17 +745,9 @@ def _requires_fresh_web_confirmation(query: str) -> bool:
 
 def _current_datetime_prompt_line() -> str:
     """Provide deterministic current date/time context for model grounding."""
-    local_now = datetime.now().astimezone()
-    utc_now = local_now.astimezone(UTC)
-    local_iso = local_now.isoformat(timespec="seconds")
-    utc_iso = utc_now.isoformat(timespec="seconds")
-    unix_epoch = int(utc_now.timestamp())
-    human_now = local_now.strftime("%A, %B %d, %Y %H:%M %Z")
-    return (
-        f"Current date/time: {human_now} (local ISO {local_iso}; UTC {utc_iso}; epoch {unix_epoch}). "
-        "Treat this as the present unless the user explicitly specifies another date. "
-        "If relative-time reasoning conflicts with this clock context, prioritize this clock context."
-    )
+    from jarvis_engine.temporal import get_datetime_prompt
+
+    return get_datetime_prompt()
 
 
 def _build_smart_context(
@@ -768,8 +767,8 @@ def _build_smart_context(
     fact_lines: list[str] = []
     cross_branch_lines: list[str] = []
 
-    engine = getattr(bus, "_engine", None)
-    embed_service = getattr(bus, "_embed_service", None)
+    engine = bus.ctx.engine
+    embed_service = bus.ctx.embed_service
 
     # --- Path 1: Hybrid search (superior) ---
     if engine is not None and embed_service is not None:
@@ -807,7 +806,7 @@ def _build_smart_context(
     kg = None  # Retain reference for cross-branch query below
     if engine is not None:
         try:
-            kg = getattr(bus, "_kg", None)
+            kg = bus.ctx.kg
             if kg is None:
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
                 kg = KnowledgeGraph(engine)
@@ -884,7 +883,7 @@ def _build_smart_context(
 
     # --- User preferences: personalize responses (LEARN-01) ---
     preference_lines: list[str] = []
-    pref_tracker = getattr(bus, "_pref_tracker", None)
+    pref_tracker = bus.ctx.pref_tracker
     if pref_tracker is not None:
         try:
             prefs = pref_tracker.get_preferences()
@@ -2890,7 +2889,8 @@ def _cmd_daemon_run_impl(
                         db_path = root / ".planning" / "brain" / "jarvis_memory.db"
                         if db_path.exists():
                             _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
-                            _kg_conn.execute("PRAGMA busy_timeout=5000")
+                            from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
+                            _cfg_sql(_kg_conn)
                             try:
                                 # collect_kg_metrics uses kg.db — provide a lightweight shim
                                 class _KGShim:
@@ -2914,8 +2914,8 @@ def _cmd_daemon_run_impl(
                     try:
                         from jarvis_engine.proactive.self_test import AdversarialSelfTest
                         bus = _get_daemon_bus()
-                        engine = getattr(bus, "_engine", None)
-                        embed_svc = getattr(bus, "_embed_service", None)
+                        engine = bus.ctx.engine
+                        embed_svc = bus.ctx.embed_service
                         if engine is not None and embed_svc is not None:
                             tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
                             quiz_result = tester.run_memory_quiz()
@@ -2937,7 +2937,7 @@ def _cmd_daemon_run_impl(
                 else:
                     try:
                         bus = _get_daemon_bus()
-                        engine = getattr(bus, "_engine", None)
+                        engine = bus.ctx.engine
                         if engine is not None:
                             do_vacuum = (cycles % 500 == 0)
                             opt_result = engine.optimize(vacuum=do_vacuum)
@@ -2956,7 +2956,7 @@ def _cmd_daemon_run_impl(
                     from jarvis_engine.knowledge.regression import RegressionChecker
                     from jarvis_engine.activity_feed import log_activity, ActivityCategory
                     bus = _get_daemon_bus()
-                    kg = getattr(bus, "_kg", None)
+                    kg = bus.ctx.kg
                     if kg is not None:
                         rc_checker = RegressionChecker(kg)
                         current_metrics = rc_checker.capture_metrics()
@@ -2995,7 +2995,7 @@ def _cmd_daemon_run_impl(
             if cycles % 10 == 0:
                 try:
                     bus = _get_daemon_bus()
-                    usage_tracker = getattr(bus, "_usage_tracker", None)
+                    usage_tracker = bus.ctx.usage_tracker
                     if usage_tracker is not None:
                         from datetime import datetime as _dt
                         _now = _dt.now(UTC)
@@ -3032,8 +3032,8 @@ def _cmd_daemon_run_impl(
                         from jarvis_engine.knowledge.regression import RegressionChecker
                         from jarvis_engine.activity_feed import log_activity, ActivityCategory
                         bus = _get_daemon_bus()
-                        kg = getattr(bus, "_kg", None)
-                        embed_svc = getattr(bus, "_embed_service", None)
+                        kg = bus.ctx.kg
+                        embed_svc = bus.ctx.embed_service
                         if kg is not None:
                             # Backup KG state before entity resolution
                             try:
@@ -3089,9 +3089,9 @@ def _cmd_daemon_run_impl(
                                 h_available = [p for p in h_providers if p.is_available]
                                 # Get pipeline components from daemon bus
                                 h_bus = _get_daemon_bus()
-                                h_engine = getattr(h_bus, "_engine", None)
-                                h_embed = getattr(h_bus, "_embed_service", None)
-                                h_kg = getattr(h_bus, "_kg", None)
+                                h_engine = h_bus.ctx.engine
+                                h_embed = h_bus.ctx.embed_service
+                                h_kg = h_bus.ctx.kg
                                 h_pipeline = None
                                 if h_engine is not None and h_embed is not None:
                                     try:
@@ -3404,9 +3404,9 @@ def _web_augmented_llm_conversation(
     # --- Intent classification + model routing ---
     _llm_model: str | None = None
     _route: str = "web_research"
-    _intent_cls = getattr(bus, "_intent_classifier", None)
+    _intent_cls = bus.ctx.intent_classifier
     _avail_models = None
-    _gw = getattr(bus, "_gateway", None)
+    _gw = bus.ctx.gateway
     if _gw is not None:
         _avail_models = getattr(_gw, "available_model_names", lambda: None)()
     if _intent_cls is not None:
@@ -4151,7 +4151,7 @@ def _cmd_voice_run_impl(
             rc = 0
         else:
             bus = _get_bus()
-            kg = getattr(bus, "_kg", None)
+            kg = bus.ctx.kg
             if kg is not None:
                 keywords = [w for w in topic.split() if len(w) > 2]
                 if not keywords:
@@ -4328,9 +4328,9 @@ def _cmd_voice_run_impl(
         # --- Intent classification + model routing (reuse bus classifier) ---
         _llm_model: str | None = None
         _route: str = "routine"
-        _intent_cls = getattr(bus, "_intent_classifier", None)
+        _intent_cls = bus.ctx.intent_classifier
         _avail_models = None
-        _gw = getattr(bus, "_gateway", None)
+        _gw = bus.ctx.gateway
         if _gw is not None:
             _avail_models = getattr(_gw, "available_model_names", lambda: None)()
         if _intent_cls is not None:
@@ -4342,7 +4342,7 @@ def _cmd_voice_run_impl(
         if _llm_model is None:
             try:
                 from jarvis_engine.gateway.classifier import IntentClassifier
-                _embed = getattr(bus, "_embed_service", None)
+                _embed = bus.ctx.embed_service
                 if _embed is not None:
                     _cls = IntentClassifier(_embed)
                     _route, _llm_model, _conf = _cls.classify(text, available_models=_avail_models)

@@ -32,8 +32,8 @@ class CostTracker:
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute("PRAGMA busy_timeout=5000")
+        from jarvis_engine._db_pragmas import configure_sqlite
+        configure_sqlite(self._db)
 
         self._init_schema()
 
