@@ -132,6 +132,32 @@ from jarvis_engine.voice_pipeline import (  # noqa: E402
 from jarvis_engine.daemon_loop import gaming_processes_path  # noqa: E402
 
 
+# ---------------------------------------------------------------------------
+# Shared dispatch helper — reduces boilerplate in cmd_* functions
+# ---------------------------------------------------------------------------
+def _dispatch(command, *, as_json: bool = False, json_field: str = ""):
+    """Dispatch *command* via the bus with common boilerplate.
+
+    Returns ``(result, return_code)``.
+
+    * If *as_json* is ``True`` and *json_field* names a dict/list attribute on
+      the result, that value is pretty-printed as JSON and ``return_code`` is
+      ``0``.
+    * Otherwise ``return_code`` is ``0`` and the caller is responsible for
+      printing any remaining key=value output.
+    """
+    result = _get_bus().dispatch(command)
+
+    # JSON output path — used by the --json flag on many sub-commands.
+    if as_json and json_field:
+        data = getattr(result, json_field, None)
+        if isinstance(data, (dict, list)):
+            print(json.dumps(data, ensure_ascii=True, indent=2, default=str))
+            return result, 0
+
+    return result, 0
+
+
 def cmd_gaming_mode(enable: bool | None, reason: str, auto_detect: str) -> int:
     result = _get_bus().dispatch(GamingModeCommand(enable=enable, reason=reason, auto_detect=auto_detect))
     state = result.state
@@ -267,7 +293,7 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
 
 
 def cmd_route(risk: str, complexity: str) -> int:
-    result = _get_bus().dispatch(RouteCommand(risk=risk, complexity=complexity))
+    result, _ = _dispatch(RouteCommand(risk=risk, complexity=complexity))
     print(f"provider={result.provider}")
     print(f"reason={result.reason}")
     return 0
@@ -411,11 +437,13 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
 
 
 def cmd_brain_status(as_json: bool) -> int:
-    result = _get_bus().dispatch(BrainStatusCommand(as_json=as_json))
-    status = result.status
+    result, rc = _dispatch(
+        BrainStatusCommand(as_json=as_json),
+        as_json=as_json, json_field="status",
+    )
     if as_json:
-        print(json.dumps(status, ensure_ascii=True, indent=2))
-        return 0
+        return rc
+    status = result.status
     print("brain_status")
     print(f"updated_utc={status.get('updated_utc', '')}")
     branch_count = status.get("branch_count", 0)
@@ -441,11 +469,13 @@ def cmd_brain_context(query: str, max_items: int, max_chars: int, as_json: bool)
     if not query.strip():
         print("error: query is required")
         return 2
-    result = _get_bus().dispatch(BrainContextCommand(query=query, max_items=max_items, max_chars=max_chars, as_json=as_json))
-    packet = result.packet
+    result, rc = _dispatch(
+        BrainContextCommand(query=query, max_items=max_items, max_chars=max_chars, as_json=as_json),
+        as_json=as_json, json_field="packet",
+    )
     if as_json:
-        print(json.dumps(packet, ensure_ascii=True, indent=2))
-        return 0
+        return rc
+    packet = result.packet
     print("brain_context")
     print(f"query={packet.get('query', '')}")
     print(f"selected_count={packet.get('selected_count', 0)}")
@@ -473,51 +503,55 @@ def cmd_brain_context(query: str, max_items: int, max_chars: int, as_json: bool)
 
 
 def cmd_brain_compact(keep_recent: int, as_json: bool) -> int:
-    bus_result = _get_bus().dispatch(BrainCompactCommand(keep_recent=keep_recent, as_json=as_json))
-    result = bus_result.result
-    if as_json:
-        print(json.dumps(result, ensure_ascii=True, indent=2))
-        return 0
+    bus_result, rc = _dispatch(
+        BrainCompactCommand(keep_recent=keep_recent, as_json=as_json),
+        as_json=as_json, json_field="result",
+    )
+    if as_json or rc:
+        return rc
     print("brain_compact")
-    for key, value in result.items():
+    for key, value in bus_result.result.items():
         print(f"{key}={value}")
     return 0
 
 
 def cmd_brain_regression(as_json: bool) -> int:
-    result = _get_bus().dispatch(BrainRegressionCommand(as_json=as_json))
-    report = result.report
-    if as_json:
-        print(json.dumps(report, ensure_ascii=True, indent=2))
-        return 0
+    result, rc = _dispatch(
+        BrainRegressionCommand(as_json=as_json),
+        as_json=as_json, json_field="report",
+    )
+    if as_json or rc:
+        return rc
     print("brain_regression_report")
-    for key, value in report.items():
+    for key, value in result.report.items():
         print(f"{key}={value}")
     return 0
 
 
 def cmd_knowledge_status(as_json: bool) -> int:
-    result = _get_bus().dispatch(KnowledgeStatusCommand(as_json=as_json))
+    result, rc = _dispatch(KnowledgeStatusCommand(as_json=as_json))
+    if rc:
+        return rc
+    status_dict = {
+        "node_count": result.node_count,
+        "edge_count": result.edge_count,
+        "locked_count": result.locked_count,
+        "pending_contradictions": result.pending_contradictions,
+        "graph_hash": result.graph_hash,
+    }
     if as_json:
-        print(json.dumps({
-            "node_count": result.node_count,
-            "edge_count": result.edge_count,
-            "locked_count": result.locked_count,
-            "pending_contradictions": result.pending_contradictions,
-            "graph_hash": result.graph_hash,
-        }, ensure_ascii=True, indent=2))
+        print(json.dumps(status_dict, ensure_ascii=True, indent=2))
         return 0
     print("knowledge_status")
-    print(f"node_count={result.node_count}")
-    print(f"edge_count={result.edge_count}")
-    print(f"locked_count={result.locked_count}")
-    print(f"pending_contradictions={result.pending_contradictions}")
-    print(f"graph_hash={result.graph_hash}")
+    for key, value in status_dict.items():
+        print(f"{key}={value}")
     return 0
 
 
 def cmd_contradiction_list(status: str, limit: int, as_json: bool) -> int:
-    result = _get_bus().dispatch(ContradictionListCommand(status=status, limit=limit))
+    result, rc = _dispatch(ContradictionListCommand(status=status, limit=limit))
+    if rc:
+        return rc
     if as_json:
         print(json.dumps({"contradictions": result.contradictions}, ensure_ascii=True, indent=2, default=str))
         return 0
@@ -558,14 +592,13 @@ def cmd_fact_lock(node_id: str, action: str) -> int:
 
 
 def cmd_knowledge_regression(snapshot_path: str, as_json: bool) -> int:
-    result = _get_bus().dispatch(KnowledgeRegressionCommand(
-        snapshot_path=snapshot_path,
-        as_json=as_json,
-    ))
+    result, rc = _dispatch(
+        KnowledgeRegressionCommand(snapshot_path=snapshot_path, as_json=as_json),
+        as_json=as_json, json_field="report",
+    )
+    if as_json or rc:
+        return rc
     report = result.report or {}
-    if as_json:
-        print(json.dumps(report, ensure_ascii=True, indent=2, default=str))
-        return 0
     status = report.get("status", "unknown")
     print(f"knowledge_regression status={status}")
     if report.get("message"):
@@ -698,7 +731,7 @@ def cmd_run_task(
 
 
 def cmd_ops_brief(snapshot_path: Path, output_path: Path | None) -> int:
-    result = _get_bus().dispatch(OpsBriefCommand(snapshot_path=snapshot_path, output_path=output_path))
+    result, _ = _dispatch(OpsBriefCommand(snapshot_path=snapshot_path, output_path=output_path))
     print(result.brief)
     if result.saved_path:
         print(f"brief_saved={result.saved_path}")
@@ -706,7 +739,7 @@ def cmd_ops_brief(snapshot_path: Path, output_path: Path | None) -> int:
 
 
 def cmd_ops_export_actions(snapshot_path: Path, actions_path: Path) -> int:
-    result = _get_bus().dispatch(OpsExportActionsCommand(snapshot_path=snapshot_path, actions_path=actions_path))
+    result, _ = _dispatch(OpsExportActionsCommand(snapshot_path=snapshot_path, actions_path=actions_path))
     print(f"actions_exported={result.actions_path}")
     print(f"action_count={result.action_count}")
     return 0
@@ -1176,11 +1209,12 @@ def cmd_web_research(query: str, *, max_results: int, max_pages: int, auto_inges
 
 
 def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
-    bus_result = _get_bus().dispatch(MobileDesktopSyncCommand(auto_ingest=auto_ingest, as_json=as_json))
+    bus_result, _ = _dispatch(
+        MobileDesktopSyncCommand(auto_ingest=auto_ingest, as_json=as_json),
+        as_json=as_json, json_field="report",
+    )
     report = bus_result.report
-    if as_json:
-        print(json.dumps(report, ensure_ascii=True, indent=2))
-    else:
+    if not as_json:
         print("mobile_desktop_sync")
         print(f"sync_ok={report.get('sync_ok', False)}")
         print(f"report_path={report.get('report_path', '')}")
@@ -1207,14 +1241,15 @@ def cmd_mobile_desktop_sync(*, auto_ingest: bool, as_json: bool) -> int:
 
 
 def cmd_self_heal(*, force_maintenance: bool, keep_recent: int, snapshot_note: str, as_json: bool) -> int:
-    bus_result = _get_bus().dispatch(SelfHealCommand(
-        force_maintenance=force_maintenance, keep_recent=keep_recent,
-        snapshot_note=snapshot_note, as_json=as_json,
-    ))
-    report = bus_result.report
-    if as_json:
-        print(json.dumps(report, ensure_ascii=True, indent=2))
-    else:
+    bus_result, _ = _dispatch(
+        SelfHealCommand(
+            force_maintenance=force_maintenance, keep_recent=keep_recent,
+            snapshot_note=snapshot_note, as_json=as_json,
+        ),
+        as_json=as_json, json_field="report",
+    )
+    if not as_json:
+        report = bus_result.report
         print("self_heal")
         print(f"status={report.get('status', 'unknown')}")
         print(f"report_path={report.get('report_path', '')}")
@@ -1250,7 +1285,7 @@ def cmd_harvest(topic: str, providers: str | None, max_tokens: int) -> int:
 
 
 def cmd_ingest_session(source: str, session_path: str | None, project_path: str | None) -> int:
-    result = _get_bus().dispatch(IngestSessionCommand(
+    result, _ = _dispatch(IngestSessionCommand(
         source=source,
         session_path=session_path,
         project_path=project_path,
@@ -1369,7 +1404,7 @@ def cmd_memory_eval() -> int:
 
 
 def cmd_open_web(url: str) -> int:
-    result = _get_bus().dispatch(OpenWebCommand(url=url))
+    result, _ = _dispatch(OpenWebCommand(url=url))
     if result.return_code != 0:
         print("error=No URL provided or invalid URL.")
         return result.return_code
@@ -1563,7 +1598,7 @@ def cmd_voice_run(
 
 
 def cmd_proactive_check(snapshot_path: str) -> int:
-    result = _get_bus().dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
+    result, _ = _dispatch(ProactiveCheckCommand(snapshot_path=snapshot_path))
     print(f"alerts_fired={result.alerts_fired}")
     if result.alerts_fired:
         try:
@@ -1581,7 +1616,7 @@ def cmd_proactive_check(snapshot_path: str) -> int:
 
 
 def cmd_wake_word(threshold: float) -> int:
-    result = _get_bus().dispatch(WakeWordStartCommand(threshold=threshold))
+    result, _ = _dispatch(WakeWordStartCommand(threshold=threshold))
     print(f"started={result.started}")
     print(f"message={result.message}")
     if result.started:
@@ -1595,7 +1630,7 @@ def cmd_wake_word(threshold: float) -> int:
 
 
 def cmd_cost_reduction(days: int) -> int:
-    result = _get_bus().dispatch(CostReductionCommand(days=days))
+    result, _ = _dispatch(CostReductionCommand(days=days))
     print(f"local_pct={result.local_pct}")
     print(f"cloud_cost_usd={result.cloud_cost_usd}")
     print(f"failed_count={result.failed_count}")
@@ -1606,7 +1641,7 @@ def cmd_cost_reduction(days: int) -> int:
 
 
 def cmd_self_test(threshold: float) -> int:
-    result = _get_bus().dispatch(SelfTestCommand(score_threshold=threshold))
+    result, _ = _dispatch(SelfTestCommand(score_threshold=threshold))
     print(f"average_score={result.average_score:.4f}")
     print(f"tasks_run={result.tasks_run}")
     print(f"regression_detected={result.regression_detected}")
