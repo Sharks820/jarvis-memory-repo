@@ -201,9 +201,14 @@ class QueryHandler:
             route_reason = "Default: no classifier available"
 
         # Build messages with optional conversation history
+        from jarvis_engine.temporal import get_datetime_prompt
+
         messages: list[dict[str, str]] = []
         if cmd.system_prompt:
             messages.append({"role": "system", "content": cmd.system_prompt})
+        else:
+            # Always inject temporal grounding so the model knows the current date/time
+            messages.append({"role": "system", "content": get_datetime_prompt()})
         # Inject conversation history for multi-turn context
         if cmd.history:
             for role, content in cmd.history:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.command_bus import AppContext
 
 
 # ---------------------------------------------------------------------------
@@ -16,14 +17,12 @@ class TestPreferenceInjection:
 
     def _make_bus(self, *, pref_tracker=None, engine=None, embed_service=None, kg=None):
         bus = MagicMock()
-        bus._engine = engine
-        bus._embed_service = embed_service
-        bus._kg = kg
-        if pref_tracker is not None:
-            bus._pref_tracker = pref_tracker
-        else:
-            # Simulate attribute not existing
-            del bus._pref_tracker
+        bus.ctx = AppContext(
+            engine=engine,
+            embed_service=embed_service,
+            kg=kg,
+            pref_tracker=pref_tracker,
+        )
         return bus
 
     def test_returns_four_elements(self):

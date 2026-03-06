@@ -178,12 +178,13 @@ def test_query_handler_conversation_history() -> None:
 
     call_args = mock_gateway.complete.call_args
     messages = call_args.kwargs.get("messages", call_args[1].get("messages", []))
-    # 3 history messages + 1 final user query = 4 messages
-    assert len(messages) == 4
-    assert messages[0] == {"role": "user", "content": "hello"}
-    assert messages[1] == {"role": "assistant", "content": "hi there"}
-    assert messages[2] == {"role": "user", "content": "how are you"}
-    assert messages[3] == {"role": "user", "content": "what is 2+2"}
+    # 1 system (datetime) + 3 history messages + 1 final user query = 5 messages
+    assert len(messages) == 5
+    assert messages[0]["role"] == "system"  # datetime grounding
+    assert messages[1] == {"role": "user", "content": "hello"}
+    assert messages[2] == {"role": "assistant", "content": "hi there"}
+    assert messages[3] == {"role": "user", "content": "how are you"}
+    assert messages[4] == {"role": "user", "content": "what is 2+2"}
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +342,7 @@ class TestRunTaskHandler:
 
 class TestQueryHandlerExtended:
 
-    def test_no_system_prompt_single_message(self):
+    def test_no_system_prompt_injects_datetime(self):
         mock_gateway = MagicMock()
         mock_gateway.complete.return_value = _gateway_response()
         handler = QueryHandler(gateway=mock_gateway, classifier=None)
@@ -349,9 +350,11 @@ class TestQueryHandlerExtended:
         handler.handle(cmd)
         call_args = mock_gateway.complete.call_args
         messages = call_args.kwargs.get("messages", call_args[1].get("messages", []))
-        assert len(messages) == 1
-        assert messages[0]["role"] == "user"
-        assert messages[0]["content"] == "hello"
+        # When no system_prompt, QueryHandler injects a datetime grounding system msg
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert "Current date/time" in messages[0]["content"]
+        assert messages[1] == {"role": "user", "content": "hello"}
 
     def test_max_tokens_passed_through(self):
         mock_gateway = MagicMock()

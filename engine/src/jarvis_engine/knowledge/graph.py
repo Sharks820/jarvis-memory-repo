@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sqlite3
 import struct
 import threading
 from typing import TYPE_CHECKING
+
+from jarvis_engine._fts_utils import sanitize_fts_query
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -32,10 +33,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _EMBEDDING_DIM = 768
-
-# FTS5 special characters that must be escaped in user queries.
-_FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
-_FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
 
 
 class KnowledgeGraph:
@@ -87,11 +84,11 @@ class KnowledgeGraph:
 
     @staticmethod
     def _sanitize_fts_query(query: str) -> str:
-        """Sanitize a user query for FTS5 MATCH to prevent injection."""
-        sanitized = _FTS5_SPECIAL_RE.sub(" ", query)
-        tokens = sanitized.split()
-        tokens = [t for t in tokens if t.upper() not in _FTS5_KEYWORDS]
-        return " ".join(tokens).strip()
+        """Sanitize a user query for FTS5 MATCH to prevent injection.
+
+        Delegates to shared :func:`jarvis_engine.memory._fts_utils.sanitize_fts_query`.
+        """
+        return sanitize_fts_query(query)
 
     def _ensure_schema(self) -> None:
         """Create kg tables if they don't exist (idempotent)."""

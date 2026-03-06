@@ -621,24 +621,17 @@ class TestMemoryEngineContextManager:
 
 
 class TestMemoryEngineKGSchema:
-    """Tests for knowledge graph schema initialization."""
+    """Tests for knowledge graph schema delegation.
 
-    def test_kg_tables_created(self, engine: MemoryEngine) -> None:
-        """Knowledge graph tables (kg_nodes, kg_edges, kg_contradictions) exist."""
-        cur = engine._db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
-        tables = {row[0] for row in cur.fetchall()}
-        assert "kg_nodes" in tables
-        assert "kg_edges" in tables
-        assert "kg_contradictions" in tables
+    KG schema creation was moved to KnowledgeGraph._ensure_schema() to
+    eliminate duplication.  MemoryEngine._init_kg_schema() is now a no-op.
+    Full schema tests live in test_knowledge_graph.py::test_kg_schema_created.
+    """
 
-    def test_schema_version_includes_v2(self, engine: MemoryEngine) -> None:
-        """Schema version 2 is recorded for KG tables."""
-        cur = engine._db.execute("SELECT version FROM schema_version ORDER BY version")
-        versions = [row[0] for row in cur.fetchall()]
-        assert 1 in versions
-        assert 2 in versions
+    def test_init_kg_schema_is_noop(self, engine: MemoryEngine) -> None:
+        """_init_kg_schema() exists but does not create KG tables on its own."""
+        # After consolidation, KG tables are only created by KnowledgeGraph
+        assert hasattr(engine, "_init_kg_schema")
 
 
 class TestMemoryEngineConcurrency:

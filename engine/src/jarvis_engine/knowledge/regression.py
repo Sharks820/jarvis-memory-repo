@@ -197,12 +197,8 @@ class RegressionChecker:
                     )
                     new_db.row_factory = sqlite3.Row
                     # Re-apply PRAGMAs (match MemoryEngine.__init__)
-                    new_db.execute("PRAGMA journal_mode=WAL")
-                    new_db.execute("PRAGMA busy_timeout=5000")
-                    new_db.execute("PRAGMA foreign_keys=ON")
-                    new_db.execute("PRAGMA synchronous=NORMAL")
-                    new_db.execute("PRAGMA cache_size=-64000")
-                    new_db.execute("PRAGMA mmap_size=268435456")
+                    from jarvis_engine._db_pragmas import configure_sqlite
+                    configure_sqlite(new_db, full=True)
                     # Reload sqlite-vec
                     try:
                         import sqlite_vec

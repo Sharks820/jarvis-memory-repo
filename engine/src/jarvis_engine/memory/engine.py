@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sqlite3
 import struct
 import threading
@@ -22,17 +21,14 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from jarvis_engine._fts_utils import sanitize_fts_query
+
 if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
 _EMBEDDING_DIM = 768
-
-# FTS5 special characters that must be escaped in user queries.
-# Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
-_FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
-_FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
 
 
 class MemoryEngine:
@@ -52,12 +48,8 @@ class MemoryEngine:
 
         self._db = sqlite3.connect(str(db_path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute("PRAGMA busy_timeout=5000")
-        self._db.execute("PRAGMA foreign_keys=ON")
-        self._db.execute("PRAGMA synchronous=NORMAL")
-        self._db.execute("PRAGMA cache_size=-64000")       # 64 MB
-        self._db.execute("PRAGMA mmap_size=268435456")     # 256 MB
+        from jarvis_engine._db_pragmas import configure_sqlite
+        configure_sqlite(self._db, full=True)
 
         # Load sqlite-vec extension (graceful degradation)
         try:
@@ -148,74 +140,13 @@ class MemoryEngine:
         self._init_kg_schema()
 
     def _init_kg_schema(self) -> None:
-        """Create knowledge graph tables if they don't exist (idempotent).
+        """No-op: KG schema is now created by KnowledgeGraph._ensure_schema().
 
-        Tables: kg_nodes, kg_edges, kg_contradictions.
-        Bumps schema_version to 2 if not already present.
+        Retained for backward compatibility. Previously created kg_nodes,
+        kg_edges, kg_contradictions tables redundantly here, but the
+        single source of truth is KnowledgeGraph._ensure_schema() which
+        also creates the FTS5 and vec indexes for KG nodes.
         """
-        self._db.executescript("""
-            CREATE TABLE IF NOT EXISTS kg_nodes (
-                node_id TEXT PRIMARY KEY,
-                label TEXT NOT NULL,
-                node_type TEXT NOT NULL DEFAULT 'fact',
-                confidence REAL NOT NULL DEFAULT 0.5,
-                locked INTEGER NOT NULL DEFAULT 0,
-                locked_at TEXT DEFAULT NULL,
-                locked_by TEXT DEFAULT NULL,
-                sources TEXT NOT NULL DEFAULT '[]',
-                history TEXT NOT NULL DEFAULT '[]',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_kg_nodes_type ON kg_nodes(node_type);
-            CREATE INDEX IF NOT EXISTS idx_kg_nodes_locked ON kg_nodes(locked);
-
-            CREATE TABLE IF NOT EXISTS kg_edges (
-                edge_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source_id TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                relation TEXT NOT NULL,
-                confidence REAL NOT NULL DEFAULT 0.5,
-                source_record TEXT DEFAULT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (source_id) REFERENCES kg_nodes(node_id),
-                FOREIGN KEY (target_id) REFERENCES kg_nodes(node_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_edges(source_id);
-            CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges(target_id);
-            CREATE INDEX IF NOT EXISTS idx_kg_edges_relation ON kg_edges(relation);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_edges_unique
-                ON kg_edges(source_id, target_id, relation);
-
-            CREATE TABLE IF NOT EXISTS kg_contradictions (
-                contradiction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                node_id TEXT NOT NULL,
-                existing_value TEXT NOT NULL,
-                incoming_value TEXT NOT NULL,
-                existing_confidence REAL NOT NULL,
-                incoming_confidence REAL NOT NULL,
-                incoming_source TEXT DEFAULT NULL,
-                record_id TEXT DEFAULT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                resolved_at TEXT DEFAULT NULL,
-                resolution TEXT DEFAULT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (node_id) REFERENCES kg_nodes(node_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_kg_contradictions_status
-                ON kg_contradictions(status);
-            CREATE INDEX IF NOT EXISTS idx_kg_contradictions_node
-                ON kg_contradictions(node_id);
-        """)
-
-        # Bump schema version to 2
-        self._db.execute(
-            "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"
-        )
-        self._db.commit()
 
     def insert_record(
         self,
@@ -407,13 +338,9 @@ class MemoryEngine:
     def _sanitize_fts_query(query: str) -> str:
         """Sanitize a user query for FTS5 MATCH to prevent injection.
 
-        Strips FTS5 special characters that could alter query semantics.
+        Delegates to shared :func:`jarvis_engine.memory._fts_utils.sanitize_fts_query`.
         """
-        sanitized = _FTS5_SPECIAL_RE.sub(" ", query)
-        # Remove FTS5 boolean operators to prevent query injection
-        tokens = sanitized.split()
-        tokens = [t for t in tokens if t.upper() not in _FTS5_KEYWORDS]
-        return " ".join(tokens).strip()
+        return sanitize_fts_query(query)
 
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:
         """FTS5 keyword search returning (record_id, rank) pairs.

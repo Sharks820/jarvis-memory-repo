@@ -160,15 +160,10 @@ _PUBLIC_SAFE_PATHS = frozenset({"/health", "/cert-fingerprint"})
 def _configure_db(conn: Any) -> None:
     """Apply consistent SQLite PRAGMAs for performance and reliability.
 
-    WAL mode, relaxed synchronous, 5s busy timeout, 64MB cache, 256MB mmap,
-    and foreign key enforcement.
+    Delegates to the shared :func:`jarvis_engine._db_pragmas.configure_sqlite`.
     """
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA cache_size=-65536")   # 64MB
-    conn.execute("PRAGMA mmap_size=268435456")  # 256MB
-    conn.execute("PRAGMA foreign_keys=ON")
+    from jarvis_engine._db_pragmas import configure_sqlite
+    configure_sqlite(conn, full=True)
 
 
 def _detect_lan_ips() -> list[str]:
@@ -459,50 +454,96 @@ class MobileIngestServer(ThreadingHTTPServer):
         for ip in by_recency[:to_remove]:
             del d[ip]
 
+    def _sliding_window_check(
+        self,
+        bucket: dict[str, list[float]],
+        lock: "threading.Lock",
+        key: str,
+        max_attempts: int,
+        window_seconds: float,
+        *,
+        record_on_allow: bool = False,
+    ) -> bool:
+        """Generic sliding-window rate limiter.
+
+        Returns True if *key* is rate-limited (i.e. has reached *max_attempts*
+        within the last *window_seconds*).
+
+        When *record_on_allow* is True the current timestamp is appended to
+        the window **only** when the request is allowed (not rate-limited).
+        This is used by the API rate limiter so that rejected requests do not
+        consume future budget.
+        """
+        now = time.time()
+        with lock:
+            if len(bucket) > 5000:
+                self._prune_rate_dict(bucket)
+            attempts = bucket.get(key, [])
+            cutoff = now - window_seconds
+            attempts = [ts for ts in attempts if ts > cutoff]
+            if len(attempts) >= max_attempts:
+                bucket[key] = attempts
+                return True
+            if record_on_allow:
+                attempts.append(now)
+            bucket[key] = attempts
+            return False
+
+    def _record_rate_attempt(
+        self,
+        bucket: dict[str, list[float]],
+        lock: "threading.Lock",
+        key: str,
+        window_seconds: float,
+    ) -> None:
+        """Record a rate-limit attempt (used after a failed auth event)."""
+        now = time.time()
+        with lock:
+            attempts = bucket.get(key, [])
+            cutoff = now - window_seconds
+            attempts = [ts for ts in attempts if ts > cutoff]
+            attempts.append(now)
+            bucket[key] = attempts
+
+    # -- Convenience wrappers (preserve existing public API) ----------------
+
     def check_bootstrap_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for bootstrap attempts."""
-        now = time.time()
-        with self._bootstrap_rate_lock:
-            if len(self._bootstrap_attempts) > 5000:
-                self._prune_rate_dict(self._bootstrap_attempts)
-            attempts = self._bootstrap_attempts.get(client_ip, [])
-            # Prune attempts outside the sliding window
-            cutoff = now - _BOOTSTRAP_RATE_LIMIT_WINDOW
-            attempts = [ts for ts in attempts if ts > cutoff]
-            self._bootstrap_attempts[client_ip] = attempts
-            return len(attempts) >= _BOOTSTRAP_RATE_LIMIT_MAX
+        return self._sliding_window_check(
+            self._bootstrap_attempts,
+            self._bootstrap_rate_lock,
+            client_ip,
+            _BOOTSTRAP_RATE_LIMIT_MAX,
+            _BOOTSTRAP_RATE_LIMIT_WINDOW,
+        )
 
     def record_bootstrap_attempt(self, client_ip: str) -> None:
         """Record a failed bootstrap attempt for rate limiting."""
-        now = time.time()
-        with self._bootstrap_rate_lock:
-            attempts = self._bootstrap_attempts.get(client_ip, [])
-            cutoff = now - _BOOTSTRAP_RATE_LIMIT_WINDOW
-            attempts = [ts for ts in attempts if ts > cutoff]
-            attempts.append(now)
-            self._bootstrap_attempts[client_ip] = attempts
+        self._record_rate_attempt(
+            self._bootstrap_attempts,
+            self._bootstrap_rate_lock,
+            client_ip,
+            _BOOTSTRAP_RATE_LIMIT_WINDOW,
+        )
 
     def check_master_pw_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for master password attempts."""
-        now = time.time()
-        with self._master_pw_rate_lock:
-            if len(self._master_pw_attempts) > 5000:
-                self._prune_rate_dict(self._master_pw_attempts)
-            attempts = self._master_pw_attempts.get(client_ip, [])
-            cutoff = now - _MASTER_PW_RATE_LIMIT_WINDOW
-            attempts = [ts for ts in attempts if ts > cutoff]
-            self._master_pw_attempts[client_ip] = attempts
-            return len(attempts) >= _MASTER_PW_RATE_LIMIT_MAX
+        return self._sliding_window_check(
+            self._master_pw_attempts,
+            self._master_pw_rate_lock,
+            client_ip,
+            _MASTER_PW_RATE_LIMIT_MAX,
+            _MASTER_PW_RATE_LIMIT_WINDOW,
+        )
 
     def record_master_pw_attempt(self, client_ip: str) -> None:
         """Record a master password attempt for rate limiting."""
-        now = time.time()
-        with self._master_pw_rate_lock:
-            attempts = self._master_pw_attempts.get(client_ip, [])
-            cutoff = now - _MASTER_PW_RATE_LIMIT_WINDOW
-            attempts = [ts for ts in attempts if ts > cutoff]
-            attempts.append(now)
-            self._master_pw_attempts[client_ip] = attempts
+        self._record_rate_attempt(
+            self._master_pw_attempts,
+            self._master_pw_rate_lock,
+            client_ip,
+            _MASTER_PW_RATE_LIMIT_WINDOW,
+        )
 
     def check_api_rate(self, client_ip: str, path: str) -> bool:
         """Return True if this IP exceeds the API rate limit for the given path.
@@ -518,19 +559,14 @@ class MobileIngestServer(ThreadingHTTPServer):
         is_expensive = path in _EXPENSIVE_PATHS
         limit = _API_RATE_LIMIT_EXPENSIVE if is_expensive else _API_RATE_LIMIT_NORMAL
         bucket = self._api_rate_expensive if is_expensive else self._api_rate_normal
-        now = time.time()
-        with self._api_rate_lock:
-            if len(bucket) > 5000:
-                self._prune_rate_dict(bucket)
-            attempts = bucket.get(client_ip, [])
-            cutoff = now - _API_RATE_LIMIT_WINDOW
-            attempts = [ts for ts in attempts if ts > cutoff]
-            if len(attempts) >= limit:
-                bucket[client_ip] = attempts
-                return True
-            attempts.append(now)
-            bucket[client_ip] = attempts
-            return False
+        return self._sliding_window_check(
+            bucket,
+            self._api_rate_lock,
+            client_ip,
+            limit,
+            _API_RATE_LIMIT_WINDOW,
+            record_on_allow=True,
+        )
 
     def is_cors_origin_allowed(self, origin: str) -> bool:
         """Check if the given Origin is in the CORS whitelist."""

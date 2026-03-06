@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from jarvis_engine import main as main_mod
+from jarvis_engine.command_bus import AppContext
 
 
 def test_sanitize_memory_content_redacts_credentials() -> None:
@@ -2673,9 +2674,10 @@ class TestDaemonSelfTest:
         mock_tester.run_memory_quiz.return_value = {"average_score": 0.92, "tasks_run": 4}
         mock_tester.check_regression.return_value = {"regression_detected": False}
 
+        mock_engine = MagicMock()
+        mock_embed = MagicMock()
         mock_bus = MagicMock()
-        mock_bus._engine = MagicMock()
-        mock_bus._embed_service = MagicMock()
+        mock_bus.ctx = AppContext(engine=mock_engine, embed_service=mock_embed)
         monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",
@@ -2684,7 +2686,7 @@ class TestDaemonSelfTest:
                                        self_test_every_cycles=1, max_cycles=1)
 
         assert rc == 0
-        mock_cls.assert_called_once_with(mock_bus._engine, mock_bus._embed_service,
+        mock_cls.assert_called_once_with(mock_engine, mock_embed,
                                           score_threshold=0.5)
         mock_tester.run_memory_quiz.assert_called_once()
         mock_tester.save_quiz_result.assert_called_once()
@@ -2696,8 +2698,7 @@ class TestDaemonSelfTest:
     def test_self_test_skipped_when_disabled(self, capsys, monkeypatch, tmp_path):
         """Verify no self-test activity when self_test_every_cycles=0."""
         mock_bus = MagicMock()
-        mock_bus._engine = MagicMock()
-        mock_bus._embed_service = MagicMock()
+        mock_bus.ctx = AppContext(engine=MagicMock(), embed_service=MagicMock())
         monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
@@ -2713,8 +2714,7 @@ class TestDaemonSelfTest:
     def test_self_test_handles_missing_engine(self, capsys, monkeypatch, tmp_path):
         """Verify 'skipped' message when engine or embed_svc is None on bus."""
         mock_bus = MagicMock()
-        mock_bus._engine = None
-        mock_bus._embed_service = None
+        mock_bus.ctx = AppContext(engine=None, embed_service=None)
         monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
@@ -2729,8 +2729,7 @@ class TestDaemonSelfTest:
     def test_self_test_handles_error(self, capsys, monkeypatch, tmp_path):
         """Verify error is caught and printed, daemon continues running."""
         mock_bus = MagicMock()
-        mock_bus._engine = MagicMock()
-        mock_bus._embed_service = MagicMock()
+        mock_bus.ctx = AppContext(engine=MagicMock(), embed_service=MagicMock())
         monkeypatch.setattr(main_mod, "_get_daemon_bus", lambda: mock_bus)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",
@@ -2849,11 +2848,11 @@ class TestBuildSmartContext:
     """Tests for _build_smart_context function."""
 
     def test_hybrid_search_path_when_engine_available(self, monkeypatch):
-        """When bus has _engine and _embed_service, uses hybrid_search."""
+        """When bus has engine and embed_service on ctx, uses hybrid_search."""
+        mock_embed = MagicMock()
+        mock_embed.embed_query.return_value = [0.1, 0.2, 0.3]
         bus = MagicMock()
-        bus._engine = MagicMock()
-        bus._embed_service = MagicMock()
-        bus._embed_service.embed_query.return_value = [0.1, 0.2, 0.3]
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
 
         fake_records = [
             {"summary": "User likes hiking on weekends"},
@@ -2873,8 +2872,9 @@ class TestBuildSmartContext:
         assert "User takes metformin daily" in memory_lines
 
     def test_legacy_fallback_when_no_engine(self, monkeypatch):
-        """When bus has no _engine, falls back to build_context_packet."""
+        """When bus has no engine on ctx, falls back to build_context_packet."""
         bus = MagicMock(spec=[])  # empty spec - no attributes
+        bus.ctx = AppContext()  # all None defaults
 
         fake_packet = {
             "selected": [
@@ -2893,10 +2893,10 @@ class TestBuildSmartContext:
 
     def test_legacy_fallback_when_hybrid_fails(self, monkeypatch):
         """When hybrid_search raises, falls back to build_context_packet."""
+        mock_embed = MagicMock()
+        mock_embed.embed_query.side_effect = RuntimeError("embed failed")
         bus = MagicMock()
-        bus._engine = MagicMock()
-        bus._embed_service = MagicMock()
-        bus._embed_service.embed_query.side_effect = RuntimeError("embed failed")
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
 
         fake_packet = {
             "selected": [{"summary": "Fallback memory"}]
@@ -2910,10 +2910,8 @@ class TestBuildSmartContext:
 
     def test_kg_facts_injected_when_engine_available(self, monkeypatch, tmp_path):
         """KG facts are queried and returned as fact_lines."""
-        bus = MagicMock(spec=[])  # No _engine attr initially — force fallback for memory
-        # But we need _engine to be not None for the KG section
-        bus._engine = MagicMock()
-        bus._embed_service = None  # No embed service — hybrid won't run
+        bus = MagicMock(spec=[])
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
 
         # Legacy path returns empty for memory
         monkeypatch.setattr(
@@ -2936,8 +2934,7 @@ class TestBuildSmartContext:
     def test_kg_facts_filtered_by_confidence(self, monkeypatch):
         """KG facts with confidence < 0.5 are excluded from fact_lines."""
         bus = MagicMock(spec=[])
-        bus._engine = MagicMock()
-        bus._embed_service = None
+        bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
 
         monkeypatch.setattr(
             main_mod, "build_context_packet",
@@ -2958,7 +2955,8 @@ class TestBuildSmartContext:
 
     def test_returns_empty_when_everything_fails(self, monkeypatch):
         """Returns ([], []) when both memory and KG queries fail."""
-        bus = MagicMock(spec=[])  # No _engine
+        bus = MagicMock(spec=[])
+        bus.ctx = AppContext()  # all None defaults
 
         monkeypatch.setattr(
             main_mod, "build_context_packet",
@@ -3107,10 +3105,10 @@ class TestQueryHandlerHistory:
 
         roles = [m["role"] for m in messages]
         assert "admin" not in roles
-        # system only appears if cmd.system_prompt was set (it's empty here)
-        # so the injected "system" from history should be filtered out
-        history_roles = [m["role"] for m in messages if m["content"] not in ("test",)]
-        assert "system" not in history_roles
+        # The handler now injects a datetime system prompt even when cmd.system_prompt is empty,
+        # but the injected "system" entry from history should still be filtered out.
+        system_contents = [m["content"] for m in messages if m["role"] == "system"]
+        assert "injected system msg" not in system_contents
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_handler_skips_empty_content_in_history(self):

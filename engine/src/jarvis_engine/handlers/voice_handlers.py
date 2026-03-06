@@ -210,10 +210,19 @@ class PersonaComposeHandler:
             logger.warning("persona/gateway modules not available: %s", exc)
             return PersonaComposeResult(message="error: persona modules not available.")
 
+        from jarvis_engine.temporal import get_datetime_prompt
+
         gateway: ModelGateway = self._gateway  # type: ignore[assignment]
         cfg = load_persona_config(self._root)
         tone = _resolve_tone(cmd.branch)
         system_prompt = compose_persona_system_prompt(cfg, branch=cmd.branch)
+
+        # Prepend temporal grounding so the persona knows the current date/time
+        datetime_line = get_datetime_prompt()
+        if system_prompt:
+            system_prompt = f"{datetime_line}\n\n{system_prompt}"
+        else:
+            system_prompt = datetime_line
 
         messages: list[dict[str, str]] = []
         if system_prompt:
