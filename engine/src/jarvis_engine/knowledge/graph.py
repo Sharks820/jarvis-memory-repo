@@ -78,6 +78,31 @@ class KnowledgeGraph:
         """Public accessor for the shared DB read lock."""
         return self._db_lock
 
+    @property
+    def db_path(self) -> "Path":
+        """Path to the underlying SQLite database file."""
+        from pathlib import Path
+
+        return Path(self._engine.db_path)
+
+    @property
+    def mutation_counter(self) -> int:
+        """Current mutation counter (increments on every graph write)."""
+        return self._mutation_counter
+
+    def invalidate_cache(self) -> None:
+        """Invalidate the cached NetworkX graph so the next read rebuilds it."""
+        self._mutation_counter += 1
+        self._cached_graph = None
+
+    def ensure_schema(self) -> None:
+        """(Re-)create KG tables if they don't exist (idempotent).
+
+        Useful after restoring a database backup to reinitialise schema
+        on the fresh connection.
+        """
+        self._ensure_schema()
+
     # ------------------------------------------------------------------
     # Schema
     # ------------------------------------------------------------------

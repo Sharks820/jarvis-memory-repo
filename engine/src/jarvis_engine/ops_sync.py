@@ -134,7 +134,7 @@ def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> l
             finally:
                 os.close(fd)
         except FileExistsError:
-            pass
+            logger.debug("Tasks file already exists (race): %s", default_path)
     return _read_json_list(default_path)
 
 

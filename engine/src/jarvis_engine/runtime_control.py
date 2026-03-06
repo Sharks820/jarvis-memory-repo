@@ -131,6 +131,7 @@ def _dir_size_mb(path: Path) -> float:
                 try:
                     total += p.stat().st_size
                 except OSError:
+                    logger.debug("Cannot stat file %s during size calculation", p)
                     continue
     except OSError:
         return 0.0

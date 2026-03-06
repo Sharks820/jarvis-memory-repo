@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
-
+from conftest import make_test_db
 from jarvis_engine.commands.defense_commands import (
     BlockIPCommand,
     BlockIPResult,
@@ -29,8 +29,7 @@ from jarvis_engine.commands.defense_commands import (
 
 def _make_db() -> tuple[sqlite3.Connection, threading.Lock]:
     """Create an in-memory SQLite database with WAL mode and a shared lock."""
-    db = sqlite3.connect(":memory:", check_same_thread=False)
-    db.execute("PRAGMA journal_mode=WAL")
+    db = make_test_db(check_same_thread=False)
     return db, threading.Lock()
 
 

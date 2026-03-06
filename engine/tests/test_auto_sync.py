@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 
+from conftest import make_test_db
 
 
 # ---------------------------------------------------------------------------
@@ -13,8 +14,7 @@ import threading
 
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite database with core tables."""
-    db = sqlite3.connect(":memory:", check_same_thread=False)
-    db.execute("PRAGMA journal_mode=WAL")
+    db = make_test_db(check_same_thread=False)
     db.execute("""
         CREATE TABLE IF NOT EXISTS records (
             record_id   TEXT PRIMARY KEY,

@@ -240,6 +240,7 @@ def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
             try:
                 entries.append(json.loads(stripped))
             except json.JSONDecodeError:
+                logger.debug("Skipping malformed JSONL line in %s", path)
                 continue
 
     return entries[-limit:]

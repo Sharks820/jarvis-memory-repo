@@ -67,8 +67,8 @@ def ensure_snapshot_key(root: Path) -> str:
     key_path.write_text(key, encoding="utf-8")
     try:
         os.chmod(key_path, 0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Cannot set snapshot key permissions: %s", exc)
     return key
 
 
@@ -163,8 +163,8 @@ def create_signed_snapshot(
         os.chmod(snapshot_path, 0o600)
         os.chmod(metadata_path, 0o600)
         os.chmod(signature_path, 0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Cannot set snapshot file permissions: %s", exc)
 
     return SnapshotResult(
         snapshot_path=snapshot_path,
@@ -269,7 +269,8 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                     if "kg_metrics" in meta:
                         prev_kg_metrics = meta["kg_metrics"]
                         break
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.debug("Skipping unreadable snapshot metadata %s: %s", meta_file, exc)
                     continue
 
             # Load current KG metrics from the snapshot we just created

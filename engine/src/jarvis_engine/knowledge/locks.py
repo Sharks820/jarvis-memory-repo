@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
-import threading
 
 from jarvis_engine.knowledge._base import KGManagerBase
 

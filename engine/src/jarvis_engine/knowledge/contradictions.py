@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-import threading
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine.knowledge._base import KGManagerBase

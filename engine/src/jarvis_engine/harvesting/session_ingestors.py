@@ -149,6 +149,7 @@ def _parse_session_jsonl(path: Path, entry_type: str = "assistant") -> list[str]
                 try:
                     entry = json.loads(line)
                 except json.JSONDecodeError:
+                    logger.debug("Skipping malformed JSONL line in session history")
                     continue
 
                 if not isinstance(entry, dict):

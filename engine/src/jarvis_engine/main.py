@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import logging
 import os
@@ -16,14 +15,9 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
 
-from jarvis_engine.brain_memory import (
-    build_context_packet,
-    ingest_brain_record,
-)
+from jarvis_engine.brain_memory import build_context_packet
 from jarvis_engine.config import repo_root
-from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.learning_missions import load_missions
-from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.mobile_api import run_mobile_server
 from jarvis_engine.owner_guard import (
     read_owner_guard,
@@ -182,24 +176,21 @@ def _get_bus() -> CommandBus:
         return bus
 
 
-_auto_ingest_lock = threading.Lock()
-
 # ---------------------------------------------------------------------------
-# Cached MemoryStore for auto-ingest (avoids recreating per call)
+# Auto-ingest: delegated to jarvis_engine.auto_ingest (public module)
 # ---------------------------------------------------------------------------
-_auto_ingest_store: "MemoryStore | None" = None
-_auto_ingest_store_lock = threading.Lock()
-
-
-def _get_auto_ingest_store() -> "MemoryStore":
-    """Return a cached MemoryStore for auto-ingest, creating once on first call."""
-    global _auto_ingest_store
-    if _auto_ingest_store is not None:
-        return _auto_ingest_store
-    with _auto_ingest_store_lock:
-        if _auto_ingest_store is None:
-            _auto_ingest_store = MemoryStore(repo_root())
-        return _auto_ingest_store
+# Keep thin private wrappers so existing call sites in this file continue to
+# work without modification.
+from jarvis_engine.auto_ingest import (  # noqa: E402
+    auto_ingest_memory as _auto_ingest_memory,
+    auto_ingest_memory_sync as _auto_ingest_memory_sync,
+    sanitize_memory_content as _sanitize_memory_content,
+    VALID_SOURCES as _VALID_SOURCES,
+    VALID_KINDS as _VALID_KINDS,
+    _auto_ingest_dedupe_path,  # re-exported for backward compat (tests)
+    _load_auto_ingest_hashes,  # re-exported for backward compat (tests)
+    _store_auto_ingest_hashes,  # re-exported for backward compat (tests)
+)
 
 
 # ---------------------------------------------------------------------------
@@ -236,10 +227,8 @@ from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensiti
 from jarvis_engine._constants import memory_db_path as _memory_db_path  # noqa: E402
 from jarvis_engine._constants import make_task_id as _make_task_id  # noqa: E402
 from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME  # noqa: E402
-from jarvis_engine._constants import DEFAULT_CLOUD_MODEL as _DEFAULT_CLOUD_MODEL  # noqa: E402
 from jarvis_engine._constants import ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY  # noqa: E402
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME  # noqa: E402
-from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG  # noqa: E402
 from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG  # noqa: E402
 from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY  # noqa: E402
 from jarvis_engine._shared import set_process_title as _set_process_title  # noqa: E402
@@ -343,7 +332,6 @@ def _discover_harvest_topics(root: Path) -> list[str]:
         return len(candidates) >= _MAX_TOPICS
 
     # Open a single shared SQLite connection for sources 1-3 (memory + KG queries)
-    import sqlite3 as _sqlite3
     from datetime import timedelta
 
     db_path = _memory_db_path(root)
@@ -952,121 +940,9 @@ def _build_system_parts(
     return parts
 
 
-def _auto_ingest_dedupe_path() -> Path:
-    return _runtime_dir(repo_root()) / "auto_ingest_dedupe.json"
-
-
-def _sanitize_memory_content(content: str) -> str:
-    content = content[:100_000]  # Truncate before regex to prevent catastrophic backtracking
-    # Redact master password, tokens, API keys, secrets, signing keys, bearer tokens
-    _CRED_KEYS = r'(?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key'
-    # JSON-style: "key": "value"
-    cleaned = re.sub(
-        rf'(?i)"({_CRED_KEYS})"\s*:\s*"[^"]*"',
-        r'"\1": "[redacted]"',
-        content,
-    )
-    # Unquoted style: key=value or key: value
-    cleaned = re.sub(
-        rf"(?i)({_CRED_KEYS})\s*[:=]\s*\S+",
-        r"\1=[redacted]",
-        cleaned,
-    )
-    cleaned = re.sub(r"(?i)(bearer)\s+\S+", r"\1 [redacted]", cleaned)
-    return cleaned.strip()[:2000]
-
-
-def _load_auto_ingest_hashes(path: Path) -> list[str]:
-    if not path.exists():
-        return []
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if not isinstance(raw, dict):
-        return []
-    values = raw.get("hashes", [])
-    if not isinstance(values, list):
-        return []
-    return [str(item).strip() for item in values if str(item).strip()]
-
-
-def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-
-    payload = {"hashes": hashes[-400:], "updated_utc": datetime.now(UTC).isoformat()}
-    _atomic_write_json(path, payload)
-
-
-_VALID_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome", "conversation"}
-_VALID_KINDS = {"episodic", "semantic", "procedural"}
-
-def _auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) -> str:
-    """Synchronous core of auto-ingest (runs in background thread)."""
-    safe_content = _sanitize_memory_content(content)
-    if not safe_content:
-        return ""
-    safe_task_id = task_id[:128]
-    dedupe_path = _auto_ingest_dedupe_path()
-    dedupe_material = f"{source}|{kind}|{safe_task_id}|{safe_content.lower()}".encode("utf-8")
-    dedupe_hash = hashlib.sha256(dedupe_material).hexdigest()
-    # Lock prevents race condition when daemon + CLI ingest concurrently.
-    # Check dedup under lock, but only persist hash AFTER successful ingestion
-    # to allow retries on failure.
-    with _auto_ingest_lock:
-        seen = _load_auto_ingest_hashes(dedupe_path)
-        seen_set = set(seen)
-        if dedupe_hash in seen_set:
-            return ""
-
-    store = _get_auto_ingest_store()
-    pipeline = IngestionPipeline(store)
-    rec = pipeline.ingest(
-        source=source,  # type: ignore[arg-type]
-        kind=kind,  # type: ignore[arg-type]
-        task_id=safe_task_id,
-        content=safe_content,
-    )
-    try:
-        ingest_brain_record(
-            repo_root(),
-            source=source,
-            kind=kind,
-            task_id=safe_task_id,
-            content=safe_content,
-            tags=[source, kind],
-            confidence=0.74 if source == "task_outcome" else 0.68,
-        )
-    except ValueError:
-        logger.warning("brain ingest failed for task_id=%s", safe_task_id[:32])
-
-    # Mark as seen only AFTER successful ingestion so failures can be retried
-    with _auto_ingest_lock:
-        seen = _load_auto_ingest_hashes(dedupe_path)
-        seen.append(dedupe_hash)
-        _store_auto_ingest_hashes(dedupe_path, seen)
-
-    return rec.record_id
-
-
-def _auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> str:
-    """Fire-and-forget auto-ingest — runs in a background thread to avoid blocking responses."""
-    if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
-        return ""
-    if source not in _VALID_SOURCES or kind not in _VALID_KINDS:
-        return ""
-
-    def _bg() -> None:
-        try:
-            _auto_ingest_memory_sync(source, kind, task_id, content)
-        except Exception as exc:
-            logger.debug("Background auto-ingest failed: %s", exc)
-
-    t = threading.Thread(target=_bg, daemon=True)
-    t.start()
-    # Return empty — the record ID is no longer available synchronously,
-    # but the ingest still happens in the background.
-    return ""
+# _auto_ingest_dedupe_path, _sanitize_memory_content, _load_auto_ingest_hashes,
+# _store_auto_ingest_hashes, _auto_ingest_memory_sync, _auto_ingest_memory:
+# All moved to jarvis_engine.auto_ingest — imported at module top via thin aliases.
 
 
 def _windows_idle_seconds() -> float | None:
@@ -1196,6 +1072,7 @@ def _detect_active_game_process() -> tuple[bool, str]:
         try:
             row = next(csv.reader([line]))
         except (csv.Error, StopIteration):
+            logger.debug("Skipping unparseable tasklist CSV line: %s", line)
             continue
         if not row:
             continue
@@ -1842,21 +1719,15 @@ def _cmd_ops_autopilot_impl(
     approve_privileged: bool,
     auto_open_connectors: bool,
 ) -> int:
-    """Implementation body for ops-autopilot (called by handler via callback)."""
-    cmd_connect_bootstrap(auto_open=auto_open_connectors)
-    sync_rc = cmd_ops_sync(snapshot_path)
-    if sync_rc != 0:
-        return sync_rc
-    brief_rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
-    if brief_rc != 0:
-        return brief_rc
-    export_rc = cmd_ops_export_actions(snapshot_path=snapshot_path, actions_path=actions_path)
-    if export_rc != 0:
-        return export_rc
-    return cmd_automation_run(
+    """Thin wrapper — delegates to :func:`jarvis_engine.ops_autopilot.run_ops_autopilot`."""
+    from jarvis_engine.ops_autopilot import run_ops_autopilot
+
+    return run_ops_autopilot(
+        snapshot_path=snapshot_path,
         actions_path=actions_path,
-        approve_privileged=approve_privileged,
         execute=execute,
+        approve_privileged=approve_privileged,
+        auto_open_connectors=auto_open_connectors,
     )
 
 

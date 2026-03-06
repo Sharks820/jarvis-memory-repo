@@ -122,7 +122,7 @@ class OpsAutopilotHandler:
         self._root = root
 
     def handle(self, cmd: OpsAutopilotCommand) -> OpsAutopilotResult:
-        from jarvis_engine import main as _main_mod
+        from jarvis_engine.ops_autopilot import run_ops_autopilot
 
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
@@ -130,7 +130,7 @@ class OpsAutopilotHandler:
         except ValueError as exc:
             logger.warning("OpsAutopilot path check failed: %s", exc)
             return OpsAutopilotResult(return_code=2, error=str(exc))
-        rc = _main_mod._cmd_ops_autopilot_impl(
+        rc = run_ops_autopilot(
             snapshot_path=cmd.snapshot_path,
             actions_path=cmd.actions_path,
             execute=cmd.execute,

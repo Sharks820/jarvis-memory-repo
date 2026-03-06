@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import math
+import sqlite3
 import sys
 import threading
 import time
@@ -43,6 +44,34 @@ def _isolate_activity_feed(tmp_path):
         _reset_feed()
     except (ImportError, OSError, AttributeError):
         pass
+
+
+def make_test_db(
+    *,
+    check_same_thread: bool = True,
+    row_factory: bool = True,
+) -> sqlite3.Connection:
+    """Create a properly configured in-memory SQLite connection for tests.
+
+    Uses :func:`jarvis_engine._db_pragmas.configure_sqlite` so that test DBs
+    match production PRAGMA settings (WAL, busy_timeout).
+
+    Parameters
+    ----------
+    check_same_thread:
+        Passed to ``sqlite3.connect``.  Set *False* when the connection is
+        shared across threads (e.g. handler tests).
+    row_factory:
+        When *True* (default), sets ``conn.row_factory = sqlite3.Row`` to
+        match the production ``connect_db`` behaviour.
+    """
+    from jarvis_engine._db_pragmas import configure_sqlite
+
+    conn = sqlite3.connect(":memory:", check_same_thread=check_same_thread)
+    if row_factory:
+        conn.row_factory = sqlite3.Row
+    configure_sqlite(conn)
+    return conn
 
 
 from jarvis_engine.ingest import IngestionPipeline

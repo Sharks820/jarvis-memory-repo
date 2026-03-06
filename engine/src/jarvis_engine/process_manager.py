@@ -95,8 +95,8 @@ def _get_process_create_time(pid: int) -> float | None:
             # Field 22 (0-indexed: 21) is starttime in clock ticks since boot
             # Simpler approach: use the file's creation time
             return stat_path.stat().st_ctime
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Failed to read process stat for PID %d: %s", pid, exc)
     return None
 
 
@@ -183,8 +183,8 @@ def _lock_pid_file(service: str, root: Path):
                     try:
                         import msvcrt
                         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        logger.debug("Failed to unlock file: %s", exc)
                 os.close(fd)
 
     return _lock()
@@ -257,8 +257,8 @@ def remove_pid_file(service: str, root: Path) -> None:
 def _remove_pid_file_path(path: Path) -> None:
     try:
         path.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Failed to remove PID file %s: %s", path, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +378,7 @@ def list_services(root: Path) -> list[dict[str, Any]]:
                     start_dt = datetime.fromisoformat(started)
                     uptime_s = int((datetime.now(timezone.utc) - start_dt).total_seconds())
                 except (ValueError, TypeError):
-                    pass
+                    logger.debug("Invalid started_utc format for service %s: %s", svc, started)
             results.append({
                 "service": svc,
                 "running": True,

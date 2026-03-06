@@ -185,8 +185,8 @@ def _detect_lan_ips() -> list[str]:
             lan_ip = s.getsockname()[0]
             if lan_ip and lan_ip not in ips:
                 ips.append(lan_ip)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("LAN IP detection failed: %s", exc)
     # Always include loopback
     if "127.0.0.1" not in ips:
         ips.append("127.0.0.1")
@@ -232,8 +232,8 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
             for line in result.stdout.strip().splitlines():
                 if "=" in line:
                     return line.split("=", 1)[1].strip()
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
-        pass
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("openssl fingerprint extraction failed: %s", exc)
     # Fallback: compute from PEM bytes directly
     try:
         import base64 as _b64
@@ -323,16 +323,16 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
             try:
                 if p.exists():
                     p.unlink()
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                logger.debug("Failed to clean up partial TLS file %s: %s", p, cleanup_exc)
         return None, None
     finally:
         # Clean up the temporary extension file
         try:
             if ext_file.exists():
                 ext_file.unlink()
-        except OSError:
-            pass
+        except OSError as cleanup_exc:
+            logger.debug("Failed to clean up TLS extension file: %s", cleanup_exc)
 
     if cert_path.exists() and key_path.exists():
         logger.info("Generated self-signed TLS certificate with SAN=%s: %s", san_string, cert_path)
@@ -673,6 +673,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                         if nonce and ts >= cutoff:
                             self.nonce_seen[nonce] = ts
                     except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+                        logger.debug("Skipping malformed nonce cache entry")
                         continue
         except OSError:
             logger.warning("Failed to load nonce cache from disk")
@@ -697,8 +698,8 @@ class MobileIngestServer(ThreadingHTTPServer):
             try:
                 if tmp.exists():
                     tmp.unlink()
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                logger.debug("Failed to remove nonce cache temp file: %s", cleanup_exc)
 
     def ensure_sync_engine(self) -> Any:
         """Lazy-initialize sync engine when DB becomes available.
@@ -1788,9 +1789,10 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 try:
                     records.append(json.loads(line))
                 except json.JSONDecodeError:
+                    logger.debug("Skipping malformed audit log line")
                     continue
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Failed to read audit log: %s", exc)
         self._write_json(HTTPStatus.OK, {"ok": True, "audit": records, "total": len(records)})
 
     def _handle_get_processes(self) -> None:
@@ -1803,8 +1805,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if ctrl_path.exists():
             try:
                 control = json.loads(ctrl_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.debug("Failed to read control.json: %s", exc)
         self._write_json(HTTPStatus.OK, {
             "ok": True,
             "services": services,
@@ -2368,7 +2370,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     else:
                         token = None  # session cap reached
                 if token is not None:
-                    logger.info("Owner authenticated via master password, session %s... created", token[:8])
+                    logger.info("Owner authenticated via master password, session ...%s created", token[-4:])
         if token is None:
             self._write_json(HTTPStatus.UNAUTHORIZED, {
                 "ok": False,
@@ -3112,6 +3114,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                                 "minutes_until": int(diff_hours * 60),
                             })
                     except (ValueError, TypeError):
+                        logger.debug("Skipping calendar event with invalid date")
                         continue
                 digest["calendar_upcoming"] = upcoming[:5]
         except Exception as exc:
@@ -3261,7 +3264,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     end_dt = _dt.fromisoformat(meeting_end)
                     reply += f" until {end_dt.strftime('%I:%M %p')}"
                 except (ValueError, TypeError):
-                    pass
+                    logger.debug("Invalid meeting_end format: %s", meeting_end)
             reply += ". I'll call you back as soon as I'm free."
         elif context == "driving":
             reply = f"Hey {contact_name}, I'm driving right now"
@@ -3596,8 +3599,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         if cl > 0:
             try:
                 self.connection.settimeout(15.0)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to set connection timeout: %s", exc)
             try:
                 self._cached_post_body = self.rfile.read(cl)
             except (OSError, ConnectionError):
@@ -3692,8 +3695,8 @@ def run_mobile_server(
                 lan_ip = s.getsockname()[0]
             proto = "https" if tls_active else "http"
             server._auto_sync_config.set("lan_url", f"{proto}://{lan_ip}:{port}")
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("LAN IP detection for auto-sync failed: %s", exc)
         logger.info("Auto-sync config initialized")
     except Exception as exc:
         logger.warning("Failed to initialize auto-sync config: %s", exc)
@@ -3746,8 +3749,8 @@ def run_mobile_server(
             server._extra_cors_origins.append(
                 re.compile(rf"^https?://{re.escape(lan_ip)}(:\d+)?$")
             )
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("LAN IP detection for CORS failed: %s", exc)
 
     # --- Wrap server socket with TLS if certs are available ----------------------
     if tls_active:

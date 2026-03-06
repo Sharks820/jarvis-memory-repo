@@ -196,7 +196,7 @@ class OwnerSessionManager:
             self._lockout_count = 0
             token = secrets.token_hex(32)
             self._sessions[token] = time.monotonic() + self._session_timeout
-            logger.info("Owner authenticated, session %s... created", token[:8])
+            logger.info("Owner authenticated, session ...%s created", token[-4:])
             return token
 
     # ------------------------------------------------------------------
@@ -225,7 +225,7 @@ class OwnerSessionManager:
         with self._lock:
             removed = self._sessions.pop(token, None)
         if removed is not None:
-            logger.info("Session %s... logged out", token[:8])
+            logger.info("Session ...%s logged out", token[-4:])
 
     def logout_all(self) -> None:
         """Invalidate all active sessions."""

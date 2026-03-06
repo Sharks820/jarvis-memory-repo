@@ -77,8 +77,6 @@ def _lerp(c1: tuple, c2: tuple, t: float) -> tuple:
 def _make_j_mask(size: int) -> list[list[bool]]:
     """Create a boolean mask for the letter 'J' centered in the icon."""
     mask = [[False] * size for _ in range(size)]
-    cx = size / 2.0
-    cy = size / 2.0
 
     if size >= 32:
         # 32x32 "J" glyph

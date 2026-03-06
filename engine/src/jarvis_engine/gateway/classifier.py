@@ -207,8 +207,8 @@ class IntentClassifier:
         try:
             os.makedirs(repo_cache, exist_ok=True)
             return repo_cache
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Cannot create repo cache dir %s, falling back to temp: %s", repo_cache, exc)
         # Fallback: system temp directory
         import tempfile
         return os.path.join(tempfile.gettempdir(), "jarvis_classifier_cache")

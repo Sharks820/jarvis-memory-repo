@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from unittest.mock import MagicMock
 
-
+from conftest import make_test_db
 from jarvis_engine.learning.consolidator import MemoryConsolidator
 
 
@@ -17,8 +17,7 @@ from jarvis_engine.learning.consolidator import MemoryConsolidator
 
 def _make_engine() -> MagicMock:
     """Build a mock MemoryEngine with an in-memory SQLite DB."""
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
+    db = make_test_db()
     db.executescript("""
         CREATE TABLE records (
             record_id TEXT PRIMARY KEY,

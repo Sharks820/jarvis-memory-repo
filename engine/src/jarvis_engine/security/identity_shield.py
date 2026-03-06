@@ -231,7 +231,7 @@ class BreachMonitor:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 body = resp.read().decode("utf-8")
         except (urllib.error.URLError, OSError) as exc:
-            logger.warning("HIBP password check failed: %s", exc)
+            logger.warning("HIBP password check failed: %s", type(exc).__name__)
             return {"compromised": False, "count": 0}
 
         for line in body.splitlines():
@@ -393,8 +393,8 @@ class TyposquatMonitor:
                 if ips:
                     entry["registered"] = True
                     entry["ips"] = ips
-            except (socket.gaierror, OSError):
-                pass
+            except (socket.gaierror, OSError) as exc:
+                logger.debug("DNS lookup failed for variant %s: %s", variant, exc)
             return entry
 
         if _HAS_THREADPOOL and len(variants) > 1:

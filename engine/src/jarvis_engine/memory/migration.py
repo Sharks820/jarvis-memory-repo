@@ -47,8 +47,8 @@ def _delete_checkpoint(checkpoint_path: Path) -> None:
     """Delete checkpoint on completion."""
     try:
         checkpoint_path.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Failed to delete migration checkpoint %s: %s", checkpoint_path, exc)
 
 
 def migrate_brain_records(
@@ -171,7 +171,7 @@ def migrate_brain_records(
             try:
                 confidence = float(record_data.get("confidence", 0.72))
             except (TypeError, ValueError):
-                pass
+                logger.debug("Invalid confidence value in record %s, using default", original_id)
 
             tags = record_data.get("tags", [])
             if isinstance(tags, list):

@@ -67,6 +67,11 @@ class MemoryEngine:
     # -- Public read-only properties for shared infrastructure --
 
     @property
+    def db_path(self) -> Path:
+        """The path to the SQLite database file (read-only accessor)."""
+        return self._db_path
+
+    @property
     def db(self) -> sqlite3.Connection:
         """The underlying SQLite connection (read-only accessor)."""
         return self._db

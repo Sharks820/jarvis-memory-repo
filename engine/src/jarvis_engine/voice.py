@@ -223,8 +223,8 @@ def _speak_text_edge(
         if not output_wav:
             try:
                 Path(out_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up TTS temp file %s: %s", out_path, exc)
         raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
 
     if not output_wav:
@@ -233,8 +233,8 @@ def _speak_text_edge(
         finally:
             try:
                 Path(out_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up TTS temp file after playback %s: %s", out_path, exc)
         # Temp file was deleted after playback -- don't return the stale path
         return VoiceSpeakResult(
             voice_name=voice,
@@ -348,8 +348,8 @@ def _speak_text_edge_streamed(
             for f in out_dir.glob("chunk_*.mp3"):
                 f.unlink(missing_ok=True)
             out_dir.rmdir()
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Failed to clean up streaming TTS chunks: %s", exc)
     if err:
         raise RuntimeError(str(err[0]))
 

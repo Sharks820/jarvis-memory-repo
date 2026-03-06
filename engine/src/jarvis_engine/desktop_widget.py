@@ -8,7 +8,6 @@ import hmac
 import json
 import logging
 import math
-import os
 import re
 import ssl
 import subprocess
@@ -135,6 +134,7 @@ def _load_mobile_api_cfg(root: Path) -> dict[str, str]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError):
+        logger.debug("Failed to read mobile API config from %s", path)
         return {}
     if not isinstance(raw, dict):
         return {}
@@ -154,6 +154,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
             if isinstance(loaded, dict):
                 raw = loaded
         except (json.JSONDecodeError, OSError):
+            logger.debug("Failed to read widget config from %s", path)
             raw = {}
 
     # Normalize optional keys so legacy configs share one read path.
@@ -188,6 +189,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         try:
             return int(v)
         except (TypeError, ValueError):
+            logger.debug("Config key %r has non-integer value %r; treating as None", key, v)
             return None
 
     # --- Resolve token and signing_key (DPAPI-protected or plaintext legacy) ---
@@ -590,8 +592,8 @@ _toast_lock = threading.Lock()
 def _show_toast(title: str, message: str, icon: str = "Info") -> None:
     """Show a Windows balloon-tip notification via PowerShell.
 
-    Fire-and-forget: launches a detached PowerShell process and returns
-    immediately.  Errors are logged but never raised.
+    Runs a PowerShell process with a 30-second timeout to prevent hangs.
+    Errors are logged but never raised.
 
     Args:
         title: Notification title (truncated to 64 chars).
@@ -627,12 +629,15 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         "Start-Sleep 6; $n.Dispose()"
     )
     try:
-        subprocess.Popen(
+        subprocess.run(
             ["powershell", "-NoProfile", "-Command", script],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            timeout=30,
             **_win_hidden_subprocess_kwargs(),
         )
+    except subprocess.TimeoutExpired:
+        logger.debug("Toast notification process timed out after 30s")
     except Exception:
         logger.debug("Failed to launch toast notification", exc_info=True)
 
@@ -642,6 +647,7 @@ def _create_tray_icon_image():
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
+        logger.debug("Pillow not available; skipping tray icon image creation")
         return None
     size = 64
     image = Image.new("RGBA", (size, size), (18, 163, 255, 255))  # ACCENT_2 blue
@@ -678,6 +684,7 @@ def _snap_to_edge(
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
     except Exception:  # Widget may be destroyed
+        logger.debug("Cannot read screen dimensions for edge snap (widget may be destroyed)")
         return x, y
     # Left edge
     if 0 <= x <= snap_dist:
@@ -703,6 +710,7 @@ def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
     except Exception:  # Widget may be destroyed
+        logger.debug("Cannot read screen dimensions for position validation (widget may be destroyed)")
         return False
     return -100 <= x <= screen_w and -100 <= y <= screen_h
 
@@ -1004,7 +1012,7 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 self.after_cancel(self._position_save_id)
             except Exception:  # Widget may be destroyed
-                pass
+                logger.debug("Failed to cancel position save timer (widget may be destroyed)")
         self._position_save_id = self.after(300, self._save_panel_position)
 
     def _save_panel_position(self) -> None:
@@ -1013,13 +1021,14 @@ class JarvisDesktopWidget(tk.Tk):
             x = self.winfo_x()
             y = self.winfo_y()
         except Exception:  # Widget may be destroyed
+            logger.debug("Cannot read panel position (widget may be destroyed)")
             return
         x, y = _snap_to_edge(x, y, self.winfo_width(), self.winfo_height(), self)
         # Apply snapped position
         try:
             self.geometry(f"+{x}+{y}")
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Failed to apply snapped panel geometry (widget may be destroyed)")
         self.cfg.panel_x = x
         self.cfg.panel_y = y
         try:
@@ -1035,12 +1044,13 @@ class JarvisDesktopWidget(tk.Tk):
             x = self.launcher_win.winfo_x()
             y = self.launcher_win.winfo_y()
         except Exception:  # Widget may be destroyed
+            logger.debug("Cannot read launcher position (widget may be destroyed)")
             return
         x, y = _snap_to_edge(x, y, self._launcher_size, self._launcher_size, self)
         try:
             self.launcher_win.geometry(f"+{x}+{y}")
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Failed to apply snapped launcher geometry (widget may be destroyed)")
         self.cfg.launcher_x = x
         self.cfg.launcher_y = y
         try:
@@ -1180,7 +1190,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._show_panel)
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Tray show-widget failed (widget may be destroyed)")
 
     def _tray_voice_dictate(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
         """Tray menu: Voice Dictate."""
@@ -1188,7 +1198,7 @@ class JarvisDesktopWidget(tk.Tk):
             self.after(0, self._show_panel)
             self.after(100, self._voice_dictate)
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Tray voice-dictate failed (widget may be destroyed)")
 
     def _tray_ops_brief(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
         """Tray menu: Ops Brief."""
@@ -1196,14 +1206,14 @@ class JarvisDesktopWidget(tk.Tk):
             self.after(0, self._show_panel)
             self.after(100, lambda: self._send_text("ops brief"))
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Tray ops-brief failed (widget may be destroyed)")
 
     def _tray_quit(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
         """Tray menu: Quit."""
         try:
             self.after(0, self._confirm_exit)
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Tray quit failed (widget may be destroyed)")
 
     def _stop_tray_icon(self) -> None:
         """Stop the tray icon cleanly."""
@@ -1648,6 +1658,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self._popout_win.focus_force()
                 return
             except tk.TclError:
+                logger.debug("Popout window was destroyed; will recreate")
                 self._popout_win = None
 
         win = tk.Toplevel(self)
@@ -1711,7 +1722,7 @@ class JarvisDesktopWidget(tk.Tk):
                     for i in range(0, len(ranges), 2):
                         popout_text.tag_add(tag, str(ranges[i]), str(ranges[i + 1]))
                 except tk.TclError:
-                    pass
+                    logger.debug("Failed to copy tag %r to popout text widget", tag)
         popout_text.config(state=tk.DISABLED)
         self._popout_text = popout_text
 
@@ -1912,6 +1923,7 @@ class JarvisDesktopWidget(tk.Tk):
                 popout.see(tk.END)
                 popout.config(state=tk.DISABLED)
             except tk.TclError:
+                logger.debug("Popout text widget was destroyed; clearing reference")
                 self._popout_text = None
 
     def _log_async(self, message: str, role: str = "system") -> None:
@@ -1920,7 +1932,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._log, message, role)
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("_log_async failed (widget may be destroyed)")
 
     def _show_thinking(self) -> None:
         """Show animated 'Jarvis is thinking...' indicator as a Label widget.
@@ -1943,7 +1955,7 @@ class JarvisDesktopWidget(tk.Tk):
                     popout_frame.pack(fill=tk.X, padx=8, pady=(2, 0))
                 popout_lbl.config(text="\u23f3 Jarvis is thinking...  (0s)")
             except tk.TclError:
-                pass
+                logger.debug("Failed to show thinking indicator in popout window")
         self._animate_thinking()
 
     def _hide_thinking(self) -> None:
@@ -1952,19 +1964,19 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 self.after_cancel(self._thinking_after_id)
             except Exception:  # Widget may be destroyed
-                pass
+                logger.debug("Failed to cancel thinking animation timer")
             self._thinking_after_id = None
         try:
             self._thinking_frame.pack_forget()
         except tk.TclError:
-            pass
+            logger.debug("Failed to hide thinking frame")
         # Hide popout thinking label
         popout_frame = getattr(self, "_popout_thinking_frame", None)
         if popout_frame is not None:
             try:
                 popout_frame.pack_forget()
             except tk.TclError:
-                pass
+                logger.debug("Failed to hide popout thinking frame")
 
     def _show_help(self) -> None:
         """Show help overlay with commands and tips."""
@@ -2059,7 +2071,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self.output.delete(marker, f"{marker}+1l")
                 self.output.config(state=tk.DISABLED)
             except tk.TclError:
-                pass
+                logger.debug("Failed to remove learned indicator (widget may be destroyed)")
 
         self.after(2000, _remove)
 
@@ -2079,6 +2091,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self._thinking_label_widget.config(text=label)
         except tk.TclError:
+            logger.debug("Thinking label widget destroyed; stopping animation")
             return
         # Mirror animation to pop-out thinking label
         popout_lbl = getattr(self, "_popout_thinking_label", None)
@@ -2086,7 +2099,7 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 popout_lbl.config(text=label)
             except tk.TclError:
-                pass
+                logger.debug("Failed to update popout thinking label")
         self._thinking_after_id = self.after(400, self._animate_thinking)
 
     def _notify_toast(self, title: str, message: str, icon: str = "Info") -> None:
@@ -2095,7 +2108,7 @@ class JarvisDesktopWidget(tk.Tk):
             if self.notify_var.get():
                 _show_toast(title, message, icon)
         except Exception:  # Widget may be destroyed; toast is best-effort
-            pass
+            logger.debug("Toast notification failed (widget may be destroyed)")
 
     def _set_command_text(self, value: str) -> None:
         self.command_text.delete("1.0", tk.END)
@@ -2318,7 +2331,7 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 self.after_cancel(self._processing_timeout_id)
             except Exception:  # Widget may be destroyed
-                pass
+                logger.debug("Failed to cancel processing timeout timer")
             self._processing_timeout_id = None
 
     def _processing_timed_out(self) -> None:
@@ -2527,7 +2540,7 @@ class JarvisDesktopWidget(tk.Tk):
                     try:
                         self.command_text.config(state=tk.NORMAL)
                     except tk.TclError:
-                        pass
+                        logger.debug("Failed to re-enable command input after processing")
                     if self._widget_state == "processing":
                         self._set_state("idle")
 
@@ -2535,7 +2548,7 @@ class JarvisDesktopWidget(tk.Tk):
                     try:
                         self.after(0, _cleanup)
                     except Exception:  # Widget may be destroyed
-                        pass
+                        logger.debug("Failed to schedule post-command cleanup (widget may be destroyed)")
 
         self._thread(worker)
 
@@ -2709,6 +2722,7 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 self.after(0, _read)
             except Exception:  # Widget may be destroyed
+                logger.debug("Cannot schedule hotword state read (widget may be destroyed)")
                 return False
             ready.wait(timeout=2.0)
             return result[0]
@@ -2722,6 +2736,7 @@ class JarvisDesktopWidget(tk.Tk):
                         self._log_async("Wake word detected.")
                         self.after(0, self._dictate_async)
                     except Exception:  # Widget may be destroyed
+                        logger.debug("Cannot schedule wake word actions (widget may be destroyed)")
                         return
             except Exception as exc:
                 logger.warning("Hotword detection error: %s", exc)
@@ -2747,6 +2762,7 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 self.after(0, _read_cfg)
             except Exception:  # Widget may be destroyed
+                logger.debug("Cannot schedule config read for health loop (widget may be destroyed)")
                 return
             ready.wait(timeout=5.0)
             cfg = cfg_holder[0]
@@ -2760,6 +2776,7 @@ class JarvisDesktopWidget(tk.Tk):
                 try:
                     self.after(0, self._set_online, False)
                 except Exception:  # Widget may be destroyed
+                    logger.debug("Cannot schedule offline state (widget may be destroyed)")
                     return
                 for _ in range(16):
                     if self.stop_event.is_set():
@@ -2831,6 +2848,7 @@ class JarvisDesktopWidget(tk.Tk):
                 try:
                     self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
                 except Exception:  # Widget may be destroyed
+                    logger.debug("Cannot schedule online state update (widget may be destroyed)")
                     return
             for _ in range(16):
                 if self.stop_event.is_set():
@@ -2897,6 +2915,7 @@ class JarvisDesktopWidget(tk.Tk):
             self._growth_labels["trend"].config(
                 text=f"{trend_symbol} {trend}", fg=trend_color)
         except (TypeError, ValueError, KeyError):
+            logger.debug("Failed to parse growth dashboard data; resetting labels")
             for lbl in self._growth_labels.values():
                 lbl.config(text="--", fg=self.MUTED)
 
@@ -2951,6 +2970,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self.intel_var.set(f"Intel: {score_pct}%")
                 self.intel_label.config(fg=self.WARN)
         except (TypeError, ValueError):
+            logger.debug("Failed to parse intelligence score data; clearing display")
             self.intel_var.set("")
             self.intel_label.config(fg=self.MUTED)
 
@@ -2969,7 +2989,7 @@ class JarvisDesktopWidget(tk.Tk):
                     cancel_btn.pack_forget()
                     self._cancel_event.clear()
             except tk.TclError:
-                pass
+                logger.debug("Failed to update cancel button visibility")
         self._refresh_status_view()
 
     def _set_state_async(self, state: str) -> None:
@@ -2979,7 +2999,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._set_state, state)
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Failed to schedule state change to %r (widget may be destroyed)", state)
 
     def _set_error_briefly(self) -> None:
         """Set error state for 2 seconds, then revert to idle."""
@@ -2989,7 +3009,7 @@ class JarvisDesktopWidget(tk.Tk):
             try:
                 self.after_cancel(self._error_clear_id)
             except Exception:  # Widget may be destroyed
-                pass
+                logger.debug("Failed to cancel previous error-clear timer")
         self._error_clear_id = self.after(2000, self._set_state, "idle")
 
     def _set_error_briefly_async(self) -> None:
@@ -2999,7 +3019,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._set_error_briefly)
         except Exception:  # Widget may be destroyed
-            pass
+            logger.debug("Failed to schedule error-briefly state (widget may be destroyed)")
 
     def _refresh_status_view(self) -> None:
         state = self._widget_state
@@ -3050,6 +3070,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self.orb_canvas.itemconfig(self._orb_sweep, start=sweep_angle, outline=color)
             self._orb_after_id = self.after(33, self._animate_orb)
         except Exception:  # Widget may be destroyed
+            logger.debug("Orb animation stopped (widget may be destroyed)")
             return
 
     def _animate_launcher(self) -> None:
@@ -3154,6 +3175,7 @@ class JarvisDesktopWidget(tk.Tk):
 
             self._launcher_after_id = self.after(33, self._animate_launcher)
         except Exception:  # Widget may be destroyed
+            logger.debug("Launcher animation stopped (widget may be destroyed)")
             return
 
 

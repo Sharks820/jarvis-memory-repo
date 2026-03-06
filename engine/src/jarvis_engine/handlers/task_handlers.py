@@ -54,9 +54,9 @@ class RunTaskHandler:
         )
         auto_id = ""
         try:
-            from jarvis_engine import main as _main_mod
+            from jarvis_engine.auto_ingest import auto_ingest_memory
 
-            auto_id = _main_mod._auto_ingest_memory(
+            auto_id = auto_ingest_memory(
                 source="task_outcome",
                 kind="episodic",
                 task_id=_make_task_id(f"task-{cmd.task_type}"),
@@ -139,7 +139,7 @@ class WebResearchHandler:
         findings = report.get("findings", [])
         if cmd.auto_ingest and isinstance(summary_lines, list) and summary_lines:
             try:
-                from jarvis_engine import main as _main_mod
+                from jarvis_engine.auto_ingest import auto_ingest_memory
 
                 lines = []
                 for line in summary_lines[:6]:
@@ -155,7 +155,7 @@ class WebResearchHandler:
                                 if domain:
                                     top_domains.append(domain)
                     domain_text = ", ".join(dict.fromkeys(top_domains))
-                    auto_id = _main_mod._auto_ingest_memory(
+                    auto_id = auto_ingest_memory(
                         source="task_outcome",
                         kind="semantic",
                         task_id=_make_task_id("web-research"),

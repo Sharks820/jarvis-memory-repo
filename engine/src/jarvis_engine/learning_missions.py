@@ -563,8 +563,6 @@ def auto_generate_missions(
 
     Returns list of newly created mission dicts.
     """
-    import sqlite3 as _sqlite3
-
     missions = load_missions(root)
     pending_count = sum(
         1 for m in missions
