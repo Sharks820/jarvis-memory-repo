@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from jarvis_engine._constants import get_local_model as _get_local_model
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, get_local_model as _get_local_model
 
 try:
     from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
@@ -312,7 +312,7 @@ class ModelGateway:
         Priority: Groq Kimi K2 (fastest) > Mistral Devstral 2 > Z.ai GLM-4.7
         """
         if "groq" in self._cloud_keys:
-            return "kimi-k2"
+            return DEFAULT_CLOUD_MODEL
         if "mistral" in self._cloud_keys:
             return "devstral-2"
         if "zai" in self._cloud_keys:
@@ -322,7 +322,7 @@ class ModelGateway:
     def complete(
         self,
         messages: list[dict[str, str]],
-        model: str = "kimi-k2",
+        model: str = DEFAULT_CLOUD_MODEL,
         max_tokens: int = 1024,
         route_reason: str = "",
         privacy_routed: bool = False,

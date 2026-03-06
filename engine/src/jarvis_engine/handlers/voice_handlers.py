@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
+
 logger = logging.getLogger(__name__)
 
 from jarvis_engine.commands.voice_commands import (
@@ -229,7 +231,7 @@ class PersonaComposeHandler:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": cmd.query})
 
-        model = cmd.model or "kimi-k2"
+        model = cmd.model or DEFAULT_CLOUD_MODEL
         try:
             resp: GatewayResponse = gateway.complete(
                 messages=messages,

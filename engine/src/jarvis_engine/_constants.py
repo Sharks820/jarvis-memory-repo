@@ -47,6 +47,12 @@ def is_privacy_sensitive(text: str) -> bool:
 
 DEFAULT_LOCAL_MODEL = "gemma3:4b"
 
+# ---------------------------------------------------------------------------
+# Default cloud model (API-based, used by gateway/classifier/handlers)
+# ---------------------------------------------------------------------------
+
+DEFAULT_CLOUD_MODEL = "kimi-k2"
+
 
 def get_local_model() -> str:
     """Return the configured local Ollama model name."""
@@ -114,6 +120,8 @@ ENV_MODEL_PRIORITY: list[tuple[str, str]] = [
 SELF_TEST_HISTORY = "self_test_history.jsonl"
 GATEWAY_AUDIT_LOG = "gateway_audit.jsonl"
 KG_METRICS_LOG = "kg_metrics.jsonl"
+OPS_SNAPSHOT_FILENAME = "ops_snapshot.live.json"
+ACTIONS_FILENAME = "actions.generated.json"
 
 
 # ---------------------------------------------------------------------------

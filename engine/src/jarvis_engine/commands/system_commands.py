@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._constants import DEFAULT_API_PORT
+from jarvis_engine._constants import ACTIONS_FILENAME, DEFAULT_API_PORT, OPS_SNAPSHOT_FILENAME
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,8 @@ class ServeMobileResult:
 @dataclass(frozen=True)
 class DaemonRunCommand:
     interval_s: int = 180
-    snapshot_path: Path = Path("ops_snapshot.live.json")
-    actions_path: Path = Path("actions.generated.json")
+    snapshot_path: Path = Path(OPS_SNAPSHOT_FILENAME)
+    actions_path: Path = Path(ACTIONS_FILENAME)
     execute: bool = False
     approve_privileged: bool = False
     auto_open_connectors: bool = False

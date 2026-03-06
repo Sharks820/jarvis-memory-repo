@@ -24,8 +24,10 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
 from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG
 from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
 from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
 from jarvis_engine._constants import make_task_id as _make_task_id
 from jarvis_engine._constants import memory_db_path as _memory_db_path
@@ -1114,8 +1116,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                         execute=execute,
                         approve_privileged=approve_privileged,
                         speak=speak,
-                        snapshot_path=root / ".planning" / "ops_snapshot.live.json",
-                        actions_path=root / ".planning" / "actions.generated.json",
+                        snapshot_path=root / ".planning" / _OPS_SNAPSHOT_FILENAME,
+                        actions_path=root / ".planning" / _ACTIONS_FILENAME,
                         voice_user=voice_user,
                         voice_auth_wav=voice_auth_wav,
                         voice_threshold=voice_threshold,
@@ -3093,7 +3095,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
         # Get upcoming calendar events for next 2 hours
         try:
-            snapshot_path = self._root / ".planning" / "ops_snapshot.live.json"
+            snapshot_path = self._root / ".planning" / _OPS_SNAPSHOT_FILENAME
             if snapshot_path.exists():
                 import json as _json
                 snap = _json.loads(snapshot_path.read_text(encoding="utf-8"))

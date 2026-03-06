@@ -235,7 +235,10 @@ from jarvis_engine._constants import get_local_model as _get_local_model  # noqa
 from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensitive  # noqa: E402
 from jarvis_engine._constants import memory_db_path as _memory_db_path  # noqa: E402
 from jarvis_engine._constants import make_task_id as _make_task_id  # noqa: E402
+from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME  # noqa: E402
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL as _DEFAULT_CLOUD_MODEL  # noqa: E402
 from jarvis_engine._constants import ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY  # noqa: E402
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME  # noqa: E402
 from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG  # noqa: E402
 from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG  # noqa: E402
 from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY  # noqa: E402
@@ -3378,8 +3381,8 @@ def cmd_voice_listen(
             execute=True,
             approve_privileged=False,
             speak=False,
-            snapshot_path=Path(repo_root() / ".planning" / "ops_snapshot.live.json"),
-            actions_path=Path(repo_root() / ".planning" / "actions.generated.json"),
+            snapshot_path=Path(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
+            actions_path=Path(repo_root() / ".planning" / _ACTIONS_FILENAME),
             voice_user="conner",
             voice_auth_wav="",
             voice_threshold=0.82,
@@ -3914,7 +3917,7 @@ def _cmd_voice_run_impl(
         )
     elif ("sync" in lowered) and any(k in lowered for k in ["calendar", "email", "inbox", "ops"]):
         intent = "ops_sync"
-        live_snapshot = snapshot_path.with_name("ops_snapshot.live.json")
+        live_snapshot = snapshot_path.with_name(_OPS_SNAPSHOT_FILENAME)
         rc = cmd_ops_sync(live_snapshot)
     elif any(k in lowered for k in ["daily brief", "ops brief", "morning brief", "give me a brief", "my brief", "run brief", "brief me"]):
         intent = "ops_brief"
@@ -4269,7 +4272,7 @@ def _cmd_voice_run_impl(
                 logger.debug("Privacy fallback: classifier failed, forcing local for private query")
             else:
                 for _env_key, _model_alias in [
-                    ("GROQ_API_KEY", "kimi-k2"),
+                    ("GROQ_API_KEY", _DEFAULT_CLOUD_MODEL),
                     ("MISTRAL_API_KEY", "devstral-2"),
                     ("ZAI_API_KEY", "glm-4.7-flash"),
                 ]:
@@ -4753,34 +4756,34 @@ def main() -> int:
     p_ops_brief = sub.add_parser("ops-brief", help="Generate daily life operations brief.")
     p_ops_brief.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
     )
     p_ops_brief.add_argument("--output-path")
 
     p_ops_actions = sub.add_parser("ops-export-actions", help="Export suggested actions from ops snapshot.")
     p_ops_actions.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
     )
     p_ops_actions.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / "actions.generated.json"),
+        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
     )
 
     p_ops_sync = sub.add_parser("ops-sync", help="Build live operations snapshot from connectors.")
     p_ops_sync.add_argument(
         "--output-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
     )
 
     p_ops_autopilot = sub.add_parser("ops-autopilot", help="Run connector check, sync, brief, action export, and automation.")
     p_ops_autopilot.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
     )
     p_ops_autopilot.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / "actions.generated.json"),
+        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
     )
     p_ops_autopilot.add_argument("--execute", action="store_true")
     p_ops_autopilot.add_argument("--approve-privileged", action="store_true")
@@ -4790,11 +4793,11 @@ def main() -> int:
     p_daemon.add_argument("--interval-s", type=int, default=180)
     p_daemon.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
     )
     p_daemon.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / "actions.generated.json"),
+        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
     )
     p_daemon.add_argument("--execute", action="store_true")
     p_daemon.add_argument("--approve-privileged", action="store_true")
@@ -4866,7 +4869,7 @@ def main() -> int:
     p_automation = sub.add_parser("automation-run", help="Run planned actions with capability gates.")
     p_automation.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / "actions.generated.json"),
+        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
     )
     p_automation.add_argument(
         "--approve-privileged",
@@ -4946,11 +4949,11 @@ def main() -> int:
     )
     p_voice_run.add_argument(
         "--snapshot-path",
-        default=str(repo_root() / ".planning" / "ops_snapshot.live.json"),
+        default=str(repo_root() / ".planning" / _OPS_SNAPSHOT_FILENAME),
     )
     p_voice_run.add_argument(
         "--actions-path",
-        default=str(repo_root() / ".planning" / "actions.generated.json"),
+        default=str(repo_root() / ".planning" / _ACTIONS_FILENAME),
     )
     p_voice_run.add_argument(
         "--model-override",

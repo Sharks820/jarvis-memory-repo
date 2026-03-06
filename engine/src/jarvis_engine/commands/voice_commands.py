@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
+
 
 @dataclass(frozen=True)
 class VoiceListCommand:
@@ -85,8 +87,8 @@ class VoiceRunCommand:
     execute: bool = False
     approve_privileged: bool = False
     speak: bool = False
-    snapshot_path: Path = Path("ops_snapshot.live.json")
-    actions_path: Path = Path("actions.generated.json")
+    snapshot_path: Path = Path(OPS_SNAPSHOT_FILENAME)
+    actions_path: Path = Path(ACTIONS_FILENAME)
     voice_user: str = "conner"
     voice_auth_wav: str = ""
     voice_threshold: float = 0.82

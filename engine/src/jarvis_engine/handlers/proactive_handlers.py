@@ -9,6 +9,8 @@ import time as _time_mod
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
+
 from jarvis_engine.commands.proactive_commands import (
     CostReductionCommand,
     CostReductionResult,
@@ -38,7 +40,7 @@ class ProactiveCheckHandler:
         snapshot_path = cmd.snapshot_path
         if not snapshot_path:
             snapshot_path = str(
-                self._root / ".planning" / "ops_snapshot.live.json"
+                self._root / ".planning" / OPS_SNAPSHOT_FILENAME
             )
 
         resolved_path = Path(snapshot_path).resolve()
@@ -188,8 +190,8 @@ class WakeWordStartHandler:
                         execute=True,
                         approve_privileged=False,
                         speak=True,
-                        snapshot_path=_root / ".planning" / "ops_snapshot.live.json",
-                        actions_path=_root / ".planning" / "actions.generated.json",
+                        snapshot_path=_root / ".planning" / OPS_SNAPSHOT_FILENAME,
+                        actions_path=_root / ".planning" / ACTIONS_FILENAME,
                         voice_user="conner",
                         voice_auth_wav="",
                         voice_threshold=0.82,

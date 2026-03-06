@@ -20,7 +20,7 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ class IntentClassifier:
     MODEL_MAP: dict[str, str] = {
         "math_logic": "codex-cli",    # GPT-5.3 excels at math and logic reasoning
         "complex": "claude-cli",      # Opus excels at coding, architecture, debugging
-        "routine": "kimi-k2",         # Fast API (Groq) for summarization, formatting
+        "routine": DEFAULT_CLOUD_MODEL,  # Fast API (Groq) for summarization, formatting
         "creative": "gemini-cli",     # Gemini strong at creative writing, brainstorming
         "web_research": "gemini-cli", # Gemini has built-in grounding and search
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
@@ -152,11 +152,11 @@ class IntentClassifier:
     # Fallback preferences per route if primary is unavailable.
     # Tried in order; if none available, gateway's own fallback chain kicks in.
     MODEL_FALLBACKS: dict[str, list[str]] = {
-        "math_logic": ["claude-cli", "kimi-k2", "gemini-cli"],
-        "complex": ["codex-cli", "kimi-k2", "gemini-cli"],
+        "math_logic": ["claude-cli", DEFAULT_CLOUD_MODEL, "gemini-cli"],
+        "complex": ["codex-cli", DEFAULT_CLOUD_MODEL, "gemini-cli"],
         "routine": ["gemini-cli", "claude-cli", "kimi-cli"],
-        "creative": ["claude-cli", "kimi-k2", "kimi-cli"],
-        "web_research": ["kimi-k2", "claude-cli", "kimi-cli"],
+        "creative": ["claude-cli", DEFAULT_CLOUD_MODEL, "kimi-cli"],
+        "web_research": [DEFAULT_CLOUD_MODEL, "claude-cli", "kimi-cli"],
     }
 
     PRIVACY_KEYWORDS: frozenset[str] = _CANONICAL_PRIVACY_KEYWORDS
@@ -287,13 +287,13 @@ class IntentClassifier:
             if available_models is None or fallback in available_models:
                 return fallback
 
-        # Ultimate fallback: kimi-k2 (API-based, always available with GROQ_API_KEY)
-        if available_models is None or "kimi-k2" in available_models:
-            return "kimi-k2"
-        # If kimi-k2 not available either, return first available model or kimi-k2
+        # Ultimate fallback: default cloud model (API-based, always available with GROQ_API_KEY)
+        if available_models is None or DEFAULT_CLOUD_MODEL in available_models:
+            return DEFAULT_CLOUD_MODEL
+        # If default cloud model not available either, return first available model
         if available_models:
             return next(iter(available_models))
-        return "kimi-k2"
+        return DEFAULT_CLOUD_MODEL
 
     def classify(
         self,

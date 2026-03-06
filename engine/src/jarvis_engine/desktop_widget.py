@@ -22,7 +22,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT
+from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT, DEFAULT_CLOUD_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,8 @@ class WidgetConfig:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    from jarvis_engine.config import repo_root
+    return repo_root()
 
 
 def _security_dir(root: Path) -> Path:
@@ -780,7 +781,7 @@ class JarvisDesktopWidget(tk.Tk):
         ("gemini-cli", "Gemini CLI", "Creative & Web Research", "#f59e0b"),
         ("kimi-cli", "Kimi CLI", "General Purpose", "#e879f9"),
         # Cloud API models
-        ("kimi-k2", "Kimi K2", "Fast API · Primary Operator", "#f59e0b"),
+        (DEFAULT_CLOUD_MODEL, "Kimi K2", "Fast API · Primary Operator", "#f59e0b"),
         ("llama-3.3-70b", "LLaMA 3.3 70B", "Fast Analyst", "#3b82f6"),
         ("devstral-2", "Devstral 2", "Code Specialist", "#8b5cf6"),
         ("glm-4.7-flash", "GLM-4.7 Flash", "Speed Runner", "#ef4444"),

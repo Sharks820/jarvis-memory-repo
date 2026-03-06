@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import PRIVACY_KEYWORDS as _PRIVACY_KW
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, PRIVACY_KEYWORDS as _PRIVACY_KW
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -135,7 +135,7 @@ class LLMFactExtractor:
             from jarvis_engine._constants import get_local_model as _get_local_model
             local_model = _get_local_model()
             return local_model, True
-        return "kimi-k2", False
+        return DEFAULT_CLOUD_MODEL, False
 
     def extract_facts(
         self, text: str, branch: str = ""

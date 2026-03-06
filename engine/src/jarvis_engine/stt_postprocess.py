@@ -17,6 +17,8 @@ import zlib
 
 import numpy as np
 
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -337,7 +339,7 @@ def correct_with_llm(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
             ],
-            model="kimi-k2",
+            model=DEFAULT_CLOUD_MODEL,
             max_tokens=512,
             route_reason="stt-post-correction",
         )
