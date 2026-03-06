@@ -2,6 +2,9 @@
 .planning/tmp/
 .planning/*.bak
 .planning/*.tmp
+.env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 .cache/
@@ -17,9 +20,9 @@ tmp/
 .planning/security/
 .planning/brain/
 .planning/logs/
-.planning/runtime/*.tmp
-.planning/runtime/pids/
-.planning/runtime/auto_ingest_dedupe.json
+.planning/runtime/*
+!.planning/runtime/.gitkeep
+!.planning/runtime/README.md
 .planning/events.jsonl
 MagicMock/
 engine/MagicMock/
@@ -27,3 +30,6 @@ engine/MagicMock/
 engine/.planning/
 ops_snapshot.live.json
 .worktrees/
+.desloppify/
+scorecard.png
+engine/__test_no_cache__/
