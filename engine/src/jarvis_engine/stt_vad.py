@@ -126,7 +126,7 @@ class SileroVADDetector:
             import torch
             tensor = torch.FloatTensor(audio_chunk)
             return float(self._model(tensor, self._sampling_rate).item())
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
             logger.debug("SileroVAD inference error: %s", exc)
             return 0.0
 
@@ -165,7 +165,7 @@ class SileroVADDetector:
         if self._model is not None:
             try:
                 self._model.reset_states()
-            except Exception as exc:
+            except (RuntimeError, AttributeError) as exc:
                 logger.debug("SileroVAD reset error: %s", exc)
 
     @property

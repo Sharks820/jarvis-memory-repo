@@ -774,12 +774,13 @@ class MobileIngestServer(ThreadingHTTPServer):
 
 
 class MobileIngestHandler(BaseHTTPRequestHandler):
+    server: MobileIngestServer  # type: ignore[assignment]  # narrow from HTTPServer
     server_version = "JarvisMobileAPI/0.1"
 
     @property
     def _root(self) -> Path:
         """Shortcut for the server's repository root."""
-        return self.server.repo_root  # type: ignore[attr-defined]
+        return self.server.repo_root
 
     def _cors_headers(self) -> None:
         """Add CORS headers to every response for browser-based clients.
@@ -789,7 +790,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         Access-Control-Allow-Origin header, effectively blocking CORS.
         """
         origin = self.headers.get("Origin", "")
-        server: MobileIngestServer = self.server  # type: ignore[assignment]
+        server = self.server
         if origin and server.is_cors_origin_allowed(origin):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
@@ -1263,7 +1264,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         }
 
     def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
-        root: Path = getattr(self, "_root", None) or self.server.repo_root  # type: ignore[union-attr]
+        root: Path = getattr(self, "_root", None) or self.server.repo_root
         engine_dir = root / "engine"
         if not engine_dir.exists():
             return {"ok": False, "error": "Engine directory not found.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": []}
@@ -1372,7 +1373,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return False
 
     def _gaming_state_path(self) -> Path:
-        root: Path = getattr(self, "_root", None) or self.server.repo_root  # type: ignore[union-attr]
+        root: Path = getattr(self, "_root", None) or self.server.repo_root
         root_resolved = root.resolve()
         path = _runtime_dir(root_resolved) / "gaming_mode.json"
         resolved = path.resolve(strict=False)
@@ -1437,20 +1438,20 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _cleanup_nonces(self, now: float, *, force: bool = False) -> None:
         should_persist = False
-        with self.server.nonce_lock:  # type: ignore[attr-defined]
+        with self.server.nonce_lock:
             interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
             next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
             if not force and now < next_cleanup:
                 return
-            nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
+            nonce_seen: dict[str, float] = self.server.nonce_seen
             cutoff = now - REPLAY_WINDOW_SECONDS
             valid_nonces = {k: v for k, v in nonce_seen.items() if v >= cutoff}
             nonce_seen.clear()
             nonce_seen.update(valid_nonces)
-            self.server.next_nonce_cleanup_ts = now + interval  # type: ignore[attr-defined]
+            self.server.next_nonce_cleanup_ts = now + interval
             should_persist = True
         if should_persist:
-            self.server._persist_nonces()  # type: ignore[attr-defined]
+            self.server._persist_nonces()
 
     def _ensure_auto_sync(self) -> "Any":
         """Thread-safe lazy init of AutoSyncConfig."""
@@ -1472,7 +1473,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._unauthorized("Request body too large.")
             return False
         auth = self.headers.get("Authorization", "")
-        expected_auth = f"Bearer {self.server.auth_token}"  # type: ignore[attr-defined]
+        expected_auth = f"Bearer {self.server.auth_token}"
         if not hmac.compare_digest(auth, expected_auth):
             self._unauthorized("Invalid bearer token.")
             return False
@@ -1505,7 +1506,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # newline, then the raw request body bytes (no trailing newline).
         signing_material = ts_raw.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
         expected_sig = hmac.new(
-            self.server.signing_key.encode("utf-8"),  # type: ignore[attr-defined]
+            self.server.signing_key.encode("utf-8"),
             signing_material,
             hashlib.sha256,
         ).hexdigest()
@@ -1513,8 +1514,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._unauthorized("Invalid request signature.")
             return False
 
-        with self.server.nonce_lock:  # type: ignore[attr-defined]
-            nonce_seen: dict[str, float] = self.server.nonce_seen  # type: ignore[attr-defined]
+        with self.server.nonce_lock:
+            nonce_seen: dict[str, float] = self.server.nonce_seen
             self._cleanup_nonces(now)
             if len(nonce_seen) >= MAX_NONCES:
                 # Last-resort cleanup pass if we are at capacity.
@@ -1540,18 +1541,18 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
             if not device_id or len(device_id) > 128 or (not device_id.isascii()):
                 # Remove nonce so client can retry (e.g. fallback URL)
-                with self.server.nonce_lock:  # type: ignore[attr-defined]
-                    self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
+                with self.server.nonce_lock:
+                    self.server.nonce_seen.pop(nonce, None)
                 self._unauthorized("Missing trusted mobile device id.")
                 return False
             if device_id not in trusted:
                 master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
                 if master_password:
                     client_ip = str(self.client_address[0]).strip()
-                    server: MobileIngestServer = self.server  # type: ignore[assignment]
+                    server = self.server
                     if server.check_master_pw_rate(client_ip):
-                        with self.server.nonce_lock:  # type: ignore[attr-defined]
-                            self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
+                        with self.server.nonce_lock:
+                            self.server.nonce_seen.pop(nonce, None)
                         self._write_json(
                             HTTPStatus.TOO_MANY_REQUESTS,
                             {"ok": False, "error": "Too many master password attempts. Try again later."},
@@ -1561,13 +1562,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                     if verify_master_password(self._root, master_password):
                         trust_mobile_device(self._root, device_id)
                     else:
-                        with self.server.nonce_lock:  # type: ignore[attr-defined]
-                            self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
+                        with self.server.nonce_lock:
+                            self.server.nonce_seen.pop(nonce, None)
                         self._unauthorized("Untrusted mobile device.")
                         return False
                 else:
-                    with self.server.nonce_lock:  # type: ignore[attr-defined]
-                        self.server.nonce_seen.pop(nonce, None)  # type: ignore[attr-defined]
+                    with self.server.nonce_lock:
+                        self.server.nonce_seen.pop(nonce, None)
                     self._unauthorized("Untrusted mobile device.")
                     return False
 
@@ -1642,7 +1643,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _handle_get_cert_fingerprint(self) -> None:
         # Public endpoint (no auth) — returns TLS cert SHA-256 fingerprint
         # for trust-on-first-use (TOFU) cert pinning
-        server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+        server_obj = self.server
         security_dir = server_obj.repo_root / ".planning" / "security"
         cert_path_str = str(security_dir / "tls_cert.pem")
         if not (security_dir / "tls_cert.pem").exists():
@@ -2160,7 +2161,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
         # --- Memory engine: record count ---
         try:
-            server: MobileIngestServer = self.server  # type: ignore[assignment]
+            server = self.server
             mem_engine = server.ensure_memory_engine()
             if mem_engine is not None:
                 metrics["memory_records"] = mem_engine.count_records()
@@ -2230,7 +2231,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     def _check_rate_limit(self, path: str) -> bool:
         """Check global API rate limit. Returns True if request should proceed."""
         client_ip = str(self.client_address[0]).strip()
-        server: MobileIngestServer = self.server  # type: ignore[assignment]
+        server = self.server
         if server.check_api_rate(client_ip, path):
             self._write_json(
                 HTTPStatus.TOO_MANY_REQUESTS,
@@ -2259,7 +2260,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Bootstrap only allowed from localhost."})
             return
         # Rate-limit bootstrap attempts to prevent brute-force attacks
-        server: MobileIngestServer = self.server  # type: ignore[assignment]
+        server = self.server
         if server.check_bootstrap_rate(client_ip):
             self._write_json(
                 HTTPStatus.TOO_MANY_REQUESTS,
@@ -2303,8 +2304,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "session": {
                     "base_url": base_url,
-                    "token": self.server.auth_token,  # type: ignore[attr-defined]
-                    "signing_key": self.server.signing_key,  # type: ignore[attr-defined]
+                    "token": self.server.auth_token,
+                    "signing_key": self.server.signing_key,
                     "device_id": device_id,
                     "trusted_device": trusted,
                 },
@@ -2432,7 +2433,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."})
             return
 
-        rec = self.server.pipeline.ingest(  # type: ignore[attr-defined]
+        rec = self.server.pipeline.ingest(
             source=source,  # type: ignore[arg-type]
             kind=kind,  # type: ignore[arg-type]
             task_id=task_id,
@@ -3146,7 +3147,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
         # Query KG for facts about attendees and meeting topic
         try:
-            server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+            server_obj = self.server
             mem_engine = server_obj.ensure_memory_engine()
             if mem_engine is not None:
                 kg = getattr(mem_engine, "_kg", None) or getattr(mem_engine, "kg", None)
@@ -3259,7 +3260,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # Try to get additional context from KG about this contact
         contact_context = ""
         try:
-            server_obj: MobileIngestServer = self.server  # type: ignore[assignment]
+            server_obj = self.server
             mem_engine = server_obj.ensure_memory_engine()
             if mem_engine is not None:
                 results = mem_engine.search_fts(contact_name, limit=2)

@@ -668,7 +668,7 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
     import unittest.mock as _mock
     from jarvis_engine.gateway.models import GatewayResponse
 
-    def _mock_complete(self, messages, model="", max_tokens=1024, route_reason=""):
+    def _mock_complete(self, messages, model="", max_tokens=1024, route_reason="", **kwargs):
         return GatewayResponse(text="hi", model=model, provider="mock")
 
     mock_cls = type("MockClassifier", (), {

@@ -417,7 +417,7 @@ def test_audio_stream_open_failure() -> None:
     callback = MagicMock()
 
     mock_sd = MagicMock()
-    mock_sd.InputStream.side_effect = Exception("No audio device")
+    mock_sd.InputStream.side_effect = OSError("No audio device")
 
     with patch.object(detector, "_load_model"):
         original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
