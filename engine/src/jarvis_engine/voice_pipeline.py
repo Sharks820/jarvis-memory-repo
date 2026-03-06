@@ -69,11 +69,6 @@ def escape_response(msg: str) -> str:
 # ---------------------------------------------------------------------------
 # Conversation history buffer for multi-turn context (persisted to disk)
 # ---------------------------------------------------------------------------
-_conversation_history: list[dict[str, str]] = []
-_conversation_history_lock = threading.Lock()
-_CONVERSATION_HISTORY_FILE: Path | None = None
-_conversation_history_loaded = False
-
 
 _CONVERSATION_MAX_TURNS = _env_int("JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40)
 _CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
@@ -84,13 +79,189 @@ _CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
 )
 
 
+class ConversationState:
+    """Encapsulates all conversation-related mutable state with thread-safe access.
+
+    Replaces the former module-level globals (_conversation_history,
+    _conversation_history_lock, _conversation_history_loaded, _last_routed_model,
+    _last_routed_model_lock, _CONVERSATION_HISTORY_FILE) with a single object
+    that owns its own locks and data.
+
+    Parameters
+    ----------
+    history_file : Path | None
+        Optional override for the conversation history JSON file path.
+        When *None* (the default), the standard
+        ``<repo>/.planning/brain/conversation_history.json`` is used.
+    """
+
+    def __init__(self, history_file: "Path | None" = None) -> None:
+        self._conversation_history: list[dict[str, str]] = []
+        self._conversation_history_lock = threading.Lock()
+        self._history_file: Path | None = history_file
+        self._conversation_history_loaded = False
+        self._last_routed_model: str | None = None
+        self._last_routed_model_lock = threading.Lock()
+
+    # -- history file path ---------------------------------------------------
+
+    def _conversation_history_path(self) -> Path:
+        """Return the path for persisted conversation history."""
+        if self._history_file is None:
+            self._history_file = repo_root() / ".planning" / "brain" / "conversation_history.json"
+            self._history_file.parent.mkdir(parents=True, exist_ok=True)
+        return self._history_file
+
+    # -- load / save ---------------------------------------------------------
+
+    def load_conversation_history(self) -> None:
+        """Load persisted conversation history from disk.
+
+        IMPORTANT: Caller must already hold the conversation history lock.
+        This method does NOT acquire the lock itself to avoid deadlock with
+        the non-reentrant ``threading.Lock``.
+        """
+        try:
+            path = self._conversation_history_path()
+            if path.exists():
+                import json as _json
+                data = _json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    self._conversation_history.clear()
+                    self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
+        except Exception as exc:
+            logger.debug("Could not load conversation history: %s", exc)
+
+    def save_conversation_history(self) -> None:
+        """Persist current conversation history to disk (atomic write).
+
+        The entire temp-write + replace is performed while holding the lock
+        so concurrent callers cannot clobber the shared temp file.
+        """
+        try:
+            import json as _json
+            path = self._conversation_history_path()
+            with self._conversation_history_lock:
+                snapshot = list(self._conversation_history)
+                tmp = path.with_suffix(f".tmp.{os.getpid()}")
+                tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+                os.replace(str(tmp), str(path))
+        except Exception as exc:
+            logger.debug("Could not save conversation history: %s", exc)
+
+    # -- add / get history ---------------------------------------------------
+
+    def add_to_history(self, role: str, content: str) -> None:
+        """Append a message to the conversation history, capping at max turns."""
+        with self._conversation_history_lock:
+            self._conversation_history.append(
+                {"role": role, "content": content[:_CONVERSATION_MAX_CHARS_PER_MESSAGE]}
+            )
+            # Keep only the last N user/assistant pairs
+            while len(self._conversation_history) > _CONVERSATION_MAX_TURNS * 2:
+                self._conversation_history.pop(0)
+        self.save_conversation_history()
+
+    def get_history_messages(self) -> list[dict[str, str]]:
+        """Return conversation history as message list for LLM context."""
+        with self._conversation_history_lock:
+            if not self._conversation_history_loaded:
+                self.load_conversation_history()
+                self._conversation_history_loaded = True
+            return list(self._conversation_history)
+
+    # -- routed model tracking -----------------------------------------------
+
+    def mark_routed_model(self, model: str, provider: str) -> None:
+        """Persist last routed model and log provider-switch continuity telemetry."""
+        normalized_model = model.strip()
+        if not normalized_model:
+            return
+        with self._last_routed_model_lock:
+            previous = self._last_routed_model
+            self._last_routed_model = normalized_model
+
+        if previous and previous != normalized_model:
+            try:
+                from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+                log_activity(
+                    ActivityCategory.LLM_ROUTING,
+                    f"Model continuity switch: {previous} -> {normalized_model}",
+                    {
+                        "from_model": previous,
+                        "to_model": normalized_model,
+                        "provider": provider,
+                        "event": "conversation_model_switch",
+                    },
+                )
+            except Exception as exc:
+                logger.debug("Model continuity telemetry logging failed: %s", exc)
+
+    def conversation_continuity_instruction(self, target_model: str, history_len: int) -> str | None:
+        """Return continuity instruction when conversation switches models/providers."""
+        if history_len <= 0:
+            return None
+        normalized_target = target_model.strip()
+        if not normalized_target:
+            return None
+        with self._last_routed_model_lock:
+            previous = (self._last_routed_model or "").strip()
+        if not previous or previous == normalized_target:
+            return None
+        return (
+            f"Continuity contract: previous turn used model '{previous}' and this turn uses '{normalized_target}'. "
+            "Do not reset or restart context. Continue the same conversation using provided history, memory, and unresolved goals."
+        )
+
+
+# Module-level singleton
+_state = ConversationState()
+
+# ---------------------------------------------------------------------------
+# Backward-compatible module-level aliases for external consumers
+# (mobile_api.py, tests, etc.)
+#
+# Reference-type aliases (list, Lock) share the same object with _state so
+# mutations are visible everywhere.  Scalar aliases (_conversation_history_loaded,
+# _last_routed_model) are proxied via a custom module class so that both reads
+# AND writes (e.g. monkeypatch.setattr in tests, or direct assignment in
+# mobile_api.py) are forwarded to the _state singleton.
+# ---------------------------------------------------------------------------
+_conversation_history = _state._conversation_history
+_conversation_history_lock = _state._conversation_history_lock
+_last_routed_model_lock = _state._last_routed_model_lock
+
+import sys as _sys
+import types as _types
+
+
+class _VoicePipelineModule(_types.ModuleType):
+    """Custom module class to proxy scalar attributes to _state."""
+
+    @property
+    def _conversation_history_loaded(self) -> bool:
+        return _state._conversation_history_loaded
+
+    @_conversation_history_loaded.setter
+    def _conversation_history_loaded(self, value: bool) -> None:
+        _state._conversation_history_loaded = value
+
+    @property
+    def _last_routed_model(self) -> "str | None":
+        return _state._last_routed_model
+
+    @_last_routed_model.setter
+    def _last_routed_model(self, value: "str | None") -> None:
+        _state._last_routed_model = value
+
+
+_sys.modules[__name__].__class__ = _VoicePipelineModule
+
+
 def _conversation_history_path() -> Path:
     """Return the path for persisted conversation history."""
-    global _CONVERSATION_HISTORY_FILE
-    if _CONVERSATION_HISTORY_FILE is None:
-        _CONVERSATION_HISTORY_FILE = repo_root() / ".planning" / "brain" / "conversation_history.json"
-        _CONVERSATION_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    return _CONVERSATION_HISTORY_FILE
+    return _state._conversation_history_path()
 
 
 def _load_conversation_history() -> None:
@@ -100,56 +271,22 @@ def _load_conversation_history() -> None:
     This function does NOT acquire the lock itself to avoid deadlock with
     the non-reentrant ``threading.Lock``.
     """
-    global _conversation_history
-    try:
-        path = _conversation_history_path()
-        if path.exists():
-            import json as _json
-            data = _json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                _conversation_history = data[-((_CONVERSATION_MAX_TURNS * 2)):]
-    except Exception as exc:
-        logger.debug("Could not load conversation history: %s", exc)
+    _state.load_conversation_history()
 
 
 def save_conversation_history() -> None:
-    """Persist current conversation history to disk (atomic write).
-
-    The entire temp-write + replace is performed while holding the lock
-    so concurrent callers cannot clobber the shared temp file.
-    """
-    try:
-        import json as _json
-        path = _conversation_history_path()
-        with _conversation_history_lock:
-            snapshot = list(_conversation_history)
-            tmp = path.with_suffix(f".tmp.{os.getpid()}")
-            tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-            os.replace(str(tmp), str(path))
-    except Exception as exc:
-        logger.debug("Could not save conversation history: %s", exc)
+    """Persist current conversation history to disk (atomic write)."""
+    _state.save_conversation_history()
 
 
 def _add_to_history(role: str, content: str) -> None:
     """Append a message to the conversation history, capping at max turns."""
-    with _conversation_history_lock:
-        _conversation_history.append(
-            {"role": role, "content": content[:_CONVERSATION_MAX_CHARS_PER_MESSAGE]}
-        )
-        # Keep only the last N user/assistant pairs
-        while len(_conversation_history) > _CONVERSATION_MAX_TURNS * 2:
-            _conversation_history.pop(0)
-    save_conversation_history()
+    _state.add_to_history(role, content)
 
 
 def _get_history_messages() -> list[dict[str, str]]:
     """Return conversation history as message list for LLM context."""
-    global _conversation_history_loaded
-    with _conversation_history_lock:
-        if not _conversation_history_loaded:
-            _load_conversation_history()
-            _conversation_history_loaded = True
-        return list(_conversation_history)
+    return _state.get_history_messages()
 
 
 def _learn_conversation(
@@ -184,53 +321,14 @@ def _learn_conversation(
             logger.warning("Auto-ingest fallback also failed: %s", exc)
 
 
-_last_routed_model: str | None = None
-_last_routed_model_lock = threading.Lock()
-
-
 def _conversation_continuity_instruction(target_model: str, history_len: int) -> str | None:
     """Return continuity instruction when conversation switches models/providers."""
-    if history_len <= 0:
-        return None
-    normalized_target = target_model.strip()
-    if not normalized_target:
-        return None
-    with _last_routed_model_lock:
-        previous = (_last_routed_model or "").strip()
-    if not previous or previous == normalized_target:
-        return None
-    return (
-        f"Continuity contract: previous turn used model '{previous}' and this turn uses '{normalized_target}'. "
-        "Do not reset or restart context. Continue the same conversation using provided history, memory, and unresolved goals."
-    )
+    return _state.conversation_continuity_instruction(target_model, history_len)
 
 
 def _mark_routed_model(model: str, provider: str) -> None:
     """Persist last routed model and log provider-switch continuity telemetry."""
-    global _last_routed_model
-    normalized_model = model.strip()
-    if not normalized_model:
-        return
-    with _last_routed_model_lock:
-        previous = _last_routed_model
-        _last_routed_model = normalized_model
-
-    if previous and previous != normalized_model:
-        try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
-            log_activity(
-                ActivityCategory.LLM_ROUTING,
-                f"Model continuity switch: {previous} -> {normalized_model}",
-                {
-                    "from_model": previous,
-                    "to_model": normalized_model,
-                    "provider": provider,
-                    "event": "conversation_model_switch",
-                },
-            )
-        except Exception as exc:
-            logger.debug("Model continuity telemetry logging failed: %s", exc)
+    _state.mark_routed_model(model, provider)
 
 
 # ---------------------------------------------------------------------------

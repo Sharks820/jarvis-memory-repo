@@ -23,6 +23,7 @@ class StatusResult:
     operation_mode: str = ""
     cloud_burst_enabled: bool = False
     events: list[Any] = field(default_factory=list)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class ServeMobileCommand:
 @dataclass
 class ServeMobileResult:
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,7 @@ class DaemonRunCommand:
 @dataclass
 class DaemonRunResult:
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ class MobileDesktopSyncCommand:
 class MobileDesktopSyncResult:
     report: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,7 @@ class SelfHealCommand:
 class SelfHealResult:
     report: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,7 @@ class DesktopWidgetCommand:
 @dataclass
 class DesktopWidgetResult:
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -123,6 +129,7 @@ class GamingModeResult:
     detected: bool = False
     detected_process: str = ""
     effective_enabled: bool = False
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -134,6 +141,7 @@ class OpenWebCommand:
 class OpenWebResult:
     return_code: int = 0
     opened_url: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -147,6 +155,7 @@ class WeatherResult:
     location: str = ""
     current: dict[str, Any] = field(default_factory=dict)
     description: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -158,3 +167,4 @@ class MigrateMemoryCommand:
 class MigrateMemoryResult:
     summary: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
+    message: str = ""

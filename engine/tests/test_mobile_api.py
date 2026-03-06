@@ -675,7 +675,7 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
         "classify": lambda self, q: ("routine", "mock-model", 0.9),
     })
     # Temporarily lower the limit for testing
-    with _mock.patch.object(mobile_api, "_API_RATE_LIMIT_EXPENSIVE", 2), \
+    with _mock.patch.object(mobile_api._API_RATE_EXPENSIVE, "max_attempts", 2), \
          _mock.patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
          _mock.patch("jarvis_engine.voice_pipeline._build_smart_context", return_value=([], [], [], [])), \
          _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
@@ -1748,7 +1748,7 @@ def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -
     mobile_server.server._master_pw_attempts.clear()
 
     # Temporarily lower the limit to 3 for testing
-    with _mock.patch.object(mobile_api, "_MASTER_PW_RATE_LIMIT_MAX", 3):
+    with _mock.patch.object(mobile_api._MASTER_PW_RATE, "max_attempts", 3):
         for i in range(5):
             payload = {
                 "source": "user",

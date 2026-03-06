@@ -195,6 +195,28 @@ from jarvis_engine.handlers.sync_handlers import (
 )
 
 
+def _register_with_fallback(
+    bus: CommandBus,
+    command_type: type,
+    handler_factory: Callable[[], Any],
+    fallback_factory: Callable[[], Any],
+) -> None:
+    """Register a command handler, falling back to a simpler handler on failure.
+
+    Calls *handler_factory* to produce the handler callable.  If it raises,
+    logs a warning and uses *fallback_factory* instead.
+    """
+    try:
+        handler = handler_factory()
+    except Exception as exc:
+        logger.warning(
+            "Handler factory for %s failed, using fallback: %s",
+            command_type.__name__, exc,
+        )
+        handler = fallback_factory()
+    bus.register(command_type, handler)
+
+
 def create_app(root: Path) -> CommandBus:
     """Build and wire the full Command Bus.  This is the DI composition root.
 
@@ -427,6 +449,10 @@ def create_app(root: Path) -> CommandBus:
     bus.register(KnowledgeRegressionCommand, KnowledgeRegressionHandler(root, kg=kg).handle)
 
     # -- Learning --
+    learning_engine = None
+    pref_tracker = None
+    feedback_tracker = None
+    usage_tracker = None
     try:
         if engine is None:
             raise RuntimeError("MemoryEngine not available — skipping Learning subsystem")
@@ -444,28 +470,6 @@ def create_app(root: Path) -> CommandBus:
             feedback_tracker=feedback_tracker, usage_tracker=usage_tracker,
         )
 
-        bus.register(
-            LearnInteractionCommand,
-            LearnInteractionHandler(root, learning_engine=learning_engine).handle,
-        )
-        bus.register(
-            CrossBranchQueryCommand,
-            CrossBranchQueryHandler(
-                root, engine=engine, kg=kg, embed_service=embed_service
-            ).handle,
-        )
-        bus.register(
-            FlagExpiredFactsCommand,
-            FlagExpiredFactsHandler(root, kg=kg).handle,
-        )
-        bus.register(
-            ConsolidateMemoryCommand,
-            ConsolidateMemoryHandler(
-                root, engine=engine, gateway=gateway,
-                embed_service=embed_service, kg=kg,
-            ).handle,
-        )
-
         # Expose learning trackers via typed AppContext
         bus.ctx.pref_tracker = pref_tracker
         bus.ctx.feedback_tracker = feedback_tracker
@@ -476,50 +480,53 @@ def create_app(root: Path) -> CommandBus:
         # Classifier is created before learning subsystem, so we set it after the fact
         if intent_classifier is not None:
             intent_classifier.set_feedback_tracker(feedback_tracker)
-
-        # Wire trackers into IntelligenceDashboardHandler (LEARN-07/08)
-        bus.register(
-            IntelligenceDashboardCommand,
-            IntelligenceDashboardHandler(
-                root,
-                pref_tracker=pref_tracker,
-                feedback_tracker=feedback_tracker,
-                usage_tracker=usage_tracker,
-                kg=kg,
-                engine=engine,
-            ).handle,
-        )
     except Exception as exc:
         logger.warning("Failed to initialize Learning subsystem, continuing without: %s", exc)
-        bus.register(
-            LearnInteractionCommand,
-            LearnInteractionHandler(root).handle,
-        )
-        bus.register(
-            CrossBranchQueryCommand,
-            CrossBranchQueryHandler(root).handle,
-        )
-        bus.register(
-            FlagExpiredFactsCommand,
-            FlagExpiredFactsHandler(root).handle,
-        )
-        bus.register(
-            ConsolidateMemoryCommand,
-            ConsolidateMemoryHandler(root).handle,
-        )
-        # Fallback: dashboard without trackers
-        bus.register(
-            IntelligenceDashboardCommand,
-            IntelligenceDashboardHandler(root).handle,
-        )
+
+    _register_with_fallback(
+        bus, LearnInteractionCommand,
+        lambda: LearnInteractionHandler(root, learning_engine=learning_engine).handle,
+        lambda: LearnInteractionHandler(root).handle,
+    )
+    _register_with_fallback(
+        bus, CrossBranchQueryCommand,
+        lambda: CrossBranchQueryHandler(
+            root, engine=engine, kg=kg, embed_service=embed_service
+        ).handle,
+        lambda: CrossBranchQueryHandler(root).handle,
+    )
+    _register_with_fallback(
+        bus, FlagExpiredFactsCommand,
+        lambda: FlagExpiredFactsHandler(root, kg=kg).handle,
+        lambda: FlagExpiredFactsHandler(root).handle,
+    )
+    _register_with_fallback(
+        bus, ConsolidateMemoryCommand,
+        lambda: ConsolidateMemoryHandler(
+            root, engine=engine, gateway=gateway,
+            embed_service=embed_service, kg=kg,
+        ).handle,
+        lambda: ConsolidateMemoryHandler(root).handle,
+    )
+    _register_with_fallback(
+        bus, IntelligenceDashboardCommand,
+        lambda: IntelligenceDashboardHandler(
+            root,
+            pref_tracker=pref_tracker,
+            feedback_tracker=feedback_tracker,
+            usage_tracker=usage_tracker,
+            kg=kg,
+            engine=engine,
+        ).handle,
+        lambda: IntelligenceDashboardHandler(root).handle,
+    )
 
     # -- Sync --
+    sync_engine = None
+    sync_transport = None
     try:
         from jarvis_engine.sync.changelog import install_changelog_triggers
         from jarvis_engine.sync.engine import SyncEngine
-
-        sync_engine = None
-        sync_transport = None
 
         if engine is not None:
             install_changelog_triggers(engine.db, device_id="desktop")
@@ -533,19 +540,6 @@ def create_app(root: Path) -> CommandBus:
                 from jarvis_engine.sync.transport import SyncTransport
                 salt_path = root / ".planning" / "brain" / "sync_salt.bin"
                 sync_transport = SyncTransport(signing_key, salt_path)
-
-        bus.register(
-            SyncPullCommand,
-            SyncPullHandler(root, sync_engine=sync_engine, transport=sync_transport).handle,
-        )
-        bus.register(
-            SyncPushCommand,
-            SyncPushHandler(root, sync_engine=sync_engine, transport=sync_transport).handle,
-        )
-        bus.register(
-            SyncStatusCommand,
-            SyncStatusHandler(root, sync_engine=sync_engine).handle,
-        )
     except BaseException as exc:
         # NOTE: BaseException needed because cryptography's pyo3 bindings can
         # raise PanicException (a BaseException subclass) on ABI mismatch.
@@ -553,11 +547,26 @@ def create_app(root: Path) -> CommandBus:
         if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
             raise
         logger.warning("Failed to initialize Sync subsystem, continuing without: %s", exc)
-        bus.register(SyncPullCommand, SyncPullHandler(root).handle)
-        bus.register(SyncPushCommand, SyncPushHandler(root).handle)
-        bus.register(SyncStatusCommand, SyncStatusHandler(root).handle)
+
+    _register_with_fallback(
+        bus, SyncPullCommand,
+        lambda: SyncPullHandler(root, sync_engine=sync_engine, transport=sync_transport).handle,
+        lambda: SyncPullHandler(root).handle,
+    )
+    _register_with_fallback(
+        bus, SyncPushCommand,
+        lambda: SyncPushHandler(root, sync_engine=sync_engine, transport=sync_transport).handle,
+        lambda: SyncPushHandler(root).handle,
+    )
+    _register_with_fallback(
+        bus, SyncStatusCommand,
+        lambda: SyncStatusHandler(root, sync_engine=sync_engine).handle,
+        lambda: SyncStatusHandler(root).handle,
+    )
 
     # -- Harvesting --
+    harvester = None
+    budget_manager = None
     try:
         from jarvis_engine.harvesting.budget import BudgetManager
         from jarvis_engine.harvesting.providers import (
@@ -579,17 +588,27 @@ def create_app(root: Path) -> CommandBus:
             cost_tracker=cost_tracker,
             budget_manager=budget_manager,
         )
-
-        bus.register(HarvestTopicCommand, HarvestTopicHandler(harvester=harvester).handle)
-        bus.register(IngestSessionCommand, IngestSessionHandler(pipeline=pipeline).handle)
-        bus.register(HarvestBudgetCommand, HarvestBudgetHandler(budget_manager=budget_manager).handle)
     except Exception as exc:
         logger.warning("Failed to initialize Harvesting subsystem, continuing without: %s", exc)
-        bus.register(HarvestTopicCommand, HarvestTopicHandler().handle)
-        bus.register(IngestSessionCommand, IngestSessionHandler().handle)
-        bus.register(HarvestBudgetCommand, HarvestBudgetHandler().handle)
+
+    _register_with_fallback(
+        bus, HarvestTopicCommand,
+        lambda: HarvestTopicHandler(harvester=harvester).handle,
+        lambda: HarvestTopicHandler().handle,
+    )
+    _register_with_fallback(
+        bus, IngestSessionCommand,
+        lambda: IngestSessionHandler(pipeline=pipeline).handle,
+        lambda: IngestSessionHandler().handle,
+    )
+    _register_with_fallback(
+        bus, HarvestBudgetCommand,
+        lambda: HarvestBudgetHandler(budget_manager=budget_manager).handle,
+        lambda: HarvestBudgetHandler().handle,
+    )
 
     # -- Proactive Intelligence --
+    proactive_engine = None
     try:
         from jarvis_engine.proactive import (
             DEFAULT_TRIGGER_RULES,
@@ -599,13 +618,14 @@ def create_app(root: Path) -> CommandBus:
 
         notifier = Notifier()
         proactive_engine = ProactiveEngine(rules=DEFAULT_TRIGGER_RULES, notifier=notifier, root=root)
-        bus.register(
-            ProactiveCheckCommand,
-            ProactiveCheckHandler(root, proactive_engine=proactive_engine).handle,
-        )
     except Exception as exc:
         logger.warning("Failed to initialize Proactive subsystem, continuing without: %s", exc)
-        bus.register(ProactiveCheckCommand, ProactiveCheckHandler(root).handle)
+
+    _register_with_fallback(
+        bus, ProactiveCheckCommand,
+        lambda: ProactiveCheckHandler(root, proactive_engine=proactive_engine).handle,
+        lambda: ProactiveCheckHandler(root).handle,
+    )
 
     bus.register(WakeWordStartCommand, WakeWordStartHandler(root, gateway=gateway).handle)
 

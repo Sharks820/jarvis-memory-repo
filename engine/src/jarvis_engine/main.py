@@ -392,11 +392,10 @@ def cmd_intelligence_dashboard(last_runs: int, output_path: str, as_json: bool) 
             f"days={eta.get('days', '')}"
         )
     new_unlocks = achievements.get("new", [])
-    if isinstance(new_unlocks, list):
-        for item in new_unlocks:
-            if not isinstance(item, dict):
-                continue
-            print(f"achievement_unlocked={item.get('label', '')}")
+    for item in new_unlocks:
+        if not isinstance(item, dict):
+            continue
+        print(f"achievement_unlocked={item.get('label', '')}")
 
     if output_path.strip():
         out = Path(output_path).resolve()
@@ -422,14 +421,13 @@ def cmd_brain_status(as_json: bool) -> int:
     branch_count = status.get("branch_count", 0)
     print(f"branch_count={branch_count}")
     branches = status.get("branches", [])
-    if isinstance(branches, list):
-        for row in branches[:12]:
-            if not isinstance(row, dict):
-                continue
-            print(
-                f"branch={row.get('branch','')} count={row.get('count', 0)} "
-                f"last_ts={row.get('last_ts','')} summary={row.get('last_summary','')}"
-            )
+    for row in branches[:12]:
+        if not isinstance(row, dict):
+            continue
+        print(
+            f"branch={row.get('branch','')} count={row.get('count', 0)} "
+            f"last_ts={row.get('last_ts','')} summary={row.get('last_summary','')}"
+        )
     # Structured response for UI consumption (UI-05)
     branch_names = [str(row.get("branch", "")) for row in branches[:6] if isinstance(row, dict)]
     summary = f"Brain has {branch_count} branch(es)"
@@ -452,16 +450,15 @@ def cmd_brain_context(query: str, max_items: int, max_chars: int, as_json: bool)
     print(f"query={packet.get('query', '')}")
     print(f"selected_count={packet.get('selected_count', 0)}")
     selected = packet.get("selected", [])
-    if isinstance(selected, list):
-        for idx, row in enumerate(selected, start=1):
-            if not isinstance(row, dict):
-                continue
-            print(
-                f"context_{idx}=branch:{row.get('branch','')} "
-                f"source:{row.get('source','')} "
-                f"kind:{row.get('kind','')} "
-                f"summary:{row.get('summary','')}"
-            )
+    for idx, row in enumerate(selected, start=1):
+        if not isinstance(row, dict):
+            continue
+        print(
+            f"context_{idx}=branch:{row.get('branch','')} "
+            f"source:{row.get('source','')} "
+            f"kind:{row.get('kind','')} "
+            f"summary:{row.get('summary','')}"
+        )
     facts = packet.get("canonical_facts", [])
     if isinstance(facts, list):
         for idx, item in enumerate(facts, start=1):

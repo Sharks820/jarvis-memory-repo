@@ -5,7 +5,18 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.models import ModelGateway
+    from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+    from jarvis_engine.learning.preferences import PreferenceTracker
+    from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+    from jarvis_engine.memory.engine import MemoryEngine
+    from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+    from jarvis_engine.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +53,7 @@ from jarvis_engine.commands.ops_commands import (
 
 
 class OpsBriefHandler:
-    def __init__(self, root: Path, gateway: Any = None) -> None:
+    def __init__(self, root: Path, gateway: Optional[ModelGateway] = None) -> None:
         self._root = root
         self._gateway = gateway
 
@@ -143,9 +154,9 @@ class OpsAutopilotHandler:
 class AutomationRunHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
-        self._store: Any = None
+        self._store: Optional[MemoryStore] = None
 
-    def _get_store(self) -> Any:
+    def _get_store(self) -> MemoryStore:
         """Lazily create and cache the MemoryStore."""
         if self._store is None:
             from jarvis_engine.memory_store import MemoryStore
@@ -223,13 +234,13 @@ class MissionCancelHandler:
 
 
 class MissionRunHandler:
-    def __init__(self, root: Path, enriched_pipeline: Any = None) -> None:
+    def __init__(self, root: Path, enriched_pipeline: Optional[EnrichedIngestPipeline] = None) -> None:
         self._root = root
         self._enriched_pipeline = enriched_pipeline
-        self._store: Any = None
-        self._pipeline: Any = None
+        self._store: Optional[MemoryStore] = None
+        self._pipeline: Optional[IngestionPipeline] = None
 
-    def _get_ingest_pipeline(self) -> Any:
+    def _get_ingest_pipeline(self) -> EnrichedIngestPipeline | IngestionPipeline:
         """Return enriched pipeline if available, else lazily create legacy pipeline."""
         if self._enriched_pipeline is not None:
             return self._enriched_pipeline
@@ -366,11 +377,11 @@ class IntelligenceDashboardHandler:
     def __init__(
         self,
         root: Path,
-        pref_tracker: Any = None,
-        feedback_tracker: Any = None,
-        usage_tracker: Any = None,
-        kg: Any = None,
-        engine: Any = None,
+        pref_tracker: Optional[PreferenceTracker] = None,
+        feedback_tracker: Optional[ResponseFeedbackTracker] = None,
+        usage_tracker: Optional[UsagePatternTracker] = None,
+        kg: Optional[KnowledgeGraph] = None,
+        engine: Optional[MemoryEngine] = None,
     ) -> None:
         self._root = root
         self._pref_tracker = pref_tracker

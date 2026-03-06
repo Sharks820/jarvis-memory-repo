@@ -70,3 +70,4 @@ class KnowledgeRegressionCommand:
 @dataclass
 class KnowledgeRegressionResult:
     report: dict = field(default_factory=dict)
+    message: str = ""

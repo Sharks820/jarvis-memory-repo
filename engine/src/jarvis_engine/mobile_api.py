@@ -146,18 +146,33 @@ _CORS_ALLOWED_ORIGIN_PATTERNS = [
     re.compile(r"^file:///[A-Za-z]:/"),  # Only local file:// URIs with drive letter
 ]
 
-# Bootstrap rate-limiter: max 5 failed attempts per IP within 60s window.
-_BOOTSTRAP_RATE_LIMIT_WINDOW = 60.0
-_BOOTSTRAP_RATE_LIMIT_MAX = 5
+# ---------------------------------------------------------------------------
+# Rate-limit configuration
+# ---------------------------------------------------------------------------
 
-# Master password rate-limiter: max 5 attempts per IP within 60s window.
-_MASTER_PW_RATE_LIMIT_WINDOW = 60.0
-_MASTER_PW_RATE_LIMIT_MAX = 5
+class _RateLimitConfig:
+    """Describes a sliding-window rate-limit bucket."""
 
-# Global API rate-limiter: per-IP sliding window.
-_API_RATE_LIMIT_WINDOW = 60.0        # 60-second window
-_API_RATE_LIMIT_NORMAL = 120          # 120 req/min for standard endpoints
-_API_RATE_LIMIT_EXPENSIVE = 10        # 10 req/min for /command, /self-heal
+    __slots__ = ("bucket_attr", "lock_attr", "max_attempts", "window_seconds")
+
+    def __init__(
+        self,
+        bucket_attr: str,
+        lock_attr: str,
+        max_attempts: int,
+        window_seconds: float,
+    ) -> None:
+        self.bucket_attr = bucket_attr
+        self.lock_attr = lock_attr
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+
+
+_BOOTSTRAP_RATE = _RateLimitConfig("_bootstrap_attempts", "_bootstrap_rate_lock", 5, 60.0)
+_MASTER_PW_RATE = _RateLimitConfig("_master_pw_attempts", "_master_pw_rate_lock", 5, 60.0)
+_API_RATE_NORMAL = _RateLimitConfig("_api_rate_normal", "_api_rate_lock", 120, 60.0)
+_API_RATE_EXPENSIVE = _RateLimitConfig("_api_rate_expensive", "_api_rate_lock", 10, 60.0)
+
 _EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login", "/feedback"}
 
 # Public endpoints with no body and no auth — skip the full security pipeline.
@@ -528,34 +543,33 @@ class MobileIngestServer(ThreadingHTTPServer):
         for ip in by_recency[:to_remove]:
             del d[ip]
 
-    def _sliding_window_check(
+    def check_rate(
         self,
-        bucket: dict[str, list[float]],
-        lock: "threading.Lock",
+        cfg: "_RateLimitConfig",
         key: str,
-        max_attempts: int,
-        window_seconds: float,
         *,
         record_on_allow: bool = False,
     ) -> bool:
         """Generic sliding-window rate limiter.
 
-        Returns True if *key* is rate-limited (i.e. has reached *max_attempts*
-        within the last *window_seconds*).
+        Returns True if *key* is rate-limited (i.e. has reached
+        ``cfg.max_attempts`` within the last ``cfg.window_seconds``).
 
         When *record_on_allow* is True the current timestamp is appended to
         the window **only** when the request is allowed (not rate-limited).
         This is used by the API rate limiter so that rejected requests do not
         consume future budget.
         """
+        bucket: dict[str, list[float]] = getattr(self, cfg.bucket_attr)
+        lock: threading.Lock = getattr(self, cfg.lock_attr)
         now = time.time()
         with lock:
             if len(bucket) > 5000:
                 self._prune_rate_dict(bucket)
             attempts = bucket.get(key, [])
-            cutoff = now - window_seconds
+            cutoff = now - cfg.window_seconds
             attempts = [ts for ts in attempts if ts > cutoff]
-            if len(attempts) >= max_attempts:
+            if len(attempts) >= cfg.max_attempts:
                 bucket[key] = attempts
                 return True
             if record_on_allow:
@@ -563,61 +577,35 @@ class MobileIngestServer(ThreadingHTTPServer):
             bucket[key] = attempts
             return False
 
-    def _record_rate_attempt(
-        self,
-        bucket: dict[str, list[float]],
-        lock: "threading.Lock",
-        key: str,
-        window_seconds: float,
-    ) -> None:
+    def record_attempt(self, cfg: "_RateLimitConfig", key: str) -> None:
         """Record a rate-limit attempt (used after a failed auth event)."""
+        bucket: dict[str, list[float]] = getattr(self, cfg.bucket_attr)
+        lock: threading.Lock = getattr(self, cfg.lock_attr)
         now = time.time()
         with lock:
             attempts = bucket.get(key, [])
-            cutoff = now - window_seconds
+            cutoff = now - cfg.window_seconds
             attempts = [ts for ts in attempts if ts > cutoff]
             attempts.append(now)
             bucket[key] = attempts
 
-    # -- Convenience wrappers (preserve existing public API) ----------------
+    # -- Public convenience wrappers (preserve existing call-site API) ------
 
     def check_bootstrap_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for bootstrap attempts."""
-        return self._sliding_window_check(
-            self._bootstrap_attempts,
-            self._bootstrap_rate_lock,
-            client_ip,
-            _BOOTSTRAP_RATE_LIMIT_MAX,
-            _BOOTSTRAP_RATE_LIMIT_WINDOW,
-        )
+        return self.check_rate(_BOOTSTRAP_RATE, client_ip)
 
     def record_bootstrap_attempt(self, client_ip: str) -> None:
         """Record a failed bootstrap attempt for rate limiting."""
-        self._record_rate_attempt(
-            self._bootstrap_attempts,
-            self._bootstrap_rate_lock,
-            client_ip,
-            _BOOTSTRAP_RATE_LIMIT_WINDOW,
-        )
+        self.record_attempt(_BOOTSTRAP_RATE, client_ip)
 
     def check_master_pw_rate(self, client_ip: str) -> bool:
         """Return True if this IP is rate-limited for master password attempts."""
-        return self._sliding_window_check(
-            self._master_pw_attempts,
-            self._master_pw_rate_lock,
-            client_ip,
-            _MASTER_PW_RATE_LIMIT_MAX,
-            _MASTER_PW_RATE_LIMIT_WINDOW,
-        )
+        return self.check_rate(_MASTER_PW_RATE, client_ip)
 
     def record_master_pw_attempt(self, client_ip: str) -> None:
         """Record a master password attempt for rate limiting."""
-        self._record_rate_attempt(
-            self._master_pw_attempts,
-            self._master_pw_rate_lock,
-            client_ip,
-            _MASTER_PW_RATE_LIMIT_WINDOW,
-        )
+        self.record_attempt(_MASTER_PW_RATE, client_ip)
 
     def check_api_rate(self, client_ip: str, path: str) -> bool:
         """Return True if this IP exceeds the API rate limit for the given path.
@@ -627,20 +615,10 @@ class MobileIngestServer(ThreadingHTTPServer):
         tier's budget.
 
         Only records the request if it is NOT rate-limited, so rejected
-        requests do not consume future budget (matches bootstrap/master_pw
-        pattern).
+        requests do not consume future budget.
         """
-        is_expensive = path in _EXPENSIVE_PATHS
-        limit = _API_RATE_LIMIT_EXPENSIVE if is_expensive else _API_RATE_LIMIT_NORMAL
-        bucket = self._api_rate_expensive if is_expensive else self._api_rate_normal
-        return self._sliding_window_check(
-            bucket,
-            self._api_rate_lock,
-            client_ip,
-            limit,
-            _API_RATE_LIMIT_WINDOW,
-            record_on_allow=True,
-        )
+        cfg = _API_RATE_EXPENSIVE if path in _EXPENSIVE_PATHS else _API_RATE_NORMAL
+        return self.check_rate(cfg, client_ip, record_on_allow=True)
 
     def is_cors_origin_allowed(self, origin: str) -> bool:
         """Check if the given Origin is in the CORS whitelist."""

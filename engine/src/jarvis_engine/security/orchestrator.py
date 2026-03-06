@@ -184,7 +184,7 @@ class SecurityOrchestrator:
             return
         try:
             setattr(self, attr_name, cls(*args, **kwargs))
-        except Exception as exc:
+        except (ImportError, AttributeError, TypeError) as exc:
             setattr(self, attr_name, None)
             logger.warning("Failed to init %s: %s", cls.__name__, exc)
 
@@ -301,7 +301,7 @@ class SecurityOrchestrator:
                         "injection_verdict": "clean",
                         "containment_actions": [],
                     }
-            except Exception as exc:
+            except (OSError, ValueError, TimeoutError) as exc:
                 logger.debug("Threat intel enrichment failed for %s: %s", source_ip, exc)
 
         # --- Step 3: Threat detection ---
@@ -347,7 +347,7 @@ class SecurityOrchestrator:
                     reason=f"Auto-escalation: {threat_level} threat on {path}",
                 )
                 containment_actions = result.get("actions", [])
-            except Exception as exc:
+            except (ValueError, RuntimeError, OSError) as exc:
                 logger.warning("Containment failed: %s", exc)
 
             # Send alert
@@ -422,7 +422,7 @@ class SecurityOrchestrator:
         if self.resource_monitor is not None:
             try:
                 self.resource_monitor.record("api_calls_per_hour", 1)
-            except Exception as exc:
+            except (ValueError, TypeError) as exc:
                 logger.debug("ResourceMonitor record failed: %s", exc)
 
         # --- Step 8: Action audit ---
@@ -434,7 +434,7 @@ class SecurityOrchestrator:
                     trigger="external",
                     resource_usage={"threat_level": threat_level},
                 )
-            except Exception as exc:
+            except (ValueError, TypeError, OSError) as exc:
                 logger.debug("ActionAuditor log failed: %s", exc)
 
         # Single atomic counter update for non-early-return paths
@@ -642,7 +642,7 @@ class SecurityOrchestrator:
                 self.threat_neutralizer.neutralize(
                     source_ip, category, {"detail": detail},
                 )
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
                 logger.debug("ThreatNeutralizer failed for %s: %s", source_ip, exc)
 
         # Log to forensic log

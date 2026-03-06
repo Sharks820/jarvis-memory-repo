@@ -17,6 +17,7 @@ class OpsBriefCommand:
 class OpsBriefResult:
     brief: str = ""
     saved_path: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class MissionStatusCommand:
 class MissionStatusResult:
     missions: list[dict[str, Any]] = field(default_factory=list)
     total_count: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -178,3 +180,4 @@ class IntelligenceDashboardCommand:
 @dataclass
 class IntelligenceDashboardResult:
     dashboard: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
