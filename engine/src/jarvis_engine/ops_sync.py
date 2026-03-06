@@ -380,7 +380,7 @@ def load_email_items(limit: int = 20) -> list[dict]:
 def _decode_email_header(value: str) -> str:
     try:
         decoded = decode_header(value)
-    except Exception:
+    except (ValueError, UnicodeDecodeError, LookupError):
         # Malformed headers can cause decode_header to raise; return raw value.
         return str(value).strip()
     parts: list[str] = []

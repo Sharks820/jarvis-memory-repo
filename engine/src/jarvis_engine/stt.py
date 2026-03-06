@@ -487,7 +487,7 @@ def _try_parakeet(
                     try:
                         model = model.with_timestamps()
                         logger.debug("Parakeet timestamps model loaded")
-                    except Exception:
+                    except (AttributeError, RuntimeError, TypeError):
                         logger.debug(
                             "Parakeet timestamps not available, using base model"
                         )

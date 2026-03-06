@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import time
 from datetime import datetime
 from jarvis_engine._compat import UTC

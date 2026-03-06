@@ -174,7 +174,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         b64 = str(raw.get("master_password_protected", ""))
         try:
             master_password = _dpapi_decrypt(b64)
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
             logger.warning("Failed to decrypt protected credential via DPAPI; value unavailable")
     elif str(raw.get("master_password", "")).strip():
         master_password = str(raw.get("master_password", ""))
@@ -199,7 +199,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         if protected_val:
             try:
                 return _dpapi_decrypt(protected_val)
-            except Exception:
+            except (OSError, ValueError, RuntimeError):
                 logger.warning("Failed to decrypt %s via DPAPI", protected_key)
         val = str(raw.get(field, "")).strip()
         if val:
@@ -234,14 +234,14 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
             _ctx = _make_ssl_context_for_self_signed() if _parsed.scheme == "https" else None
             with urlopen(Request(url=_probe_url, method="GET"), timeout=3, context=_ctx):
                 pass  # Saved URL works fine
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             logger.debug("Saved base_url %s unreachable: %s — trying localhost", _probe_url, exc)
             # Saved URL unreachable — try localhost
             try:
                 _ctx_l = _make_ssl_context_for_self_signed() if _default_scheme == "https" else None
                 with urlopen(Request(url=_local_url, method="GET"), timeout=3, context=_ctx_l):
                     _stale = True  # localhost works, saved URL is stale
-            except Exception as exc2:
+            except (OSError, ValueError) as exc2:
                 logger.debug("Localhost fallback %s also unreachable: %s", _local_url, exc2)
         if _stale:
             _old_url = _base_url
@@ -270,7 +270,7 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
                 logger.info("Persisted auto-healed base_url to config")
             if needs_migration or needs_migration_fields:
                 logger.info("Migrated legacy plaintext credentials to DPAPI-protected storage")
-        except Exception:
+        except (OSError, ValueError, TypeError):
             logger.warning("Failed to save config migration; will retry on next save")
 
     return cfg
@@ -309,7 +309,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
     if cfg.master_password:
         try:
             payload["master_password_protected"] = _dpapi_encrypt(cfg.master_password)
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
             logger.warning("DPAPI encryption unavailable; storing legacy credential in plaintext")
             payload["master_password"] = cfg.master_password
     # Never write the plaintext key when DPAPI succeeds (no "master_password" key at all)
@@ -638,7 +638,7 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         )
     except subprocess.TimeoutExpired:
         logger.debug("Toast notification process timed out after 30s")
-    except Exception:
+    except (OSError, ValueError):
         logger.debug("Failed to launch toast notification", exc_info=True)
 
 

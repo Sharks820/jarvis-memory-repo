@@ -131,7 +131,7 @@ def _log_mission_activity(
                 "status": status,
             },
         )
-    except Exception:
+    except (OSError, ValueError, RuntimeError):
         logger.debug("Mission activity logging failed for %s", mission_id)
 
 

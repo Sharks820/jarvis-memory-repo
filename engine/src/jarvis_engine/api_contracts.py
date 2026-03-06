@@ -351,7 +351,7 @@ def _dataclass_to_schema(cls: Type[Any]) -> Dict[str, Any]:
     # Use get_type_hints to resolve string annotations from __future__ annotations
     try:
         resolved_hints = get_type_hints(cls)
-    except Exception:
+    except (NameError, AttributeError, TypeError):
         resolved_hints = {}
     for f in fields(cls):
         resolved_type = resolved_hints.get(f.name, f.type)

@@ -147,7 +147,7 @@ def _process_usage() -> tuple[float, float]:
         proc = psutil.Process(os.getpid())
         memory_mb = float(proc.memory_info().rss) / _MB
         cpu_pct = float(proc.cpu_percent(interval=0.0))
-    except Exception:
+    except (ImportError, OSError, AttributeError):
         try:
             import resource
 
@@ -159,7 +159,7 @@ def _process_usage() -> tuple[float, float]:
                     memory_mb = maxrss / _MB
                 else:
                     memory_mb = maxrss / 1024.0
-        except Exception:
+        except (ImportError, OSError, AttributeError):
             memory_mb = 0.0
             cpu_pct = 0.0
     return round(max(0.0, memory_mb), 3), round(max(0.0, cpu_pct), 3)

@@ -68,6 +68,42 @@ _daemon_kg_prev_metrics: dict | None = None
 # Auto-harvest topic discovery for daemon cycle
 # ---------------------------------------------------------------------------
 
+# Named SQL constants for _discover_harvest_topics() queries
+_SQL_RECENT_SUMMARIES = """\
+SELECT summary FROM records
+WHERE ts >= ? AND source = 'user'
+ORDER BY ts DESC
+LIMIT 30"""
+
+_SQL_SPARSE_NODES = """\
+SELECT n.label, COUNT(e.edge_id) AS edge_cnt
+FROM kg_nodes n
+LEFT JOIN kg_edges e ON n.node_id = e.source_id
+WHERE n.confidence >= 0.3
+GROUP BY n.node_id
+HAVING edge_cnt BETWEEN 0 AND 1
+ORDER BY n.updated_at DESC
+LIMIT 10"""
+
+_SQL_RARE_RELATIONS = """\
+SELECT relation, COUNT(*) AS cnt
+FROM kg_edges
+GROUP BY relation
+HAVING cnt BETWEEN 1 AND 3
+ORDER BY cnt ASC
+LIMIT 5"""
+
+_SQL_NODE_BY_RELATION = """\
+SELECT n.label FROM kg_nodes n
+JOIN kg_edges e ON n.node_id = e.source_id
+WHERE e.relation = ?
+LIMIT 1"""
+
+_SQL_STRONG_LABELS = """\
+SELECT label
+FROM kg_nodes
+WHERE confidence >= 0.5"""
+
 
 def _extract_topic_phrases(text: str) -> list[str]:
     """Extract multi-word topic phrases (2-5 words) from a text string.
@@ -186,11 +222,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
             try:
                 cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
                 rows = conn.execute(
-                    """SELECT summary FROM records
-                       WHERE ts >= ? AND source = 'user'
-                       ORDER BY ts DESC
-                       LIMIT 30""",
-                    (cutoff,),
+                    _SQL_RECENT_SUMMARIES, (cutoff,),
                 ).fetchall()
                 for row in rows:
                     summary = row["summary"] or ""
@@ -211,16 +243,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
             try:
                 # 2a: Find nodes that have few outgoing edges (surface-level knowledge)
                 # These represent areas where we have facts but not much depth
-                sparse_rows = conn.execute(
-                    """SELECT n.label, COUNT(e.edge_id) AS edge_cnt
-                       FROM kg_nodes n
-                       LEFT JOIN kg_edges e ON n.node_id = e.source_id
-                       WHERE n.confidence >= 0.3
-                       GROUP BY n.node_id
-                       HAVING edge_cnt BETWEEN 0 AND 1
-                       ORDER BY n.updated_at DESC
-                       LIMIT 10""",
-                ).fetchall()
+                sparse_rows = conn.execute(_SQL_SPARSE_NODES).fetchall()
                 for row in sparse_rows:
                     label = row["label"] or ""
                     phrases = _extract_topic_phrases(label)
@@ -232,24 +255,13 @@ def _discover_harvest_topics(root: Path) -> list[str]:
 
                 # 2b: Find relation types with few instances — structural KG gaps
                 if len(candidates) < _MAX_TOPICS:
-                    rel_rows = conn.execute(
-                        """SELECT relation, COUNT(*) AS cnt
-                           FROM kg_edges
-                           GROUP BY relation
-                           HAVING cnt BETWEEN 1 AND 3
-                           ORDER BY cnt ASC
-                           LIMIT 5""",
-                    ).fetchall()
+                    rel_rows = conn.execute(_SQL_RARE_RELATIONS).fetchall()
                     for row in rel_rows:
                         relation = row["relation"] or ""
                         # Turn relation into a topic: "causes" -> look up nodes
                         # Find a node connected by this rare relation for context
                         node_row = conn.execute(
-                            """SELECT n.label FROM kg_nodes n
-                               JOIN kg_edges e ON n.node_id = e.source_id
-                               WHERE e.relation = ?
-                               LIMIT 1""",
-                            (relation,),
+                            _SQL_NODE_BY_RELATION, (relation,),
                         ).fetchone()
                         if node_row:
                             label = node_row["label"] or ""
@@ -268,30 +280,25 @@ def _discover_harvest_topics(root: Path) -> list[str]:
         # --- Source 3: Complementary topics — expand strong KG areas ---
         if conn is not None:
             try:
-                # Find the most populated topic areas (first 2-3 words of node labels)
-                strong_rows = conn.execute(
-                    """SELECT
-                         CASE
-                           WHEN INSTR(SUBSTR(label, INSTR(label || ' ', ' ') + 1), ' ') > 0
-                           THEN SUBSTR(label, 1,
-                                  INSTR(label || ' ', ' ')
-                                  + INSTR(SUBSTR(label, INSTR(label || ' ', ' ') + 1) || ' ', ' ') - 1)
-                           ELSE SUBSTR(label, 1, INSTR(label || ' ', ' ') - 1)
-                         END AS topic_prefix,
-                         COUNT(*) AS cnt
-                       FROM kg_nodes
-                       WHERE confidence >= 0.5
-                       GROUP BY topic_prefix
-                       HAVING cnt >= 5 AND LENGTH(topic_prefix) > 3
-                       ORDER BY cnt DESC
-                       LIMIT 5""",
-                ).fetchall()
+                # Fetch raw labels and extract first 2 word prefixes in Python
+                label_rows = conn.execute(_SQL_STRONG_LABELS).fetchall()
+                prefix_counts: dict[str, int] = {}
+                for row in label_rows:
+                    label = (row["label"] or "").strip()
+                    words = label.split()
+                    if len(words) >= 2:
+                        prefix = " ".join(words[:2])
+                        if len(prefix) > 3:
+                            prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+                # Keep prefixes with >= 5 nodes, sorted by count descending
+                strong_prefixes = sorted(
+                    ((p, c) for p, c in prefix_counts.items() if c >= 5),
+                    key=lambda x: x[1],
+                    reverse=True,
+                )[:5]
                 suffixes = ["best practices", "advanced techniques", "common patterns"]
                 suffix_idx = 0
-                for row in strong_rows:
-                    prefix = (row["topic_prefix"] or "").strip()
-                    if not prefix or len(prefix) < 3:
-                        continue
+                for prefix, _cnt in strong_prefixes:
                     expanded = f"{prefix} {suffixes[suffix_idx % len(suffixes)]}"
                     suffix_idx += 1
                     if _add_candidate(expanded):
