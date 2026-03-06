@@ -589,6 +589,59 @@ def _build_system_parts(
     return parts
 
 
+def _classify_and_route(
+    bus: Any,
+    text: str,
+    *,
+    default_route: str = "routine",
+    try_fallback_classifier: bool = False,
+) -> tuple[str, str]:
+    """Classify intent and select the target LLM model.
+
+    Shared by ``_web_augmented_llm_conversation`` and ``cmd_voice_run_impl``
+    to avoid duplicating the ~30-line classification + fallback chain.
+
+    Returns ``(route, llm_model)``.
+    """
+    llm_model: str | None = None
+    route: str = default_route
+    intent_cls = bus.ctx.intent_classifier
+    avail_models = None
+    gw = bus.ctx.gateway
+    if gw is not None:
+        avail_models = getattr(gw, "available_model_names", lambda: None)()
+    if intent_cls is not None:
+        try:
+            route, llm_model, conf = intent_cls.classify(text, available_models=avail_models)
+            logger.debug("Intent route: %s model=%s confidence=%.2f", route, llm_model, conf)
+        except Exception:
+            llm_model = None
+    if llm_model is None and try_fallback_classifier:
+        try:
+            from jarvis_engine.gateway.classifier import IntentClassifier
+
+            embed = bus.ctx.embed_service
+            if embed is not None:
+                cls = IntentClassifier(embed)
+                route, llm_model, conf = cls.classify(text, available_models=avail_models)
+                logger.debug("Fallback route: %s model=%s confidence=%.2f", route, llm_model, conf)
+        except Exception as exc:
+            logger.debug("Fallback IntentClassifier classification failed: %s", exc)
+    if llm_model is None:
+        if _is_privacy_sensitive(text):
+            llm_model = _get_local_model()
+            route = "simple_private"
+            logger.debug("Privacy fallback: classifier failed, forcing local for private query")
+        else:
+            for env_key, model_alias in _ENV_MODEL_PRIORITY:
+                if os.environ.get(env_key, ""):
+                    llm_model = model_alias
+                    break
+    if llm_model is None:
+        llm_model = _get_local_model()
+    return route, llm_model
+
+
 # ---------------------------------------------------------------------------
 # Extraction helpers for voice commands
 # ---------------------------------------------------------------------------
@@ -798,32 +851,7 @@ def _web_augmented_llm_conversation(
     system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
     # --- Intent classification + model routing ---
-    _llm_model: str | None = None
-    _route: str = "web_research"
-    _intent_cls = bus.ctx.intent_classifier
-    _avail_models = None
-    _gw = bus.ctx.gateway
-    if _gw is not None:
-        _avail_models = getattr(_gw, "available_model_names", lambda: None)()
-    if _intent_cls is not None:
-        try:
-            _route, _llm_model, _conf = _intent_cls.classify(text, available_models=_avail_models)
-            logger.debug("Web-augmented route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
-        except Exception:
-            _llm_model = None
-    if _llm_model is None:
-        # Privacy guard: if classifier failed, check privacy keywords
-        if _is_privacy_sensitive(text):
-            _llm_model = _get_local_model()
-            _route = "simple_private"
-            logger.debug("Privacy fallback: classifier failed, forcing local for private query")
-        else:
-            for _env_key, _model_alias in _ENV_MODEL_PRIORITY:
-                if os.environ.get(_env_key, ""):
-                    _llm_model = _model_alias
-                    break
-    if _llm_model is None:
-        _llm_model = _get_local_model()
+    _route, _llm_model = _classify_and_route(bus, text, default_route="web_research")
 
     # --- Web search (always performed for this code path) ---
     _web_searched = False
@@ -1639,43 +1667,9 @@ def cmd_voice_run_impl(
         system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
         # --- Intent classification + model routing (reuse bus classifier) ---
-        _llm_model: str | None = None
-        _route: str = "routine"
-        _intent_cls = bus.ctx.intent_classifier
-        _avail_models = None
-        _gw = bus.ctx.gateway
-        if _gw is not None:
-            _avail_models = getattr(_gw, "available_model_names", lambda: None)()
-        if _intent_cls is not None:
-            try:
-                _route, _llm_model, _conf = _intent_cls.classify(text, available_models=_avail_models)
-                logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
-            except Exception:
-                _llm_model = None
-        if _llm_model is None:
-            try:
-                from jarvis_engine.gateway.classifier import IntentClassifier
-                _embed = bus.ctx.embed_service
-                if _embed is not None:
-                    _cls = IntentClassifier(_embed)
-                    _route, _llm_model, _conf = _cls.classify(text, available_models=_avail_models)
-                    logger.debug("Conversation route: %s model=%s confidence=%.2f", _route, _llm_model, _conf)
-            except Exception as exc:
-                logger.debug("Fallback IntentClassifier classification failed: %s", exc)
-        if _llm_model is None:
-            # Privacy guard: if both classifiers failed, check privacy keywords
-            # manually to guarantee private queries never leave the device.
-            if _is_privacy_sensitive(text):
-                _llm_model = _get_local_model()
-                _route = "simple_private"
-                logger.debug("Privacy fallback: classifier failed, forcing local for private query")
-            else:
-                for _env_key, _model_alias in _ENV_MODEL_PRIORITY:
-                    if os.environ.get(_env_key, ""):
-                        _llm_model = _model_alias
-                        break
-        if _llm_model is None:
-            _llm_model = _get_local_model()
+        _route, _llm_model = _classify_and_route(
+            bus, text, default_route="routine", try_fallback_classifier=True,
+        )
 
         # --- Model override from widget Tab-cycling ---
         if model_override:
