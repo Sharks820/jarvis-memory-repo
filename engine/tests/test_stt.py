@@ -559,26 +559,73 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 22. Groq transcription computes real confidence from segment logprobs
+# 22-23, 29-31, 47, 49-50. Groq confidence calculation (parametrized)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize(
+    "response_json, expected_confidence",
+    [
+        pytest.param(
+            {"text": "hello jarvis", "language": "en",
+             "segments": [{"text": "hello jarvis", "start": 0.0, "end": 1.5, "avg_logprob": -0.15}]},
+            round(min(1.0, max(0.0, 1.0 + (-0.15))), 4),  # 0.85
+            id="single_segment_logprob",
+        ),
+        pytest.param(
+            {"text": "hello", "language": "en"},
+            0.90,
+            id="no_segments_key_fallback",
+        ),
+        pytest.param(
+            {"text": "hello world", "language": "en",
+             "segments": [
+                 {"text": "hello", "avg_logprob": -0.1, "no_speech_prob": 0.01},
+                 {"text": "world", "avg_logprob": -0.2, "no_speech_prob": 0.03},
+             ]},
+            round(min(1.0, max(0.0, 1.0 + (-0.15))), 4),  # avg(-0.1,-0.2) = -0.15 -> 0.85
+            id="multi_segment_averaged",
+        ),
+        pytest.param(
+            {"text": "hello", "language": "en", "segments": []},
+            0.90,
+            id="empty_segments_list_fallback",
+        ),
+        pytest.param(
+            {"text": "hello", "language": "en",
+             "segments": [{"text": "hello"}]},  # no avg_logprob
+            0.90,
+            id="segments_without_logprobs_fallback",
+        ),
+        pytest.param(
+            {"text": "noise", "language": "en",
+             "segments": [{"text": "noise", "avg_logprob": -100.0, "no_speech_prob": 0.0}]},
+            0.0,  # 1.0 + (-100) clamped to 0.0
+            id="extreme_logprob_clamped_to_zero",
+        ),
+        pytest.param(
+            {"text": "test", "language": "en",
+             "segments": [{"text": "test", "avg_logprob": float("nan"), "no_speech_prob": 0.0}]},
+            0.90,  # NaN skipped -> no valid logprobs -> fallback
+            id="nan_logprob_skipped_fallback",
+        ),
+        pytest.param(
+            {"text": "maybe noise", "language": "en",
+             "segments": [{"text": "maybe noise", "avg_logprob": -0.1, "no_speech_prob": 0.9}]},
+            round(min(1.0, max(0.0, 1.0 + (-0.1))) * (1.0 - 0.9), 4),  # 0.9 * 0.1 = 0.09
+            id="high_no_speech_prob_penalty",
+        ),
+    ],
+)
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_transcription_real_confidence() -> None:
-    """transcribe_groq extracts confidence from segment avg_logprob."""
+def test_groq_confidence_calculation(response_json, expected_confidence) -> None:
+    """transcribe_groq computes confidence correctly from various segment configurations."""
     from jarvis_engine.stt import transcribe_groq
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    # Simulate a Groq verbose_json response with segments
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "hello jarvis",
-        "language": "en",
-        "segments": [
-            {"text": "hello jarvis", "start": 0.0, "end": 1.5, "avg_logprob": -0.15},
-        ],
-    }
+    mock_response.json.return_value = response_json
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -589,43 +636,9 @@ def test_groq_transcription_real_confidence() -> None:
 
         result = transcribe_groq(fake_audio)
 
-    assert result.text == "hello jarvis"
+    assert result.text == response_json["text"]
     assert result.backend == "groq-whisper"
-    # Confidence from min(1.0, max(0.0, 1.0 + avg_logprob))
-    # = min(1.0, max(0.0, 1.0 + (-0.15))) = 0.85
-    expected = round(min(1.0, max(0.0, 1.0 + (-0.15))), 4)
-    assert result.confidence == expected
-
-
-# ---------------------------------------------------------------------------
-# 23. Groq transcription falls back when no segments returned
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_transcription_no_segments_fallback() -> None:
-    """When Groq returns no segments, confidence falls back to 0.85."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "hello",
-        "language": "en",
-        # No segments field
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    assert result.confidence == 0.90
+    assert result.confidence == expected_confidence
 
 
 # ===========================================================================
@@ -803,105 +816,7 @@ def test_groq_transcription_custom_prompt() -> None:
         assert len(data_arg["prompt"]) == 224
 
 
-# ---------------------------------------------------------------------------
-# 29. Groq confidence with multiple segments
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_confidence_multi_segment() -> None:
-    """Confidence is averaged across multiple segments."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "hello world",
-        "language": "en",
-        "segments": [
-            {"text": "hello", "avg_logprob": -0.1, "no_speech_prob": 0.01},
-            {"text": "world", "avg_logprob": -0.2, "no_speech_prob": 0.03},
-        ],
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    avg_logprob = (-0.1 + -0.2) / 2  # = -0.15
-    expected = round(min(1.0, max(0.0, 1.0 + avg_logprob)), 4)  # = 0.85
-    assert result.confidence == expected
-
-
-# ---------------------------------------------------------------------------
-# 30. Groq confidence with empty segments list
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_confidence_empty_segments_list() -> None:
-    """Empty segments list falls back to 0.90 confidence."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "hello",
-        "language": "en",
-        "segments": [],
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    assert result.confidence == 0.90
-
-
-# ---------------------------------------------------------------------------
-# 31. Groq confidence with segments missing logprobs
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_confidence_segments_without_logprobs() -> None:
-    """Segments without avg_logprob use 0.85 fallback."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "hello",
-        "language": "en",
-        "segments": [
-            {"text": "hello"},  # no avg_logprob or no_speech_prob
-        ],
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    # Segments present but no logprobs => fallback
-    assert result.confidence == 0.90
+# (Tests 29-31 consolidated into test_groq_confidence_calculation above)
 
 
 # ---------------------------------------------------------------------------
@@ -1254,38 +1169,7 @@ def test_listen_and_transcribe_uses_transcribe_smart() -> None:
     assert result.text == "hello"
 
 
-# ---------------------------------------------------------------------------
-# 47. Groq confidence clamps extreme logprobs
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_confidence_extreme_logprob_clamping() -> None:
-    """Very negative avg_logprob is clamped to -5.0 before exp()."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "noise",
-        "language": "en",
-        "segments": [
-            {"text": "noise", "avg_logprob": -100.0, "no_speech_prob": 0.0},
-        ],
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    # 1.0 + (-100) = -99, clamped to 0.0 by max(0.0, ...)
-    assert result.confidence == 0.0
+# (Test 47 consolidated into test_groq_confidence_calculation above)
 
 
 # ---------------------------------------------------------------------------
@@ -1301,75 +1185,7 @@ def test_transcription_result_backend_field() -> None:
     assert isinstance(r.retried, bool)
 
 
-# ---------------------------------------------------------------------------
-# 49. Groq confidence with non-finite logprobs
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_confidence_skips_non_finite_logprobs() -> None:
-    """Non-finite avg_logprob values are skipped."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "test",
-        "language": "en",
-        "segments": [
-            {"text": "test", "avg_logprob": float("nan"), "no_speech_prob": 0.0},
-        ],
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    # NaN is skipped, so no logprobs available -> fallback to 0.90
-    assert result.confidence == 0.90
-
-
-# ---------------------------------------------------------------------------
-# 50. Groq transcription with high no_speech_prob
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_groq_confidence_high_no_speech_penalty() -> None:
-    """High no_speech_prob reduces confidence."""
-    from jarvis_engine.stt import transcribe_groq
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "text": "maybe noise",
-        "language": "en",
-        "segments": [
-            {"text": "maybe noise", "avg_logprob": -0.1, "no_speech_prob": 0.9},
-        ],
-    }
-
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = mock_response
-        mock_client_cls.return_value = mock_client
-
-        result = transcribe_groq(fake_audio)
-
-    # Confidence = (1.0 + avg_logprob) * (1.0 - no_speech_prob) when no_speech_prob > 0.5
-    # = 0.9 * (1.0 - 0.9) = 0.9 * 0.1 = 0.09
-    base_conf = min(1.0, max(0.0, 1.0 + (-0.1)))  # = 0.9
-    expected = round(base_conf * (1.0 - 0.9), 4)    # = 0.09
-    assert result.confidence == expected
+# (Tests 49-50 consolidated into test_groq_confidence_calculation above)
 
 
 # ---------------------------------------------------------------------------
@@ -2277,21 +2093,27 @@ def _reset_parakeet_global():
 
 
 # ---------------------------------------------------------------------------
-# P1. test_try_parakeet_success
+# P1/P4/P8. test_try_parakeet result assertions (parametrized)
 # ---------------------------------------------------------------------------
 
-def test_try_parakeet_success():
-    """Mock onnx_asr.load_model to return a mock model that transcribes successfully."""
+@pytest.mark.parametrize(
+    "mock_text, expected_text, expected_confidence",
+    [
+        pytest.param("Hello world", "Hello world", 0.94, id="success_baseline_confidence"),
+        pytest.param("", "", 0.0, id="empty_text_zero_confidence"),
+        pytest.param("some transcription", "some transcription", 0.94, id="non_empty_baseline_confidence"),
+    ],
+)
+def test_try_parakeet_result(mock_text, expected_text, expected_confidence):
+    """_try_parakeet returns correct text, confidence, and backend for various inputs."""
     _reset_parakeet_global()
 
     from jarvis_engine.stt import _try_parakeet
 
     mock_model = MagicMock()
-    # .with_timestamps() returns itself (timestamps available)
     mock_model.with_timestamps.return_value = mock_model
-    # recognize() returns an object whose str() is "Hello world"
     mock_result = MagicMock()
-    mock_result.__str__ = lambda self: "Hello world"
+    mock_result.__str__ = lambda self: mock_text
     mock_result.__bool__ = lambda self: True
     mock_result.tokens = None  # No log probs -> baseline confidence
     mock_model.recognize.return_value = mock_result
@@ -2303,9 +2125,9 @@ def test_try_parakeet_success():
         result = _try_parakeet(np.zeros(16000, dtype=np.float32), language="en")
 
     assert result is not None
-    assert result.text == "Hello world"
+    assert result.text == expected_text
     assert result.backend == "parakeet-tdt"
-    assert result.confidence > 0
+    assert result.confidence == expected_confidence
     assert result.duration_seconds >= 0.0
 
 
@@ -2352,34 +2174,7 @@ def test_try_parakeet_model_error():
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# P4. test_try_parakeet_empty_result
-# ---------------------------------------------------------------------------
-
-def test_try_parakeet_empty_result():
-    """When model returns empty text, result has text='' and confidence=0.0."""
-    _reset_parakeet_global()
-
-    from jarvis_engine.stt import _try_parakeet
-
-    mock_model = MagicMock()
-    mock_model.with_timestamps.return_value = mock_model
-    mock_result = MagicMock()
-    mock_result.__str__ = lambda self: ""
-    mock_result.__bool__ = lambda self: True
-    mock_result.tokens = None
-    mock_model.recognize.return_value = mock_result
-
-    mock_onnx_asr = MagicMock()
-    mock_onnx_asr.load_model.return_value = mock_model
-
-    with patch.dict("sys.modules", {"onnx_asr": mock_onnx_asr}):
-        result = _try_parakeet(np.zeros(16000, dtype=np.float32), language="en")
-
-    assert result is not None
-    assert result.text == ""
-    assert result.confidence == 0.0
-    assert result.backend == "parakeet-tdt"
+# (P4 consolidated into test_try_parakeet_result above)
 
 
 # ---------------------------------------------------------------------------
@@ -2474,33 +2269,7 @@ def test_try_parakeet_lazy_model_load():
     mock_onnx_asr.load_model.assert_called_once_with("nemo-parakeet-tdt-0.6b-v2")
 
 
-# ---------------------------------------------------------------------------
-# P8. test_try_parakeet_confidence_baseline
-# ---------------------------------------------------------------------------
-
-def test_try_parakeet_confidence_baseline():
-    """When no log probs are available, confidence should be 0.94 (Parakeet baseline WER)."""
-    _reset_parakeet_global()
-
-    from jarvis_engine.stt import _try_parakeet
-
-    mock_model = MagicMock()
-    mock_model.with_timestamps.return_value = mock_model
-    mock_result = MagicMock()
-    mock_result.__str__ = lambda self: "some transcription"
-    mock_result.__bool__ = lambda self: True
-    mock_result.tokens = None  # No tokens -> no log probs -> baseline
-    mock_model.recognize.return_value = mock_result
-
-    mock_onnx_asr = MagicMock()
-    mock_onnx_asr.load_model.return_value = mock_model
-
-    with patch.dict("sys.modules", {"onnx_asr": mock_onnx_asr}):
-        result = _try_parakeet(np.zeros(16000, dtype=np.float32), language="en")
-
-    assert result is not None
-    assert result.confidence == 0.94
-    assert result.backend == "parakeet-tdt"
+# (P8 consolidated into test_try_parakeet_result above)
 
 
 # ===========================================================================
@@ -3113,106 +2882,66 @@ def test_full_pipeline_parakeet_happy_path():
 
 
 # ---------------------------------------------------------------------------
-# INT-2. test_full_pipeline_fallback_to_deepgram
+# INT-2/3/4. Full pipeline fallback to specific backend (parametrized)
 # ---------------------------------------------------------------------------
 
-@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "fake-dg", "JARVIS_STT_BACKEND": "auto"}, clear=False)
-def test_full_pipeline_fallback_to_deepgram():
-    """Parakeet fails (returns None), Deepgram succeeds.  Verifies correct fallback."""
+@pytest.mark.parametrize(
+    "env_vars, expected_text, expected_backend, expected_confidence, "
+    "pk_return, dg_return, groq_return, local_return",
+    [
+        pytest.param(
+            {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "fake-dg", "JARVIS_STT_BACKEND": "auto"},
+            "set a timer for five minutes", "deepgram-nova3", 0.92,
+            None, "winner", None, None,
+            id="fallback_to_deepgram",
+        ),
+        pytest.param(
+            {"GROQ_API_KEY": "fake-key", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"},
+            "what time is it", "groq-whisper", 0.88,
+            None, None, "winner", None,
+            id="fallback_to_groq",
+        ),
+        pytest.param(
+            {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"},
+            "brain status", "faster-whisper", 0.75,
+            None, None, None, "winner",
+            id="fallback_to_emergency_local",
+        ),
+    ],
+)
+def test_full_pipeline_fallback_to_backend(
+    env_vars, expected_text, expected_backend, expected_confidence,
+    pk_return, dg_return, groq_return, local_return,
+) -> None:
+    """Earlier backends fail (return None), correct fallback backend succeeds."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    deepgram_result = TranscriptionResult(
-        text="set a timer for five minutes",
+    success_result = TranscriptionResult(
+        text=expected_text,
         language="en",
-        confidence=0.92,
-        duration_seconds=0.8,
-        backend="deepgram-nova3",
+        confidence=expected_confidence,
+        duration_seconds=1.0,
+        backend=expected_backend,
     )
 
-    with patch("jarvis_engine.stt._try_parakeet", return_value=None) as mock_pk, \
-         patch("jarvis_engine.stt._try_deepgram", return_value=deepgram_result) as mock_dg, \
-         patch("jarvis_engine.stt._try_groq") as mock_groq, \
-         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
+    # Replace "winner" sentinel with the actual result, keep None as None
+    def _resolve(val):
+        return success_result if val == "winner" else val
+
+    with patch.dict("os.environ", env_vars, clear=False), \
+         patch("jarvis_engine.stt._try_parakeet", return_value=_resolve(pk_return)), \
+         patch("jarvis_engine.stt._try_deepgram", return_value=_resolve(dg_return)), \
+         patch("jarvis_engine.stt._try_groq", return_value=_resolve(groq_return)), \
+         patch("jarvis_engine.stt._try_local_emergency", return_value=_resolve(local_return)), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
         result = transcribe_smart(fake_audio)
 
-    assert result.text == "set a timer for five minutes"
-    assert result.backend == "deepgram-nova3"
-    # Parakeet tried first, then Deepgram
-    mock_pk.assert_called_once()
-    mock_dg.assert_called_once()
-    # Groq and local never needed
-    mock_groq.assert_not_called()
-    mock_local.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# INT-3. test_full_pipeline_fallback_to_groq
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
-def test_full_pipeline_fallback_to_groq():
-    """Parakeet fails, Deepgram fails (no API key), Groq succeeds."""
-    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    groq_result = TranscriptionResult(
-        text="what time is it",
-        language="en",
-        confidence=0.88,
-        duration_seconds=1.2,
-        backend="groq-whisper",
-    )
-
-    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
-         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
-         patch("jarvis_engine.stt._try_groq", return_value=groq_result) as mock_groq, \
-         patch("jarvis_engine.stt._try_local_emergency") as mock_local, \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
-        result = transcribe_smart(fake_audio)
-
-    assert result.text == "what time is it"
-    assert result.backend == "groq-whisper"
-    assert result.confidence == 0.88
-    mock_groq.assert_called_once()
-    mock_local.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# INT-4. test_full_pipeline_emergency_local
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "", "DEEPGRAM_API_KEY": "", "JARVIS_STT_BACKEND": "auto"}, clear=False)
-def test_full_pipeline_emergency_local():
-    """All cloud/parakeet fail, faster-whisper large-v3 emergency fallback succeeds."""
-    from jarvis_engine.stt import TranscriptionResult, transcribe_smart
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    emergency_result = TranscriptionResult(
-        text="brain status",
-        language="en",
-        confidence=0.75,
-        duration_seconds=3.0,
-        backend="faster-whisper",
-    )
-
-    with patch("jarvis_engine.stt._try_parakeet", return_value=None), \
-         patch("jarvis_engine.stt._try_deepgram", return_value=None), \
-         patch("jarvis_engine.stt._try_groq", return_value=None), \
-         patch("jarvis_engine.stt._try_local_emergency", return_value=emergency_result), \
-         patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
-         patch("jarvis_engine.stt_postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t):
-        result = transcribe_smart(fake_audio)
-
-    assert result.text == "brain status"
-    assert result.backend == "faster-whisper"
-    assert result.confidence == 0.75
+    assert result.text == expected_text
+    assert result.backend == expected_backend
+    assert result.confidence == expected_confidence
 
 
 # ---------------------------------------------------------------------------

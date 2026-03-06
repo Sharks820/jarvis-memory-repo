@@ -52,7 +52,7 @@ class CommandRoutesMixin:
                 )
             finally:
                 _thread_local.repo_root_override = None
-        except Exception as exc:
+        except (ImportError, RuntimeError, ValueError, TypeError, OSError) as exc:
             logger.debug("Best-effort command learning fallback failed: %s", exc)
 
     def _handle_post_command(self) -> None:
@@ -130,7 +130,7 @@ class CommandRoutesMixin:
                 _vp_mod._conversation_history_loaded = True
             try:
                 _vp_mod.save_conversation_history()
-            except Exception as save_exc:
+            except (OSError, ValueError, TypeError) as save_exc:
                 logger.debug("Conversation history save-after-clear failed: %s", save_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
         except Exception as exc:
@@ -180,7 +180,7 @@ class CommandRoutesMixin:
                     if rec:
                         contact_context = str(rec.get("summary", ""))[:200]
                         break
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Contact context memory lookup failed: %s", exc)
         self._write_json(HTTPStatus.OK, {
             "ok": True,
@@ -306,7 +306,7 @@ class CommandRoutesMixin:
             from jarvis_engine.proactive.alert_queue import peek_alerts
 
             digest["proactive_alerts"] = peek_alerts(self._root, limit=10)
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
             logger.debug("Peek alerts for digest failed: %s", exc)
         try:
             snapshot_path = self._root / ".planning" / _OPS_SNAPSHOT_FILENAME
@@ -338,7 +338,7 @@ class CommandRoutesMixin:
                         logger.debug("Skipping calendar event with invalid date")
                         continue
                 digest["calendar_upcoming"] = upcoming[:5]
-        except Exception as exc:
+        except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Calendar upcoming for digest failed: %s", exc)
         if context_label:
             try:
@@ -349,7 +349,7 @@ class CommandRoutesMixin:
                 result = bus.dispatch(OpsBriefCommand())
                 if hasattr(result, "brief") and result.brief:
                     digest["notifications_summary"] = result.brief[:1000]
-            except Exception as exc:
+            except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
                 logger.debug("Ops brief for digest failed: %s", exc)
         self._write_json(HTTPStatus.OK, {"ok": True, "digest": digest})
 
@@ -388,7 +388,7 @@ class CommandRoutesMixin:
                                     "fact": fact.get("label", ""),
                                     "confidence": round(float(fact.get("confidence", 0)), 2),
                                 })
-                        except Exception as exc:
+                        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
                             logger.debug("KG person fact lookup failed for %s: %s", person, exc)
                     if title:
                         try:
@@ -399,7 +399,7 @@ class CommandRoutesMixin:
                                     "fact": fact.get("label", ""),
                                     "confidence": round(float(fact.get("confidence", 0)), 2),
                                 })
-                        except Exception as exc:
+                        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
                             logger.debug("KG topic fact lookup failed: %s", exc)
                 keywords = attendees + ([title] if title else [])
                 for keyword in keywords[:3]:
@@ -413,9 +413,9 @@ class CommandRoutesMixin:
                                     "summary": str(rec.get("summary", ""))[:200],
                                     "date": str(rec.get("ts", "")),
                                 })
-                    except Exception as exc:
+                    except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
                         logger.debug("Memory search for meeting keyword %s failed: %s", keyword, exc)
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Meeting prep KG query failed: %s", exc)
         if briefing["context_facts"] or briefing["recent_memories"]:
             topics = set()

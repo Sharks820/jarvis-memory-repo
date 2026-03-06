@@ -329,8 +329,21 @@ def test_concurrent_ingest_writes_are_jsonl_safe(mobile_server) -> None:
         assert parsed["event_type"].startswith("ingest:user:")
 
 
-def test_settings_requires_auth(mobile_server) -> None:
-    code, _ = http_request("GET", f"{mobile_server.base_url}/settings")
+@pytest.mark.parametrize(
+    "method, path",
+    [
+        pytest.param("GET", "/settings", id="settings"),
+        pytest.param("GET", "/dashboard", id="dashboard"),
+        pytest.param("GET", "/audit", id="audit"),
+        pytest.param("GET", "/processes", id="processes"),
+        pytest.param("GET", "/intelligence/growth", id="intelligence_growth"),
+        pytest.param("GET", "/missions/status", id="missions_status"),
+        pytest.param("GET", "/sync/status", id="sync_status"),
+    ],
+)
+def test_endpoint_requires_auth(mobile_server, method, path) -> None:
+    """Endpoints that require HMAC auth return 401 without credentials."""
+    code, _ = http_request(method, f"{mobile_server.base_url}{path}")
     assert code == 401
 
 
@@ -402,11 +415,6 @@ def test_quick_panel_endpoint_serves_html(mobile_server) -> None:
     code, body = http_request("GET", f"{mobile_server.base_url}/quick")
     assert code == 200
     assert b"quick" in body
-
-
-def test_dashboard_endpoint_requires_auth(mobile_server) -> None:
-    code, _ = http_request("GET", f"{mobile_server.base_url}/dashboard")
-    assert code == 401
 
 
 def test_dashboard_endpoint_returns_payload(mobile_server) -> None:
@@ -704,12 +712,6 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_audit_endpoint_requires_auth(mobile_server) -> None:
-    """GET /audit without auth should return 401."""
-    code, _ = http_request("GET", f"{mobile_server.base_url}/audit")
-    assert code == 401
-
-
 def test_audit_endpoint_returns_empty_when_no_file(mobile_server) -> None:
     """GET /audit with auth should return empty list if no audit file."""
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
@@ -967,12 +969,6 @@ def test_sync_status_returns_503_when_unavailable(mobile_server) -> None:
     assert "not available" in resp["error"].lower()
 
 
-def test_sync_status_requires_auth(mobile_server) -> None:
-    """GET /sync/status without auth returns 401."""
-    code, _ = http_request("GET", f"{mobile_server.base_url}/sync/status")
-    assert code == 401
-
-
 def test_sync_status_handles_engine_exception(mobile_server) -> None:
     """GET /sync/status returns 500 when engine raises."""
 
@@ -1045,21 +1041,26 @@ def test_cors_blocks_unknown_origin(mobile_server) -> None:
     conn.close()
 
 
-def test_is_cors_origin_allowed_patterns(mobile_server) -> None:
+@pytest.mark.parametrize(
+    "origin, expected",
+    [
+        pytest.param("http://localhost", True, id="localhost_no_port"),
+        pytest.param("http://localhost:3000", True, id="localhost_port_3000"),
+        pytest.param("https://localhost:443", True, id="localhost_https"),
+        pytest.param("http://127.0.0.1", True, id="ipv4_loopback"),
+        pytest.param("http://127.0.0.1:8787", True, id="ipv4_loopback_port"),
+        pytest.param("http://[::1]", True, id="ipv6_loopback"),
+        pytest.param("http://[::1]:8080", True, id="ipv6_loopback_port"),
+        pytest.param("file:///C:/Users/test/page.html", True, id="file_windows"),
+        pytest.param("file:///home/user/page.html", False, id="file_unix_rejected"),
+        pytest.param("https://evil.com", False, id="evil_domain"),
+        pytest.param("http://192.168.1.100", False, id="lan_ip_rejected"),
+        pytest.param("", False, id="empty_string"),
+    ],
+)
+def test_is_cors_origin_allowed_patterns(mobile_server, origin, expected) -> None:
     """is_cors_origin_allowed returns correct results for various origins."""
-    server = mobile_server.server
-    assert server.is_cors_origin_allowed("http://localhost") is True
-    assert server.is_cors_origin_allowed("http://localhost:3000") is True
-    assert server.is_cors_origin_allowed("https://localhost:443") is True
-    assert server.is_cors_origin_allowed("http://127.0.0.1") is True
-    assert server.is_cors_origin_allowed("http://127.0.0.1:8787") is True
-    assert server.is_cors_origin_allowed("http://[::1]") is True
-    assert server.is_cors_origin_allowed("http://[::1]:8080") is True
-    assert server.is_cors_origin_allowed("file:///C:/Users/test/page.html") is True
-    assert server.is_cors_origin_allowed("file:///home/user/page.html") is False  # Unix path rejected
-    assert server.is_cors_origin_allowed("https://evil.com") is False
-    assert server.is_cors_origin_allowed("http://192.168.1.100") is False
-    assert server.is_cors_origin_allowed("") is False
+    assert mobile_server.server.is_cors_origin_allowed(origin) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -1562,47 +1563,49 @@ class TestNoncePersistence:
 # ---------------------------------------------------------------------------
 
 
-def test_parse_bool_true_values() -> None:
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(True, id="bool_true"),
+        pytest.param("true", id="str_true_lower"),
+        pytest.param("True", id="str_true_title"),
+        pytest.param("TRUE", id="str_true_upper"),
+        pytest.param("1", id="str_one"),
+        pytest.param("yes", id="str_yes"),
+        pytest.param("  YES  ", id="str_yes_whitespace"),
+        pytest.param(1, id="int_one"),
+        pytest.param(42, id="int_nonzero"),
+        pytest.param([1], id="nonempty_list"),
+    ],
+)
+def test_parse_bool_true_values(value) -> None:
     """_parse_bool returns True for truthy inputs."""
-    assert mobile_api._parse_bool(True) is True
-    assert mobile_api._parse_bool("true") is True
-    assert mobile_api._parse_bool("True") is True
-    assert mobile_api._parse_bool("TRUE") is True
-    assert mobile_api._parse_bool("1") is True
-    assert mobile_api._parse_bool("yes") is True
-    assert mobile_api._parse_bool("  YES  ") is True
+    assert mobile_api._parse_bool(value) is True
 
 
-def test_parse_bool_false_values() -> None:
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(False, id="bool_false"),
+        pytest.param("false", id="str_false_lower"),
+        pytest.param("False", id="str_false_title"),
+        pytest.param("0", id="str_zero"),
+        pytest.param("no", id="str_no"),
+        pytest.param("", id="str_empty"),
+        pytest.param("random", id="str_random"),
+        pytest.param(0, id="int_zero"),
+        pytest.param(None, id="none"),
+        pytest.param([], id="empty_list"),
+    ],
+)
+def test_parse_bool_false_values(value) -> None:
     """_parse_bool returns False for falsy inputs."""
-    assert mobile_api._parse_bool(False) is False
-    assert mobile_api._parse_bool("false") is False
-    assert mobile_api._parse_bool("False") is False
-    assert mobile_api._parse_bool("0") is False
-    assert mobile_api._parse_bool("no") is False
-    assert mobile_api._parse_bool("") is False
-    assert mobile_api._parse_bool("random") is False
-
-
-def test_parse_bool_non_string_non_bool() -> None:
-    """_parse_bool casts non-string/non-bool via bool()."""
-    assert mobile_api._parse_bool(1) is True
-    assert mobile_api._parse_bool(0) is False
-    assert mobile_api._parse_bool(42) is True
-    assert mobile_api._parse_bool(None) is False
-    assert mobile_api._parse_bool([]) is False
-    assert mobile_api._parse_bool([1]) is True
+    assert mobile_api._parse_bool(value) is False
 
 
 # ---------------------------------------------------------------------------
 # Security Fix 2: /processes requires authentication
 # ---------------------------------------------------------------------------
-
-
-def test_processes_endpoint_requires_auth(mobile_server) -> None:
-    """GET /processes without auth should return 401."""
-    code, _ = http_request("GET", f"{mobile_server.base_url}/processes")
-    assert code == 401
 
 
 def test_processes_endpoint_rejects_invalid_bearer(mobile_server) -> None:
@@ -1796,12 +1799,6 @@ def test_master_password_rate_limiter_allows_normal_usage(mobile_server) -> None
 # ---------------------------------------------------------------------------
 # /intelligence/growth endpoint
 # ---------------------------------------------------------------------------
-
-
-def test_intelligence_growth_requires_auth(mobile_server) -> None:
-    """GET /intelligence/growth without auth should return 401."""
-    code, _ = http_request("GET", f"{mobile_server.base_url}/intelligence/growth")
-    assert code == 401
 
 
 def test_intelligence_growth_returns_metrics_structure(mobile_server) -> None:
@@ -2020,12 +2017,6 @@ def test_missions_create_with_objective_and_sources(mobile_server, monkeypatch) 
     assert cmd.topic == "rust async patterns"
     assert cmd.objective == "Learn tokio runtime internals"
     assert cmd.sources == ["google", "official_docs"]
-
-
-def test_missions_status_requires_auth(mobile_server) -> None:
-    """GET /missions/status without auth should return 401."""
-    code, _ = http_request("GET", f"{mobile_server.base_url}/missions/status")
-    assert code == 401
 
 
 def test_missions_status_returns_structure(mobile_server, monkeypatch) -> None:

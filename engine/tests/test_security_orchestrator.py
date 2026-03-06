@@ -36,26 +36,32 @@ def orchestrator(_db, _lock, tmp_path):
 class TestInstantiation:
     """All sub-modules should be created during init."""
 
-    def test_sub_modules_exist(self, orchestrator):
-        assert orchestrator._threat_detector is not None
-        assert orchestrator._injection_firewall is not None
-        assert orchestrator._output_scanner is not None
-        assert orchestrator._honeypot is not None
-        assert orchestrator._containment is not None
-        assert orchestrator._alert_chain is not None
-        assert orchestrator._attack_memory is not None
-        assert orchestrator._adaptive_defense is not None
-        assert orchestrator._forensic_logger is not None
-        assert orchestrator._ip_tracker is not None
+    @pytest.mark.parametrize(
+        "attr",
+        [
+            pytest.param("_threat_detector", id="threat_detector"),
+            pytest.param("_injection_firewall", id="injection_firewall"),
+            pytest.param("_output_scanner", id="output_scanner"),
+            pytest.param("_honeypot", id="honeypot"),
+            pytest.param("_containment", id="containment"),
+            pytest.param("_alert_chain", id="alert_chain"),
+            pytest.param("_attack_memory", id="attack_memory"),
+            pytest.param("_adaptive_defense", id="adaptive_defense"),
+            pytest.param("_forensic_logger", id="forensic_logger"),
+            pytest.param("_ip_tracker", id="ip_tracker"),
+            pytest.param("action_auditor", id="action_auditor"),
+            pytest.param("scope_enforcer", id="scope_enforcer"),
+            pytest.param("resource_monitor", id="resource_monitor"),
+            pytest.param("threat_intel", id="threat_intel"),
+            pytest.param("threat_neutralizer", id="threat_neutralizer"),
+        ],
+    )
+    def test_sub_module_exists(self, orchestrator, attr):
+        """Each security sub-module should be instantiated during init."""
+        assert getattr(orchestrator, attr) is not None
 
-    def test_new_modules_exist(self, orchestrator):
-        """New modules should be instantiated when imports succeed."""
-        assert orchestrator.action_auditor is not None
-        assert orchestrator.scope_enforcer is not None
-        assert orchestrator.resource_monitor is not None
-        assert orchestrator.threat_intel is not None
-        assert orchestrator.threat_neutralizer is not None
-        # owner_session is set externally by the server after construction
+    def test_owner_session_none_before_injection(self, orchestrator):
+        """owner_session is set externally by the server after construction."""
         assert orchestrator.owner_session is None
 
     def test_forensic_log_dir_created(self, orchestrator, tmp_path):
@@ -160,21 +166,25 @@ class TestScanOutput:
 class TestStatus:
     """Status report should include key metrics."""
 
-    def test_status_returns_expected_keys(self, orchestrator):
+    @pytest.mark.parametrize(
+        "key",
+        [
+            pytest.param("containment_level", id="containment_level"),
+            pytest.param("total_threats", id="total_threats"),
+            pytest.param("blocked_ips", id="blocked_ips"),
+            pytest.param("honeypot_stats", id="honeypot_stats"),
+            pytest.param("adaptive_defense", id="adaptive_defense"),
+            pytest.param("action_auditor", id="action_auditor"),
+            pytest.param("scope_enforcer_violations", id="scope_enforcer_violations"),
+            pytest.param("resource_monitor", id="resource_monitor"),
+            pytest.param("threat_intel", id="threat_intel"),
+            pytest.param("threat_neutralizer", id="threat_neutralizer"),
+        ],
+    )
+    def test_status_returns_expected_key(self, orchestrator, key):
+        """status() includes all expected top-level keys."""
         status = orchestrator.status()
-        # Original keys
-        assert "containment_level" in status
-        assert "total_threats" in status
-        assert "blocked_ips" in status
-        assert "honeypot_stats" in status
-        assert "adaptive_defense" in status
-        # New module keys
-        assert "action_auditor" in status
-        assert "scope_enforcer_violations" in status
-        assert "resource_monitor" in status
-        assert "threat_intel" in status
-        assert "threat_neutralizer" in status
-        # owner_session is only included when set externally by the server
+        assert key in status
 
     def test_status_after_honeypot_hit(self, orchestrator):
         orchestrator.check_request(
@@ -191,21 +201,19 @@ class TestStatus:
         status = orchestrator.status()
         assert status["containment_level"] == 0
 
-    def test_status_action_auditor_summary(self, orchestrator):
-        """Action auditor summary should include total_actions key."""
+    @pytest.mark.parametrize(
+        "section, expected_key",
+        [
+            pytest.param("action_auditor", "total_actions", id="auditor_total_actions"),
+            pytest.param("resource_monitor", "metrics", id="resource_metrics"),
+            pytest.param("resource_monitor", "anomalies", id="resource_anomalies"),
+            pytest.param("threat_intel", "cache_size", id="threat_intel_cache"),
+        ],
+    )
+    def test_status_section_has_expected_key(self, orchestrator, section, expected_key):
+        """Each status section includes its expected sub-keys."""
         status = orchestrator.status()
-        assert "total_actions" in status["action_auditor"]
-
-    def test_status_resource_monitor_has_metrics(self, orchestrator):
-        """Resource monitor status should have expected keys."""
-        status = orchestrator.status()
-        assert "metrics" in status["resource_monitor"]
-        assert "anomalies" in status["resource_monitor"]
-
-    def test_status_threat_intel_has_cache(self, orchestrator):
-        """Threat intel status should have cache_size."""
-        status = orchestrator.status()
-        assert "cache_size" in status["threat_intel"]
+        assert expected_key in status[section]
 
     def test_status_owner_session_absent_when_not_set(self, orchestrator):
         """Owner session key absent when no session manager injected."""

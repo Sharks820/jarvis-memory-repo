@@ -227,7 +227,7 @@ class IntelligenceRoutesMixin:
                 summary["current_context"] = ut.predict_context(now.hour, now.weekday())
             except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
                 logger.debug("Learning summary: usage patterns unavailable: %s", exc)
-        except Exception as exc:
+        except (ImportError, sqlite3.Error, OSError, ValueError, TypeError) as exc:
             logger.debug("Learning summary: DB unavailable: %s", exc)
         finally:
             if lrn_db is not None:
