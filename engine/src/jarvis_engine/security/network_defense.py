@@ -16,6 +16,7 @@ import logging
 import math
 import re
 import subprocess
+from subprocess import SubprocessError
 import sys
 import threading
 import time
@@ -87,8 +88,8 @@ def _run_command(args: list[str]) -> str:
             args, capture_output=True, text=True, timeout=30,
         )
         return result.stdout or ""
-    except Exception:
-        logger.debug("Command %s failed", args, exc_info=True)
+    except (OSError, SubprocessError) as exc:
+        logger.debug("Command %s failed: %s", args, exc)
         return ""
 
 
@@ -121,8 +122,8 @@ class KnownDeviceRegistry:
                 data = json.loads(raw)
                 if isinstance(data, dict):
                     self._devices = data
-            except Exception:
-                logger.warning("Failed to load device registry from %s", self._path, exc_info=True)
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
+                logger.warning("Failed to load device registry from %s: %s", self._path, exc)
 
     def _save(self) -> None:
         """Persist registry to disk.  Must be called while holding ``_lock``."""
@@ -132,8 +133,8 @@ class KnownDeviceRegistry:
                 json.dumps(self._devices, indent=2, default=str),
                 encoding="utf-8",
             )
-        except Exception:
-            logger.warning("Failed to save device registry to %s", self._path, exc_info=True)
+        except (OSError, TypeError) as exc:
+            logger.warning("Failed to save device registry to %s: %s", self._path, exc)
 
     # -- public API ---------------------------------------------------------
 
@@ -216,8 +217,8 @@ class HomeNetworkMonitor:
         if self._alert_callback:
             try:
                 self._alert_callback(alert)
-            except Exception:
-                logger.debug("Alert callback failed", exc_info=True)
+            except (RuntimeError, ValueError, TypeError) as exc:
+                logger.debug("Alert callback failed: %s", exc)
 
     # ------------------------------------------------------------------
     # ARP scanning
@@ -233,8 +234,8 @@ class HomeNetworkMonitor:
                 raw = _run_command(["arp", "-a"])
             else:
                 raw = _run_command(["ip", "neigh"])
-        except Exception:
-            logger.debug("ARP scan failed", exc_info=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("ARP scan failed: %s", exc)
             return []
 
         if not raw:
@@ -371,8 +372,8 @@ class HomeNetworkMonitor:
 
         try:
             raw = _run_command(["ipconfig", "/displaydns"])
-        except Exception:
-            logger.debug("DNS cache scan failed", exc_info=True)
+        except (OSError, SubprocessError) as exc:
+            logger.debug("DNS cache scan failed: %s", exc)
             return result
 
         if not raw:
@@ -424,8 +425,8 @@ class HomeNetworkMonitor:
                 return self._check_connections_windows()
             else:
                 return self._check_connections_linux()
-        except Exception:
-            logger.debug("Connection check failed", exc_info=True)
+        except (OSError, SubprocessError, ValueError) as exc:
+            logger.debug("Connection check failed: %s", exc)
             return []
 
     def _check_connections_windows(self) -> list[dict[str, Any]]:

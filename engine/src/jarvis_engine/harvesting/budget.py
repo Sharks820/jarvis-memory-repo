@@ -247,5 +247,8 @@ class BudgetManager:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
-            logger.debug("Failed to close BudgetManager database in __del__")
+        except Exception as exc:
+            try:
+                logger.debug("Failed to close BudgetManager database in __del__: %s", exc)
+            except Exception:
+                pass

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import sqlite3
 import threading
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
@@ -75,9 +76,9 @@ class CommandBus:
             raise ValueError(f"No handler for {type(command).__name__}")
         try:
             return handler(command)
-        except Exception:
+        except (RuntimeError, ValueError, TypeError, OSError, sqlite3.Error) as exc:
             logger.exception(
-                "Handler for %s raised an exception", type(command).__name__
+                "Handler for %s raised an exception: %s", type(command).__name__, exc
             )
             raise
 

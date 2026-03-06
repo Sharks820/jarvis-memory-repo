@@ -225,8 +225,9 @@ class MemoryEngine:
                 self._db.commit()
                 return True
 
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
+                logger.debug("store_record transaction failed, rolled back: %s", exc)
                 raise
 
     def delete_record(self, record_id: str) -> bool:
@@ -262,8 +263,9 @@ class MemoryEngine:
                 self._db.commit()
                 return True
 
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
+                logger.debug("delete_record transaction failed, rolled back: %s", exc)
                 raise
 
     def delete_records_batch(self, record_ids: list[str]) -> int:
@@ -306,8 +308,9 @@ class MemoryEngine:
                 self._db.commit()
                 return deleted
 
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
+                logger.debug("delete_records_batch transaction failed, rolled back: %s", exc)
                 raise
 
     def get_record(self, record_id: str) -> dict | None:

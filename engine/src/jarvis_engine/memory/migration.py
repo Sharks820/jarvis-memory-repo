@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -315,8 +316,9 @@ def migrate_facts(
 
             # Single commit for all facts (batch)
             engine.db.commit()
-        except Exception:
+        except (sqlite3.Error, OSError) as exc:
             engine.db.rollback()
+            logger.debug("migrate_facts transaction failed, rolled back: %s", exc)
             raise
 
     status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")

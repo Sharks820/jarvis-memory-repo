@@ -7,7 +7,10 @@ incoming content is classified by cosine similarity to those centroids.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 try:
     import numpy as np
@@ -83,9 +86,10 @@ class BranchClassifier:
                 building[branch] = self._embed_service.embed(
                     description, prefix="search_document"
                 )
-        except Exception:
+        except (RuntimeError, ValueError, OSError) as exc:
             # Ensure we don't leave a partial centroid dict; the next call
             # will retry from scratch.
+            logger.debug("Centroid initialization failed, will retry: %s", exc)
             self._centroids = None
             raise
         self._centroids = building

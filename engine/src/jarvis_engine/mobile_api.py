@@ -603,7 +603,8 @@ class MobileIngestServer(ThreadingHTTPServer):
                         sync_db, sync_lock, device_id="desktop",
                         conflict_strategy=conflict_strategy,
                     )
-                except Exception:
+                except (_sqlite3.Error, OSError) as exc:
+                    logger.debug("Sync engine init failed, closing DB: %s", exc)
                     sync_db.close()
                     raise
                 if self.signing_key:
@@ -1714,7 +1715,8 @@ def run_mobile_server(
                     sync_db, sync_lock, device_id="desktop",
                     conflict_strategy=conflict_strategy,
                 )
-            except Exception:
+            except (_sqlite3.Error, OSError) as exc:
+                logger.debug("Sync engine init failed in create_app, closing DB: %s", exc)
                 sync_db.close()
                 raise
 

@@ -188,8 +188,8 @@ class ThreatDetector:
                 signal = rule(request_context)
                 if signal is not None:
                     signals.append(signal)
-            except Exception:
-                logger.warning("Rule %s raised an exception", rule.__name__, exc_info=True)
+            except (RuntimeError, ValueError, TypeError, KeyError) as exc:
+                logger.warning("Rule %s raised an exception: %s", rule.__name__, exc)
                 # Fail-closed for critical security rules
                 if rule.__name__ in _critical_rules:
                     signals.append(ThreatSignal(

@@ -171,8 +171,8 @@ class LLMFactExtractor:
                 route_reason="llm_fact_extraction",
                 privacy_routed=privacy_routed,
             )
-        except Exception:
-            logger.warning("LLM fact extraction failed for gateway call", exc_info=True)
+        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+            logger.warning("LLM fact extraction failed for gateway call: %s", exc)
             return []
 
         if not response.text or not response.text.strip():

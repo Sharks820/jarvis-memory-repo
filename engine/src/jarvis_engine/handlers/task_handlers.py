@@ -130,8 +130,8 @@ class WebResearchHandler:
         except ValueError as exc:
             logger.warning("Web research ValueError for query %r: %s", cleaned, exc)
             return WebResearchResult(return_code=2)
-        except Exception:
-            logger.warning("Web research failed for query %r", cleaned, exc_info=True)
+        except (OSError, RuntimeError, TimeoutError) as exc:
+            logger.warning("Web research failed for query %r: %s", cleaned, exc)
             return WebResearchResult(return_code=2)
 
         auto_id = ""

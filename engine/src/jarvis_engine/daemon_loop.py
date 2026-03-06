@@ -212,8 +212,9 @@ def _discover_harvest_topics(root: Path) -> list[str]:
             try:
                 from jarvis_engine._db_pragmas import connect_db as _connect_db
                 conn = _connect_db(db_path)
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 # Corrupt or inaccessible DB — skip all DB-based sources
+                logger.debug("Failed to connect to memory DB: %s", exc)
                 if conn is not None:
                     conn.close()
                 conn = None
@@ -376,7 +377,8 @@ def _windows_idle_seconds() -> float | None:
         tick_now = ctypes.windll.kernel32.GetTickCount() & 0xFFFFFFFF  # type: ignore[attr-defined]
         idle_ms = (tick_now - last_input.dwTime) & 0xFFFFFFFF
         return max(0.0, idle_ms / 1000.0)
-    except Exception:
+    except (OSError, ImportError, ValueError, AttributeError) as exc:
+        logger.debug("Windows idle time detection failed: %s", exc)
         return None
 
 

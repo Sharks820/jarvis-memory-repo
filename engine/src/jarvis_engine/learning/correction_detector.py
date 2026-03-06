@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -305,8 +306,9 @@ class CorrectionDetector:
                 self._kg._db.commit()
                 # Invalidate NetworkX cache (bypassed add_fact)
                 self._kg._mutation_counter += 1
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._kg._db.rollback()
+                logger.debug("Correction apply transaction failed, rolled back: %s", exc)
                 raise
 
         logger.info(

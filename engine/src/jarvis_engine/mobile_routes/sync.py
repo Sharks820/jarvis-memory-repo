@@ -128,7 +128,8 @@ class SyncRoutesMixin:
 
             try:
                 raw_token = _b64.b64decode(encrypted_payload)
-            except Exception:
+            except (ValueError, _b64.binascii.Error) as exc:
+                logger.debug("Invalid base64 payload in sync/push: %s", exc)
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid base64 payload."})
                 return
             changes = sync_transport.decrypt(raw_token)

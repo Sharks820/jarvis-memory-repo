@@ -195,8 +195,8 @@ class EntityResolver:
             for node_id, label in members:
                 try:
                     embed_cache[node_id] = self._embed_service.embed(label)
-                except Exception:
-                    logger.debug("Embedding failed for node %s (%r)", node_id, label)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    logger.debug("Embedding failed for node %s (%r): %s", node_id, label, exc)
 
         if not embed_cache:
             # All embeddings failed — fall back to string-only for this group

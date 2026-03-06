@@ -266,7 +266,7 @@ def test_network_error_graceful():
     """Network failures don't crash enrichment; return partial data."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
-    with patch("urllib.request.urlopen", side_effect=Exception("Connection refused")):
+    with patch("urllib.request.urlopen", side_effect=ConnectionRefusedError("Connection refused")):
         feed = ThreatIntelFeed(cache_ttl=3600)
         result = feed.enrich_ip("1.1.1.1")
 

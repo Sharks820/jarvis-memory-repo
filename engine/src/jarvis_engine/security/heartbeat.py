@@ -159,5 +159,5 @@ class HeartbeatMonitor:
         if fire_callback and self._on_failure is not None:
             try:
                 self._on_failure()
-            except Exception:
-                logger.exception("on_failure callback raised an exception")
+            except (RuntimeError, ValueError, TypeError, OSError) as exc:
+                logger.exception("on_failure callback raised an exception: %s", exc)

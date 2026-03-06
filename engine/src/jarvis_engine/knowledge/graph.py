@@ -411,8 +411,9 @@ class KnowledgeGraph:
 
                 self._db.commit()
                 self._mutation_counter += 1
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
+                logger.debug("add_fact transaction failed, rolled back: %s", exc)
                 raise
 
         # Auto-lock check (outside write_lock -- check_and_auto_lock acquires its own)
@@ -448,8 +449,9 @@ class KnowledgeGraph:
                 if inserted:
                     self._mutation_counter += 1
                 return inserted
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
+                logger.debug("add_edge transaction failed, rolled back: %s", exc)
                 raise
 
     # ------------------------------------------------------------------
@@ -783,6 +785,7 @@ class KnowledgeGraph:
                 if retracted > 0:
                     self._mutation_counter += 1
                 return retracted
-            except Exception:
+            except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
+                logger.debug("soft_retract transaction failed, rolled back: %s", exc)
                 raise

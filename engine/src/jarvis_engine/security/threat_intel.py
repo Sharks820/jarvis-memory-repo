@@ -179,8 +179,8 @@ class ThreatIntelFeed:
 
             score = body.get("data", {}).get("abuseConfidenceScore")
             return int(score) if score is not None else None
-        except Exception:
-            logger.debug("AbuseIPDB query failed for %s", ip, exc_info=True)
+        except (OSError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            logger.debug("AbuseIPDB query failed for %s: %s", ip, exc)
             return None
 
     # ------------------------------------------------------------------
@@ -201,8 +201,8 @@ class ThreatIntelFeed:
             pulse_info = body.get("pulse_info", {})
             count = pulse_info.get("count")
             return int(count) if count is not None else None
-        except Exception:
-            logger.debug("OTX query failed for %s", ip, exc_info=True)
+        except (OSError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            logger.debug("OTX query failed for %s: %s", ip, exc)
             return None
 
     # ------------------------------------------------------------------
@@ -240,5 +240,5 @@ class ThreatIntelFeed:
                 self._last_feed_update = now
 
             logger.info("Feodo blocklist refreshed: %d IPs", len(ips))
-        except Exception:
-            logger.debug("Feodo blocklist download failed", exc_info=True)
+        except (OSError, TimeoutError, ValueError) as exc:
+            logger.debug("Feodo blocklist download failed: %s", exc)
