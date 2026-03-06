@@ -6,12 +6,13 @@ pattern deduplication, and forensic analysis.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from typing import Any
+
+from jarvis_engine._shared import sha256_hex
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_attack_patterns_last_seen
 
 def _payload_hash(payload: str) -> str:
     """SHA-256 hex digest of the payload, used as the pattern_id."""
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return sha256_hex(payload)
 
 
 def _now_iso() -> str:

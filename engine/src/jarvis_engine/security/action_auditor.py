@@ -7,7 +7,6 @@ a fixed-size in-memory ring buffer for fast dashboard queries.
 from __future__ import annotations
 
 import collections
-import hashlib
 import json
 import logging
 import threading
@@ -15,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class ActionAuditor:
             Optional dict with keys like ``tokens``, ``cpu_time``, ``memory``.
         """
         truncated_detail = detail[:500] if len(detail) > 500 else detail
-        input_hash = hashlib.sha256(detail.encode("utf-8")).hexdigest()[:16]
+        input_hash = sha256_hex(detail)[:16]
 
         entry: dict = {
             "timestamp": datetime.now(UTC).isoformat(),

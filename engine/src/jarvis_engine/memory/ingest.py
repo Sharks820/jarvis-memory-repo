@@ -16,6 +16,8 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from typing import TYPE_CHECKING
 
+from jarvis_engine._shared import sha256_hex
+
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
     from jarvis_engine.memory.classify import BranchClassifier
@@ -79,7 +81,7 @@ class EnrichedIngestPipeline:
             return []
 
         # Step 2: Pre-flight dedup for short content
-        full_content_hash = hashlib.sha256(sanitized.encode("utf-8")).hexdigest()
+        full_content_hash = sha256_hex(sanitized)
         chunks = self._chunk_content(sanitized)
         if len(chunks) == 1:
             # Single chunk -- check full content hash for quick dedup
@@ -118,7 +120,7 @@ class EnrichedIngestPipeline:
 
         for chunk, embedding in zip(valid_chunks, all_embeddings):
             # 4a: Per-chunk content hash (CRITICAL: hash chunk text, NOT full document)
-            chunk_hash = hashlib.sha256(chunk.encode("utf-8")).hexdigest()
+            chunk_hash = sha256_hex(chunk)
 
             # 4b: Generate record_id -- 32 hex chars (Codex finding: >16 to avoid collisions)
             id_material = f"{source}|{kind}|{task_id}|{chunk}".encode("utf-8")

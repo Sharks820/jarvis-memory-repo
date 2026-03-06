@@ -6,13 +6,14 @@ and detects session hijacking via fingerprint (IP + user-agent) changes.
 
 from __future__ import annotations
 
-import hashlib
 import hmac as _hmac_module
 import logging
 import secrets
 import threading
 import time
 from dataclasses import dataclass
+
+from jarvis_engine._shared import sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class Session:
 def _compute_fingerprint(ip: str, user_agent: str) -> str:
     """SHA-256 hash of ``ip:user_agent``."""
     raw = f"{ip}:{user_agent}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return sha256_hex(raw)
 
 
 # ---------------------------------------------------------------------------

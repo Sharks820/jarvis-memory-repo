@@ -350,6 +350,65 @@ def _parse_bool(value: Any) -> bool:
     return bool(value)
 
 
+def _compute_command_reliability() -> dict[str, Any]:
+    """Aggregate command reliability metrics from the activity feed.
+
+    Returns a dict with keys: sampled_commands, command_success_rate_pct,
+    retry_count, timeout_count, memory_pressure_incidents, last_pressure_level.
+    """
+    result: dict[str, Any] = {
+        "sampled_commands": 0,
+        "command_success_rate_pct": 0.0,
+        "retry_count": 0,
+        "timeout_count": 0,
+        "memory_pressure_incidents": 0,
+        "last_pressure_level": "none",
+    }
+    try:
+        from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+
+        feed = get_activity_feed()
+        command_events = feed.query(limit=500, category=ActivityCategory.COMMAND_LIFECYCLE)
+        terminal = []
+        retry_count = 0
+        timeout_count = 0
+        for event in command_events:
+            details = event.details if isinstance(event.details, dict) else {}
+            state = str(details.get("lifecycle_state", "")).lower()
+            if state in {"completed", "failed"}:
+                terminal.append(details)
+            if bool(details.get("retryable", False)):
+                retry_count += 1
+            error_code = str(details.get("error_code", "")).lower()
+            status_code = str(details.get("status_code", "")).lower()
+            if "timeout" in error_code or status_code in {"408", "timeout"}:
+                timeout_count += 1
+
+        successful = sum(
+            1 for d in terminal
+            if str(d.get("lifecycle_state", "")).lower() == "completed"
+        )
+        result["sampled_commands"] = len(terminal)
+        if terminal:
+            result["command_success_rate_pct"] = round((successful / len(terminal)) * 100.0, 2)
+        result["retry_count"] = retry_count
+        result["timeout_count"] = timeout_count
+
+        pressure_events = feed.query(limit=200, category=ActivityCategory.RESOURCE_PRESSURE)
+        incidents = 0
+        for event in pressure_events:
+            details = event.details if isinstance(event.details, dict) else {}
+            if str(details.get("pressure_level", "")).lower() in {"mild", "severe"}:
+                incidents += 1
+        result["memory_pressure_incidents"] = incidents
+        if pressure_events:
+            details = pressure_events[0].details if isinstance(pressure_events[0].details, dict) else {}
+            result["last_pressure_level"] = str(details.get("pressure_level", "none"))
+    except Exception as exc:
+        logger.debug("Command reliability aggregation unavailable: %s", exc)
+    return result
+
+
 class MobileIngestServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
@@ -1683,12 +1742,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_get_auth_status(self) -> None:
         # Public endpoint (no auth) — reports whether a session is active
-        owner_session = getattr(self.server, "owner_session", None)
+        owner_session = self._require_owner_session()
         if owner_session is None:
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                "ok": False,
-                "error": "Session auth not available.",
-            })
             return
         status = owner_session.session_status()
         status["ok"] = True
@@ -1699,61 +1754,19 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         self._write_json(HTTPStatus.OK, {"ok": True, "settings": self._settings_payload()})
 
+    def _require_owner_session(self) -> Any | None:
+        """Return the server's OwnerSessionManager, or write 503 and return None."""
+        session = getattr(self.server, "owner_session", None)
+        if session is None:
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Session auth not available.",
+            })
+        return session
+
     def _build_reliability_panel(self, root: Path) -> dict[str, Any]:
-        panel: dict[str, Any] = {
-            "sampled_commands": 0,
-            "command_success_rate_pct": 0.0,
-            "retry_count": 0,
-            "timeout_count": 0,
-            "memory_pressure_incidents": 0,
-            "last_pressure_level": "none",
-            "resource_snapshot": {},
-        }
-        try:
-            from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
-
-            feed = get_activity_feed()
-            command_events = feed.query(limit=500, category=ActivityCategory.COMMAND_LIFECYCLE)
-            terminal = []
-            retry_count = 0
-            timeout_count = 0
-            for event in command_events:
-                details = event.details if isinstance(event.details, dict) else {}
-                state = str(details.get("lifecycle_state", "")).lower()
-                if state in {"completed", "failed"}:
-                    terminal.append(event)
-                if bool(details.get("retryable", False)):
-                    retry_count += 1
-                error_code = str(details.get("error_code", "")).lower()
-                status_code = str(details.get("status_code", "")).lower()
-                if "timeout" in error_code or status_code in {"408", "timeout"}:
-                    timeout_count += 1
-
-            successful = 0
-            for event in terminal:
-                details = event.details if isinstance(event.details, dict) else {}
-                if str(details.get("lifecycle_state", "")).lower() == "completed":
-                    successful += 1
-
-            panel["sampled_commands"] = len(terminal)
-            if terminal:
-                panel["command_success_rate_pct"] = round((successful / len(terminal)) * 100.0, 2)
-            panel["retry_count"] = retry_count
-            panel["timeout_count"] = timeout_count
-
-            pressure_events = feed.query(limit=200, category=ActivityCategory.RESOURCE_PRESSURE)
-            incidents = 0
-            for event in pressure_events:
-                details = event.details if isinstance(event.details, dict) else {}
-                level = str(details.get("pressure_level", "")).lower()
-                if level in {"mild", "severe"}:
-                    incidents += 1
-            panel["memory_pressure_incidents"] = incidents
-            if pressure_events:
-                details = pressure_events[0].details if isinstance(pressure_events[0].details, dict) else {}
-                panel["last_pressure_level"] = str(details.get("pressure_level", "none"))
-        except Exception as exc:
-            logger.debug("Reliability panel activity aggregation unavailable: %s", exc)
+        panel = _compute_command_reliability()
+        panel.setdefault("resource_snapshot", {})
 
         try:
             pressure_state = read_resource_pressure_state(root)
@@ -2200,16 +2213,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
 
-        # --- Activity feed: corrections, reliability, and pressure ---
+        # --- Activity feed: corrections ---
         try:
-            from jarvis_engine.activity_feed import ActivityCategory, get_activity_feed
+            from jarvis_engine.activity_feed import get_activity_feed
             feed = get_activity_feed()
             stats = feed.stats()
             if isinstance(stats, dict):
                 metrics["corrections_applied"] = int(stats.get("correction_applied", 0))
                 metrics["consolidations_run"] = int(stats.get("consolidation", 0))
-
-            # Count corrections in last 7 days from feed query
             from datetime import timedelta
             since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
             try:
@@ -2217,41 +2228,14 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
                 metrics["corrections_last_7d"] = len(recent_events)
             except Exception as exc:
                 logger.debug("intelligence growth metric failed: %s", exc)
-            try:
-                command_events = feed.query(limit=500, category=ActivityCategory.COMMAND_LIFECYCLE)
-                terminal = []
-                timeout_count = 0
-                for event in command_events:
-                    details = event.details if isinstance(event.details, dict) else {}
-                    lifecycle_state = str(details.get("lifecycle_state", "")).lower()
-                    if lifecycle_state in {"completed", "failed"}:
-                        terminal.append(details)
-                    error_code = str(details.get("error_code", "")).lower()
-                    status_code = str(details.get("status_code", "")).lower()
-                    if "timeout" in error_code or status_code in {"408", "timeout"}:
-                        timeout_count += 1
-                if terminal:
-                    successful = sum(
-                        1
-                        for details in terminal
-                        if str(details.get("lifecycle_state", "")).lower() == "completed"
-                    )
-                    metrics["command_success_rate_pct"] = round((successful / len(terminal)) * 100.0, 2)
-                metrics["timeout_count"] = timeout_count
-            except Exception as exc:
-                logger.debug("intelligence growth reliability metric failed: %s", exc)
-            try:
-                pressure_events = feed.query(limit=200, category=ActivityCategory.RESOURCE_PRESSURE)
-                incidents = 0
-                for event in pressure_events:
-                    details = event.details if isinstance(event.details, dict) else {}
-                    if str(details.get("pressure_level", "")).lower() in {"mild", "severe"}:
-                        incidents += 1
-                metrics["memory_pressure_incidents"] = incidents
-            except Exception as exc:
-                logger.debug("intelligence growth pressure metric failed: %s", exc)
         except Exception as exc:
             logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
+
+        # --- Command reliability and pressure (shared helper) ---
+        reliability = _compute_command_reliability()
+        metrics["command_success_rate_pct"] = reliability["command_success_rate_pct"]
+        metrics["timeout_count"] = reliability["timeout_count"]
+        metrics["memory_pressure_incidents"] = reliability["memory_pressure_incidents"]
 
         # --- Memory engine: record count ---
         try:
@@ -2414,12 +2398,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         # No HMAC auth required — this IS the authentication step.
         # Rate limiting is enforced by _check_rate_limit (/auth/login
         # is in _EXPENSIVE_PATHS: 10 req/min).
-        owner_session = getattr(self.server, "owner_session", None)
+        owner_session = self._require_owner_session()
         if owner_session is None:
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                "ok": False,
-                "error": "Session auth not available.",
-            })
             return
         payload, _ = self._read_json_body_noauth(max_content_length=2_000)
         if payload is None:
@@ -2460,12 +2440,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_post_auth_logout(self) -> None:
-        owner_session = getattr(self.server, "owner_session", None)
+        owner_session = self._require_owner_session()
         if owner_session is None:
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                "ok": False,
-                "error": "Session auth not available.",
-            })
             return
         session_token = self.headers.get("X-Jarvis-Session", "").strip()
         if not session_token:
@@ -2486,12 +2462,8 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
 
     def _handle_post_auth_lock(self) -> None:
         # Requires session auth — invalidates ALL sessions
-        owner_session = getattr(self.server, "owner_session", None)
+        owner_session = self._require_owner_session()
         if owner_session is None:
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                "ok": False,
-                "error": "Session auth not available.",
-            })
             return
         session_token = self.headers.get("X-Jarvis-Session", "").strip()
         if not session_token or not owner_session.validate_session(session_token):

@@ -16,6 +16,7 @@ from typing import Any
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +317,7 @@ def ingest_brain_record(
     cleaned = re.sub(r"\s+", " ", content).strip()[:4000]
     if not cleaned:
         raise ValueError("Empty content")
-    content_hash = hashlib.sha256(cleaned.lower().encode("utf-8")).hexdigest()
+    content_hash = sha256_hex(cleaned.lower())
 
     with _brain_io_lock:
         index = _load_index(root)

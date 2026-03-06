@@ -11,10 +11,11 @@ from multiple providers polluting the knowledge base.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from jarvis_engine._shared import sha256_hex
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.costs import CostTracker
@@ -179,9 +180,7 @@ class KnowledgeHarvester:
                         continue
 
                     # Track this content hash for cross-provider dedup
-                    content_hash = hashlib.sha256(
-                        result.text.encode("utf-8"),
-                    ).hexdigest()
+                    content_hash = sha256_hex(result.text)
                     seen_hashes.add(content_hash)
 
                     # Append confidence marker and ingest
@@ -239,7 +238,7 @@ class KnowledgeHarvester:
             True if the text is a near-duplicate and should be skipped.
         """
         # SHA-256 exact dedup (always active)
-        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        content_hash = sha256_hex(text)
         if content_hash in seen_hashes:
             return True
 

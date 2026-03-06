@@ -6,7 +6,6 @@ forming a verifiable chain.  Supports rotation and law-enforcement export.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -17,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class ForensicLogger:
             entry["prev_hash"] = self._prev_hash
 
             line = json.dumps(entry, separators=(",", ":"), sort_keys=True)
-            current_hash = hashlib.sha256(line.encode("utf-8")).hexdigest()
+            current_hash = sha256_hex(line)
 
             try:
                 with open(self._path, "a", encoding="utf-8") as f:
@@ -95,7 +95,7 @@ class ForensicLogger:
                         )
                         return (False, count)
 
-                    prev_hash = hashlib.sha256(raw_line.encode("utf-8")).hexdigest()
+                    prev_hash = sha256_hex(raw_line)
                     count += 1
         except OSError:
             return (False, count)
@@ -216,7 +216,7 @@ class ForensicLogger:
                     for line in reversed(lines):
                         try:
                             json.loads(line)
-                            return hashlib.sha256(line.encode("utf-8")).hexdigest()
+                            return sha256_hex(line)
                         except (json.JSONDecodeError, ValueError):
                             continue
                     if actual_read >= size:

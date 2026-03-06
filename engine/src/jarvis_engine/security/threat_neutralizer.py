@@ -9,7 +9,6 @@ NO hack-back.  Only evidence collection, reporting, and local defense.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -23,6 +22,7 @@ from datetime import datetime
 from typing import Any
 
 from jarvis_engine._compat import UTC
+from jarvis_engine._shared import sha256_hex
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +398,7 @@ class ThreatNeutralizer:
         evidence_hashes: dict[str, str] = {}
         for key, value in evidence.items():
             val_str = json.dumps(value, default=str)
-            evidence_hashes[key] = hashlib.sha256(val_str.encode("utf-8")).hexdigest()
+            evidence_hashes[key] = sha256_hex(val_str)
         evidence_hashes["_full_evidence"] = evidence_id
 
         # Determine recommended charges based on evidence
@@ -483,7 +483,7 @@ class ThreatNeutralizer:
             sort_keys=True,
             default=str,
         )
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return sha256_hex(payload)
 
     @staticmethod
     def _extract_email_from_vcard(entity: dict) -> str | None:

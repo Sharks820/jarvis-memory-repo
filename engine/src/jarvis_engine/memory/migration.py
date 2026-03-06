@@ -14,6 +14,8 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from jarvis_engine._shared import sha256_hex
+
 if TYPE_CHECKING:
     from jarvis_engine.memory.classify import BranchClassifier
     from jarvis_engine.memory.embeddings import EmbeddingService
@@ -154,7 +156,7 @@ def migrate_brain_records(
             # Build record dict for MemoryEngine
             content_hash = str(record_data.get("content_hash", ""))
             if not content_hash:
-                content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
+                content_hash = sha256_hex(summary)
 
             # Use 32 hex chars for record_id (Codex: >16 to avoid collisions)
             original_id = str(record_data.get("record_id", ""))
@@ -382,7 +384,7 @@ def migrate_events(
             embedding = embed_service.embed(summary, prefix="search_document")
             branch = classifier.classify(embedding)
 
-            content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
+            content_hash = sha256_hex(summary)
             ts = str(event.get("ts", datetime.now(UTC).isoformat()))
             id_material = f"event_log|episodic|{ts}|{content_hash}".encode("utf-8")
             record_id = hashlib.sha256(id_material).hexdigest()[:32]

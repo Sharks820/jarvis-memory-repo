@@ -12,12 +12,13 @@ Pipeline:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
+
+from jarvis_engine._shared import sha256_hex
 
 import numpy as np
 
@@ -375,9 +376,9 @@ class MemoryConsolidator:
 
         Returns the new record's ID.
         """
-        content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
+        content_hash = sha256_hex(summary)
         id_material = f"consolidated|{content_hash}"
-        record_id = hashlib.sha256(id_material.encode("utf-8")).hexdigest()[:32]
+        record_id = sha256_hex(id_material)[:32]
 
         ts = datetime.now(UTC).isoformat()
         resolved_branch = branch or (

@@ -13,6 +13,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 import logging
+from jarvis_engine._shared import sha256_hex
 from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 
 _logger = logging.getLogger(__name__)
@@ -393,8 +394,8 @@ def run_eval(
         eval_count = int(raw.get("eval_count") or 0)
         eval_duration_s = float(raw.get("eval_duration") or 0) / 1e9
         total_duration_s = float(raw.get("total_duration") or 0) / 1e9
-        prompt_sha256 = hashlib.sha256(task.prompt.encode("utf-8")).hexdigest()
-        response_sha256 = hashlib.sha256(output.encode("utf-8")).hexdigest()
+        prompt_sha256 = sha256_hex(task.prompt)
+        response_sha256 = sha256_hex(output)
         results.append(
             TaskEval(
                 task_id=task.task_id,
