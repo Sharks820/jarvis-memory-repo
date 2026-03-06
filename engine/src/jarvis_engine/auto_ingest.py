@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import make_task_id, runtime_dir  # noqa: F401
+from jarvis_engine._constants import runtime_dir
 from jarvis_engine.config import repo_root
 
 if TYPE_CHECKING:

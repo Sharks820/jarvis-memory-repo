@@ -10,14 +10,11 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
-from datetime import datetime, timezone
 from typing import Any
 
+from jarvis_engine._shared import now_iso as _now_iso
+
 logger = logging.getLogger(__name__)
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------

@@ -8,8 +8,9 @@ verification status.
 from __future__ import annotations
 
 import threading
-from datetime import datetime, timezone
 from typing import Any
+
+from jarvis_engine._shared import now_iso as _now_iso
 
 # ---------------------------------------------------------------------------
 # Trust level constants
@@ -22,9 +23,6 @@ QUARANTINED = "QUARANTINED"
 
 _VALID_TRUST_LEVELS = {OWNER_INPUT, VERIFIED_EXTERNAL, UNVERIFIED_EXTERNAL, QUARANTINED}
 
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 class MemoryProvenance:

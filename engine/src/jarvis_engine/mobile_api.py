@@ -29,6 +29,7 @@ from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILE
 from jarvis_engine._constants import memory_db_path as _memory_db_path
 from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
@@ -943,7 +944,7 @@ class MobileIngestHandler(
         # Fall back to subprocess only if the in-process import fails.
         _can_import_in_process = True
         try:
-            import jarvis_engine.main as _test_mod  # noqa: F401
+            import jarvis_engine.main  # noqa: F401 — probe: is the module importable?
         except ImportError:
             _can_import_in_process = False
         if _can_import_in_process:
@@ -959,14 +960,7 @@ class MobileIngestHandler(
                 # Install thread-aware repo_root if not already done
                 if not getattr(main_mod, "_repo_root_patched", False):
                     _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
-
-                    def _thread_aware_repo_root() -> Path:
-                        override = getattr(_thread_local, "repo_root_override", None)
-                        if override is not None:
-                            return override
-                        return _orig()
-
-                    main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
+                    main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
                     main_mod._repo_root_patched = True  # type: ignore[attr-defined]
 
                 # Per-thread stdout capture — concurrent requests run in parallel.
@@ -1770,14 +1764,7 @@ def run_mobile_server(
             if not getattr(main_mod, "_repo_root_patched", False):
                 _orig = main_mod.repo_root
                 main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
-
-                def _thread_aware_repo_root() -> Path:
-                    override = getattr(_thread_local, "repo_root_override", None)
-                    if override is not None:
-                        return override
-                    return _orig()
-
-                main_mod.repo_root = _thread_aware_repo_root  # type: ignore[assignment]
+                main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
                 main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 from jarvis_engine._bus import get_bus

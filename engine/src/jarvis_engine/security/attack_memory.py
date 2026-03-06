@@ -9,10 +9,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
 from typing import Any
 
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 
 # ---------------------------------------------------------------------------
@@ -52,9 +51,6 @@ def _payload_hash(payload: str) -> str:
     """SHA-256 hex digest of the payload, used as the pattern_id."""
     return sha256_hex(payload)
 
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _tokenize(text: str) -> set[str]:

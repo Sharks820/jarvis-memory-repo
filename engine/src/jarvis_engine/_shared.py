@@ -9,6 +9,8 @@ Consolidates duplicated helpers to a single source of truth:
 - load_personal_vocab_lines: personal_vocab.txt reader (used by stt + stt_postprocess)
 - sanitize_fts_query / FTS5_SPECIAL_RE / FTS5_KEYWORDS: FTS5 query sanitization
   (used by memory/engine.py and knowledge/graph.py)
+- now_iso: UTC ISO-8601 timestamp (used by security modules)
+- make_thread_aware_repo_root: thread-local repo_root factory (used by mobile_api)
 """
 
 from __future__ import annotations
@@ -18,10 +20,36 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
+
+
+def now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def make_thread_aware_repo_root(
+    original_fn: Callable[[], Path],
+    thread_local: Any,
+) -> Callable[[], Path]:
+    """Create a thread-aware wrapper around ``repo_root()``.
+
+    Returns a function that checks ``thread_local.repo_root_override``
+    before falling back to *original_fn*.  Used by the mobile API to let
+    each request thread point at its own repo root without a global lock.
+    """
+
+    def _thread_aware_repo_root() -> Path:
+        override = getattr(thread_local, "repo_root_override", None)
+        if override is not None:
+            return override
+        return original_fn()
+
+    return _thread_aware_repo_root
 
 
 def atomic_write_json(
