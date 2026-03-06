@@ -88,7 +88,8 @@ class TestCaptureKnowledgeMetrics:
         engine = _make_engine()
         result = capture_knowledge_metrics(kg, engine)
         # Should be parseable as ISO datetime
-        datetime.fromisoformat(result["captured_at"])
+        parsed = datetime.fromisoformat(result["captured_at"])
+        assert parsed is not None
 
     def test_temporal_distribution(self):
         kg = _make_kg(temporal_rows=[

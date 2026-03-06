@@ -49,12 +49,10 @@ class TestPathTraversalProtection:
         # Should detect the traversal
         path = main_mod._gaming_mode_state_path()
         resolved = path.resolve()
-        
+
         # Verify resolved path is still within bounds
-        try:
-            resolved.relative_to(tmp_path.resolve())
-        except ValueError:
-            pytest.fail("Path traversal not detected - symlink escaped repo_root")
+        assert resolved.is_relative_to(tmp_path.resolve()), \
+            "Path traversal not detected - symlink escaped repo_root"
 
 
 class TestGamingModeSecurity:
@@ -209,7 +207,8 @@ class TestMissionSecurity:
 
         def mock_urlopen(*args, **kwargs):
             class MockResp:
-                headers = {"Content-Type": "text/html; charset=utf-8"}
+                def __init__(self):
+                    self.headers = {"Content-Type": "text/html; charset=utf-8"}
                 def __enter__(self):
                     return self
                 def __exit__(self, *a):

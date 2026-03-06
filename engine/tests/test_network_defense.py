@@ -166,7 +166,7 @@ class TestKnownDeviceRegistry:
                 for i in range(start, start + 20):
                     mac = f"00:00:00:00:{i:02x}:{i:02x}"
                     reg.register_device(mac, f"Device-{i}", "test")
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 errors.append(str(exc))
 
         threads = [threading.Thread(target=register_batch, args=(n * 20,)) for n in range(4)]

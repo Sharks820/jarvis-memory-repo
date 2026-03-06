@@ -230,6 +230,7 @@ class TestTermination:
     ) -> None:
         # Should not raise
         manager.terminate_session("does-not-exist")
+        assert len(manager.get_active_sessions()) == 0
 
     def test_terminate_all_sessions(self, manager: SessionManager) -> None:
         manager.create_session("d1", "10.0.0.1")

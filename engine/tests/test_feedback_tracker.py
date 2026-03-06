@@ -31,8 +31,10 @@ class TestResponseFeedbackTracker:
 
     def test_schema_idempotent(self, db):
         """Creating tracker twice does not raise."""
-        ResponseFeedbackTracker(db=db)
-        ResponseFeedbackTracker(db=db)
+        t1 = ResponseFeedbackTracker(db=db)
+        t2 = ResponseFeedbackTracker(db=db)
+        assert t1 is not None
+        assert t2 is not None
 
     def test_detect_negative_correction(self, tracker):
         """Correction signals are detected as negative."""

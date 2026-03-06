@@ -440,14 +440,15 @@ def test_stt_metric_logging_none_root_is_noop() -> None:
     """_log_stt_metric with root_dir=None should silently do nothing."""
     from jarvis_engine.stt import _log_stt_metric
 
-    # Should not raise
-    _log_stt_metric(
+    # Should not raise — None root_dir means no file to write to
+    result = _log_stt_metric(
         None,
         backend="groq-whisper",
         confidence=0.95,
         latency_ms=300.0,
         text_length=10,
     )
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

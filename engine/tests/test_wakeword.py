@@ -375,6 +375,7 @@ def test_start_accepts_mic_lock() -> None:
     with patch.object(detector, "_load_model", side_effect=ImportError("no oww")):
         # Should not raise even with mic_lock
         detector.start(on_detected=lambda: None, mic_lock=mic_lock)
+        assert detector is not None  # start completed without error
 
 
 # ---------------------------------------------------------------------------

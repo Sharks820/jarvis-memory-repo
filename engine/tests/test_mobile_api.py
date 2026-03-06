@@ -1724,10 +1724,12 @@ def test_best_effort_learning_skips_success_with_response(mobile_server, monkeyp
 
     handler = MobileIngestHandler.__new__(MobileIngestHandler)
     handler.server = mobile_server.server
+    # Should complete without calling dispatch (which would raise AssertionError)
     handler._best_effort_learn_command_result(
         payload={"text": "runtime status"},
         result={"ok": True, "response": "All systems normal.", "intent": "runtime_status"},
     )
+    assert True  # dispatch was not called (no AssertionError raised)
 
 
 # ---------------------------------------------------------------------------

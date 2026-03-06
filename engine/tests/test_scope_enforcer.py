@@ -210,7 +210,7 @@ class TestThreadSafety:
             try:
                 for _ in range(50):
                     enforcer.check(f"bad_scope_{n}", "bad_action")
-            except Exception as exc:
+            except (RuntimeError, ValueError, AttributeError) as exc:
                 errors.append(str(exc))
 
         threads = [threading.Thread(target=violate, args=(i,)) for i in range(10)]

@@ -422,7 +422,8 @@ class TestCompactChangelog:
         # With retention_days clamped to 0, everything "today" is within retention
         # unless the ts matches exactly -- but the entry was just created, so it's recent
         # This should not crash
-        compact_changelog(db, write_lock, retention_days=-5)
+        deleted = compact_changelog(db, write_lock, retention_days=-5)
+        assert isinstance(deleted, int)
 
 
 # ---------------------------------------------------------------------------

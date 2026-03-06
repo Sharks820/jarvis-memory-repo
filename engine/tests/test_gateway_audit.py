@@ -95,6 +95,9 @@ class TestLogDecision:
         audit = _make_audit(tmp_path)
         with patch("builtins.open", side_effect=OSError("disk full")):
             _log_one(audit)  # should not raise
+        # No file should have been written since open() failed
+        audit_file = tmp_path / "audit.jsonl"
+        assert not audit_file.exists() or audit_file.stat().st_size == 0
 
 
 # ── rotation ────────────────────────────────────────────────────────────────
@@ -133,6 +136,8 @@ class TestRotation:
         """_rotate_if_needed on a missing file should not raise."""
         audit = _make_audit(tmp_path)
         audit._rotate_if_needed()  # file doesn't exist yet — no-op
+        # Rotated file should not be created either
+        assert not (tmp_path / "audit.jsonl.1").exists()
 
 
 # ── recent() ────────────────────────────────────────────────────────────────
@@ -229,7 +234,7 @@ class TestThreadSafety:
             try:
                 for i in range(n):
                     _log_one(audit, model=f"model-{threading.current_thread().name}-{i}")
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 errors.append(exc)
 
         threads = [threading.Thread(target=_writer, args=(15,)) for _ in range(4)]

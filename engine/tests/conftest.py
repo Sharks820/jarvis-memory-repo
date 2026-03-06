@@ -35,13 +35,13 @@ def _isolate_activity_feed(tmp_path):
         # Pre-seed the singleton with a temp-path feed so any test that
         # calls log_activity() / get_activity_feed() writes to tmp, not prod.
         _af._feed = _af.ActivityFeed(db_path=tmp_path / "test_activity.db")
-    except Exception:
+    except (ImportError, OSError, AttributeError):
         pass
     yield
     try:
         from jarvis_engine.activity_feed import _reset_feed
         _reset_feed()
-    except Exception:
+    except (ImportError, OSError, AttributeError):
         pass
 
 

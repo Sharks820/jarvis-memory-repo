@@ -420,8 +420,9 @@ class TestChainIntegrity:
         append_history(p, run1)
         append_history(p, run2)
         rows = read_history(p)
-        # Should not raise
+        # Should not raise — valid chain passes validation
         validate_history_chain(rows)
+        assert len(rows) == 2
 
     def test_validate_history_chain_tampered_hash(self, tmp_path: Path) -> None:
         p = tmp_path / "history.jsonl"
@@ -446,11 +447,13 @@ class TestChainIntegrity:
     def test_validate_empty_chain(self) -> None:
         """Empty list should pass validation without error."""
         validate_history_chain([])
+        assert True  # validation completed without raising
 
     def test_validate_legacy_rows_without_hash(self) -> None:
         """Rows without run_sha256 (legacy) are tolerated."""
         rows = [{"model": "old", "score_pct": 50.0}]
         validate_history_chain(rows)  # Should not raise
+        assert len(rows) == 1  # input unchanged
 
 
 # ===================================================================
@@ -882,10 +885,10 @@ class TestDataclasses:
 class TestBranchTaskMap:
     """Tests for BRANCH_TASK_MAP and eval_branch()."""
 
-    _EXPECTED_BRANCHES = [
+    _EXPECTED_BRANCHES = (
         "ops", "coding", "health", "finance", "security",
         "learning", "family", "communications", "gaming",
-    ]
+    )
 
     def test_all_branches_have_golden_tasks(self) -> None:
         """Every expected branch must appear in BRANCH_TASK_MAP with 2 tasks."""

@@ -133,6 +133,7 @@ class TestBlocking:
 
     def test_unblock_nonexistent_ip_noop(self, tracker: IPTracker) -> None:
         tracker.unblock_ip("9.9.9.9")  # should not raise
+        assert not tracker.is_blocked("9.9.9.9")
 
     def test_manual_block_creates_record(self, tracker: IPTracker) -> None:
         tracker.block_ip("10.0.0.4", duration_hours=1)

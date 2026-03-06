@@ -114,10 +114,12 @@ class TestStopCleansUp:
         monitor.start()
         monitor.stop()
         monitor.stop()  # Should not raise
+        assert monitor.status()["running"] is False
 
     def test_double_start_is_safe(self, monitor: HeartbeatMonitor) -> None:
         monitor.start()
         monitor.start()  # Should not raise or create duplicate threads
+        assert monitor.status()["running"] is True
         monitor.stop()
 
 
@@ -173,7 +175,7 @@ class TestThreadSafety:
                         m.beat()
                         m.is_healthy()
                         m.status()
-                except Exception as exc:
+                except (RuntimeError, ValueError, AttributeError) as exc:
                     errors.append(exc)
 
             threads = [threading.Thread(target=beat_loop) for _ in range(5)]

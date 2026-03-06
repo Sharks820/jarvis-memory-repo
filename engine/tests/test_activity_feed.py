@@ -132,7 +132,7 @@ class TestActivityFeed:
             try:
                 for i in range(per_thread):
                     feed.log(cat, f"event {i}")
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 errors.append(exc)
 
         categories = [

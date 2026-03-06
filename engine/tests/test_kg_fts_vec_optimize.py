@@ -630,7 +630,7 @@ class TestRestoreCleanupWALSHM:
         finally:
             try:
                 engine.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
     def test_restore_works_without_wal_shm(self, tmp_path: Path) -> None:
@@ -660,7 +660,7 @@ class TestRestoreCleanupWALSHM:
         finally:
             try:
                 engine.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
     def test_restore_preserves_fts_index(self, tmp_path: Path) -> None:
@@ -686,7 +686,7 @@ class TestRestoreCleanupWALSHM:
         finally:
             try:
                 engine.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
 
