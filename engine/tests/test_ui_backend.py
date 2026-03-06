@@ -132,7 +132,7 @@ class TestMissionCancelHandler:
             result = handler.handle(MissionCancelCommand(mission_id="m-bad"))
 
         assert result.cancelled is False
-        assert "not found" in result.error
+        assert "not found" in result.message
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +320,7 @@ class TestResponseOutputLines:
         mock_result = MagicMock()
         mock_result.cancelled = True
         mock_result.mission = {"mission_id": "m-001", "topic": "Test", "status": "cancelled"}
-        mock_result.error = ""
+        mock_result.message = ""
 
         with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_cancel

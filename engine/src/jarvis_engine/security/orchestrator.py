@@ -140,47 +140,20 @@ class SecurityOrchestrator:
         # --- New modules (gracefully skip if import failed) ---
 
         # Bot governance
-        self.action_auditor = None
-        if ActionAuditor is not None:
-            try:
-                self.action_auditor = ActionAuditor(log_dir=log_dir)
-            except Exception as exc:
-                logger.warning("Failed to init ActionAuditor: %s", exc)
-
-        self.scope_enforcer = None
-        if ScopeEnforcer is not None:
-            try:
-                self.scope_enforcer = ScopeEnforcer()
-            except Exception as exc:
-                logger.warning("Failed to init ScopeEnforcer: %s", exc)
-
-        self.resource_monitor = None
-        if ResourceMonitor is not None:
-            try:
-                self.resource_monitor = ResourceMonitor()
-            except Exception as exc:
-                logger.warning("Failed to init ResourceMonitor: %s", exc)
+        self._init_module("action_auditor", ActionAuditor, log_dir=log_dir)
+        self._init_module("scope_enforcer", ScopeEnforcer)
+        self._init_module("resource_monitor", ResourceMonitor)
 
         # Threat intelligence & response
-        self.threat_intel = None
-        if ThreatIntelFeed is not None:
-            try:
-                self.threat_intel = ThreatIntelFeed()
-            except Exception as exc:
-                logger.warning("Failed to init ThreatIntelFeed: %s", exc)
-
-        self.threat_neutralizer = None
-        if ThreatNeutralizer is not None:
-            try:
-                self.threat_neutralizer = ThreatNeutralizer(
-                    forensic_logger=self._forensic_logger,
-                    ip_tracker=self._ip_tracker,
-                    attack_memory=self._attack_memory,
-                    alert_chain=self._alert_chain,
-                    threat_intel=self.threat_intel,
-                )
-            except Exception as exc:
-                logger.warning("Failed to init ThreatNeutralizer: %s", exc)
+        self._init_module("threat_intel", ThreatIntelFeed)
+        self._init_module(
+            "threat_neutralizer", ThreatNeutralizer,
+            forensic_logger=self._forensic_logger,
+            ip_tracker=self._ip_tracker,
+            attack_memory=self._attack_memory,
+            alert_chain=self._alert_chain,
+            threat_intel=self.threat_intel,
+        )
 
         # Owner session — set externally by the server after creation to avoid
         # duplicate instances.  Falls back to a local instance only if no
@@ -189,6 +162,54 @@ class SecurityOrchestrator:
 
         # Note: HeartbeatMonitor and HomeNetworkMonitor are NOT instantiated here.
         # They start background threads and are managed by the daemon startup code.
+
+    # ------------------------------------------------------------------
+    # Module initialisation / status helpers
+    # ------------------------------------------------------------------
+
+    def _init_module(
+        self,
+        attr_name: str,
+        cls: type | None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Try to instantiate *cls* and store the result as ``self.<attr_name>``.
+
+        If *cls* is ``None`` (import failed) or the constructor raises, the
+        attribute is set to ``None`` and a warning is logged.
+        """
+        if cls is None:
+            setattr(self, attr_name, None)
+            return
+        try:
+            setattr(self, attr_name, cls(*args, **kwargs))
+        except Exception as exc:
+            setattr(self, attr_name, None)
+            logger.warning("Failed to init %s: %s", cls.__name__, exc)
+
+    @staticmethod
+    def _safe_status(
+        instance: Any,
+        method_name: str,
+        *args: Any,
+    ) -> Any | None:
+        """Call ``instance.<method_name>(*args)`` and return the result.
+
+        Returns ``None`` if *instance* is ``None`` or the call raises.
+        """
+        if instance is None:
+            return None
+        try:
+            return getattr(instance, method_name)(*args)
+        except Exception as exc:
+            logger.debug(
+                "%s.%s() failed: %s",
+                type(instance).__name__,
+                method_name,
+                exc,
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Inbound request pipeline
@@ -493,41 +514,18 @@ class SecurityOrchestrator:
         }
 
         # --- New module statuses ---
-        if self.action_auditor is not None:
-            try:
-                result["action_auditor"] = self.action_auditor.daily_summary()
-            except Exception as exc:
-                logger.debug("ActionAuditor status failed: %s", exc)
-
-        if self.scope_enforcer is not None:
-            try:
-                result["scope_enforcer_violations"] = self.scope_enforcer.violation_count()
-            except Exception as exc:
-                logger.debug("ScopeEnforcer status failed: %s", exc)
-
-        if self.resource_monitor is not None:
-            try:
-                result["resource_monitor"] = self.resource_monitor.status()
-            except Exception as exc:
-                logger.debug("ResourceMonitor status failed: %s", exc)
-
-        if self.threat_intel is not None:
-            try:
-                result["threat_intel"] = self.threat_intel.status()
-            except Exception as exc:
-                logger.debug("ThreatIntelFeed status failed: %s", exc)
-
-        if self.threat_neutralizer is not None:
-            try:
-                result["threat_neutralizer"] = self.threat_neutralizer.status()
-            except Exception as exc:
-                logger.debug("ThreatNeutralizer status failed: %s", exc)
-
-        if self.owner_session is not None:
-            try:
-                result["owner_session"] = self.owner_session.session_status()
-            except Exception as exc:
-                logger.debug("OwnerSessionManager status failed: %s", exc)
+        _status_queries = (
+            ("action_auditor", self.action_auditor, "daily_summary"),
+            ("scope_enforcer_violations", self.scope_enforcer, "violation_count"),
+            ("resource_monitor", self.resource_monitor, "status"),
+            ("threat_intel", self.threat_intel, "status"),
+            ("threat_neutralizer", self.threat_neutralizer, "status"),
+            ("owner_session", self.owner_session, "session_status"),
+        )
+        for key, instance, method in _status_queries:
+            value = self._safe_status(instance, method)
+            if value is not None:
+                result[key] = value
 
         return result
 

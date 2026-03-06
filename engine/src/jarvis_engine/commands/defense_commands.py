@@ -19,7 +19,7 @@ class SecurityStatusCommand:
     """Request the current security dashboard."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class SecurityStatusResult:
     """Result containing the defense dashboard and summary."""
 
@@ -39,7 +39,7 @@ class ThreatReportCommand:
     ip: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class ThreatReportResult:
     """Result containing the threat report."""
 
@@ -60,7 +60,7 @@ class ExportForensicsCommand:
     end_date: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass
 class ExportForensicsResult:
     """Result containing the export file path."""
 
@@ -88,7 +88,7 @@ class ContainmentOverrideCommand:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class ContainmentOverrideResult:
     """Result of a containment override operation."""
 
@@ -109,7 +109,7 @@ class BlockIPCommand:
     duration_hours: int = 24
 
 
-@dataclass(frozen=True)
+@dataclass
 class BlockIPResult:
     """Result of an IP block operation."""
 
@@ -124,7 +124,7 @@ class UnblockIPCommand:
     ip: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass
 class UnblockIPResult:
     """Result of an IP unblock operation."""
 
@@ -142,7 +142,7 @@ class ReviewQuarantineCommand:
     """Request a review of quarantined memory records."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class ReviewQuarantineResult:
     """Result containing quarantined records."""
 
@@ -160,7 +160,7 @@ class SecurityBriefingCommand:
     """Request a human-readable security briefing."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class SecurityBriefingResult:
     """Result containing the briefing text."""
 

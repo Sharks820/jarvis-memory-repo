@@ -29,7 +29,7 @@ class OpsExportActionsCommand:
 class OpsExportActionsResult:
     actions_path: str = ""
     action_count: int = 0
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ class OpsSyncCommand:
 @dataclass
 class OpsSyncResult:
     summary: Any = None  # OpsSyncSummary from ops_sync module
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class OpsAutopilotCommand:
 @dataclass
 class OpsAutopilotResult:
     return_code: int = 0
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class AutomationRunCommand:
 @dataclass
 class AutomationRunResult:
     outcomes: list[Any] = field(default_factory=list)
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,7 @@ class MissionCreateCommand:
 class MissionCreateResult:
     mission: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ class MissionRunResult:
     report: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
     ingested_record_id: str = ""
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,7 @@ class GrowthEvalCommand:
 @dataclass
 class GrowthEvalResult:
     run: Any = None  # EvalRun from growth_tracker
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ class GrowthReportCommand:
 @dataclass
 class GrowthReportResult:
     summary: dict[str, Any] = field(default_factory=dict)
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -153,7 +153,7 @@ class GrowthAuditCommand:
 @dataclass
 class GrowthAuditResult:
     run: dict[str, Any] = field(default_factory=dict)
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -165,7 +165,7 @@ class MissionCancelCommand:
 class MissionCancelResult:
     cancelled: bool = False
     mission: dict[str, Any] = field(default_factory=dict)
-    error: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)

@@ -1838,8 +1838,8 @@ def cmd_mission_status(last: int) -> int:
 def cmd_mission_cancel(mission_id: str) -> int:
     result = _get_bus().dispatch(MissionCancelCommand(mission_id=mission_id))
     if not result.cancelled:
-        print(f"error: {result.error or 'cancel failed'}")
-        print(f"response=Could not cancel mission: {result.error or 'unknown error'}")
+        print(f"error: {result.message or 'cancel failed'}")
+        print(f"response=Could not cancel mission: {result.message or 'unknown error'}")
         return 2
     mission = result.mission
     print("mission_cancelled=true")
