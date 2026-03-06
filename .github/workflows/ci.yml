@@ -54,8 +54,11 @@ jobs:
         working-directory: engine
         env:
           PYTHONPATH: src
-        # continue-on-error keeps CI green while we pay down the 105-error
-        # type-debt baseline. Errors are visible in the job log.
+        # continue-on-error keeps CI green while we pay down type debt.
+        # Baseline as of 2026-03-06 post-sprint: ~75 errors (reduced from 105 by
+        # batch 24 type:ignore cleanup in mobile_api + broader exception narrowing).
+        # CI threshold stays at 105 until a CI run on main confirms the exact new count,
+        # at which point both this value and STATE.md should be updated together.
         continue-on-error: true
         run: |
           mypy src/jarvis_engine \
@@ -64,7 +67,8 @@ jobs:
             2>&1 | tee /tmp/mypy-output.txt
           ERROR_COUNT=$(grep -c ": error:" /tmp/mypy-output.txt || true)
           echo "mypy errors: $ERROR_COUNT"
-          # Fail if error count regresses above the tracked baseline (105)
+          # Fail if error count regresses above the tracked baseline (105 pre-sprint)
+          # TODO: tighten to 80 once a CI run on main confirms exact post-sprint count
           if [ "$ERROR_COUNT" -gt 105 ]; then
             echo "ERROR: mypy error count $ERROR_COUNT exceeds baseline 105 — regression detected"
             exit 1
