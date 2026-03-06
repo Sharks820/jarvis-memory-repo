@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  # Run on every push to feature/fix/refactor/docs/experiment branches so bots
+  # get fast lint+test feedback even before opening a PR.
+  push:
+    branches-ignore:
+      - main
+      - 'release/**'
+  # Also run on every PR targeting main to enforce the merge gate.
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    name: Lint & Test (Python)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Lint (ruff)
+        run: |
+          pip install ruff
+          ruff check engine/src
+
+      - name: Run tests
+        working-directory: engine
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/ -x -q --tb=short

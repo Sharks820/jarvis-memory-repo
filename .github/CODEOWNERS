@@ -1,0 +1,24 @@
+# CODEOWNERS
+# Each line is a file pattern followed by one or more owners.
+# Owners are matched against the most specific pattern.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# --- Default owner for everything ---
+* @Sharks820
+
+# --- Engine core ---
+engine/src/jarvis_engine/security/ @Sharks820
+engine/src/jarvis_engine/gateway/  @Sharks820
+
+# --- Planning and state ---
+.planning/STATE.md    @Sharks820
+.planning/ROADMAP.md  @Sharks820
+
+# --- Workflow and contribution docs ---
+CONTRIBUTING.md @Sharks820
+WORKFLOW.md     @Sharks820
+AGENTS.md       @Sharks820
+CLAUDE.md       @Sharks820
+
+# --- GitHub configuration ---
+.github/ @Sharks820

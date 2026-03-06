@@ -104,8 +104,18 @@ Progress (v5.0): [██████░░░░] 55%
   - stability degradation after short command sequences
   - high memory intensity and mission/activity trust gaps
 
+## Collaboration Infrastructure
+
+Added 2026-03-06:
+- `CONTRIBUTING.md` — branch naming conventions, bot/human workflow, commit standards, PR process, code standards, security policy
+- `WORKFLOW.md` — branch organization strategy, lifecycle, parallel-bot rules, merge conventions, release/hotfix process
+- `.github/PULL_REQUEST_TEMPLATE.md` — standardized PR descriptions
+- `.github/CODEOWNERS` — code ownership (all paths default to @Sharks820)
+- `.github/workflows/ci.yml` — lint + test CI on every PR to main
+- `AGENTS.md` updated to reference new collaboration docs
+
 ## Session Continuity
 
-Last session: 2026-03-05
-Stopped at: v5 debt-gate pass 4 validated; continue runtime reliability tranche for cross-LLM continuity, voice robustness, and mission activity truthfulness with desloppify follow-up burn-down
+Last session: 2026-03-06
+Stopped at: Collaboration infrastructure added (CONTRIBUTING.md, WORKFLOW.md, PR template, CODEOWNERS, CI workflow)
 Resume file: None
