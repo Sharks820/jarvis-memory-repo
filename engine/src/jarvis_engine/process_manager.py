@@ -436,7 +436,7 @@ def check_and_restart_services(
             if restart_callback is not None:
                 try:
                     restart_callback(svc)
-                except Exception:  # noqa: BLE001
+                except (OSError, RuntimeError, ValueError):  # noqa: BLE001
                     logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
             continue
 
@@ -448,7 +448,7 @@ def check_and_restart_services(
             if restart_callback is not None:
                 try:
                     restart_callback(svc)
-                except Exception:  # noqa: BLE001
+                except (OSError, RuntimeError, ValueError):  # noqa: BLE001
                     logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
             continue
 
@@ -470,7 +470,7 @@ def check_and_restart_services(
         if restart_callback is not None:
             try:
                 restart_callback(svc)
-            except Exception:  # noqa: BLE001
+            except (OSError, RuntimeError, ValueError):  # noqa: BLE001
                 logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
 
     return dead_services

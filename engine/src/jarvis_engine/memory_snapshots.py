@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import os
+import sqlite3
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -154,7 +155,7 @@ def create_signed_snapshot(
                 metadata["kg_metrics"] = _checker.capture_metrics()
             finally:
                 _kg_engine.close()
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
         logger.warning("KG metrics capture failed: %s", exc)
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
     signature_path.write_text(signature, encoding="utf-8")
@@ -292,7 +293,7 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                         kg_regression = _checker.compare(prev_kg_metrics, current_kg_metrics)
                     finally:
                         _kg_engine.close()
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
         logger.warning("KG regression comparison failed: %s", exc)
 
     report = {

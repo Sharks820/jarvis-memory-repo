@@ -322,7 +322,7 @@ def _speak_text_edge_streamed(
                 if proc.returncode != 0:
                     raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
                 q.put(str(media_path))
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:  # noqa: BLE001
             had_error = True
             err.append(exc)
             q.put(_ERROR_SENTINEL)  # Signal error immediately instead of waiting
@@ -424,7 +424,7 @@ def speak_text(
                 output_wav=output_wav,
                 rate=rate,
             )
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             if engine_pref in {"edge", "edge_tts"}:
                 raise
             logger.warning("edge-tts failed, falling back to Windows SAPI: %s", exc)

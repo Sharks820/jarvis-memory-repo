@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import threading
 import time
 import uuid
@@ -225,7 +226,7 @@ class ActivityFeed:
             self._closed = True
             try:
                 self._db.close()
-            except Exception as exc:
+            except (OSError, sqlite3.Error) as exc:
                 logger.warning("Failed to close activity feed database connection: %s", exc)
 
     # ------------------------------------------------------------------
@@ -295,6 +296,6 @@ def _reset_feed() -> None:
         if _feed is not None:
             try:
                 _feed.close()
-            except Exception as exc:
+            except (OSError, sqlite3.Error) as exc:
                 logger.warning("Failed to close activity feed singleton during reset: %s", exc)
             _feed = None
