@@ -88,6 +88,7 @@ Progress (v5.0): [████████░░] 75%
 - 2026-03-05: added explicit voice-listen lifecycle state emission (`arming`, `listening`, `processing`, `executing`, `idle`, `error`) to stdout and activity feed for real-time UX/telemetry trust, with focused regression tests for success/error transitions.
 - 2026-03-05: added model-switch continuity guardrails: system-prompt continuity contract is now injected when routed model changes with existing history, and model-switch events are logged to activity feed (`conversation_model_switch`) for observability and anti-reset diagnosis.
 - 2026-03-05: upgraded learning mission status surfaces with explicit active/inactive flags, active-count and per-status counters, mission status-detail emission, and richer response summaries to improve UI/voice mission transparency and operator trust.
+- 2026-03-06: **User engagement checkpoint** — owner (Conner) acknowledged positive signal and confirmed acceptance of the current main-branch state. Reliability, innovation, and optimization tracking continues as planned. No blocking issues raised; feedback is: the system is on the right trajectory and the workflow heartbeat is healthy. Workflow cadence continues under v5.0 Phase 1 with next focus on continuity, voice robustness, and desloppify burn-down.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -202,6 +203,19 @@ Added 2026-03-06:
 at batch 13 (self-corrected within 3 batches) and one misleading commit message. All 16 batches/commits
 delivered genuine, non-overlapping improvements.
 
+### Final Sprint Commit: Opus+Codex Bug Audit (`95e0940`, 2026-03-06 13:36 CST)
+
+After the desloppify batches, a separate Opus+Codex audit pass identified and fixed **22 bugs** across 28 files:
+
+| Severity | Count | Examples |
+|----------|-------|---------|
+| CRITICAL | 1 | Calendar triggers never fired — `start_time` vs `time` field name mismatch in proactive triggers |
+| HIGH | 7 | CorrectionDetector rollback guard; containment deadlock; quarantine handler empty; auth login encapsulation; raw SQLite PRAGMAs; voice pipeline asymmetric locking; DNS rebinding + global socket timeout |
+| MEDIUM | 12 | Heartbeat false positives; z-score bias; containment recover scope; archive tier; contradictions db_lock; embedding outside write_lock; load_jsonl_tail optimization; widget HTTP fallback; alerts str→list; RDAP cache LRU; brain_status lock scope |
+| LOW | 2 | Dead `_confidence_retry` removal; float HMAC timestamp fix |
+
+Result: **4,476 tests passing, 4 skipped, 0 failures** (net +1 from the desloppify sprint peak of 4,475).
+
 ## PR #18 — copilot/organize-collaboration-strategy (MERGE READY)
 
 Branch delivers the collaboration infrastructure layer that was missing from main:
@@ -215,12 +229,12 @@ Branch delivers the collaboration infrastructure layer that was missing from mai
 | `.github/workflows/ci.yml` | 6-gate CI: lint → mypy → bandit → pip-audit → pytest+coverage → smoke |
 | `.github/workflows/pr-review.yml` | Automated ruff+bandit+mypy review comment on every PR |
 | `.github/workflows/smoke-test.yml` | Daily + on-push beta validation of all 90+ public modules |
-| `engine/tests/test_smoke.py` | 127 smoke tests (119 pass / 8 skip); 5 new modules added post-overnight sprint |
+| `engine/tests/test_smoke.py` | 141 modules covered; 3 stale entries fixed, 40 new modules added post-overnight sprint |
 
 All gates verified clean. Safe to merge.
 
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: PR #18 collaboration infrastructure complete and merge-ready. All smoke tests pass. CI pipeline and PR review bot configured.
+Stopped at: PR #18 collaboration infrastructure complete and merge-ready. All smoke tests pass. CI pipeline and PR review bot configured. Forensic sprint audit of desloppify batches 12-24 recorded. Bot's final commit (95e0940) resolved 22 bugs from Opus+Codex audit (1 critical, 7 high, 12 medium, 2 low); 4476 tests passing. Next session: v5 runtime reliability tranche — cross-LLM continuity, voice robustness, mission activity truthfulness.
 Resume file: None

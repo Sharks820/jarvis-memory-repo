@@ -71,7 +71,7 @@ def preprocess_audio(
             audio = audio.astype(np.float32)
         except ImportError:
             logger.warning("librosa not installed, skipping HPSS")
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
             logger.warning("HPSS failed, skipping: %s", exc)
 
     # 3. Spectral noise reduction
@@ -84,7 +84,7 @@ def preprocess_audio(
         audio = audio.astype(np.float32)
     except ImportError:
         logger.warning("noisereduce not installed, skipping noise reduction")
-    except Exception as exc:
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.warning("Noise reduction failed, skipping: %s", exc)
 
     # 4. Trim silence
@@ -95,7 +95,7 @@ def preprocess_audio(
         audio = trimmed.astype(np.float32)
     except ImportError:
         pass  # Already warned above
-    except Exception as exc:
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.warning("Silence trimming failed, skipping: %s", exc)
 
     # 5. Re-normalize after processing (HPSS and noise reduction can lower peak)
@@ -343,7 +343,7 @@ def correct_with_llm(
         if corrected:
             return corrected
         return text
-    except Exception as exc:
+    except (RuntimeError, ValueError, TypeError, AttributeError, OSError, TimeoutError, ConnectionError) as exc:
         logger.warning("LLM post-correction failed: %s", exc)
         return text
 
@@ -376,7 +376,7 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
         try:
             code = jellyfish.metaphone(entity)
             phonetic_map[code] = entity
-        except Exception as exc:
+        except (ValueError, TypeError) as exc:
             logger.debug("Metaphone encoding failed for %r: %s", entity, exc)
 
     _PUNCT = ".,!?;:'\""
@@ -408,7 +408,7 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
                 if similarity > 0.75:
                     corrected_words.append(prefix + canonical + suffix)
                     continue
-        except Exception as exc:
+        except (ValueError, TypeError) as exc:
             logger.debug("Jaro-winkler similarity failed: %s", exc)
 
         corrected_words.append(word)

@@ -33,8 +33,8 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
 
     if engine is not None:
         try:
-            db = engine._db  # noqa: SLF001
-            db_lock = engine._db_lock  # noqa: SLF001
+            db = engine.db
+            db_lock = engine.db_lock
             with db_lock:
                 total_records = db.execute("SELECT COUNT(*) FROM records").fetchone()[0]
 

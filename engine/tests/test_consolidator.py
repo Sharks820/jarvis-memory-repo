@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from unittest.mock import MagicMock
 
-
+from conftest import make_test_db
 from jarvis_engine.learning.consolidator import MemoryConsolidator
 
 
@@ -17,8 +17,7 @@ from jarvis_engine.learning.consolidator import MemoryConsolidator
 
 def _make_engine() -> MagicMock:
     """Build a mock MemoryEngine with an in-memory SQLite DB."""
-    db = sqlite3.connect(":memory:")
-    db.row_factory = sqlite3.Row
+    db = make_test_db()
     db.executescript("""
         CREATE TABLE records (
             record_id TEXT PRIMARY KEY,
@@ -43,6 +42,10 @@ def _make_engine() -> MagicMock:
     engine._db = db
     engine._db_lock = threading.Lock()
     engine._write_lock = threading.Lock()
+    # Public property aliases (used by consolidator via MemoryEngine properties)
+    engine.db = db
+    engine.db_lock = engine._db_lock
+    engine.write_lock = engine._write_lock
     # Make insert_record actually insert into the real DB
     engine.insert_record = MagicMock(return_value=True)
     return engine

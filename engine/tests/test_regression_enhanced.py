@@ -25,6 +25,7 @@ def _make_mock_kg(tmp_path: Path) -> MagicMock:
 
     engine_mock = MagicMock()
     engine_mock._db_path = db_path
+    engine_mock.db_path = db_path
     engine_mock._db = conn
     engine_mock._write_lock = threading.Lock()
     engine_mock._db_lock = threading.Lock()
@@ -34,7 +35,14 @@ def _make_mock_kg(tmp_path: Path) -> MagicMock:
     kg._db = conn
     kg._write_lock = engine_mock._write_lock
     kg._db_lock = engine_mock._db_lock
+    # Public accessors (used by RegressionChecker instead of private attrs)
+    kg.db_path = db_path
+    kg.db = conn
+    kg.write_lock = engine_mock._write_lock
+    kg.db_lock = engine_mock._db_lock
     kg.count_locked.return_value = 0
+    kg.invalidate_cache = MagicMock()
+    kg.ensure_schema = MagicMock()
 
     import networkx as nx
     empty_g = nx.DiGraph()

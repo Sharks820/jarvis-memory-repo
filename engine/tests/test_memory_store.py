@@ -98,7 +98,7 @@ def test_append_concurrent_writes_are_serialized(tmp_path) -> None:
         try:
             for i in range(20):
                 store.append(event_type=f"thread-{start}", message=f"msg-{i}")
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=writer, args=(t,)) for t in range(4)]

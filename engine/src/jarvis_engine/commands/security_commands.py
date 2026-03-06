@@ -20,6 +20,7 @@ class RuntimeControlCommand:
 @dataclass
 class RuntimeControlResult:
     state: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class OwnerGuardCommand:
 class OwnerGuardResult:
     state: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class ConnectStatusResult:
     prompts: list[dict[str, Any]] = field(default_factory=list)
     ready: int = 0
     pending: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,7 @@ class ConnectGrantCommand:
 class ConnectGrantResult:
     granted: dict[str, Any] = field(default_factory=dict)
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,7 @@ class ConnectBootstrapCommand:
 class ConnectBootstrapResult:
     prompts: list[dict[str, Any]] = field(default_factory=list)
     ready: bool = False
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +93,7 @@ class PhoneActionCommand:
 class PhoneActionResult:
     record: Any = None
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -104,6 +110,7 @@ class PhoneSpamGuardResult:
     candidates_count: int = 0
     queued_actions_count: int = 0
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -118,3 +125,4 @@ class PersonaConfigCommand:
 @dataclass
 class PersonaConfigResult:
     config: Any = None
+    message: str = ""

@@ -65,16 +65,24 @@ class HarvesterProvider:
         topic: str,
         system_prompt: str,
         max_tokens: int = 2048,
+        *,
+        extra_body: dict | None = None,
+        override_cost_usd: float | None = None,
     ) -> HarvestResult:
         """Query the provider for knowledge about a topic.
 
         Raises RuntimeError if provider is not configured (no API key).
+
+        Args:
+            extra_body: Optional extra parameters forwarded to the API call.
+            override_cost_usd: If set, use this value instead of computing cost
+                from token counts (useful for free-tier providers).
         """
         if not self._available:
             raise RuntimeError(f"Provider {self.name} not configured")
 
         client = self._get_client()
-        response = client.chat.completions.create(
+        create_kwargs: dict = dict(
             model=self.model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -82,6 +90,10 @@ class HarvesterProvider:
             ],
             max_tokens=max_tokens,
         )
+        if extra_body is not None:
+            create_kwargs["extra_body"] = extra_body
+
+        response = client.chat.completions.create(**create_kwargs)
 
         if not response.choices:
             return HarvestResult(
@@ -96,10 +108,13 @@ class HarvesterProvider:
         input_tokens = usage.prompt_tokens if usage else 0
         output_tokens = usage.completion_tokens if usage else 0
 
-        cost = (
-            input_tokens * self.input_cost_per_mtok
-            + output_tokens * self.output_cost_per_mtok
-        ) / 1_000_000
+        if override_cost_usd is not None:
+            cost = override_cost_usd
+        else:
+            cost = (
+                input_tokens * self.input_cost_per_mtok
+                + output_tokens * self.output_cost_per_mtok
+            ) / 1_000_000
 
         return HarvestResult(
             provider=self.name,
@@ -157,43 +172,15 @@ class KimiNvidiaProvider(HarvesterProvider):
         topic: str,
         system_prompt: str,
         max_tokens: int = 2048,
+        **kwargs,
     ) -> HarvestResult:
-        """Query with thinking disabled for instant mode."""
-        if not self._available:
-            raise RuntimeError(f"Provider {self.name} not configured")
-
-        client = self._get_client()
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": topic},
-            ],
-            max_tokens=max_tokens,
+        """Query with thinking disabled for instant mode (free tier)."""
+        return super().query(
+            topic,
+            system_prompt,
+            max_tokens,
             extra_body={"thinking": {"type": "disabled"}},
-        )
-
-        if not response.choices:
-            return HarvestResult(
-                provider=self.name,
-                text="",
-                model=self.model,
-            )
-
-        choice = response.choices[0]
-        text = choice.message.content or ""
-        usage = response.usage
-        input_tokens = usage.prompt_tokens if usage else 0
-        output_tokens = usage.completion_tokens if usage else 0
-
-        # Free tier -- cost is always 0
-        return HarvestResult(
-            provider=self.name,
-            text=text,
-            model=self.model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=0.0,
+            override_cost_usd=0.0,
         )
 
 

@@ -120,7 +120,7 @@ class ProactiveEngine:
                     "alerts": [a.rule_id for a in alerts],
                 })
             except ImportError:
-                pass
+                logger.debug("activity_feed module not available for proactive logging")
             except Exception as exc:
                 logger.debug("Proactive activity feed logging failed: %s", exc)
 

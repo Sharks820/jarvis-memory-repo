@@ -44,9 +44,9 @@ class KnowledgeGraph:
         embed_service: "EmbeddingService | None" = None,
     ) -> None:
         self._engine = engine
-        self._db = engine._db
-        self._write_lock = engine._write_lock
-        self._db_lock = engine._db_lock
+        self._db = engine.db
+        self._write_lock = engine.write_lock
+        self._db_lock = engine.db_lock
         self._embed_service = embed_service
         self._vec_available = getattr(engine, "_vec_available", False)
         self._mutation_counter = 0
@@ -65,18 +65,38 @@ class KnowledgeGraph:
 
     @property
     def db(self) -> "sqlite3.Connection":
-        """Public accessor for the SQLite connection."""
         return self._db
 
     @property
     def write_lock(self) -> "threading.Lock":
-        """Public accessor for the shared write lock."""
         return self._write_lock
 
     @property
     def db_lock(self) -> "threading.Lock":
-        """Public accessor for the shared DB read lock."""
         return self._db_lock
+
+    @property
+    def db_path(self) -> "Path":
+        from pathlib import Path
+
+        return Path(self._engine.db_path)
+
+    @property
+    def mutation_counter(self) -> int:
+        return self._mutation_counter
+
+    def invalidate_cache(self) -> None:
+        """Invalidate the cached NetworkX graph so the next read rebuilds it."""
+        self._mutation_counter += 1
+        self._cached_graph = None
+
+    def ensure_schema(self) -> None:
+        """(Re-)create KG tables if they don't exist (idempotent).
+
+        Useful after restoring a database backup to reinitialise schema
+        on the fresh connection.
+        """
+        self._ensure_schema()
 
     # ------------------------------------------------------------------
     # Schema

@@ -440,14 +440,15 @@ def test_stt_metric_logging_none_root_is_noop() -> None:
     """_log_stt_metric with root_dir=None should silently do nothing."""
     from jarvis_engine.stt import _log_stt_metric
 
-    # Should not raise
-    _log_stt_metric(
+    # Should not raise — None root_dir means no file to write to
+    result = _log_stt_metric(
         None,
         backend="groq-whisper",
         confidence=0.95,
         latency_ms=300.0,
         text_length=10,
     )
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -1189,58 +1190,6 @@ def test_local_confidence_uses_logprobs() -> None:
     assert abs(result.confidence - expected_confidence) < 0.01, f"Expected {expected_confidence}, got {result.confidence}"
     # Should NOT use language_probability (which would give 0.99)
     assert result.confidence != 0.99
-
-
-# ---------------------------------------------------------------------------
-# 43. _confidence_retry with local primary and groq available
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
-def test_confidence_retry_local_primary_retries_groq() -> None:
-    """When local is primary and confidence is low, retry with Groq."""
-    from jarvis_engine.stt import TranscriptionResult, _confidence_retry
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    primary = TranscriptionResult(
-        text="maybe", language="en", confidence=0.4,
-        duration_seconds=1.0, backend="faster-whisper",
-    )
-    groq_result = TranscriptionResult(
-        text="hello", language="en", confidence=0.9,
-        duration_seconds=0.3, backend="groq-whisper",
-    )
-
-    with patch("jarvis_engine.stt._try_groq", return_value=groq_result):
-        result = _confidence_retry(primary, fake_audio, language="en", prompt="", root_dir=None)
-
-    assert result.text == "hello"
-    assert result.backend == "groq-whisper"
-    assert result.retried is True
-
-
-# ---------------------------------------------------------------------------
-# 44. _confidence_retry with no alternative backend
-# ---------------------------------------------------------------------------
-
-@patch.dict("os.environ", {"GROQ_API_KEY": ""}, clear=False)
-def test_confidence_retry_no_alternative() -> None:
-    """When no alternative backend is available, primary is returned."""
-    from jarvis_engine.stt import TranscriptionResult, _confidence_retry
-
-    fake_audio = np.zeros(16000, dtype=np.float32)
-
-    primary = TranscriptionResult(
-        text="something", language="en", confidence=0.3,
-        duration_seconds=1.0, backend="faster-whisper",
-    )
-
-    # No GROQ_API_KEY, so no alternative for faster-whisper
-    result = _confidence_retry(primary, fake_audio, language="en", prompt="", root_dir=None)
-
-    assert result.text == "something"
-    assert result.confidence == 0.3
-    assert result.retried is False
 
 
 # ---------------------------------------------------------------------------
@@ -3509,9 +3458,9 @@ def test_caller_proactive_handler_integration():
          patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time:
         mock_time.sleep = MagicMock()
         mock_time.time.return_value = 0.0
-        # The callback will try to dispatch via _cmd_voice_run_impl
-        with patch("jarvis_engine.main._cmd_voice_run_impl"):
-            with patch("jarvis_engine.main.repo_root", return_value=Path(".")):
+        # The callback will try to dispatch via cmd_voice_run_impl
+        with patch("jarvis_engine.voice_pipeline.cmd_voice_run_impl"):
+            with patch("jarvis_engine.config.repo_root", return_value=Path(".")):
                 captured_callback["fn"]()
 
     # If we got here without error, the callback worked with the new pipeline

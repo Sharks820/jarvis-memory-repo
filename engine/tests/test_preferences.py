@@ -31,8 +31,10 @@ class TestPreferenceTracker:
 
     def test_schema_idempotent(self, db):
         """Creating tracker twice does not raise."""
-        PreferenceTracker(db=db)
-        PreferenceTracker(db=db)
+        t1 = PreferenceTracker(db=db)
+        t2 = PreferenceTracker(db=db)
+        assert t1 is not None
+        assert t2 is not None
 
     def test_observe_detects_concise_style(self, tracker):
         """'tldr' triggers communication_style=concise."""

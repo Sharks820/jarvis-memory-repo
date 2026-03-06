@@ -352,6 +352,23 @@ class EntityResolver:
     # Merge
     # ------------------------------------------------------------------
 
+    def _precompute_merge_embedding(self, label: str) -> bytes | None:
+        """Pre-compute vec embedding blob for a label WITHOUT holding any lock.
+
+        Returns packed blob ready for DB insertion, or ``None`` when the
+        embedding service is unavailable or the computation fails.
+        """
+        if self._embed_service is None or not getattr(self._kg, "_vec_available", False):
+            return None
+        try:
+            import struct
+            embedding = self._embed_service.embed(label, prefix="search_document")
+            if len(embedding) == 768:
+                return struct.pack(f"{len(embedding)}f", *embedding)
+        except Exception as exc:
+            logger.debug("Vec embedding pre-compute for merge label failed: %s", exc)
+        return None
+
     def merge_nodes(
         self,
         keep_id: str,
@@ -367,6 +384,9 @@ class EntityResolver:
         the caller already holds the lock).  Creates the
         ``kg_merge_history`` table on first use.
 
+        Embedding is computed BEFORE acquiring the write lock to avoid holding
+        the lock during the potentially slow embedding model call.
+
         Args:
             keep_id:         Node ID to retain.
             remove_id:       Node ID to delete after transfer.
@@ -378,7 +398,28 @@ class EntityResolver:
         """
         self._ensure_merge_history()
 
-        return self._merge_nodes_impl(keep_id, remove_id, canonical_label=canonical_label, _lock_held=_lock_held)
+        # Pre-compute embedding outside the lock.  When canonical_label is
+        # provided we know the final label; otherwise we pre-read the keep
+        # node's current label for embedding (the lock will verify it hasn't
+        # changed before using it).
+        embed_label = canonical_label
+        if embed_label is None:
+            with self._kg.db_lock:
+                row = self._kg.db.execute(
+                    "SELECT label FROM kg_nodes WHERE node_id = ?", (keep_id,)
+                ).fetchone()
+            embed_label = row[0] if row else None
+
+        embedding_blob: bytes | None = None
+        if embed_label is not None:
+            embedding_blob = self._precompute_merge_embedding(embed_label)
+
+        return self._merge_nodes_impl(
+            keep_id, remove_id,
+            canonical_label=canonical_label,
+            _lock_held=_lock_held,
+            _embedding_blob=embedding_blob,
+        )
 
     def _merge_nodes_impl(
         self,
@@ -387,12 +428,13 @@ class EntityResolver:
         *,
         canonical_label: str | None = None,
         _lock_held: bool = False,
+        _embedding_blob: bytes | None = None,
     ) -> bool:
         """Internal merge implementation. Acquires _write_lock unless _lock_held."""
         if _lock_held:
-            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label)
+            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label, _embedding_blob=_embedding_blob)
         with self._kg.write_lock:
-            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label)
+            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label, _embedding_blob=_embedding_blob)
 
     def _merge_nodes_core(
         self,
@@ -400,8 +442,16 @@ class EntityResolver:
         remove_id: str,
         *,
         canonical_label: str | None = None,
+        _embedding_blob: bytes | None = None,
     ) -> bool:
-        """Core merge logic. Caller MUST hold _write_lock."""
+        """Core merge logic. Caller MUST hold _write_lock.
+
+        Args:
+            _embedding_blob: Pre-computed vec embedding blob for the keep
+                node's new label.  When ``None`` the vec index update is
+                skipped (embedding should have been pre-computed outside
+                the lock by the caller).
+        """
         # Verify both nodes exist
         keep_row = self._kg.db.execute(
             "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
@@ -489,23 +539,16 @@ class EntityResolver:
             if "no such table" not in str(exc):
                 raise
 
-        # Update vec embedding for keep_id if embed_service is available
-        if (
-            self._embed_service is not None
-            and getattr(self._kg, "_vec_available", False)
-        ):
+        # Write pre-computed vec embedding for keep_id (no-ops if blob is None)
+        if _embedding_blob is not None:
             try:
-                import struct
-                embedding = self._embed_service.embed(new_label, prefix="search_document")
-                if len(embedding) == 768:
-                    blob = struct.pack(f"{len(embedding)}f", *embedding)
-                    self._kg.db.execute(
-                        "DELETE FROM vec_kg_nodes WHERE node_id = ?", (keep_id,)
-                    )
-                    self._kg.db.execute(
-                        "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
-                        (keep_id, blob),
-                    )
+                self._kg.db.execute(
+                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (keep_id,)
+                )
+                self._kg.db.execute(
+                    "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                    (keep_id, _embedding_blob),
+                )
             except Exception as exc:
                 logger.debug("Vec embedding update for merged node %s failed: %s", keep_id, exc)
 
@@ -602,13 +645,32 @@ class EntityResolver:
                 continue
 
             try:
+                # Pre-compute embedding OUTSIDE the lock.  We pre-read the
+                # likely keeper's label (pick_keeper uses confidence then edge
+                # count, so we optimistically pick outside the lock and the
+                # lock will re-verify).  Even if the final keeper differs, the
+                # worst case is the embedding is unused -- correctness is not
+                # affected, only performance.
+                keeper_id, _ = self._pick_keeper(cand.node_a_id, cand.node_b_id)
+                with self._kg.db_lock:
+                    lbl_row = self._kg.db.execute(
+                        "SELECT label FROM kg_nodes WHERE node_id = ?",
+                        (keeper_id,),
+                    ).fetchone()
+                embedding_blob: bytes | None = None
+                if lbl_row is not None:
+                    embedding_blob = self._precompute_merge_embedding(lbl_row[0])
+
                 # Acquire _write_lock around both pick and merge to prevent
                 # TOCTOU race where node data changes between selection and merge.
                 with self._kg.write_lock:
                     keep_id, remove_id = self._pick_keeper_unlocked(
                         cand.node_a_id, cand.node_b_id,
                     )
-                    ok = self._merge_nodes_core(keep_id, remove_id)
+                    ok = self._merge_nodes_core(
+                        keep_id, remove_id,
+                        _embedding_blob=embedding_blob if keep_id == keeper_id else None,
+                    )
                 if ok:
                     result.merges_applied += 1
                     removed.add(remove_id)

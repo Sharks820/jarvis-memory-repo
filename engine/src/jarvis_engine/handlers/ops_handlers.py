@@ -5,7 +5,18 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.models import ModelGateway
+    from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+    from jarvis_engine.learning.preferences import PreferenceTracker
+    from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+    from jarvis_engine.memory.engine import MemoryEngine
+    from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+    from jarvis_engine.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +53,7 @@ from jarvis_engine.commands.ops_commands import (
 
 
 class OpsBriefHandler:
-    def __init__(self, root: Path, gateway: Any = None) -> None:
+    def __init__(self, root: Path, gateway: Optional[ModelGateway] = None) -> None:
         self._root = root
         self._gateway = gateway
 
@@ -52,6 +63,7 @@ class OpsBriefHandler:
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
         except ValueError as exc:
+            logger.warning("OpsBrief snapshot path check failed: %s", exc)
             return OpsBriefResult(brief=str(exc))
         snapshot = load_snapshot(cmd.snapshot_path)
         brief = ""
@@ -68,6 +80,7 @@ class OpsBriefHandler:
             try:
                 _check_path_within_root(cmd.output_path, self._root, "output_path")
             except ValueError as exc:
+                logger.warning("OpsBrief output path check failed: %s", exc)
                 return OpsBriefResult(brief=str(exc))
             cmd.output_path.parent.mkdir(parents=True, exist_ok=True)
             cmd.output_path.write_text(brief, encoding="utf-8")
@@ -87,7 +100,7 @@ class OpsExportActionsHandler:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("OpsExportActions path check failed: %s", exc)
-            return OpsExportActionsResult()
+            return OpsExportActionsResult(message=str(exc))
         snapshot = load_snapshot(cmd.snapshot_path)
         actions = suggest_actions(snapshot)
         export_actions_json(actions, cmd.actions_path)
@@ -108,7 +121,7 @@ class OpsSyncHandler:
             _check_path_within_root(cmd.output_path, self._root, "output_path")
         except ValueError as exc:
             logger.warning("OpsSyncHandler path check failed: %s", exc)
-            return OpsSyncResult()
+            return OpsSyncResult(message=str(exc))
         summary = build_live_snapshot(self._root, cmd.output_path)
         return OpsSyncResult(summary=summary)
 
@@ -120,14 +133,15 @@ class OpsAutopilotHandler:
         self._root = root
 
     def handle(self, cmd: OpsAutopilotCommand) -> OpsAutopilotResult:
-        from jarvis_engine import main as _main_mod
+        from jarvis_engine.ops_autopilot import run_ops_autopilot
 
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
-        except ValueError:
-            return OpsAutopilotResult(return_code=2)
-        rc = _main_mod._cmd_ops_autopilot_impl(
+        except ValueError as exc:
+            logger.warning("OpsAutopilot path check failed: %s", exc)
+            return OpsAutopilotResult(return_code=2, message=str(exc))
+        rc = run_ops_autopilot(
             snapshot_path=cmd.snapshot_path,
             actions_path=cmd.actions_path,
             execute=cmd.execute,
@@ -140,9 +154,9 @@ class OpsAutopilotHandler:
 class AutomationRunHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
-        self._store: Any = None
+        self._store: Optional[MemoryStore] = None
 
-    def _get_store(self) -> Any:
+    def _get_store(self) -> MemoryStore:
         """Lazily create and cache the MemoryStore."""
         if self._store is None:
             from jarvis_engine.memory_store import MemoryStore
@@ -155,8 +169,9 @@ class AutomationRunHandler:
 
         try:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
-        except ValueError:
-            return AutomationRunResult()
+        except ValueError as exc:
+            logger.warning("AutomationRun path check failed: %s", exc)
+            return AutomationRunResult(message=str(exc))
         store = self._get_store()
         executor = AutomationExecutor(store)
         actions = load_actions(cmd.actions_path)
@@ -183,8 +198,9 @@ class MissionCreateHandler:
                 sources=cmd.sources,
                 origin=cmd.origin,
             )
-        except ValueError:
-            return MissionCreateResult(return_code=2)
+        except ValueError as exc:
+            logger.warning("Mission creation failed: %s", exc)
+            return MissionCreateResult(return_code=2, message=str(exc))
         return MissionCreateResult(mission=mission, return_code=0)
 
 
@@ -212,18 +228,19 @@ class MissionCancelHandler:
         try:
             mission = cancel_mission(self._root, mission_id=cmd.mission_id)
         except ValueError as exc:
-            return MissionCancelResult(error=str(exc))
+            logger.warning("Mission cancel failed: %s", exc)
+            return MissionCancelResult(message=str(exc))
         return MissionCancelResult(cancelled=True, mission=mission)
 
 
 class MissionRunHandler:
-    def __init__(self, root: Path, enriched_pipeline: Any = None) -> None:
+    def __init__(self, root: Path, enriched_pipeline: Optional[EnrichedIngestPipeline] = None) -> None:
         self._root = root
         self._enriched_pipeline = enriched_pipeline
-        self._store: Any = None
-        self._pipeline: Any = None
+        self._store: Optional[MemoryStore] = None
+        self._pipeline: Optional[IngestionPipeline] = None
 
-    def _get_ingest_pipeline(self) -> Any:
+    def _get_ingest_pipeline(self) -> EnrichedIngestPipeline | IngestionPipeline:
         """Return enriched pipeline if available, else lazily create legacy pipeline."""
         if self._enriched_pipeline is not None:
             return self._enriched_pipeline
@@ -245,17 +262,16 @@ class MissionRunHandler:
                 max_search_results=cmd.max_results,
                 max_pages=cmd.max_pages,
             )
-        except ValueError:
-            return MissionRunResult(return_code=2)
+        except ValueError as exc:
+            logger.warning("Mission run failed: %s", exc)
+            return MissionRunResult(return_code=2, message=str(exc))
 
         ingested_ids: list[str] = []
         verified = report.get("verified_findings", [])
-        if cmd.auto_ingest and isinstance(verified, list) and verified:
+        if cmd.auto_ingest and verified:
             pipeline = self._get_ingest_pipeline()
             # Ingest each finding individually for better KG fact extraction
             for finding in verified[:20]:
-                if not isinstance(finding, dict):
-                    continue
                 statement = str(finding.get("statement", "")).strip()
                 domains = ",".join(str(x) for x in finding.get("source_domains", []))
                 if not statement:
@@ -292,13 +308,14 @@ class GrowthEvalHandler:
         try:
             _check_path_within_root(cmd.tasks_path, self._root, "tasks_path")
             _check_path_within_root(cmd.history_path, self._root, "history_path")
-        except ValueError:
-            return GrowthEvalResult()
+        except ValueError as exc:
+            logger.warning("GrowthEval path check failed: %s", exc)
+            return GrowthEvalResult(message=str(exc))
         try:
             tasks = load_golden_tasks(cmd.tasks_path)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
             logger.warning("Growth eval task loading failed: %s", exc)
-            return GrowthEvalResult()
+            return GrowthEvalResult(message=str(exc))
 
         try:
             run = run_eval(
@@ -314,7 +331,7 @@ class GrowthEvalHandler:
             append_history(cmd.history_path, run)
         except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Growth eval execution failed: %s", exc)
-            return GrowthEvalResult()
+            return GrowthEvalResult(message=str(exc))
         return GrowthEvalResult(run=run)
 
 
@@ -327,8 +344,9 @@ class GrowthReportHandler:
 
         try:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
-        except ValueError:
-            return GrowthReportResult()
+        except ValueError as exc:
+            logger.warning("GrowthReport path check failed: %s", exc)
+            return GrowthReportResult(message=str(exc))
         rows = read_history(cmd.history_path)
         summary = summarize_history(rows, last=cmd.last)
         return GrowthReportResult(summary=summary)
@@ -343,13 +361,15 @@ class GrowthAuditHandler:
 
         try:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
-        except ValueError:
-            return GrowthAuditResult()
+        except ValueError as exc:
+            logger.warning("GrowthAudit path check failed: %s", exc)
+            return GrowthAuditResult(message=str(exc))
         rows = read_history(cmd.history_path)
         try:
             run = audit_run(rows, run_index=cmd.run_index)
-        except (RuntimeError, IndexError):
-            return GrowthAuditResult()
+        except (RuntimeError, IndexError) as exc:
+            logger.warning("GrowthAudit run lookup failed: %s", exc)
+            return GrowthAuditResult(message=str(exc))
         return GrowthAuditResult(run=run)
 
 
@@ -357,11 +377,11 @@ class IntelligenceDashboardHandler:
     def __init__(
         self,
         root: Path,
-        pref_tracker: Any = None,
-        feedback_tracker: Any = None,
-        usage_tracker: Any = None,
-        kg: Any = None,
-        engine: Any = None,
+        pref_tracker: Optional[PreferenceTracker] = None,
+        feedback_tracker: Optional[ResponseFeedbackTracker] = None,
+        usage_tracker: Optional[UsagePatternTracker] = None,
+        kg: Optional[KnowledgeGraph] = None,
+        engine: Optional[MemoryEngine] = None,
     ) -> None:
         self._root = root
         self._pref_tracker = pref_tracker

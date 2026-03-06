@@ -112,10 +112,9 @@ class TestProactiveCheckHandler:
 
         assert result.alerts_fired == 1
         assert "Fired 1 alert" in result.message
-        parsed = json.loads(result.alerts)
-        assert len(parsed) == 1
-        assert parsed[0]["rule_id"] == "r1"
-        assert parsed[0]["priority"] == "high"
+        assert len(result.alerts) == 1
+        assert result.alerts[0]["rule_id"] == "r1"
+        assert result.alerts[0]["priority"] == "high"
 
     def test_multiple_alerts(self, tmp_path: Path) -> None:
         snap = tmp_path / "snap.json"

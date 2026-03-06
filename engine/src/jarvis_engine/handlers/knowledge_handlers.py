@@ -30,13 +30,13 @@ class KnowledgeStatusHandler:
 
     def handle(self, cmd: KnowledgeStatusCommand) -> KnowledgeStatusResult:
         if self._kg is None:
-            return KnowledgeStatusResult()
+            return KnowledgeStatusResult(message="Knowledge graph not available.")
 
         try:
             from jarvis_engine.knowledge.regression import RegressionChecker
         except ImportError as exc:
             logger.warning("regression module not available: %s", exc)
-            return KnowledgeStatusResult()
+            return KnowledgeStatusResult(message="Regression module not available.")
 
         metrics = RegressionChecker(self._kg).capture_metrics()
         return KnowledgeStatusResult(
@@ -55,13 +55,13 @@ class ContradictionListHandler:
 
     def handle(self, cmd: ContradictionListCommand) -> ContradictionListResult:
         if self._kg is None:
-            return ContradictionListResult()
+            return ContradictionListResult(message="Knowledge graph not available.")
 
         try:
             from jarvis_engine.knowledge.contradictions import ContradictionManager
         except ImportError as exc:
             logger.warning("contradictions module not available: %s", exc)
-            return ContradictionListResult()
+            return ContradictionListResult(message="Contradictions module not available.")
 
         mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
         contradictions = mgr.list_all(
@@ -200,7 +200,8 @@ class KnowledgeRegressionHandler:
             try:
                 meta = json.loads(snap_path.read_text(encoding="utf-8"))
                 prev_metrics = meta.get("kg_metrics")
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Failed to load snapshot metadata from %s: %s", snap_path, exc)
                 return KnowledgeRegressionResult(
                     report={
                         "status": "error",

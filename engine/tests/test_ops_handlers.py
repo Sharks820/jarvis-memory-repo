@@ -34,11 +34,11 @@ from jarvis_engine.handlers.ops_handlers import (
 class TestOpsAutopilotHandler:
     """Tests for OpsAutopilotHandler."""
 
-    @patch("jarvis_engine.main._cmd_ops_autopilot_impl", return_value=0)
+    @patch("jarvis_engine.ops_autopilot.run_ops_autopilot", return_value=0)
     def test_handle_successful(
         self, mock_impl: MagicMock, tmp_path: Path
     ) -> None:
-        """OpsAutopilotHandler delegates to _cmd_ops_autopilot_impl and returns rc=0."""
+        """OpsAutopilotHandler delegates to run_ops_autopilot and returns rc=0."""
         snap = tmp_path / ".planning" / "snapshot.json"
         snap.parent.mkdir(parents=True, exist_ok=True)
         snap.write_text("{}", encoding="utf-8")
@@ -64,7 +64,7 @@ class TestOpsAutopilotHandler:
             auto_open_connectors=False,
         )
 
-    @patch("jarvis_engine.main._cmd_ops_autopilot_impl", return_value=3)
+    @patch("jarvis_engine.ops_autopilot.run_ops_autopilot", return_value=3)
     def test_handle_nonzero_rc_propagated(
         self, mock_impl: MagicMock, tmp_path: Path
     ) -> None:

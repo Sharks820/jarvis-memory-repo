@@ -223,8 +223,8 @@ def _speak_text_edge(
         if not output_wav:
             try:
                 Path(out_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up TTS temp file %s: %s", out_path, exc)
         raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
 
     if not output_wav:
@@ -233,8 +233,8 @@ def _speak_text_edge(
         finally:
             try:
                 Path(out_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up TTS temp file after playback %s: %s", out_path, exc)
         # Temp file was deleted after playback -- don't return the stale path
         return VoiceSpeakResult(
             voice_name=voice,
@@ -322,7 +322,7 @@ def _speak_text_edge_streamed(
                 if proc.returncode != 0:
                     raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
                 q.put(str(media_path))
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:  # noqa: BLE001
             had_error = True
             err.append(exc)
             q.put(_ERROR_SENTINEL)  # Signal error immediately instead of waiting
@@ -348,8 +348,8 @@ def _speak_text_edge_streamed(
             for f in out_dir.glob("chunk_*.mp3"):
                 f.unlink(missing_ok=True)
             out_dir.rmdir()
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Failed to clean up streaming TTS chunks: %s", exc)
     if err:
         raise RuntimeError(str(err[0]))
 
@@ -424,7 +424,7 @@ def speak_text(
                 output_wav=output_wav,
                 rate=rate,
             )
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             if engine_pref in {"edge", "edge_tts"}:
                 raise
             logger.warning("edge-tts failed, falling back to Windows SAPI: %s", exc)

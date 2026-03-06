@@ -7,7 +7,13 @@ import logging
 import threading
 import time as _time_mod
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.costs import CostTracker
+    from jarvis_engine.memory.embeddings import EmbeddingService
+    from jarvis_engine.memory.engine import MemoryEngine
+    from jarvis_engine.proactive import ProactiveEngine
 
 from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
 
@@ -28,7 +34,7 @@ logger = logging.getLogger(__name__)
 class ProactiveCheckHandler:
     """Load snapshot data and evaluate proactive trigger rules."""
 
-    def __init__(self, root: Path, proactive_engine: Any = None) -> None:
+    def __init__(self, root: Path, proactive_engine: Optional[ProactiveEngine] = None) -> None:
         self._root = root
         self._engine = proactive_engine
 
@@ -108,7 +114,7 @@ class ProactiveCheckHandler:
 
         return ProactiveCheckResult(
             alerts_fired=len(alerts),
-            alerts=json.dumps(alerts_dicts),
+            alerts=alerts_dicts,
             message=message,
             diagnostics=diagnostics_str,
         )
@@ -183,9 +189,10 @@ class WakeWordStartHandler:
                            text, result.backend, result.duration_seconds)
                 # Dispatch through voice-run pipeline
                 try:
-                    from jarvis_engine.main import _cmd_voice_run_impl, repo_root
+                    from jarvis_engine.voice_pipeline import cmd_voice_run_impl
+                    from jarvis_engine.config import repo_root
                     _root = repo_root()
-                    _cmd_voice_run_impl(
+                    cmd_voice_run_impl(
                         text=text,
                         execute=True,
                         approve_privileged=False,
@@ -235,7 +242,7 @@ class WakeWordStartHandler:
 class CostReductionHandler:
     """Compute local-vs-cloud ratio, take snapshot, and compute trend."""
 
-    def __init__(self, root: Path, cost_tracker: Any = None) -> None:
+    def __init__(self, root: Path, cost_tracker: Optional[CostTracker] = None) -> None:
         self._root = root
         self._cost_tracker = cost_tracker
 
@@ -288,7 +295,7 @@ class SelfTestHandler:
     """Run adversarial memory quiz, save result, and check for regression."""
 
     def __init__(
-        self, root: Path, engine: Any = None, embed_service: Any = None
+        self, root: Path, engine: Optional[MemoryEngine] = None, embed_service: Optional[EmbeddingService] = None
     ) -> None:
         self._root = root
         self._engine = engine

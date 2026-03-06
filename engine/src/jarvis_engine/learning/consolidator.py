@@ -347,8 +347,8 @@ class MemoryConsolidator:
         query += " ORDER BY ts DESC LIMIT ?"
         params.append(limit)
 
-        with self._engine._db_lock:
-            cur = self._engine._db.execute(query, params)
+        with self._engine.db_lock:
+            cur = self._engine.db.execute(query, params)
             return [dict(row) for row in cur.fetchall()]
 
     def _compute_embeddings(self, records: list[dict]) -> list[list[float]]:
@@ -425,14 +425,14 @@ class MemoryConsolidator:
         """
         tag_value = f"consolidated_into:{new_record_id}"
 
-        with self._engine._write_lock:
+        with self._engine.write_lock:
             for rec in records:
                 rid = rec.get("record_id")
                 if not rid:
                     continue
 
                 # Read current tags from DB (not the stale snapshot)
-                row = self._engine._db.execute(
+                row = self._engine.db.execute(
                     "SELECT tags FROM records WHERE record_id = ?",
                     (rid,),
                 ).fetchone()
@@ -453,8 +453,8 @@ class MemoryConsolidator:
                 if tag_value not in existing_tags:
                     existing_tags.append(tag_value)
 
-                self._engine._db.execute(
+                self._engine.db.execute(
                     "UPDATE records SET tags = ? WHERE record_id = ?",
                     (json.dumps(existing_tags), rid),
                 )
-            self._engine._db.commit()
+            self._engine.db.commit()

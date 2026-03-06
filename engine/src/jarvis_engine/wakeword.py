@@ -61,7 +61,7 @@ class WakeWordDetector:
                 "Install with: pip install openwakeword"
             )
             return
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError) as exc:
             logger.error("Failed to load wake word model: %s", exc)
             return
 
@@ -70,7 +70,7 @@ class WakeWordDetector:
             from jarvis_engine.stt_vad import SileroVADDetector
             self._vad = SileroVADDetector(threshold=0.3)
             self._vad_available = self._vad.available
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, AttributeError) as exc:
             logger.debug("Silero VAD init failed for wakeword: %s", exc)
             self._vad = None
             self._vad_available = False
@@ -123,7 +123,7 @@ class WakeWordDetector:
                 try:
                     try:
                         audio_data, overflowed = stream.read(chunk_size)
-                    except Exception as read_exc:
+                    except (OSError, RuntimeError) as read_exc:
                         logger.debug("Wakeword stream read failed (may be closed): %s", read_exc)
                         continue
                 finally:
@@ -175,7 +175,7 @@ class WakeWordDetector:
 
                         try:
                             on_detected()
-                        except Exception as cb_exc:
+                        except (RuntimeError, ValueError, TypeError, OSError) as cb_exc:
                             logger.error("Wake word callback error: %s", cb_exc)
 
                         # Cooldown to prevent rapid re-triggers
@@ -191,13 +191,13 @@ class WakeWordDetector:
                                 avail = drain_stream.read_available
                                 if avail > 0:
                                     drain_stream.read(avail)
-                            except Exception as drain_exc:
+                            except (OSError, RuntimeError) as drain_exc:
                                 logger.debug("Stream drain failed (may be closed): %s", drain_exc)
 
                         # Reset silence state so first chunk after drain
                         # goes through the silence-to-speech transition path
                         _was_silent = True
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.error("Wake word detection error: %s", exc)
         finally:
             with self._stream_lock:
@@ -205,7 +205,7 @@ class WakeWordDetector:
                     try:
                         self._stream.stop()
                         self._stream.close()
-                    except Exception as stream_exc:
+                    except (OSError, RuntimeError) as stream_exc:
                         logger.debug("Failed to close wakeword stream: %s", stream_exc)
                     self._stream = None
             logger.info("Wake word detection stopped.")
@@ -222,7 +222,7 @@ class WakeWordDetector:
                     self._stream.stop()
                     self._stream.close()
                     logger.debug("Wake word mic stream paused")
-                except Exception as exc:
+                except (OSError, RuntimeError) as exc:
                     logger.debug("Error pausing wake word stream: %s", exc)
                 self._stream = None
 

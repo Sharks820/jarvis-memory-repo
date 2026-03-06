@@ -137,18 +137,23 @@ class HeartbeatMonitor:
         logger.debug("Watchdog thread exiting")
 
     def _check_heartbeat(self) -> None:
-        """Increment missed count and fire callback if threshold reached."""
+        """Check if heartbeat is overdue and fire callback if threshold reached."""
         fire_callback = False
         with self._lock:
-            self._missed_count += 1
-            if self._missed_count >= self._max_missed:
-                if self._healthy:
-                    logger.warning(
-                        "HeartbeatMonitor: %d consecutive misses — marking UNHEALTHY",
-                        self._missed_count,
-                    )
-                self._healthy = False
-                fire_callback = True
+            now = time.monotonic()
+            # Only count a miss if the last beat is actually overdue.
+            # A beat is overdue when no beat has been received yet or the
+            # elapsed time since the last beat exceeds the expected interval.
+            if self._last_beat is None or (now - self._last_beat) >= self._interval:
+                self._missed_count += 1
+                if self._missed_count >= self._max_missed:
+                    if self._healthy:
+                        logger.warning(
+                            "HeartbeatMonitor: %d consecutive misses — marking UNHEALTHY",
+                            self._missed_count,
+                        )
+                    self._healthy = False
+                    fire_callback = True
 
         # Invoke callback outside the lock to avoid potential deadlocks.
         if fire_callback and self._on_failure is not None:

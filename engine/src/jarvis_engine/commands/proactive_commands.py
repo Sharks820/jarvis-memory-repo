@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -15,7 +16,7 @@ class ProactiveCheckCommand:
 @dataclass
 class ProactiveCheckResult:
     alerts_fired: int = 0
-    alerts: str = "[]"
+    alerts: list[dict[str, Any]] = field(default_factory=list)
     message: str = ""
     diagnostics: str = ""
 

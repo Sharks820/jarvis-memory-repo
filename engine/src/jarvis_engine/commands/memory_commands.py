@@ -14,6 +14,7 @@ class BrainStatusCommand:
 @dataclass
 class BrainStatusResult:
     status: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class BrainContextCommand:
 @dataclass
 class BrainContextResult:
     packet: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class BrainCompactCommand:
 @dataclass
 class BrainCompactResult:
     result: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ class BrainRegressionCommand:
 @dataclass
 class BrainRegressionResult:
     report: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,7 @@ class IngestResult:
     source: str = ""
     kind: str = ""
     task_id: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,7 @@ class MemorySnapshotResult:
     reason: str = ""
     expected_sha256: str = ""
     actual_sha256: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,3 +103,4 @@ class MemoryMaintenanceCommand:
 @dataclass
 class MemoryMaintenanceResult:
     report: dict[str, Any] = field(default_factory=dict)
+    message: str = ""

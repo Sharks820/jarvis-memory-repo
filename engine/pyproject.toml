@@ -17,11 +17,14 @@ dependencies = [
     "ollama>=0.4.0",
     "icalendar>=7.0.1",
     "recurring-ical-events>=3.8.1",
-    "openai>=1.0.0",
-    "google-genai>=1.0.0",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]
+harvesting = [
+    "openai>=1.0.0",
+    "google-genai>=1.0.0",
+]
 tasks = [
     "todoist-api-python",
 ]

@@ -487,7 +487,7 @@ def _try_parakeet(
                     try:
                         model = model.with_timestamps()
                         logger.debug("Parakeet timestamps model loaded")
-                    except Exception:
+                    except (AttributeError, RuntimeError, TypeError):
                         logger.debug(
                             "Parakeet timestamps not available, using base model"
                         )
@@ -717,73 +717,6 @@ _BACKEND_FN_MAP: dict[str, str] = {
     "groq": "_try_groq",
     "local": "_try_local_emergency",
 }
-
-
-def _confidence_retry(
-    primary: TranscriptionResult,
-    audio: np.ndarray | str,
-    *,
-    language: str,
-    prompt: str,
-    root_dir: Path | None,
-) -> TranscriptionResult:
-    """If *primary* confidence is below threshold, try the alternative backend.
-
-    Returns whichever result has higher confidence.  If the retry fails
-    or produces lower confidence, the original result is returned unchanged.
-    At most ONE retry is attempted.
-    """
-    if primary.confidence >= CONFIDENCE_RETRY_THRESHOLD:
-        return primary
-
-    has_groq = bool(os.environ.get("GROQ_API_KEY", ""))
-
-    # Determine alternative backend
-    if primary.backend == "groq-whisper":
-        retry_result = _try_local(audio, language=language, prompt=prompt)
-    elif primary.backend == "faster-whisper" and has_groq:
-        retry_result = _try_groq(audio, language=language, prompt=prompt)
-    else:
-        # No alternative available
-        return primary
-
-    if retry_result is None:
-        logger.info(
-            "Confidence retry failed; keeping original (%.3f)",
-            primary.confidence,
-        )
-        return primary
-
-    # Log metrics for retry attempt
-    _log_stt_metric(
-        root_dir,
-        backend=retry_result.backend,
-        confidence=retry_result.confidence,
-        latency_ms=retry_result.duration_seconds * 1000,
-        text_length=len(retry_result.text),
-        retried=True,
-    )
-
-    if retry_result.confidence > primary.confidence:
-        logger.info(
-            "Confidence retry improved: %.3f (%s) -> %.3f (%s)",
-            primary.confidence,
-            primary.backend,
-            retry_result.confidence,
-            retry_result.backend,
-        )
-        retry_result.retried = True
-        return retry_result
-
-    logger.info(
-        "Confidence retry did not improve: %.3f (%s) vs %.3f (%s); keeping original",
-        primary.confidence,
-        primary.backend,
-        retry_result.confidence,
-        retry_result.backend,
-    )
-    primary.retried = True  # Mark that a retry was attempted
-    return primary
 
 
 def transcribe_smart(

@@ -21,6 +21,8 @@ def _make_engine(total_records=0, branch_rows=None):
     engine = MagicMock()
     db = MagicMock()
     engine._db = db
+    engine.db = db  # Public property alias
+    engine.db_lock = MagicMock()  # Public property alias
 
     count_cursor = MagicMock()
     count_cursor.fetchone.return_value = (total_records,)
@@ -88,7 +90,8 @@ class TestCaptureKnowledgeMetrics:
         engine = _make_engine()
         result = capture_knowledge_metrics(kg, engine)
         # Should be parseable as ISO datetime
-        datetime.fromisoformat(result["captured_at"])
+        parsed = datetime.fromisoformat(result["captured_at"])
+        assert parsed is not None
 
     def test_temporal_distribution(self):
         kg = _make_kg(temporal_rows=[
@@ -143,7 +146,7 @@ class TestNullHandling:
 class TestErrorHandling:
     def test_engine_db_exception(self):
         engine = MagicMock()
-        engine._db.execute.side_effect = Exception("DB locked")
+        engine.db.execute.side_effect = Exception("DB locked")
         kg = _make_kg(nodes=10)
 
         result = capture_knowledge_metrics(kg, engine)

@@ -344,7 +344,7 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
                 "branch_counts": latest.get("branch_counts", {}),
                 "trend": trend,
             }
-    except Exception:
+    except (ImportError, OSError, ValueError):
         logger.debug("Failed to collect KG metrics (knowledge graph module may not be available)")
     return {}
 
@@ -357,6 +357,6 @@ def _safe_gateway_summary(root: Path) -> dict[str, Any]:
         audit_path = runtime_dir(root) / GATEWAY_AUDIT_LOG
         audit = GatewayAudit(audit_path)
         return audit.summary(hours=24)
-    except Exception:
+    except (ImportError, OSError, ValueError):
         logger.debug("Failed to collect gateway audit summary (audit log may not exist)")
     return {}

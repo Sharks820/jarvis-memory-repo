@@ -219,7 +219,7 @@ def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        pass
+        logger.debug("Direct JSON parse failed for row_data, attempting cleanup")
     # Slow path: clean comma artifacts from CASE-expression output.
     # These appear as sequences of commas between/around array or object
     # elements, e.g. ``[,,"x",,,"y",]`` or ``{,,"k":1,,}``

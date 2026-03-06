@@ -35,7 +35,7 @@ class FakeModel:
 
         self._calls.append((texts, normalize_embeddings))
         vecs = []
-        for i, t in enumerate(texts):
+        for t in texts:
             vec = np.array([float(hash(t) % 100 + j) for j in range(self._dim)], dtype=float)
             if normalize_embeddings:
                 norm = np.linalg.norm(vec)

@@ -33,8 +33,10 @@ class TestUsagePatternTracker:
 
     def test_schema_idempotent(self, db):
         """Creating tracker twice does not raise."""
-        UsagePatternTracker(db=db)
-        UsagePatternTracker(db=db)
+        t1 = UsagePatternTracker(db=db)
+        t2 = UsagePatternTracker(db=db)
+        assert t1 is not None
+        assert t2 is not None
 
     def test_record_interaction(self, db, tracker):
         """Interactions are stored with correct hour and day_of_week."""

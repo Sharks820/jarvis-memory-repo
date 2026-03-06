@@ -209,6 +209,8 @@ def _run_cli_subprocess(
     display = cli_display_name or provider
 
     try:
+        from jarvis_engine._shared import win_hidden_subprocess_kwargs
+
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -216,6 +218,7 @@ def _run_cli_subprocess(
             timeout=timeout,
             env=env,
             cwd=tempfile.gettempdir(),
+            **win_hidden_subprocess_kwargs(),
         )
         if proc.returncode != 0:
             return _cli_result(
@@ -495,7 +498,7 @@ def _extract_claude_text_and_cost(stdout: str) -> tuple[str, float]:
                 try:
                     total_cost = float(event.get("total_cost_usd", event.get("cost_usd", total_cost)) or total_cost)
                 except (TypeError, ValueError):
-                    pass
+                    logger.debug("Could not parse cost from CLI event: %s", event.get("total_cost_usd"))
 
         text = result_text or "\n\n".join(assistant_text_chunks).strip()
         return (text, total_cost)
@@ -584,12 +587,15 @@ def call_codex_cli(
     ]
 
     try:
+        from jarvis_engine._shared import win_hidden_subprocess_kwargs
+
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
             cwd=tempfile.gettempdir(),
+            **win_hidden_subprocess_kwargs(),
         )
 
         # Read output file
@@ -598,7 +604,7 @@ def call_codex_cli(
             with open(out_path, "r", encoding="utf-8") as f:
                 text = f.read().strip()
         except FileNotFoundError:
-            pass
+            logger.debug("CLI output file not found: %s", out_path)
 
         if proc.returncode != 0 and not text:
             return _cli_result(
@@ -633,8 +639,8 @@ def call_codex_cli(
         if out_path is not None:
             try:
                 os.unlink(out_path)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up CLI temp file %s: %s", out_path, exc)
 
 
 def call_gemini_cli(

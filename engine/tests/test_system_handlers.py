@@ -155,7 +155,7 @@ def test_serve_mobile_os_error(mock_run: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.main._cmd_daemon_run_impl", return_value=0)
+@patch("jarvis_engine.daemon_loop.cmd_daemon_run_impl", return_value=0)
 def test_daemon_run_success(mock_impl: MagicMock) -> None:
     handler = DaemonRunHandler(ROOT)
     cmd = DaemonRunCommand(max_cycles=1)
@@ -166,7 +166,7 @@ def test_daemon_run_success(mock_impl: MagicMock) -> None:
     assert kwargs["max_cycles"] == 1
 
 
-@patch("jarvis_engine.main._cmd_daemon_run_impl", return_value=2)
+@patch("jarvis_engine.daemon_loop.cmd_daemon_run_impl", return_value=2)
 def test_daemon_run_failure(mock_impl: MagicMock) -> None:
     handler = DaemonRunHandler(ROOT)
     result = handler.handle(DaemonRunCommand())
@@ -287,8 +287,8 @@ def test_desktop_widget_import_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.main._detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.main._read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand())
@@ -296,9 +296,9 @@ def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> 
     assert result.detected is False
 
 
-@patch("jarvis_engine.main._write_gaming_mode_state", return_value={"enabled": True})
-@patch("jarvis_engine.main._detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.main._read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": True})
+@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(enable=True))
@@ -307,9 +307,9 @@ def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_w
     assert result.effective_enabled is True
 
 
-@patch("jarvis_engine.main._write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
-@patch("jarvis_engine.main._detect_active_game_process", return_value=(True, "steam.exe"))
-@patch("jarvis_engine.main._read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
+@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(True, "steam.exe"))
+@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(auto_detect="on"))
@@ -318,13 +318,13 @@ def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock
     assert result.effective_enabled is True  # detected overrides enabled=False
 
 
-@patch("jarvis_engine.main._detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.main._read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_no_change_no_write(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     """When no flags change state, _write is NOT called."""
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(reason="just checking"))
-    # _write_gaming_mode_state should not be called since changed=False
+    # write_gaming_mode_state should not be called since changed=False
     assert result.effective_enabled is False
 
 

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.models import ModelGateway
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.engine import ConversationLearningEngine
+    from jarvis_engine.memory.embeddings import EmbeddingService
+    from jarvis_engine.memory.engine import MemoryEngine
 
 from jarvis_engine.commands.learning_commands import (
     ConsolidateMemoryCommand,
@@ -23,7 +30,7 @@ logger = logging.getLogger(__name__)
 class LearnInteractionHandler:
     """Delegates LearnInteractionCommand to ConversationLearningEngine."""
 
-    def __init__(self, root: Path, learning_engine: Any = None) -> None:
+    def __init__(self, root: Path, learning_engine: Optional[ConversationLearningEngine] = None) -> None:
         self._root = root
         self._learning_engine = learning_engine
 
@@ -59,9 +66,9 @@ class CrossBranchQueryHandler:
     def __init__(
         self,
         root: Path,
-        engine: Any = None,
-        kg: Any = None,
-        embed_service: Any = None,
+        engine: Optional[MemoryEngine] = None,
+        kg: Optional[KnowledgeGraph] = None,
+        embed_service: Optional[EmbeddingService] = None,
     ) -> None:
         self._root = root
         self._engine = engine
@@ -98,7 +105,7 @@ class CrossBranchQueryHandler:
 class FlagExpiredFactsHandler:
     """Delegates FlagExpiredFactsCommand to flag_expired_facts function."""
 
-    def __init__(self, root: Path, kg: Any = None) -> None:
+    def __init__(self, root: Path, kg: Optional[KnowledgeGraph] = None) -> None:
         self._root = root
         self._kg = kg
 
@@ -127,10 +134,10 @@ class ConsolidateMemoryHandler:
     def __init__(
         self,
         root: Path,
-        engine: Any = None,
-        gateway: Any = None,
-        embed_service: Any = None,
-        kg: Any = None,
+        engine: Optional[MemoryEngine] = None,
+        gateway: Optional[ModelGateway] = None,
+        embed_service: Optional[EmbeddingService] = None,
+        kg: Optional[KnowledgeGraph] = None,
     ) -> None:
         self._root = root
         self._engine = engine

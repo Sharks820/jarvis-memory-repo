@@ -68,8 +68,8 @@ def get_or_create_salt(salt_path: Path) -> bytes:
         if salt_path.exists():
             try:
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to clean up salt temp file: %s", exc)
             return salt_path.read_bytes()
         raise
     logger.info("Created new sync salt at %s", salt_path)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import threading
 from collections import defaultdict
@@ -23,6 +24,8 @@ from typing import Any
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine.phone_guard import _area_key, _normalize_number, _parse_ts
+
+logger = logging.getLogger(__name__)
 
 _CAMPAIGNS_LOCK = threading.Lock()
 
@@ -160,7 +163,7 @@ def detect_campaigns(
                 try:
                     last4_values.append(int(digits[-4:]))
                 except ValueError:
-                    pass
+                    logger.debug("Non-numeric last-4 digits in number: %s", num)
         if len(last4_values) >= 2:
             last4_sorted = sorted(last4_values)
             sequential_count = sum(
@@ -563,9 +566,11 @@ def load_call_intel(path: Path, *, limit: int = 500) -> list[dict[str, Any]]:
             try:
                 reports.append(json.loads(line))
             except json.JSONDecodeError:
+                logger.debug("Skipping malformed scam report line")
                 continue
         return reports
-    except OSError:
+    except OSError as exc:
+        logger.debug("Failed to read scam reports: %s", exc)
         return []
 
 

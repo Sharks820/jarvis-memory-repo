@@ -18,6 +18,7 @@ class VoiceListCommand:
 class VoiceListResult:
     windows_voices: list[str] = field(default_factory=list)
     edge_voices: list[str] = field(default_factory=list)
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,7 @@ class VoiceRunResult:
     return_code: int = 0
     intent: str = "unknown"
     extra: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
 
 
 @dataclass(frozen=True)

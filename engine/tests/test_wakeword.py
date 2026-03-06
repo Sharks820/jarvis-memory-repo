@@ -375,6 +375,7 @@ def test_start_accepts_mic_lock() -> None:
     with patch.object(detector, "_load_model", side_effect=ImportError("no oww")):
         # Should not raise even with mic_lock
         detector.start(on_detected=lambda: None, mic_lock=mic_lock)
+        assert detector is not None  # start completed without error
 
 
 # ---------------------------------------------------------------------------
@@ -416,7 +417,7 @@ def test_audio_stream_open_failure() -> None:
     callback = MagicMock()
 
     mock_sd = MagicMock()
-    mock_sd.InputStream.side_effect = Exception("No audio device")
+    mock_sd.InputStream.side_effect = OSError("No audio device")
 
     with patch.object(detector, "_load_model"):
         original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__

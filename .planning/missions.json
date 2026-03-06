@@ -13,5 +13,43 @@
     "updated_utc": "2026-02-22T10:15:06.417745+00:00",
     "last_report_path": "C:\\Users\\Conner\\jarvis-memory-repo\\.planning\\missions\\m-20260222101501.report.json",
     "verified_findings": 0
+  },
+  {
+    "mission_id": "m-20260306163024932357",
+    "topic": "quantum computing basics",
+    "objective": "",
+    "sources": [
+      "google",
+      "reddit",
+      "official_docs"
+    ],
+    "status": "pending",
+    "origin": "phone",
+    "created_utc": "2026-03-06T16:30:24.932357+00:00",
+    "updated_utc": "2026-03-06T16:30:24.932357+00:00",
+    "last_report_path": "",
+    "verified_findings": 0,
+    "progress_pct": 0,
+    "status_detail": "Queued",
+    "progress_bar": "[\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%"
+  },
+  {
+    "mission_id": "m-20260306163047172127",
+    "topic": "quantum computing basics",
+    "objective": "",
+    "sources": [
+      "google",
+      "reddit",
+      "official_docs"
+    ],
+    "status": "pending",
+    "origin": "phone",
+    "created_utc": "2026-03-06T16:30:47.172127+00:00",
+    "updated_utc": "2026-03-06T16:30:47.172127+00:00",
+    "last_report_path": "",
+    "verified_findings": 0,
+    "progress_pct": 0,
+    "status_detail": "Queued",
+    "progress_bar": "[\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 0%"
   }
 ]

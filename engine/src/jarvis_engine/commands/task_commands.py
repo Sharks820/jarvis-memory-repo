@@ -28,6 +28,7 @@ class RunTaskResult:
     output_text: str | None = None
     return_code: int = 0
     auto_ingest_record_id: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class RouteCommand:
 class RouteResult:
     provider: str = ""
     reason: str = ""
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ class QueryResult:
     fallback_used: bool = False
     fallback_reason: str = ""
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -79,3 +82,4 @@ class WebResearchResult:
     return_code: int = 0
     report: dict[str, Any] = field(default_factory=dict)
     auto_ingest_record_id: str = ""
+    message: str = ""

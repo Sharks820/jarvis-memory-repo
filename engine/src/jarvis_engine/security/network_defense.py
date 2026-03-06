@@ -539,6 +539,7 @@ class HomeNetworkMonitor:
                     pid = int(parts[1])
                     pid_map[pid] = parts[0]
                 except ValueError:
+                    logger.debug("Non-numeric PID in tasklist line: %s", line.strip())
                     continue
         return pid_map
 
@@ -554,7 +555,7 @@ class HomeNetworkMonitor:
             try:
                 port = int(port_str)
             except ValueError:
-                pass
+                logger.debug("Non-numeric port in remote address: %s", remote_addr)
 
         # Check for known-bad ports.
         if port in _SUSPICIOUS_PORTS:

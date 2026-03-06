@@ -54,9 +54,9 @@ class RunTaskHandler:
         )
         auto_id = ""
         try:
-            from jarvis_engine import main as _main_mod
+            from jarvis_engine.auto_ingest import auto_ingest_memory
 
-            auto_id = _main_mod._auto_ingest_memory(
+            auto_id = auto_ingest_memory(
                 source="task_outcome",
                 kind="episodic",
                 task_id=_make_task_id(f"task-{cmd.task_type}"),
@@ -67,7 +67,7 @@ class RunTaskHandler:
                 ),
             )
         except Exception as exc:
-            logger.debug("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
+            logger.warning("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
         return RunTaskResult(
             allowed=result.allowed,
             provider=result.provider,
@@ -127,7 +127,8 @@ class WebResearchHandler:
                 max_pages=max(1, min(cmd.max_pages, 20)),
                 max_summary_lines=6,
             )
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("Web research ValueError for query %r: %s", cleaned, exc)
             return WebResearchResult(return_code=2)
         except Exception:
             logger.warning("Web research failed for query %r", cleaned, exc_info=True)
@@ -136,9 +137,9 @@ class WebResearchHandler:
         auto_id = ""
         summary_lines = report.get("summary_lines", [])
         findings = report.get("findings", [])
-        if cmd.auto_ingest and isinstance(summary_lines, list) and summary_lines:
+        if cmd.auto_ingest and summary_lines:
             try:
-                from jarvis_engine import main as _main_mod
+                from jarvis_engine.auto_ingest import auto_ingest_memory
 
                 lines = []
                 for line in summary_lines[:6]:
@@ -147,14 +148,12 @@ class WebResearchHandler:
                         lines.append(f"- {value}")
                 if lines:
                     top_domains = []
-                    if isinstance(findings, list):
-                        for row in findings[:4]:
-                            if isinstance(row, dict):
-                                domain = str(row.get("domain", "")).strip()
-                                if domain:
-                                    top_domains.append(domain)
+                    for row in findings[:4]:
+                        domain = str(row.get("domain", "")).strip()
+                        if domain:
+                            top_domains.append(domain)
                     domain_text = ", ".join(dict.fromkeys(top_domains))
-                    auto_id = _main_mod._auto_ingest_memory(
+                    auto_id = auto_ingest_memory(
                         source="task_outcome",
                         kind="semantic",
                         task_id=_make_task_id("web-research"),
@@ -165,7 +164,7 @@ class WebResearchHandler:
                         ),
                     )
             except Exception as exc:
-                logger.debug("Auto-ingest failed for web research: %s", exc)
+                logger.warning("Auto-ingest failed for web research: %s", exc)
         return WebResearchResult(return_code=0, report=report, auto_ingest_record_id=auto_id)
 
 

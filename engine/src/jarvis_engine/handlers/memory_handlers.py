@@ -54,8 +54,8 @@ class BrainStatusHandler:
             # Query distinct branches from records table
             branches: list[str] = []
             try:
-                with self._engine._db_lock:
-                    rows = self._engine._db.execute(
+                with self._engine.db_lock:
+                    rows = self._engine.db.execute(
                         "SELECT DISTINCT branch FROM records ORDER BY branch"
                     ).fetchall()
                 branches = [row[0] for row in rows]
@@ -231,7 +231,8 @@ class MemorySnapshotHandler:
             target = Path(cmd.verify_path).resolve()
             try:
                 target.relative_to(self._root.resolve())
-            except ValueError:
+            except ValueError as exc:
+                logger.warning("Snapshot verify path check failed: %s", exc)
                 return MemorySnapshotResult(
                     verified=True, ok=False, reason="Path outside project root",
                 )

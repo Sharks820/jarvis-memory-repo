@@ -47,11 +47,9 @@ class PyBugVisitor(ast.NodeVisitor):
             # naked except:
             pass
         elif isinstance(node.type, ast.Name) and node.type.id == 'Exception':
-            # Check for pass
-            has_pass = any(isinstance(s, ast.Pass) for s in node.body)
-            has_log = any(isinstance(s, ast.Expr) and isinstance(s.value, ast.Call) and getattr(s.value.func, 'attr', '') in ('error', 'warning', 'debug', 'exception', 'info') for s in node.body)
-            # if has_pass and not has_log:
-                # ignore per prompt: "Empty catches for graceful degradation in optional features"
+            # Check for pass -- intentionally not flagging empty catches
+            # per prompt: "Empty catches for graceful degradation in optional features"
+            pass
         self.generic_visit(node)
 
 for pf in py_files:

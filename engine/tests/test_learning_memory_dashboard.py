@@ -228,10 +228,10 @@ class TestDashboardLearningMetrics:
         mock_kg.db.execute.return_value.fetchall.return_value = []
 
         mock_engine = MagicMock()
-        mock_engine._db_lock.__enter__ = MagicMock(return_value=None)
-        mock_engine._db_lock.__exit__ = MagicMock(return_value=False)
-        mock_engine._db.execute.return_value.fetchone.return_value = [42]
-        mock_engine._db.execute.return_value.fetchall.return_value = [("general", 30), ("health", 12)]
+        mock_engine.db_lock.__enter__ = MagicMock(return_value=None)
+        mock_engine.db_lock.__exit__ = MagicMock(return_value=False)
+        mock_engine.db.execute.return_value.fetchone.return_value = [42]
+        mock_engine.db.execute.return_value.fetchall.return_value = [("general", 30), ("health", 12)]
 
         root = self._make_tmp_root()
         dashboard = build_intelligence_dashboard(root, kg=mock_kg, engine=mock_engine)

@@ -307,7 +307,7 @@ class TestRunTaskHandler:
         )
         # Even if _auto_ingest_memory fails, result should still be returned
         with patch(
-            "jarvis_engine.main._auto_ingest_memory",
+            "jarvis_engine.auto_ingest.auto_ingest_memory",
             side_effect=RuntimeError("ingest failed"),
         ):
             result = handler.handle(cmd)
@@ -514,7 +514,7 @@ class TestWebResearchHandlerExtended:
             return_value=mock_report,
         ):
             with patch(
-                "jarvis_engine.main._auto_ingest_memory",
+                "jarvis_engine.auto_ingest.auto_ingest_memory",
                 return_value="rec-123",
             ):
                 result = handler.handle(cmd)
@@ -533,7 +533,7 @@ class TestWebResearchHandlerExtended:
             return_value=mock_report,
         ):
             with patch(
-                "jarvis_engine.main._auto_ingest_memory",
+                "jarvis_engine.auto_ingest.auto_ingest_memory",
                 side_effect=RuntimeError("ingest failed"),
             ):
                 result = handler.handle(cmd)

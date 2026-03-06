@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
 from jarvis_engine._shared import check_path_within_root as _check_path_within_root
 
@@ -99,7 +101,8 @@ class OwnerGuardHandler:
                 state = write_owner_guard(self._root, owner_user_id=cmd.owner_user.strip())
             else:
                 state = read_owner_guard(self._root)
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("OwnerGuard operation failed: %s", exc)
             return OwnerGuardResult(return_code=2)
         return OwnerGuardResult(state=state, return_code=0)
 
@@ -135,7 +138,8 @@ class ConnectGrantHandler:
                 connector_id=cmd.connector_id,
                 scopes=cmd.scopes,
             )
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("ConnectGrant permission failed: %s", exc)
             return ConnectGrantResult(return_code=2)
         return ConnectGrantResult(granted=granted, return_code=0)
 
@@ -175,12 +179,14 @@ class PhoneActionHandler:
                 message=cmd.message,
                 reason="manual_or_voice_request",
             )
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("PhoneAction build failed: %s", exc)
             return PhoneActionResult(return_code=2)
         if cmd.queue_action:
             try:
                 _check_path_within_root(cmd.queue_path, self._root, "queue_path")
-            except ValueError:
+            except ValueError as exc:
+                logger.warning("PhoneAction queue path check failed: %s", exc)
                 return PhoneActionResult(return_code=2)
             append_phone_actions(cmd.queue_path, [record])
         return PhoneActionResult(record=record, return_code=0)
@@ -203,13 +209,15 @@ class PhoneSpamGuardHandler:
             _check_path_within_root(cmd.call_log_path, self._root, "call_log_path")
             _check_path_within_root(cmd.report_path, self._root, "report_path")
             _check_path_within_root(cmd.queue_path, self._root, "queue_path")
-        except ValueError:
+        except ValueError as exc:
+            logger.warning("PhoneSpamGuard path check failed: %s", exc)
             return PhoneSpamGuardResult(return_code=2)
         if not cmd.call_log_path.exists():
             return PhoneSpamGuardResult(return_code=2)
         try:
             call_log = load_call_log(cmd.call_log_path)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning("PhoneSpamGuard call log parse failed: %s", exc)
             return PhoneSpamGuardResult(return_code=2)
         candidates = detect_spam_candidates(call_log)
         actions = build_spam_block_actions(candidates, threshold=cmd.threshold, add_global_silence_rule=True)

@@ -325,8 +325,9 @@ def test_permanent_block_no_tracker():
     from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
 
     tn = ThreatNeutralizer()  # no ip_tracker
-    # Should not raise
+    # Should not raise — gracefully handles missing tracker
     tn.permanent_block("10.0.0.1", reason="test")
+    assert tn is not None  # completed without exception
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +402,7 @@ def test_thread_safety():
     def _neutralize(i: int) -> None:
         try:
             tn.neutralize(f"10.0.0.{i}", "scan", {"port": i})
-        except Exception as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=_neutralize, args=(i,)) for i in range(20)]

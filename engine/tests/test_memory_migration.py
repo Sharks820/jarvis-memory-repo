@@ -380,7 +380,9 @@ class TestCheckpointUtils:
         assert not cp_path.exists()
 
     def test_delete_checkpoint_nonexistent_no_error(self, tmp_path):
-        _delete_checkpoint(tmp_path / "does_not_exist.json")
+        target = tmp_path / "does_not_exist.json"
+        _delete_checkpoint(target)
+        assert not target.exists()
 
     def test_save_checkpoint_creates_parent_dirs(self, tmp_path):
         cp_path = tmp_path / "deep" / "nested" / "cp.json"

@@ -136,6 +136,14 @@ class TestChangelogTriggers:
         db = _make_db()
         install_changelog_triggers(db)
         install_changelog_triggers(db)  # Should not raise
+        # Verify changelog table still exists after double install
+        tables = {
+            r[0]
+            for r in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "_sync_changelog" in tables
 
     def test_trigger_fires_on_insert(self):
         from jarvis_engine.sync.changelog import install_changelog_triggers

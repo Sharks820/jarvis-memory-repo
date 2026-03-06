@@ -32,32 +32,41 @@ from jarvis_engine.commands.defense_commands import (
 
 
 class TestFrozen:
-    """All command and result dataclasses should be frozen."""
+    """Command dataclasses should be frozen; Results are mutable (matching codebase convention)."""
 
     @pytest.mark.parametrize(
         "cls",
         [
             SecurityStatusCommand,
-            SecurityStatusResult,
             ThreatReportCommand,
-            ThreatReportResult,
             ExportForensicsCommand,
-            ExportForensicsResult,
             ContainmentOverrideCommand,
-            ContainmentOverrideResult,
             BlockIPCommand,
-            BlockIPResult,
             UnblockIPCommand,
-            UnblockIPResult,
             ReviewQuarantineCommand,
-            ReviewQuarantineResult,
             SecurityBriefingCommand,
+        ],
+    )
+    def test_command_is_frozen(self, cls: type) -> None:
+        assert dataclasses.is_dataclass(cls)
+        assert cls.__dataclass_params__.frozen is True  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize(
+        "cls",
+        [
+            SecurityStatusResult,
+            ThreatReportResult,
+            ExportForensicsResult,
+            ContainmentOverrideResult,
+            BlockIPResult,
+            UnblockIPResult,
+            ReviewQuarantineResult,
             SecurityBriefingResult,
         ],
     )
-    def test_is_frozen_dataclass(self, cls: type) -> None:
+    def test_result_is_mutable(self, cls: type) -> None:
         assert dataclasses.is_dataclass(cls)
-        assert cls.__dataclass_params__.frozen is True  # type: ignore[attr-defined]
+        assert cls.__dataclass_params__.frozen is False  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +259,7 @@ class TestImmutability:
         with pytest.raises(dataclasses.FrozenInstanceError):
             cmd.ip = "10.0.0.2"  # type: ignore[misc]
 
-    def test_result_cannot_be_modified(self) -> None:
+    def test_result_can_be_modified(self) -> None:
         r = SecurityStatusResult(message="ok")
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            r.message = "nope"  # type: ignore[misc]
+        r.message = "updated"
+        assert r.message == "updated"

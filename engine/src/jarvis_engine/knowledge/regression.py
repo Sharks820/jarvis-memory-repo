@@ -90,7 +90,7 @@ class RegressionChecker:
 
         Returns the Path of the newly created backup file.
         """
-        db_parent = Path(self._kg._engine._db_path).parent
+        db_parent = self._kg.db_path.parent
         backup_dir = db_parent / "kg_backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -106,7 +106,7 @@ class RegressionChecker:
         dst_db = sqlite3.connect(str(backup_path))
         try:
             with self._kg.db_lock:
-                self._kg._engine._db.backup(dst_db)
+                self._kg.db.backup(dst_db)
         finally:
             dst_db.close()
         logger.info("Knowledge graph backed up to %s", backup_path)
@@ -127,7 +127,7 @@ class RegressionChecker:
         """Restore the knowledge graph from a backup file.
 
         Copies the backup over the live DB file (after removing stale WAL/SHM
-        files), then reinitializes the KG schema via ``_ensure_schema``.
+        files), then reinitializes the KG schema via ``ensure_schema``.
 
         Returns True on success, False on failure.
         """
@@ -135,7 +135,7 @@ class RegressionChecker:
             logger.error("Backup file does not exist: %s", backup_path)
             return False
 
-        dst_path = Path(self._kg._engine._db_path)
+        dst_path = self._kg.db_path
         try:
             with self._kg.write_lock:
                 # Acquire _db_lock too so no readers are mid-query when we
@@ -152,8 +152,8 @@ class RegressionChecker:
                         # Copy failed -- live DB is still open and valid
                         try:
                             tmp_dst.unlink(missing_ok=True)
-                        except OSError:
-                            pass
+                        except OSError as cleanup_exc:
+                            logger.debug("Failed to remove temp file %s: %s", tmp_dst, cleanup_exc)
                         raise
 
                     # Copy succeeded -- now close the live connection and swap
@@ -182,8 +182,8 @@ class RegressionChecker:
                         # leaving the KG with a closed connection
                         try:
                             tmp_dst.unlink(missing_ok=True)
-                        except OSError:
-                            pass
+                        except OSError as cleanup_exc:
+                            logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
                         reopen_db = sqlite3.connect(
                             str(dst_path), check_same_thread=False,
                         )
@@ -216,10 +216,9 @@ class RegressionChecker:
                     self._kg._db = new_db
                     self._kg._lock_manager._db = new_db
                 # Invalidate NetworkX cache (outside _db_lock to avoid holding it long)
-                self._kg._mutation_counter += 1
-                self._kg._cached_graph = None
+                self._kg.invalidate_cache()
                 # Reinitialize schema on the fresh connection
-                self._kg._ensure_schema()
+                self._kg.ensure_schema()
             logger.info("Knowledge graph restored from %s", backup_path)
             return True
         except Exception as exc:

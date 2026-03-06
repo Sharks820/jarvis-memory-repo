@@ -255,7 +255,7 @@ def search_web(query: str, *, limit: int) -> list[str]:
                 logger.info("search_web: used Brave Search (%d results)", len(urls))
                 return urls
             logger.info("search_web: Brave returned no results, falling back to DuckDuckGo")
-        except Exception as exc:
+        except (OSError, ValueError, TimeoutError) as exc:
             logger.warning("search_web: Brave Search failed (%s), falling back to DuckDuckGo", exc)
 
     # Fallback to DuckDuckGo

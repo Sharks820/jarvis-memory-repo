@@ -87,7 +87,7 @@ def check_calendar_prep(snapshot_data: dict) -> list[str]:
     for event in events:
         if not event.get("prep_needed", False):
             continue
-        start_str = event.get("start_time", "")
+        start_str = event.get("time") or event.get("start_time", "")
         if not start_str:
             continue
         try:
@@ -167,7 +167,7 @@ def check_meeting_prep_intelligence(snapshot_data: dict) -> list[str]:
     now = datetime.now().astimezone()
 
     for event in events:
-        start_str = event.get("start_time", "")
+        start_str = event.get("time") or event.get("start_time", "")
         if not start_str:
             continue
         try:

@@ -93,6 +93,7 @@ class ThreatNeutralizer:
         self._rdap_cache: dict[str, tuple[float, str | None]] = {}
         _RDAP_CACHE_TTL = 86400  # 24 hours
         self._rdap_cache_ttl = _RDAP_CACHE_TTL
+        self._rdap_cache_max_size = 1024  # LRU-style cap to prevent unbounded growth
 
         # Counters
         self._total_neutralized = 0
@@ -342,7 +343,7 @@ class ThreatNeutralizer:
                     result = self._extract_email_from_vcard(entity)
                     if result is not None:
                         with self._lock:
-                            self._rdap_cache[ip] = (time.time(), result)
+                            self._rdap_cache_put(ip, result)
                         return result
 
             # Check nested entities
@@ -353,12 +354,12 @@ class ThreatNeutralizer:
                         result = self._extract_email_from_vcard(sub_entity)
                         if result is not None:
                             with self._lock:
-                                self._rdap_cache[ip] = (time.time(), result)
+                                self._rdap_cache_put(ip, result)
                             return result
 
             logger.debug("No abuse contact found in RDAP for %s", ip)
             with self._lock:
-                self._rdap_cache[ip] = (time.time(), None)
+                self._rdap_cache_put(ip, None)
             return None
 
         except Exception as exc:
@@ -473,6 +474,33 @@ class ThreatNeutralizer:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _rdap_cache_put(self, ip: str, result: str | None) -> None:
+        """Store a value in the RDAP cache, evicting stale/oldest entries if full.
+
+        Must be called while holding ``self._lock``.
+        """
+        now = time.time()
+        self._rdap_cache[ip] = (now, result)
+
+        if len(self._rdap_cache) > self._rdap_cache_max_size:
+            # Evict expired entries first
+            expired = [
+                k for k, (ts, _) in self._rdap_cache.items()
+                if (now - ts) >= self._rdap_cache_ttl
+            ]
+            for k in expired:
+                del self._rdap_cache[k]
+
+            # If still over capacity, evict oldest entries
+            if len(self._rdap_cache) > self._rdap_cache_max_size:
+                sorted_keys = sorted(
+                    self._rdap_cache, key=lambda k: self._rdap_cache[k][0],
+                )
+                # Remove the oldest quarter to avoid evicting on every insert
+                evict_count = len(self._rdap_cache) - self._rdap_cache_max_size + self._rdap_cache_max_size // 4
+                for k in sorted_keys[:evict_count]:
+                    del self._rdap_cache[k]
 
     @staticmethod
     def _compute_evidence_id(ip: str, category: str, evidence: dict) -> str:

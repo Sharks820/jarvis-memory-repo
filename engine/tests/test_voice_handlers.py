@@ -338,9 +338,9 @@ class TestVoiceVerifyHandler:
 class TestVoiceRunHandler:
     """Tests for VoiceRunHandler."""
 
-    @patch("jarvis_engine.main._cmd_voice_run_impl", return_value=0)
+    @patch("jarvis_engine.voice_pipeline.cmd_voice_run_impl", return_value=0)
     def test_delegates_to_main(self, mock_impl: MagicMock, tmp_path: Path) -> None:
-        """VoiceRunHandler delegates to main._cmd_voice_run_impl."""
+        """VoiceRunHandler delegates to voice_pipeline.cmd_voice_run_impl."""
         handler = VoiceRunHandler(root=tmp_path)
         result = handler.handle(
             VoiceRunCommand(
@@ -353,16 +353,16 @@ class TestVoiceRunHandler:
         assert result.return_code == 0
         mock_impl.assert_called_once()
 
-    @patch("jarvis_engine.main._cmd_voice_run_impl", return_value=1)
+    @patch("jarvis_engine.voice_pipeline.cmd_voice_run_impl", return_value=1)
     def test_nonzero_return_code(self, mock_impl: MagicMock, tmp_path: Path) -> None:
         handler = VoiceRunHandler(root=tmp_path)
         result = handler.handle(VoiceRunCommand(text="bad command"))
 
         assert result.return_code == 1
 
-    @patch("jarvis_engine.main._cmd_voice_run_impl", return_value=0)
+    @patch("jarvis_engine.voice_pipeline.cmd_voice_run_impl", return_value=0)
     def test_all_parameters_forwarded(self, mock_impl: MagicMock, tmp_path: Path) -> None:
-        """All VoiceRunCommand fields are forwarded to _cmd_voice_run_impl."""
+        """All VoiceRunCommand fields are forwarded to cmd_voice_run_impl."""
         snap = Path("snap.json")
         actions = Path("actions.json")
 

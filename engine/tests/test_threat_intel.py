@@ -290,7 +290,7 @@ def test_thread_safety():
     def _enrich(ip: str) -> None:
         try:
             feed.enrich_ip(ip)
-        except Exception as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=_enrich, args=(f"10.0.0.{i}",)) for i in range(20)]

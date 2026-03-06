@@ -19,6 +19,7 @@ class HarvestTopicResult:
     topic: str = ""
     results: list[dict] = field(default_factory=list)
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class IngestSessionResult:
     sessions_processed: int = 0
     records_created: int = 0
     return_code: int = 0
+    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -53,3 +55,4 @@ class HarvestBudgetCommand:
 class HarvestBudgetResult:
     summary: dict = field(default_factory=dict)
     return_code: int = 0
+    message: str = ""

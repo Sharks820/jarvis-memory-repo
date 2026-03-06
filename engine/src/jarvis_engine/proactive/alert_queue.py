@@ -66,9 +66,10 @@ def enqueue_alert(
                         try:
                             existing.append(json.loads(line))
                         except json.JSONDecodeError:
+                            logger.debug("Skipping malformed alert queue entry")
                             continue
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed to read alert queue: %s", exc)
 
         for prev in existing:
             if (
@@ -94,8 +95,8 @@ def enqueue_alert(
             logger.warning("Failed to write alert queue: %s", exc)
             try:
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                logger.debug("Failed to clean up alert queue temp file: %s", cleanup_exc)
             raise
 
     logger.info("Queued alert: %s — %s", record["type"], record["title"])
@@ -124,13 +125,14 @@ def drain_alerts(root: Path, *, limit: int = 50) -> list[dict[str, Any]]:
             try:
                 alerts.append(json.loads(line))
             except json.JSONDecodeError:
+                logger.debug("Skipping malformed alert entry during drain")
                 continue
 
         # Clear the queue
         try:
             path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Failed to clear alert queue file: %s", exc)
 
     return alerts[:limit]
 
@@ -152,5 +154,6 @@ def peek_alerts(root: Path, *, limit: int = 50) -> list[dict[str, Any]]:
         try:
             alerts.append(json.loads(line))
         except json.JSONDecodeError:
+            logger.debug("Skipping malformed alert entry during peek")
             continue
     return alerts[:limit]

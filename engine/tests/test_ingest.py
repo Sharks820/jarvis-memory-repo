@@ -211,7 +211,7 @@ class TestThreadSafety:
                     pipeline.ingest(
                         "user", "episodic", f"t{thread_id}", f"content-{thread_id}-{i}"
                     )
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 errors.append(exc)
 
         threads = [threading.Thread(target=ingest_batch, args=(t,)) for t in range(8)]

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
-import threading
+
+from jarvis_engine.knowledge._base import KGManagerBase
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +18,8 @@ LOCK_THRESHOLD_CONFIDENCE = 0.9
 LOCK_THRESHOLD_SOURCES = 3
 
 
-class FactLockManager:
+class FactLockManager(KGManagerBase):
     """Manages fact locking: auto-lock thresholds and owner confirmation."""
-
-    def __init__(
-        self,
-        db: sqlite3.Connection,
-        write_lock: threading.Lock,
-        db_lock: threading.Lock | None = None,
-        kg: "object | None" = None,
-    ) -> None:
-        self._db = db
-        self._write_lock = write_lock
-        self._db_lock = db_lock or threading.Lock()
-        self._kg = kg
 
     # ------------------------------------------------------------------
     # Threshold check

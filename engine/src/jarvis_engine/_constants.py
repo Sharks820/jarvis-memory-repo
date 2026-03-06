@@ -6,6 +6,7 @@ Centralises values that were previously duplicated across multiple modules.
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -35,10 +36,15 @@ PRIVACY_KEYWORDS: frozenset[str] = frozenset({
 })
 
 
+_PRIVACY_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+
 def is_privacy_sensitive(text: str) -> bool:
-    """Return *True* if *text* contains any privacy keyword."""
-    lower = text.lower()
-    return any(kw in lower for kw in PRIVACY_KEYWORDS)
+    """Return *True* if *text* contains any privacy keyword (word-boundary match)."""
+    return bool(_PRIVACY_RE.search(text))
 
 
 # ---------------------------------------------------------------------------

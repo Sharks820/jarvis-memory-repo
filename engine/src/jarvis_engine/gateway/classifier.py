@@ -181,6 +181,15 @@ class IntentClassifier:
         )
         self._centroids = self._precompute_routes()
 
+    def set_feedback_tracker(self, tracker: "ResponseFeedbackTracker | None") -> None:
+        """Set the feedback tracker for route quality penalty (late-binding).
+
+        Called by the composition root when the learning subsystem is
+        initialized after the classifier.  Avoids direct mutation of the
+        private ``_feedback_tracker`` attribute.
+        """
+        self._feedback_tracker = tracker
+
     @staticmethod
     def _cache_dir() -> str:
         """Return a writable cache directory for centroid embeddings.
@@ -198,8 +207,8 @@ class IntentClassifier:
         try:
             os.makedirs(repo_cache, exist_ok=True)
             return repo_cache
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Cannot create repo cache dir %s, falling back to temp: %s", repo_cache, exc)
         # Fallback: system temp directory
         import tempfile
         return os.path.join(tempfile.gettempdir(), "jarvis_classifier_cache")

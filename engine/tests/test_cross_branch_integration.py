@@ -136,16 +136,16 @@ class TestBuildSmartContextCrossBranch:
 
     def test_returns_four_tuple(self):
         """_build_smart_context returns (memory, facts, cross_branch, preferences)."""
-        import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
 
         from jarvis_engine.command_bus import AppContext
         bus = MagicMock(spec=[])  # No engine attribute
         bus.ctx = AppContext()  # All None defaults
         with patch.object(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ):
-            result = main_mod._build_smart_context(bus, "test query")
+            result = voice_pipeline_mod._build_smart_context(bus, "test query")
 
         assert isinstance(result, tuple)
         assert len(result) == 4
@@ -157,7 +157,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_lines_populated_when_connections_found(self):
         """Cross-branch connections are formatted and included when available."""
-        import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         mock_embed = MagicMock()
@@ -185,7 +185,7 @@ class TestBuildSmartContextCrossBranch:
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
              patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
              patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=cb_result):
-            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "dad medication")
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "dad medication")
 
         assert len(cross_branch_lines) == 1
         line = cross_branch_lines[0]
@@ -195,7 +195,7 @@ class TestBuildSmartContextCrossBranch:
 
     def test_cross_branch_empty_when_no_connections(self):
         """Cross-branch lines are empty when no connections found."""
-        import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         mock_embed = MagicMock()
@@ -215,13 +215,13 @@ class TestBuildSmartContextCrossBranch:
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
              patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
              patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=cb_result):
-            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "random query")
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "random query")
 
         assert cross_branch_lines == []
 
     def test_cross_branch_query_failure_returns_empty_lines(self):
         """When cross_branch_query raises, cross_branch_lines is empty (graceful degradation)."""
-        import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         mock_embed = MagicMock()
@@ -238,32 +238,32 @@ class TestBuildSmartContextCrossBranch:
                  "jarvis_engine.learning.cross_branch.cross_branch_query",
                  side_effect=RuntimeError("cross-branch DB error"),
              ):
-            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "query")
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "query")
 
         assert cross_branch_lines == []
 
     def test_cross_branch_skipped_when_no_engine(self):
         """Cross-branch query is not attempted when engine is unavailable."""
-        import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock(spec=[])
         bus.ctx = AppContext()  # engine=None by default
 
         with patch.object(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ), patch(
             "jarvis_engine.learning.cross_branch.cross_branch_query"
         ) as mock_cb_query:
-            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "test")
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "test")
 
         mock_cb_query.assert_not_called()
         assert cross_branch_lines == []
 
     def test_cross_branch_skipped_when_no_embed_service(self):
         """Cross-branch query is not attempted when embed_service is unavailable."""
-        import jarvis_engine.main as main_mod
+        import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
         bus = MagicMock()
@@ -273,7 +273,7 @@ class TestBuildSmartContextCrossBranch:
         mock_kg_instance.query_relevant_facts.return_value = []
 
         with patch.object(
-            main_mod, "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ), patch(
             "jarvis_engine.knowledge.graph.KnowledgeGraph",
@@ -281,7 +281,7 @@ class TestBuildSmartContextCrossBranch:
         ), patch(
             "jarvis_engine.learning.cross_branch.cross_branch_query"
         ) as mock_cb_query:
-            _, _, cross_branch_lines, _ = main_mod._build_smart_context(bus, "test")
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "test")
 
         mock_cb_query.assert_not_called()
         assert cross_branch_lines == []

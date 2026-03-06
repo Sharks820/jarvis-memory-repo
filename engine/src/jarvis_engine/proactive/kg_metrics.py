@@ -127,21 +127,9 @@ def append_kg_metrics(metrics: dict, history_path: Path) -> None:
 
 def load_kg_history(history_path: Path, limit: int = 100) -> list[dict]:
     """Load last N KG metric snapshots."""
-    if not history_path.exists():
-        return []
+    from jarvis_engine._shared import load_jsonl_tail
 
-    entries: list[dict] = []
-    with history_path.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                entries.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                continue
-
-    return entries[-limit:]
+    return load_jsonl_tail(history_path, limit=limit)
 
 
 def kg_growth_trend(history: list[dict]) -> dict:

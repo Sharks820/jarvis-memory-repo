@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import math
+import sqlite3
 import sys
 import threading
 import time
@@ -35,14 +36,42 @@ def _isolate_activity_feed(tmp_path):
         # Pre-seed the singleton with a temp-path feed so any test that
         # calls log_activity() / get_activity_feed() writes to tmp, not prod.
         _af._feed = _af.ActivityFeed(db_path=tmp_path / "test_activity.db")
-    except Exception:
+    except (ImportError, OSError, AttributeError):
         pass
     yield
     try:
         from jarvis_engine.activity_feed import _reset_feed
         _reset_feed()
-    except Exception:
+    except (ImportError, OSError, AttributeError):
         pass
+
+
+def make_test_db(
+    *,
+    check_same_thread: bool = True,
+    row_factory: bool = True,
+) -> sqlite3.Connection:
+    """Create a properly configured in-memory SQLite connection for tests.
+
+    Uses :func:`jarvis_engine._db_pragmas.configure_sqlite` so that test DBs
+    match production PRAGMA settings (WAL, busy_timeout).
+
+    Parameters
+    ----------
+    check_same_thread:
+        Passed to ``sqlite3.connect``.  Set *False* when the connection is
+        shared across threads (e.g. handler tests).
+    row_factory:
+        When *True* (default), sets ``conn.row_factory = sqlite3.Row`` to
+        match the production ``connect_db`` behaviour.
+    """
+    from jarvis_engine._db_pragmas import configure_sqlite
+
+    conn = sqlite3.connect(":memory:", check_same_thread=check_same_thread)
+    if row_factory:
+        conn.row_factory = sqlite3.Row
+    configure_sqlite(conn)
+    return conn
 
 
 from jarvis_engine.ingest import IngestionPipeline
@@ -87,7 +116,7 @@ def signed_headers(
     timestamp: float | None = None,
     nonce: str | None = None,
 ) -> dict[str, str]:
-    ts = time.time() if timestamp is None else timestamp
+    ts = int(time.time()) if timestamp is None else int(timestamp)
     nonce_value = uuid.uuid4().hex if nonce is None else nonce
     signing_material = f"{ts}\n{nonce_value}\n".encode("utf-8") + raw_body
     sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()

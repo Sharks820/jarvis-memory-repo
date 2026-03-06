@@ -46,10 +46,8 @@ class MemoryEngine:
         self._db_lock = threading.Lock()
         self._closed = False
 
-        self._db = sqlite3.connect(str(db_path), check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        from jarvis_engine._db_pragmas import configure_sqlite
-        configure_sqlite(self._db, full=True)
+        from jarvis_engine._db_pragmas import connect_db
+        self._db = connect_db(db_path, full=True, check_same_thread=False)
 
         # Load sqlite-vec extension (graceful degradation)
         try:
@@ -65,6 +63,24 @@ class MemoryEngine:
             logger.warning("sqlite-vec unavailable, falling back to FTS5-only search: %s", exc)
 
         self._init_schema()
+
+    # -- Public read-only properties for shared infrastructure --
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
+
+    @property
+    def db(self) -> sqlite3.Connection:
+        return self._db
+
+    @property
+    def write_lock(self) -> threading.Lock:
+        return self._write_lock
+
+    @property
+    def db_lock(self) -> threading.Lock:
+        return self._db_lock
 
     def _check_open(self) -> None:
         """Raise RuntimeError if the engine has been closed."""

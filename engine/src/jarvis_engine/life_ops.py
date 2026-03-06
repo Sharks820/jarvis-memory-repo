@@ -311,7 +311,7 @@ def build_narrative_brief(
             local_model,
             local_model,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
         logger.warning(
             "Narrative brief unavailable (Ollama model '%s' not responding). "
             "Using deterministic brief. Run 'ollama pull %s' to enable narrative briefs. Error: %s",
