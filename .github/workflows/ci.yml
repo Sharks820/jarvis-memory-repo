@@ -56,9 +56,8 @@ jobs:
           PYTHONPATH: src
         # continue-on-error keeps CI green while we pay down type debt.
         # Baseline as of 2026-03-06 post-sprint: ~75 errors (reduced from 105 by
-        # batch 24 type:ignore cleanup in mobile_api + broader exception narrowing).
-        # CI threshold stays at 105 until a CI run on main confirms the exact new count,
-        # at which point both this value and STATE.md should be updated together.
+        # batch 24 type:ignore cleanup). Threshold is 105 (original baseline);
+        # tighten to 80 after a full CI run confirms exact post-sprint count.
         continue-on-error: true
         run: |
           mypy src/jarvis_engine \
@@ -183,18 +182,22 @@ jobs:
           retention-days: 30
 
   # ─────────────────────────────────────────────────────────────────────────
-  # 5. Tests with coverage — full pytest suite + coverage report
+  # 5. Tests with coverage — full pytest suite + coverage report (multi-Python)
   # ─────────────────────────────────────────────────────────────────────────
   test:
-    name: Tests + Coverage
+    name: Tests + Coverage (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false   # Run both Python versions even if one fails
+      matrix:
+        python-version: ['3.11', '3.12']
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         working-directory: engine
         run: |
@@ -210,24 +213,24 @@ jobs:
             -x \
             -q \
             --tb=short \
-            --junitxml=/tmp/test-results.xml \
+            --junitxml=/tmp/test-results-${{ matrix.python-version }}.xml \
             --cov=jarvis_engine \
             --cov-report=term-missing \
-            --cov-report=xml:/tmp/coverage.xml \
-            --cov-fail-under=50  # TODO: gradually increase to 70%+ as tech debt is paid down
+            --cov-report=xml:/tmp/coverage-${{ matrix.python-version }}.xml \
+            --cov-fail-under=50
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: /tmp/test-results.xml
+          name: test-results-py${{ matrix.python-version }}
+          path: /tmp/test-results-${{ matrix.python-version }}.xml
           retention-days: 30
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: /tmp/coverage.xml
+          name: coverage-report-py${{ matrix.python-version }}
+          path: /tmp/coverage-${{ matrix.python-version }}.xml
           retention-days: 30
 
   # ─────────────────────────────────────────────────────────────────────────

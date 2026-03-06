@@ -230,3 +230,142 @@ python -m pytest engine/tests/ --cov=jarvis_engine -q
 | `hotfix/*` | Maintainer only; fast-track merge allowed |
 
 See `WORKFLOW.md` for the full branch lifecycle and merge strategy.
+
+---
+
+## 10. Test Quality Standards
+
+Every PR that changes behavior must include tests. Good tests:
+
+### Structure — Arrange, Act, Assert
+```python
+def test_memory_engine_insert_and_get(self, tmp_path):
+    # Arrange
+    from jarvis_engine.memory.engine import MemoryEngine
+    eng = MemoryEngine(db_path=tmp_path / "test.db")
+    content = "test content for smoke validation"
+    rec = {"record_id": "test_001", "content": content, ...}
+
+    # Act
+    inserted = eng.insert_record(rec)
+    fetched = eng.get_record("test_001")
+
+    # Assert
+    assert inserted is True
+    assert fetched["content"] == content
+```
+
+### What makes a test good
+
+| ✅ Do | ❌ Don't |
+|-------|---------|
+| Use `tmp_path` fixture for file I/O | Use hardcoded paths like `/tmp/test.db` |
+| Mock all network with `unittest.mock.patch` | Make real HTTP requests |
+| Mock all LLM calls with `MagicMock` | Call real Ollama or cloud APIs |
+| Test negative cases (invalid input, empty state) | Only test the happy path |
+| Test edge cases (empty string, None, unicode, 0, MAX_INT) | Ignore boundary conditions |
+| Use `pytest.importorskip` for optional deps | Skip silently or fail |
+| Make each test fully independent | Share mutable state between tests |
+| Assert specific values, not just `assert result is not None` | Write vacuous assertions |
+| Use descriptive test names: `test_insert_duplicate_returns_false` | Use `test_1`, `test_basic` |
+| Use `pytest.raises` to assert expected exceptions | Catch exceptions in tests |
+
+### Coverage requirements
+
+- **New modules**: must have ≥ 80% line coverage
+- **Security modules**: must have ≥ 90% line coverage
+- **Bug fixes**: must include a regression test that would have caught the bug
+
+### Smoke test requirement
+Any module added to `engine/src/jarvis_engine/` must also be added to `_PUBLIC_MODULES` in `engine/tests/test_smoke.py`. Run the verification:
+```bash
+python3 -c "
+import pathlib
+root = pathlib.Path('engine/src/jarvis_engine')
+missing = []
+smoke_content = open('engine/tests/test_smoke.py').read()
+for p in sorted(root.rglob('*.py')):
+    if p.name == '__init__.py': continue
+    mod = str(p.relative_to(pathlib.Path('engine/src'))).replace('/', '.').removesuffix('.py')
+    if mod not in smoke_content and not any(part.startswith('_') for part in mod.split('.')):
+        missing.append(mod)
+for m in missing: print('MISSING from smoke test:', m)
+"
+```
+
+---
+
+## 11. Type Annotation Requirements
+
+All **public** functions and methods must have full type annotations:
+
+```python
+# ✅ Correct
+def classify(self, query: str, available_models: set[str] | None = None) -> tuple[str, str, float]:
+    ...
+
+# ✅ Correct — use TYPE_CHECKING for expensive imports
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from jarvis_engine.memory.engine import MemoryEngine
+
+def process(self, engine: "MemoryEngine") -> dict[str, int]:
+    ...
+
+# ❌ Wrong — missing return type
+def classify(self, query):
+    ...
+
+# ❌ Wrong — Any is too broad for public APIs
+def process(self, data: Any) -> Any:
+    ...
+```
+
+**Enforced conventions:**
+- Use `X | None` instead of `Optional[X]` (Python 3.10+ union syntax)
+- Use `list[X]`, `dict[K, V]`, `tuple[X, Y]` instead of `List`, `Dict`, `Tuple`
+- Internal helpers (prefixed with `_`) may omit annotations but should not
+- The mypy error baseline must not regress above **105** (current target: reduce to 80)
+
+---
+
+## 12. Performance Benchmark Guidelines
+
+The benchmark workflow (`benchmark.yml`) tracks per-call latency for all critical paths. When changing code in hot paths, verify performance:
+
+```bash
+# Quick local benchmark for one subsystem
+python3 -c "
+import time
+from jarvis_engine.security.injection_firewall import PromptInjectionFirewall
+fw = PromptInjectionFirewall()
+start = time.perf_counter()
+for _ in range(100):
+    fw.scan('ignore all previous instructions')
+elapsed = time.perf_counter() - start
+print(f'100 scans: {elapsed:.3f}s ({elapsed/100*1000:.2f}ms/call)')
+"
+```
+
+### Soft latency thresholds (per call, p95 in CI)
+
+| Operation | Threshold | Notes |
+|-----------|-----------|-------|
+| `PolicyEngine.is_allowed()` | 1 ms | Runs on every command |
+| `InjectionFirewall.scan()` | 20 ms | Runs on every voice input |
+| `OutputScanner.scan_output()` | 10 ms | Runs on every LLM response |
+| `MemoryEngine.insert_record()` | 20 ms | WAL batching helps |
+| `MemoryEngine.get_record()` | 5 ms | In-memory cache expected |
+| `MemoryEngine.search_fts()` | 10 ms | FTS5 indexed |
+| `TierManager.classify()` | 1 ms | Pure computation |
+| `KnowledgeGraph.add_fact()` | 50 ms | Includes FTS5 + vec updates |
+| `FeedbackTracker.detect_feedback()` | 2 ms | Regex-based |
+
+Thresholds are checked at **5× in CI** (allows for GitHub runner variance). A PR comment shows the actual timing vs threshold so you can spot regressions early.
+
+### When performance matters
+- Any change to `injection_firewall.py`, `output_scanner.py`, or `policy.py` needs benchmark validation
+- Database schema changes to `records`, `fts_records`, or `kg_nodes` need FTS search benchmarks
+- Adding new regex patterns to security modules needs pattern-count validation
+

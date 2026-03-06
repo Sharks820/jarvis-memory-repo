@@ -38,13 +38,45 @@ If yes, which agent? <!-- e.g., GitHub Copilot, OpenAI Codex, Claude, desloppify
 - [ ] Existing tests pass: `python -m pytest engine/tests/ -x -q`
 - [ ] New tests added for new logic
 - [ ] Lint passes: `ruff check engine/src`
+- [ ] New modules added to `_PUBLIC_MODULES` in `test_smoke.py`
+
+## Coverage
+
+<!-- Paste the coverage output line for changed modules, or "N/A — docs only" -->
+<!-- e.g.: jarvis_engine/memory/engine.py    87%  (was 84%) -->
+
+- 
+
+## Performance Impact
+
+<!-- Does this PR change any hot-path code? If yes, paste benchmark output. -->
+<!-- Hot paths: injection_firewall, output_scanner, policy, memory engine, KG -->
+
+- [ ] No hot-path changes
+- [ ] Hot-path changed — benchmark output below:
+
+```
+# Paste benchmark output here if applicable
+```
+
+## Breaking Changes
+
+- [ ] No breaking changes
+- [ ] Breaking change — describe migration path:
 
 ## Security Checklist
 
 - [ ] No secrets, tokens, or credentials committed
 - [ ] No new hardcoded values that belong in env vars
 - [ ] Security module changes have focused regression tests
+- [ ] Phone numbers and PII masked in any new log statements
+- [ ] No new broad `except Exception: pass` patterns
+
+## Architecture Notes
+
+<!-- Optional: note any design decisions, alternatives considered, or tech debt accepted -->
 
 ## Notes for Reviewer
 
 <!-- Anything the reviewer should pay special attention to -->
+
