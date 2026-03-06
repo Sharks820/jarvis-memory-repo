@@ -604,10 +604,8 @@ def auto_generate_missions(
     conn = None
     try:
         if db_path.exists():
-            conn = _sqlite3.connect(str(db_path), timeout=5)
-            from jarvis_engine._db_pragmas import configure_sqlite
-            configure_sqlite(conn)
-            conn.row_factory = _sqlite3.Row
+            from jarvis_engine._db_pragmas import connect_db
+            conn = connect_db(db_path)
 
         # Source 1: Recent user conversations (last 14 days)
         if conn is not None:

@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from jarvis_engine._constants import get_local_model as _get_local_model
+
 try:
     from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
     _HAS_ANTHROPIC = True
@@ -785,7 +787,7 @@ class ModelGateway:
             # Ollama already tried as primary -- don't double-retry
             full_reason = f"{reason} -> all cloud fallbacks also failed"
             logger.error("All providers failed: %s", full_reason)
-            fallback_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            fallback_model = _get_local_model()
             return GatewayResponse(
                 text="",
                 model=fallback_model,
@@ -807,7 +809,7 @@ class ModelGateway:
         Uses JARVIS_LOCAL_MODEL env var if set, otherwise defaults to gemma3:4b.
         Returns a graceful error response if Ollama also fails.
         """
-        fallback_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+        fallback_model = _get_local_model()
 
         if not _HAS_OLLAMA:
             full_reason = f"{reason} -> Ollama also failed: ollama package is not installed"
@@ -904,7 +906,7 @@ class ModelGateway:
             models.add(cli_key)
         # Ollama (local) — always add local model name
         if _HAS_OLLAMA:
-            models.add(os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b"))
+            models.add(_get_local_model())
         return models
 
     def available_providers(self) -> list[str]:

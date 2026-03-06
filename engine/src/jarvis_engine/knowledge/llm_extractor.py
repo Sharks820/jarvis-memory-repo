@@ -140,7 +140,8 @@ class LLMFactExtractor:
         Returns (model_name, privacy_routed).
         """
         if self._contains_privacy_keyword(text):
-            local_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            from jarvis_engine._constants import get_local_model as _get_local_model
+            local_model = _get_local_model()
             return local_model, True
         return "kimi-k2", False
 

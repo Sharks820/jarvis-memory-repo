@@ -38,10 +38,8 @@ class BudgetManager:
         self._write_lock = threading.Lock()
         self._closed = False
 
-        self._db = sqlite3.connect(str(db_path), check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        from jarvis_engine._db_pragmas import configure_sqlite
-        configure_sqlite(self._db)
+        from jarvis_engine._db_pragmas import connect_db
+        self._db = connect_db(db_path, check_same_thread=False)
 
         self._init_schema()
 

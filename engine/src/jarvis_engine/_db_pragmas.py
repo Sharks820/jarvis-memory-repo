@@ -1,13 +1,14 @@
-"""Shared SQLite PRAGMA configuration.
+"""Shared SQLite PRAGMA configuration and connection helpers.
 
 Single source of truth for database connection tuning. All modules that open
-SQLite connections should call :func:`configure_sqlite` instead of issuing
-PRAGMAs inline.
+SQLite connections should use :func:`connect_db` (preferred) or
+:func:`configure_sqlite` instead of issuing PRAGMAs inline.
 """
 
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from typing import Union
 
 
@@ -36,3 +37,30 @@ def configure_sqlite(
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA cache_size=-64000")       # 64 MB
         conn.execute("PRAGMA mmap_size=268435456")     # 256 MB
+
+
+def connect_db(
+    db_path: Union[str, Path],
+    *,
+    full: bool = False,
+    check_same_thread: bool = True,
+    timeout: float = 5.0,
+) -> sqlite3.Connection:
+    """Open a SQLite connection with standard PRAGMAs and Row factory.
+
+    Parameters
+    ----------
+    db_path:
+        Path to the database file.
+    full:
+        Passed to :func:`configure_sqlite`.
+    check_same_thread:
+        Passed to ``sqlite3.connect``.
+    timeout:
+        Busy-wait timeout for ``sqlite3.connect``.
+    """
+    conn = sqlite3.connect(str(db_path), timeout=timeout,
+                           check_same_thread=check_same_thread)
+    conn.row_factory = sqlite3.Row
+    configure_sqlite(conn, full=full)
+    return conn

@@ -158,11 +158,13 @@ _PUBLIC_SAFE_PATHS = frozenset({"/health", "/cert-fingerprint"})
 
 
 def _configure_db(conn: Any) -> None:
-    """Apply consistent SQLite PRAGMAs for performance and reliability.
+    """Apply consistent SQLite PRAGMAs and Row factory.
 
     Delegates to the shared :func:`jarvis_engine._db_pragmas.configure_sqlite`.
     """
+    import sqlite3
     from jarvis_engine._db_pragmas import configure_sqlite
+    conn.row_factory = sqlite3.Row
     configure_sqlite(conn, full=True)
 
 
@@ -2067,6 +2069,37 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
     # Paths exempt from rate limiting (public/unauthenticated GET endpoints)
     _GET_RATE_LIMIT_EXEMPT = frozenset({"/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"})
 
+    def _run_security_check(self, path: str, body: str = "") -> bool:
+        """Run the security orchestrator pipeline and write error responses.
+
+        Returns *True* if the request is allowed, *False* if it was blocked
+        (a 403/503 response has already been sent).
+        """
+        _security = getattr(self.server, "security", None)
+        if _security is not None:
+            _client_ip = str(self.client_address[0])
+            _sec_check = _security.check_request(
+                path=path,
+                source_ip=_client_ip,
+                headers=dict(self.headers),
+                body=body,
+                user_agent=self.headers.get("User-Agent", ""),
+            )
+            if not _sec_check["allowed"]:
+                logger.warning("Security pipeline blocked %s: %s", path, _sec_check.get("reason", "unknown"))
+                self._write_json(HTTPStatus.FORBIDDEN, {
+                    "ok": False,
+                    "error": "Request blocked by security policy",
+                })
+                return False
+        elif getattr(self.server, "_security_degraded", False) and path not in ("/health", "/auth/login"):
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Service unavailable: security subsystem failed to initialize",
+            })
+            return False
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         # Rate limit authenticated GET endpoints
@@ -2083,29 +2116,7 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             return
         # Security orchestrator pipeline check (skipped for public safe paths)
         if path not in _PUBLIC_SAFE_PATHS:
-            _security = getattr(self.server, "security", None)
-            if _security is not None:
-                _client_ip = str(self.client_address[0])
-                _sec_check = _security.check_request(
-                    path=path,
-                    source_ip=_client_ip,
-                    headers=dict(self.headers),
-                    body="",
-                    user_agent=self.headers.get("User-Agent", ""),
-                )
-                if not _sec_check["allowed"]:
-                    logger.warning("Security pipeline blocked GET %s: %s", path, _sec_check.get("reason", "unknown"))
-                    self._write_json(HTTPStatus.FORBIDDEN, {
-                        "ok": False,
-                        "error": "Request blocked by security policy",
-                    })
-                    return
-            elif getattr(self.server, "_security_degraded", False):
-                # Fail closed: security subsystem failed to init
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Service unavailable: security subsystem failed to initialize",
-                })
+            if not self._run_security_check(path):
                 return
         # O(1) dispatch for remaining GET routes
         handler_name = self._GET_DISPATCH.get(path)
@@ -3681,36 +3692,13 @@ class MobileIngestHandler(BaseHTTPRequestHandler):
             except (OSError, ConnectionError):
                 self._cached_post_body = None
         # Security orchestrator pipeline check (with actual body)
-        _security = getattr(self.server, "security", None)
-        if _security is not None:
-            _body_text = ""
-            if self._cached_post_body:
-                try:
-                    _body_text = self._cached_post_body.decode("utf-8", errors="replace")
-                except Exception:
-                    _body_text = ""
-            _client_ip = str(self.client_address[0])
-            _sec_check = _security.check_request(
-                path=path,
-                source_ip=_client_ip,
-                headers=dict(self.headers),
-                body=_body_text,
-                user_agent=self.headers.get("User-Agent", ""),
-            )
-            if not _sec_check["allowed"]:
-                logger.warning("Security pipeline blocked POST %s: %s", path, _sec_check.get("reason", "unknown"))
-                self._write_json(HTTPStatus.FORBIDDEN, {
-                    "ok": False,
-                    "error": "Request blocked by security policy",
-                })
-                return
-        elif getattr(self.server, "_security_degraded", False) and path not in ("/health", "/auth/login"):
-            # Fail closed: security subsystem failed to init — reject all
-            # non-essential requests.
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                "ok": False,
-                "error": "Service unavailable: security subsystem failed to initialize",
-            })
+        _body_text = ""
+        if self._cached_post_body:
+            try:
+                _body_text = self._cached_post_body.decode("utf-8", errors="replace")
+            except Exception:
+                _body_text = ""
+        if not self._run_security_check(path, body=_body_text):
             return
         # O(1) dispatch for POST routes
         handler_name = self._POST_DISPATCH.get(path)

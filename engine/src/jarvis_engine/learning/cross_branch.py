@@ -21,13 +21,7 @@ logger = logging.getLogger(__name__)
 # Minimum word length to count as a keyword for cross-branch matching.
 _MIN_KEYWORD_LEN = 4
 
-# Stop words to exclude from keyword matching.
-_STOP_WORDS = frozenset({
-    "that", "this", "with", "from", "have", "been", "will", "would",
-    "could", "should", "about", "their", "there", "when", "what",
-    "which", "where", "they", "them", "than", "then", "also",
-    "into", "more", "some", "such", "very", "just", "only",
-})
+from jarvis_engine._constants import STOP_WORDS as _STOP_WORDS
 
 
 def cross_branch_query(

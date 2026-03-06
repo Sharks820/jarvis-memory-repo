@@ -228,20 +228,9 @@ _daemon_kg_prev_metrics: dict | None = None
 # Auto-harvest topic discovery for daemon cycle
 # ---------------------------------------------------------------------------
 
-# Stop words for filtering out low-quality single-word topic fragments
-_HARVEST_STOP_WORDS = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "shall", "can", "need", "must", "of", "in",
-    "to", "for", "with", "on", "at", "from", "by", "about", "as", "into",
-    "through", "during", "before", "after", "above", "below", "between",
-    "and", "but", "or", "nor", "not", "no", "so", "if", "then", "than",
-    "too", "very", "just", "also", "that", "this", "it", "its", "my",
-    "your", "his", "her", "our", "their", "what", "which", "who", "whom",
-    "how", "when", "where", "why", "all", "each", "every", "both", "few",
-    "more", "most", "other", "some", "such", "only", "own", "same", "new",
-    "old", "true", "false", "none", "null", "yes", "conner", "jarvis",
-})
+from jarvis_engine._constants import STOP_WORDS as _HARVEST_STOP_WORDS  # noqa: E402
+from jarvis_engine._constants import get_local_model as _get_local_model  # noqa: E402
+from jarvis_engine._constants import is_privacy_sensitive as _is_privacy_sensitive  # noqa: E402
 
 
 def _extract_topic_phrases(text: str) -> list[str]:
@@ -349,10 +338,8 @@ def _discover_harvest_topics(root: Path) -> list[str]:
     try:
         if db_path.exists():
             try:
-                conn = _sqlite3.connect(str(db_path), timeout=5)
-                from jarvis_engine._db_pragmas import configure_sqlite
-                configure_sqlite(conn)
-                conn.row_factory = _sqlite3.Row
+                from jarvis_engine._db_pragmas import connect_db as _connect_db
+                conn = _connect_db(db_path)
             except Exception:
                 # Corrupt or inaccessible DB — skip all DB-based sources
                 if conn is not None:
@@ -811,15 +798,9 @@ def _build_smart_context(
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
                 kg = KnowledgeGraph(engine)
             # Extract keywords from query for fact lookup
-            _stop = {"the", "a", "an", "is", "are", "was", "were", "do", "does",
-                      "did", "will", "would", "can", "could", "should", "shall",
-                      "have", "has", "had", "be", "been", "being", "what", "when",
-                      "where", "how", "who", "which", "that", "this", "for", "with",
-                      "from", "about", "into", "and", "but", "or", "not", "if",
-                      "then", "than", "too", "very", "just", "my", "me", "i"}
             words = [
                 w for w in re.findall(r"[a-zA-Z]{3,}", query.lower())
-                if w not in _stop
+                if w not in _HARVEST_STOP_WORDS
             ][:10]
             if words:
                 facts = kg.query_relevant_facts(words, limit=max_fact_items)
@@ -894,6 +875,57 @@ def _build_smart_context(
             logger.debug("Preference retrieval failed: %s", exc)
 
     return memory_lines, fact_lines, cross_branch_lines, preference_lines
+
+
+def _build_system_parts(
+    memory_lines: list[str],
+    fact_lines: list[str],
+    cross_branch_lines: list[str],
+    preference_lines: list[str],
+) -> list[str]:
+    """Assemble the system prompt parts for an LLM conversation.
+
+    Called from both ``_web_augmented_llm_conversation`` and
+    ``_cmd_voice_run_impl`` to avoid duplicate prompt construction.
+    """
+    persona = load_persona_config(repo_root())
+    if persona.enabled:
+        persona_desc = (
+            "You are Jarvis, an intelligent personal AI assistant. "
+            "You are witty, knowledgeable, and speak like a refined British butler "
+            "with dry humor. Keep responses concise and natural. "
+            "Never repeat the same phrases. Vary your language. "
+            "You have full access to the internet and web search. "
+            "Never say you cannot access the web or that it is outside your protocol."
+        )
+    else:
+        persona_desc = (
+            "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
+            "You have full access to the internet and web search. "
+            "Never say you cannot access the web or that it is outside your protocol."
+        )
+    parts = [_current_datetime_prompt_line(), persona_desc]
+    if fact_lines:
+        parts.append(
+            "Known facts about the user (use these to personalize your response):\n"
+            + "\n".join(f"- {line}" for line in fact_lines[:6])
+        )
+    if memory_lines:
+        parts.append(
+            "Relevant memories (recent interactions and context):\n"
+            + "\n".join(f"- {line}" for line in memory_lines[:8])
+        )
+    if cross_branch_lines:
+        parts.append(
+            "Cross-domain connections:\n"
+            + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
+        )
+    if preference_lines:
+        parts.append(
+            "User preferences (adjust your response style accordingly): "
+            + "; ".join(preference_lines)
+        )
+    return parts
 
 
 def _auto_ingest_dedupe_path() -> Path:
@@ -3359,47 +3391,9 @@ def _web_augmented_llm_conversation(
     """
     bus = _get_bus()
 
-    # --- Smart context: hybrid search + KG facts + cross-branch ---
+    # --- Smart context + system prompt assembly ---
     memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
-
-    # --- Persona + structured context ---
-    persona = load_persona_config(repo_root())
-    if persona.enabled:
-        persona_desc = (
-            "You are Jarvis, an intelligent personal AI assistant. "
-            "You are witty, knowledgeable, and speak like a refined British butler "
-            "with dry humor. Keep responses concise and natural. "
-            "Never repeat the same phrases. Vary your language. "
-            "You have full access to the internet and web search. "
-            "Never say you cannot access the web or that it is outside your protocol."
-        )
-    else:
-        persona_desc = (
-            "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
-            "You have full access to the internet and web search. "
-            "Never say you cannot access the web or that it is outside your protocol."
-        )
-    system_parts = [_current_datetime_prompt_line(), persona_desc]
-    if fact_lines:
-        system_parts.append(
-            "Known facts about the user (use these to personalize your response):\n"
-            + "\n".join(f"- {line}" for line in fact_lines[:6])
-        )
-    if memory_lines:
-        system_parts.append(
-            "Relevant memories (recent interactions and context):\n"
-            + "\n".join(f"- {line}" for line in memory_lines[:8])
-        )
-    if cross_branch_lines:
-        system_parts.append(
-            "Cross-domain connections:\n"
-            + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
-        )
-    if preference_lines:
-        system_parts.append(
-            "User preferences (adjust your response style accordingly): "
-            + "; ".join(preference_lines)
-        )
+    system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
     # --- Intent classification + model routing ---
     _llm_model: str | None = None
@@ -3417,13 +3411,8 @@ def _web_augmented_llm_conversation(
             _llm_model = None
     if _llm_model is None:
         # Privacy guard: if classifier failed, check privacy keywords
-        _privacy_kws = {"password", "ssn", "bank", "credit card", "social security",
-                        "medical", "health", "prescription", "salary", "income",
-                        "secret", "private", "personal", "confidential", "nude",
-                        "naked", "sex", "porn", "drug", "affair"}
-        _lower_text = text.lower()
-        if any(kw in _lower_text for kw in _privacy_kws):
-            _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+        if _is_privacy_sensitive(text):
+            _llm_model = _get_local_model()
             _route = "simple_private"
             logger.debug("Privacy fallback: classifier failed, forcing local for private query")
         else:
@@ -3436,7 +3425,7 @@ def _web_augmented_llm_conversation(
                     _llm_model = _model_alias
                     break
     if _llm_model is None:
-        _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+        _llm_model = _get_local_model()
 
     # --- Web search (always performed for this code path) ---
     _web_searched = False
@@ -4282,48 +4271,9 @@ def _cmd_voice_run_impl(
         intent = "llm_conversation"
         bus = _get_bus()
 
-        # --- Smart context: hybrid search + KG facts + cross-branch ---
+        # --- Smart context + system prompt assembly ---
         memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
-
-        # --- Persona + structured context ---
-        persona = load_persona_config(repo_root())
-        if persona.enabled:
-            persona_desc = (
-                "You are Jarvis, an intelligent personal AI assistant. "
-                "You are witty, knowledgeable, and speak like a refined British butler "
-                "with dry humor. Keep responses concise and natural. "
-                "Never repeat the same phrases. Vary your language. "
-                "You have full access to the internet and web search. "
-                "Never say you cannot access the web or that it is outside your protocol."
-            )
-        else:
-            persona_desc = (
-                "You are Jarvis, a helpful personal AI assistant. Keep responses concise. "
-                "You have full access to the internet and web search. "
-                "Never say you cannot access the web or that it is outside your protocol."
-            )
-        system_parts = [_current_datetime_prompt_line(), persona_desc]
-        if fact_lines:
-            system_parts.append(
-                "Known facts about the user (use these to personalize your response):\n"
-                + "\n".join(f"- {line}" for line in fact_lines[:6])
-            )
-        if memory_lines:
-            system_parts.append(
-                "Relevant memories (recent interactions and context):\n"
-                + "\n".join(f"- {line}" for line in memory_lines[:8])
-            )
-        if cross_branch_lines:
-            system_parts.append(
-                "Cross-domain connections:\n"
-                + "\n".join(f"- {line}" for line in cross_branch_lines[:6])
-            )
-        if preference_lines:
-            system_parts.append(
-                "User preferences (adjust your response style accordingly): "
-                + "; ".join(preference_lines)
-            )
-        # Defer final instructions until after web search (see below)
+        system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
         # --- Intent classification + model routing (reuse bus classifier) ---
         _llm_model: str | None = None
@@ -4352,13 +4302,8 @@ def _cmd_voice_run_impl(
         if _llm_model is None:
             # Privacy guard: if both classifiers failed, check privacy keywords
             # manually to guarantee private queries never leave the device.
-            _privacy_kws = {"password", "ssn", "bank", "credit card", "social security",
-                            "medical", "health", "prescription", "salary", "income",
-                            "secret", "private", "personal", "confidential", "nude",
-                            "naked", "sex", "porn", "drug", "affair"}
-            _lower_text = text.lower()
-            if any(kw in _lower_text for kw in _privacy_kws):
-                _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            if _is_privacy_sensitive(text):
+                _llm_model = _get_local_model()
                 _route = "simple_private"
                 logger.debug("Privacy fallback: classifier failed, forcing local for private query")
             else:
@@ -4371,7 +4316,7 @@ def _cmd_voice_run_impl(
                         _llm_model = _model_alias
                         break
         if _llm_model is None:
-            _llm_model = os.environ.get("JARVIS_LOCAL_MODEL", "gemma3:4b")
+            _llm_model = _get_local_model()
 
         # --- Model override from widget Tab-cycling ---
         if model_override:

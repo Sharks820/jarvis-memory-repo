@@ -279,6 +279,7 @@ def build_narrative_brief(
 
     from jarvis_engine.temporal import get_datetime_prompt
 
+    # Narrative brief needs a stronger model than the default gemma3:4b
     local_model = os.environ.get("JARVIS_LOCAL_MODEL", "qwen3:14b")
     # Sanitize memory_context to prevent prompt injection
     safe_context = (memory_context or "No additional context.")[:2000]
