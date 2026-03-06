@@ -387,14 +387,7 @@ def _get_ssl_context(url: str) -> ssl.SSLContext | None:
     return None
 
 
-def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
-    """Read bounded integer env var, returning fallback on parse errors."""
-    raw = os.environ.get(name, str(default)).strip()
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        value = default
-    return max(minimum, min(value, maximum))
+from jarvis_engine._shared import env_int as _env_int
 
 
 def _http_timeout_seconds(path: str) -> int:

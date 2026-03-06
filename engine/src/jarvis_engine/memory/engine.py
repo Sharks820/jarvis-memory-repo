@@ -21,7 +21,7 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jarvis_engine._fts_utils import sanitize_fts_query
+from jarvis_engine._shared import sanitize_fts_query
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
@@ -135,18 +135,6 @@ class MemoryEngine:
                 logger.warning("Failed to create vec_records table: %s", exc)
 
         self._db.commit()
-
-        # Initialize knowledge graph schema (Phase 2)
-        self._init_kg_schema()
-
-    def _init_kg_schema(self) -> None:
-        """No-op: KG schema is now created by KnowledgeGraph._ensure_schema().
-
-        Retained for backward compatibility. Previously created kg_nodes,
-        kg_edges, kg_contradictions tables redundantly here, but the
-        single source of truth is KnowledgeGraph._ensure_schema() which
-        also creates the FTS5 and vec indexes for KG nodes.
-        """
 
     def insert_record(
         self,
@@ -338,7 +326,7 @@ class MemoryEngine:
     def _sanitize_fts_query(query: str) -> str:
         """Sanitize a user query for FTS5 MATCH to prevent injection.
 
-        Delegates to shared :func:`jarvis_engine.memory._fts_utils.sanitize_fts_query`.
+        Delegates to shared :func:`jarvis_engine._shared.sanitize_fts_query`.
         """
         return sanitize_fts_query(query)
 
@@ -676,6 +664,5 @@ class MemoryEngine:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
-            # Suppress all errors during interpreter shutdown (__del__ is unreliable)
-            pass
+        except Exception as exc:
+            logger.debug("MemoryEngine __del__ cleanup failed: %s", exc)

@@ -232,19 +232,19 @@ class ModelGateway:
         self._closed = True
         try:
             self._http.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to close httpx client: %s", exc)
         if hasattr(self, "_anthropic") and self._anthropic is not None:
             try:
                 self._anthropic.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to close Anthropic client: %s", exc)
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("ModelGateway __del__ cleanup failed: %s", exc)
 
     def __enter__(self) -> "ModelGateway":
         return self
@@ -377,19 +377,7 @@ class ModelGateway:
             except (APIConnectionError, APIStatusError, RateLimitError) as exc:
                 reason = f"{type(exc).__name__}"
                 logger.warning("Anthropic API error, falling back: %s", exc)
-                # Log the failed attempt before fallback
-                self._audit_decision(
-                    provider="anthropic",
-                    model=model,
-                    reason=route_reason or "primary:anthropic",
-                    latency_ms=(time.perf_counter() - t0) * 1000,
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=0.0,
-                    success=False,
-                    privacy_routed=privacy_routed,
-                )
-                t0 = time.perf_counter()  # reset timer for fallback
+                t0 = self._audit_failed_attempt("anthropic", model, route_reason, t0, privacy_routed)
                 response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic", privacy_routed=privacy_routed)
                 audit_reason = f"fallback:{reason}"
         elif provider.startswith("cloud:"):
@@ -400,18 +388,7 @@ class ModelGateway:
             except Exception as exc:
                 reason = f"{provider_key}: {type(exc).__name__}"
                 logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
-                self._audit_decision(
-                    provider=provider_key,
-                    model=model,
-                    reason=route_reason or f"primary:cloud:{provider_key}",
-                    latency_ms=(time.perf_counter() - t0) * 1000,
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=0.0,
-                    success=False,
-                    privacy_routed=privacy_routed,
-                )
-                t0 = time.perf_counter()
+                t0 = self._audit_failed_attempt(provider_key, model, route_reason, t0, privacy_routed)
                 response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key, privacy_routed=privacy_routed)
                 audit_reason = f"fallback:{reason}"
         elif provider.startswith("cli:"):
@@ -421,36 +398,14 @@ class ModelGateway:
                 audit_reason = route_reason or f"primary:cli:{cli_key}"
                 if response.provider == "none":
                     # CLI call failed, try fallback chain
-                    self._audit_decision(
-                        provider=cli_key,
-                        model=model,
-                        reason=route_reason or f"primary:cli:{cli_key}",
-                        latency_ms=(time.perf_counter() - t0) * 1000,
-                        input_tokens=0,
-                        output_tokens=0,
-                        cost_usd=0.0,
-                        success=False,
-                        privacy_routed=privacy_routed,
-                    )
-                    t0 = time.perf_counter()
+                    t0 = self._audit_failed_attempt(cli_key, model, route_reason or f"primary:cli:{cli_key}", t0, privacy_routed)
                     reason = response.fallback_reason or f"{cli_key}_failed"
                     response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
                     audit_reason = f"fallback:{reason}"
             except Exception as exc:
                 reason = f"{cli_key}: {type(exc).__name__}"
                 logger.warning("CLI provider %s failed, falling back: %s", cli_key, exc)
-                self._audit_decision(
-                    provider=cli_key,
-                    model=model,
-                    reason=route_reason or f"primary:cli:{cli_key}",
-                    latency_ms=(time.perf_counter() - t0) * 1000,
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=0.0,
-                    success=False,
-                    privacy_routed=privacy_routed,
-                )
-                t0 = time.perf_counter()
+                t0 = self._audit_failed_attempt(cli_key, model, route_reason or f"primary:cli:{cli_key}", t0, privacy_routed)
                 response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
                 audit_reason = f"fallback:{reason}"
         else:
@@ -461,18 +416,7 @@ class ModelGateway:
             # NEVER fall back to cloud for privacy-routed queries
             if response.provider == "none" and self._cloud_keys and not privacy_routed:
                 # Log the failed Ollama attempt (consistent with Anthropic/cloud paths)
-                self._audit_decision(
-                    provider="ollama",
-                    model=model,
-                    reason=route_reason or "primary:ollama",
-                    latency_ms=(time.perf_counter() - t0) * 1000,
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=0.0,
-                    success=False,
-                    privacy_routed=privacy_routed,
-                )
-                t0 = time.perf_counter()
+                t0 = self._audit_failed_attempt("ollama", model, route_reason or "primary:ollama", t0, privacy_routed)
                 response = self._fallback_chain(
                     messages, max_tokens, response.fallback_reason or "ollama_failed",
                     temperature, skip_ollama=True, privacy_routed=privacy_routed,
@@ -522,6 +466,28 @@ class ModelGateway:
         """Log a routing decision if audit is configured."""
         if self._audit is not None:
             self._audit.log_decision(**kwargs)  # type: ignore[arg-type]
+
+    def _audit_failed_attempt(
+        self,
+        provider: str,
+        model: str,
+        route_reason: str,
+        t0: float,
+        privacy_routed: bool,
+    ) -> float:
+        """Log a failed provider attempt and return a reset timer value."""
+        self._audit_decision(
+            provider=provider,
+            model=model,
+            reason=route_reason or f"primary:{provider}",
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            success=False,
+            privacy_routed=privacy_routed,
+        )
+        return time.perf_counter()
 
     def _call_openai_compat(
         self,
@@ -870,7 +836,8 @@ class ModelGateway:
         try:
             self._ollama.list()
             return True
-        except Exception:
+        except Exception as exc:
+            logger.debug("Ollama health check failed: %s", exc)
             return False
 
     def check_anthropic(self) -> bool:

@@ -110,6 +110,24 @@ from jarvis_engine.commands.proactive_commands import (
     WakeWordStartCommand,
     WakeWordStartResult,
 )
+from jarvis_engine.commands.defense_commands import (
+    BlockIPCommand,
+    BlockIPResult,
+    ContainmentOverrideCommand,
+    ContainmentOverrideResult,
+    ExportForensicsCommand,
+    ExportForensicsResult,
+    ReviewQuarantineCommand,
+    ReviewQuarantineResult,
+    SecurityBriefingCommand,
+    SecurityBriefingResult,
+    SecurityStatusCommand,
+    SecurityStatusResult,
+    ThreatReportCommand,
+    ThreatReportResult,
+    UnblockIPCommand,
+    UnblockIPResult,
+)
 
 __all__ = [
     # Memory
@@ -211,4 +229,21 @@ __all__ = [
     "SelfTestResult",
     "WakeWordStartCommand",
     "WakeWordStartResult",
+    # Defense
+    "BlockIPCommand",
+    "BlockIPResult",
+    "ContainmentOverrideCommand",
+    "ContainmentOverrideResult",
+    "ExportForensicsCommand",
+    "ExportForensicsResult",
+    "ReviewQuarantineCommand",
+    "ReviewQuarantineResult",
+    "SecurityBriefingCommand",
+    "SecurityBriefingResult",
+    "SecurityStatusCommand",
+    "SecurityStatusResult",
+    "ThreatReportCommand",
+    "ThreatReportResult",
+    "UnblockIPCommand",
+    "UnblockIPResult",
 ]

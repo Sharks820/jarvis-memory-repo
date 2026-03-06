@@ -235,8 +235,8 @@ class BudgetManager:
             self._closed = True
             try:
                 self._db.close()
-            except Exception:
-                logger.warning("Failed to close BudgetManager database connection")
+            except Exception as exc:
+                logger.warning("Failed to close BudgetManager database connection: %s", exc)
 
     def __enter__(self) -> "BudgetManager":
         return self

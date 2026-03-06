@@ -1,27 +1,9 @@
-"""Shared FTS5 query sanitization utilities.
+"""Backwards-compatibility shim — FTS5 utilities now live in _shared.py.
 
-Used by both MemoryEngine (memory/engine.py) and KnowledgeGraph (knowledge/graph.py)
-to sanitize user queries before FTS5 MATCH operations.
+This module re-exports the canonical implementations so that any remaining
+references to ``jarvis_engine._fts_utils`` continue to work.
 """
 
-from __future__ import annotations
+from jarvis_engine._shared import FTS5_KEYWORDS, FTS5_SPECIAL_RE, sanitize_fts_query
 
-import re
-
-# FTS5 special characters that must be escaped in user queries.
-# Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
-FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
-FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
-
-
-def sanitize_fts_query(query: str) -> str:
-    """Sanitize a user query for FTS5 MATCH to prevent injection.
-
-    Strips FTS5 special characters that could alter query semantics
-    and removes FTS5 boolean operators.
-    """
-    sanitized = FTS5_SPECIAL_RE.sub(" ", query)
-    # Remove FTS5 boolean operators to prevent query injection
-    tokens = sanitized.split()
-    tokens = [t for t in tokens if t.upper() not in FTS5_KEYWORDS]
-    return " ".join(tokens).strip()
+__all__ = ["FTS5_SPECIAL_RE", "FTS5_KEYWORDS", "sanitize_fts_query"]

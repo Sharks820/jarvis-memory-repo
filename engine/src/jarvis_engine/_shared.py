@@ -2,10 +2,13 @@
 
 Consolidates duplicated helpers to a single source of truth:
 - atomic_write_json: safe JSON file writes with atomic replace
+- env_int: bounded integer env-var reader
 - safe_float / safe_int: type coercion with defaults
 - check_path_within_root: path traversal guard
 - win_hidden_subprocess_kwargs: Windows subprocess window suppression
 - load_personal_vocab_lines: personal_vocab.txt reader (used by stt + stt_postprocess)
+- sanitize_fts_query / FTS5_SPECIAL_RE / FTS5_KEYWORDS: FTS5 query sanitization
+  (used by memory/engine.py and knowledge/graph.py)
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -60,6 +64,20 @@ def atomic_write_json(
                 pass
     if last_error is not None:
         raise last_error
+
+
+def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    """Read a bounded integer from an environment variable.
+
+    Returns *default* when the variable is unset or cannot be parsed as an
+    integer.  The result is always clamped to [*minimum*, *maximum*].
+    """
+    raw = os.environ.get(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
@@ -192,3 +210,26 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         return _personal_vocab_stripped_cache
 
     return _personal_vocab_raw_cache
+
+
+# ---------------------------------------------------------------------------
+# FTS5 query sanitization (shared by memory/engine.py and knowledge/graph.py)
+# ---------------------------------------------------------------------------
+
+# FTS5 special characters that must be escaped in user queries.
+# Includes: " * ( ) { } [ ] : ^ ~ + - ' (all FTS5 query syntax chars).
+FTS5_SPECIAL_RE = re.compile(r"""["\*\(\)\{\}\[\]:^~+\-']""")
+FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
+
+
+def sanitize_fts_query(query: str) -> str:
+    """Sanitize a user query for FTS5 MATCH to prevent injection.
+
+    Strips FTS5 special characters that could alter query semantics
+    and removes FTS5 boolean operators.
+    """
+    sanitized = FTS5_SPECIAL_RE.sub(" ", query)
+    # Remove FTS5 boolean operators to prevent query injection
+    tokens = sanitized.split()
+    tokens = [t for t in tokens if t.upper() not in FTS5_KEYWORDS]
+    return " ".join(tokens).strip()

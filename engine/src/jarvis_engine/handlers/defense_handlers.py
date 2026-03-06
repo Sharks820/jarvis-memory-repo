@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
-from jarvis_engine.security.defense_commands import (
+from jarvis_engine.commands.defense_commands import (
     BlockIPCommand,
     BlockIPResult,
     ContainmentOverrideCommand,

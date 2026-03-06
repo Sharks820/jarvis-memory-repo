@@ -111,8 +111,8 @@ def collect_kg_metrics(kg) -> dict:
     except Exception as exc:
         try:
             db.execute("ROLLBACK")
-        except Exception:
-            pass
+        except Exception as rollback_exc:
+            logger.debug("ROLLBACK failed during KG metrics collection: %s", rollback_exc)
         logger.warning("Failed to collect KG metrics: %s", exc)
 
     return metrics

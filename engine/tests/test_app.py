@@ -121,7 +121,7 @@ from jarvis_engine.commands.learning_commands import (
 )
 
 # Defense commands
-from jarvis_engine.security.defense_commands import (
+from jarvis_engine.commands.defense_commands import (
     BlockIPCommand,
     ContainmentOverrideCommand,
     ExportForensicsCommand,

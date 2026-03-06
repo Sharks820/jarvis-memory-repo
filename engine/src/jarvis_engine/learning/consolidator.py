@@ -24,6 +24,27 @@ import numpy as np
 
 from jarvis_engine._compat import UTC
 
+
+def _parse_days_since(raw_date_str: str, now: datetime, default: float = 365.0) -> float:
+    """Parse an ISO-8601 date string and return the number of days since *now*.
+
+    Handles the ``Z`` UTC suffix and naive datetimes (assumes UTC).
+    Returns *default* when the string is empty or unparseable.
+    """
+    raw = str(raw_date_str).strip() if raw_date_str else ""
+    if not raw:
+        return default
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return max(0.0, (now - dt).total_seconds() / 86400.0)
+    except (ValueError, TypeError):
+        return default
+
+
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
     from jarvis_engine.memory.embeddings import EmbeddingService
@@ -204,31 +225,8 @@ class MemoryConsolidator:
             last_accessed_str = record.get("last_accessed", "") or ""
             created_str = record.get("ts", "") or record.get("created_at", "") or ""
 
-            days_since_access = 365.0  # Default: very old
-            if last_accessed_str:
-                raw = str(last_accessed_str).strip()
-                if raw.endswith("Z"):
-                    raw = raw[:-1] + "+00:00"
-                try:
-                    la = datetime.fromisoformat(raw)
-                    if la.tzinfo is None:
-                        la = la.replace(tzinfo=UTC)
-                    days_since_access = max(0.0, (now - la).total_seconds() / 86400.0)
-                except (ValueError, TypeError):
-                    pass
-
-            days_since_creation = 365.0
-            if created_str:
-                raw = str(created_str).strip()
-                if raw.endswith("Z"):
-                    raw = raw[:-1] + "+00:00"
-                try:
-                    cr = datetime.fromisoformat(raw)
-                    if cr.tzinfo is None:
-                        cr = cr.replace(tzinfo=UTC)
-                    days_since_creation = max(0.0, (now - cr).total_seconds() / 86400.0)
-                except (ValueError, TypeError):
-                    pass
+            days_since_access = _parse_days_since(last_accessed_str, now)
+            days_since_creation = _parse_days_since(created_str, now)
 
             relevance = compute_relevance_score(access_count, days_since_access, days_since_creation)
             new_tier = classify_tier_by_relevance(relevance, days_since_creation)

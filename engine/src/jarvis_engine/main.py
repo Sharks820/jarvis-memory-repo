@@ -534,14 +534,7 @@ _CONVERSATION_HISTORY_FILE: Path | None = None
 _conversation_history_loaded = False
 
 
-def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
-    """Read bounded integer env var, returning fallback on parse errors."""
-    raw = os.getenv(name, str(default)).strip()
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        value = default
-    return max(minimum, min(value, maximum))
+from jarvis_engine._shared import env_int as _env_int
 
 
 _CONVERSATION_MAX_TURNS = _env_int("JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40)

@@ -358,7 +358,7 @@ def create_app(root: Path) -> CommandBus:
     # Defense commands (Wave 9-13 security modules)
     # Each handler registered individually so one failure doesn't disable all.
     try:
-        from jarvis_engine.security.defense_commands import (
+        from jarvis_engine.commands.defense_commands import (
             BlockIPCommand,
             ContainmentOverrideCommand,
             ExportForensicsCommand,

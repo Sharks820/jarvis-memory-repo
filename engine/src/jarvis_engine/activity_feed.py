@@ -291,6 +291,6 @@ def _reset_feed() -> None:
         if _feed is not None:
             try:
                 _feed.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to close activity feed singleton: %s", exc)
             _feed = None

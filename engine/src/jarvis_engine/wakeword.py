@@ -70,7 +70,8 @@ class WakeWordDetector:
             from jarvis_engine.stt_vad import SileroVADDetector
             self._vad = SileroVADDetector(threshold=0.3)
             self._vad_available = self._vad.available
-        except Exception:
+        except Exception as exc:
+            logger.debug("Silero VAD init failed for wakeword: %s", exc)
             self._vad = None
             self._vad_available = False
 
@@ -122,8 +123,9 @@ class WakeWordDetector:
                 try:
                     try:
                         audio_data, overflowed = stream.read(chunk_size)
-                    except Exception:
-                        continue  # Stream was closed externally
+                    except Exception as read_exc:
+                        logger.debug("Wakeword stream read failed (may be closed): %s", read_exc)
+                        continue
                 finally:
                     if mic_lock is not None:
                         mic_lock.release()
@@ -189,8 +191,8 @@ class WakeWordDetector:
                                 avail = drain_stream.read_available
                                 if avail > 0:
                                     drain_stream.read(avail)
-                            except Exception:
-                                pass  # Stream may have been closed
+                            except Exception as drain_exc:
+                                logger.debug("Stream drain failed (may be closed): %s", drain_exc)
 
                         # Reset silence state so first chunk after drain
                         # goes through the silence-to-speech transition path
@@ -203,8 +205,8 @@ class WakeWordDetector:
                     try:
                         self._stream.stop()
                         self._stream.close()
-                    except Exception:
-                        pass
+                    except Exception as stream_exc:
+                        logger.debug("Failed to close wakeword stream: %s", stream_exc)
                     self._stream = None
             logger.info("Wake word detection stopped.")
 

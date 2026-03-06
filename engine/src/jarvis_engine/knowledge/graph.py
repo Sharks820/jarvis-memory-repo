@@ -22,7 +22,7 @@ import struct
 import threading
 from typing import TYPE_CHECKING
 
-from jarvis_engine._fts_utils import sanitize_fts_query
+from jarvis_engine._shared import sanitize_fts_query
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -86,7 +86,7 @@ class KnowledgeGraph:
     def _sanitize_fts_query(query: str) -> str:
         """Sanitize a user query for FTS5 MATCH to prevent injection.
 
-        Delegates to shared :func:`jarvis_engine.memory._fts_utils.sanitize_fts_query`.
+        Delegates to shared :func:`jarvis_engine._shared.sanitize_fts_query`.
         """
         return sanitize_fts_query(query)
 
