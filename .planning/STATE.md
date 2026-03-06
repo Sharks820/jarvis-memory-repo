@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 planning expansion: 14-02 large-scope continuity/voice/mission/telemetry/autofix + desloppify baseline refresh)
+Last activity: 2026-03-05 (v5 planning expansion + mission transparency tranche: continuity/voice/mission/telemetry/autofix and structured active-count/status-detail mission status output)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -36,7 +36,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
-- Plan active: `.planning/phases/14-world-class-assistant-reliability/14-01-PLAN.md`
+- Plan active: `.planning/phases/14-world-class-assistant-reliability/14-02-PLAN.md`
 
 ## Self-Analysis Findings (all resolved)
 
@@ -85,6 +85,8 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: began 14-02 implementation tranche in engine runtime: strengthened system prompt clock context (local+UTC+epoch conflict guard), added URL-to-domain speech compaction for TTS to avoid reading full links aloud, and added focused regression tests with post-change desloppify rescans.
 - 2026-03-05: enabled Bandit in the active Python 3.12 scan runtime to restore Python security coverage in desloppify; fixed honeypot fake credential variable naming that triggered hardcoded-secret detectors, then re-ran security-focused and engine-wide scans to track true baseline.
 - 2026-03-05: added explicit voice-listen lifecycle state emission (`arming`, `listening`, `processing`, `executing`, `idle`, `error`) to stdout and activity feed for real-time UX/telemetry trust, with focused regression tests for success/error transitions.
+- 2026-03-05: added model-switch continuity guardrails: system-prompt continuity contract is now injected when routed model changes with existing history, and model-switch events are logged to activity feed (`conversation_model_switch`) for observability and anti-reset diagnosis.
+- 2026-03-05: upgraded learning mission status surfaces with explicit active/inactive flags, active-count and per-status counters, mission status-detail emission, and richer response summaries to improve UI/voice mission transparency and operator trust.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
