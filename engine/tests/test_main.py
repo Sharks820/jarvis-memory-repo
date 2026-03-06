@@ -14,6 +14,118 @@ def test_sanitize_memory_content_redacts_credentials() -> None:
     assert "[redacted]" in cleaned
 
 
+def test_current_datetime_prompt_line_includes_utc_and_epoch() -> None:
+    line = main_mod._current_datetime_prompt_line()
+    assert "Current date/time:" in line
+    assert "UTC" in line
+    assert "epoch" in line
+    assert "Treat this as the present" in line
+
+
+def test_shorten_urls_for_speech_replaces_raw_url_with_domain_link() -> None:
+    text = "Check this out: https://docs.example.com/guides/very/long/path?query=1"
+    shortened = main_mod._shorten_urls_for_speech(text)  # type: ignore[attr-defined]
+    assert "https://" not in shortened
+    assert "[docs.example.com link]" in shortened
+
+
+def test_cmd_voice_say_sanitizes_urls_before_dispatch(capsys, monkeypatch) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceSayResult
+
+    captured: dict[str, object] = {}
+
+    class _Bus:
+        def dispatch(self, cmd):
+            captured["text"] = getattr(cmd, "text", "")
+            return VoiceSayResult(voice_name="David", output_wav="", message="Spoken.")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+    rc = main_mod.cmd_voice_say(
+        text="source https://www.openai.com/research/latest",
+        profile="jarvis_like",
+        voice_pattern="",
+        output_wav="",
+        rate=-1,
+    )
+    assert rc == 0
+    assert captured["text"] == "source [openai.com link]"
+    out = capsys.readouterr().out
+    assert "voice=David" in out
+
+
+def test_cmd_voice_listen_emits_state_transitions(monkeypatch, capsys) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    class _Bus:
+        def dispatch(self, _cmd):
+            return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
+    assert rc == 0
+
+    out = capsys.readouterr().out
+    assert "listening_state=arming" in out
+    assert "listening_state=listening" in out
+    assert "listening_state=processing" in out
+    assert "listening_state=idle" in out
+    assert "transcription=hello jarvis" in out
+
+
+def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
+    from jarvis_engine.commands.voice_commands import VoiceListenResult
+
+    class _Bus:
+        def dispatch(self, _cmd):
+            return VoiceListenResult(text="", confidence=0.0, duration_seconds=0.0, message="error: microphone unavailable")
+
+    monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
+
+    rc = main_mod.cmd_voice_listen(duration=3.0, language="en", execute=False)
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "listening_state=error" in out
+    assert "error: microphone unavailable" in out
+
+
+def test_conversation_continuity_instruction_on_model_switch(monkeypatch) -> None:
+    monkeypatch.setattr(main_mod, "_last_routed_model", "kimi-k2")
+    line = main_mod._conversation_continuity_instruction("gemma3:4b", history_len=3)  # type: ignore[attr-defined]
+    assert line is not None
+    assert "previous turn used model 'kimi-k2'" in line
+    assert "uses 'gemma3:4b'" in line
+
+
+def test_conversation_continuity_instruction_no_history_or_same_model(monkeypatch) -> None:
+    monkeypatch.setattr(main_mod, "_last_routed_model", "gemma3:4b")
+    assert main_mod._conversation_continuity_instruction("gemma3:4b", history_len=3) is None  # type: ignore[attr-defined]
+    assert main_mod._conversation_continuity_instruction("kimi-k2", history_len=0) is None  # type: ignore[attr-defined]
+
+
+def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
+    calls: list[tuple[str, str, dict]] = []
+
+    def _fake_log_activity(category: str, summary: str, details: dict | None = None):
+        calls.append((category, summary, details or {}))
+        return "evt"
+
+    class _Cat:
+        LLM_ROUTING = "llm_routing"
+
+    import types
+    fake_mod = types.SimpleNamespace(ActivityCategory=_Cat, log_activity=_fake_log_activity)
+    monkeypatch.setitem(__import__("sys").modules, "jarvis_engine.activity_feed", fake_mod)
+
+    monkeypatch.setattr(main_mod, "_last_routed_model", None)
+    main_mod._mark_routed_model("kimi-k2", "groq")  # type: ignore[attr-defined]
+    main_mod._mark_routed_model("gemma3:4b", "ollama")  # type: ignore[attr-defined]
+
+    assert len(calls) == 1
+    assert "kimi-k2 -> gemma3:4b" in calls[0][1]
+    assert calls[0][2]["event"] == "conversation_model_switch"
+
+
 def test_cmd_serve_mobile_requires_token_and_signing_key(monkeypatch) -> None:
     monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
     monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
@@ -1367,21 +1479,32 @@ class TestMissionStatus:
         assert rc == 0
         out = capsys.readouterr().out
         assert "learning_missions=none" in out
+        assert "learning_missions_active=false" in out
+        assert "learning_mission_count=0" in out
 
     def test_status_with_missions(self, capsys, monkeypatch):
         from jarvis_engine.commands.ops_commands import MissionStatusResult
         missions = [
             {"mission_id": "m1", "status": "completed", "topic": "AI safety",
-             "verified_findings": 3, "updated_utc": "2026-01-01"},
+             "verified_findings": 3, "updated_utc": "2026-01-01", "status_detail": "Finalized report"},
+            {"mission_id": "m2", "status": "running", "topic": "Realtime STT",
+             "verified_findings": 1, "updated_utc": "2026-01-02", "progress_pct": 45, "status_detail": "Scanning 8 pages"},
         ]
-        result = MissionStatusResult(missions=missions, total_count=1)
+        result = MissionStatusResult(missions=missions, total_count=2)
         bus = _make_bus_mock(result)
         monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
         rc = main_mod.cmd_mission_status(last=5)
         assert rc == 0
         out = capsys.readouterr().out
         assert "mission_id=m1" in out
+        assert "mission_id=m2" in out
         assert "AI safety" in out
+        assert "learning_missions_active=true" in out
+        assert "learning_missions_active_count=1" in out
+        assert "learning_missions_completed=1" in out
+        assert "learning_missions_running=1" in out
+        assert "mission_status_detail=Scanning 8 pages" in out
+        assert "response=Learning missions (2 total, 1 active):" in out
 
 
 class TestMissionRun:

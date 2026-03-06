@@ -10,6 +10,7 @@ import re
 import subprocess
 import threading
 import time
+from urllib.parse import urlparse
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
@@ -125,6 +126,22 @@ logger = logging.getLogger(__name__)
 
 PHONE_NUMBER_RE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 URL_RE = re.compile(r"\b((?:https?://|www\.)[^\s<>{}\[\]\"']+)", flags=re.IGNORECASE)
+
+
+def _shorten_urls_for_speech(text: str) -> str:
+    """Replace raw URLs with short, speakable references for TTS."""
+
+    def _replacement(match: re.Match[str]) -> str:
+        raw = match.group(1).strip()
+        normalized = raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
+        parsed = urlparse(normalized)
+        host = parsed.netloc.lower().strip()
+        if host.startswith("www."):
+            host = host[4:]
+        host = host or "this source"
+        return f"[{host} link]"
+
+    return URL_RE.sub(_replacement, text)
 
 
 def _escape_response(msg: str) -> str:
@@ -597,6 +614,55 @@ def _get_history_messages() -> list[dict[str, str]]:
         return list(_conversation_history)
 
 
+_last_routed_model: str | None = None
+_last_routed_model_lock = threading.Lock()
+
+
+def _conversation_continuity_instruction(target_model: str, history_len: int) -> str | None:
+    """Return continuity instruction when conversation switches models/providers."""
+    if history_len <= 0:
+        return None
+    normalized_target = target_model.strip()
+    if not normalized_target:
+        return None
+    with _last_routed_model_lock:
+        previous = (_last_routed_model or "").strip()
+    if not previous or previous == normalized_target:
+        return None
+    return (
+        f"Continuity contract: previous turn used model '{previous}' and this turn uses '{normalized_target}'. "
+        "Do not reset or restart context. Continue the same conversation using provided history, memory, and unresolved goals."
+    )
+
+
+def _mark_routed_model(model: str, provider: str) -> None:
+    """Persist last routed model and log provider-switch continuity telemetry."""
+    global _last_routed_model
+    normalized_model = model.strip()
+    if not normalized_model:
+        return
+    with _last_routed_model_lock:
+        previous = _last_routed_model
+        _last_routed_model = normalized_model
+
+    if previous and previous != normalized_model:
+        try:
+            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+            log_activity(
+                ActivityCategory.LLM_ROUTING,
+                f"Model continuity switch: {previous} -> {normalized_model}",
+                {
+                    "from_model": previous,
+                    "to_model": normalized_model,
+                    "provider": provider,
+                    "event": "conversation_model_switch",
+                },
+            )
+        except Exception as exc:
+            logger.debug("Model continuity telemetry logging failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Smart context builder — hybrid search + KG facts + conversation history
 # ---------------------------------------------------------------------------
@@ -672,12 +738,16 @@ def _requires_fresh_web_confirmation(query: str) -> bool:
 
 def _current_datetime_prompt_line() -> str:
     """Provide deterministic current date/time context for model grounding."""
-    now = datetime.now().astimezone()
-    iso_now = now.isoformat(timespec="seconds")
-    human_now = now.strftime("%A, %B %d, %Y %H:%M %Z")
+    local_now = datetime.now().astimezone()
+    utc_now = local_now.astimezone(UTC)
+    local_iso = local_now.isoformat(timespec="seconds")
+    utc_iso = utc_now.isoformat(timespec="seconds")
+    unix_epoch = int(utc_now.timestamp())
+    human_now = local_now.strftime("%A, %B %d, %Y %H:%M %Z")
     return (
-        f"Current date/time: {human_now} (ISO {iso_now}). "
-        "Treat this as the present unless the user explicitly specifies another date."
+        f"Current date/time: {human_now} (local ISO {local_iso}; UTC {utc_iso}; epoch {unix_epoch}). "
+        "Treat this as the present unless the user explicitly specifies another date. "
+        "If relative-time reasoning conflicts with this clock context, prioritize this clock context."
     )
 
 
@@ -1790,26 +1860,60 @@ def cmd_mission_status(last: int) -> int:
     result = _get_bus().dispatch(MissionStatusCommand(last=last))
     if not result.missions:
         print("learning_missions=none")
+        print("learning_missions_active=false")
+        print("learning_mission_count=0")
         print("response=No active learning missions at the moment.")
         return 0
+
+    counts = {"pending": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0, "other": 0}
+    active_count = 0
+    for mission in result.missions:
+        status = str(mission.get("status", "")).strip().lower()
+        if status in ("pending", "running"):
+            active_count += 1
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["other"] += 1
+
     print(f"learning_mission_count={result.total_count}")
+    print(f"learning_missions_active={'true' if active_count > 0 else 'false'}")
+    print(f"learning_missions_active_count={active_count}")
+    print(f"learning_missions_pending={counts['pending']}")
+    print(f"learning_missions_running={counts['running']}")
+    print(f"learning_missions_completed={counts['completed']}")
+    print(f"learning_missions_failed={counts['failed']}")
+    print(f"learning_missions_cancelled={counts['cancelled']}")
+
     summary_parts: list[str] = []
     for mission in result.missions:
+        mission_id = str(mission.get("mission_id", ""))
+        status = str(mission.get("status", ""))
+        progress_pct = int(mission.get("progress_pct", 0) or 0)
+        topic = str(mission.get("topic", ""))
+        findings = int(mission.get("verified_findings", 0) or 0)
+        updated_utc = str(mission.get("updated_utc", ""))
+        status_detail = str(mission.get("status_detail", "")).strip()
+
         print(
-            f"mission_id={mission.get('mission_id','')} "
-            f"status={mission.get('status','')} "
-            f"progress_pct={int(mission.get('progress_pct', 0) or 0)} "
-            f"topic={mission.get('topic','')} "
-            f"verified_findings={mission.get('verified_findings', 0)} "
-            f"updated_utc={mission.get('updated_utc','')}"
+            f"mission_id={mission_id} "
+            f"status={status} "
+            f"progress_pct={progress_pct} "
+            f"topic={topic} "
+            f"verified_findings={findings} "
+            f"updated_utc={updated_utc}"
         )
+        if status_detail:
+            print(f"mission_status_detail={status_detail}")
         if mission.get("progress_bar"):
             print(f"progress_bar={mission.get('progress_bar', '')}")
-        topic = mission.get("topic", "unknown")
-        status = mission.get("status", "unknown")
-        findings = mission.get("verified_findings", 0)
-        summary_parts.append(f"{topic} ({status}, {findings} findings)")
-    print(f"response=Learning missions ({result.total_count} total): " + " | ".join(summary_parts))
+
+        summary = f"{topic} ({status}, {progress_pct}%, {findings} findings)"
+        if status_detail:
+            summary += f" — {status_detail}"
+        summary_parts.append(summary)
+
+    print(f"response=Learning missions ({result.total_count} total, {active_count} active): " + " | ".join(summary_parts))
     return 0
 
 
@@ -3132,8 +3236,9 @@ def cmd_voice_say(
     output_wav: str,
     rate: int,
 ) -> int:
+    speakable_text = _shorten_urls_for_speech(text)
     result = _get_bus().dispatch(VoiceSayCommand(
-        text=text, profile=profile, voice_pattern=voice_pattern,
+        text=speakable_text, profile=profile, voice_pattern=voice_pattern,
         output_wav=output_wav, rate=rate,
     ))
     print(f"voice={result.voice_name}")
@@ -3168,28 +3273,57 @@ def cmd_voice_verify(user_id: str, wav_path: str, threshold: float) -> int:
     return 0 if result.matched else 2
 
 
+def _emit_voice_listen_state(state: str, *, details: dict[str, object] | None = None) -> None:
+    """Emit voice listening state to stdout + activity feed (best effort)."""
+    print(f"listening_state={state}")
+    try:
+        from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+        payload = {"state": state}
+        if details:
+            payload.update(details)
+        log_activity(
+            ActivityCategory.VOICE,
+            f"Voice listen state: {state}",
+            payload,
+        )
+    except Exception as exc:
+        logger.debug("Voice listen state activity logging failed: %s", exc)
+
+
 def cmd_voice_listen(
     duration: float,
     language: str,
     execute: bool,
 ) -> int:
     """Record from microphone, transcribe, optionally execute as voice command."""
+    _emit_voice_listen_state("arming", details={"duration_s": duration, "language": language, "execute": execute})
+    _emit_voice_listen_state("listening", details={"duration_s": duration, "language": language})
+
     result = _get_bus().dispatch(
         VoiceListenCommand(
             max_duration_seconds=duration,
             language=language,
         )
     )
+
+    _emit_voice_listen_state("processing", details={"duration_s": result.duration_seconds})
+
     if result.message.startswith("error:"):
+        _emit_voice_listen_state("error", details={"reason": result.message[:200]})
         print(result.message)
         return 2
     if not result.text:
+        _emit_voice_listen_state("idle", details={"reason": "no_speech_detected"})
         print("(no speech detected)")
         return 0
+
     print(f"transcription={result.text}")
     print(f"confidence={result.confidence}")
     print(f"duration={result.duration_seconds}s")
+
     if execute and result.text:
+        _emit_voice_listen_state("executing", details={"transcription_chars": len(result.text)})
         print("executing transcribed command...")
         return cmd_voice_run(
             text=result.text,
@@ -3203,6 +3337,8 @@ def cmd_voice_listen(
             voice_threshold=0.82,
             master_password="",
         )
+
+    _emit_voice_listen_state("idle", details={"reason": "transcription_complete", "confidence": result.confidence})
     return 0
 
 
@@ -3361,6 +3497,10 @@ def _web_augmented_llm_conversation(
 
     # --- Build messages with conversation history ---
     _hist = _get_history_messages()
+    _continuity_instruction = _conversation_continuity_instruction(_llm_model, len(_hist))
+    if _continuity_instruction:
+        system_parts.append(_continuity_instruction)
+        system_prompt = "\n\n".join(system_parts)
     _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
     _add_to_history("user", text)
     try:
@@ -3389,6 +3529,7 @@ def _web_augmented_llm_conversation(
             print(f"response={_escape_response(result.text.strip())}")
             print(f"model={result.model}")
             print(f"provider={result.provider}")
+            _mark_routed_model(result.model, result.provider)
             if _web_searched:
                 print("web_search_used=true")
             # Auto-learn
@@ -4311,6 +4452,10 @@ def _cmd_voice_run_impl(
 
         # --- Build messages with conversation history ---
         _hist = _get_history_messages()
+        _continuity_instruction = _conversation_continuity_instruction(_llm_model, len(_hist))
+        if _continuity_instruction:
+            system_parts.append(_continuity_instruction)
+            system_prompt = "\n\n".join(system_parts)
         # Don't include the current query in history (it goes as the main query)
         _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
         _add_to_history("user", text)
@@ -4331,6 +4476,7 @@ def _cmd_voice_run_impl(
                 _respond(result.text.strip())
                 print(f"model={result.model}")
                 print(f"provider={result.provider}")
+                _mark_routed_model(result.model, result.provider)
                 if _web_searched:
                     print("web_search_used=true")
                 # Auto-learn: ingest through enriched pipeline (embeddings + KG)
