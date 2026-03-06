@@ -64,6 +64,23 @@ class MemoryEngine:
 
         self._init_schema()
 
+    # -- Public read-only properties for shared infrastructure --
+
+    @property
+    def db(self) -> sqlite3.Connection:
+        """The underlying SQLite connection (read-only accessor)."""
+        return self._db
+
+    @property
+    def write_lock(self) -> threading.Lock:
+        """Lock for serialising database writes (read-only accessor)."""
+        return self._write_lock
+
+    @property
+    def db_lock(self) -> threading.Lock:
+        """Lock to prevent cursor interleaving on shared connection (read-only accessor)."""
+        return self._db_lock
+
     def _check_open(self) -> None:
         """Raise RuntimeError if the engine has been closed."""
         if self._closed:

@@ -106,7 +106,7 @@ class RegressionChecker:
         dst_db = sqlite3.connect(str(backup_path))
         try:
             with self._kg.db_lock:
-                self._kg._engine._db.backup(dst_db)
+                self._kg._engine.db.backup(dst_db)
         finally:
             dst_db.close()
         logger.info("Knowledge graph backed up to %s", backup_path)

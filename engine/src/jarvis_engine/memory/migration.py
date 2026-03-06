@@ -278,7 +278,7 @@ def migrate_facts(
     inserted = 0
     errors = 0
 
-    with engine._write_lock:
+    with engine.write_lock:
         try:
             for key, value in facts_data.items():
                 try:
@@ -295,7 +295,7 @@ def migrate_facts(
                     value["sources"] = sources if isinstance(sources, list) else []
                     value["history"] = history if isinstance(history, list) else []
 
-                    engine._db.execute(
+                    engine.db.execute(
                         """
                         INSERT OR REPLACE INTO facts (key, value, confidence, locked, updated_utc, sources, history)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -316,9 +316,9 @@ def migrate_facts(
                     logger.warning("Failed to migrate fact '%s': %s", key, exc)
 
             # Single commit for all facts (batch)
-            engine._db.commit()
+            engine.db.commit()
         except Exception:
-            engine._db.rollback()
+            engine.db.rollback()
             raise
 
     status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")

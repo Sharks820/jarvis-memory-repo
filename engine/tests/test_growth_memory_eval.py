@@ -191,6 +191,8 @@ def test_capture_knowledge_metrics_structure():
 
     engine = MagicMock()
     engine._db = db  # noqa: SLF001
+    engine.db = db
+    engine.db_lock = MagicMock()
 
     kg = _make_kg_mock(nodes=5, edges=3, locked=1, db=db)
     # kg_nodes doesn't have temporal_type column here -- test graceful fallback
@@ -225,6 +227,8 @@ def test_capture_knowledge_metrics_empty_db():
 
     engine = MagicMock()
     engine._db = db  # noqa: SLF001
+    engine.db = db
+    engine.db_lock = MagicMock()
 
     kg = _make_kg_mock(nodes=0, edges=0, locked=0, db=db)
 
@@ -246,6 +250,8 @@ def test_capture_knowledge_metrics_temporal_missing():
 
     engine = MagicMock()
     engine._db = db  # noqa: SLF001
+    engine.db = db
+    engine.db_lock = MagicMock()
 
     # Create kg_nodes without temporal_type column
     db.execute("CREATE TABLE kg_nodes (node_id TEXT, label TEXT)")

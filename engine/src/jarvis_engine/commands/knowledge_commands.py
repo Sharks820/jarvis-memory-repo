@@ -17,6 +17,7 @@ class KnowledgeStatusResult:
     locked_count: int = 0
     pending_contradictions: int = 0
     graph_hash: str = ""
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class ContradictionListCommand:
 @dataclass
 class ContradictionListResult:
     contradictions: list = field(default_factory=list)
+    error: str = ""
 
 
 @dataclass(frozen=True)

@@ -233,7 +233,7 @@ def create_app(root: Path) -> CommandBus:
         # Run temporal metadata migration (idempotent)
         try:
             from jarvis_engine.learning.temporal import migrate_temporal_metadata
-            migrate_temporal_metadata(engine._db, engine._write_lock)
+            migrate_temporal_metadata(engine.db, engine.write_lock)
         except Exception as exc_tm:
             logger.warning("Temporal metadata migration skipped: %s", exc_tm)
         pipeline = EnrichedIngestPipeline(
@@ -278,7 +278,7 @@ def create_app(root: Path) -> CommandBus:
     # (pipeline is constructed before gateway is available; gateway is a
     # documented constructor parameter so this late-binding is intentional)
     if pipeline is not None and gateway is not None:
-        pipeline._gateway = gateway  # matches constructor param `gateway`
+        pipeline.set_gateway(gateway)
 
     # -- Memory (dual-path: MemoryEngine or adapter shim) --
     bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine, kg=kg).handle)
@@ -387,15 +387,26 @@ def create_app(root: Path) -> CommandBus:
         _sec_lock = __import__("threading").Lock()
         _sec_log_dir = _runtime_dir(root) / "forensic"
 
+        # Create a single shared orchestrator for all defense handlers
+        # to avoid duplicating threat-response infrastructure.
+        _shared_orch = None
+        try:
+            from jarvis_engine.security.orchestrator import SecurityOrchestrator
+            _shared_orch = SecurityOrchestrator(
+                db=_sec_db, write_lock=_sec_lock, log_dir=_sec_log_dir,
+            )
+        except Exception as exc:
+            logger.warning("Shared SecurityOrchestrator init failed (handlers will retry): %s", exc)
+
         _defense_registrations: list[tuple[type[object], Callable[..., Any]]] = [
-            (SecurityStatusCommand, SecurityStatusHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (ThreatReportCommand, ThreatReportHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (ExportForensicsCommand, ExportForensicsHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (ContainmentOverrideCommand, ContainmentOverrideHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (BlockIPCommand, BlockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (UnblockIPCommand, UnblockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (ReviewQuarantineCommand, ReviewQuarantineHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
-            (SecurityBriefingCommand, SecurityBriefingHandler(root, _sec_db, _sec_lock, _sec_log_dir).handle),
+            (SecurityStatusCommand, SecurityStatusHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (ThreatReportCommand, ThreatReportHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (ExportForensicsCommand, ExportForensicsHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (ContainmentOverrideCommand, ContainmentOverrideHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (BlockIPCommand, BlockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (UnblockIPCommand, UnblockIPHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (ReviewQuarantineCommand, ReviewQuarantineHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
+            (SecurityBriefingCommand, SecurityBriefingHandler(root, _sec_db, _sec_lock, _sec_log_dir, orchestrator=_shared_orch).handle),
         ]
         for _cmd_cls, _handler in _defense_registrations:
             try:
@@ -422,9 +433,9 @@ def create_app(root: Path) -> CommandBus:
         from jarvis_engine.learning.preferences import PreferenceTracker
         from jarvis_engine.learning.usage_patterns import UsagePatternTracker
 
-        pref_tracker = PreferenceTracker(db=engine._db, write_lock=engine._write_lock, db_lock=engine._db_lock)
-        feedback_tracker = ResponseFeedbackTracker(db=engine._db, write_lock=engine._write_lock, db_lock=engine._db_lock)
-        usage_tracker = UsagePatternTracker(db=engine._db, write_lock=engine._write_lock, db_lock=engine._db_lock)
+        pref_tracker = PreferenceTracker(db=engine.db, write_lock=engine.write_lock, db_lock=engine.db_lock)
+        feedback_tracker = ResponseFeedbackTracker(db=engine.db, write_lock=engine.write_lock, db_lock=engine.db_lock)
+        usage_tracker = UsagePatternTracker(db=engine.db, write_lock=engine.write_lock, db_lock=engine.db_lock)
         learning_engine = ConversationLearningEngine(
             pipeline=pipeline, kg=kg, preference_tracker=pref_tracker,
             feedback_tracker=feedback_tracker, usage_tracker=usage_tracker,
@@ -461,7 +472,7 @@ def create_app(root: Path) -> CommandBus:
         # Wire feedback tracker into IntentClassifier for route quality penalty (LEARN-02)
         # Classifier is created before learning subsystem, so we set it after the fact
         if intent_classifier is not None:
-            intent_classifier._feedback_tracker = feedback_tracker
+            intent_classifier.set_feedback_tracker(feedback_tracker)
 
         # Wire trackers into IntelligenceDashboardHandler (LEARN-07/08)
         bus.register(
@@ -508,8 +519,8 @@ def create_app(root: Path) -> CommandBus:
         sync_transport = None
 
         if engine is not None:
-            install_changelog_triggers(engine._db, device_id="desktop")
-            sync_engine = SyncEngine(engine._db, engine._write_lock, device_id="desktop")
+            install_changelog_triggers(engine.db, device_id="desktop")
+            sync_engine = SyncEngine(engine.db, engine.write_lock, device_id="desktop")
 
             signing_key = os.environ.get("JARVIS_SIGNING_KEY", "")
             if signing_key:

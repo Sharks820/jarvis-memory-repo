@@ -43,6 +43,10 @@ def _make_engine() -> MagicMock:
     engine._db = db
     engine._db_lock = threading.Lock()
     engine._write_lock = threading.Lock()
+    # Public property aliases (used by consolidator via MemoryEngine properties)
+    engine.db = db
+    engine.db_lock = engine._db_lock
+    engine.write_lock = engine._write_lock
     # Make insert_record actually insert into the real DB
     engine.insert_record = MagicMock(return_value=True)
     return engine

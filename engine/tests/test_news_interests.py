@@ -1,4 +1,7 @@
 """Tests for the interest learning engine."""
+import json
+from unittest.mock import patch
+
 from jarvis_engine.news.interests import InterestLearner
 
 
@@ -68,3 +71,40 @@ class TestInterestLearner:
         learner._decay_all(days=365)
         profile = learner.get_profile()
         assert "ancient" not in profile  # decayed below 0.01 threshold
+
+    def test_load_corrupt_json(self, tmp_path):
+        """_load returns {} when the JSON file is corrupt."""
+        learner = InterestLearner(tmp_path)
+        learner._path.write_text("NOT VALID JSON {{{", encoding="utf-8")
+        data = learner._load()
+        assert data == {}
+
+    def test_save_write_failure(self, tmp_path):
+        """_save logs warning instead of crashing on write failure."""
+        learner = InterestLearner(tmp_path)
+        with patch(
+            "jarvis_engine.news.interests.atomic_write_json",
+            side_effect=OSError("disk full"),
+        ):
+            # Should not raise
+            learner._save({"topic": {"score": 1.0}})
+
+    def test_decay_all_malformed_timestamp(self, tmp_path):
+        """_decay_all skips entries with unparseable timestamps."""
+        learner = InterestLearner(tmp_path)
+        learner.record_interest("good_topic", weight=1.0)
+        # Inject a malformed timestamp directly
+        data = json.loads(learner._path.read_text(encoding="utf-8"))
+        data["bad_topic"] = {
+            "score": 1.0,
+            "count": 1,
+            "last_seen": "not-a-date",
+        }
+        learner._path.write_text(json.dumps(data), encoding="utf-8")
+        # Should not raise; good_topic still decayed normally
+        learner._decay_all(days=10)
+        updated = json.loads(learner._path.read_text(encoding="utf-8"))
+        # bad_topic timestamp unchanged (skipped)
+        assert updated["bad_topic"]["last_seen"] == "not-a-date"
+        # good_topic timestamp was shifted back
+        assert updated["good_topic"]["last_seen"] != data["good_topic"]["last_seen"]

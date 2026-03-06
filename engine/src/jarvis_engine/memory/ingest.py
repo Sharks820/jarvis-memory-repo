@@ -53,6 +53,14 @@ class EnrichedIngestPipeline:
         self._fact_extractor = None  # Lazy-initialized on first use
         self._llm_extractor = None  # Lazy-initialized on first use
 
+    def set_gateway(self, gateway: "object | None") -> None:
+        """Set the LLM gateway for fact extraction (late-binding).
+
+        Called by the composition root when the gateway is created after the
+        pipeline.  Avoids direct mutation of the private ``_gateway`` attribute.
+        """
+        self._gateway = gateway
+
     def ingest(
         self,
         source: str,

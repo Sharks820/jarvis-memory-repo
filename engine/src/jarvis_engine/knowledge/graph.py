@@ -44,9 +44,9 @@ class KnowledgeGraph:
         embed_service: "EmbeddingService | None" = None,
     ) -> None:
         self._engine = engine
-        self._db = engine._db
-        self._write_lock = engine._write_lock
-        self._db_lock = engine._db_lock
+        self._db = engine.db
+        self._write_lock = engine.write_lock
+        self._db_lock = engine.db_lock
         self._embed_service = embed_service
         self._vec_available = getattr(engine, "_vec_available", False)
         self._mutation_counter = 0

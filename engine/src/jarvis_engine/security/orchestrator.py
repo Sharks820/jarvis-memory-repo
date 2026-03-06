@@ -561,6 +561,52 @@ class SecurityOrchestrator:
         return result
 
     # ------------------------------------------------------------------
+    # Public delegation methods for CQRS handlers
+    # ------------------------------------------------------------------
+
+    def contain(self, ip: str, level: int, reason: str) -> dict:
+        """Execute containment at the specified *level* against *ip*.
+
+        Delegates to the internal ``ContainmentEngine`` so handlers do not need
+        to construct their own instance.
+        """
+        return self._containment.contain(ip=ip, level=level, reason=reason)
+
+    def recover(self, level: int, master_password: str | None = None) -> dict:
+        """Recover from containment at the specified *level*.
+
+        Delegates to the internal ``ContainmentEngine``.
+        """
+        return self._containment.recover(level=level, master_password=master_password)
+
+    def generate_briefing(self) -> str:
+        """Generate a human-readable security briefing.
+
+        Delegates to the internal ``AdaptiveDefenseEngine`` so handlers do not
+        need to construct their own ``AttackPatternMemory`` + ``AdaptiveDefenseEngine``.
+        """
+        return self._adaptive_defense.generate_briefing()
+
+    def get_threat_report(self, ip: str | None = None) -> dict:
+        """Retrieve threat report for a specific IP or all tracked IPs.
+
+        Delegates to the internal ``IPTracker``.
+        """
+        if ip:
+            report = self._ip_tracker.get_threat_report(ip)
+            return report if report is not None else {}
+        all_threats = self._ip_tracker.get_all_threats(min_score=0.0)
+        return {"total_tracked": len(all_threats), "threats": all_threats}
+
+    def block_ip(self, ip: str, duration_hours: int | None = None) -> None:
+        """Block an IP address via the internal ``IPTracker``."""
+        self._ip_tracker.block_ip(ip, duration_hours=duration_hours)
+
+    def unblock_ip(self, ip: str) -> None:
+        """Unblock an IP address via the internal ``IPTracker``."""
+        self._ip_tracker.unblock_ip(ip)
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

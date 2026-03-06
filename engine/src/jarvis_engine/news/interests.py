@@ -39,7 +39,10 @@ class InterestLearner:
         return {}
 
     def _save(self, data: dict) -> None:
-        atomic_write_json(self._path, data, secure=False)
+        try:
+            atomic_write_json(self._path, data, secure=False)
+        except OSError:
+            logger.warning("Failed to save interests file %s", self._path)
 
     def record_interest(self, topic: str, *, weight: float = 0.3) -> None:
         """Record an interest signal for a topic.
@@ -87,6 +90,9 @@ class InterestLearner:
             data = self._load()
             for entry in data.values():
                 if entry.get("last_seen"):
-                    dt = datetime.fromisoformat(entry["last_seen"])
+                    try:
+                        dt = datetime.fromisoformat(entry["last_seen"])
+                    except (ValueError, TypeError):
+                        continue
                     entry["last_seen"] = (dt - timedelta(days=days)).isoformat()
             self._save(data)

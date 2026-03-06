@@ -89,7 +89,7 @@ class OpsExportActionsHandler:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("OpsExportActions path check failed: %s", exc)
-            return OpsExportActionsResult()
+            return OpsExportActionsResult(error=str(exc))
         snapshot = load_snapshot(cmd.snapshot_path)
         actions = suggest_actions(snapshot)
         export_actions_json(actions, cmd.actions_path)
@@ -110,7 +110,7 @@ class OpsSyncHandler:
             _check_path_within_root(cmd.output_path, self._root, "output_path")
         except ValueError as exc:
             logger.warning("OpsSyncHandler path check failed: %s", exc)
-            return OpsSyncResult()
+            return OpsSyncResult(error=str(exc))
         summary = build_live_snapshot(self._root, cmd.output_path)
         return OpsSyncResult(summary=summary)
 
@@ -129,7 +129,7 @@ class OpsAutopilotHandler:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("OpsAutopilot path check failed: %s", exc)
-            return OpsAutopilotResult(return_code=2)
+            return OpsAutopilotResult(return_code=2, error=str(exc))
         rc = _main_mod._cmd_ops_autopilot_impl(
             snapshot_path=cmd.snapshot_path,
             actions_path=cmd.actions_path,
@@ -160,7 +160,7 @@ class AutomationRunHandler:
             _check_path_within_root(cmd.actions_path, self._root, "actions_path")
         except ValueError as exc:
             logger.warning("AutomationRun path check failed: %s", exc)
-            return AutomationRunResult()
+            return AutomationRunResult(error=str(exc))
         store = self._get_store()
         executor = AutomationExecutor(store)
         actions = load_actions(cmd.actions_path)
@@ -189,7 +189,7 @@ class MissionCreateHandler:
             )
         except ValueError as exc:
             logger.warning("Mission creation failed: %s", exc)
-            return MissionCreateResult(return_code=2)
+            return MissionCreateResult(return_code=2, error=str(exc))
         return MissionCreateResult(mission=mission, return_code=0)
 
 
@@ -253,7 +253,7 @@ class MissionRunHandler:
             )
         except ValueError as exc:
             logger.warning("Mission run failed: %s", exc)
-            return MissionRunResult(return_code=2)
+            return MissionRunResult(return_code=2, error=str(exc))
 
         ingested_ids: list[str] = []
         verified = report.get("verified_findings", [])
@@ -301,12 +301,12 @@ class GrowthEvalHandler:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError as exc:
             logger.warning("GrowthEval path check failed: %s", exc)
-            return GrowthEvalResult()
+            return GrowthEvalResult(error=str(exc))
         try:
             tasks = load_golden_tasks(cmd.tasks_path)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
             logger.warning("Growth eval task loading failed: %s", exc)
-            return GrowthEvalResult()
+            return GrowthEvalResult(error=str(exc))
 
         try:
             run = run_eval(
@@ -322,7 +322,7 @@ class GrowthEvalHandler:
             append_history(cmd.history_path, run)
         except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Growth eval execution failed: %s", exc)
-            return GrowthEvalResult()
+            return GrowthEvalResult(error=str(exc))
         return GrowthEvalResult(run=run)
 
 
@@ -337,7 +337,7 @@ class GrowthReportHandler:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError as exc:
             logger.warning("GrowthReport path check failed: %s", exc)
-            return GrowthReportResult()
+            return GrowthReportResult(error=str(exc))
         rows = read_history(cmd.history_path)
         summary = summarize_history(rows, last=cmd.last)
         return GrowthReportResult(summary=summary)
@@ -354,13 +354,13 @@ class GrowthAuditHandler:
             _check_path_within_root(cmd.history_path, self._root, "history_path")
         except ValueError as exc:
             logger.warning("GrowthAudit path check failed: %s", exc)
-            return GrowthAuditResult()
+            return GrowthAuditResult(error=str(exc))
         rows = read_history(cmd.history_path)
         try:
             run = audit_run(rows, run_index=cmd.run_index)
         except (RuntimeError, IndexError) as exc:
             logger.warning("GrowthAudit run lookup failed: %s", exc)
-            return GrowthAuditResult()
+            return GrowthAuditResult(error=str(exc))
         return GrowthAuditResult(run=run)
 
 

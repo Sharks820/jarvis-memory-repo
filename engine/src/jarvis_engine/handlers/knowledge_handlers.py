@@ -30,13 +30,13 @@ class KnowledgeStatusHandler:
 
     def handle(self, cmd: KnowledgeStatusCommand) -> KnowledgeStatusResult:
         if self._kg is None:
-            return KnowledgeStatusResult()
+            return KnowledgeStatusResult(error="Knowledge graph not available.")
 
         try:
             from jarvis_engine.knowledge.regression import RegressionChecker
         except ImportError as exc:
             logger.warning("regression module not available: %s", exc)
-            return KnowledgeStatusResult()
+            return KnowledgeStatusResult(error="Regression module not available.")
 
         metrics = RegressionChecker(self._kg).capture_metrics()
         return KnowledgeStatusResult(
@@ -55,13 +55,13 @@ class ContradictionListHandler:
 
     def handle(self, cmd: ContradictionListCommand) -> ContradictionListResult:
         if self._kg is None:
-            return ContradictionListResult()
+            return ContradictionListResult(error="Knowledge graph not available.")
 
         try:
             from jarvis_engine.knowledge.contradictions import ContradictionManager
         except ImportError as exc:
             logger.warning("contradictions module not available: %s", exc)
-            return ContradictionListResult()
+            return ContradictionListResult(error="Contradictions module not available.")
 
         mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
         contradictions = mgr.list_all(

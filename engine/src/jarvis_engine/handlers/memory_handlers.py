@@ -54,8 +54,8 @@ class BrainStatusHandler:
             # Query distinct branches from records table
             branches: list[str] = []
             try:
-                with self._engine._db_lock:
-                    rows = self._engine._db.execute(
+                with self._engine.db_lock:
+                    rows = self._engine.db.execute(
                         "SELECT DISTINCT branch FROM records ORDER BY branch"
                     ).fetchall()
                 branches = [row[0] for row in rows]
