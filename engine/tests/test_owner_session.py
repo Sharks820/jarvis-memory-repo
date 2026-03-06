@@ -2,14 +2,32 @@
 
 Tests cover password hashing (Argon2id + PBKDF2 fallback), session lifecycle,
 idle timeout extension, lockout after failed attempts, and logout.
+
+Uses mocked ``time.monotonic`` to avoid real sleeps — deterministic and fast.
 """
 
 from __future__ import annotations
 
-import time
-
+from unittest.mock import patch
 
 from jarvis_engine.security.owner_session import OwnerSessionManager
+
+
+# ---------------------------------------------------------------------------
+# Helpers — deterministic clock
+# ---------------------------------------------------------------------------
+
+class _MockClock:
+    """Deterministic replacement for ``time.monotonic``."""
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self._now = start
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
 
 
 # ---------------------------------------------------------------------------
@@ -58,13 +76,18 @@ def test_session_valid_after_auth():
 # ---------------------------------------------------------------------------
 
 
-def test_session_invalid_after_timeout():
+@patch("jarvis_engine.security.owner_session.time")
+def test_session_invalid_after_timeout(mock_time):
+    clock = _MockClock()
+    mock_time.monotonic = clock
+
     mgr = OwnerSessionManager(session_timeout=1, force_pbkdf2=True)
     mgr.set_password("pass")
     token = mgr.authenticate("pass")
     assert token is not None
     assert mgr.validate_session(token) is True
-    time.sleep(1.5)
+
+    clock.advance(1.5)
     assert mgr.validate_session(token) is False
 
 
@@ -73,17 +96,21 @@ def test_session_invalid_after_timeout():
 # ---------------------------------------------------------------------------
 
 
-def test_session_extends_on_activity():
+@patch("jarvis_engine.security.owner_session.time")
+def test_session_extends_on_activity(mock_time):
+    clock = _MockClock()
+    mock_time.monotonic = clock
+
     mgr = OwnerSessionManager(session_timeout=2, force_pbkdf2=True)
     mgr.set_password("pass")
     token = mgr.authenticate("pass")
     assert token is not None
 
-    # Wait 1s, validate (extends), wait 1.5s more — should still be valid
+    # Advance 1s, validate (extends), advance 1.5s more — should still be valid
     # because the validate at t=1s extended the deadline to t=3s
-    time.sleep(1.0)
+    clock.advance(1.0)
     assert mgr.validate_session(token) is True  # extends to t~3s
-    time.sleep(1.5)
+    clock.advance(1.5)
     # Now at t~2.5s — should still be valid since extended at t~1s
     assert mgr.validate_session(token) is True
 
@@ -202,7 +229,11 @@ def test_logout_all():
 # ---------------------------------------------------------------------------
 
 
-def test_lockout_exponential_backoff():
+@patch("jarvis_engine.security.owner_session.time")
+def test_lockout_exponential_backoff(mock_time):
+    clock = _MockClock()
+    mock_time.monotonic = clock
+
     mgr = OwnerSessionManager(
         max_failures=2, lockout_duration=1, force_pbkdf2=True
     )
@@ -213,8 +244,8 @@ def test_lockout_exponential_backoff():
     mgr.authenticate("wrong")
     assert mgr.is_locked_out() is True
 
-    # Wait for first lockout to expire
-    time.sleep(1.2)
+    # Advance past first lockout
+    clock.advance(1.2)
     assert mgr.is_locked_out() is False
 
     # Second lockout: 2 more failures -> locked for 2s (base * 2^1 = 2s)
@@ -223,11 +254,11 @@ def test_lockout_exponential_backoff():
     assert mgr.is_locked_out() is True
 
     # After 1.2s it should still be locked (duration is 2s this time)
-    time.sleep(1.2)
+    clock.advance(1.2)
     assert mgr.is_locked_out() is True
 
     # After another 1.2s (total ~2.4s) it should be unlocked
-    time.sleep(1.2)
+    clock.advance(1.2)
     assert mgr.is_locked_out() is False
 
 

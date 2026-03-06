@@ -6,8 +6,18 @@ import the implementation without reaching into private ``main`` internals.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+
+from jarvis_engine._bus import get_bus
+from jarvis_engine.commands.ops_commands import (
+    AutomationRunCommand,
+    OpsBriefCommand,
+    OpsExportActionsCommand,
+    OpsSyncCommand,
+)
+from jarvis_engine.commands.security_commands import ConnectBootstrapCommand
 
 logger = logging.getLogger(__name__)
 
@@ -29,28 +39,47 @@ def run_ops_autopilot(
     4. Export suggested actions
     5. Run automation
     """
-    # Lazy imports to avoid circular dependencies -- these functions live in
-    # main.py but dispatch through the CQRS bus, so we import them at call time.
-    from jarvis_engine.main import (
-        cmd_automation_run,
-        cmd_connect_bootstrap,
-        cmd_ops_brief,
-        cmd_ops_export_actions,
-        cmd_ops_sync,
-    )
+    bus = get_bus()
 
-    cmd_connect_bootstrap(auto_open=auto_open_connectors)
-    sync_rc = cmd_ops_sync(snapshot_path)
-    if sync_rc != 0:
-        return sync_rc
-    brief_rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
-    if brief_rc != 0:
-        return brief_rc
-    export_rc = cmd_ops_export_actions(snapshot_path=snapshot_path, actions_path=actions_path)
-    if export_rc != 0:
-        return export_rc
-    return cmd_automation_run(
+    # 1. Bootstrap connectors
+    bus.dispatch(ConnectBootstrapCommand(auto_open=auto_open_connectors))
+
+    # 2. Sync live snapshot
+    sync_result = bus.dispatch(OpsSyncCommand(output_path=snapshot_path))
+    summary = sync_result.summary
+    if summary is None:
+        print("error: ops sync failed")
+        return 2
+    print(f"snapshot_path={summary.snapshot_path}")
+    print(f"tasks={summary.tasks}")
+    print(f"calendar_events={summary.calendar_events}")
+    print(f"emails={summary.emails}")
+    print(f"connectors_ready={summary.connectors_ready}")
+
+    # 3. Build daily brief
+    brief_result = bus.dispatch(OpsBriefCommand(snapshot_path=snapshot_path, output_path=None))
+    print(brief_result.brief)
+    if brief_result.saved_path:
+        print(f"brief_saved={brief_result.saved_path}")
+
+    # 4. Export suggested actions
+    export_result = bus.dispatch(OpsExportActionsCommand(
+        snapshot_path=snapshot_path, actions_path=actions_path,
+    ))
+    print(f"actions_exported={export_result.actions_path}")
+    print(f"action_count={export_result.action_count}")
+
+    # 5. Run automation
+    auto_result = bus.dispatch(AutomationRunCommand(
         actions_path=actions_path,
         approve_privileged=approve_privileged,
         execute=execute,
-    )
+    ))
+    for out in auto_result.outcomes:
+        print(
+            f"title={out.title} allowed={out.allowed} executed={out.executed} "
+            f"return_code={out.return_code} reason={out.reason}"
+        )
+        if out.stderr:
+            print(f"stderr={out.stderr.strip()}")
+    return 0
