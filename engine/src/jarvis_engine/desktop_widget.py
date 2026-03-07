@@ -518,6 +518,22 @@ class JarvisDesktopWidget(tk.Tk):
         shell = tk.Frame(self, bg=self.BG, bd=0)
         shell.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
+        self._build_toolbar(shell)
+
+        body = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
+        body.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+
+        self._build_command_area(body)
+        self._build_status_bar(body)
+        self._build_chat_area(body)
+
+        # Tooltips on key controls
+        _Tooltip(self.command_text, "Type a command or question")
+        _Tooltip(self._voice_btn, "Click or say 'Jarvis' to dictate")
+        _Tooltip(self._send_btn, "Send command (Enter)")
+
+    def _build_toolbar(self, shell: tk.Frame) -> None:
+        """Build the header toolbar with title, buttons, status orb, and intel label."""
         header = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
         header.pack(fill=tk.X)
 
@@ -575,9 +591,8 @@ class JarvisDesktopWidget(tk.Tk):
         self.intel_label.pack(side=tk.RIGHT, padx=(0, 8))
         tk.Label(status_row, text="Hotword: say 'Jarvis'", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
-        body = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
-        body.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-
+    def _build_command_area(self, body: tk.Frame) -> None:
+        """Build the session config, command input, flags, action buttons, and quick actions."""
         sec = tk.LabelFrame(body, text="Secure Session", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
         sec.pack(fill=tk.X, padx=10, pady=(10, 8))
 
@@ -715,6 +730,8 @@ class JarvisDesktopWidget(tk.Tk):
         _activity_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         _Tooltip(_activity_btn, "View recent activity log.\nShows last 20 events: commands, learning,\nalerts, and system actions.")
 
+    def _build_status_bar(self, body: tk.Frame) -> None:
+        """Build the Running Services and Brain Growth status sections."""
         # Running Services section
         svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
         svc_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
@@ -749,6 +766,8 @@ class JarvisDesktopWidget(tk.Tk):
             val.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
             self._growth_labels[key] = val
 
+    def _build_chat_area(self, body: tk.Frame) -> None:
+        """Build the conversation output area with header, thinking indicator, and chat text."""
         output_header = tk.Frame(body, bg=self.PANEL)
         output_header.pack(fill=tk.X, padx=10, pady=(10, 0))
         tk.Label(output_header, text="\U0001F4AC  Conversation", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 13, "bold")).pack(side=tk.LEFT)
@@ -830,11 +849,6 @@ class JarvisDesktopWidget(tk.Tk):
         output_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.output.pack(fill=tk.BOTH, expand=True)
         self._configure_chat_tags()
-
-        # Tooltips on key controls
-        _Tooltip(self.command_text, "Type a command or question")
-        _Tooltip(self._voice_btn, "Click or say 'Jarvis' to dictate")
-        _Tooltip(self._send_btn, "Send command (Enter)")
 
     def _configure_chat_tags(self) -> None:
         """Set up tag-based visual styles for the chat-style conversation display."""
@@ -951,6 +965,11 @@ class JarvisDesktopWidget(tk.Tk):
                 logger.debug("Popout window was destroyed; will recreate")
                 self._popout_win = None
 
+        win = self._setup_conversation_window()
+        self._bind_conversation_events(win)
+
+    def _setup_conversation_window(self) -> tk.Toplevel:
+        """Create the pop-out conversation window with display and input areas."""
         win = tk.Toplevel(self)
         win.title("Jarvis — Conversation")
         win.geometry("750x600")
@@ -998,7 +1017,7 @@ class JarvisDesktopWidget(tk.Tk):
                 if resolved:
                     popout_text.tag_configure(tag, **resolved)
 
-        # Copy content preserving tags — use tag_ranges() for O(n) bulk copy
+        # Copy content preserving tags -- use tag_ranges() for O(n) bulk copy
         popout_text.config(state=tk.NORMAL)
         full_text = self.output.get("1.0", tk.END)
         if full_text.strip():
@@ -1057,6 +1076,16 @@ class JarvisDesktopWidget(tk.Tk):
             pady=6,
         )
         send_btn.pack(fill=tk.BOTH, expand=True)
+
+        # Store references for event binding
+        win._popout_cmd = popout_cmd  # type: ignore[attr-defined]
+        win._send_btn = send_btn  # type: ignore[attr-defined]
+        return win
+
+    def _bind_conversation_events(self, win: tk.Toplevel) -> None:
+        """Wire up keyboard and button events for the pop-out conversation window."""
+        popout_cmd = win._popout_cmd  # type: ignore[attr-defined]
+        send_btn = win._send_btn  # type: ignore[attr-defined]
 
         def _popout_send(event: tk.Event[Any] | None = None) -> None:
             text = popout_cmd.get("1.0", tk.END).strip()
@@ -1693,122 +1722,7 @@ class JarvisDesktopWidget(tk.Tk):
                     return
                 self.after(0, self._hide_thinking)
                 self.after(0, self._cancel_processing_timeout)
-                # Parse clean response from stdout_tail
-                lines = data.get("stdout_tail", [])
-                response_text = ""
-                reason_text = ""
-                error_text = str(data.get("error", ""))
-                source_urls: list[str] = []
-                thinking_steps: list[str] = []
-                web_search_used = False
-                model_name = ""
-                provider_name = ""
-                _in_response = False
-                if isinstance(lines, list):
-                    for line in lines:
-                        s = str(line)
-                        if s.startswith("response="):
-                            response_text = s[len("response="):]
-                            _in_response = True
-                        elif s.startswith("reason=") and not reason_text:
-                            reason_text = s[len("reason="):]
-                            _in_response = False
-                        elif s.startswith("error=") and not error_text:
-                            error_text = s[len("error="):]
-                            _in_response = False
-                        elif s.startswith("source_"):
-                            # source_1=domain url
-                            parts = s.split("=", 1)
-                            if len(parts) == 2:
-                                source_urls.append(parts[1].strip())
-                            _in_response = False
-                        elif s.startswith("model="):
-                            model_name = s[len("model="):]
-                            _in_response = False
-                        elif s.startswith("provider="):
-                            provider_name = s[len("provider="):]
-                            _in_response = False
-                        elif s == "web_search_used=true":
-                            web_search_used = True
-                            _in_response = False
-                        elif s.startswith("intent="):
-                            thinking_steps.append(f"Intent: {s[len('intent='):]}")
-                            _in_response = False
-                        elif s.startswith("finding_"):
-                            _in_response = False
-                        elif _in_response and not any(
-                            s.startswith(p) for p in [
-                                "status_code=", "voice=", "wav=",
-                                "auto_ingest_record_id=", "web_search",
-                                "query=", "scanned_url_count=",
-                            ]
-                        ):
-                            # Continuation line of multi-line response
-                            response_text += "\n" + s
-                        else:
-                            _in_response = False
-                intent = str(data.get("intent", "unknown"))
-                ok = bool(data.get("ok", False))
-
-                # Show processing trace (thinking steps)
-                if model_name or web_search_used or thinking_steps:
-                    trace_parts = []
-                    if thinking_steps:
-                        trace_parts.extend(thinking_steps)
-                    if web_search_used:
-                        trace_parts.append("Web search: performed")
-                    if model_name:
-                        via = f"{model_name}"
-                        if provider_name:
-                            via += f" ({provider_name})"
-                        trace_parts.append(f"Model: {via}")
-                    self._log_async("\u2699 " + " \u2022 ".join(trace_parts), role="system")
-
-                if response_text:
-                    self._log_async(response_text, role="jarvis")
-                elif not ok and (reason_text or error_text):
-                    # Show a clear error message instead of cryptic [intent] ok=False
-                    msg = reason_text or error_text
-                    self._log_async(f"Error: {msg}", role="error")
-                else:
-                    self._log_async(f"[{intent}] ok={ok}", role="jarvis")
-                    if isinstance(lines, list) and lines:
-                        self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
-
-                # Show web search source URLs
-                if source_urls:
-                    self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
-
-                # Expanded learned indicator: fire for knowledge-modifying intents
-                _LEARNED_INTENTS = (
-                    "memory_ingest", "memory_forget", "llm_conversation",
-                    "mission_create", "mission_run",
-                    "harvest", "fact_extracted",
-                )
-                if ok and intent in _LEARNED_INTENTS:
-                    self.after(0, self._show_learned_indicator)
-                # Immediate dashboard refresh after brain-modifying commands
-                _REFRESH_INTENTS = (
-                    "mission_cancel", "mission_create", "mission_run",
-                    "brain_status", "memory_ingest", "memory_forget",
-                    "harvest",
-                )
-                if ok and intent in _REFRESH_INTENTS:
-                    try:
-                        ws = _http_json(cfg, "/widget-status", method="GET")
-                        growth_data = ws.get("growth") if isinstance(ws, dict) else None
-                        recent_evts = ws.get("recent_events", []) if isinstance(ws, dict) else []
-                        self.after(0, self._update_growth_labels, growth_data)
-                        if recent_evts:
-                            self.after(0, self._update_activity_events, recent_evts)
-                    except Exception as exc:  # boundary: catch-all justified
-                        logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
-                if not ok:
-                    self._set_error_briefly_async()
-                else:
-                    self._set_state_async("idle")
-                # Prompt for continuation
-                self._log_async("Ready for next command. Say 'done' or click End Conversation when finished.", role="system")
+                self._process_worker_response(data, cfg)
             except HTTPError as exc:
                 self._handle_command_error(f"Command failed: {_http_error_details(exc)}")
             except URLError:
@@ -1824,7 +1738,7 @@ class JarvisDesktopWidget(tk.Tk):
                 # Check generation to avoid corrupting state from a newer command.
                 def _cleanup() -> None:
                     if self._cmd_generation != gen:
-                        return  # Stale worker — a newer command owns the state
+                        return  # Stale worker -- a newer command owns the state
                     self._cancel_processing_timeout()
                     self._hide_thinking()
                     try:
@@ -1841,6 +1755,128 @@ class JarvisDesktopWidget(tk.Tk):
                         logger.debug("Failed to schedule post-command cleanup (widget may be destroyed)")
 
         self._thread(worker)
+
+    def _process_worker_response(self, data: dict[str, Any], cfg: WidgetConfig) -> None:
+        """Parse and display the response from a /command API call.
+
+        Called from the background worker thread.  Uses ``_log_async`` and
+        ``self.after()`` for thread-safe UI updates.
+        """
+        lines = data.get("stdout_tail", [])
+        response_text = ""
+        reason_text = ""
+        error_text = str(data.get("error", ""))
+        source_urls: list[str] = []
+        thinking_steps: list[str] = []
+        web_search_used = False
+        model_name = ""
+        provider_name = ""
+        _in_response = False
+        if isinstance(lines, list):
+            for line in lines:
+                s = str(line)
+                if s.startswith("response="):
+                    response_text = s[len("response="):]
+                    _in_response = True
+                elif s.startswith("reason=") and not reason_text:
+                    reason_text = s[len("reason="):]
+                    _in_response = False
+                elif s.startswith("error=") and not error_text:
+                    error_text = s[len("error="):]
+                    _in_response = False
+                elif s.startswith("source_"):
+                    # source_1=domain url
+                    parts = s.split("=", 1)
+                    if len(parts) == 2:
+                        source_urls.append(parts[1].strip())
+                    _in_response = False
+                elif s.startswith("model="):
+                    model_name = s[len("model="):]
+                    _in_response = False
+                elif s.startswith("provider="):
+                    provider_name = s[len("provider="):]
+                    _in_response = False
+                elif s == "web_search_used=true":
+                    web_search_used = True
+                    _in_response = False
+                elif s.startswith("intent="):
+                    thinking_steps.append(f"Intent: {s[len('intent='):]}")
+                    _in_response = False
+                elif s.startswith("finding_"):
+                    _in_response = False
+                elif _in_response and not any(
+                    s.startswith(p) for p in [
+                        "status_code=", "voice=", "wav=",
+                        "auto_ingest_record_id=", "web_search",
+                        "query=", "scanned_url_count=",
+                    ]
+                ):
+                    # Continuation line of multi-line response
+                    response_text += "\n" + s
+                else:
+                    _in_response = False
+        intent = str(data.get("intent", "unknown"))
+        ok = bool(data.get("ok", False))
+
+        # Show processing trace (thinking steps)
+        if model_name or web_search_used or thinking_steps:
+            trace_parts = []
+            if thinking_steps:
+                trace_parts.extend(thinking_steps)
+            if web_search_used:
+                trace_parts.append("Web search: performed")
+            if model_name:
+                via = f"{model_name}"
+                if provider_name:
+                    via += f" ({provider_name})"
+                trace_parts.append(f"Model: {via}")
+            self._log_async("\u2699 " + " \u2022 ".join(trace_parts), role="system")
+
+        if response_text:
+            self._log_async(response_text, role="jarvis")
+        elif not ok and (reason_text or error_text):
+            # Show a clear error message instead of cryptic [intent] ok=False
+            msg = reason_text or error_text
+            self._log_async(f"Error: {msg}", role="error")
+        else:
+            self._log_async(f"[{intent}] ok={ok}", role="jarvis")
+            if isinstance(lines, list) and lines:
+                self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
+
+        # Show web search source URLs
+        if source_urls:
+            self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
+
+        # Expanded learned indicator: fire for knowledge-modifying intents
+        _LEARNED_INTENTS = (
+            "memory_ingest", "memory_forget", "llm_conversation",
+            "mission_create", "mission_run",
+            "harvest", "fact_extracted",
+        )
+        if ok and intent in _LEARNED_INTENTS:
+            self.after(0, self._show_learned_indicator)
+        # Immediate dashboard refresh after brain-modifying commands
+        _REFRESH_INTENTS = (
+            "mission_cancel", "mission_create", "mission_run",
+            "brain_status", "memory_ingest", "memory_forget",
+            "harvest",
+        )
+        if ok and intent in _REFRESH_INTENTS:
+            try:
+                ws = _http_json(cfg, "/widget-status", method="GET")
+                growth_data = ws.get("growth") if isinstance(ws, dict) else None
+                recent_evts = ws.get("recent_events", []) if isinstance(ws, dict) else []
+                self.after(0, self._update_growth_labels, growth_data)
+                if recent_evts:
+                    self.after(0, self._update_activity_events, recent_evts)
+            except Exception as exc:  # boundary: catch-all justified
+                logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
+        if not ok:
+            self._set_error_briefly_async()
+        else:
+            self._set_state_async("idle")
+        # Prompt for continuation
+        self._log_async("Ready for next command. Say 'done' or click End Conversation when finished.", role="system")
 
     def _send_text(self, text: str) -> None:
         """Set the command text and send it -- convenience for programmatic use."""
@@ -2363,6 +2399,104 @@ class JarvisDesktopWidget(tk.Tk):
             logger.debug("Orb animation stopped (widget may be destroyed)")
             return
 
+    def _launcher_state_speed(self) -> float:
+        """Return animation speed multiplier based on widget state."""
+        state = self._widget_state
+        if state == "processing":
+            return 2.5
+        if state == "listening":
+            return 1.6
+        if state == "error":
+            return 0.3
+        return 1.0
+
+    def _launcher_state_colors(self) -> tuple[str, str, str, str, str, str]:
+        """Return color palette (arc1, arc2, core, particles, glow, arc4) for current state."""
+        state = self._widget_state
+        if state == "listening":
+            return ("#3b82f6", "#60a5fa", "#1e3a8a", "#93c5fd", "#1e3a5e", "#2563eb")
+        if state == "processing":
+            return ("#f59e0b", "#fbbf24", "#78350f", "#fde68a", "#3d2800", "#d97706")
+        if state == "error":
+            return ("#ef4444", "#f87171", "#7f1d1d", "#fca5a5", "#3d0d0d", "#dc2626")
+        if self.online:
+            return ("#2dd4bf", "#0ea5e9", "#0f766e", "#5eead4", "#0d3d36", "#14b8a6")
+        return ("#6366f1", "#818cf8", "#312e81", "#a5b4fc", "#1e1b4b", "#7c3aed")
+
+    def _update_launcher_geometry(self, t: float, speed: float) -> None:
+        """Update arc rotations, core breathing, particles, and glow positions."""
+        assert self.launcher_canvas is not None
+        size = self._launcher_size
+        cx, cy = size / 2, size / 2
+        state = self._widget_state
+
+        # Arc 4: outermost decorative ring, slow counter-rotate with breathing extent
+        if self._l_arc4 is not None:
+            a4 = (360 - (t * 30 * speed) % 360) % 360
+            ext4 = 50 + 20 * math.sin(t * 1.2 * speed)
+            self.launcher_canvas.itemconfig(self._l_arc4, start=a4, extent=ext4)
+        # Rotate arc 1: outer, clockwise with breathing extent
+        if self._l_arc1 is not None:
+            a1 = (t * 90 * speed) % 360
+            ext1 = 220 + 40 * math.sin(t * 0.8 * speed)
+            self.launcher_canvas.itemconfig(self._l_arc1, start=a1, extent=ext1)
+        # Rotate arc 2: mid, counter-clockwise with breathing extent
+        if self._l_arc2 is not None:
+            a2 = (360 - (t * 60 * speed) % 360) % 360
+            ext2 = 140 + 30 * math.sin(t * 1.4 * speed + 1.0)
+            self.launcher_canvas.itemconfig(self._l_arc2, start=a2, extent=ext2)
+        # Arc 3: fast inner ring, only visible during processing
+        if self._l_arc3 is not None:
+            if state == "processing":
+                a3 = (t * 180 * speed) % 360
+                ext3 = 70 + 30 * math.sin(t * 3.0 * speed)
+                self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=ext3, state=tk.NORMAL)
+            elif state == "listening":
+                a3 = (t * 80 * speed) % 360
+                self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=60, state=tk.NORMAL)
+            else:
+                self.launcher_canvas.itemconfig(self._l_arc3, state=tk.HIDDEN)
+
+        # Core circle breathing
+        if self._l_core is not None:
+            breath = math.sin(t * 2.5 * speed)
+            pad = 24 + breath * 2
+            self.launcher_canvas.coords(self._l_core, pad, pad, size - pad, size - pad)
+
+        # Orbiting particles at different radii, speeds, and pulsing sizes
+        for i, pid in enumerate(self._l_particles):
+            orbit_r = 38 - i * 4
+            orbit_speed = (35 + i * 18) * speed
+            phase_offset = i * (360.0 / len(self._l_particles))
+            angle = math.radians((t * orbit_speed) % 360 + phase_offset)
+            p_size = 3 + 1.5 * math.sin(t * (3.0 + i * 0.5) * speed + i)
+            px = cx + orbit_r * math.cos(angle) - p_size / 2
+            py = cy + orbit_r * math.sin(angle) - p_size / 2
+            self.launcher_canvas.coords(pid, px, py, px + p_size, py + p_size)
+
+        # Glow halo breathing
+        if self._l_glow is not None:
+            glow_pulse = 0.5 + 0.5 * math.sin(t * 1.5 * speed)
+            gpad = 1 + glow_pulse * 3
+            self.launcher_canvas.coords(self._l_glow, gpad, gpad, size - gpad, size - gpad)
+
+    def _apply_launcher_colors(self, colors: tuple[str, str, str, str, str, str]) -> None:
+        """Apply a color palette to all launcher canvas elements."""
+        assert self.launcher_canvas is not None
+        arc1_c, arc2_c, core_c, particle_c, glow_c, arc4_c = colors
+        if self._l_arc1 is not None:
+            self.launcher_canvas.itemconfig(self._l_arc1, outline=arc1_c)
+        if self._l_arc2 is not None:
+            self.launcher_canvas.itemconfig(self._l_arc2, outline=arc2_c)
+        if self._l_arc4 is not None:
+            self.launcher_canvas.itemconfig(self._l_arc4, outline=arc4_c)
+        if self._l_core is not None:
+            self.launcher_canvas.itemconfig(self._l_core, fill=core_c, outline=arc1_c)
+        for pid in self._l_particles:
+            self.launcher_canvas.itemconfig(pid, fill=particle_c)
+        if self._l_glow is not None:
+            self.launcher_canvas.itemconfig(self._l_glow, outline=glow_c)
+
     def _animate_launcher(self) -> None:
         if self.stop_event.is_set():
             return
@@ -2370,98 +2504,10 @@ class JarvisDesktopWidget(tk.Tk):
             if self.launcher_canvas is None:
                 return
             t = time.monotonic() - self._anim_t0
-            size = self._launcher_size
-            cx, cy = size / 2, size / 2
+            speed = self._launcher_state_speed()
 
-            # State-dependent speed multiplier
-            state = self._widget_state
-            if state == "processing":
-                speed = 2.5
-            elif state == "listening":
-                speed = 1.6
-            elif state == "error":
-                speed = 0.3
-            else:
-                speed = 1.0
-
-            # Arc 4: outermost decorative ring, slow counter-rotate with breathing extent
-            if self._l_arc4 is not None:
-                a4 = (360 - (t * 30 * speed) % 360) % 360
-                ext4 = 50 + 20 * math.sin(t * 1.2 * speed)
-                self.launcher_canvas.itemconfig(self._l_arc4, start=a4, extent=ext4)
-            # Rotate arc 1: outer, clockwise with breathing extent
-            if self._l_arc1 is not None:
-                a1 = (t * 90 * speed) % 360
-                ext1 = 220 + 40 * math.sin(t * 0.8 * speed)
-                self.launcher_canvas.itemconfig(self._l_arc1, start=a1, extent=ext1)
-            # Rotate arc 2: mid, counter-clockwise with breathing extent
-            if self._l_arc2 is not None:
-                a2 = (360 - (t * 60 * speed) % 360) % 360
-                ext2 = 140 + 30 * math.sin(t * 1.4 * speed + 1.0)
-                self.launcher_canvas.itemconfig(self._l_arc2, start=a2, extent=ext2)
-            # Arc 3: fast inner ring, only visible during processing
-            if self._l_arc3 is not None:
-                if state == "processing":
-                    a3 = (t * 180 * speed) % 360
-                    ext3 = 70 + 30 * math.sin(t * 3.0 * speed)
-                    self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=ext3, state=tk.NORMAL)
-                elif state == "listening":
-                    # Show subtle inner ring while listening too
-                    a3 = (t * 80 * speed) % 360
-                    self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=60, state=tk.NORMAL)
-                else:
-                    self.launcher_canvas.itemconfig(self._l_arc3, state=tk.HIDDEN)
-
-            # Core circle breathing
-            if self._l_core is not None:
-                breath = math.sin(t * 2.5 * speed)
-                pad = 24 + breath * 2
-                self.launcher_canvas.coords(self._l_core, pad, pad, size - pad, size - pad)
-
-            # Orbiting particles at different radii, speeds, and pulsing sizes
-            for i, pid in enumerate(self._l_particles):
-                orbit_r = 38 - i * 4
-                orbit_speed = (35 + i * 18) * speed
-                phase_offset = i * (360.0 / len(self._l_particles))
-                angle = math.radians((t * orbit_speed) % 360 + phase_offset)
-                # Pulsing particle size
-                p_size = 3 + 1.5 * math.sin(t * (3.0 + i * 0.5) * speed + i)
-                px = cx + orbit_r * math.cos(angle) - p_size / 2
-                py = cy + orbit_r * math.sin(angle) - p_size / 2
-                self.launcher_canvas.coords(pid, px, py, px + p_size, py + p_size)
-
-            # Glow halo breathing — more pronounced
-            if self._l_glow is not None:
-                glow_pulse = 0.5 + 0.5 * math.sin(t * 1.5 * speed)
-                gpad = 1 + glow_pulse * 3
-                self.launcher_canvas.coords(self._l_glow, gpad, gpad, size - gpad, size - gpad)
-
-            # State-reactive color palette: (arc1, arc2, core, particles, glow, arc4)
-            online = self.online
-            if state == "listening":
-                colors = ("#3b82f6", "#60a5fa", "#1e3a8a", "#93c5fd", "#1e3a5e", "#2563eb")
-            elif state == "processing":
-                colors = ("#f59e0b", "#fbbf24", "#78350f", "#fde68a", "#3d2800", "#d97706")
-            elif state == "error":
-                colors = ("#ef4444", "#f87171", "#7f1d1d", "#fca5a5", "#3d0d0d", "#dc2626")
-            elif online:
-                colors = ("#2dd4bf", "#0ea5e9", "#0f766e", "#5eead4", "#0d3d36", "#14b8a6")
-            else:
-                colors = ("#6366f1", "#818cf8", "#312e81", "#a5b4fc", "#1e1b4b", "#7c3aed")
-
-            arc1_c, arc2_c, core_c, particle_c, glow_c, arc4_c = colors
-            if self._l_arc1 is not None:
-                self.launcher_canvas.itemconfig(self._l_arc1, outline=arc1_c)
-            if self._l_arc2 is not None:
-                self.launcher_canvas.itemconfig(self._l_arc2, outline=arc2_c)
-            if self._l_arc4 is not None:
-                self.launcher_canvas.itemconfig(self._l_arc4, outline=arc4_c)
-            if self._l_core is not None:
-                self.launcher_canvas.itemconfig(self._l_core, fill=core_c, outline=arc1_c)
-            for pid in self._l_particles:
-                self.launcher_canvas.itemconfig(pid, fill=particle_c)
-            if self._l_glow is not None:
-                self.launcher_canvas.itemconfig(self._l_glow, outline=glow_c)
+            self._update_launcher_geometry(t, speed)
+            self._apply_launcher_colors(self._launcher_state_colors())
 
             self._launcher_after_id = self.after(33, self._animate_launcher)
         except Exception:  # Widget may be destroyed

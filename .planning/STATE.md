@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 planning expansion + mission transparency tranche: continuity/voice/mission/telemetry/autofix and structured active-count/status-detail mission status output)
+Last activity: 2026-03-07 (SoC splits: desktop_widget.py 5 large methods -> focused sub-methods, thread-safe locks on global singletons)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -32,7 +32,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-05): 4441 passing, 15 skipped, 0 failures
+- Latest full test run (2026-03-07): 4903 passing, 11 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
@@ -77,6 +77,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: v5 Step 2 complete (CLI prompt compaction/checkpointing to preserve context under transport limits).
 - 2026-03-05: v5 Step 3 complete (runtime resource budgets/pressure throttling + reliability panel + mission activity telemetry).
 - 2026-03-05: v5 debt-gate pass: desloppify installed, Claude skill updated, and multi-file schema/key-flow fixes applied with scan loop + attested resolutions.
+- 2026-03-07: Broad exception narrowing batch 28: narrowed 22 catches to specific types across 12 files, marked 56 boundary catch-alls across 8 HTTP/UI files, removed redundant local sqlite3 import in app.py.
 - 2026-03-05: v5 debt-gate pass 2: fixed `mobile_api` recent_events schema drift (`details`) and `ops_sync` fallback ICS phantom-key reads; focused tests + full suite passed.
 - 2026-03-05: v5 debt-gate pass 3: reduced dict-key drift and constructor duplication (`persona`, `resilience`, `runtime_control`, `mobile_api`, `defense_handlers`, `learning/*`) with repeated excluded-scope scans and green targeted/full test gates.
 - 2026-03-05: v5 debt-gate pass 4: centralized safe Ollama endpoint policy (`security/net_policy.py`), removed gateway import masking, corrected cloud-vs-failed cost accounting contracts through proactive surfaces, and completed targeted regression gates (254 tests) with ruff clean.
