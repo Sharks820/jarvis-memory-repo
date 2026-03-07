@@ -109,10 +109,11 @@ def collect_kg_metrics(kg) -> dict:
         db.execute("COMMIT")
 
     except (sqlite3.Error, OSError, AttributeError) as exc:
-        try:
-            db.execute("ROLLBACK")
-        except sqlite3.Error as rollback_exc:
-            logger.debug("ROLLBACK failed during KG metrics collection: %s", rollback_exc)
+        if "db" in locals():
+            try:
+                db.execute("ROLLBACK")
+            except sqlite3.Error as rollback_exc:
+                logger.debug("ROLLBACK failed during KG metrics collection: %s", rollback_exc)
         logger.warning("Failed to collect KG metrics: %s", exc)
 
     return metrics

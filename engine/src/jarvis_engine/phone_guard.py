@@ -54,7 +54,7 @@ def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | N
         number = _normalize_number(raw_number)
         if not number:
             continue
-        ts = _parse_ts(item.get("ts_utc") or item.get("date_utc") or item.get("date", ""))
+        ts = _parse_ts(item.get("timestamp_utc") or item.get("ts_utc") or item.get("date_utc") or item.get("date", ""))
         if not ts or ts < lookback:
             continue
         grouped[number].append(item)
@@ -96,7 +96,7 @@ def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | N
                 flagged_label = True
             if not str(r.get("contact_name", "")).strip():
                 no_contact += 1
-            ts = _parse_ts(r.get("ts_utc") or r.get("date_utc") or r.get("date", ""))
+            ts = _parse_ts(r.get("timestamp_utc") or r.get("ts_utc") or r.get("date_utc") or r.get("date", ""))
             if ts:
                 day_buckets[ts.date().isoformat()] += 1
 

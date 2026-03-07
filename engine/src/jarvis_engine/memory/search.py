@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
+import time
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from typing import TYPE_CHECKING
@@ -25,6 +27,38 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+#  Debounced access-count updater — avoids a DB write on every search call.
+#  Flushes when the pending set reaches _ACCESS_BATCH_SIZE or when
+#  _ACCESS_FLUSH_INTERVAL seconds have elapsed since the first pending entry.
+# ---------------------------------------------------------------------------
+_ACCESS_BATCH_SIZE = 100
+_ACCESS_FLUSH_INTERVAL = 10.0  # seconds
+
+_access_lock = threading.Lock()
+_access_pending: set[str] = set()
+_access_first_ts: float = 0.0
+
+
+def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> None:
+    """Buffer record IDs and flush to DB when batch or time threshold is met."""
+    global _access_first_ts
+    flush_ids: list[str] | None = None
+    with _access_lock:
+        if not _access_pending:
+            _access_first_ts = time.monotonic()
+        _access_pending.update(record_ids)
+        elapsed = time.monotonic() - _access_first_ts if _access_first_ts else 0.0
+        if len(_access_pending) >= _ACCESS_BATCH_SIZE or elapsed >= _ACCESS_FLUSH_INTERVAL:
+            flush_ids = list(_access_pending)
+            _access_pending.clear()
+            _access_first_ts = 0.0
+    if flush_ids:
+        try:
+            engine.update_access_batch(flush_ids)
+        except Exception:
+            logger.debug("Failed to flush access count updates", exc_info=True)
 
 
 def _recency_weight(ts_str: str) -> float:
@@ -120,9 +154,9 @@ def hybrid_search(
     scored_records.sort(key=lambda pair: pair[0], reverse=True)
     results = [record for _score, record in scored_records[:k]]
 
-    # 7. Batch-update access counts for returned records
+    # 7. Debounced access-count update (flushes every 100 IDs or 10 seconds)
     result_ids = [r["record_id"] for r in results if r.get("record_id")]
     if result_ids:
-        engine.update_access_batch(result_ids)
+        _enqueue_access_updates(engine, result_ids)
 
     return results

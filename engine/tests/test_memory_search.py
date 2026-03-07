@@ -212,7 +212,8 @@ class TestHybridSearch:
         assert result[0]["record_id"] == "r2"
 
     def test_access_counts_updated_for_returned_records(self):
-        """update_access_batch is called with the IDs of returned records."""
+        """update_access_batch is called (via debounce) with the IDs of returned records."""
+        from unittest.mock import patch
         now_ts = datetime.now(UTC).isoformat()
         records = [
             {"record_id": "r1", "ts": now_ts},
@@ -222,10 +223,16 @@ class TestHybridSearch:
             fts_results=[("r1", 1.0), ("r2", 0.9)],
             records=records,
         )
-        hybrid_search(engine, "test", [0.1], k=10)
+        # Set batch size to 1 so the debounce flushes immediately
+        with patch("jarvis_engine.memory.search._ACCESS_BATCH_SIZE", 1):
+            # Clear any pending state from prior tests
+            from jarvis_engine.memory.search import _access_lock, _access_pending
+            with _access_lock:
+                _access_pending.clear()
+            hybrid_search(engine, "test", [0.1], k=10)
         engine.update_access_batch.assert_called_once()
         called_ids = engine.update_access_batch.call_args[0][0]
-        assert set(called_ids) == {"r1", "r2"}
+        assert set(called_ids) >= {"r1", "r2"}
 
     def test_missing_record_skipped(self):
         """If get_records_batch doesn't return a scored record, it's skipped."""

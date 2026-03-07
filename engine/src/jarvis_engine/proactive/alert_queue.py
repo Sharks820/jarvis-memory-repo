@@ -140,12 +140,13 @@ def drain_alerts(root: Path, *, limit: int = 50) -> list[dict[str, Any]]:
 def peek_alerts(root: Path, *, limit: int = 50) -> list[dict[str, Any]]:
     """Return pending alerts WITHOUT clearing the queue."""
     path = _queue_path(root)
-    if not path.exists():
-        return []
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
+    with _QUEUE_LOCK:
+        if not path.exists():
+            return []
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError:
+            return []
     alerts: list[dict[str, Any]] = []
     for line in raw.splitlines():
         line = line.strip()

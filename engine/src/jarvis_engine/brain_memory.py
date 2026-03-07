@@ -338,7 +338,9 @@ def ingest_brain_record(
         summary = _summarize(cleaned)
         unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
         ts = _now_iso()
-        material = f"{source}|{kind}|{task_id}|{content_hash}|{ts}".encode("utf-8")
+        # Exclude timestamp from hash material so identical content ingested at
+        # different times produces the same record_id (cross-temporal dedup).
+        material = f"{source}|{kind}|{task_id}|{content_hash}".encode("utf-8")
         record_id = sha256_short(material)
 
         record = BrainRecord(

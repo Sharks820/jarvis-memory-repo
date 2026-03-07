@@ -613,9 +613,9 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
             return
         _last_toast_time = now
 
-    # Escape single quotes for PowerShell string literals
-    safe_title = title.replace("'", "''")
-    safe_message = message.replace("'", "''")
+    # Escape PowerShell special characters to prevent injection
+    safe_title = title.replace("'", "''").replace("`", "``").replace("$", "`$").replace(";", "`;")
+    safe_message = message.replace("'", "''").replace("`", "``").replace("$", "`$").replace(";", "`;")
 
     script = (
         "Add-Type -AssemblyName System.Windows.Forms; "
@@ -2931,10 +2931,10 @@ class JarvisDesktopWidget(tk.Tk):
             if eid:
                 self._seen_event_ids[eid] = None
             new_events.append(evt)
-        # Cap seen dict to prevent unbounded growth (keeps most recent 200)
+        # Cap seen dict to prevent unbounded growth (keeps most recent 400)
         if len(self._seen_event_ids) > 500:
             keys = list(self._seen_event_ids.keys())
-            self._seen_event_ids = dict.fromkeys(keys[-200:])
+            self._seen_event_ids = dict.fromkeys(keys[-400:])
         if not new_events:
             return
         for evt in reversed(new_events):  # Oldest first

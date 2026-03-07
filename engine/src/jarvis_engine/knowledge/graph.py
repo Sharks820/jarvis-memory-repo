@@ -180,13 +180,14 @@ class KnowledgeGraph:
 
         # Backfill FTS5 index: populate fts_kg_nodes from existing kg_nodes
         # that are missing from the index (idempotent -- skips already-indexed nodes).
+        # Uses subquery (NOT IN) instead of LEFT JOIN because FTS5 virtual tables
+        # may not support LEFT JOIN reliably on all SQLite builds.
         try:
             missing = self._db.execute(
                 """
-                SELECT n.node_id, n.label
-                FROM kg_nodes n
-                LEFT JOIN fts_kg_nodes f ON f.node_id = n.node_id
-                WHERE f.node_id IS NULL AND n.confidence > 0
+                SELECT node_id, label FROM kg_nodes
+                WHERE confidence > 0
+                  AND node_id NOT IN (SELECT node_id FROM fts_kg_nodes)
                 """
             ).fetchall()
             if missing:
@@ -197,7 +198,7 @@ class KnowledgeGraph:
                     )
                 logger.info("Backfilled %d nodes into fts_kg_nodes", len(missing))
         except sqlite3.Error as exc:
-            logger.warning("FTS5 backfill failed (non-fatal): %s", exc)
+            logger.warning("FTS5 backfill failed (non-fatal, %s): %s", type(exc).__name__, exc)
 
         # Bump schema version to 2
         self._db.execute(
@@ -225,9 +226,11 @@ class KnowledgeGraph:
                 graph so callers cannot mutate internal state.  Pass False
                 for read-only callers to avoid the O(n) copy overhead.
         """
-        # Fast path: check cache without lock (mutation_counter is atomic under GIL)
-        if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
-            return self._cached_graph.copy() if copy else self._cached_graph
+        # Fast path: check cache under lock to prevent torn reads on
+        # _cached_graph/_cached_gen pair across threads.
+        with self._db_lock:
+            if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
+                return self._cached_graph.copy() if copy else self._cached_graph
 
         # Read data from SQLite under _db_lock (minimal lock scope)
         with self._db_lock:

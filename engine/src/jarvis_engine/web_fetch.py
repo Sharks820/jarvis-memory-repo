@@ -112,6 +112,14 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
         return ""
     if not resolve_and_check_ip(url):
         return ""
+    # NOTE: DNS TOCTOU — resolve_and_check_ip() resolves the hostname above,
+    # but urllib re-resolves it independently when opening the connection.  A
+    # malicious DNS server could return a safe IP here and a private IP on the
+    # second resolution.  Fully closing this gap would require pinning the
+    # resolved IP and connecting via IP with a Host header, which urllib does
+    # not support natively.  The SafeRedirectHandler mitigates redirect-based
+    # rebinding, and the short window between the two resolutions makes
+    # exploitation difficult in practice.
     req = Request(
         url,
         headers={
