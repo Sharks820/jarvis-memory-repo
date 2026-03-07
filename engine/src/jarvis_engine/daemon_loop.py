@@ -964,6 +964,198 @@ def _run_auto_harvest_cycle(root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _gather_cycle_state(
+    root: Path,
+    active_interval: int,
+    idle_interval: int,
+    idle_after: int,
+) -> dict:
+    """Gather all per-cycle state: resource pressure, gaming mode, control state.
+
+    Returns a dict with keys used by the main loop to decide whether to skip
+    the cycle and how long to sleep.
+    """
+    idle_seconds = _windows_idle_seconds()
+    is_active = True if idle_seconds is None else idle_seconds < idle_after
+    sleep_seconds = active_interval if is_active else idle_interval
+
+    resource_snapshot = capture_runtime_resource_snapshot(root)
+    write_resource_pressure_state(root, resource_snapshot)
+    throttle = recommend_daemon_sleep(sleep_seconds, resource_snapshot)
+    sleep_seconds = int(throttle.get("sleep_s", sleep_seconds))
+    pressure_level = str(throttle.get("pressure_level", "none"))
+    skip_heavy_tasks = bool(throttle.get("skip_heavy_tasks", False))
+
+    gaming_state = read_gaming_mode_state()
+    control_state = read_control_state(repo_root())
+    auto_detect = bool(gaming_state.get("auto_detect", False))
+    auto_detect_hit = False
+    detected_process = ""
+    if auto_detect:
+        auto_detect_hit, detected_process = detect_active_game_process()
+
+    return {
+        "idle_seconds": idle_seconds,
+        "is_active": is_active,
+        "sleep_seconds": sleep_seconds,
+        "resource_snapshot": resource_snapshot,
+        "pressure_level": pressure_level,
+        "skip_heavy_tasks": skip_heavy_tasks,
+        "gaming_state": gaming_state,
+        "control_state": control_state,
+        "auto_detect": auto_detect,
+        "detected_process": detected_process,
+        "gaming_mode_enabled": bool(gaming_state.get("enabled", False)) or auto_detect_hit,
+        "daemon_paused": bool(control_state.get("daemon_paused", False)),
+        "safe_mode": bool(control_state.get("safe_mode", False)),
+    }
+
+
+def _run_periodic_subsystems(
+    root: Path,
+    cycles: int,
+    skip_heavy_tasks: bool,
+    run_missions: bool,
+    cmd_mobile_desktop_sync,
+    cmd_self_heal,
+    sync_every_cycles: int,
+    self_heal_every_cycles: int,
+    self_test_every_cycles: int,
+    watchdog_every_cycles: int,
+) -> None:
+    """Run all non-core periodic subsystems for the current cycle.
+
+    Failures here are logged but never affect the circuit breaker.
+    """
+    if run_missions:
+        _run_missions_cycle(root, cycles, skip_heavy_tasks)
+    if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
+        _run_sync_cycle(cmd_mobile_desktop_sync)
+    if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
+        _run_watchdog_cycle(root)
+    if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
+        if skip_heavy_tasks:
+            print("self_heal_cycle_skipped=resource_pressure")
+        else:
+            _run_self_heal_cycle(root, cmd_self_heal)
+    if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
+        if skip_heavy_tasks:
+            print("self_test_skipped=resource_pressure")
+        else:
+            _run_self_test_cycle(root)
+    if cycles % 100 == 0:
+        if skip_heavy_tasks:
+            print("db_optimize_skipped=resource_pressure")
+        else:
+            _run_db_optimize_cycle(cycles)
+    if cycles % 10 == 0:
+        _run_kg_regression_cycle(root)
+    if cycles % 10 == 0:
+        _run_usage_prediction_cycle()
+    if cycles % 50 == 0:
+        if skip_heavy_tasks:
+            print("consolidation_skipped=resource_pressure")
+        else:
+            _run_memory_consolidation_cycle()
+    if cycles % 100 == 0:
+        if skip_heavy_tasks:
+            print("entity_resolve_skipped=resource_pressure")
+        else:
+            _run_entity_resolution_cycle()
+    if cycles % 200 == 0:
+        if skip_heavy_tasks:
+            print("auto_harvest_skipped=resource_pressure")
+        else:
+            _run_auto_harvest_cycle(root)
+
+
+def _run_core_autopilot(
+    snapshot_path: Path,
+    actions_path: Path,
+    execute: bool,
+    approve_privileged: bool,
+    auto_open_connectors: bool,
+    safe_mode: bool,
+    cmd_ops_autopilot,
+) -> int:
+    """Run the core ops-autopilot cycle. Returns the autopilot return code."""
+    exec_cycle = execute and not safe_mode
+    approve_cycle = approve_privileged and not safe_mode
+    if safe_mode and (execute or approve_privileged):
+        print("safe_mode_override=execute_and_privileged_flags_forced_false")
+    try:
+        return cmd_ops_autopilot(
+            snapshot_path=snapshot_path,
+            actions_path=actions_path,
+            execute=exec_cycle,
+            approve_privileged=approve_cycle,
+            auto_open_connectors=auto_open_connectors,
+        )
+    except (OSError, sqlite3.Error, RuntimeError, ValueError, KeyError) as exc:
+        logger.warning("Daemon autopilot cycle failed: %s", exc)
+        print(f"cycle_error={exc}")
+        return 2
+
+
+def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
+    """Update and act on the circuit breaker. Returns updated failure count."""
+    max_consecutive_failures = 10
+    if rc == 0:
+        return 0
+    consecutive_failures += 1
+    print(f"consecutive_failures={consecutive_failures}")
+    if consecutive_failures >= max_consecutive_failures:
+        print("daemon_circuit_breaker_open=true cooldown=300s")
+        time.sleep(300)  # 5-minute cooldown instead of exit
+        return 0  # Reset counter after cooldown
+    return consecutive_failures
+
+
+def _emit_cycle_status(
+    cycles: int,
+    state: dict,
+    last_pressure_level: str,
+) -> None:
+    """Log and print all per-cycle status and resource pressure info."""
+    cycle_start_ts = _now_iso()
+    _log_cycle_start(cycles, cycle_start_ts)
+    _print_cycle_status(
+        cycles, cycle_start_ts,
+        daemon_paused=state["daemon_paused"],
+        safe_mode=state["safe_mode"],
+        gaming_mode_enabled=state["gaming_mode_enabled"],
+        auto_detect=state["auto_detect"],
+        detected_process=state["detected_process"],
+        gaming_state=state["gaming_state"],
+        control_state=state["control_state"],
+        is_active=state["is_active"],
+        pressure_level=state["pressure_level"],
+        resource_snapshot=state["resource_snapshot"],
+        sleep_seconds=state["sleep_seconds"],
+        skip_heavy_tasks=state["skip_heavy_tasks"],
+        idle_seconds=state["idle_seconds"],
+    )
+    _log_resource_pressure(
+        cycles, state["pressure_level"], last_pressure_level,
+        state["resource_snapshot"], state["sleep_seconds"],
+        state["skip_heavy_tasks"],
+    )
+
+
+def _should_skip_cycle(state: dict, idle_interval: int) -> str | None:
+    """Check if the cycle should be skipped.
+
+    Returns a skip-reason string to print, or ``None`` when the cycle
+    should proceed normally.  When skipped the caller should sleep for
+    ``max(idle_interval, 600)`` seconds.
+    """
+    if state["daemon_paused"]:
+        return "cycle_skipped=runtime_control_daemon_paused"
+    if state["gaming_mode_enabled"]:
+        return "cycle_skipped=gaming_mode_enabled"
+    return None
+
+
 def cmd_daemon_run_impl(
     interval_s: int,
     snapshot_path: Path,
@@ -983,16 +1175,11 @@ def cmd_daemon_run_impl(
 ) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
     from jarvis_engine.main import (
-        cmd_mobile_desktop_sync,
-        cmd_self_heal,
-        cmd_ops_autopilot,
+        cmd_mobile_desktop_sync, cmd_self_heal, cmd_ops_autopilot,
     )
 
-    # Set descriptive process title for Task Manager visibility
     _set_process_title("jarvis-daemon")
-
     root = repo_root()
-    # Register PID file for duplicate detection and dashboard visibility
     from jarvis_engine.process_manager import remove_pid_file
 
     if not _register_daemon_pid(root):
@@ -1001,7 +1188,6 @@ def cmd_daemon_run_impl(
     active_interval = max(30, interval_s)
     idle_interval = max(30, idle_interval_s)
     idle_after = max(60, idle_after_s)
-    max_consecutive_failures = 10
     consecutive_failures = 0
     cycles = 0
     last_pressure_level = "none"
@@ -1012,144 +1198,37 @@ def cmd_daemon_run_impl(
     try:
         while True:
             cycles += 1
-            idle_seconds = _windows_idle_seconds()
-            is_active = True if idle_seconds is None else idle_seconds < idle_after
-            sleep_seconds = active_interval if is_active else idle_interval
-            resource_snapshot = capture_runtime_resource_snapshot(root)
-            write_resource_pressure_state(root, resource_snapshot)
-            throttle = recommend_daemon_sleep(sleep_seconds, resource_snapshot)
-            sleep_seconds = int(throttle.get("sleep_s", sleep_seconds))
-            pressure_level = str(throttle.get("pressure_level", "none"))
-            skip_heavy_tasks = bool(throttle.get("skip_heavy_tasks", False))
-            gaming_state = read_gaming_mode_state()
-            control_state = read_control_state(repo_root())
-            auto_detect = bool(gaming_state.get("auto_detect", False))
-            auto_detect_hit = False
-            detected_process = ""
-            if auto_detect:
-                auto_detect_hit, detected_process = detect_active_game_process()
-            gaming_mode_enabled = bool(gaming_state.get("enabled", False)) or auto_detect_hit
-            daemon_paused = bool(control_state.get("daemon_paused", False))
-            safe_mode = bool(control_state.get("safe_mode", False))
-            cycle_start_ts = _now_iso()
-            # --- Activity feed: log cycle start ---
-            _log_cycle_start(cycles, cycle_start_ts)
-            # --- Print all cycle status lines ---
-            _print_cycle_status(
-                cycles,
-                cycle_start_ts,
-                daemon_paused=daemon_paused,
-                safe_mode=safe_mode,
-                gaming_mode_enabled=gaming_mode_enabled,
-                auto_detect=auto_detect,
-                detected_process=detected_process,
-                gaming_state=gaming_state,
-                control_state=control_state,
-                is_active=is_active,
-                pressure_level=pressure_level,
-                resource_snapshot=resource_snapshot,
-                sleep_seconds=sleep_seconds,
-                skip_heavy_tasks=skip_heavy_tasks,
-                idle_seconds=idle_seconds,
-            )
-            # --- Log resource pressure changes ---
-            _log_resource_pressure(
-                cycles, pressure_level, last_pressure_level,
-                resource_snapshot, sleep_seconds, skip_heavy_tasks,
-            )
-            last_pressure_level = pressure_level
-            if daemon_paused:
-                print("cycle_skipped=runtime_control_daemon_paused")
+            state = _gather_cycle_state(root, active_interval, idle_interval, idle_after)
+            _emit_cycle_status(cycles, state, last_pressure_level)
+            last_pressure_level = state["pressure_level"]
+
+            skip_reason = _should_skip_cycle(state, idle_interval)
+            if skip_reason:
+                print(skip_reason)
                 if max_cycles > 0 and cycles >= max_cycles:
                     break
-                sleep_seconds = max(idle_interval, 600)
-                print(f"sleep_s={sleep_seconds}")
-                time.sleep(sleep_seconds)
+                time.sleep(max(idle_interval, 600))
                 continue
-            if gaming_mode_enabled:
-                print("cycle_skipped=gaming_mode_enabled")
-                if max_cycles > 0 and cycles >= max_cycles:
-                    break
-                sleep_seconds = max(idle_interval, 600)
-                print(f"sleep_s={sleep_seconds}")
-                time.sleep(sleep_seconds)
-                continue
-            # --- Non-core subsystems: isolated so failures never affect circuit breaker ---
-            if run_missions:
-                _run_missions_cycle(root, cycles, skip_heavy_tasks)
-            if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
-                _run_sync_cycle(cmd_mobile_desktop_sync)
-            if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
-                _run_watchdog_cycle(root)
-            if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
-                if skip_heavy_tasks:
-                    print("self_heal_cycle_skipped=resource_pressure")
-                else:
-                    _run_self_heal_cycle(root, cmd_self_heal)
-            if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
-                if skip_heavy_tasks:
-                    print("self_test_skipped=resource_pressure")
-                else:
-                    _run_self_test_cycle(root)
-            if cycles % 100 == 0:
-                if skip_heavy_tasks:
-                    print("db_optimize_skipped=resource_pressure")
-                else:
-                    _run_db_optimize_cycle(cycles)
-            if cycles % 10 == 0:
-                _run_kg_regression_cycle(root)
-            if cycles % 10 == 0:
-                _run_usage_prediction_cycle()
-            if cycles % 50 == 0:
-                if skip_heavy_tasks:
-                    print("consolidation_skipped=resource_pressure")
-                else:
-                    _run_memory_consolidation_cycle()
-            if cycles % 100 == 0:
-                if skip_heavy_tasks:
-                    print("entity_resolve_skipped=resource_pressure")
-                else:
-                    _run_entity_resolution_cycle()
-            if cycles % 200 == 0:
-                if skip_heavy_tasks:
-                    print("auto_harvest_skipped=resource_pressure")
-                else:
-                    _run_auto_harvest_cycle(root)
-            # --- Core autopilot: only this drives the circuit breaker ---
-            exec_cycle = execute and not safe_mode
-            approve_cycle = approve_privileged and not safe_mode
-            if safe_mode and (execute or approve_privileged):
-                print("safe_mode_override=execute_and_privileged_flags_forced_false")
-            try:
-                rc = cmd_ops_autopilot(
-                    snapshot_path=snapshot_path,
-                    actions_path=actions_path,
-                    execute=exec_cycle,
-                    approve_privileged=approve_cycle,
-                    auto_open_connectors=auto_open_connectors,
-                )
-            except (OSError, sqlite3.Error, RuntimeError, ValueError, KeyError) as exc:
-                rc = 2
-                logger.warning("Daemon autopilot cycle failed: %s", exc)
-                print(f"cycle_error={exc}")
+
+            _run_periodic_subsystems(
+                root, cycles, state["skip_heavy_tasks"], run_missions,
+                cmd_mobile_desktop_sync, cmd_self_heal,
+                sync_every_cycles, self_heal_every_cycles,
+                self_test_every_cycles, watchdog_every_cycles,
+            )
+
+            rc = _run_core_autopilot(
+                snapshot_path, actions_path, execute, approve_privileged,
+                auto_open_connectors, state["safe_mode"], cmd_ops_autopilot,
+            )
             print(f"cycle_rc={rc}")
-            # --- Activity feed: log cycle end ---
             _log_cycle_end(cycles, rc)
-            # Circuit breaker: only autopilot (rc) counts toward consecutive failures.
-            # Mission, sync, and self-heal failures are logged but never trigger shutdown.
-            if rc == 0:
-                consecutive_failures = 0
-            else:
-                consecutive_failures += 1
-                print(f"consecutive_failures={consecutive_failures}")
-                if consecutive_failures >= max_consecutive_failures:
-                    print("daemon_circuit_breaker_open=true cooldown=300s")
-                    consecutive_failures = 0  # Reset counter after cooldown
-                    time.sleep(300)  # 5-minute cooldown instead of exit
+            consecutive_failures = _handle_circuit_breaker(rc, consecutive_failures)
+
             if max_cycles > 0 and cycles >= max_cycles:
                 break
-            print(f"sleep_s={sleep_seconds}")
-            time.sleep(sleep_seconds)
+            print(f"sleep_s={state['sleep_seconds']}")
+            time.sleep(state["sleep_seconds"])
     except KeyboardInterrupt:
         print("jarvis_daemon_stopped=true")
     finally:

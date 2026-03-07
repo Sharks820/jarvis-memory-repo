@@ -195,10 +195,11 @@ class TestCorrectionDetector:
         db.commit()
 
         # Build mock KG that delegates to real SQLite for reads/writes
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg._db = db
         mock_kg._write_lock = write_lock
         mock_kg._db_lock = db_lock
+        mock_kg._mutation_counter = 0
         mock_kg.query_relevant_facts.return_value = [
             {
                 "node_id": "location.capital.france",
@@ -258,9 +259,10 @@ class TestCorrectionDetector:
         )
         db.commit()
 
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg._db = db
         mock_kg._write_lock = write_lock
+        mock_kg._mutation_counter = 0
         mock_kg.query_relevant_facts.return_value = [
             {"node_id": "pref.color", "label": "Favorite color is blue", "confidence": 0.95}
         ]

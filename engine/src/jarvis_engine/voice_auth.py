@@ -5,10 +5,20 @@ import re
 import wave
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 
 from jarvis_engine._shared import now_iso as _now_iso
+
+
+class VoiceProfile(TypedDict):
+    """Voice profile stored on disk and returned by :func:`_read_profile`."""
+
+    user_id: str
+    samples: int
+    embedding: list[float]
+    created_utc: str
 
 
 @dataclass
@@ -138,7 +148,7 @@ def _profile_path(repo_root: Path, user_id: str) -> Path:
     return repo_root / ".planning" / "security" / "voiceprints" / f"{user_id}.json"
 
 
-def _read_profile(path: Path) -> dict:
+def _read_profile(path: Path) -> VoiceProfile:
     from jarvis_engine._shared import load_json_file
 
     return load_json_file(path, {}, expected_type=dict)

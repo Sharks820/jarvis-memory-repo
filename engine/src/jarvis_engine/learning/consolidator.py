@@ -99,46 +99,64 @@ class MemoryConsolidator:
     # Public API
     # ------------------------------------------------------------------
 
+    def _process_group(
+        self,
+        group_records: list[dict],
+        branch: str | None,
+        dry_run: bool,
+        result: ConsolidationResult,
+    ) -> None:
+        """Consolidate a single group of records, updating *result* in place."""
+        try:
+            summary = self._consolidate_group(group_records)
+        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+            result.errors.append(f"summarisation failed: {exc}")
+            return
+        if not summary:
+            return
+        if dry_run:
+            result.records_consolidated += len(group_records)
+            result.new_facts_created += 1
+            return
+        try:
+            new_id = self._store_consolidated(summary, group_records, branch)
+        except (sqlite3.Error, OSError) as exc:
+            result.errors.append(f"store failed: {exc}")
+            return
+        if not new_id:
+            return
+        try:
+            self._tag_originals(group_records, new_id)
+        except (sqlite3.Error, OSError) as exc:
+            result.errors.append(f"tag failed: {exc}")
+        result.records_consolidated += len(group_records)
+        result.new_facts_created += 1
+
     def consolidate(
         self,
         branch: str | None = None,
         max_groups: int = 20,
         dry_run: bool = False,
     ) -> ConsolidationResult:
-        """Run the full consolidation pipeline.
-
-        Args:
-            branch: Restrict to a specific branch (``None`` = all branches).
-            max_groups: Maximum number of groups to process in one run.
-            dry_run: If ``True``, compute clusters but write nothing.
-
-        Returns:
-            :class:`ConsolidationResult` with statistics.
-        """
+        """Run the full consolidation pipeline."""
         result = ConsolidationResult()
 
-        # Step 1 -- fetch recent episodic records
         try:
             records = self._fetch_episodic_records(branch, limit=500)
         except (sqlite3.Error, OSError) as exc:
             result.errors.append(f"fetch failed: {exc}")
             return result
-
         if not records:
             return result
 
-        # Step 2 -- compute embeddings
         try:
             embeddings = self._compute_embeddings(records)
         except (RuntimeError, OSError, ValueError) as exc:
             result.errors.append(f"embedding failed: {exc}")
             return result
-
         if not embeddings:
-            # Embedding service unavailable — cannot cluster meaningfully
             return result
 
-        # Step 3 -- cluster
         try:
             groups = self._cluster_records(records, embeddings)
         except (ValueError, TypeError, ArithmeticError) as exc:
@@ -146,49 +164,11 @@ class MemoryConsolidator:
             return result
 
         result.groups_found = len(groups)
-
-        # Step 4 -- consolidate each group (up to max_groups)
         for group_indices in groups[:max_groups]:
-            group_records = [records[i] for i in group_indices]
+            self._process_group(
+                [records[i] for i in group_indices], branch, dry_run, result,
+            )
 
-            # Summarise via LLM (or concatenation fallback)
-            try:
-                summary = self._consolidate_group(group_records)
-            except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
-                result.errors.append(f"summarisation failed: {exc}")
-                continue
-
-            if not summary:
-                continue
-
-            if dry_run:
-                result.records_consolidated += len(group_records)
-                result.new_facts_created += 1
-                continue
-
-            # Store the new consolidated record
-            try:
-                new_id = self._store_consolidated(summary, group_records, branch)
-            except (sqlite3.Error, OSError) as exc:
-                result.errors.append(f"store failed: {exc}")
-                continue
-
-            if not new_id:
-                # Duplicate content hash -- no new record was created
-                continue
-
-            # Tag originals
-            try:
-                self._tag_originals(group_records, new_id)
-            except (sqlite3.Error, OSError) as exc:
-                result.errors.append(f"tag failed: {exc}")
-                # The consolidated record was still created, so count it.
-
-            result.records_consolidated += len(group_records)
-            result.new_facts_created += 1
-
-        # Tier update pass: re-classify records by relevance (LEARN-06)
-        # Reuse already-fetched records to avoid a duplicate DB query
         if not dry_run and records:
             try:
                 tier_changes = self._update_tiers(records)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, TypedDict
+from typing import TypedDict
 from urllib.parse import urlparse
 
 from jarvis_engine._shared import now_iso as _now_iso

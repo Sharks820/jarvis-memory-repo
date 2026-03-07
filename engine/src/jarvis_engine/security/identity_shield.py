@@ -79,6 +79,22 @@ class ImpersonationDetectorStatus(TypedDict):
     supported_platforms: list[str]
 
 
+class BreachRecord(TypedDict):
+    """Single breach entry returned by :meth:`BreachMonitor.check_email`."""
+
+    name: str
+    breach_date: str
+    data_classes: list[str]
+
+
+class BreachLookupResult(TypedDict):
+    """Single DNS lookup result from :meth:`TyposquatMonitor.check_domain`."""
+
+    variant: str
+    registered: bool
+    ips: list[str]
+
+
 # ---------------------------------------------------------------------------
 # Adjacent-key map (QWERTY layout)
 # ---------------------------------------------------------------------------
@@ -293,7 +309,7 @@ class BreachMonitor:
     # Email breach check
     # ------------------------------------------------------------------
 
-    def check_email(self, email: str) -> list[dict]:
+    def check_email(self, email: str) -> list[BreachRecord]:
         """Query HIBP for breaches affecting *email*.
 
         Returns list of ``{name, breach_date, data_classes}``.
@@ -322,7 +338,7 @@ class BreachMonitor:
             logger.warning("HIBP email check failed for %s: %s", email, exc)
             return []
 
-        results: list[dict] = []
+        results: list[BreachRecord] = []
         for breach in data:
             results.append({
                 "name": breach.get("Name", "Unknown"),
@@ -335,12 +351,12 @@ class BreachMonitor:
     # Bulk check
     # ------------------------------------------------------------------
 
-    def check_all(self, family: FamilyShield) -> dict:
+    def check_all(self, family: FamilyShield) -> dict[str, list[BreachRecord]]:
         """Check all family emails for breaches.
 
         Returns ``{email: [breaches]}``.
         """
-        results: dict[str, list[dict]] = {}
+        results: dict[str, list[BreachRecord]] = {}
         for email in family.get_all_emails():
             results[email] = self.check_email(email)
         return results
@@ -424,7 +440,7 @@ class TyposquatMonitor:
     # DNS check
     # ------------------------------------------------------------------
 
-    def check_domain(self, domain: str) -> list[dict]:
+    def check_domain(self, domain: str) -> list[BreachLookupResult]:
         """Check which typosquat variants of *domain* have DNS records.
 
         Uses parallel DNS lookups (max 20 threads) when available.
@@ -433,8 +449,8 @@ class TyposquatMonitor:
         """
         variants = self.generate_variants(domain)
 
-        def _lookup(variant: str) -> dict:
-            entry: dict = {"variant": variant, "registered": False, "ips": []}
+        def _lookup(variant: str) -> BreachLookupResult:
+            entry: BreachLookupResult = {"variant": variant, "registered": False, "ips": []}
             try:
                 infos = socket.getaddrinfo(variant, 80, socket.AF_INET, socket.SOCK_STREAM)
                 ips = list({info[4][0] for info in infos})
@@ -446,7 +462,7 @@ class TyposquatMonitor:
             return entry
 
         if _HAS_THREADPOOL and len(variants) > 1:
-            results: list[dict] = []
+            results: list[BreachLookupResult] = []
             # Preserve order: submit all, collect by index
             with ThreadPoolExecutor(max_workers=20) as pool:
                 future_to_idx = {
@@ -467,12 +483,12 @@ class TyposquatMonitor:
     # Family scan
     # ------------------------------------------------------------------
 
-    def scan_all(self, family: FamilyShield) -> dict:
+    def scan_all(self, family: FamilyShield) -> dict[str, list[BreachLookupResult]]:
         """Check all family domains for typosquat variants.
 
         Returns ``{domain: [check_results]}``.
         """
-        results: dict[str, list[dict]] = {}
+        results: dict[str, list[BreachLookupResult]] = {}
         for domain in family.get_all_domains():
             results[domain] = self.check_domain(domain)
         return results
@@ -562,7 +578,7 @@ class ImpersonationDetector:
             return None
 
         url = template.format(username=username)
-        result: dict = {
+        result: PlatformCheckResult = {
             "platform": platform,
             "username": username,
             "exists": False,
@@ -589,14 +605,14 @@ class ImpersonationDetector:
     # Family scan
     # ------------------------------------------------------------------
 
-    def scan_all(self, family: FamilyShield) -> dict:
+    def scan_all(self, family: FamilyShield) -> dict[str, list[PlatformCheckResult]]:
         """Check all family usernames for impersonation across platforms.
 
         Uses parallel HTTP checks (max 20 threads) when available.
 
         Returns ``{username: [check_results]}``.
         """
-        results: dict[str, list[dict]] = {}
+        results: dict[str, list[PlatformCheckResult]] = {}
         platforms = list(_PLATFORM_URLS.keys())
 
         for uname in family.get_all_usernames():
@@ -606,7 +622,7 @@ class ImpersonationDetector:
                 for platform in platforms:
                     tasks.append((variant, platform))
 
-            checks: list[dict] = []
+            checks: list[PlatformCheckResult] = []
             if _HAS_THREADPOOL and len(tasks) > 1:
                 with ThreadPoolExecutor(max_workers=20) as pool:
                     futures = {

@@ -214,8 +214,8 @@ def cmd_knowledge_regression(snapshot_path: str, as_json: bool) -> int:
     print(f"knowledge_regression status={status}")
     if report.get("message"):
         print(report["message"])
-    for d in report.get("discrepancies", []):
-        print(f"  [{d.get('severity')}] {d.get('type')}: {d.get('message')}")
+    for diff_entry in report.get("discrepancies", []):
+        print(f"  [{diff_entry.get('severity')}] {diff_entry.get('type')}: {diff_entry.get('message')}")
     current = report.get("current", {})
     if current:
         print(f"  current: nodes={current.get('node_count', 0)} edges={current.get('edge_count', 0)} "

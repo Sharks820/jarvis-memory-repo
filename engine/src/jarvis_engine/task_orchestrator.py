@@ -80,34 +80,20 @@ class TaskOrchestrator:
         self._log(request, result)
         return result
 
-    def _run_code_task(self, request: TaskRequest) -> TaskResult:
-        candidate_models = self._model_candidates(request.model)
-        plan = (
-            f"Generate high-quality code using endpoint={request.endpoint} "
-            f"with model fallback chain={candidate_models}."
-        )
-        if not request.execute:
-            return TaskResult(
-                allowed=True,
-                provider="ollama",
-                plan=plan + " Dry-run only.",
-                reason="Set --execute to run generation.",
-            )
-
-        timeout_s = 360 if request.quality_profile == "max_quality" else 180
-        base_prompt = self._compose_code_prompt(request.prompt, request.quality_profile)
-        base_options = self._quality_options(request.quality_profile)
-
-        chosen_model = ""
-        output = ""
+    def _try_generate_with_fallback(
+        self,
+        endpoint: str,
+        candidate_models: list[str],
+        prompt: str,
+        options: dict,
+        timeout_s: int,
+    ) -> tuple[str, str, list[str]]:
+        """Try each model in *candidate_models*. Returns (output, chosen_model, errors)."""
         errors: list[str] = []
         for model in candidate_models:
             raw, err = self._call_ollama(
-                endpoint=request.endpoint,
-                model=model,
-                prompt=base_prompt,
-                options=base_options,
-                timeout_s=timeout_s,
+                endpoint=endpoint, model=model, prompt=prompt,
+                options=options, timeout_s=timeout_s,
             )
             if err:
                 errors.append(f"{model}: {err}")
@@ -117,76 +103,78 @@ class TaskOrchestrator:
                 continue
             output = self._extract_output(raw)
             if output:
-                chosen_model = model
-                break
+                return output, model, errors
             raw_error = str(raw.get("error", "")).strip()
-            if raw_error:
-                errors.append(f"{model}: {raw_error}")
-            else:
-                errors.append(f"{model}: empty model output.")
+            errors.append(f"{model}: {raw_error}" if raw_error else f"{model}: empty model output.")
+        return "", "", errors
 
+    def _refine_code_output(self, endpoint: str, model: str, request: TaskRequest, output: str) -> str:
+        """Apply critique-revise cycle and syntax fixing for max_quality."""
+        critique = self._single_pass_generate(
+            endpoint=endpoint, model=model,
+            prompt=self._critique_prompt(output),
+            options={"num_ctx": 32768, "num_predict": 1200, "temperature": 0.0, "top_p": 0.9},
+            timeout_s=240,
+        )
+        if critique:
+            revised = self._single_pass_generate(
+                endpoint=endpoint, model=model,
+                prompt=self._revision_prompt(original=request.prompt, draft_code=output, critique=critique),
+                options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.03, "top_p": 0.9},
+                timeout_s=360,
+            )
+            if revised:
+                output = revised
+
+        if self._looks_like_python(request.prompt, request.output_path):
+            syntax_issue = self._python_syntax_issue(output)
+            if syntax_issue:
+                fixed = self._single_pass_generate(
+                    endpoint=endpoint, model=model,
+                    prompt=self._python_fix_prompt(output, syntax_issue),
+                    options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.0, "top_p": 0.85},
+                    timeout_s=240,
+                )
+                if fixed and not self._python_syntax_issue(fixed):
+                    output = fixed
+        return output
+
+    def _run_code_task(self, request: TaskRequest) -> TaskResult:
+        candidate_models = self._model_candidates(request.model)
+        plan = (
+            f"Generate high-quality code using endpoint={request.endpoint} "
+            f"with model fallback chain={candidate_models}."
+        )
+        if not request.execute:
+            return TaskResult(allowed=True, provider="ollama",
+                              plan=plan + " Dry-run only.", reason="Set --execute to run generation.")
+
+        timeout_s = 360 if request.quality_profile == "max_quality" else 180
+        output, chosen_model, errors = self._try_generate_with_fallback(
+            request.endpoint, candidate_models,
+            self._compose_code_prompt(request.prompt, request.quality_profile),
+            self._quality_options(request.quality_profile), timeout_s,
+        )
         if not output:
             reason = " | ".join(errors[:4]) if errors else "No model produced output."
-            return TaskResult(
-                allowed=False,
-                provider="ollama",
-                plan=plan,
-                reason=reason,
-            )
+            return TaskResult(allowed=False, provider="ollama", plan=plan, reason=reason)
 
         if request.quality_profile == "max_quality":
-            critique = self._single_pass_generate(
-                endpoint=request.endpoint,
-                model=chosen_model,
-                prompt=self._critique_prompt(output),
-                options={"num_ctx": 32768, "num_predict": 1200, "temperature": 0.0, "top_p": 0.9},
-                timeout_s=240,
-            )
-            if critique:
-                revised = self._single_pass_generate(
-                    endpoint=request.endpoint,
-                    model=chosen_model,
-                    prompt=self._revision_prompt(original=request.prompt, draft_code=output, critique=critique),
-                    options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.03, "top_p": 0.9},
-                    timeout_s=360,
-                )
-                if revised:
-                    output = revised
-
-            if self._looks_like_python(request.prompt, request.output_path):
-                syntax_issue = self._python_syntax_issue(output)
-                if syntax_issue:
-                    fixed = self._single_pass_generate(
-                        endpoint=request.endpoint,
-                        model=chosen_model,
-                        prompt=self._python_fix_prompt(output, syntax_issue),
-                        options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.0, "top_p": 0.85},
-                        timeout_s=240,
-                    )
-                    if fixed and not self._python_syntax_issue(fixed):
-                        output = fixed
+            output = self._refine_code_output(request.endpoint, chosen_model, request, output)
 
         path = request.output_path or ""
         if path and output:
             try:
                 p = self._safe_output_path(path)
             except ValueError as exc:
-                return TaskResult(
-                    allowed=False,
-                    provider="ollama",
-                    plan=plan,
-                    reason=str(exc),
-                )
+                return TaskResult(allowed=False, provider="ollama", plan=plan, reason=str(exc))
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(output, encoding="utf-8")
             path = str(p)
 
         return TaskResult(
-            allowed=True,
-            provider="ollama",
-            plan=plan,
-            output_text=output,
-            output_path=path,
+            allowed=True, provider="ollama", plan=plan,
+            output_text=output, output_path=path,
             reason=f"Code generation completed with model={chosen_model}.",
         )
 

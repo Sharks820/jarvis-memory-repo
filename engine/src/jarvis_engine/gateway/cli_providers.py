@@ -24,7 +24,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypedDict
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 

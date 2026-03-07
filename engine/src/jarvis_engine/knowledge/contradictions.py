@@ -255,6 +255,163 @@ class ContradictionManager(KGManagerBase):
     # Resolution
     # ------------------------------------------------------------------
 
+    def _validate_resolution_args(
+        self, resolution: str, merge_value: str,
+    ) -> ResolutionResult | None:
+        """Validate resolution type and merge_value.
+
+        Returns a :class:`ResolutionResult` error if validation fails, or
+        ``None`` when the arguments are acceptable.
+        """
+        if resolution not in ("accept_new", "keep_old", "merge"):
+            return {
+                "success": False,
+                "node_id": "",
+                "resolution": resolution,
+                "message": f"Invalid resolution: {resolution}. Must be accept_new, keep_old, or merge.",
+            }
+        if resolution == "merge" and not merge_value.strip():
+            return {
+                "success": False,
+                "node_id": "",
+                "resolution": resolution,
+                "message": "merge_value is required when resolution is 'merge'.",
+            }
+        return None
+
+    def _precompute_resolution_embedding(
+        self, resolution: str, contradiction_id: int, merge_value: str,
+    ) -> bytes | None:
+        """Pre-compute vec embedding OUTSIDE the write lock.
+
+        For ``accept_new`` the incoming value is read from the DB; for
+        ``merge`` the user-supplied *merge_value* is used.
+        """
+        if resolution == "accept_new":
+            with self._db_lock:
+                pre_row = self._db.execute(
+                    "SELECT incoming_value FROM kg_contradictions WHERE contradiction_id = ?",
+                    (contradiction_id,),
+                ).fetchone()
+            if pre_row is not None:
+                return self._precompute_vec_embedding(str(pre_row[0] or ""))
+        elif resolution == "merge" and merge_value.strip():
+            return self._precompute_vec_embedding(merge_value.strip())
+        return None
+
+    def _load_node_for_resolution(
+        self, node_id: str, resolution: str, existing_value: str,
+    ) -> tuple[sqlite3.Row | None, str, list] | ResolutionResult:
+        """Fetch the KG node and parse its history for resolution.
+
+        Contract: caller MUST hold ``_write_lock``.
+
+        Returns ``(node_row, current_label, history)`` on success, or a
+        :class:`ResolutionResult` error when the node is missing and the
+        resolution requires it.
+        """
+        node_row = self._db.execute(
+            "SELECT label, history FROM kg_nodes WHERE node_id = ?",
+            (node_id,),
+        ).fetchone()
+
+        if node_row is None and resolution != "keep_old":
+            return {
+                "success": False,
+                "node_id": node_id,
+                "resolution": resolution,
+                "message": f"Node {node_id} no longer exists; cannot apply {resolution}.",
+            }
+
+        current_label = node_row["label"] if node_row else existing_value
+        history: list = []
+        if node_row:
+            try:
+                history = json.loads(node_row["history"])
+            except (json.JSONDecodeError, TypeError):
+                history = []
+
+        return node_row, current_label, history
+
+    def _finalize_resolution(
+        self, contradiction_id: int, resolution: str,
+        node_row, node_id: str, history: list,
+    ) -> None:
+        """Persist history, mark contradiction resolved, and invalidate caches.
+
+        Contract: caller MUST hold ``_write_lock``.
+        """
+        if node_row is not None:
+            self._db.execute(
+                "UPDATE kg_nodes SET history = ? WHERE node_id = ?",
+                (json.dumps(history[-50:]), node_id),
+            )
+
+        self._db.execute(
+            """UPDATE kg_contradictions
+               SET status = 'resolved', resolution = ?, resolved_at = datetime('now')
+               WHERE contradiction_id = ?""",
+            (resolution, contradiction_id),
+        )
+        self._db.commit()
+
+        if resolution in ("accept_new", "merge") and self._kg is not None:
+            counter = getattr(self._kg, "_mutation_counter", 0)
+            if isinstance(counter, int):
+                setattr(self._kg, "_mutation_counter", counter + 1)
+
+    def _apply_resolution_and_commit(
+        self,
+        contradiction_id: int,
+        resolution: str,
+        merge_value: str,
+        vec_blob: bytes | None,
+    ) -> ResolutionResult:
+        """Load, apply, and commit a resolution within ``_write_lock``.
+
+        Contract: caller MUST hold ``_write_lock``.
+        """
+        result = self._load_contradiction(contradiction_id, resolution)
+        if "success" in result:
+            return result  # type: ignore[return-value]
+        contradiction = result
+
+        node_id = contradiction["node_id"]
+        now = _now_iso()
+
+        node_result = self._load_node_for_resolution(
+            node_id, resolution, contradiction["existing_value"],
+        )
+        if isinstance(node_result, dict):
+            return node_result  # type: ignore[return-value]
+        node_row, current_label, history = node_result
+
+        if resolution == "accept_new":
+            self._apply_accept_new(
+                node_id, contradiction["incoming_value"],
+                contradiction["incoming_confidence"],
+                current_label, history, now, vec_blob,
+            )
+        elif resolution == "keep_old":
+            self._apply_keep_old(
+                current_label, contradiction["incoming_value"], history, now,
+            )
+        elif resolution == "merge":
+            self._apply_merge(
+                node_id, merge_value, current_label, history, now, vec_blob,
+            )
+
+        self._finalize_resolution(
+            contradiction_id, resolution, node_row, node_id, history,
+        )
+
+        return {
+            "success": True,
+            "node_id": node_id,
+            "resolution": resolution,
+            "message": f"Contradiction {contradiction_id} resolved via {resolution}.",
+        }
+
     def resolve(
         self,
         contradiction_id: int,
@@ -271,112 +428,23 @@ class ContradictionManager(KGManagerBase):
         Returns:
             Dict with success, node_id, resolution, message.
         """
-        if resolution not in ("accept_new", "keep_old", "merge"):
-            return {
-                "success": False,
-                "node_id": "",
-                "resolution": resolution,
-                "message": f"Invalid resolution: {resolution}. Must be accept_new, keep_old, or merge.",
-            }
+        validation_error = self._validate_resolution_args(resolution, merge_value)
+        if validation_error is not None:
+            return validation_error
 
-        if resolution == "merge" and not merge_value.strip():
-            return {
-                "success": False,
-                "node_id": "",
-                "resolution": resolution,
-                "message": "merge_value is required when resolution is 'merge'.",
-            }
-
-        # Pre-compute embedding OUTSIDE the write lock to avoid blocking
-        # other operations during the potentially slow embedding model call.
-        vec_blob: bytes | None = None
-        if resolution == "accept_new":
-            with self._db_lock:
-                pre_row = self._db.execute(
-                    "SELECT incoming_value FROM kg_contradictions WHERE contradiction_id = ?",
-                    (contradiction_id,),
-                ).fetchone()
-            if pre_row is not None:
-                vec_blob = self._precompute_vec_embedding(str(pre_row[0] or ""))
-        elif resolution == "merge" and merge_value.strip():
-            vec_blob = self._precompute_vec_embedding(merge_value.strip())
-
-        with self._write_lock:
-            result = self._load_contradiction(contradiction_id, resolution)
-            if "success" in result:
-                return result  # type: ignore[return-value]
-            contradiction = result
-
-            node_id = contradiction["node_id"]
-            incoming_value = contradiction["incoming_value"]
-            incoming_confidence = contradiction["incoming_confidence"]
-            now = _now_iso()
-
-            node_row = self._db.execute(
-                "SELECT label, history FROM kg_nodes WHERE node_id = ?",
-                (node_id,),
-            ).fetchone()
-
-            if node_row is None and resolution != "keep_old":
-                return {
-                    "success": False,
-                    "node_id": node_id,
-                    "resolution": resolution,
-                    "message": f"Node {node_id} no longer exists; cannot apply {resolution}.",
-                }
-
-            current_label = node_row["label"] if node_row else contradiction["existing_value"]
-            history: list = []
-            if node_row:
-                try:
-                    history = json.loads(node_row["history"])
-                except (json.JSONDecodeError, TypeError):
-                    history = []
-
-            if resolution == "accept_new":
-                self._apply_accept_new(
-                    node_id, incoming_value, incoming_confidence,
-                    current_label, history, now, vec_blob,
-                )
-            elif resolution == "keep_old":
-                self._apply_keep_old(current_label, incoming_value, history, now)
-            elif resolution == "merge":
-                self._apply_merge(
-                    node_id, merge_value, current_label, history, now, vec_blob,
-                )
-
-            # Update history on the node (guard against missing node)
-            if node_row is not None:
-                self._db.execute(
-                    "UPDATE kg_nodes SET history = ? WHERE node_id = ?",
-                    (json.dumps(history[-50:]), node_id),
-                )
-
-            # Mark contradiction as resolved
-            self._db.execute(
-                """UPDATE kg_contradictions
-                   SET status = 'resolved', resolution = ?, resolved_at = datetime('now')
-                   WHERE contradiction_id = ?""",
-                (resolution, contradiction_id),
-            )
-            self._db.commit()
-
-            # Invalidate NetworkX cache if kg_nodes was modified
-            if resolution in ("accept_new", "merge") and self._kg is not None:
-                counter = getattr(self._kg, "_mutation_counter", 0)
-                if isinstance(counter, int):
-                    setattr(self._kg, "_mutation_counter", counter + 1)
-
-        logger.info(
-            "Contradiction %d resolved: %s for node %s",
-            contradiction_id,
-            resolution,
-            node_id,
+        vec_blob = self._precompute_resolution_embedding(
+            resolution, contradiction_id, merge_value,
         )
 
-        return {
-            "success": True,
-            "node_id": node_id,
-            "resolution": resolution,
-            "message": f"Contradiction {contradiction_id} resolved via {resolution}.",
-        }
+        with self._write_lock:
+            result = self._apply_resolution_and_commit(
+                contradiction_id, resolution, merge_value, vec_blob,
+            )
+
+        if result["success"]:
+            logger.info(
+                "Contradiction %d resolved: %s for node %s",
+                contradiction_id, resolution, result["node_id"],
+            )
+
+        return result

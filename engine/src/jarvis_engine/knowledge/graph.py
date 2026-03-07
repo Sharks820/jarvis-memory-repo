@@ -280,6 +280,94 @@ class KnowledgeGraph:
     # Fact CRUD
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # add_fact helpers
+    # ------------------------------------------------------------------
+
+    def _precompute_embedding(self, label: str, node_id: str) -> bytes | None:
+        """Compute vec embedding blob for *label*, or None on failure."""
+        if self._embed_service is None or not self._vec_available:
+            return None
+        try:
+            embedding = self._embed_service.embed(label, prefix="search_document")
+            if len(embedding) == _EMBEDDING_DIM:
+                return struct.pack(f"{len(embedding)}f", *embedding)
+        except (ImportError, ValueError, struct.error) as exc:
+            logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
+        return None
+
+    def _handle_existing_node(
+        self,
+        node_id: str,
+        label: str,
+        confidence: float,
+        source_record: str,
+        node_type: str,
+        existing: tuple,
+    ) -> bool | None:
+        """Process an existing node row.  Returns True/False for early exit, None to continue."""
+        is_locked = bool(existing[0])
+        existing_label = existing[1]
+        existing_conf = existing[2]
+        try:
+            existing_sources = json.loads(existing[3])
+        except (json.JSONDecodeError, TypeError):
+            existing_sources = []
+
+        if is_locked:
+            if label != existing_label:
+                self._quarantine_contradiction(
+                    node_id, existing_label, label,
+                    existing_conf, confidence, source=source_record,
+                )
+                self._db.commit()
+                return False
+            return True  # Same value on locked node — no-op
+
+        # Update existing unlocked node
+        if source_record and source_record not in existing_sources:
+            existing_sources.append(source_record)
+        self._db.execute(
+            """UPDATE kg_nodes
+               SET label = ?, node_type = ?,
+                   confidence = MAX(confidence, ?),
+                   sources = ?, updated_at = datetime('now')
+               WHERE node_id = ?""",
+            (label, node_type, confidence,
+             json.dumps(existing_sources[-50:]), node_id),
+        )
+        upsert_fts_kg(self._db, node_id, label)
+        return None  # continue
+
+    def _insert_new_node(
+        self, node_id: str, label: str, node_type: str,
+        confidence: float, source_record: str,
+    ) -> None:
+        """INSERT a brand-new fact node + FTS5 entry."""
+        sources = [source_record] if source_record else []
+        self._db.execute(
+            """INSERT INTO kg_nodes
+               (node_id, label, node_type, confidence, sources)
+               VALUES (?, ?, ?, ?, ?)""",
+            (node_id, label, node_type, confidence, json.dumps(sources)),
+        )
+        upsert_fts_kg(self._db, node_id, label)
+
+    def _upsert_vec_index(self, node_id: str, embedding_blob: bytes | None) -> None:
+        """Upsert the vec embedding for *node_id* (DELETE+INSERT)."""
+        if embedding_blob is None:
+            return
+        try:
+            self._db.execute("DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,))
+            self._db.execute(
+                "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                (node_id, embedding_blob),
+            )
+        except sqlite3.Error as exc:
+            logger.debug("Vec index update for KG node %s failed: %s", node_id, exc)
+
+    # ------------------------------------------------------------------
+
     def add_fact(
         self,
         node_id: str,
@@ -290,26 +378,10 @@ class KnowledgeGraph:
     ) -> bool:
         """Add or update a fact node.  Returns False if blocked by lock.
 
-        - If node exists AND locked AND label differs: quarantine contradiction, return False.
-        - If node exists AND locked AND label matches: no-op, return True.
-        - If node exists AND unlocked: update with MAX(confidence), append source.
-        - If node does not exist: INSERT new node.
-
-        Maintains FTS5 index (fts_kg_nodes) and vec index (vec_kg_nodes) on
-        every insert/update.
-
         Embedding is computed BEFORE acquiring the write lock to avoid holding
         the lock during the (potentially slow) embedding model call.
         """
-        # Pre-compute embedding outside the write lock to minimize lock hold time
-        embedding_blob: bytes | None = None
-        if self._embed_service is not None and self._vec_available:
-            try:
-                embedding = self._embed_service.embed(label, prefix="search_document")
-                if len(embedding) == _EMBEDDING_DIM:
-                    embedding_blob = struct.pack(f"{len(embedding)}f", *embedding)
-            except (ImportError, ValueError, struct.error) as exc:
-                logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
+        embedding_blob = self._precompute_embedding(label, node_id)
 
         with self._write_lock:
             try:
@@ -319,74 +391,15 @@ class KnowledgeGraph:
                 ).fetchone()
 
                 if existing is not None:
-                    is_locked = bool(existing[0])
-                    existing_label = existing[1]
-                    existing_conf = existing[2]
-                    try:
-                        existing_sources = json.loads(existing[3])
-                    except (json.JSONDecodeError, TypeError):
-                        existing_sources = []
-
-                    if is_locked:
-                        if label != existing_label:
-                            self._quarantine_contradiction(
-                                node_id,
-                                existing_label,
-                                label,
-                                existing_conf,
-                                confidence,
-                                source=source_record,
-                            )
-                            self._db.commit()
-                            return False
-                        return True  # Same value on locked node -- no-op
-
-                    # Update existing unlocked node
-                    if source_record and source_record not in existing_sources:
-                        existing_sources.append(source_record)
-                    self._db.execute(
-                        """UPDATE kg_nodes
-                           SET label = ?, node_type = ?,
-                               confidence = MAX(confidence, ?),
-                               sources = ?,
-                               updated_at = datetime('now')
-                           WHERE node_id = ?""",
-                        (
-                            label,
-                            node_type,
-                            confidence,
-                            json.dumps(existing_sources[-50:]),  # cap at 50
-                            node_id,
-                        ),
+                    result = self._handle_existing_node(
+                        node_id, label, confidence, source_record, node_type, existing,
                     )
-                    # Update FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-                    upsert_fts_kg(self._db, node_id, label)
+                    if result is not None:
+                        return result
                 else:
-                    # New node
-                    sources = [source_record] if source_record else []
-                    self._db.execute(
-                        """INSERT INTO kg_nodes
-                           (node_id, label, node_type, confidence, sources)
-                           VALUES (?, ?, ?, ?, ?)""",
-                        (node_id, label, node_type, confidence, json.dumps(sources)),
-                    )
-                    # Insert into FTS5 index
-                    upsert_fts_kg(self._db, node_id, label)
+                    self._insert_new_node(node_id, label, node_type, confidence, source_record)
 
-                # Insert/update vec embedding using pre-computed blob
-                if embedding_blob is not None:
-                    try:
-                        # DELETE + INSERT for idempotent upsert (vec0 has no REPLACE)
-                        self._db.execute(
-                            "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
-                        )
-                        self._db.execute(
-                            "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
-                            (node_id, embedding_blob),
-                        )
-                    except sqlite3.Error as exc:
-                        logger.debug("Vec index update for KG node %s failed: %s", node_id, exc)
-
+                self._upsert_vec_index(node_id, embedding_blob)
                 self._db.commit()
                 self._mutation_counter += 1
             except (sqlite3.Error, OSError) as exc:
@@ -394,7 +407,6 @@ class KnowledgeGraph:
                 logger.debug("add_fact transaction failed, rolled back: %s", exc)
                 raise
 
-        # Auto-lock check (outside write_lock -- check_and_auto_lock acquires its own)
         try:
             self._lock_manager.check_and_auto_lock(node_id)
         except (sqlite3.Error, ValueError) as exc:

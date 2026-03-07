@@ -166,14 +166,8 @@ def _load_mobile_api_cfg(root: Path) -> dict[str, str]:
     }
 
 
-def _load_widget_cfg(root: Path) -> WidgetConfig:
-    from jarvis_engine._shared import load_json_file
-
-    mobile = _load_mobile_api_cfg(root)
-    path = _widget_cfg_path(root)
-    raw: dict[str, Any] = load_json_file(path, {}, expected_type=dict)
-
-    # Normalize optional keys so legacy configs share one read path.
+def _normalize_raw_config(raw: dict[str, Any]) -> None:
+    """Set default values for optional config keys so legacy configs share one read path."""
     raw.setdefault("master_password_protected", "")
     raw.setdefault("master_password", "")
     raw.setdefault("token_protected", "")
@@ -183,9 +177,35 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     raw.setdefault("base_url", "")
     raw.setdefault("device_id", "galaxy_s25_primary")
 
-    # --- Resolve master password (DPAPI-protected or plaintext legacy) ---
+
+def _resolve_dpapi_field(raw: dict[str, Any], field: str, fallback: str = "") -> tuple[str, bool]:
+    """Resolve a DPAPI-protected or plaintext legacy credential field.
+
+    Returns (resolved_value, needs_migration) where needs_migration is True
+    if the value came from a plaintext legacy key.
+    """
+    protected_key = f"{field}_protected"
+    protected_val = str(raw.get(protected_key, "")).strip()
+    if protected_val:
+        try:
+            return _dpapi_decrypt(protected_val), False
+        except (OSError, ValueError, RuntimeError):
+            logger.warning("Failed to decrypt %s via DPAPI", protected_key)
+    val = str(raw.get(field, "")).strip()
+    return val or fallback, bool(val)
+
+
+def _resolve_credentials(
+    raw: dict[str, Any], mobile: dict[str, str],
+) -> tuple[str, str, str, bool, list[str]]:
+    """Resolve master_password, token, and signing_key from config.
+
+    Returns (master_password, token, signing_key, needs_pw_migration,
+    fields_needing_migration).
+    """
+    # Master password (DPAPI-protected or plaintext legacy)
     master_password = ""
-    needs_migration = False
+    needs_pw_migration = False
     if str(raw.get("master_password_protected", "")).strip():
         b64 = str(raw.get("master_password_protected", ""))
         try:
@@ -195,74 +215,106 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     elif str(raw.get("master_password", "")).strip():
         master_password = str(raw.get("master_password", ""))
         if master_password:
-            needs_migration = True
+            needs_pw_migration = True
 
-    # --- Position fields (backward-compatible: absent = None) ---
-    def _int_or_none(key: str) -> int | None:
-        v = raw.get(key)
-        if v is None:
-            return None
-        try:
-            return int(v)
-        except (TypeError, ValueError):
-            logger.debug("Config key %r has non-integer value %r; treating as None", key, v)
-            return None
+    # Token and signing_key
+    migration_fields: list[str] = []
+    token, token_needs = _resolve_dpapi_field(raw, "token", mobile.get("token", ""))
+    if token_needs:
+        migration_fields.append("token")
+    signing_key, sk_needs = _resolve_dpapi_field(raw, "signing_key", mobile.get("signing_key", ""))
+    if sk_needs:
+        migration_fields.append("signing_key")
 
-    # --- Resolve token and signing_key (DPAPI-protected or plaintext legacy) ---
-    def _resolve_dpapi_field(field: str, fallback: str = "") -> str:
-        protected_key = f"{field}_protected"
-        protected_val = str(raw.get(protected_key, "")).strip()
-        if protected_val:
-            try:
-                return _dpapi_decrypt(protected_val)
-            except (OSError, ValueError, RuntimeError):
-                logger.warning("Failed to decrypt %s via DPAPI", protected_key)
-        val = str(raw.get(field, "")).strip()
-        if val:
-            needs_migration_fields.append(field)
-        return val or fallback
+    return master_password, token, signing_key, needs_pw_migration, migration_fields
 
-    needs_migration_fields: list[str] = []
-    resolved_token = _resolve_dpapi_field("token", mobile.get("token", ""))
-    resolved_signing_key = _resolve_dpapi_field("signing_key", mobile.get("signing_key", ""))
 
-    # Auto-detect scheme: use HTTPS when TLS certs exist (matches server auto-detection).
-    _tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (_security_dir(root) / "tls_key.pem").exists()
-    _default_scheme = "https" if _tls_available else "http"
-    _default_base = f"{_default_scheme}://127.0.0.1:{_DEFAULT_PORT}"
+def _resolve_base_url(raw: dict[str, Any], root: Path) -> tuple[str, str, str]:
+    """Resolve the base URL with TLS auto-detection and scheme upgrade.
 
-    # Auto-upgrade saved http:// base_url to https:// when TLS certs exist.
-    _saved_url = str(raw.get("base_url", "")).strip()
-    if _saved_url and _tls_available and _saved_url.startswith("http://"):
-        _saved_url = "https://" + _saved_url[len("http://"):]
-    _base_url = _saved_url or _default_base
+    Returns (base_url, saved_url, default_base) for stale-IP comparison.
+    """
+    tls_available = (
+        (_security_dir(root) / "tls_cert.pem").exists()
+        and (_security_dir(root) / "tls_key.pem").exists()
+    )
+    default_scheme = "https" if tls_available else "http"
+    default_base = f"{default_scheme}://127.0.0.1:{_DEFAULT_PORT}"
 
-    # --- Auto-heal stale IPs on startup ---
-    # If the saved URL points to a non-localhost address, probe it.
-    # If unreachable but localhost works, silently switch and persist the fix.
+    saved_url = str(raw.get("base_url", "")).strip()
+    if saved_url and tls_available and saved_url.startswith("http://"):
+        saved_url = "https://" + saved_url[len("http://"):]
+    base_url = saved_url or default_base
+
+    return base_url, saved_url, default_base
+
+
+def _auto_heal_stale_ip(base_url: str, default_scheme: str) -> str:
+    """Probe non-localhost base_url and fall back to localhost if stale.
+
+    Returns the (possibly healed) base_url.
+    """
     from urllib.parse import urlparse as _ul_parse
-    _parsed = _ul_parse(_base_url)
-    if _parsed.hostname not in ("127.0.0.1", "localhost", "::1", None):
-        _probe_url = f"{_base_url.rstrip('/')}/health"
-        _local_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or _DEFAULT_PORT}/health"
-        _stale = False
+
+    parsed = _ul_parse(base_url)
+    if parsed.hostname in ("127.0.0.1", "localhost", "::1", None):
+        return base_url
+
+    probe_url = f"{base_url.rstrip('/')}/health"
+    local_url = f"{default_scheme}://127.0.0.1:{parsed.port or _DEFAULT_PORT}/health"
+    stale = False
+    try:
+        ctx = _make_ssl_context_for_self_signed() if parsed.scheme == "https" else None
+        with urlopen(Request(url=probe_url, method="GET"), timeout=3, context=ctx):
+            pass  # Saved URL works fine
+    except (OSError, ValueError) as exc:
+        logger.debug("Saved base_url %s unreachable: %s -- trying localhost", probe_url, exc)
         try:
-            _ctx = _make_ssl_context_for_self_signed() if _parsed.scheme == "https" else None
-            with urlopen(Request(url=_probe_url, method="GET"), timeout=3, context=_ctx):
-                pass  # Saved URL works fine
-        except (OSError, ValueError) as exc:
-            logger.debug("Saved base_url %s unreachable: %s -- trying localhost", _probe_url, exc)
-            # Saved URL unreachable -- try localhost
-            try:
-                _ctx_l = _make_ssl_context_for_self_signed() if _default_scheme == "https" else None
-                with urlopen(Request(url=_local_url, method="GET"), timeout=3, context=_ctx_l):
-                    _stale = True  # localhost works, saved URL is stale
-            except (OSError, ValueError) as exc2:
-                logger.debug("Localhost fallback %s also unreachable: %s", _local_url, exc2)
-        if _stale:
-            _old_url = _base_url
-            _base_url = f"{_default_scheme}://127.0.0.1:{_parsed.port or _DEFAULT_PORT}"
-            logger.info("Auto-healed stale base_url %s -> %s", _old_url, _base_url)
+            ctx_l = _make_ssl_context_for_self_signed() if default_scheme == "https" else None
+            with urlopen(Request(url=local_url, method="GET"), timeout=3, context=ctx_l):
+                stale = True
+        except (OSError, ValueError) as exc2:
+            logger.debug("Localhost fallback %s also unreachable: %s", local_url, exc2)
+
+    if stale:
+        healed = f"{default_scheme}://127.0.0.1:{parsed.port or _DEFAULT_PORT}"
+        logger.info("Auto-healed stale base_url %s -> %s", base_url, healed)
+        return healed
+    return base_url
+
+
+def _int_or_none(raw: dict[str, Any], key: str) -> int | None:
+    """Extract an integer config value, returning None for absent or invalid."""
+    v = raw.get(key)
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        logger.debug("Config key %r has non-integer value %r; treating as None", key, v)
+        return None
+
+
+def _load_widget_cfg(root: Path) -> WidgetConfig:
+    from jarvis_engine._shared import load_json_file
+
+    mobile = _load_mobile_api_cfg(root)
+    path = _widget_cfg_path(root)
+    raw: dict[str, Any] = load_json_file(path, {}, expected_type=dict)
+    _normalize_raw_config(raw)
+
+    # Resolve credentials (master_password, token, signing_key)
+    master_password, resolved_token, resolved_signing_key, needs_migration, needs_migration_fields = (
+        _resolve_credentials(raw, mobile)
+    )
+
+    # Resolve base URL with TLS detection and scheme upgrade
+    _base_url, _saved_url, _default_base = _resolve_base_url(raw, root)
+
+    # Auto-heal stale non-localhost IPs
+    tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (_security_dir(root) / "tls_key.pem").exists()
+    _default_scheme = "https" if tls_available else "http"
+    _base_url = _auto_heal_stale_ip(_base_url, _default_scheme)
 
     cfg = WidgetConfig(
         base_url=_base_url,
@@ -270,14 +322,13 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         signing_key=resolved_signing_key,
         device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip() or "galaxy_s25_primary",
         master_password=master_password,
-        panel_x=_int_or_none("panel_x"),
-        panel_y=_int_or_none("panel_y"),
-        launcher_x=_int_or_none("launcher_x"),
-        launcher_y=_int_or_none("launcher_y"),
+        panel_x=_int_or_none(raw, "panel_x"),
+        panel_y=_int_or_none(raw, "panel_y"),
+        launcher_x=_int_or_none(raw, "launcher_x"),
+        launcher_y=_int_or_none(raw, "launcher_y"),
     )
 
-    # Migrate plaintext secrets (master_password, token, signing_key) -> DPAPI-protected
-    # Also persist auto-healed base_url so stale IP is permanently fixed
+    # Migrate plaintext secrets -> DPAPI-protected; persist auto-healed base_url
     _url_healed = (_base_url != (_saved_url or _default_base))
     if needs_migration or needs_migration_fields or _url_healed:
         try:

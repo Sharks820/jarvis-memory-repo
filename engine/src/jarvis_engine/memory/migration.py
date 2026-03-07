@@ -88,6 +88,214 @@ def _delete_checkpoint(checkpoint_path: Path) -> None:
         logger.debug("Failed to delete migration checkpoint %s: %s", checkpoint_path, exc)
 
 
+def _resolve_resume_offset(checkpoint: dict | None, jsonl_name: str) -> int:
+    """Determine the line offset to resume from based on a checkpoint.
+
+    Returns 0 when no valid checkpoint exists or the checkpoint belongs to a
+    different file.
+    """
+    if not checkpoint or checkpoint.get("file") != jsonl_name:
+        return 0
+    saved_offset = checkpoint.get("line_offset", 0)
+    if isinstance(saved_offset, int) and saved_offset >= 0:
+        logger.info("Resuming migration from line %d", saved_offset)
+        return saved_offset
+    logger.warning("Invalid checkpoint offset %r, starting from 0", saved_offset)
+    return 0
+
+
+def _read_jsonl_lines(jsonl_path: Path) -> list[str] | MigrationResult:
+    """Read non-empty lines from a JSONL file.
+
+    Returns a list of stripped lines on success or a :class:`MigrationResult`
+    error dict if the file cannot be read.
+    """
+    try:
+        with jsonl_path.open(encoding="utf-8", errors="replace") as f:
+            return [line for line in f if line.strip()]
+    except OSError as exc:
+        return {
+            "status": "error",
+            "source_count": 0,
+            "inserted": 0,
+            "skipped": 0,
+            "errors": 1,
+            "error_details": [f"Failed to read file: {exc}"],
+        }
+
+
+def _extract_summary(record_data: dict) -> str:
+    """Extract a usable summary string from a brain record dict.
+
+    Returns an empty string when neither ``summary`` nor ``content`` yields
+    non-whitespace text.
+    """
+    summary = str(record_data.get("summary", ""))
+    if not summary.strip():
+        summary = str(record_data.get("content", ""))[:280]
+    return summary
+
+
+def _derive_record_id(record_data: dict, content_hash: str) -> str:
+    """Derive a 32-hex-char record ID from the raw record data."""
+    original_id = str(record_data.get("record_id", ""))
+    if len(original_id) < 32:
+        id_material = f"{original_id}|{content_hash}".encode("utf-8")
+        return sha256_short(id_material)
+    return original_id[:32]
+
+
+def _transform_brain_record(
+    record_data: dict,
+    embed_service: "EmbeddingService",
+    classifier: "BranchClassifier",
+) -> dict | None:
+    """Transform a parsed JSONL record into a MemoryEngine record dict.
+
+    Returns ``None`` when the record has no usable summary/content and should
+    be counted as an error.
+    """
+    summary = _extract_summary(record_data)
+    if not summary.strip():
+        return None
+
+    embedding = embed_service.embed(summary, prefix="search_document")
+    branch = classifier.classify(embedding)
+
+    content_hash = str(record_data.get("content_hash", "")) or sha256_hex(summary)
+    record_id = _derive_record_id(record_data, content_hash)
+
+    ts = str(record_data.get("ts", _now_iso()))
+    confidence = 0.72
+    try:
+        confidence = float(record_data.get("confidence", 0.72))
+    except (TypeError, ValueError):
+        logger.debug("Invalid confidence value in record %s, using default",
+                     record_data.get("record_id", ""))
+
+    tags = record_data.get("tags", [])
+    if isinstance(tags, list):
+        tags = json.dumps(tags)
+    elif not isinstance(tags, str):
+        tags = "[]"
+
+    record = {
+        "record_id": record_id,
+        "ts": ts,
+        "source": str(record_data.get("source", "migration")),
+        "kind": str(record_data.get("kind", "episodic")),
+        "task_id": str(record_data.get("task_id", "")),
+        "branch": branch,
+        "tags": tags,
+        "summary": summary[:2000],
+        "content_hash": content_hash,
+        "confidence": max(0.0, min(1.0, confidence)),
+        "tier": "warm",
+        "access_count": 0,
+        "last_accessed": "",
+        "_embedding": embedding,
+    }
+    return record
+
+
+def _verify_migration_counts(
+    inserted: int,
+    skipped: int,
+    errors: int,
+    source_count: int,
+    already_processed: int,
+    error_details: list[str],
+) -> None:
+    """Append a count-mismatch error if processed != expected."""
+    current_processed = inserted + skipped + errors
+    expected_current = source_count - already_processed
+    if current_processed != expected_current:
+        msg = (
+            f"Count mismatch: processed={current_processed} "
+            f"(inserted={inserted} + skipped={skipped} + errors={errors}) "
+            f"!= expected={expected_current} (source={source_count} - offset={already_processed})"
+        )
+        logger.error(msg)
+        error_details.append(msg)
+
+
+def _process_brain_lines(
+    lines: list[str],
+    start_offset: int,
+    engine: "MemoryEngine",
+    embed_service: "EmbeddingService",
+    classifier: "BranchClassifier",
+    checkpoint_path: Path,
+    jsonl_name: str,
+    source_count: int,
+) -> dict:
+    """Process JSONL lines, transforming and inserting each brain record.
+
+    Returns a dict with ``inserted``, ``skipped``, ``errors``, and
+    ``error_details`` counts.
+    """
+    inserted = 0
+    skipped = 0
+    errors = 0
+    error_details: list[str] = []
+
+    for line_num, line in enumerate(lines):
+        if line_num < start_offset:
+            continue
+
+        try:
+            record_data = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors += 1
+            if len(error_details) < _MAX_ERROR_DETAILS:
+                error_details.append(f"Line {line_num + 1}: malformed JSON: {exc}")
+            continue
+
+        if not isinstance(record_data, dict):
+            errors += 1
+            if len(error_details) < _MAX_ERROR_DETAILS:
+                error_details.append(f"Line {line_num + 1}: not a dict")
+            continue
+
+        try:
+            record = _transform_brain_record(record_data, embed_service, classifier)
+            if record is None:
+                errors += 1
+                if len(error_details) < _MAX_ERROR_DETAILS:
+                    error_details.append(f"Line {line_num + 1}: empty summary/content")
+                continue
+
+            embedding = record.pop("_embedding")
+            was_inserted = engine.insert_record(record, embedding=embedding)
+            if was_inserted:
+                inserted += 1
+            else:
+                skipped += 1
+
+        except (sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            errors += 1
+            if len(error_details) < _MAX_ERROR_DETAILS:
+                error_details.append(f"Line {line_num + 1}: {type(exc).__name__}: {exc}")
+
+        if (line_num - start_offset + 1) % _CHECKPOINT_BATCH_SIZE == 0:
+            _save_checkpoint(checkpoint_path, {
+                "file": jsonl_name,
+                "line_offset": line_num + 1,
+                "records_hash": hashlib.sha256(line.encode()).hexdigest(),
+            })
+
+        processed = line_num - start_offset + 1
+        if processed % 100 == 0:
+            logger.info("Migrating brain records: %d/%d...", line_num + 1, source_count)
+
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "errors": errors,
+        "error_details": error_details,
+    }
+
+
 def migrate_brain_records(
     jsonl_path: Path,
     engine: "MemoryEngine",
@@ -111,178 +319,43 @@ def migrate_brain_records(
     """
     if not jsonl_path.exists():
         return {
-            "status": "ok",
-            "source_count": 0,
-            "inserted": 0,
-            "skipped": 0,
-            "errors": 0,
-            "error_details": [],
+            "status": "ok", "source_count": 0, "inserted": 0,
+            "skipped": 0, "errors": 0, "error_details": [],
         }
 
-    # Resumable migration checkpoint
     checkpoint_path = Path(str(engine._db_path) + ".migration_checkpoint.json")
     checkpoint = _load_checkpoint(checkpoint_path)
-    start_offset = 0
-    if checkpoint and checkpoint.get("file") == jsonl_path.name:
-        saved_offset = checkpoint.get("line_offset", 0)
-        if isinstance(saved_offset, int) and saved_offset >= 0:
-            start_offset = saved_offset
-            logger.info("Resuming migration from line %d", start_offset)
-        else:
-            logger.warning("Invalid checkpoint offset %r, starting from 0", saved_offset)
+    start_offset = _resolve_resume_offset(checkpoint, jsonl_path.name)
 
-    # Count lines and prepare for streaming read
-    try:
-        with jsonl_path.open(encoding="utf-8", errors="replace") as f:
-            lines = [line for line in f if line.strip()]
-    except OSError as exc:
-        return {
-            "status": "error",
-            "source_count": 0,
-            "inserted": 0,
-            "skipped": 0,
-            "errors": 1,
-            "error_details": [f"Failed to read file: {exc}"],
-        }
-
+    lines_or_error = _read_jsonl_lines(jsonl_path)
+    if isinstance(lines_or_error, dict):
+        return lines_or_error  # type: ignore[return-value]
+    lines = lines_or_error
     source_count = len(lines)
 
-    inserted = 0
-    skipped = 0
-    errors = 0
-    error_details: list[str] = []
+    counters = _process_brain_lines(
+        lines, start_offset, engine, embed_service, classifier,
+        checkpoint_path, jsonl_path.name, source_count,
+    )
 
-    # If resuming, count lines before start_offset as already processed
-    already_processed = min(start_offset, source_count)
+    _verify_migration_counts(
+        counters["inserted"], counters["skipped"], counters["errors"],
+        source_count, min(start_offset, source_count), counters["error_details"],
+    )
 
-    for line_num, line in enumerate(lines):
-        if line_num < start_offset:
-            # Already processed in previous run
-            continue
-
-        try:
-            record_data = json.loads(line)
-        except json.JSONDecodeError as exc:
-            errors += 1
-            if len(error_details) < _MAX_ERROR_DETAILS:
-                error_details.append(f"Line {line_num + 1}: malformed JSON: {exc}")
-            continue
-
-        if not isinstance(record_data, dict):
-            errors += 1
-            if len(error_details) < _MAX_ERROR_DETAILS:
-                error_details.append(f"Line {line_num + 1}: not a dict")
-            continue
-
-        try:
-            summary = str(record_data.get("summary", ""))
-            if not summary.strip():
-                summary = str(record_data.get("content", ""))[:280]
-            if not summary.strip():
-                errors += 1
-                if len(error_details) < _MAX_ERROR_DETAILS:
-                    error_details.append(f"Line {line_num + 1}: empty summary/content")
-                continue
-
-            # Generate embedding
-            embedding = embed_service.embed(summary, prefix="search_document")
-
-            # Classify branch semantically
-            branch = classifier.classify(embedding)
-
-            # Build record dict for MemoryEngine
-            content_hash = str(record_data.get("content_hash", ""))
-            if not content_hash:
-                content_hash = sha256_hex(summary)
-
-            # Use 32 hex chars for record_id (Codex: >16 to avoid collisions)
-            original_id = str(record_data.get("record_id", ""))
-            if len(original_id) < 32:
-                id_material = f"{original_id}|{content_hash}".encode("utf-8")
-                record_id = sha256_short(id_material)
-            else:
-                record_id = original_id[:32]
-
-            ts = str(record_data.get("ts", _now_iso()))
-            confidence = 0.72
-            try:
-                confidence = float(record_data.get("confidence", 0.72))
-            except (TypeError, ValueError):
-                logger.debug("Invalid confidence value in record %s, using default", original_id)
-
-            tags = record_data.get("tags", [])
-            if isinstance(tags, list):
-                tags = json.dumps(tags)
-            elif not isinstance(tags, str):
-                tags = "[]"
-
-            record = {
-                "record_id": record_id,
-                "ts": ts,
-                "source": str(record_data.get("source", "migration")),
-                "kind": str(record_data.get("kind", "episodic")),
-                "task_id": str(record_data.get("task_id", "")),
-                "branch": branch,
-                "tags": tags,
-                "summary": summary[:2000],
-                "content_hash": content_hash,
-                "confidence": max(0.0, min(1.0, confidence)),
-                "tier": "warm",
-                "access_count": 0,
-                "last_accessed": "",
-            }
-
-            was_inserted = engine.insert_record(record, embedding=embedding)
-            if was_inserted:
-                inserted += 1
-            else:
-                skipped += 1
-
-        except (sqlite3.Error, ValueError, TypeError, KeyError) as exc:
-            errors += 1
-            if len(error_details) < _MAX_ERROR_DETAILS:
-                error_details.append(f"Line {line_num + 1}: {type(exc).__name__}: {exc}")
-
-        # Save checkpoint every batch
-        if (line_num - start_offset + 1) % _CHECKPOINT_BATCH_SIZE == 0:
-            _save_checkpoint(checkpoint_path, {
-                "file": jsonl_path.name,
-                "line_offset": line_num + 1,
-                "records_hash": hashlib.sha256(line.encode()).hexdigest(),
-            })
-
-        # Progress logging
-        processed = line_num - start_offset + 1
-        if processed % 100 == 0:
-            logger.info("Migrating brain records: %d/%d...", line_num + 1, source_count)
-
-    # Count verification: already_processed records (from resume) count as previously inserted/skipped
-    # But since we don't know the breakdown, we only verify the current run
-    current_processed = inserted + skipped + errors
-    expected_current = source_count - already_processed
-    if current_processed != expected_current:
-        msg = (
-            f"Count mismatch: processed={current_processed} "
-            f"(inserted={inserted} + skipped={skipped} + errors={errors}) "
-            f"!= expected={expected_current} (source={source_count} - offset={already_processed})"
-        )
-        logger.error(msg)
-        error_details.append(msg)
-
-    # Only delete checkpoint on success (no errors)
-    if errors == 0:
+    if counters["errors"] == 0:
         _delete_checkpoint(checkpoint_path)
 
-    # Derive status from error count
-    status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")
-
+    status = "ok" if counters["errors"] == 0 else (
+        "partial" if counters["inserted"] > 0 else "error"
+    )
     return {
         "status": status,
         "source_count": source_count,
-        "inserted": inserted,
-        "skipped": skipped,
-        "errors": errors,
-        "error_details": error_details,
+        "inserted": counters["inserted"],
+        "skipped": counters["skipped"],
+        "errors": counters["errors"],
+        "error_details": counters["error_details"],
     }
 
 

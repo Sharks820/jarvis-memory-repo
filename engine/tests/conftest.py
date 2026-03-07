@@ -150,7 +150,9 @@ def _make_bus_mock(result_obj):
     """
     from unittest.mock import MagicMock
 
-    bus = MagicMock()
+    from jarvis_engine.command_bus import CommandBus
+
+    bus = MagicMock(spec=CommandBus)
     bus.dispatch.return_value = result_obj
     return bus
 

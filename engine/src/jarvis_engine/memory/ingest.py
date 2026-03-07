@@ -12,7 +12,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
 
@@ -23,6 +23,25 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+
+class RecordDict(TypedDict):
+    """Memory record dict built by :meth:`EnrichedIngestPipeline._build_record`."""
+
+    record_id: str
+    ts: str
+    source: str
+    kind: str
+    task_id: str
+    branch: str
+    tags: str
+    summary: str
+    content_hash: str
+    confidence: float
+    tier: str
+    access_count: int
+    last_accessed: str
+
 
 # Patterns for credential redaction (matches password, token, secret, api_key, etc.)
 _CREDENTIAL_PATTERNS = [
@@ -95,7 +114,7 @@ class EnrichedIngestPipeline:
         task_id: str,
         ts: str,
         tag_str: str,
-    ) -> dict:
+    ) -> RecordDict:
         """Build a single memory record dict from a chunk and its embedding."""
         chunk_hash = sha256_hex(chunk)
         id_material = f"{source}|{kind}|{task_id}|{chunk}".encode("utf-8")

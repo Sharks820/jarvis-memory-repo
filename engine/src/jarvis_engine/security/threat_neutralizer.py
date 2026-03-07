@@ -52,6 +52,17 @@ class ThreatNeutralizerStatus(TypedDict):
     recent_actions: list[dict]
 
 
+class LawEnforcementPackage(TypedDict):
+    """Result from :meth:`ThreatNeutralizer.generate_law_enforcement_package`."""
+
+    summary: str
+    ip: str
+    attack_timeline: list[dict]
+    evidence_hashes: dict[str, str]
+    recommended_charges: list[str]
+    report_template: str
+
+
 # AbuseIPDB category codes
 ABUSEIPDB_CATEGORIES = {
     "brute_force": 18,
@@ -152,47 +163,83 @@ class ThreatNeutralizer:
         """
         actions_taken: list[str] = []
         reported_to: list[str] = []
-        blocked = False
         evidence_id = self._compute_evidence_id(ip, category, evidence)
 
-        # 1. Preserve evidence
-        if self._forensic_logger is not None:
-            try:
-                self._forensic_logger.log_event({
-                    "event_type": "threat_neutralization",
-                    "ip": ip,
-                    "category": category,
-                    "evidence": evidence,
-                    "evidence_id": evidence_id,
-                })
-                actions_taken.append("evidence_preserved")
-            except (OSError, ValueError, TypeError) as exc:
-                logger.warning("Failed to preserve evidence for %s: %s", ip, exc)
+        self._preserve_evidence(ip, category, evidence, evidence_id, actions_taken)
+        blocked = self._block_threat_ip(ip, actions_taken)
+        self._record_attack(ip, category, evidence, actions_taken)
+        self._report_externally(ip, category, actions_taken, reported_to)
+        self._alert_owner(ip, category, evidence, actions_taken)
+        self._update_counters(ip, category, actions_taken, blocked, reported_to)
 
-        # 2. Permanent IP block
-        if self._ip_tracker is not None:
-            try:
-                self._ip_tracker.block_ip(ip, duration_hours=None)  # permanent
-                blocked = True
-                actions_taken.append("ip_blocked_permanent")
-            except (sqlite3.Error, OSError) as exc:
-                logger.warning("Failed to block IP %s: %s", ip, exc)
+        logger.info(
+            "Neutralized threat from %s (%s): %d actions, blocked=%s",
+            ip, category, len(actions_taken), blocked,
+        )
 
-        # 3. Record in attack memory
-        if self._attack_memory is not None:
-            try:
-                payload_str = json.dumps(evidence, default=str)
-                self._attack_memory.record_attack(
-                    category=category,
-                    payload=payload_str,
-                    detection_method="threat_neutralizer",
-                    source_ip=ip,
-                )
-                actions_taken.append("attack_recorded")
-            except (sqlite3.Error, OSError, ValueError) as exc:
-                logger.warning("Failed to record attack from %s: %s", ip, exc)
+        return {
+            "ip": ip,
+            "actions_taken": actions_taken,
+            "evidence_id": evidence_id,
+            "reported_to": reported_to,
+            "blocked": blocked,
+        }
 
-        # 4. Report to AbuseIPDB
+    def _preserve_evidence(
+        self, ip: str, category: str, evidence: dict,
+        evidence_id: str, actions_taken: list[str],
+    ) -> None:
+        """Step 1: Preserve evidence via forensic logger."""
+        if self._forensic_logger is None:
+            return
+        try:
+            self._forensic_logger.log_event({
+                "event_type": "threat_neutralization",
+                "ip": ip,
+                "category": category,
+                "evidence": evidence,
+                "evidence_id": evidence_id,
+            })
+            actions_taken.append("evidence_preserved")
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("Failed to preserve evidence for %s: %s", ip, exc)
+
+    def _block_threat_ip(self, ip: str, actions_taken: list[str]) -> bool:
+        """Step 2: Permanently block the IP via ip_tracker."""
+        if self._ip_tracker is None:
+            return False
+        try:
+            self._ip_tracker.block_ip(ip, duration_hours=None)  # permanent
+            actions_taken.append("ip_blocked_permanent")
+            return True
+        except (sqlite3.Error, OSError) as exc:
+            logger.warning("Failed to block IP %s: %s", ip, exc)
+            return False
+
+    def _record_attack(
+        self, ip: str, category: str, evidence: dict, actions_taken: list[str],
+    ) -> None:
+        """Step 3: Record the attack in attack memory."""
+        if self._attack_memory is None:
+            return
+        try:
+            payload_str = json.dumps(evidence, default=str)
+            self._attack_memory.record_attack(
+                category=category,
+                payload=payload_str,
+                detection_method="threat_neutralizer",
+                source_ip=ip,
+            )
+            actions_taken.append("attack_recorded")
+        except (sqlite3.Error, OSError, ValueError) as exc:
+            logger.warning("Failed to record attack from %s: %s", ip, exc)
+
+    def _report_externally(
+        self, ip: str, category: str,
+        actions_taken: list[str], reported_to: list[str],
+    ) -> None:
+        """Steps 4-5: Report to AbuseIPDB and look up ISP abuse contact."""
+        # AbuseIPDB report
         abuseipdb_categories = self._category_to_abuseipdb(category)
         if abuseipdb_categories:
             comment = f"Automated report: {category} attack from {ip}"
@@ -203,7 +250,7 @@ class ThreatNeutralizer:
             except (ConnectionError, TimeoutError, OSError) as exc:
                 logger.warning("AbuseIPDB report failed for %s: %s", ip, exc)
 
-        # 5. ISP abuse contact lookup + report
+        # ISP abuse contact lookup
         try:
             abuse_email = self.lookup_isp_abuse_contact(ip)
             if abuse_email:
@@ -212,24 +259,32 @@ class ThreatNeutralizer:
         except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("ISP abuse lookup failed for %s: %s", ip, exc)
 
-        # 6. Send alert to owner
-        if self._alert_chain is not None:
-            try:
-                summary = (
-                    f"Threat neutralized: {category} from {ip} "
-                    f"({len(actions_taken)} actions taken)"
-                )
-                self._alert_chain.send_alert(
-                    level=4,
-                    summary=summary,
-                    evidence=json.dumps(evidence, default=str),
-                    source_ip=ip,
-                )
-                actions_taken.append("owner_alerted")
-            except (RuntimeError, OSError) as exc:
-                logger.warning("Alert dispatch failed for %s: %s", ip, exc)
+    def _alert_owner(
+        self, ip: str, category: str, evidence: dict, actions_taken: list[str],
+    ) -> None:
+        """Step 6: Send alert to owner via alert chain."""
+        if self._alert_chain is None:
+            return
+        try:
+            summary = (
+                f"Threat neutralized: {category} from {ip} "
+                f"({len(actions_taken)} actions taken)"
+            )
+            self._alert_chain.send_alert(
+                level=4,
+                summary=summary,
+                evidence=json.dumps(evidence, default=str),
+                source_ip=ip,
+            )
+            actions_taken.append("owner_alerted")
+        except (RuntimeError, OSError) as exc:
+            logger.warning("Alert dispatch failed for %s: %s", ip, exc)
 
-        # Update counters
+    def _update_counters(
+        self, ip: str, category: str, actions_taken: list[str],
+        blocked: bool, reported_to: list[str],
+    ) -> None:
+        """Update internal counters and recent actions log."""
         action_record = {
             "ip": ip,
             "category": category,
@@ -243,21 +298,6 @@ class ThreatNeutralizer:
             if reported_to:
                 self._total_reported += 1
             self._recent_actions.append(action_record)
-
-        result = {
-            "ip": ip,
-            "actions_taken": actions_taken,
-            "evidence_id": evidence_id,
-            "reported_to": reported_to,
-            "blocked": blocked,
-        }
-
-        logger.info(
-            "Neutralized threat from %s (%s): %d actions, blocked=%s",
-            ip, category, len(actions_taken), blocked,
-        )
-
-        return result
 
     # ------------------------------------------------------------------
     # AbuseIPDB reporting
@@ -397,7 +437,7 @@ class ThreatNeutralizer:
 
     def generate_law_enforcement_package(
         self, ip: str, evidence: dict,
-    ) -> dict:
+    ) -> LawEnforcementPackage:
         """Generate an IC3/FBI-format report package.
 
         Returns a dict with:

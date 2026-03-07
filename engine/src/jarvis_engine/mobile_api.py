@@ -427,20 +427,20 @@ class MobileIngestServer(ThreadingHTTPServer):
             self._session_degraded = True
 
     @staticmethod
-    def _prune_rate_dict(d: dict[str, list[float]], max_keys: int = 5000) -> None:
+    def _prune_rate_dict(rate_dict: dict[str, list[float]], max_keys: int = 5000) -> None:
         """Remove the oldest half of entries when the dict exceeds max_keys.
 
         Prevents unbounded memory growth from unique IPs over time.
         Each value is a list of timestamps; the 'oldest' entry is determined
         by the maximum timestamp in each list (most recent activity).
         """
-        if len(d) <= max_keys:
+        if len(rate_dict) <= max_keys:
             return
         # Sort IPs by their most recent attempt timestamp, ascending
-        by_recency = sorted(d.keys(), key=lambda ip: max(d[ip]) if d[ip] else 0.0)
-        to_remove = len(d) // 2
+        by_recency = sorted(rate_dict.keys(), key=lambda ip: max(rate_dict[ip]) if rate_dict[ip] else 0.0)
+        to_remove = len(rate_dict) // 2
         for ip in by_recency[:to_remove]:
-            del d[ip]
+            del rate_dict[ip]
 
     def check_rate(
         self,

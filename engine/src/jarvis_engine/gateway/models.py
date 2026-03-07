@@ -212,7 +212,7 @@ class ModelGateway:
         if self._anthropic is not None:
             available.append("anthropic")
         available.extend(self._cloud_keys.keys())
-        for key, info in self._cli_providers.items():
+        for key in self._cli_providers:
             available.append(f"{key}")
         if _HAS_OLLAMA:
             available.append("ollama")

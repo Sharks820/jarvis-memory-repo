@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import http.client
 import imaplib
 import logging
 import os
 import socket
+from typing import IO
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from jarvis_engine._compat import UTC
@@ -13,7 +15,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
@@ -426,7 +428,15 @@ def _triage_email(sender: str, subject: str) -> str:
 class _NoRedirectHandler(HTTPRedirectHandler):
     """Redirect handler that raises on any redirect to prevent SSRF via redirect."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(  # type: ignore[override]
+        self,
+        req: "Request",
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: "http.client.HTTPMessage",
+        newurl: str,
+    ) -> "Request":
         from urllib.error import HTTPError
         raise HTTPError(newurl, code, f"Redirects are not allowed (got {code})", headers, fp)
 

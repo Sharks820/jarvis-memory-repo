@@ -8,7 +8,6 @@ services (daemon, mobile_api, widget).  PID files live under
 from __future__ import annotations
 
 import ctypes
-import json
 import logging
 import os
 import signal

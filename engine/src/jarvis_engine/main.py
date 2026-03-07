@@ -1012,65 +1012,65 @@ def cmd_self_test(threshold: float) -> int:
     return 0
 
 
-def _dispatch_serve_mobile(a) -> int:
+def _dispatch_serve_mobile(args: argparse.Namespace) -> int:
     """Resolve --tls / --no-tls into a tri-state: True, False, or None (auto)."""
     _tls_flag: bool | None = None
-    if getattr(a, "tls", None):
+    if getattr(args, "tls", None):
         _tls_flag = True
-    elif getattr(a, "no_tls", False):
+    elif getattr(args, "no_tls", False):
         _tls_flag = False
     return cmd_serve_mobile(
-        host=a.host, port=a.port, token=a.token, signing_key=a.signing_key,
-        allow_insecure_bind=a.allow_insecure_bind, config_file=a.config_file,
+        host=args.host, port=args.port, token=args.token, signing_key=args.signing_key,
+        allow_insecure_bind=args.allow_insecure_bind, config_file=args.config_file,
         tls=_tls_flag,
     )
 
 
-def _dispatch_growth_eval(a) -> int:
+def _dispatch_growth_eval(args: argparse.Namespace) -> int:
     """Convert think string choice to optional bool."""
     think_opt = None
-    if a.think == "on":
+    if args.think == "on":
         think_opt = True
-    elif a.think == "off":
+    elif args.think == "off":
         think_opt = False
     return cmd_growth_eval(
-        model=a.model, endpoint=a.endpoint, tasks_path=Path(a.tasks_path),
-        history_path=Path(a.history_path), num_predict=a.num_predict,
-        temperature=a.temperature, think=think_opt,
-        accept_thinking=a.accept_thinking, timeout_s=a.timeout_s,
+        model=args.model, endpoint=args.endpoint, tasks_path=Path(args.tasks_path),
+        history_path=Path(args.history_path), num_predict=args.num_predict,
+        temperature=args.temperature, think=think_opt,
+        accept_thinking=args.accept_thinking, timeout_s=args.timeout_s,
     )
 
 
-def _dispatch_owner_guard(a) -> int:
+def _dispatch_owner_guard(args: argparse.Namespace) -> int:
     """Resolve master password from env var with CLI fallback."""
     return cmd_owner_guard(
-        enable=a.enable, disable=a.disable, owner_user=a.owner_user,
-        trust_device=a.trust_device, revoke_device=a.revoke_device,
-        set_master_password_value=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or a.set_master_password,
-        clear_master_password_value=a.clear_master_password,
+        enable=args.enable, disable=args.disable, owner_user=args.owner_user,
+        trust_device=args.trust_device, revoke_device=args.revoke_device,
+        set_master_password_value=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or args.set_master_password,
+        clear_master_password_value=args.clear_master_password,
     )
 
 
-def _dispatch_gaming_mode(a) -> int:
+def _dispatch_gaming_mode(args: argparse.Namespace) -> int:
     """Convert enable/disable flags to optional bool."""
     enable_opt: bool | None = None
-    if a.enable:
+    if args.enable:
         enable_opt = True
-    elif a.disable:
+    elif args.disable:
         enable_opt = False
-    return cmd_gaming_mode(enable=enable_opt, reason=a.reason, auto_detect=a.auto_detect)
+    return cmd_gaming_mode(enable=enable_opt, reason=args.reason, auto_detect=args.auto_detect)
 
 
-def _dispatch_voice_run(a) -> int:
+def _dispatch_voice_run(args: argparse.Namespace) -> int:
     """Resolve master password from env var with CLI fallback."""
     return cmd_voice_run(
-        text=a.text, execute=a.execute, approve_privileged=a.approve_privileged,
-        speak=a.speak, snapshot_path=Path(a.snapshot_path),
-        actions_path=Path(a.actions_path), voice_user=a.voice_user,
-        voice_auth_wav=a.voice_auth_wav, voice_threshold=a.voice_threshold,
-        master_password=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or a.master_password,
-        model_override=a.model_override,
-        skip_voice_auth_guard=a.skip_voice_auth_guard,
+        text=args.text, execute=args.execute, approve_privileged=args.approve_privileged,
+        speak=args.speak, snapshot_path=Path(args.snapshot_path),
+        actions_path=Path(args.actions_path), voice_user=args.voice_user,
+        voice_auth_wav=args.voice_auth_wav, voice_threshold=args.voice_threshold,
+        master_password=os.getenv("JARVIS_MASTER_PASSWORD", "").strip() or args.master_password,
+        model_override=args.model_override,
+        skip_voice_auth_guard=args.skip_voice_auth_guard,
     )
 
 

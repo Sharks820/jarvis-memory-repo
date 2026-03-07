@@ -503,7 +503,7 @@ def run_learning_mission(
         root, mission_id, status="running", progress_pct=45,
         status_detail=f"Scanning pages",
     )
-    scanned_urls, selected, candidate_rows = _fetch_mission_content(
+    scanned_urls, _, candidate_rows = _fetch_mission_content(
         topic, queries,
         max_search_results=max_search_results,
         max_pages=max_pages,

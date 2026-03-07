@@ -13,12 +13,14 @@ Use ``search_web()`` for automatic engine selection with fallback.
 from __future__ import annotations
 
 import html as html_mod
+import http.client
 import json
 import logging
 import os
 import re
 import socket
 from ipaddress import ip_address
+from typing import IO
 from urllib.parse import quote_plus, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
@@ -94,7 +96,15 @@ def resolve_and_check_ip(url: str) -> bool:
 class SafeRedirectHandler(HTTPRedirectHandler):
     """Block redirects to non-public IPs to prevent redirect-based SSRF."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+    def redirect_request(  # type: ignore[override]
+        self,
+        req: Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> Request | None:
         if not is_safe_public_url(newurl):
             return None
         return super().redirect_request(req, fp, code, msg, headers, newurl)

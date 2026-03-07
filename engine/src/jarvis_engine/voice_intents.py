@@ -816,21 +816,12 @@ def _post_dispatch_learn(
             threading.Thread(target=_bg_learn, daemon=True).start()
 
 
-def cmd_voice_run_impl(
-    text: str,
-    execute: bool,
-    approve_privileged: bool,
-    speak: bool,
-    snapshot_path: Path,
-    actions_path: Path,
-    voice_user: str,
-    voice_auth_wav: str,
-    voice_threshold: float,
-    master_password: str,
-    model_override: str = "",
-    skip_voice_auth_guard: bool = False,
-) -> int:
-    """Implementation body for voice-run (called by handler via callback)."""
+def _import_voice_commands():
+    """Lazy-import all command functions needed by voice dispatch.
+
+    Returns a tuple of (cmd_fns dict, repo_root callable,
+    _web_augmented_llm_conversation callable).
+    """
     from jarvis_engine.main import (
         cmd_voice_say, cmd_voice_verify,
         cmd_connect_bootstrap, cmd_runtime_control,
@@ -843,59 +834,7 @@ def cmd_voice_run_impl(
         cmd_mission_status, cmd_status,
     )
     import jarvis_engine.voice_pipeline as _vp
-    _web_augmented_llm_conversation = _vp._web_augmented_llm_conversation
-    # Look up repo_root through voice_pipeline so tests that monkeypatch
-    # voice_pipeline_mod.repo_root see the override in this module too.
-    repo_root = _vp.repo_root
 
-    lowered = text.lower().strip()
-    _last_response = ""  # Capture assistant response for learning pipeline
-
-    def _respond(msg: str) -> None:
-        """Print response= line and capture text for learning pipeline."""
-        nonlocal _last_response
-        _last_response = msg
-        print(f"response={escape_response(msg)}")
-
-    master_password_ok = False
-    if master_password.strip():
-        master_password_ok = verify_master_password(repo_root(), master_password.strip())
-
-    read_only_request = _is_read_only_voice_request(
-        lowered, execute=execute, approve_privileged=approve_privileged,
-    )
-
-    def _require_state_mutation_voice_auth() -> bool:
-        if skip_voice_auth_guard:
-            return True
-        if voice_auth_wav.strip() or master_password_ok:
-            return True
-        print("intent=voice_auth_required")
-        print("reason=state_mutating_voice_actions_require_voice_auth_wav")
-        if speak:
-            cmd_voice_say(text="Voice authentication is required for state changing commands.")
-        return False
-
-    # --- Auth validation ---
-    auth_rc = _validate_voice_auth(
-        voice_user=voice_user,
-        voice_auth_wav=voice_auth_wav,
-        voice_threshold=voice_threshold,
-        master_password=master_password,
-        master_password_ok=master_password_ok,
-        execute=execute,
-        approve_privileged=approve_privileged,
-        read_only_request=read_only_request,
-        skip_voice_auth_guard=skip_voice_auth_guard,
-        speak=speak,
-        cmd_voice_say=cmd_voice_say,
-        cmd_voice_verify=cmd_voice_verify,
-        repo_root=repo_root,
-    )
-    if auth_rc is not None:
-        return auth_rc
-
-    # --- Build dispatch context ---
     cmd_fns = {
         "cmd_voice_say": cmd_voice_say,
         "cmd_voice_verify": cmd_voice_verify,
@@ -920,6 +859,136 @@ def cmd_voice_run_impl(
         "cmd_mission_status": cmd_mission_status,
         "cmd_status": cmd_status,
     }
+    return cmd_fns, _vp.repo_root, _vp._web_augmented_llm_conversation
+
+
+def _dispatch_voice_intent(
+    lowered: str,
+    text: str,
+    ctx: "_DispatchCtx",
+    web_augmented_fn,
+    speak: bool,
+    model_override: str,
+    respond_fn,
+) -> tuple[str, int]:
+    """Match *lowered* against dispatch rules and run the matching handler.
+
+    Falls back to web-augmented LLM conversation when no rule matches.
+    Returns ``(intent, rc)``.
+    """
+    _phone_place_call_has_number = (
+        (lowered.startswith("call ") or "place a call" in lowered
+         or "make a call" in lowered or "phone call" in lowered)
+        and _extract_first_phone_number(text)
+    )
+
+    for matcher, handler in _DISPATCH_RULES:
+        if handler is _handle_phone_place_call and not _phone_place_call_has_number:
+            continue
+        if matcher(lowered):
+            return handler(ctx)
+
+    rc = web_augmented_fn(
+        text, speak=speak, force_web_search=False,
+        model_override=model_override, default_route="routine",
+        try_fallback_classifier=True, response_callback=respond_fn,
+    )
+    return "llm_conversation", rc
+
+
+def _speak_persona_reply(intent: str, rc: int, repo_root_fn, cmd_voice_say) -> None:
+    """Speak a persona-flavored reply for non-LLM intents."""
+    persona = load_persona_config(repo_root_fn())
+    persona_line = compose_persona_reply(
+        persona, intent=intent, success=(rc == 0),
+        reason="" if rc == 0 else "failed or requires approval",
+    )
+    cmd_voice_say(text=persona_line)
+
+
+def _check_voice_auth(
+    lowered: str,
+    execute: bool,
+    approve_privileged: bool,
+    voice_user: str,
+    voice_auth_wav: str,
+    voice_threshold: float,
+    master_password: str,
+    speak: bool,
+    skip_voice_auth_guard: bool,
+    cmd_fns: dict,
+    repo_root,
+) -> tuple[int | None, bool]:
+    """Run master-password verification and voice auth checks.
+
+    Returns ``(auth_rc, master_password_ok)`` where *auth_rc* is ``None``
+    when auth passes or an int return code when it fails.
+    """
+    master_password_ok = False
+    if master_password.strip():
+        master_password_ok = verify_master_password(repo_root(), master_password.strip())
+
+    read_only_request = _is_read_only_voice_request(
+        lowered, execute=execute, approve_privileged=approve_privileged,
+    )
+
+    auth_rc = _validate_voice_auth(
+        voice_user=voice_user, voice_auth_wav=voice_auth_wav,
+        voice_threshold=voice_threshold, master_password=master_password,
+        master_password_ok=master_password_ok, execute=execute,
+        approve_privileged=approve_privileged, read_only_request=read_only_request,
+        skip_voice_auth_guard=skip_voice_auth_guard, speak=speak,
+        cmd_voice_say=cmd_fns["cmd_voice_say"],
+        cmd_voice_verify=cmd_fns["cmd_voice_verify"],
+        repo_root=repo_root,
+    )
+    return auth_rc, master_password_ok
+
+
+def cmd_voice_run_impl(
+    text: str,
+    execute: bool,
+    approve_privileged: bool,
+    speak: bool,
+    snapshot_path: Path,
+    actions_path: Path,
+    voice_user: str,
+    voice_auth_wav: str,
+    voice_threshold: float,
+    master_password: str,
+    model_override: str = "",
+    skip_voice_auth_guard: bool = False,
+) -> int:
+    """Implementation body for voice-run (called by handler via callback)."""
+    cmd_fns, repo_root, _web_augmented_llm_conversation = _import_voice_commands()
+    lowered = text.lower().strip()
+
+    auth_rc, master_password_ok = _check_voice_auth(
+        lowered, execute, approve_privileged, voice_user,
+        voice_auth_wav, voice_threshold, master_password,
+        speak, skip_voice_auth_guard, cmd_fns, repo_root,
+    )
+    if auth_rc is not None:
+        return auth_rc
+
+    _last_response = ""
+
+    def _respond(msg: str) -> None:
+        nonlocal _last_response
+        _last_response = msg
+        print(f"response={escape_response(msg)}")
+
+    def _require_state_mutation_voice_auth() -> bool:
+        if skip_voice_auth_guard:
+            return True
+        if voice_auth_wav.strip() or master_password_ok:
+            return True
+        print("intent=voice_auth_required")
+        print("reason=state_mutating_voice_actions_require_voice_auth_wav")
+        if speak:
+            cmd_fns["cmd_voice_say"](text="Voice authentication is required for state changing commands.")
+        return False
+
     ctx = _build_dispatch_ctx(
         text, lowered,
         execute=execute, approve_privileged=approve_privileged,
@@ -932,32 +1001,10 @@ def cmd_voice_run_impl(
         web_augmented_fn=_web_augmented_llm_conversation, cmd_fns=cmd_fns,
     )
 
-    # --- Dispatch via rules table ---
-    intent = "unknown"
-    rc = 1
-
-    # Special pre-check: phone_place_call requires a number in the text
-    # to avoid false positives on "call" in other contexts.
-    _phone_place_call_has_number = (
-        (lowered.startswith("call ") or "place a call" in lowered
-         or "make a call" in lowered or "phone call" in lowered)
-        and _extract_first_phone_number(text)
+    intent, rc = _dispatch_voice_intent(
+        lowered, text, ctx, _web_augmented_llm_conversation,
+        speak, model_override, _respond,
     )
-
-    for matcher, handler in _DISPATCH_RULES:
-        if handler is _handle_phone_place_call and not _phone_place_call_has_number:
-            continue
-        if matcher(lowered):
-            intent, rc = handler(ctx)
-            break
-    else:
-        intent = "llm_conversation"
-        rc = _web_augmented_llm_conversation(
-            text, speak=speak, force_web_search=False,
-            model_override=model_override, default_route="routine",
-            try_fallback_classifier=True, response_callback=_respond,
-        )
-
     print(f"intent={intent}")
     print(f"status_code={rc}")
 
@@ -966,13 +1013,7 @@ def cmd_voice_run_impl(
             intent, rc, text, _last_response,
             execute, approve_privileged, voice_user,
         )
-
     if speak and intent != "llm_conversation":
-        persona = load_persona_config(repo_root())
-        persona_line = compose_persona_reply(
-            persona, intent=intent, success=(rc == 0),
-            reason="" if rc == 0 else "failed or requires approval",
-        )
-        cmd_voice_say(text=persona_line)
+        _speak_persona_reply(intent, rc, repo_root, cmd_fns["cmd_voice_say"])
 
     return rc

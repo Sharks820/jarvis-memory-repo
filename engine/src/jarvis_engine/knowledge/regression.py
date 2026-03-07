@@ -62,6 +62,22 @@ class KGComparison(TypedDict):
     current_edge_count: int
     previous_edge_count: int
 
+
+class ComparisonResult(TypedDict, total=False):
+    """Result from :meth:`RegressionChecker.compare`.
+
+    Core keys (``status``, ``discrepancies``, ``current``, ``previous``) are
+    always present.  ``message`` appears only for baseline comparisons, and
+    ``node_diff`` only when regressions are detected.
+    """
+
+    status: str
+    message: str
+    discrepancies: list[dict]
+    current: KGSnapshot
+    previous: KGSnapshot | None
+    node_diff: NodeDiff
+
 _MAX_BACKUPS = 10
 
 # Consistent hash for empty graphs (SHA-256 of "empty_knowledge_graph")
@@ -302,7 +318,7 @@ class RegressionChecker:
 
         return {"added": added, "removed": removed, "modified": modified}
 
-    def compare(self, previous: dict | None, current: dict) -> dict:
+    def compare(self, previous: dict | None, current: dict) -> ComparisonResult:
         """Compare two metric snapshots and report discrepancies.
 
         Args:
@@ -383,7 +399,7 @@ class RegressionChecker:
         else:
             status = "warn"
 
-        result: dict = {
+        result: ComparisonResult = {
             "status": status,
             "discrepancies": discrepancies,
             "previous": previous,

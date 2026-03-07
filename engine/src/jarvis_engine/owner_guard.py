@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import secrets
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 
 class OwnerGuardState(TypedDict):

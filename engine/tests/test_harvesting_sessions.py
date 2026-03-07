@@ -350,10 +350,11 @@ class TestSemanticDedup:
         mock_embed.embed.return_value = [0.1] * 768
 
         # Mock engine that returns high similarity for second query
-        mock_engine = MagicMock()
-        mock_engine.search_by_vector.return_value = [{"score": 0.95, "record_id": "existing"}]
+        mock_engine = MagicMock(spec=MemoryEngine)
+        # search_vec returns list[tuple[record_id, distance]]; distance < 0.4 ≈ cosine > 0.92
+        mock_engine.search_vec.return_value = [("existing", 0.1)]
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["record_1"]
         mock_pipeline._embed_service = mock_embed
         mock_pipeline._engine = mock_engine

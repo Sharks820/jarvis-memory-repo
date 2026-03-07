@@ -2092,3 +2092,545 @@ def test_missions_status_returns_structure(mobile_server, monkeypatch) -> None:
     assert m1["mission_id"] == "m-002"
     assert m1["status"] == "pending"
     assert m1["verified_findings"] == 0
+
+
+# ---------------------------------------------------------------------------
+# GET /alerts/pending endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_alerts_pending_requires_auth(mobile_server) -> None:
+    """GET /alerts/pending without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/alerts/pending")
+    assert code == 401
+
+
+def test_alerts_pending_returns_empty_when_no_queue(mobile_server) -> None:
+    """GET /alerts/pending returns empty list when no alert queue file."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/alerts/pending", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["alerts"] == []
+
+
+def test_alerts_pending_drains_alerts_from_queue(mobile_server) -> None:
+    """GET /alerts/pending returns alerts and drains the queue."""
+    queue_dir = mobile_server.root / ".planning" / "runtime"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    queue_path = queue_dir / "pending_alerts.jsonl"
+    alerts = [
+        json.dumps({"type": "calendar", "message": "Meeting in 10 minutes", "ts": "2026-03-07T09:50:00Z"}),
+        json.dumps({"type": "nudge", "message": "Remember to take meds", "ts": "2026-03-07T10:00:00Z"}),
+    ]
+    queue_path.write_text("\n".join(alerts) + "\n", encoding="utf-8")
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/alerts/pending", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert len(resp["alerts"]) == 2
+    assert resp["alerts"][0]["type"] == "calendar"
+    assert resp["alerts"][1]["type"] == "nudge"
+
+    # After drain, second request should return empty
+    headers2 = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code2, body2 = http_request("GET", f"{mobile_server.base_url}/alerts/pending", headers=headers2)
+    assert code2 == 200
+    resp2 = json.loads(body2.decode("utf-8"))
+    assert resp2["alerts"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /digest endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_digest_requires_auth(mobile_server) -> None:
+    """GET /digest without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/digest")
+    assert code == 401
+
+
+def test_digest_returns_structure(mobile_server) -> None:
+    """GET /digest with auth returns expected digest structure."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/digest", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    d = resp["digest"]
+    assert "context" in d
+    assert "since_ts" in d
+    assert "missed_calls" in d
+    assert "notifications_summary" in d
+    assert "calendar_upcoming" in d
+    assert "proactive_alerts" in d
+    assert "tasks_changed" in d
+
+
+def test_digest_accepts_query_params(mobile_server) -> None:
+    """GET /digest?since=1000&context=meeting returns parsed params."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/digest?since=1000&context=meeting", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    d = resp["digest"]
+    assert d["since_ts"] == 1000
+    assert d["context"] == "meeting"
+
+
+# ---------------------------------------------------------------------------
+# GET /meeting-prep endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_meeting_prep_requires_auth(mobile_server) -> None:
+    """GET /meeting-prep without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/meeting-prep")
+    assert code == 401
+
+
+def test_meeting_prep_requires_title_or_attendees(mobile_server) -> None:
+    """GET /meeting-prep without title or attendees returns 400."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/meeting-prep", headers=headers)
+    assert code == 400
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+    assert "title or attendees" in resp["error"].lower()
+
+
+def test_meeting_prep_returns_briefing_with_title(mobile_server) -> None:
+    """GET /meeting-prep?title=Sprint+Review returns briefing structure."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/meeting-prep?title=Sprint+Review", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    b = resp["briefing"]
+    assert b["title"] == "Sprint Review"
+    assert "attendees" in b
+    assert "context_facts" in b
+    assert "recent_memories" in b
+    assert "suggested_topics" in b
+
+
+def test_meeting_prep_returns_briefing_with_attendees(mobile_server) -> None:
+    """GET /meeting-prep?attendees=Alice,Bob returns briefing with attendees parsed."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/meeting-prep?attendees=Alice,Bob", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    b = resp["briefing"]
+    assert b["attendees"] == ["Alice", "Bob"]
+
+
+# ---------------------------------------------------------------------------
+# GET /scam/campaigns endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_scam_campaigns_requires_auth(mobile_server) -> None:
+    """GET /scam/campaigns without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/scam/campaigns")
+    assert code == 401
+
+
+def test_scam_campaigns_returns_empty_when_no_data(mobile_server) -> None:
+    """GET /scam/campaigns returns empty list when no campaign data exists."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/scam/campaigns", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["campaigns"] == []
+    assert resp["block_actions"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /scam/stats endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_scam_stats_requires_auth(mobile_server) -> None:
+    """GET /scam/stats without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/scam/stats")
+    assert code == 401
+
+
+def test_scam_stats_returns_structure_when_no_data(mobile_server) -> None:
+    """GET /scam/stats returns default stats when no data exists."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/scam/stats", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["total_screened"] == 0
+    assert resp["active_campaigns"] == 0
+
+
+# ---------------------------------------------------------------------------
+# POST /scam/report-call endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_scam_report_call_requires_auth(mobile_server) -> None:
+    """POST /scam/report-call without auth should return 401."""
+    body = json.dumps({"number": "+15551234567"}).encode("utf-8")
+    code, _ = http_request("POST", f"{mobile_server.base_url}/scam/report-call", body=body,
+                           headers={"Content-Type": "application/json"})
+    assert code == 401
+
+
+def test_scam_report_call_returns_enhanced_score(mobile_server) -> None:
+    """POST /scam/report-call processes a call report and returns enhanced score."""
+    from unittest.mock import patch, MagicMock
+
+    # Mock the scam_hunter and phone_guard modules to avoid file I/O dependencies
+    mock_report = {
+        "normalized": "+15551234567",
+        "stir_status": "failed",
+        "presentation": "unknown",
+    }
+
+    with patch("jarvis_engine.mobile_routes.scam.ScamRoutesMixin._handle_post_scam_report_call") as mock_handler:
+        # Instead of mocking internals, test the actual endpoint by mocking imports
+        pass
+
+    # Use a simpler approach: mock at the import level inside the handler
+    payload = {"number": "+15551234567", "stir_status": "failed", "presentation": "unknown"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+
+    with patch("jarvis_engine.scam_hunter.create_call_intel_report") as mock_create, \
+         patch("jarvis_engine.scam_hunter.save_call_intel"), \
+         patch("jarvis_engine.scam_hunter.load_call_intel", return_value=[]), \
+         patch("jarvis_engine.scam_hunter.detect_campaigns", return_value=[]), \
+         patch("jarvis_engine.scam_hunter.save_campaigns"), \
+         patch("jarvis_engine.scam_hunter.compute_enhanced_spam_score", return_value=0.75), \
+         patch("jarvis_engine.scam_hunter.lookup_carrier_cached", return_value=None), \
+         patch("jarvis_engine.scam_hunter.score_time_of_day", return_value=0.3), \
+         patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"), \
+         patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[]):
+        mock_create.return_value = MagicMock(normalized="+15551234567")
+        code, body = http_request("POST", f"{mobile_server.base_url}/scam/report-call", raw, headers)
+
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "enhanced_score" in resp
+    assert "recommended_action" in resp
+    assert resp["enhanced_score"] == 0.75
+    assert resp["recommended_action"] == "silence"  # 0.60 <= 0.75 < 0.80
+
+
+def test_scam_report_call_handles_internal_error(mobile_server) -> None:
+    """POST /scam/report-call returns fallback on internal error."""
+    from unittest.mock import patch
+
+    payload = {"number": "+15551234567"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+
+    with patch("jarvis_engine.scam_hunter.create_call_intel_report", side_effect=RuntimeError("boom")):
+        code, body = http_request("POST", f"{mobile_server.base_url}/scam/report-call", raw, headers)
+
+    assert code == 500
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+    assert resp["recommended_action"] == "voicemail"  # safe default
+
+
+# ---------------------------------------------------------------------------
+# POST /scam/lookup endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_scam_lookup_requires_auth(mobile_server) -> None:
+    """POST /scam/lookup without auth should return 401."""
+    body = json.dumps({"number": "+15551234567"}).encode("utf-8")
+    code, _ = http_request("POST", f"{mobile_server.base_url}/scam/lookup", body=body,
+                           headers={"Content-Type": "application/json"})
+    assert code == 401
+
+
+def test_scam_lookup_returns_carrier_info(mobile_server) -> None:
+    """POST /scam/lookup returns carrier and campaign info."""
+    from unittest.mock import patch, MagicMock
+
+    mock_carrier = MagicMock()
+    mock_carrier.carrier = "Twilio"
+    mock_carrier.line_type = "voip"
+    mock_carrier.is_voip = True
+    mock_carrier.risk_score = 0.6
+
+    payload = {"number": "+15551234567"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+
+    with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", return_value=mock_carrier), \
+         patch("jarvis_engine.scam_hunter.load_campaigns", return_value=[]), \
+         patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"):
+        code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
+
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["number"] == "+15551234567"
+    assert resp["carrier"] == "Twilio"
+    assert resp["line_type"] == "voip"
+    assert resp["is_voip"] is True
+    assert resp["risk_score"] == 0.6
+
+
+def test_scam_lookup_handles_internal_error(mobile_server) -> None:
+    """POST /scam/lookup returns fallback on internal error."""
+    from unittest.mock import patch
+
+    payload = {"number": "+15551234567"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+
+    with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", side_effect=RuntimeError("boom")), \
+         patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"):
+        code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
+
+    assert code == 500
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+    assert resp["carrier"] == ""
+
+
+# ---------------------------------------------------------------------------
+# POST /smart-reply endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_smart_reply_requires_auth(mobile_server) -> None:
+    """POST /smart-reply without auth should return 401."""
+    body = json.dumps({"contact_name": "Alice"}).encode("utf-8")
+    code, _ = http_request("POST", f"{mobile_server.base_url}/smart-reply", body=body,
+                           headers={"Content-Type": "application/json"})
+    assert code == 401
+
+
+def test_smart_reply_meeting_context(mobile_server) -> None:
+    """POST /smart-reply with context=meeting generates meeting reply."""
+    payload = {"contact_name": "Alice", "context": "meeting"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/smart-reply", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "Alice" in resp["reply"]
+    assert "meeting" in resp["reply"].lower()
+    assert "Sent by Jarvis" in resp["reply"]
+    assert "contact_context" in resp
+
+
+def test_smart_reply_driving_context(mobile_server) -> None:
+    """POST /smart-reply with context=driving generates driving reply."""
+    payload = {"contact_name": "Bob", "context": "driving", "eta_minutes": 15}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/smart-reply", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "Bob" in resp["reply"]
+    assert "driving" in resp["reply"].lower()
+    assert "15 min" in resp["reply"]
+
+
+def test_smart_reply_sleeping_context(mobile_server) -> None:
+    """POST /smart-reply with context=sleeping generates sleeping reply."""
+    payload = {"contact_name": "Carol", "context": "sleeping"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/smart-reply", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "Carol" in resp["reply"]
+    assert "morning" in resp["reply"].lower()
+
+
+def test_smart_reply_default_context(mobile_server) -> None:
+    """POST /smart-reply with no context generates generic reply."""
+    payload = {"contact_name": "Dave"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/smart-reply", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "Dave" in resp["reply"]
+    assert "missed your call" in resp["reply"].lower()
+
+
+def test_smart_reply_no_contact_name_uses_default(mobile_server) -> None:
+    """POST /smart-reply without contact_name uses 'there' as default."""
+    payload = {"context": "driving"}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/smart-reply", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "there" in resp["reply"]
+
+
+# ---------------------------------------------------------------------------
+# GET /sync/heartbeat endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_sync_heartbeat_requires_auth(mobile_server) -> None:
+    """GET /sync/heartbeat without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/sync/heartbeat")
+    assert code == 401
+
+
+def test_sync_heartbeat_returns_server_time(mobile_server) -> None:
+    """GET /sync/heartbeat with auth returns server_time and device_id."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    headers["X-Jarvis-Device-Id"] = "galaxy_s25_primary"
+    code, body = http_request("GET", f"{mobile_server.base_url}/sync/heartbeat", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "server_time" in resp
+    assert isinstance(resp["server_time"], int)
+    assert resp["device_id"] == "galaxy_s25_primary"
+
+
+def test_sync_heartbeat_uses_unknown_device_when_missing(mobile_server) -> None:
+    """GET /sync/heartbeat without X-Jarvis-Device-Id uses 'unknown'."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/sync/heartbeat", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert resp["device_id"] == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# GET /sync/config endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_sync_config_get_requires_auth(mobile_server) -> None:
+    """GET /sync/config without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/sync/config")
+    assert code == 401
+
+
+def test_sync_config_get_returns_config(mobile_server) -> None:
+    """GET /sync/config returns auto-sync config for the requesting device."""
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    headers["X-Jarvis-Device-Id"] = "galaxy_s25_primary"
+    code, body = http_request("GET", f"{mobile_server.base_url}/sync/config", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "config" in resp
+    config = resp["config"]
+    # Should contain default sync config keys
+    assert "enabled" in config
+    assert "relay_url" in config
+
+
+# ---------------------------------------------------------------------------
+# POST /sync/config endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_sync_config_post_requires_auth(mobile_server) -> None:
+    """POST /sync/config without auth should return 401."""
+    body = json.dumps({"enabled": False}).encode("utf-8")
+    code, _ = http_request("POST", f"{mobile_server.base_url}/sync/config", body=body,
+                           headers={"Content-Type": "application/json"})
+    assert code == 401
+
+
+def test_sync_config_post_updates_config(mobile_server) -> None:
+    """POST /sync/config updates auto-sync configuration."""
+    payload = {"config": {"enabled": False}}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/config", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "config" in resp
+    assert resp["config"]["enabled"] is False
+
+
+def test_sync_config_post_ignores_unknown_keys(mobile_server) -> None:
+    """POST /sync/config ignores keys not in DEFAULT_SYNC_CONFIG."""
+    payload = {"config": {"enabled": True, "nonexistent_key": "should_be_ignored"}}
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("POST", f"{mobile_server.base_url}/sync/config", raw, headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    assert "nonexistent_key" not in resp["config"]
+
+
+# ---------------------------------------------------------------------------
+# GET /security/dashboard endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_security_dashboard_requires_auth(mobile_server) -> None:
+    """GET /security/dashboard without auth should return 401."""
+    code, _ = http_request("GET", f"{mobile_server.base_url}/security/dashboard")
+    assert code == 401
+
+
+def test_security_dashboard_returns_503_without_orchestrator(mobile_server) -> None:
+    """GET /security/dashboard returns 503 when security orchestrator is not available."""
+    # Ensure no security orchestrator is set
+    mobile_server.server.security = None
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/security/dashboard", headers=headers)
+    assert code == 503
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is False
+    assert "not available" in resp["error"].lower()
+
+
+def test_security_dashboard_returns_dashboard_data(mobile_server) -> None:
+    """GET /security/dashboard returns full dashboard when orchestrator is available."""
+    from unittest.mock import MagicMock
+
+    mock_sec = MagicMock()
+    mock_sec.status.return_value = {"threat_level": "normal", "active_threats": 0}
+    mock_sec.action_auditor.recent_actions.return_value = [{"action": "test", "ts": "2026-03-07"}]
+    mock_sec.scope_enforcer.recent_violations.return_value = []
+    mock_sec.resource_monitor.status.return_value = {"cpu_ok": True}
+    mock_sec.heartbeat.status.return_value = {"alive": True}
+    mock_sec.threat_intel.status.return_value = {"feeds_active": 2}
+
+    mobile_server.server.security = mock_sec
+
+    headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+    code, body = http_request("GET", f"{mobile_server.base_url}/security/dashboard", headers=headers)
+    assert code == 200
+    resp = json.loads(body.decode("utf-8"))
+    assert resp["ok"] is True
+    d = resp["dashboard"]
+    assert d["security_status"]["threat_level"] == "normal"
+    assert len(d["recent_actions"]) == 1
+    assert d["scope_violations"] == []
+    assert d["resource_usage"]["cpu_ok"] is True
+    assert d["heartbeat"]["alive"] is True
+    assert d["threat_intel"]["feeds_active"] == 2

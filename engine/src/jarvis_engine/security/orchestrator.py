@@ -28,7 +28,12 @@ if TYPE_CHECKING:
 from jarvis_engine.security.adaptive_defense import AdaptiveDefenseEngine
 from jarvis_engine.security.alert_chain import AlertChain
 from jarvis_engine.security.attack_memory import AttackPatternMemory
-from jarvis_engine.security.containment import ContainmentEngine
+from jarvis_engine.security.containment import (
+    ContainmentEngine,
+    ContainResult,
+    RecoveryResult,
+)
+from jarvis_engine.security.ip_tracker import ThreatReport
 from jarvis_engine.security.forensic_logger import ForensicLogger
 from jarvis_engine.security.honeypot import HoneypotEngine
 from jarvis_engine.security.injection_firewall import (
@@ -108,6 +113,13 @@ class SecurityStatus(TypedDict, total=False):
     threat_intel: dict[str, Any]
     threat_neutralizer: dict[str, Any]
     owner_session: dict[str, Any]
+
+
+class AllThreatsReport(TypedDict):
+    """Result from :meth:`SecurityOrchestrator.get_threat_report` when no IP is specified."""
+
+    total_tracked: int
+    threats: list[dict]
 
 
 # Threat levels that trigger automatic escalation
@@ -650,7 +662,7 @@ class SecurityOrchestrator:
     # Public delegation methods for CQRS handlers
     # ------------------------------------------------------------------
 
-    def contain(self, ip: str, level: int, reason: str) -> dict:
+    def contain(self, ip: str, level: int, reason: str) -> ContainResult:
         """Execute containment at the specified *level* against *ip*.
 
         Delegates to the internal ``ContainmentEngine`` so handlers do not need
@@ -658,7 +670,7 @@ class SecurityOrchestrator:
         """
         return self._containment.contain(ip=ip, level=level, reason=reason)
 
-    def recover(self, level: int, master_password: str | None = None) -> dict:
+    def recover(self, level: int, master_password: str | None = None) -> RecoveryResult:
         """Recover from containment at the specified *level*.
 
         Delegates to the internal ``ContainmentEngine``.
@@ -673,7 +685,7 @@ class SecurityOrchestrator:
         """
         return self._adaptive_defense.generate_briefing()
 
-    def get_threat_report(self, ip: str | None = None) -> dict:
+    def get_threat_report(self, ip: str | None = None) -> ThreatReport | AllThreatsReport:
         """Retrieve threat report for a specific IP or all tracked IPs.
 
         Delegates to the internal ``IPTracker``.

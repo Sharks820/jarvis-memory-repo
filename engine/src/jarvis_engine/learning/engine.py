@@ -81,11 +81,24 @@ class ConversationLearningEngine:
             return {"records_created": 0, "correction_detected": False,
                     "correction_applied": False, "error": "no pipeline"}
 
-        records_created = 0
-        correction_detected = False
-        correction_applied = False
+        correction_detected, correction_applied = self._detect_corrections(user_message)
+        preferences_detected = self._extract_preferences(user_message)
+        feedback_detected = self._record_feedback_and_usage(user_message, route, topic)
+        records_created = self._ingest_messages(user_message, assistant_response, task_id)
 
-        # Check for user corrections
+        return {
+            "records_created": records_created,
+            "correction_detected": correction_detected,
+            "correction_applied": correction_applied,
+            "preferences_detected": preferences_detected,
+            "feedback_detected": feedback_detected,
+        }
+
+    def _detect_corrections(self, user_message: str) -> tuple[bool, bool]:
+        """Check for user corrections and apply them if found.
+
+        Returns (correction_detected, correction_applied).
+        """
         try:
             from jarvis_engine.learning.correction_detector import CorrectionDetector
 
@@ -94,9 +107,7 @@ class ConversationLearningEngine:
             detector = self._correction_detector
             correction = detector.detect_correction(user_message)
             if correction:
-                correction_detected = True
                 applied = detector.apply_correction(correction)
-                correction_applied = applied
                 try:
                     from jarvis_engine.activity_feed import log_activity
 
@@ -111,44 +122,62 @@ class ConversationLearningEngine:
                     )
                 except ImportError as exc:
                     logger.warning("activity_feed not available for correction logging: %s", exc)
+                return True, applied
         except ImportError as exc:
             logger.warning("correction_detector not available: %s", exc)
+        return False, False
 
-        # Extract user preferences if tracker is available
-        preferences_detected: list[tuple[str, str]] = []
-        if self._preference_tracker is not None:
-            try:
-                preferences_detected = self._preference_tracker.observe(user_message)
-                if preferences_detected:
-                    try:
-                        from jarvis_engine.activity_feed import ActivityCategory, log_activity
-                        for key, value in preferences_detected:
-                            log_activity(
-                                ActivityCategory.PREFERENCE_LEARNED,
-                                f"Learned preference: {key}={value}",
-                                {"key": key, "value": value},
-                            )
-                    except (ImportError, OSError, sqlite3.Error) as exc:
-                        logger.warning("Preference activity logging failed: %s", exc)
-            except (ValueError, TypeError, sqlite3.Error) as exc:
-                logger.warning("Failed to observe preferences: %s", exc)
+    def _extract_preferences(self, user_message: str) -> list[tuple[str, str]]:
+        """Extract and log user preferences from the message."""
+        if self._preference_tracker is None:
+            return []
+        try:
+            preferences = self._preference_tracker.observe(user_message)
+            if preferences:
+                try:
+                    from jarvis_engine.activity_feed import ActivityCategory, log_activity
+                    for key, value in preferences:
+                        log_activity(
+                            ActivityCategory.PREFERENCE_LEARNED,
+                            f"Learned preference: {key}={value}",
+                            {"key": key, "value": value},
+                        )
+                except (ImportError, OSError, sqlite3.Error) as exc:
+                    logger.warning("Preference activity logging failed: %s", exc)
+            return preferences
+        except (ValueError, TypeError, sqlite3.Error) as exc:
+            logger.warning("Failed to observe preferences: %s", exc)
+            return []
 
-        # Detect implicit feedback if tracker is available
-        feedback_detected = "neutral"
+    def _record_feedback_and_usage(
+        self, user_message: str, route: str, topic: str,
+    ) -> str:
+        """Record implicit feedback and usage patterns."""
+        feedback = "neutral"
         if self._feedback_tracker is not None:
             try:
-                feedback_detected = self._feedback_tracker.record_feedback(user_message, route=route)
+                feedback = self._feedback_tracker.record_feedback(user_message, route=route)
             except (ValueError, TypeError, sqlite3.Error) as exc:
                 logger.warning("Failed to record feedback: %s", exc)
 
-        # Record usage pattern if tracker is available
         if self._usage_tracker is not None:
             try:
                 self._usage_tracker.record_interaction(route=route, topic=topic)
             except (ValueError, TypeError, sqlite3.Error) as exc:
                 logger.warning("Failed to record usage pattern: %s", exc)
 
-        # Ingest user message if knowledge-bearing
+        return feedback
+
+    def _ingest_messages(
+        self, user_message: str, assistant_response: str, task_id: str,
+    ) -> int:
+        """Ingest knowledge-bearing messages into the memory pipeline.
+
+        Returns the number of records created.
+        """
+        assert self._pipeline is not None  # caller guarantees
+        records_created = 0
+
         if self._is_knowledge_bearing(user_message):
             try:
                 ids = self._pipeline.ingest(
@@ -162,7 +191,6 @@ class ConversationLearningEngine:
             except (sqlite3.Error, OSError, ValueError) as exc:
                 logger.warning("Failed to ingest user message: %s", exc)
 
-        # Ingest assistant response if knowledge-bearing (episodic, not semantic)
         if self._is_knowledge_bearing(assistant_response):
             try:
                 ids = self._pipeline.ingest(
@@ -176,13 +204,7 @@ class ConversationLearningEngine:
             except (sqlite3.Error, OSError, ValueError) as exc:
                 logger.warning("Failed to ingest assistant response: %s", exc)
 
-        return {
-            "records_created": records_created,
-            "correction_detected": correction_detected,
-            "correction_applied": correction_applied,
-            "preferences_detected": preferences_detected,
-            "feedback_detected": feedback_detected,
-        }
+        return records_created
 
     # Keywords indicating personal/factual data worth keeping even in short messages.
     # Single-word keywords checked via word-boundary (set intersection) to avoid

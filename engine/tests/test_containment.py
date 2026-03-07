@@ -9,6 +9,7 @@ import pytest
 from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel, _hash_password
 from jarvis_engine.security.forensic_logger import ForensicLogger
 from jarvis_engine.security.ip_tracker import IPTracker
+from jarvis_engine.security.session_manager import SessionManager
 
 
 # ---------------------------------------------------------------
@@ -331,19 +332,19 @@ class TestIPTrackerIntegration:
 
 class TestSessionManagerIntegration:
     def test_lockdown_terminates_all_sessions(self) -> None:
-        mock_sm = MagicMock()
+        mock_sm = MagicMock(spec=SessionManager)
         eng = _make_engine(session_manager=mock_sm)
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "breach")
         mock_sm.terminate_all_sessions.assert_called_once()
 
     def test_throttle_does_not_terminate_sessions(self) -> None:
-        mock_sm = MagicMock()
+        mock_sm = MagicMock(spec=SessionManager)
         eng = _make_engine(session_manager=mock_sm)
         eng.contain("10.0.0.1", ContainmentLevel.THROTTLE, "minor")
         mock_sm.terminate_all_sessions.assert_not_called()
 
     def test_full_kill_terminates_all_sessions(self) -> None:
-        mock_sm = MagicMock()
+        mock_sm = MagicMock(spec=SessionManager)
         eng = _make_engine(session_manager=mock_sm)
         eng.contain("10.0.0.1", ContainmentLevel.FULL_KILL, "exploit")
         mock_sm.terminate_all_sessions.assert_called_once()

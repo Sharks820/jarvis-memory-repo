@@ -11,6 +11,7 @@ import math
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TypedDict
 
 from jarvis_engine._shared import atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
@@ -21,6 +22,14 @@ _LOCK = threading.Lock()
 _HALF_LIFE_DAYS = 30.0
 
 
+class InterestEntry(TypedDict):
+    """Single topic entry in the interests store."""
+
+    score: float
+    count: int
+    last_seen: str
+
+
 class InterestLearner:
     """Learns and decays user interest topics for news personalization."""
 
@@ -29,7 +38,7 @@ class InterestLearner:
         self._path = runtime_dir(root) / "interests.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _load(self) -> dict:
+    def _load(self) -> dict[str, InterestEntry]:
         from jarvis_engine._shared import load_json_file
 
         return load_json_file(self._path, {}, expected_type=dict)
