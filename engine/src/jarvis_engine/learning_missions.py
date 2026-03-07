@@ -349,14 +349,13 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
     return verified
 
 
-def run_learning_mission(
-    root: Path,
-    *,
-    mission_id: str,
-    max_search_results: int = 8,
-    max_pages: int = 12,
-) -> MissionReport:
-    # Mark as "running" under lock before starting the long operation.
+def _start_mission(
+    root: Path, mission_id: str,
+) -> tuple[str, str, list[str]]:
+    """Mark mission as running and return its (topic, objective, sources) under lock.
+
+    Raises ``ValueError`` if the mission is not found.
+    """
     with _MISSIONS_LOCK:
         missions = load_missions(root)
         target: dict[str, Any] | None = None
@@ -369,21 +368,31 @@ def run_learning_mission(
         target["status"] = "running"
         target["updated_utc"] = _now_iso()
         _save_missions(root, missions)
-        # Copy fields under lock to avoid referencing the shared dict outside.
-        _topic = str(target.get("topic", "")).strip()
-        _sources = target.get("sources", MISSION_DEFAULT_SOURCES)
+        topic = str(target.get("topic", "")).strip()
+        objective = str(target.get("objective", ""))
+        sources = target.get("sources", MISSION_DEFAULT_SOURCES)
 
-    topic = _topic
-    sources = _sources
     if not isinstance(sources, list):
         sources = list(MISSION_DEFAULT_SOURCES)
-    queries = _mission_queries(topic, [str(s) for s in sources])
+    return topic, objective, sources
 
+
+def _fetch_mission_content(
+    topic: str,
+    queries: list[str],
+    *,
+    max_search_results: int,
+    max_pages: int,
+) -> tuple[list[str], list[tuple[str, str]], list[dict[str, str]]]:
+    """Search the web, fetch pages, and extract candidate findings.
+
+    Returns ``(scanned_urls, selected, candidate_rows)``.
+    """
     urls: list[str] = []
     for query in queries:
         urls.extend(_search_web(query, limit=max_search_results))
     urls = list(dict.fromkeys(urls))
-    candidate_rows: list[dict[str, str]] = []
+
     selected: list[tuple[str, str]] = []
     for url in urls[: max(1, max_pages)]:
         parsed = urlparse(url)
@@ -391,8 +400,10 @@ def run_learning_mission(
         if not domain:
             continue
         selected.append((url, domain))
+
     scanned_urls = [url for url, _domain in selected]
-    _update_mission_progress(root, mission_id, status="running", progress_pct=45, status_detail=f"Scanning {len(scanned_urls)} pages")
+
+    candidate_rows: list[dict[str, str]] = []
     workers = max(1, min(4, len(selected)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         future_map = {
@@ -412,40 +423,31 @@ def run_learning_mission(
             for statement in candidates:
                 candidate_rows.append({"statement": statement, "url": url, "domain": domain})
 
-    _update_mission_progress(root, mission_id, status="running", progress_pct=75, status_detail=f"Verifying {len(candidate_rows)} candidate findings")
-    verified = _verify_candidates(candidate_rows)
-    report = {
-        "mission_id": mission_id,
-        "topic": topic,
-        "objective": str(target.get("objective", "")),
-        "queries": queries,
-        "scanned_urls": scanned_urls,
-        "candidate_count": len(candidate_rows),
-        "verified_findings": verified,
-        "verified_count": len(verified),
-        "completed_utc": _now_iso(),
-    }
-    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
-    report_path = _reports_dir(root) / f"{safe_id}.report.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
-    _update_mission_progress(root, mission_id, status="running", progress_pct=90, status_detail="Finalizing mission report")
+    return scanned_urls, selected, candidate_rows
 
-    # Re-read under lock to avoid TOCTOU overwrites from concurrent creates/runs.
+
+def _finalize_mission(
+    root: Path,
+    mission_id: str,
+    verified: list[dict],
+    report: dict,
+    report_path: Path,
+) -> None:
+    """Update mission status under lock and log the final activity event."""
     with _MISSIONS_LOCK:
         missions = load_missions(root)
-        target = None
+        target: dict[str, Any] | None = None
         for item in missions:
             if str(item.get("mission_id", "")) == mission_id:
                 target = item
                 break
         if target is None:
             logger.warning("Mission %s disappeared during run — skipping status update", mission_id)
-            return report
+            return
         # Respect user-initiated cancellation — do not overwrite.
         if target.get("status") == "cancelled":
             logger.info("Mission %s was cancelled during run — preserving cancelled status", mission_id)
-            return report
+            return
         if verified:
             target["status"] = "completed"
             target["progress_pct"] = 100
@@ -464,8 +466,6 @@ def run_learning_mission(
             except (OSError, ImportError) as exc:
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
-            # No verified findings — mark as failed for retry.
-            # retries tracks how many times retry_failed_missions re-queued this.
             retries = int(target.get("retries", 0))
             target["status"] = "failed" if retries < 2 else "exhausted"
             target["progress_pct"] = 100
@@ -479,6 +479,7 @@ def run_learning_mission(
         final_detail = str(target.get("status_detail", "Completed"))
         final_topic = str(target.get("topic", ""))
         _save_missions(root, missions)
+
     _log_mission_activity(
         mission_id=mission_id,
         topic=final_topic,
@@ -486,6 +487,56 @@ def run_learning_mission(
         progress_pct=final_progress,
         step=final_detail,
     )
+
+
+def run_learning_mission(
+    root: Path,
+    *,
+    mission_id: str,
+    max_search_results: int = 8,
+    max_pages: int = 12,
+) -> MissionReport:
+    topic, objective, sources = _start_mission(root, mission_id)
+    queries = _mission_queries(topic, [str(s) for s in sources])
+
+    _update_mission_progress(
+        root, mission_id, status="running", progress_pct=45,
+        status_detail=f"Scanning pages",
+    )
+    scanned_urls, selected, candidate_rows = _fetch_mission_content(
+        topic, queries,
+        max_search_results=max_search_results,
+        max_pages=max_pages,
+    )
+
+    _update_mission_progress(
+        root, mission_id, status="running", progress_pct=75,
+        status_detail=f"Verifying {len(candidate_rows)} candidate findings",
+    )
+    verified = _verify_candidates(candidate_rows)
+
+    # Build and persist report
+    report = {
+        "mission_id": mission_id,
+        "topic": topic,
+        "objective": objective,
+        "queries": queries,
+        "scanned_urls": scanned_urls,
+        "candidate_count": len(candidate_rows),
+        "verified_findings": verified,
+        "verified_count": len(verified),
+        "completed_utc": _now_iso(),
+    }
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
+    report_path = _reports_dir(root) / f"{safe_id}.report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
+
+    _update_mission_progress(
+        root, mission_id, status="running", progress_pct=90,
+        status_detail="Finalizing mission report",
+    )
+    _finalize_mission(root, mission_id, verified, report, report_path)
     return report
 
 

@@ -17,7 +17,11 @@ from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine import _bus as bus_mod
-from jarvis_engine.command_bus import AppContext
+from jarvis_engine.command_bus import AppContext, CommandBus
+from jarvis_engine.gateway.models import ModelGateway
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 
 
 # ===========================================================================
@@ -376,10 +380,10 @@ class TestBuildSmartContext:
 
     def test_hybrid_search_path_when_engine_available(self, monkeypatch):
         """When bus has engine and embed_service on ctx, uses hybrid_search."""
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_query.return_value = [0.1, 0.2, 0.3]
-        bus = MagicMock()
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
+        bus = MagicMock(spec=CommandBus)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=mock_embed)
 
         fake_records = [
             {"summary": "User likes hiking on weekends"},
@@ -420,10 +424,10 @@ class TestBuildSmartContext:
 
     def test_legacy_fallback_when_hybrid_fails(self, monkeypatch):
         """When hybrid_search raises, falls back to build_context_packet."""
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_query.side_effect = RuntimeError("embed failed")
-        bus = MagicMock()
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
+        bus = MagicMock(spec=CommandBus)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=mock_embed)
 
         fake_packet = {
             "selected": [{"summary": "Fallback memory"}]
@@ -438,7 +442,7 @@ class TestBuildSmartContext:
     def test_kg_facts_injected_when_engine_available(self, monkeypatch, tmp_path):
         """KG facts are queried and returned as fact_lines."""
         bus = MagicMock(spec=[])
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=None)
 
         # Legacy path returns empty for memory
         monkeypatch.setattr(
@@ -447,7 +451,7 @@ class TestBuildSmartContext:
         )
 
         # Mock the KnowledgeGraph that's constructed inside _build_smart_context
-        mock_kg_instance = MagicMock()
+        mock_kg_instance = MagicMock(spec=KnowledgeGraph)
         mock_kg_instance.query_relevant_facts.return_value = [
             {"label": "User is allergic to peanuts", "confidence": 0.9},
             {"label": "User prefers window seat", "confidence": 0.7},
@@ -461,14 +465,14 @@ class TestBuildSmartContext:
     def test_kg_facts_filtered_by_confidence(self, monkeypatch):
         """KG facts with confidence < 0.5 are excluded from fact_lines."""
         bus = MagicMock(spec=[])
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=None)
 
         monkeypatch.setattr(
             voice_pipeline_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
-        mock_kg_instance = MagicMock()
+        mock_kg_instance = MagicMock(spec=KnowledgeGraph)
         mock_kg_instance.query_relevant_facts.return_value = [
             {"label": "High confidence fact", "confidence": 0.9},
             {"label": "Low confidence fact", "confidence": 0.3},
@@ -543,7 +547,7 @@ class TestQueryHandlerHistory:
         from jarvis_engine.handlers.task_handlers import QueryHandler
         from jarvis_engine.gateway.models import GatewayResponse
 
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = GatewayResponse(
             text="response", model="test-model", provider="test"
         )
@@ -580,7 +584,7 @@ class TestQueryHandlerHistory:
         from jarvis_engine.handlers.task_handlers import QueryHandler
         from jarvis_engine.gateway.models import GatewayResponse
 
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = GatewayResponse(
             text="answer", model="test-model", provider="test"
         )
@@ -609,7 +613,7 @@ class TestQueryHandlerHistory:
         from jarvis_engine.handlers.task_handlers import QueryHandler
         from jarvis_engine.gateway.models import GatewayResponse
 
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = GatewayResponse(
             text="ok", model="m", provider="p"
         )
@@ -644,7 +648,7 @@ class TestQueryHandlerHistory:
         from jarvis_engine.handlers.task_handlers import QueryHandler
         from jarvis_engine.gateway.models import GatewayResponse
 
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = GatewayResponse(
             text="ok", model="m", provider="p"
         )

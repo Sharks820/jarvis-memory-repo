@@ -319,6 +319,202 @@ class ModelGateway:
             return "glm-4.7-flash"
         return None
 
+    @staticmethod
+    def _derive_temperature(
+        model: str,
+        route_reason: str,
+        temperature: float | None,
+    ) -> float:
+        """Derive sampling temperature from route/model when not explicitly set."""
+        if temperature is not None:
+            return temperature
+        model_lower = model.lower()
+        reason_lower = route_reason.lower()
+        if "codex" in model_lower or "math_logic" in reason_lower:
+            return 0.2
+        if "gemini" in model_lower or "creative" in reason_lower:
+            return 0.85
+        return 0.7
+
+    def _remap_model_if_needed(self, model: str) -> str:
+        """Remap Claude API model to best cloud model if Anthropic is unavailable."""
+        if model.startswith("claude-") and model not in CLI_MODEL_MAP and self._anthropic is None:
+            best = self._best_cloud_model()
+            if best:
+                logger.info("Anthropic unavailable, routing %s -> %s", model, best)
+                return best
+        return model
+
+    def _route_to_provider(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        route_reason: str,
+        privacy_routed: bool,
+    ) -> tuple[GatewayResponse, str, float]:
+        """Route request to the resolved provider with fallback on failure.
+
+        Returns (response, audit_reason, t0) where t0 is the perf_counter
+        value to use for latency calculation.
+        """
+        provider = self._resolve_provider(model)
+        t0 = time.perf_counter()
+
+        if provider == "anthropic":
+            return self._route_anthropic(
+                messages, model, max_tokens, temperature, route_reason, privacy_routed, t0,
+            )
+        if provider.startswith("cloud:"):
+            provider_key = provider.split(":", 1)[1]
+            return self._route_cloud(
+                messages, model, max_tokens, temperature, route_reason, privacy_routed, t0, provider_key,
+            )
+        if provider.startswith("cli:"):
+            cli_key = provider.split(":", 1)[1]
+            return self._route_cli(
+                messages, model, max_tokens, temperature, route_reason, privacy_routed, t0, cli_key,
+            )
+        return self._route_ollama(
+            messages, model, max_tokens, temperature, route_reason, privacy_routed, t0,
+        )
+
+    def _route_anthropic(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        route_reason: str,
+        privacy_routed: bool,
+        t0: float,
+    ) -> tuple[GatewayResponse, str, float]:
+        """Attempt Anthropic provider, falling back on API errors."""
+        try:
+            response = self._call_anthropic(messages, model, max_tokens, temperature)
+            return response, route_reason or "primary:anthropic", t0
+        except (APIConnectionError, APIStatusError, RateLimitError) as exc:
+            reason = f"{type(exc).__name__}"
+            logger.warning("Anthropic API error, falling back: %s", exc)
+            t0 = self._audit_failed_attempt("anthropic", model, route_reason, t0, privacy_routed)
+            response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic", privacy_routed=privacy_routed)
+            return response, f"fallback:{reason}", t0
+
+    def _route_cloud(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        route_reason: str,
+        privacy_routed: bool,
+        t0: float,
+        provider_key: str,
+    ) -> tuple[GatewayResponse, str, float]:
+        """Attempt cloud provider, falling back on errors."""
+        try:
+            response = self._call_openai_compat(messages, model, max_tokens, provider_key, temperature)
+            return response, route_reason or f"primary:cloud:{provider_key}", t0
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
+            reason = f"{provider_key}: {type(exc).__name__}"
+            logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
+            t0 = self._audit_failed_attempt(provider_key, model, route_reason, t0, privacy_routed)
+            response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key, privacy_routed=privacy_routed)
+            return response, f"fallback:{reason}", t0
+
+    def _route_cli(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        route_reason: str,
+        privacy_routed: bool,
+        t0: float,
+        cli_key: str,
+    ) -> tuple[GatewayResponse, str, float]:
+        """Attempt CLI provider, falling back on errors or empty response."""
+        try:
+            response = self._call_cli(messages, model, max_tokens, cli_key)
+            audit_reason = route_reason or f"primary:cli:{cli_key}"
+            if response.provider == "none":
+                t0 = self._audit_failed_attempt(cli_key, model, audit_reason, t0, privacy_routed)
+                reason = response.fallback_reason or f"{cli_key}_failed"
+                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
+                return response, f"fallback:{reason}", t0
+            return response, audit_reason, t0
+        except (OSError, RuntimeError, ValueError) as exc:
+            reason = f"{cli_key}: {type(exc).__name__}"
+            logger.warning("CLI provider %s failed, falling back: %s", cli_key, exc)
+            audit_reason = route_reason or f"primary:cli:{cli_key}"
+            t0 = self._audit_failed_attempt(cli_key, model, audit_reason, t0, privacy_routed)
+            response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
+            return response, f"fallback:{reason}", t0
+
+    def _route_ollama(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        route_reason: str,
+        privacy_routed: bool,
+        t0: float,
+    ) -> tuple[GatewayResponse, str, float]:
+        """Attempt Ollama, falling back to cloud if available and not privacy-routed."""
+        response = self._call_ollama(messages, model, max_tokens, temperature)
+        audit_reason = route_reason or "primary:ollama"
+        if response.provider == "none" and self._cloud_keys and not privacy_routed:
+            t0 = self._audit_failed_attempt("ollama", model, audit_reason, t0, privacy_routed)
+            response = self._fallback_chain(
+                messages, max_tokens, response.fallback_reason or "ollama_failed",
+                temperature, skip_ollama=True, privacy_routed=privacy_routed,
+            )
+            audit_reason = "fallback:ollama_failed"
+        return response, audit_reason, t0
+
+    def _log_completion(
+        self,
+        response: GatewayResponse,
+        audit_reason: str,
+        route_reason: str,
+        latency_ms: float,
+        privacy_routed: bool,
+    ) -> None:
+        """Log audit decision, cost tracking, and activity feed after completion."""
+        self._audit_decision(
+            provider=response.provider,
+            model=response.model,
+            reason=audit_reason,
+            latency_ms=latency_ms,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            cost_usd=response.cost_usd,
+            success=response.provider != "none",
+            fallback_from=response.fallback_reason if response.fallback_used else "",
+            privacy_routed=privacy_routed,
+        )
+
+        if self._cost_tracker is not None:
+            self._cost_tracker.log(
+                model=response.model,
+                provider=response.provider,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                cost_usd=response.cost_usd,
+                route_reason=route_reason,
+                fallback_used=response.fallback_used,
+            )
+
+        if _log_activity is not None:
+            try:
+                _log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
+                    "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
+                })
+            except (OSError, ValueError, TypeError) as exc:
+                logger.debug("Activity feed logging failed: %s", exc)
+
     def complete(
         self,
         messages: list[dict[str, str]],
@@ -339,16 +535,7 @@ class ModelGateway:
                 route_reason/model: codex/math_logic -> 0.2, gemini/creative -> 0.85,
                 default -> 0.7.
         """
-        # Derive temperature from route/model when not explicitly provided
-        if temperature is None:
-            model_lower = model.lower()
-            reason_lower = route_reason.lower()
-            if "codex" in model_lower or "math_logic" in reason_lower:
-                temperature = 0.2
-            elif "gemini" in model_lower or "creative" in reason_lower:
-                temperature = 0.85
-            else:
-                temperature = 0.7
+        temperature = self._derive_temperature(model, route_reason, temperature)
 
         if getattr(self, "_closed", False):
             return GatewayResponse(
@@ -359,106 +546,14 @@ class ModelGateway:
                 fallback_reason="gateway is closed",
             )
 
-        # If Claude API requested but Anthropic unavailable, remap to best cloud model
-        # Skip CLI models (claude-cli) — those use the CLI, not the Anthropic API
-        if model.startswith("claude-") and model not in CLI_MODEL_MAP and self._anthropic is None:
-            best = self._best_cloud_model()
-            if best:
-                logger.info("Anthropic unavailable, routing %s -> %s", model, best)
-                model = best
+        model = self._remap_model_if_needed(model)
 
-        provider = self._resolve_provider(model)
-        t0 = time.perf_counter()
-
-        if provider == "anthropic":
-            try:
-                response = self._call_anthropic(messages, model, max_tokens, temperature)
-                audit_reason = route_reason or "primary:anthropic"
-            except (APIConnectionError, APIStatusError, RateLimitError) as exc:
-                reason = f"{type(exc).__name__}"
-                logger.warning("Anthropic API error, falling back: %s", exc)
-                t0 = self._audit_failed_attempt("anthropic", model, route_reason, t0, privacy_routed)
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic", privacy_routed=privacy_routed)
-                audit_reason = f"fallback:{reason}"
-        elif provider.startswith("cloud:"):
-            provider_key = provider.split(":", 1)[1]
-            try:
-                response = self._call_openai_compat(messages, model, max_tokens, provider_key, temperature)
-                audit_reason = route_reason or f"primary:cloud:{provider_key}"
-            except (OSError, RuntimeError, ValueError, KeyError) as exc:
-                reason = f"{provider_key}: {type(exc).__name__}"
-                logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
-                t0 = self._audit_failed_attempt(provider_key, model, route_reason, t0, privacy_routed)
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key, privacy_routed=privacy_routed)
-                audit_reason = f"fallback:{reason}"
-        elif provider.startswith("cli:"):
-            cli_key = provider.split(":", 1)[1]
-            try:
-                response = self._call_cli(messages, model, max_tokens, cli_key)
-                audit_reason = route_reason or f"primary:cli:{cli_key}"
-                if response.provider == "none":
-                    # CLI call failed, try fallback chain
-                    t0 = self._audit_failed_attempt(cli_key, model, route_reason or f"primary:cli:{cli_key}", t0, privacy_routed)
-                    reason = response.fallback_reason or f"{cli_key}_failed"
-                    response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
-                    audit_reason = f"fallback:{reason}"
-            except (OSError, RuntimeError, ValueError) as exc:
-                reason = f"{cli_key}: {type(exc).__name__}"
-                logger.warning("CLI provider %s failed, falling back: %s", cli_key, exc)
-                t0 = self._audit_failed_attempt(cli_key, model, route_reason or f"primary:cli:{cli_key}", t0, privacy_routed)
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
-                audit_reason = f"fallback:{reason}"
-        else:
-            response = self._call_ollama(messages, model, max_tokens, temperature)
-            audit_reason = route_reason or "primary:ollama"
-            # If Ollama failed and cloud providers are available, try them
-            # skip_ollama=True to avoid re-trying Ollama at the end of the chain
-            # NEVER fall back to cloud for privacy-routed queries
-            if response.provider == "none" and self._cloud_keys and not privacy_routed:
-                # Log the failed Ollama attempt (consistent with Anthropic/cloud paths)
-                t0 = self._audit_failed_attempt("ollama", model, route_reason or "primary:ollama", t0, privacy_routed)
-                response = self._fallback_chain(
-                    messages, max_tokens, response.fallback_reason or "ollama_failed",
-                    temperature, skip_ollama=True, privacy_routed=privacy_routed,
-                )
-                audit_reason = "fallback:ollama_failed"
-
-        latency_ms = (time.perf_counter() - t0) * 1000
-
-        # Log the successful (or final fallback) decision
-        self._audit_decision(
-            provider=response.provider,
-            model=response.model,
-            reason=audit_reason,
-            latency_ms=latency_ms,
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
-            cost_usd=response.cost_usd,
-            success=response.provider != "none",
-            fallback_from=response.fallback_reason if response.fallback_used else "",
-            privacy_routed=privacy_routed,
+        response, audit_reason, t0 = self._route_to_provider(
+            messages, model, max_tokens, temperature, route_reason, privacy_routed,
         )
 
-        # Log cost if tracker is configured
-        if self._cost_tracker is not None:
-            self._cost_tracker.log(
-                model=response.model,
-                provider=response.provider,
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-                cost_usd=response.cost_usd,
-                route_reason=route_reason,
-                fallback_used=response.fallback_used,
-            )
-
-        # Log routing decision to activity feed
-        if _log_activity is not None:
-            try:
-                _log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
-                    "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
-                })
-            except (OSError, ValueError, TypeError) as exc:
-                logger.debug("Activity feed logging failed: %s", exc)
+        latency_ms = (time.perf_counter() - t0) * 1000
+        self._log_completion(response, audit_reason, route_reason, latency_ms, privacy_routed)
 
         return response
 

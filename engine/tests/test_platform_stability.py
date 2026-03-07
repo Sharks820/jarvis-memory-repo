@@ -16,7 +16,9 @@ from unittest.mock import MagicMock, patch
 from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 from jarvis_engine.commands.proactive_commands import ProactiveCheckResult
+from jarvis_engine.gateway.models import ModelGateway
 from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.proactive import ProactiveEngine
 from jarvis_engine.proactive.triggers import TriggerAlert
@@ -39,7 +41,7 @@ class TestFreshDBCreation:
         assert not db_path.exists(), "DB file should not exist yet"
 
         with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed:
-            mock_embed.return_value = MagicMock()
+            mock_embed.return_value = MagicMock(spec=EmbeddingService)
             with patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine:
                 mock_engine_inst = MagicMock()
                 mock_engine_inst._db = MagicMock()
@@ -61,7 +63,7 @@ class TestFreshDBCreation:
         with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed, \
              patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine, \
              patch("jarvis_engine.gateway.costs.CostTracker") as mock_ct:
-            mock_embed.return_value = MagicMock()
+            mock_embed.return_value = MagicMock(spec=EmbeddingService)
             me = MagicMock()
             me._db = MagicMock()
             me._write_lock = MagicMock()
@@ -80,7 +82,7 @@ class TestFreshDBCreation:
         with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed, \
              patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine, \
              patch("jarvis_engine.harvesting.budget.BudgetManager") as mock_bm:
-            mock_embed.return_value = MagicMock()
+            mock_embed.return_value = MagicMock(spec=EmbeddingService)
             me = MagicMock()
             me._db = MagicMock()
             me._write_lock = MagicMock()
@@ -174,7 +176,7 @@ class TestSilentExceptLogging:
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
 
         mock_kg = MagicMock(spec=KnowledgeGraph)
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=sqlite3.Connection)
         mock_db.execute.side_effect = sqlite3.OperationalError("no such column: temporal_type")
         mock_kg.db = mock_db
         mock_kg.db_lock = MagicMock()
@@ -246,8 +248,8 @@ class TestConsolidateMemoryCommand:
 
         mock_engine = MagicMock(spec=MemoryEngine)
         handler = ConsolidateMemoryHandler(
-            tmp_path, engine=mock_engine, gateway=MagicMock(),
-            embed_service=MagicMock(),
+            tmp_path, engine=mock_engine, gateway=MagicMock(spec=ModelGateway),
+            embed_service=MagicMock(spec=EmbeddingService),
         )
 
         mock_consolidation_result = MagicMock(spec=ConsolidateMemoryResult)
@@ -607,7 +609,7 @@ class TestConsolidateRegisteredOnBus:
 
         with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed, \
              patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine:
-            mock_embed.return_value = MagicMock()
+            mock_embed.return_value = MagicMock(spec=EmbeddingService)
             me = MagicMock()
             me._db = MagicMock()
             me._write_lock = MagicMock()

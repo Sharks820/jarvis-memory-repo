@@ -68,6 +68,16 @@ OwnerSessionManager = _try_import("jarvis_engine.security.owner_session", "Owner
 logger = logging.getLogger(__name__)
 
 
+class SecurityCheckResult(TypedDict):
+    """Return shape of ``SecurityOrchestrator.check_request``."""
+
+    allowed: bool
+    reason: str
+    threat_level: str
+    injection_verdict: str
+    containment_actions: list[str]
+
+
 class OutputScanResult(TypedDict):
     """Return shape of ``SecurityOrchestrator.scan_output``."""
 
@@ -254,12 +264,8 @@ class SecurityOrchestrator:
     def check_request(
         self, path: str, source_ip: str, headers: dict,
         body: str, user_agent: str = "",
-    ) -> dict[str, Any]:
-        """Run the full security pipeline on an inbound request.
-
-        Returns a dict with ``allowed``, ``reason``, ``threat_level``,
-        ``injection_verdict``, and ``containment_actions``.
-        """
+    ) -> SecurityCheckResult:
+        """Run the full security pipeline on an inbound request."""
         # Early-exit checks (honeypot, IP blocklist, threat intel)
         early = self._check_honeypot(path, source_ip, headers)
         if early is not None:
@@ -311,7 +317,7 @@ class SecurityOrchestrator:
 
     def _check_honeypot(
         self, path: str, source_ip: str, headers: dict,
-    ) -> dict[str, Any] | None:
+    ) -> SecurityCheckResult | None:
         """Return a block result if *path* is a honeypot, else ``None``."""
         if not self._honeypot.is_honeypot_path(path):
             return None
@@ -340,7 +346,7 @@ class SecurityOrchestrator:
 
     def _check_ip_blocklist(
         self, source_ip: str, path: str,
-    ) -> dict[str, Any] | None:
+    ) -> SecurityCheckResult | None:
         """Return a block result if *source_ip* is blocked or flagged by threat intel."""
         if self._ip_tracker.is_blocked(source_ip):
             self._forensic_logger.log_event({

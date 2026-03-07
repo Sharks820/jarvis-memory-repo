@@ -20,6 +20,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+try:
+    import pystray
+    _PYSTRAY_ICON_SPEC = pystray.Icon
+except ImportError:  # pystray optional; stub for spec= usage
+    pystray = None  # type: ignore[assignment]
+    _PYSTRAY_ICON_SPEC = None  # type: ignore[assignment]
+
 
 # ---------------------------------------------------------------------------
 # Module-level imports (desktop_widget depends on tkinter at import time for
@@ -1445,17 +1452,17 @@ class TestWidgetStateMachine:
         """_send_command_async should set processing state before HTTP call."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
-        widget.command_text = MagicMock()
+        widget.command_text = MagicMock(spec=tk.Text)
         widget.command_text.get.return_value = "hello\n"
         widget._log = MagicMock()
         widget._set_state = MagicMock()
         widget._current_cfg = MagicMock(return_value=WidgetConfig(
             "http://127.0.0.1:8787", "t", "k", "d", "p"))
-        widget.execute_var = MagicMock()
+        widget.execute_var = MagicMock(spec=tk.BooleanVar)
         widget.execute_var.get.return_value = False
-        widget.priv_var = MagicMock()
+        widget.priv_var = MagicMock(spec=tk.BooleanVar)
         widget.priv_var.get.return_value = False
-        widget.speak_var = MagicMock()
+        widget.speak_var = MagicMock(spec=tk.BooleanVar)
         widget.speak_var.get.return_value = False
         widget._thread = MagicMock()
         widget._cancel_event = threading.Event()
@@ -1497,7 +1504,7 @@ class TestWidgetStateMachine:
         """_dictate_async should set listening state before dictation."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
-        widget.auto_send_var = MagicMock()
+        widget.auto_send_var = MagicMock(spec=tk.BooleanVar)
         widget.auto_send_var.get.return_value = False
         widget._set_state = MagicMock()
         widget._thread = MagicMock()
@@ -1768,7 +1775,7 @@ class TestTrayMenuCallbacks:
     def test_stop_tray_icon_cleans_up(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
-        mock_icon = MagicMock()
+        mock_icon = MagicMock(spec=_PYSTRAY_ICON_SPEC)
         widget._tray_icon = mock_icon
         JarvisDesktopWidget._stop_tray_icon(widget)
         mock_icon.stop.assert_called_once()
@@ -1786,8 +1793,8 @@ class TestTrayMenuCallbacks:
         """When tray icon is present, hide_panel should still show the launcher orb."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
-        widget._tray_icon = MagicMock()  # Tray icon present
-        widget.launcher_win = MagicMock()
+        widget._tray_icon = MagicMock(spec=_PYSTRAY_ICON_SPEC)  # Tray icon present
+        widget.launcher_win = MagicMock(spec=tk.Toplevel)
         JarvisDesktopWidget._hide_panel(widget)
         widget.withdraw.assert_called_once()
         # Launcher orb must always be visible — tray icon is supplementary
@@ -1799,7 +1806,7 @@ class TestTrayMenuCallbacks:
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._tray_icon = None  # No tray icon
-        widget.launcher_win = MagicMock()
+        widget.launcher_win = MagicMock(spec=tk.Toplevel)
         JarvisDesktopWidget._hide_panel(widget)
         widget.withdraw.assert_called_once()
         widget.launcher_win.deiconify.assert_called_once()
@@ -1894,7 +1901,7 @@ class TestModelTabCycling:
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
         widget._model_index = len(widget.MODEL_ROTATION) - 1
-        widget._model_label = MagicMock()
+        widget._model_label = MagicMock(spec=tk.Label)
         widget._update_model_label = MagicMock()
         result = JarvisDesktopWidget._on_tab_cycle_model(widget)
         assert widget._model_index == 0
@@ -1906,7 +1913,7 @@ class TestModelTabCycling:
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
         widget._model_index = 0
-        widget._model_label = MagicMock()
+        widget._model_label = MagicMock(spec=tk.Label)
         widget._update_model_label = MagicMock()
         JarvisDesktopWidget._on_tab_cycle_model(widget)
         assert widget._model_index == 1

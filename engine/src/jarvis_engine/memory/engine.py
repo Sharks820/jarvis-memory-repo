@@ -324,31 +324,25 @@ class MemoryEngine:
                 logger.debug("delete_records_batch transaction failed, rolled back: %s", exc)
                 raise
 
-    def get_record(self, record_id: str) -> dict | None:
-        """Fetch a single record by ID."""
+    def _get_record_by(self, column: str, value: str) -> dict | None:
+        """Fetch a single record by *column* = *value*."""
         self._check_open()
+        # column is always a literal from our code, never user input
         with self._db_lock:
             cur = self._db.execute(
-                "SELECT * FROM records WHERE record_id = ?",
-                (record_id,),
+                f"SELECT * FROM records WHERE {column} = ?",
+                (value,),
             )
             row = cur.fetchone()
-        if row is None:
-            return None
-        return dict(row)
+        return dict(row) if row is not None else None
+
+    def get_record(self, record_id: str) -> dict | None:
+        """Fetch a single record by ID."""
+        return self._get_record_by("record_id", record_id)
 
     def get_record_by_hash(self, content_hash: str) -> dict | None:
         """Fetch a single record by content_hash."""
-        self._check_open()
-        with self._db_lock:
-            cur = self._db.execute(
-                "SELECT * FROM records WHERE content_hash = ?",
-                (content_hash,),
-            )
-            row = cur.fetchone()
-        if row is None:
-            return None
-        return dict(row)
+        return self._get_record_by("content_hash", content_hash)
 
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:
         """FTS5 keyword search returning (record_id, rank) pairs.

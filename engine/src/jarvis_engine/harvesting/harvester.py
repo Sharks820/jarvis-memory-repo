@@ -92,6 +92,100 @@ class KnowledgeHarvester:
             if provider.is_available
         ]
 
+    def _check_provider_readiness(
+        self, name: str, provider: object,
+    ) -> dict | None:
+        """Return a skip-result dict if the provider is unavailable or over budget.
+
+        Returns ``None`` when the provider is ready to query.
+        """
+        if not provider.is_available:
+            return {
+                "provider": name,
+                "status": "unavailable",
+                "records_created": 0,
+                "cost_usd": 0.0,
+            }
+        if self._budget is not None and not self._budget.can_spend(name):
+            return {
+                "provider": name,
+                "status": "budget_exceeded",
+                "records_created": 0,
+                "cost_usd": 0.0,
+            }
+        return None
+
+    def _record_harvest_cost(
+        self, name: str, result: HarvestResult, topic: str,
+    ) -> None:
+        """Record spend in budget manager and log cost to tracker."""
+        if self._budget is not None:
+            self._budget.record_spend(name, result.cost_usd, topic=topic)
+        if self._cost_tracker is not None:
+            self._cost_tracker.log(
+                model=result.model,
+                provider=result.provider,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                cost_usd=result.cost_usd,
+                route_reason=f"harvest:{topic}",
+            )
+
+    def _ingest_harvest_result(
+        self,
+        result: HarvestResult,
+        provider: object,
+        topic_tag: str,
+        topic: str,
+        seen_hashes: set[str],
+    ) -> dict:
+        """Deduplicate and ingest a provider result through the pipeline.
+
+        Returns the per-provider result dict for the harvest response.
+        """
+        if self._pipeline is None or not result.text:
+            return {
+                "provider": result.provider,
+                "status": "ok",
+                "records_created": 0,
+                "cost_usd": result.cost_usd,
+                "error": "",
+                "skipped_dedup": False,
+            }
+
+        # Semantic dedup: check for near-duplicate content
+        if self._is_near_duplicate(result.text, seen_hashes):
+            logger.info("Skipping semantic near-duplicate from %s", result.provider)
+            return {
+                "provider": result.provider,
+                "status": "ok",
+                "records_created": 0,
+                "cost_usd": result.cost_usd,
+                "error": "",
+                "skipped_dedup": True,
+            }
+
+        # Track this content hash for cross-provider dedup
+        seen_hashes.add(sha256_hex(result.text))
+
+        # Append confidence marker and ingest
+        content_with_confidence = f"{result.text}\n\n(confidence:0.50)"
+        inserted = self._pipeline.ingest(
+            source=f"harvest:{provider.name}",
+            kind="semantic",
+            task_id=f"harvest:{topic}",
+            content=content_with_confidence,
+            tags=["harvested", provider.name, topic_tag],
+        )
+        return {
+            "provider": result.provider,
+            "status": "ok",
+            "records_created": len(inserted),
+            "cost_usd": result.cost_usd,
+            "error": "",
+            "skipped_dedup": False,
+        }
+
     def harvest(self, cmd: HarvestCommand) -> dict:
         """Harvest knowledge about a topic from multiple providers.
 
@@ -101,7 +195,6 @@ class KnowledgeHarvester:
         Returns:
             Dict with topic, results list (per-provider status, records, cost).
         """
-        # Determine which providers to query
         if cmd.providers is not None:
             provider_names = [
                 n for n in cmd.providers if n in self._providers
@@ -111,30 +204,14 @@ class KnowledgeHarvester:
 
         results = []
         topic_tag = cmd.topic.lower().replace(" ", "_")[:50]
-
-        # Track content hashes across providers for cross-provider dedup
         seen_hashes: set[str] = set()
 
         for name in provider_names:
             provider = self._providers[name]
 
-            if not provider.is_available:
-                results.append({
-                    "provider": name,
-                    "status": "unavailable",
-                    "records_created": 0,
-                    "cost_usd": 0.0,
-                })
-                continue
-
-            # Budget check
-            if self._budget is not None and not self._budget.can_spend(name):
-                results.append({
-                    "provider": name,
-                    "status": "budget_exceeded",
-                    "records_created": 0,
-                    "cost_usd": 0.0,
-                })
+            skip = self._check_provider_readiness(name, provider)
+            if skip is not None:
+                results.append(skip)
                 continue
 
             try:
@@ -143,73 +220,14 @@ class KnowledgeHarvester:
                     system_prompt=self.SYSTEM_PROMPT,
                     max_tokens=cmd.max_tokens,
                 )
-
-                # Record spend in budget manager
-                if self._budget is not None:
-                    self._budget.record_spend(
-                        name, result.cost_usd, topic=cmd.topic,
-                    )
-
-                # Log cost
-                if self._cost_tracker is not None:
-                    self._cost_tracker.log(
-                        model=result.model,
-                        provider=result.provider,
-                        input_tokens=result.input_tokens,
-                        output_tokens=result.output_tokens,
-                        cost_usd=result.cost_usd,
-                        route_reason=f"harvest:{cmd.topic}",
-                    )
-
-                # Ingest through pipeline at lower confidence
-                records_created = 0
-                if self._pipeline is not None and result.text:
-                    # Semantic dedup: check for near-duplicate content
-                    if self._is_near_duplicate(result.text, seen_hashes):
-                        logger.info(
-                            "Skipping semantic near-duplicate from %s",
-                            name,
-                        )
-                        results.append({
-                            "provider": name,
-                            "status": "ok",
-                            "records_created": 0,
-                            "cost_usd": result.cost_usd,
-                            "error": "",
-                            "skipped_dedup": True,
-                        })
-                        continue
-
-                    # Track this content hash for cross-provider dedup
-                    content_hash = sha256_hex(result.text)
-                    seen_hashes.add(content_hash)
-
-                    # Append confidence marker and ingest
-                    content_with_confidence = (
-                        f"{result.text}\n\n(confidence:0.50)"
-                    )
-                    inserted = self._pipeline.ingest(
-                        source=f"harvest:{provider.name}",
-                        kind="semantic",
-                        task_id=f"harvest:{cmd.topic}",
-                        content=content_with_confidence,
-                        tags=["harvested", provider.name, topic_tag],
-                    )
-                    records_created = len(inserted)
-
-                results.append({
-                    "provider": name,
-                    "status": "ok",
-                    "records_created": records_created,
-                    "cost_usd": result.cost_usd,
-                    "error": "",
-                    "skipped_dedup": False,
-                })
+                self._record_harvest_cost(name, result, cmd.topic)
+                entry = self._ingest_harvest_result(
+                    result, provider, topic_tag, cmd.topic, seen_hashes,
+                )
+                results.append(entry)
 
             except (ConnectionError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
-                logger.warning(
-                    "Harvest from %s failed: %s", name, exc,
-                )
+                logger.warning("Harvest from %s failed: %s", name, exc)
                 results.append({
                     "provider": name,
                     "status": "error",

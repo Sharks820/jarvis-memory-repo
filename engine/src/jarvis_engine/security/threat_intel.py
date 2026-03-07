@@ -18,6 +18,7 @@ import logging
 import os
 import threading
 import time
+import urllib.parse
 import urllib.request
 from typing import Any, TypedDict
 
@@ -216,7 +217,7 @@ class ThreatIntelFeed:
     def _query_abuseipdb(self, ip: str) -> int | None:
         """Query AbuseIPDB for *ip* and return the abuse confidence score."""
         try:
-            url = f"{_ABUSEIPDB_CHECK_URL}?ipAddress={ip}&maxAgeInDays=90"
+            url = f"{_ABUSEIPDB_CHECK_URL}?ipAddress={urllib.parse.quote(ip, safe='')}&maxAgeInDays=90"
             req = urllib.request.Request(url)
             req.add_header("Key", self._abuseipdb_key)  # type: ignore[arg-type]
             req.add_header("Accept", "application/json")
@@ -237,7 +238,7 @@ class ThreatIntelFeed:
     def _query_otx(self, ip: str) -> int | None:
         """Query OTX for *ip* and return the number of pulses."""
         try:
-            url = f"{_OTX_INDICATOR_URL}/{ip}/general"
+            url = f"{_OTX_INDICATOR_URL}/{urllib.parse.quote(ip, safe='')}/general"
             req = urllib.request.Request(url)
             req.add_header("X-OTX-API-KEY", self._otx_key)  # type: ignore[arg-type]
             req.add_header("Accept", "application/json")

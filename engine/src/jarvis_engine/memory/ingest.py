@@ -59,6 +59,105 @@ class EnrichedIngestPipeline:
         """
         self._gateway = gateway
 
+    def _embed_chunks(self, valid_chunks: list[str]) -> list:
+        """Generate embeddings for all chunks, preferring batch mode.
+
+        Falls back to individual embedding calls if batch embedding fails.
+        """
+        if hasattr(self._embed_service, "embed_batch") and len(valid_chunks) > 1:
+            try:
+                return self._embed_service.embed_batch(
+                    valid_chunks, prefix="search_document"
+                )
+            except (RuntimeError, OSError, ValueError) as exc:
+                logger.debug("Batch embedding failed, falling back to individual: %s", exc)
+        return [
+            self._embed_service.embed(chunk, prefix="search_document")
+            for chunk in valid_chunks
+        ]
+
+    @staticmethod
+    def _build_summary(chunk: str) -> str:
+        """Build a summary with word-boundary truncation (max 200 chars)."""
+        summary = chunk[:200]
+        if len(chunk) > 200:
+            last_space = summary.rfind(" ")
+            if last_space > 100:
+                summary = summary[:last_space]
+        return summary
+
+    def _build_record(
+        self,
+        chunk: str,
+        embedding: object,
+        source: str,
+        kind: str,
+        task_id: str,
+        ts: str,
+        tag_str: str,
+    ) -> dict:
+        """Build a single memory record dict from a chunk and its embedding."""
+        chunk_hash = sha256_hex(chunk)
+        id_material = f"{source}|{kind}|{task_id}|{chunk}".encode("utf-8")
+        record_id = sha256_short(id_material)
+        branch = self._classifier.classify(embedding)
+        summary = self._build_summary(chunk)
+
+        return {
+            "record_id": record_id,
+            "ts": ts,
+            "source": source,
+            "kind": kind,
+            "task_id": task_id,
+            "branch": branch,
+            "tags": tag_str,
+            "summary": summary,
+            "content_hash": chunk_hash,
+            "confidence": 0.72,
+            "tier": "warm",
+            "access_count": 0,
+            "last_accessed": "",
+        }
+
+    def _extract_all_facts(
+        self,
+        chunk: str,
+        source: str,
+        branch: str,
+        record_id: str,
+    ) -> None:
+        """Extract facts into KG using both regex and LLM extractors.
+
+        Failures are logged but never propagated -- the record is already stored.
+        """
+        if self._kg is None:
+            return
+
+        try:
+            self._extract_facts(chunk, source, branch, record_id)
+        except (RuntimeError, OSError, ValueError, KeyError) as exc:
+            logger.warning(
+                "Fact extraction failed for record %s: %s",
+                record_id,
+                exc,
+            )
+
+        try:
+            llm_extractor = self._get_llm_extractor()
+            if llm_extractor:
+                llm_facts = llm_extractor.extract_facts(chunk, branch=branch)
+                for fact in llm_facts:
+                    node_id = f"llm:{hashlib.sha256(f'{fact.entity}.{fact.relationship}.{fact.value}'.encode()).hexdigest()[:16]}"
+                    self._kg.add_fact(
+                        node_id=node_id,
+                        label=f"{fact.entity}: {fact.value}",
+                        confidence=fact.confidence,
+                        source_record=record_id,
+                        node_type=fact.category or "fact",
+                    )
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.warning("LLM fact extraction failed: %s", exc)
+
     def ingest(
         self,
         source: str,
@@ -67,19 +166,9 @@ class EnrichedIngestPipeline:
         content: str,
         tags: list[str] | None = None,
     ) -> list[str]:
-        """Ingest content through the enriched pipeline.
+        """Ingest content: sanitize -> dedup -> chunk -> embed -> classify -> store.
 
-        Pipeline: sanitize -> dedup -> chunk -> embed -> classify -> store.
-
-        Args:
-            source: Origin of content (user, claude, task_outcome, etc.).
-            kind: Memory kind (episodic, semantic, procedural).
-            task_id: Task identifier.
-            content: Raw content text.
-            tags: Optional tags list.
-
-        Returns:
-            List of inserted record IDs (empty if all duplicates).
+        Returns list of inserted record IDs (empty if all duplicates).
         """
         # Step 1: Sanitize
         sanitized = self._sanitize(content)
@@ -90,112 +179,34 @@ class EnrichedIngestPipeline:
         full_content_hash = sha256_hex(sanitized)
         chunks = self._chunk_content(sanitized)
         if len(chunks) == 1:
-            # Single chunk -- check full content hash for quick dedup
             existing = self._engine.get_record_by_hash(full_content_hash)
             if existing is not None:
                 return []
 
-        # Step 3 & 4: Process each chunk
+        # Step 3: Prepare metadata
         ts = _now_iso()
         tag_list = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
         tag_str = json.dumps(tag_list)
-        inserted_ids: list[str] = []
 
-        # Pre-filter empty chunks and batch-embed all valid chunks at once
+        # Step 4: Filter and embed
         valid_chunks = [chunk for chunk in chunks if chunk.strip()]
         if not valid_chunks:
             return []
+        all_embeddings = self._embed_chunks(valid_chunks)
 
-        # Batch embedding: single model call for all chunks instead of N calls
-        if hasattr(self._embed_service, "embed_batch") and len(valid_chunks) > 1:
-            try:
-                all_embeddings = self._embed_service.embed_batch(
-                    valid_chunks, prefix="search_document"
-                )
-            except (RuntimeError, OSError, ValueError) as exc:
-                # Fallback to individual calls if batch fails
-                logger.debug("Batch embedding failed, falling back to individual: %s", exc)
-                all_embeddings = [
-                    self._embed_service.embed(chunk, prefix="search_document")
-                    for chunk in valid_chunks
-                ]
-        else:
-            all_embeddings = [
-                self._embed_service.embed(chunk, prefix="search_document")
-                for chunk in valid_chunks
-            ]
-
+        # Step 5: Store each chunk and extract facts
+        inserted_ids: list[str] = []
         for chunk, embedding in zip(valid_chunks, all_embeddings):
-            # 4a: Per-chunk content hash (CRITICAL: hash chunk text, NOT full document)
-            chunk_hash = sha256_hex(chunk)
-
-            # 4b: Generate record_id -- 32 hex chars (Codex finding: >16 to avoid collisions)
-            id_material = f"{source}|{kind}|{task_id}|{chunk}".encode("utf-8")
-            record_id = sha256_short(id_material)
-
-            # 4c: Embedding already computed in batch above
-
-            # 4d: Classify branch
-            branch = self._classifier.classify(embedding)
-
-            # 4e: Build summary with word-boundary truncation
-            summary = chunk[:200]
-            if len(chunk) > 200:
-                # Truncate at last space to avoid mid-word break
-                last_space = summary.rfind(" ")
-                if last_space > 100:
-                    summary = summary[:last_space]
-
-            # 4f: Build record dict
-            record = {
-                "record_id": record_id,
-                "ts": ts,
-                "source": source,
-                "kind": kind,
-                "task_id": task_id,
-                "branch": branch,
-                "tags": tag_str,
-                "summary": summary,
-                "content_hash": chunk_hash,
-                "confidence": 0.72,
-                "tier": "warm",
-                "access_count": 0,
-                "last_accessed": "",
-            }
-
-            # 4g: Insert via engine (UNIQUE constraint on content_hash handles dedup)
+            record = self._build_record(
+                chunk, embedding, source, kind, task_id, ts, tag_str,
+            )
             was_inserted = self._engine.insert_record(record, embedding=embedding)
             if was_inserted:
+                record_id = record["record_id"]
                 inserted_ids.append(record_id)
-
-                # 4h: Extract facts into knowledge graph (side effect -- failure
-                # must NOT prevent the record from being stored)
-                if self._kg is not None:
-                    try:
-                        self._extract_facts(chunk, source, branch, record_id)
-                    except (RuntimeError, OSError, ValueError, KeyError) as exc:
-                        logger.warning(
-                            "Fact extraction failed for record %s: %s",
-                            record_id,
-                            exc,
-                        )
-
-                    # 4i: LLM-powered fact extraction (supplements regex extraction)
-                    try:
-                        llm_extractor = self._get_llm_extractor()
-                        if llm_extractor:
-                            llm_facts = llm_extractor.extract_facts(chunk, branch=branch)
-                            for fact in llm_facts:
-                                node_id = f"llm:{hashlib.sha256(f'{fact.entity}.{fact.relationship}.{fact.value}'.encode()).hexdigest()[:16]}"
-                                self._kg.add_fact(
-                                    node_id=node_id,
-                                    label=f"{fact.entity}: {fact.value}",
-                                    confidence=fact.confidence,
-                                    source_record=record_id,
-                                    node_type=fact.category or "fact",
-                                )
-                    except (OSError, RuntimeError, ValueError) as exc:
-                        logger.warning("LLM fact extraction failed: %s", exc)
+                self._extract_all_facts(
+                    chunk, source, record["branch"], record_id,
+                )
 
         return inserted_ids
 

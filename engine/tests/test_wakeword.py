@@ -12,6 +12,36 @@ from jarvis_engine.wakeword import WakeWordDetector
 
 
 # ---------------------------------------------------------------------------
+# Stub specs for external types not installed in the test environment
+# ---------------------------------------------------------------------------
+
+class _OwwModelStub:
+    """Spec stub for openwakeword.model.Model (not installed)."""
+
+    prediction_buffer: dict = {}  # noqa: RUF012
+
+    def predict(self, x: np.ndarray) -> None: ...  # noqa: D102
+    def reset(self) -> None: ...  # noqa: D102
+
+
+class _SdInputStreamStub:
+    """Spec stub for sounddevice.InputStream (not installed)."""
+
+    read_available = 0
+
+    def read(self, frames: int) -> tuple: ...  # noqa: D102
+    def start(self) -> None: ...  # noqa: D102
+    def stop(self) -> None: ...  # noqa: D102
+    def close(self) -> None: ...  # noqa: D102
+
+
+class _SdModuleStub:
+    """Spec stub for the sounddevice module (not installed)."""
+
+    def InputStream(self, **kwargs: object) -> _SdInputStreamStub: ...  # noqa: D102, N802
+
+
+# ---------------------------------------------------------------------------
 # 1. WakeWordDetector initialization defaults
 # ---------------------------------------------------------------------------
 
@@ -164,7 +194,7 @@ def test_load_model_imports_openwakeword() -> None:
     detector = WakeWordDetector()
 
     mock_model_cls = MagicMock()
-    mock_model_instance = MagicMock()
+    mock_model_instance = MagicMock(spec=_OwwModelStub)
     mock_model_cls.return_value = mock_model_instance
 
     original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
@@ -193,14 +223,14 @@ def test_detection_invokes_callback() -> None:
     callback = MagicMock()
 
     # Set up mock model
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {
         "hey_jarvis": [0.1, 0.2, 0.8],  # Last score exceeds threshold
     }
     detector._model = mock_model
 
     # Set up mock audio stream
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     audio_chunk = np.zeros((1280, 1), dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
@@ -218,7 +248,7 @@ def test_detection_invokes_callback() -> None:
     detector._stop_event.is_set = _stop_after_first
 
     # Mock sounddevice and run the detection loop
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.object(detector, "_load_model"), \
@@ -253,7 +283,7 @@ def test_no_callback_when_below_threshold() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {
         "hey_jarvis": [0.1, 0.2, 0.3],  # All below threshold
     }
@@ -277,7 +307,7 @@ def test_multiple_wake_words() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {
         "hey_jarvis": [0.1, 0.2, 0.3],   # Below threshold
         "alexa": [0.1, 0.2, 0.9],         # Above threshold
@@ -304,7 +334,7 @@ def test_empty_prediction_buffer() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {}
     detector._model = mock_model
 
@@ -326,7 +356,7 @@ def test_overflowed_audio_skipped() -> None:
     """When audio stream overflows, the chunk is skipped (continue)."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     detector._model = mock_model
 
     # Simulate overflow scenario: the code does `if overflowed: continue`
@@ -394,12 +424,12 @@ def test_mic_lock_acquired_and_released() -> None:
     detector = WakeWordDetector(threshold=0.5)
     mic_lock = MagicMock(spec=threading.Lock())
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.1]}  # Below threshold
     detector._model = mock_model
 
     # Simulate one loop iteration with mic_lock
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     audio_chunk = np.zeros((1280, 1), dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
@@ -423,7 +453,7 @@ def test_audio_stream_open_failure() -> None:
     detector = WakeWordDetector()
     callback = MagicMock()
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.side_effect = OSError("No audio device")
 
     with patch.object(detector, "_load_model"):
@@ -449,7 +479,7 @@ def test_prediction_buffer_empty_scores() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": []}
     detector._model = mock_model
 
@@ -472,7 +502,7 @@ def test_threshold_exact_boundary() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.5]}  # Exactly at threshold
     detector._model = mock_model
 
@@ -489,7 +519,7 @@ def test_threshold_just_above_boundary() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.501]}
     detector._model = mock_model
 
@@ -516,7 +546,7 @@ def test_load_model_passes_model_name() -> None:
     detector = WakeWordDetector(model_name="custom_wake")
 
     mock_model_cls = MagicMock()
-    mock_model_instance = MagicMock()
+    mock_model_instance = MagicMock(spec=_OwwModelStub)
     mock_model_cls.return_value = mock_model_instance
 
     original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
@@ -546,7 +576,7 @@ def test_detection_only_checks_configured_model() -> None:
     detector = WakeWordDetector(threshold=0.5, model_name="hey_jarvis")
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # "alexa" has a high score but should NOT trigger detection
     # "hey_jarvis" has a low score
     mock_model.prediction_buffer = {
@@ -572,7 +602,7 @@ def test_detection_triggers_only_on_configured_model() -> None:
     detector = WakeWordDetector(threshold=0.5, model_name="hey_jarvis")
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {
         "hey_jarvis": [0.1, 0.2, 0.8],   # Above threshold
         "alexa": [0.1, 0.2, 0.3],         # Below threshold
@@ -609,7 +639,7 @@ def test_cooldown_after_detection() -> None:
     """After detection, time.sleep is called with cooldown_seconds."""
     detector = WakeWordDetector(threshold=0.5, cooldown_seconds=1.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # Need >= 3 scores for smoothing, and average of last 3 > threshold
     mock_model.prediction_buffer = {
         "hey_jarvis": [0.6, 0.7, 0.8],
@@ -630,12 +660,12 @@ def test_cooldown_after_detection() -> None:
     stop_event.is_set = _stop_after_detection
     detector._stop_event = stop_event
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # Use non-zero audio to pass the energy pre-filter (RMS > 0.005)
     audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
@@ -687,15 +717,15 @@ def test_mic_lock_acquire_uses_timeout() -> None:
     """mic_lock.acquire is called with timeout=60."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.1]}
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     audio_chunk = np.zeros((1280, 1), dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     mic_lock = MagicMock(spec=threading.Lock())
@@ -730,15 +760,15 @@ def test_mic_lock_timeout_skips_iteration() -> None:
     """When mic_lock.acquire times out, the iteration is skipped."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.9]}  # Would trigger
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     audio_chunk = np.zeros((1280, 1), dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     mic_lock = MagicMock(spec=threading.Lock())
@@ -786,17 +816,17 @@ def test_energy_prefilter_skips_predict_on_silence() -> None:
     """Silent audio (RMS < 0.005) skips model.predict() entirely."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # High scores that would normally trigger detection
     mock_model.prediction_buffer = {"hey_jarvis": [0.9, 0.9, 0.9]}
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # All-zero audio = silence -> RMS = 0
     audio_chunk = np.zeros((1280, 1), dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     callback = MagicMock()
@@ -835,17 +865,17 @@ def test_energy_prefilter_passes_loud_audio() -> None:
     """Loud audio (RMS > 0.005) passes through to model.predict()."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # Below threshold scores so detection won't trigger
     mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.1]}
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # Non-zero audio with significant energy
     audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     callback = MagicMock()
@@ -884,7 +914,7 @@ def test_score_smoothing_single_high_score_no_trigger() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # Only 2 scores -> doesn't meet the >= 3 requirement
     mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.9]}
     detector._model = mock_model
@@ -908,7 +938,7 @@ def test_score_smoothing_three_high_scores_triggers() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.6, 0.7, 0.8]}
     detector._model = mock_model
 
@@ -932,7 +962,7 @@ def test_score_smoothing_mixed_scores_below_avg() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # Average of last 3: (0.1 + 0.2 + 0.9) / 3 = 0.4 < 0.5
     mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.2, 0.9]}
     detector._model = mock_model
@@ -955,7 +985,7 @@ def test_score_smoothing_uses_last_three_only() -> None:
     detector = WakeWordDetector(threshold=0.5)
     callback = MagicMock()
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     # Many low scores, but last 3 are high
     mock_model.prediction_buffer = {
         "hey_jarvis": [0.0, 0.0, 0.0, 0.0, 0.6, 0.7, 0.8]
@@ -1001,18 +1031,18 @@ def test_energy_prefilter_and_smoothing_integration() -> None:
     """Integration test: loud audio + 3 high scores triggers detection."""
     detector = WakeWordDetector(threshold=0.5, cooldown_seconds=0.0)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.6, 0.7, 0.8]}
     detector._model = mock_model
 
     callback = MagicMock()
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # Loud audio passes energy pre-filter
     audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     call_count = [0]
@@ -1055,15 +1085,15 @@ def test_wakeword_silero_vad_integration() -> None:
     """When Silero VAD is available, process_chunk is called on each audio chunk."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.1]}
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     callback = MagicMock()
@@ -1113,15 +1143,15 @@ def test_wakeword_vad_reset_after_detection() -> None:
     """vad.reset() is called after wake word is detected."""
     detector = WakeWordDetector(threshold=0.5, cooldown_seconds=0.0)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.6, 0.7, 0.8]}
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     audio_chunk = np.full((1280, 1), 0.1, dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     callback = MagicMock()
@@ -1168,16 +1198,16 @@ def test_wakeword_rms_fallback() -> None:
     """When SileroVADDetector.available is False, RMS energy fallback is used."""
     detector = WakeWordDetector(threshold=0.5)
 
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_OwwModelStub)
     mock_model.prediction_buffer = {"hey_jarvis": [0.1, 0.1]}
     detector._model = mock_model
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # All-zero audio = silence -> RMS = 0 -> should skip predict
     audio_chunk = np.zeros((1280, 1), dtype=np.float32)
     mock_stream.read.return_value = (audio_chunk, False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     callback = MagicMock()
@@ -1262,8 +1292,8 @@ def test_wakeword_vad_reset_on_resume() -> None:
     mock_vad = MagicMock(spec=SileroVADDetector)
     detector._vad = mock_vad
 
-    mock_sd = MagicMock()
-    mock_stream = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     mock_sd.InputStream.return_value = mock_stream
 
     # Ensure stream is None so resume creates a new one

@@ -12,10 +12,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from jarvis_engine.knowledge.graph import KnowledgeGraph
-from jarvis_engine.knowledge.regression import RegressionChecker
+from jarvis_engine.knowledge import contradictions as _contradictions_mod
+from jarvis_engine.knowledge import locks as _locks_mod
+from jarvis_engine.knowledge import regression as _regression_mod
 from jarvis_engine.knowledge.contradictions import ContradictionManager
+from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.knowledge.locks import FactLockManager
+from jarvis_engine.knowledge.regression import RegressionChecker
 
 from jarvis_engine.commands.knowledge_commands import (
     ContradictionListCommand,
@@ -61,7 +64,7 @@ class TestKnowledgeStatusHandler:
         kg = MagicMock(spec=KnowledgeGraph)
         kg.count_pending_contradictions.return_value = 3
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {
             "node_count": 100,
@@ -88,7 +91,7 @@ class TestKnowledgeStatusHandler:
         kg = MagicMock(spec=KnowledgeGraph)
         kg.count_pending_contradictions.return_value = 0
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {}
         mock_regression_mod.RegressionChecker.return_value = mock_checker
@@ -133,7 +136,7 @@ class TestContradictionListHandler:
             {"id": 2, "status": "pending", "fact_a": "A", "fact_b": "B"},
         ]
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.list_all.return_value = contradictions
         mock_contra_mod.ContradictionManager.return_value = mock_mgr
@@ -154,7 +157,7 @@ class TestContradictionListHandler:
         """When status is empty string, None is passed to list_all."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.list_all.return_value = []
         mock_contra_mod.ContradictionManager.return_value = mock_mgr
@@ -171,7 +174,7 @@ class TestContradictionListHandler:
         """Limit is capped at 500 regardless of what user passes."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.list_all.return_value = []
         mock_contra_mod.ContradictionManager.return_value = mock_mgr
@@ -187,7 +190,7 @@ class TestContradictionListHandler:
     def test_limit_below_500_unchanged(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.list_all.return_value = []
         mock_contra_mod.ContradictionManager.return_value = mock_mgr
@@ -227,7 +230,7 @@ class TestContradictionResolveHandler:
     def test_successful_resolve(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.resolve.return_value = {
             "success": True,
@@ -259,7 +262,7 @@ class TestContradictionResolveHandler:
     def test_resolve_with_merge(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.resolve.return_value = {
             "success": True,
@@ -287,7 +290,7 @@ class TestContradictionResolveHandler:
     def test_resolve_failure(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.resolve.return_value = {
             "success": False,
@@ -310,7 +313,7 @@ class TestContradictionResolveHandler:
         """When resolve returns partial dict, missing keys default properly."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_contra_mod = MagicMock()
+        mock_contra_mod = MagicMock(spec=_contradictions_mod)
         mock_mgr = MagicMock(spec=ContradictionManager)
         mock_mgr.resolve.return_value = {"success": True}
         mock_contra_mod.ContradictionManager.return_value = mock_mgr
@@ -365,7 +368,7 @@ class TestFactLockHandler:
     def test_lock_success(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_locks_mod = MagicMock()
+        mock_locks_mod = MagicMock(spec=_locks_mod)
         mock_lock_mgr = MagicMock(spec=FactLockManager)
         mock_lock_mgr.owner_confirm_lock.return_value = True
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
@@ -383,7 +386,7 @@ class TestFactLockHandler:
     def test_lock_already_locked(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_locks_mod = MagicMock()
+        mock_locks_mod = MagicMock(spec=_locks_mod)
         mock_lock_mgr = MagicMock(spec=FactLockManager)
         mock_lock_mgr.owner_confirm_lock.return_value = False
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
@@ -398,7 +401,7 @@ class TestFactLockHandler:
     def test_unlock_success(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_locks_mod = MagicMock()
+        mock_locks_mod = MagicMock(spec=_locks_mod)
         mock_lock_mgr = MagicMock(spec=FactLockManager)
         mock_lock_mgr.unlock_fact.return_value = True
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
@@ -415,7 +418,7 @@ class TestFactLockHandler:
     def test_unlock_already_unlocked(self, tmp_path: Path) -> None:
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_locks_mod = MagicMock()
+        mock_locks_mod = MagicMock(spec=_locks_mod)
         mock_lock_mgr = MagicMock(spec=FactLockManager)
         mock_lock_mgr.unlock_fact.return_value = False
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
@@ -435,7 +438,7 @@ class TestFactLockHandler:
         kg.write_lock = MagicMock(name="wl")
         kg.db_lock = MagicMock(name="dl")
 
-        mock_locks_mod = MagicMock()
+        mock_locks_mod = MagicMock(spec=_locks_mod)
         mock_lock_mgr = MagicMock(spec=FactLockManager)
         mock_lock_mgr.owner_confirm_lock.return_value = True
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
@@ -473,7 +476,7 @@ class TestKnowledgeRegressionHandler:
         kg = MagicMock(spec=KnowledgeGraph)
         current_metrics = {"node_count": 50, "edge_count": 100}
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = current_metrics
         mock_checker.compare.return_value = {"status": "baseline", "current": current_metrics}
@@ -492,7 +495,7 @@ class TestKnowledgeRegressionHandler:
         """Path traversal: snapshot path outside root is rejected."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {"node_count": 10}
         mock_regression_mod.RegressionChecker.return_value = mock_checker
@@ -516,7 +519,7 @@ class TestKnowledgeRegressionHandler:
             json.dumps({"kg_metrics": {"node_count": 40}}), encoding="utf-8"
         )
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {"node_count": 50}
         mock_checker.compare.return_value = {"status": "pass"}
@@ -539,7 +542,7 @@ class TestKnowledgeRegressionHandler:
         bad_meta = tmp_path / "bad.json"
         bad_meta.write_text("{not valid}", encoding="utf-8")
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {"node_count": 10}
         mock_regression_mod.RegressionChecker.return_value = mock_checker
@@ -559,7 +562,7 @@ class TestKnowledgeRegressionHandler:
         """Nonexistent snapshot file returns error."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {"node_count": 10}
         mock_regression_mod.RegressionChecker.return_value = mock_checker
@@ -588,7 +591,7 @@ class TestKnowledgeRegressionHandler:
 
         current = {"node_count": 35, "edge_count": 70}
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = current
         mock_checker.compare.return_value = {
@@ -614,7 +617,7 @@ class TestKnowledgeRegressionHandler:
         """Empty string snapshot_path treated as no snapshot."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {}
         mock_checker.compare.return_value = {"status": "baseline"}
@@ -632,7 +635,7 @@ class TestKnowledgeRegressionHandler:
         """Whitespace-only snapshot_path treated as no snapshot."""
         kg = MagicMock(spec=KnowledgeGraph)
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {}
         mock_checker.compare.return_value = {"status": "baseline"}
@@ -652,7 +655,7 @@ class TestKnowledgeRegressionHandler:
         meta_path = tmp_path / "snap.json"
         meta_path.write_text(json.dumps({"other": "data"}), encoding="utf-8")
 
-        mock_regression_mod = MagicMock()
+        mock_regression_mod = MagicMock(spec=_regression_mod)
         mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {"node_count": 10}
         mock_checker.compare.return_value = {"status": "pass"}

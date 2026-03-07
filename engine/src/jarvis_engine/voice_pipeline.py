@@ -145,23 +145,23 @@ class ConversationState:
         import time as _time
 
         now = _time.monotonic()
-        if not force:
-            if not self._dirty:
-                return
-            if (now - self._last_save_time) < self._SAVE_DEBOUNCE_SECONDS:
-                return
 
         try:
             import json as _json
             path = self._conversation_history_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             with self._conversation_history_lock:
+                if not force:
+                    if not self._dirty:
+                        return
+                    if (now - self._last_save_time) < self._SAVE_DEBOUNCE_SECONDS:
+                        return
                 snapshot = list(self._conversation_history)
                 tmp = path.with_suffix(f".tmp.{os.getpid()}")
                 tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
                 os.replace(str(tmp), str(path))
-            self._last_save_time = now
-            self._dirty = False
+                self._last_save_time = now
+                self._dirty = False
         except OSError as exc:
             logger.debug("Could not save conversation history: %s", exc)
 

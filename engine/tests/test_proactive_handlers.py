@@ -29,6 +29,8 @@ from jarvis_engine.handlers.proactive_handlers import (
 from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.proactive import ProactiveEngine
+from jarvis_engine.proactive.self_test import AdversarialSelfTest
+from jarvis_engine.wakeword import WakeWordDetector
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +165,7 @@ class TestWakeWordStartHandler:
         mock_threading.Event.return_value = MagicMock(spec=threading.Event)
         mock_threading.Lock.return_value = MagicMock(spec=threading.Lock)
 
-        mock_detector = MagicMock()
+        mock_detector = MagicMock(spec=WakeWordDetector)
         with patch("jarvis_engine.handlers.proactive_handlers.threading", mock_threading):
             # We also need to mock the lazy import of WakeWordDetector
             mock_wakeword_module = MagicMock()
@@ -209,7 +211,7 @@ class TestWakeWordStartHandler:
     def test_threshold_passed_to_detector(self, tmp_path: Path) -> None:
         """Custom threshold is forwarded to WakeWordDetector."""
         mock_detector_cls = MagicMock()
-        mock_detector_inst = MagicMock()
+        mock_detector_inst = MagicMock(spec=WakeWordDetector)
         mock_detector_cls.return_value = mock_detector_inst
         mock_wakeword = MagicMock()
         mock_wakeword.WakeWordDetector = mock_detector_cls
@@ -350,7 +352,7 @@ class TestSelfTestHandler:
         regression_result = {"regression_detected": False}
 
         mock_self_test_mod = MagicMock()
-        mock_tester = MagicMock()
+        mock_tester = MagicMock(spec=AdversarialSelfTest)
         mock_tester.run_memory_quiz.return_value = quiz_result
         mock_tester.check_regression.return_value = regression_result
         mock_self_test_mod.AdversarialSelfTest.return_value = mock_tester
@@ -379,7 +381,7 @@ class TestSelfTestHandler:
         regression_result = {"regression_detected": True}
 
         mock_self_test_mod = MagicMock()
-        mock_tester = MagicMock()
+        mock_tester = MagicMock(spec=AdversarialSelfTest)
         mock_tester.run_memory_quiz.return_value = quiz_result
         mock_tester.check_regression.return_value = regression_result
         mock_self_test_mod.AdversarialSelfTest.return_value = mock_tester
@@ -398,7 +400,7 @@ class TestSelfTestHandler:
     def test_score_threshold_forwarded(self, tmp_path: Path) -> None:
         """Custom score_threshold is passed to AdversarialSelfTest."""
         mock_self_test_mod = MagicMock()
-        mock_tester = MagicMock()
+        mock_tester = MagicMock(spec=AdversarialSelfTest)
         mock_tester.run_memory_quiz.return_value = {
             "average_score": 0.5,
             "tasks_run": 1,
@@ -423,7 +425,7 @@ class TestSelfTestHandler:
     def test_per_task_scores_included(self, tmp_path: Path) -> None:
         scores = [0.6, 0.7, 0.8]
         mock_self_test_mod = MagicMock()
-        mock_tester = MagicMock()
+        mock_tester = MagicMock(spec=AdversarialSelfTest)
         mock_tester.run_memory_quiz.return_value = {
             "average_score": 0.7,
             "tasks_run": 3,

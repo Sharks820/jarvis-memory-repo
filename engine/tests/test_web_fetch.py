@@ -7,10 +7,11 @@ ALL network calls and DNS resolution are mocked — no real HTTP/DNS.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import socket
 from unittest.mock import MagicMock, patch
-
+from urllib.request import Request
 
 from jarvis_engine.web_fetch import (
     SafeRedirectHandler,
@@ -211,10 +212,13 @@ class TestSafeRedirectHandler:
 
     def test_redirect_to_public_url_allowed(self):
         handler = self._make_handler()
-        req = MagicMock()
+        req = MagicMock(spec=Request)
         req.get_method.return_value = "GET"
         req.full_url = "https://original.example.com/"
         req.data = None
+        req.headers = {}
+        req.origin_req_host = "original.example.com"
+        req.unverifiable = False
         with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
             result = handler.redirect_request(
                 req, None, 302, "Found", {}, "https://safe.example.com/page"
@@ -224,7 +228,7 @@ class TestSafeRedirectHandler:
 
     def test_redirect_to_private_ip_blocked(self):
         handler = self._make_handler()
-        req = MagicMock()
+        req = MagicMock(spec=Request)
         result = handler.redirect_request(
             req, None, 302, "Found", {}, "http://192.168.1.1/admin"
         )
@@ -232,7 +236,7 @@ class TestSafeRedirectHandler:
 
     def test_redirect_to_localhost_blocked(self):
         handler = self._make_handler()
-        req = MagicMock()
+        req = MagicMock(spec=Request)
         result = handler.redirect_request(
             req, None, 302, "Found", {}, "http://localhost/secrets"
         )
@@ -240,7 +244,7 @@ class TestSafeRedirectHandler:
 
     def test_redirect_to_file_scheme_blocked(self):
         handler = self._make_handler()
-        req = MagicMock()
+        req = MagicMock(spec=Request)
         result = handler.redirect_request(
             req, None, 302, "Found", {}, "file:///etc/passwd"
         )
@@ -248,7 +252,7 @@ class TestSafeRedirectHandler:
 
     def test_redirect_to_loopback_blocked(self):
         handler = self._make_handler()
-        req = MagicMock()
+        req = MagicMock(spec=Request)
         result = handler.redirect_request(
             req, None, 302, "Found", {}, "http://127.0.0.1/internal"
         )
@@ -266,8 +270,9 @@ class TestFetchPageText:
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_returns_stripped_text(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<html><body><p>Hello World</p></body></html>"
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
+        mock_resp.headers = None
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_opener_fn.return_value.open.return_value = mock_resp
@@ -280,8 +285,9 @@ class TestFetchPageText:
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_strips_script_tags(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<html><script>alert('xss')</script><p>Clean</p></html>"
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
+        mock_resp.headers = None
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_opener_fn.return_value.open.return_value = mock_resp
@@ -295,8 +301,9 @@ class TestFetchPageText:
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_strips_style_tags(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<html><style>.hide{display:none}</style><p>Visible</p></html>"
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
+        mock_resp.headers = None
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_opener_fn.return_value.open.return_value = mock_resp
@@ -310,8 +317,9 @@ class TestFetchPageText:
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_unescapes_html_entities(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<p>A &amp; B &lt; C</p>"
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
+        mock_resp.headers = None
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_opener_fn.return_value.open.return_value = mock_resp
@@ -347,8 +355,9 @@ class TestFetchPageText:
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_collapses_whitespace(self, mock_opener_fn, mock_safe, mock_resolve):
         html = b"<p>  lots   of    spaces  </p>"
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html
+        mock_resp.headers = None
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_opener_fn.return_value.open.return_value = mock_resp
@@ -364,7 +373,7 @@ class TestFetchPageText:
 class TestSearchDuckduckgo:
     def _mock_opener(self, html_body: bytes):
         """Create a mock opener whose .open() returns a context-manager response."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = html_body
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
@@ -476,7 +485,7 @@ def _brave_json_response(results: list[dict]) -> bytes:
 
 def _mock_urlopen_cm(payload: bytes):
     """Return a mock that works as a context manager for urlopen."""
-    mock_resp = MagicMock()
+    mock_resp = MagicMock(spec=http.client.HTTPResponse)
     mock_resp.read.return_value = payload
     mock_resp.__enter__ = MagicMock(return_value=mock_resp)
     mock_resp.__exit__ = MagicMock(return_value=False)

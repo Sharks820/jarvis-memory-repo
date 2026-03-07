@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+import httpx
+
 from jarvis_engine.stt_backends import (
     _load_keyterms,
     _numpy_to_wav_bytes,
@@ -154,7 +156,7 @@ class TestTryDeepgram:
         assert result is None
 
     def test_successful_transcription(self) -> None:
-        mock_response = MagicMock()
+        mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "results": {
@@ -171,7 +173,7 @@ class TestTryDeepgram:
             }
         }
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=httpx.Client)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -193,11 +195,11 @@ class TestTryDeepgram:
         assert len(result.segments) == 2
 
     def test_non_200_returns_none(self) -> None:
-        mock_response = MagicMock()
+        mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 401
         mock_response.text = "Unauthorized"
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=httpx.Client)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -214,11 +216,11 @@ class TestTryDeepgram:
         assert result is None
 
     def test_empty_channels_returns_none(self) -> None:
-        mock_response = MagicMock()
+        mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = {"results": {"channels": []}}
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=httpx.Client)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -236,7 +238,7 @@ class TestTryDeepgram:
 
     def test_file_path_input(self) -> None:
         """When audio is a file path string, it reads from file."""
-        mock_response = MagicMock()
+        mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "results": {
@@ -249,7 +251,7 @@ class TestTryDeepgram:
             }
         }
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=httpx.Client)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -269,7 +271,7 @@ class TestTryDeepgram:
 
     def test_uses_provided_keyterms(self) -> None:
         """Explicit keyterms list is used instead of auto-loading."""
-        mock_response = MagicMock()
+        mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "results": {
@@ -282,7 +284,7 @@ class TestTryDeepgram:
             }
         }
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=httpx.Client)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response

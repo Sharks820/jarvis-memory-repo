@@ -874,84 +874,22 @@ class JarvisDesktopWidget(tk.Tk):
         self.output.pack(fill=tk.BOTH, expand=True)
         self._configure_chat_tags()
 
+    # Chat tag style definitions: (name, {config kwargs})
+    _CHAT_TAG_SPECS: list[tuple[str, dict]] = [
+        ("user", {"background": "#0c2d5e", "foreground": "#b8d4ff", "font": ("Consolas", 11, "bold"), "lmargin1": 40, "lmargin2": 40, "rmargin": 8, "spacing1": 4, "spacing3": 4}),
+        ("jarvis", {"background": "#0d1e1e", "foreground": "#a8e6cf", "font": ("Consolas", 11), "lmargin1": 8, "lmargin2": 8, "rmargin": 40, "spacing1": 4, "spacing3": 4}),
+        ("system", {"foreground": "#7a9abe", "font": ("Consolas", 10), "lmargin1": 8, "lmargin2": 8, "spacing1": 2, "spacing3": 2}),
+        ("error", {"background": "#2a0a0a", "foreground": "#ff6b6b", "font": ("Consolas", 11, "bold"), "lmargin1": 8, "lmargin2": 8, "spacing1": 4, "spacing3": 4}),
+        ("separator", {"foreground": "#1e3250", "font": ("Consolas", 6), "justify": "center", "spacing1": 2, "spacing3": 2}),
+        ("timestamp", {"foreground": "#3a5a7e", "font": ("Consolas", 8), "justify": "center", "spacing1": 6, "spacing3": 2}),
+        ("thinking", {"foreground": "#ff9f43", "font": ("Consolas", 11, "italic"), "lmargin1": 8, "lmargin2": 8, "rmargin": 40, "spacing1": 4, "spacing3": 4}),
+        ("learned", {"foreground": "#34d399", "font": ("Consolas", 9, "italic"), "lmargin1": 8, "lmargin2": 8, "spacing1": 1, "spacing3": 1}),
+    ]
+
     def _configure_chat_tags(self) -> None:
         """Set up tag-based visual styles for the chat-style conversation display."""
-        self.output.tag_configure(
-            "user",
-            background="#0c2d5e",
-            foreground="#b8d4ff",
-            font=("Consolas", 11, "bold"),
-            lmargin1=40,
-            lmargin2=40,
-            rmargin=8,
-            spacing1=4,
-            spacing3=4,
-        )
-        self.output.tag_configure(
-            "jarvis",
-            background="#0d1e1e",
-            foreground="#a8e6cf",
-            font=("Consolas", 11),
-            lmargin1=8,
-            lmargin2=8,
-            rmargin=40,
-            spacing1=4,
-            spacing3=4,
-        )
-        self.output.tag_configure(
-            "system",
-            foreground="#7a9abe",
-            font=("Consolas", 10),
-            lmargin1=8,
-            lmargin2=8,
-            spacing1=2,
-            spacing3=2,
-        )
-        self.output.tag_configure(
-            "error",
-            background="#2a0a0a",
-            foreground="#ff6b6b",
-            font=("Consolas", 11, "bold"),
-            lmargin1=8,
-            lmargin2=8,
-            spacing1=4,
-            spacing3=4,
-        )
-        self.output.tag_configure(
-            "separator",
-            foreground="#1e3250",
-            font=("Consolas", 6),
-            justify="center",
-            spacing1=2,
-            spacing3=2,
-        )
-        self.output.tag_configure(
-            "timestamp",
-            foreground="#3a5a7e",
-            font=("Consolas", 8),
-            justify="center",
-            spacing1=6,
-            spacing3=2,
-        )
-        self.output.tag_configure(
-            "thinking",
-            foreground="#ff9f43",
-            font=("Consolas", 11, "italic"),
-            lmargin1=8,
-            lmargin2=8,
-            rmargin=40,
-            spacing1=4,
-            spacing3=4,
-        )
-        self.output.tag_configure(
-            "learned",
-            foreground="#34d399",
-            font=("Consolas", 9, "italic"),
-            lmargin1=8,
-            lmargin2=8,
-            spacing1=1,
-            spacing3=1,
-        )
+        for name, kwargs in self._CHAT_TAG_SPECS:
+            self.output.tag_configure(name, **kwargs)
 
     def _clear_history(self) -> None:
         """Clear all text from the conversation display."""

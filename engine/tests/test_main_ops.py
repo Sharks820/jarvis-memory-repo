@@ -17,7 +17,13 @@ from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine import _bus as bus_mod
 from jarvis_engine import cli_ops as cli_ops_mod
-from jarvis_engine.command_bus import AppContext
+from jarvis_engine.automation import ActionOutcome
+from jarvis_engine.command_bus import AppContext, CommandBus
+from jarvis_engine.growth_tracker import EvalRun, TaskEval
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.ops_sync import SyncSummary
+from jarvis_engine.proactive.self_test import AdversarialSelfTest
 
 
 # ===========================================================================
@@ -320,7 +326,7 @@ class TestOpsSync:
 
     def test_ops_sync_success(self, capsys, mock_bus):
         from jarvis_engine.commands.ops_commands import OpsSyncResult
-        summary = MagicMock()
+        summary = MagicMock(spec=SyncSummary)
         summary.snapshot_path = "/tmp/snap.json"
         summary.tasks = 5
         summary.calendar_events = 2
@@ -357,7 +363,7 @@ class TestAutomationRun:
 
     def test_automation_run_basic(self, capsys, mock_bus):
         from jarvis_engine.commands.ops_commands import AutomationRunResult
-        outcome = MagicMock()
+        outcome = MagicMock(spec=ActionOutcome)
         outcome.title = "Send email"
         outcome.allowed = True
         outcome.executed = True
@@ -375,7 +381,7 @@ class TestAutomationRun:
 
     def test_automation_run_with_stderr(self, capsys, mock_bus):
         from jarvis_engine.commands.ops_commands import AutomationRunResult
-        outcome = MagicMock()
+        outcome = MagicMock(spec=ActionOutcome)
         outcome.title = "Failing action"
         outcome.allowed = False
         outcome.executed = False
@@ -497,13 +503,13 @@ class TestGrowthEval:
 
     def test_eval_success(self, capsys, mock_bus):
         from jarvis_engine.commands.ops_commands import GrowthEvalResult
-        task_result = MagicMock()
+        task_result = MagicMock(spec=TaskEval)
         task_result.task_id = "t1"
         task_result.coverage = 0.85
         task_result.matched = 3
         task_result.total = 4
         task_result.response_sha256 = "sha256abc"
-        run = MagicMock()
+        run = MagicMock(spec=EvalRun)
         run.model = "gemma3:4b"
         run.score_pct = 82.5
         run.avg_tps = 45.2
@@ -695,13 +701,13 @@ class TestDaemonSelfTest:
 
     def test_self_test_runs_at_correct_cycle(self, capsys, monkeypatch, tmp_path):
         """Verify self-test fires when cycles % self_test_every_cycles == 0."""
-        mock_tester = MagicMock()
+        mock_tester = MagicMock(spec=AdversarialSelfTest)
         mock_tester.run_memory_quiz.return_value = {"average_score": 0.92, "tasks_run": 4}
         mock_tester.check_regression.return_value = {"regression_detected": False}
 
-        mock_engine = MagicMock()
-        mock_embed = MagicMock()
-        mock_bus_obj = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
+        mock_embed = MagicMock(spec=EmbeddingService)
+        mock_bus_obj = MagicMock(spec=CommandBus)
         mock_bus_obj.ctx = AppContext(engine=mock_engine, embed_service=mock_embed)
         monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus_obj)
 
@@ -722,8 +728,8 @@ class TestDaemonSelfTest:
 
     def test_self_test_skipped_when_disabled(self, capsys, monkeypatch, tmp_path):
         """Verify no self-test activity when self_test_every_cycles=0."""
-        mock_bus_obj = MagicMock()
-        mock_bus_obj.ctx = AppContext(engine=MagicMock(), embed_service=MagicMock())
+        mock_bus_obj = MagicMock(spec=CommandBus)
+        mock_bus_obj.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus_obj)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_cls:
@@ -738,7 +744,7 @@ class TestDaemonSelfTest:
 
     def test_self_test_handles_missing_engine(self, capsys, monkeypatch, tmp_path):
         """Verify 'skipped' message when engine or embed_svc is None on bus."""
-        mock_bus_obj = MagicMock()
+        mock_bus_obj = MagicMock(spec=CommandBus)
         mock_bus_obj.ctx = AppContext(engine=None, embed_service=None)
         monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus_obj)
 
@@ -753,8 +759,8 @@ class TestDaemonSelfTest:
 
     def test_self_test_handles_error(self, capsys, monkeypatch, tmp_path):
         """Verify error is caught and printed, daemon continues running."""
-        mock_bus_obj = MagicMock()
-        mock_bus_obj.ctx = AppContext(engine=MagicMock(), embed_service=MagicMock())
+        mock_bus_obj = MagicMock(spec=CommandBus)
+        mock_bus_obj.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         monkeypatch.setattr(daemon_loop_mod, "_get_daemon_bus", lambda: mock_bus_obj)
 
         with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest",

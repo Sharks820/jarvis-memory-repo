@@ -101,42 +101,17 @@ def _log_stt_metric(
 
 
 # ---------------------------------------------------------------------------
-# Groq Whisper STT (cloud)
+# Groq Whisper STT (cloud) — helpers
 # ---------------------------------------------------------------------------
 
-def transcribe_groq(
+
+def _groq_prepare_audio(
     audio: np.ndarray | str,
-    *,
-    language: str = "en",
-    prompt: str = "",
-) -> TranscriptionResult | None:
-    """Transcribe audio using Groq's Whisper Turbo API.
+) -> tuple[bytes, str]:
+    """Convert audio input to bytes and determine filename.
 
-    Parameters
-    ----------
-    audio:
-        Either a mono float32 numpy array (16 kHz) or a path to an audio file.
-    language:
-        Language code hint.
-    prompt:
-        Optional prompt to bias recognition toward expected vocabulary.
+    Returns (audio_bytes, filename).
     """
-    import httpx
-
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("GROQ_API_KEY not set")
-
-    # Minimum audio duration check: require at least 0.1s (1600 samples at 16kHz)
-    if isinstance(audio, np.ndarray) and len(audio) < 1600:
-        logger.debug(
-            "Audio too short for Groq API (%d samples)", len(audio)
-        )
-        return None
-
-    t0 = time.monotonic()
-
-    # Prepare audio file
     if isinstance(audio, str):
         with open(audio, "rb") as f:
             audio_bytes = f.read()
@@ -144,19 +119,37 @@ def transcribe_groq(
     else:
         audio_bytes = _numpy_to_wav_bytes(audio)
         filename = "recording.wav"
+    return audio_bytes, filename
 
-    # Default prompt biases recognition toward Jarvis commands.
-    # Format as example utterances starting with "Jarvis" so Whisper
-    # expects "Jarvis" at the beginning of the current transcription.
-    if not prompt:
-        prompt = (
-            "Jarvis, what's on my schedule today? "
-            "Jarvis, run the ops brief. "
-            "Jarvis, check brain status. "
-            "Jarvis, add a task. Jarvis, self heal."
-        )
 
-    # Call Groq Whisper API (OpenAI-compatible) with retry on transient errors
+def _groq_default_prompt(prompt: str) -> str:
+    """Return the prompt to send to Groq, using a default if empty."""
+    if prompt:
+        return prompt
+    return (
+        "Jarvis, what's on my schedule today? "
+        "Jarvis, run the ops brief. "
+        "Jarvis, check brain status. "
+        "Jarvis, add a task. Jarvis, self heal."
+    )
+
+
+def _groq_api_call(
+    api_key: str,
+    audio_bytes: bytes,
+    filename: str,
+    language: str,
+    prompt: str,
+    t0: float,
+) -> "object":
+    """Send the audio to Groq Whisper API with retry on transient errors.
+
+    Returns the httpx Response on success.
+    Raises RuntimeError on non-200 final status.
+    Returns a TranscriptionResult with empty text on transport failure.
+    """
+    import httpx
+
     resp = None
     with httpx.Client(timeout=30.0) as client:
         for attempt in range(2):
@@ -197,14 +190,23 @@ def transcribe_groq(
         text = resp.text[:200] if resp is not None else "no response"
         raise RuntimeError(f"Groq STT API error {status}: {text}")
 
-    data = resp.json()
-    elapsed = time.monotonic() - t0
+    return resp
+
+
+def _groq_parse_response(
+    data: dict,
+    language: str,
+) -> tuple[str, str, float, list[dict] | None]:
+    """Parse Groq API JSON response into (text, language, confidence, segments).
+
+    Computes real confidence from segment-level avg_logprob and no_speech_prob.
+    """
     text = data.get("text", "").strip()
     detected_lang = data.get("language", language)
 
-    # Compute real confidence from segment-level avg_logprob and no_speech_prob
     raw_segments = data.get("segments", [])
     parsed_segments: list[dict] | None = None
+
     if raw_segments and isinstance(raw_segments, list):
         logprobs: list[float] = []
         no_speech_probs: list[float] = []
@@ -217,7 +219,6 @@ def transcribe_groq(
                 nsp = seg.get("no_speech_prob")
                 if isinstance(nsp, (int, float)) and math.isfinite(nsp):
                     no_speech_probs.append(nsp)
-                # Extract timing for segment-level timestamps
                 seg_start = seg.get("start")
                 seg_end = seg.get("end")
                 seg_text = seg.get("text", "")
@@ -242,13 +243,63 @@ def transcribe_groq(
     else:
         confidence = 0.90  # fallback if no segments returned
 
+    return text, detected_lang, confidence, parsed_segments if parsed_segments else None
+
+
+# ---------------------------------------------------------------------------
+# Groq Whisper STT (cloud) — main entry point
+# ---------------------------------------------------------------------------
+
+
+def transcribe_groq(
+    audio: np.ndarray | str,
+    *,
+    language: str = "en",
+    prompt: str = "",
+) -> TranscriptionResult | None:
+    """Transcribe audio using Groq's Whisper Turbo API.
+
+    Parameters
+    ----------
+    audio:
+        Either a mono float32 numpy array (16 kHz) or a path to an audio file.
+    language:
+        Language code hint.
+    prompt:
+        Optional prompt to bias recognition toward expected vocabulary.
+    """
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY not set")
+
+    # Minimum audio duration check: require at least 0.1s (1600 samples at 16kHz)
+    if isinstance(audio, np.ndarray) and len(audio) < 1600:
+        logger.debug("Audio too short for Groq API (%d samples)", len(audio))
+        return None
+
+    t0 = time.monotonic()
+
+    audio_bytes, filename = _groq_prepare_audio(audio)
+    prompt = _groq_default_prompt(prompt)
+
+    result = _groq_api_call(api_key, audio_bytes, filename, language, prompt, t0)
+
+    # _groq_api_call returns TranscriptionResult on transport failure
+    if isinstance(result, TranscriptionResult):
+        return result
+
+    data = result.json()
+    elapsed = time.monotonic() - t0
+
+    text, detected_lang, confidence, segments = _groq_parse_response(data, language)
+
     return TranscriptionResult(
         text=text,
         language=detected_lang,
         confidence=confidence,
         duration_seconds=round(elapsed, 3),
         backend="groq-whisper",
-        segments=parsed_segments if parsed_segments else None,
+        segments=segments,
     )
 
 

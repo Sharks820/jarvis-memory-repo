@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import http.client
 import imaplib
 import json
 import socket
+import urllib.request
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -448,12 +450,12 @@ class TestLoadCalendarEvents:
         monkeypatch.setenv("JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/cal.ics")
         monkeypatch.setenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "true")
 
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = _BASIC_ICS.encode("utf-8")
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        mock_opener = MagicMock()
+        mock_opener = MagicMock(spec=urllib.request.OpenerDirector)
         mock_opener.open.return_value = mock_resp
 
         monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
@@ -469,12 +471,12 @@ class TestLoadCalendarEvents:
         monkeypatch.setenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "1")
 
         payload = b"X" * (ops_sync.MAX_ICS_BYTES + 2)
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.read.return_value = payload
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        mock_opener = MagicMock()
+        mock_opener = MagicMock(spec=urllib.request.OpenerDirector)
         mock_opener.open.return_value = mock_resp
 
         monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
@@ -490,7 +492,7 @@ class TestLoadCalendarEvents:
         monkeypatch.setenv("JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/cal.ics")
         monkeypatch.setenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "1")
 
-        mock_opener = MagicMock()
+        mock_opener = MagicMock(spec=urllib.request.OpenerDirector)
         mock_opener.open.side_effect = URLError("connection refused")
 
         monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
@@ -873,7 +875,7 @@ class TestNoRedirectHandler:
         handler = ops_sync._NoRedirectHandler()
         with pytest.raises(HTTPError) as exc_info:
             handler.redirect_request(
-                MagicMock(), MagicMock(), 302, "Found",
+                MagicMock(spec=urllib.request.Request), MagicMock(spec=http.client.HTTPResponse), 302, "Found",
                 {}, "https://evil.internal/redirect"
             )
         assert "Redirects are not allowed" in str(exc_info.value)

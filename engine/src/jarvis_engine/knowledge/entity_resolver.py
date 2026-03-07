@@ -178,7 +178,47 @@ class EntityResolver:
 
         Reduces O(N^2) to O(N*K) where K is ``top_k``.
         """
-        # Embed all nodes in a single batch call for efficiency
+        embed_cache = self._embed_all_nodes(members)
+
+        if not embed_cache:
+            # All embeddings failed -- fall back to string-only for this group
+            if len(members) <= 500:
+                self._find_duplicates_string(members, candidates)
+            return
+
+        label_map = {nid: lbl for nid, lbl in members}
+        embedded_ids = list(embed_cache.keys())
+        embedded_vecs = [embed_cache[nid] for nid in embedded_ids]
+
+        seen_pairs: set[tuple[str, str]] = set()
+
+        try:
+            import numpy as _np
+            self._find_neighbours_numpy(
+                _np, embedded_ids, embedded_vecs, label_map,
+                top_k, seen_pairs, candidates,
+            )
+        except ImportError:
+            self._find_neighbours_python(
+                embedded_ids, embedded_vecs, label_map,
+                top_k, seen_pairs, candidates,
+            )
+
+        # Also check nodes that failed embedding -- compare them string-only
+        # against each other and against the top vector candidates.
+        non_embedded = [(nid, lbl) for nid, lbl in members if nid not in embed_cache]
+        if non_embedded and len(non_embedded) <= 500:
+            self._find_duplicates_string(non_embedded, candidates)
+
+    def _embed_all_nodes(
+        self,
+        members: list[tuple[str, str]],
+    ) -> dict[str, list[float]]:
+        """Embed all node labels, using batch call with individual fallback.
+
+        Returns a dict mapping node_id to embedding vector.  May return an
+        empty dict if all embeddings fail.
+        """
         embed_cache: dict[str, list[float]] = {}
         all_ids = [nid for nid, _lbl in members]
         all_labels = [lbl for _nid, lbl in members]
@@ -188,140 +228,119 @@ class EntityResolver:
                 for nid, vec in zip(all_ids, batch_results):
                     embed_cache[nid] = vec
             else:
-                # Fallback to individual calls if embed_batch unavailable
                 for node_id, label in members:
                     embed_cache[node_id] = self._embed_service.embed(label)
         except (RuntimeError, ValueError, OSError) as exc:
             logger.debug("Batch embedding failed, falling back to individual calls: %s", exc)
-            # Batch failed — fall back to individual calls
             embed_cache.clear()
             for node_id, label in members:
                 try:
                     embed_cache[node_id] = self._embed_service.embed(label)
-                except (RuntimeError, ValueError, OSError) as exc:
-                    logger.debug("Embedding failed for node %s (%r): %s", node_id, label, exc)
+                except (RuntimeError, ValueError, OSError) as exc2:
+                    logger.debug("Embedding failed for node %s (%r): %s", node_id, label, exc2)
+        return embed_cache
 
-        if not embed_cache:
-            # All embeddings failed — fall back to string-only for this group
-            if len(members) <= 500:
-                self._find_duplicates_string(members, candidates)
+    def _evaluate_pair(
+        self,
+        id_a: str,
+        id_b: str,
+        embed_sim: float,
+        label_map: dict[str, str],
+        seen_pairs: set[tuple[str, str]],
+        candidates: list[MergeCandidate],
+    ) -> None:
+        """Evaluate a single pair of nodes, adding to candidates if above threshold."""
+        pair_key = (min(id_a, id_b), max(id_a, id_b))
+        if pair_key in seen_pairs:
             return
+        seen_pairs.add(pair_key)
 
-        # Build label lookup
-        label_map = {nid: lbl for nid, lbl in members}
+        label_a = label_map[id_a]
+        label_b = label_map[id_b]
 
-        # For each node, find top-K nearest neighbours via cosine similarity
-        # among nodes in this group.  We compute pairwise scores only against
-        # the K closest vectors rather than all N nodes.
-        embedded_ids = list(embed_cache.keys())
-        embedded_vecs = [embed_cache[nid] for nid in embedded_ids]
+        string_sim = difflib.SequenceMatcher(
+            None, label_a.lower(), label_b.lower()
+        ).ratio()
+
+        combined = max(string_sim, embed_sim)
+        reason = "embedding" if embed_sim > string_sim else "string"
+
+        if combined >= self._threshold:
+            candidates.append(
+                MergeCandidate(
+                    node_a_id=id_a,
+                    node_b_id=id_b,
+                    label_a=label_a,
+                    label_b=label_b,
+                    similarity=combined,
+                    merge_reason=reason,
+                )
+            )
+
+    def _find_neighbours_numpy(
+        self,
+        _np: object,
+        embedded_ids: list[str],
+        embedded_vecs: list[list[float]],
+        label_map: dict[str, str],
+        top_k: int,
+        seen_pairs: set[tuple[str, str]],
+        candidates: list[MergeCandidate],
+    ) -> None:
+        """Find top-K neighbours using numpy vectorized cosine similarity."""
         n = len(embedded_ids)
+        mat = _np.array(embedded_vecs, dtype=_np.float32)
+        norms = _np.linalg.norm(mat, axis=1, keepdims=True)
+        norms = _np.where(norms == 0, 1.0, norms)
+        normed = mat / norms
+        sim_matrix = normed @ normed.T
+        _np.fill_diagonal(sim_matrix, -1.0)
 
-        # Track already-evaluated pairs to avoid duplicates
-        seen_pairs: set[tuple[str, str]] = set()
+        for i in range(n):
+            id_a = embedded_ids[i]
+            row = sim_matrix[i]
+            if top_k < n - 1:
+                top_indices = _np.argpartition(row, -top_k)[-top_k:]
+            else:
+                top_indices = _np.arange(n)
+                top_indices = top_indices[top_indices != i]
 
-        # Batch vectorized cosine similarity using numpy when available
-        try:
-            import numpy as _np
-            mat = _np.array(embedded_vecs, dtype=_np.float32)
-            norms = _np.linalg.norm(mat, axis=1, keepdims=True)
-            norms = _np.where(norms == 0, 1.0, norms)
-            normed = mat / norms
-            sim_matrix = normed @ normed.T
-            # Exclude self-similarity
-            _np.fill_diagonal(sim_matrix, -1.0)
+            for j in top_indices:
+                self._evaluate_pair(
+                    id_a, embedded_ids[j], float(row[j]),
+                    label_map, seen_pairs, candidates,
+                )
 
-            for i in range(n):
-                id_a = embedded_ids[i]
-                # Get top-K neighbour indices from the precomputed row
-                row = sim_matrix[i]
-                if top_k < n - 1:
-                    top_indices = _np.argpartition(row, -top_k)[-top_k:]
-                else:
-                    top_indices = _np.arange(n)
-                    top_indices = top_indices[top_indices != i]
+    def _find_neighbours_python(
+        self,
+        embedded_ids: list[str],
+        embedded_vecs: list[list[float]],
+        label_map: dict[str, str],
+        top_k: int,
+        seen_pairs: set[tuple[str, str]],
+        candidates: list[MergeCandidate],
+    ) -> None:
+        """Find top-K neighbours using pure-Python pairwise cosine similarity."""
+        n = len(embedded_ids)
+        for i in range(n):
+            id_a = embedded_ids[i]
+            vec_a = embedded_vecs[i]
 
-                for j in top_indices:
-                    embed_sim = float(row[j])
-                    id_b = embedded_ids[j]
+            scored: list[tuple[float, int]] = []
+            for j in range(n):
+                if i == j:
+                    continue
+                sim = self._cosine_similarity(vec_a, embedded_vecs[j])
+                scored.append((sim, j))
 
-                    pair_key = (min(id_a, id_b), max(id_a, id_b))
-                    if pair_key in seen_pairs:
-                        continue
-                    seen_pairs.add(pair_key)
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top_neighbours = scored[:top_k]
 
-                    label_a = label_map[id_a]
-                    label_b = label_map[id_b]
-
-                    string_sim = difflib.SequenceMatcher(
-                        None, label_a.lower(), label_b.lower()
-                    ).ratio()
-
-                    combined = max(string_sim, embed_sim)
-                    reason = "embedding" if embed_sim > string_sim else "string"
-
-                    if combined >= self._threshold:
-                        candidates.append(
-                            MergeCandidate(
-                                node_a_id=id_a,
-                                node_b_id=id_b,
-                                label_a=label_a,
-                                label_b=label_b,
-                                similarity=combined,
-                                merge_reason=reason,
-                            )
-                        )
-        except ImportError:
-            # Fallback to pure-Python pairwise loop if numpy unavailable
-            for i in range(n):
-                id_a = embedded_ids[i]
-                vec_a = embedded_vecs[i]
-
-                scored: list[tuple[float, int]] = []
-                for j in range(n):
-                    if i == j:
-                        continue
-                    sim = self._cosine_similarity(vec_a, embedded_vecs[j])
-                    scored.append((sim, j))
-
-                scored.sort(key=lambda x: x[0], reverse=True)
-                top_neighbours = scored[:top_k]
-
-                for embed_sim, j in top_neighbours:
-                    id_b = embedded_ids[j]
-
-                    pair_key = (min(id_a, id_b), max(id_a, id_b))
-                    if pair_key in seen_pairs:
-                        continue
-                    seen_pairs.add(pair_key)
-
-                    label_a = label_map[id_a]
-                    label_b = label_map[id_b]
-
-                    string_sim = difflib.SequenceMatcher(
-                        None, label_a.lower(), label_b.lower()
-                    ).ratio()
-
-                    combined = max(string_sim, embed_sim)
-                    reason = "embedding" if embed_sim > string_sim else "string"
-
-                    if combined >= self._threshold:
-                        candidates.append(
-                            MergeCandidate(
-                                node_a_id=id_a,
-                                node_b_id=id_b,
-                                label_a=label_a,
-                                label_b=label_b,
-                                similarity=combined,
-                                merge_reason=reason,
-                            )
-                        )
-
-        # Also check nodes that failed embedding — compare them string-only
-        # against each other and against the top vector candidates.
-        non_embedded = [(nid, lbl) for nid, lbl in members if nid not in embed_cache]
-        if non_embedded and len(non_embedded) <= 500:
-            self._find_duplicates_string(non_embedded, candidates)
+            for embed_sim, j in top_neighbours:
+                self._evaluate_pair(
+                    id_a, embedded_ids[j], embed_sim,
+                    label_map, seen_pairs, candidates,
+                )
 
     def _find_duplicates_string(
         self,
@@ -455,7 +474,51 @@ class EntityResolver:
                 skipped (embedding should have been pre-computed outside
                 the lock by the caller).
         """
-        # Verify both nodes exist
+        # Verify both nodes exist and are not locked
+        keep_row, remove_row = self._validate_merge_nodes(keep_id, remove_id)
+        if keep_row is None or remove_row is None:
+            return False
+
+        keep_label = keep_row[0]
+        keep_conf = keep_row[1]
+        remove_label = remove_row[0]
+        remove_conf = remove_row[1]
+
+        # Transfer all edges from remove_id to keep_id
+        edges_transferred = self._transfer_edges(keep_id, remove_id)
+
+        # Update the kept node's label, confidence, FTS, and vec indexes
+        new_label = canonical_label if canonical_label is not None else keep_label
+        new_conf = max(keep_conf, remove_conf)
+        self._update_kept_node(keep_id, new_label, new_conf, _embedding_blob)
+
+        # Delete the removed node and all its index entries
+        self._delete_merged_node(remove_id)
+
+        # Record in merge history, commit, and invalidate cache
+        self._record_merge_history(
+            keep_id, remove_id, keep_label, remove_label,
+            canonical_label, edges_transferred,
+        )
+
+        logger.info(
+            "Merged node %s into %s (edges transferred: %d)",
+            remove_id,
+            keep_id,
+            edges_transferred,
+        )
+        return True
+
+    def _validate_merge_nodes(
+        self,
+        keep_id: str,
+        remove_id: str,
+    ) -> tuple[tuple | None, tuple | None]:
+        """Verify both nodes exist and are not locked.
+
+        Returns (keep_row, remove_row) where each is
+        (label, confidence, locked) or None if missing/locked.
+        """
         keep_row = self._kg.db.execute(
             "SELECT label, confidence, locked FROM kg_nodes WHERE node_id = ?",
             (keep_id,),
@@ -466,21 +529,22 @@ class EntityResolver:
         ).fetchone()
 
         if keep_row is None or remove_row is None:
-            return False
+            return (None, None)
 
-        # Refuse to merge locked nodes -- lock contract guarantees immutability
         if keep_row[2] or remove_row[2]:
             logger.warning(
                 "Refusing to merge locked nodes: keep=%s (locked=%s), remove=%s (locked=%s)",
                 keep_id, bool(keep_row[2]), remove_id, bool(remove_row[2]),
             )
-            return False
+            return (None, None)
 
-        keep_label = keep_row[0]
-        keep_conf = keep_row[1]
-        remove_label = remove_row[0]
-        remove_conf = remove_row[1]
+        return (keep_row, remove_row)
 
+    def _transfer_edges(self, keep_id: str, remove_id: str) -> int:
+        """Transfer all edges from remove_id to keep_id, skipping self-loops.
+
+        Returns the number of edges actually transferred.
+        """
         edges_transferred = 0
 
         # Transfer outgoing edges FROM remove_id -> keep_id
@@ -489,9 +553,7 @@ class EntityResolver:
             "FROM kg_edges WHERE source_id = ?",
             (remove_id,),
         ).fetchall()
-        for edge in outgoing:
-            target_id, relation, conf, src = edge
-            # Skip self-loops that would result from the merge
+        for target_id, relation, conf, src in outgoing:
             if target_id == keep_id:
                 continue
             cur = self._kg.db.execute(
@@ -508,8 +570,7 @@ class EntityResolver:
             "FROM kg_edges WHERE target_id = ?",
             (remove_id,),
         ).fetchall()
-        for edge in incoming:
-            source_id, relation, conf, src = edge
+        for source_id, relation, conf, src in incoming:
             if source_id == keep_id:
                 continue
             cur = self._kg.db.execute(
@@ -520,38 +581,43 @@ class EntityResolver:
             )
             edges_transferred += cur.rowcount
 
-        # Update keep_id: canonical label + max confidence
-        new_label = canonical_label if canonical_label is not None else keep_label
-        new_conf = max(keep_conf, remove_conf)
+        return edges_transferred
+
+    def _update_kept_node(
+        self,
+        keep_id: str,
+        new_label: str,
+        new_conf: float,
+        embedding_blob: bytes | None,
+    ) -> None:
+        """Update the kept node's label, confidence, and search indexes."""
         self._kg.db.execute(
             "UPDATE kg_nodes SET label = ?, confidence = ?, "
             "updated_at = datetime('now') WHERE node_id = ?",
             (new_label, new_conf, keep_id),
         )
 
-        # Update FTS5 index for keep_id (DELETE + INSERT since FTS5 has no UPDATE)
         upsert_fts_kg(self._kg.db, keep_id, new_label)
 
-        # Write pre-computed vec embedding for keep_id (no-ops if blob is None)
-        if _embedding_blob is not None:
+        if embedding_blob is not None:
             try:
                 self._kg.db.execute(
                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (keep_id,)
                 )
                 self._kg.db.execute(
                     "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
-                    (keep_id, _embedding_blob),
+                    (keep_id, embedding_blob),
                 )
             except (sqlite3.Error, ValueError) as exc:
                 logger.debug("Vec embedding update for merged node %s failed: %s", keep_id, exc)
 
-        # Delete edges referencing remove_id, then the node itself
+    def _delete_merged_node(self, remove_id: str) -> None:
+        """Delete the merged-away node and all its edge/index entries."""
         self._kg.db.execute(
             "DELETE FROM kg_edges WHERE source_id = ? OR target_id = ?",
             (remove_id, remove_id),
         )
 
-        # Remove remove_id from FTS5 and vec indexes before deleting the node
         delete_fts_kg(self._kg.db, remove_id)
         if getattr(self._kg, "_vec_available", False):
             try:
@@ -565,7 +631,16 @@ class EntityResolver:
             "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)
         )
 
-        # Record in merge history
+    def _record_merge_history(
+        self,
+        keep_id: str,
+        remove_id: str,
+        keep_label: str,
+        remove_label: str,
+        canonical_label: str | None,
+        edges_transferred: int,
+    ) -> None:
+        """Write merge history record, commit, and invalidate cache."""
         self._kg.db.execute(
             "INSERT INTO kg_merge_history "
             "(keep_id, remove_id, keep_label, remove_label, "
@@ -582,16 +657,7 @@ class EntityResolver:
         )
 
         self._kg.db.commit()
-        # Invalidate NetworkX cache (bypassed add_fact/add_edge)
         self._kg.invalidate_cache()
-
-        logger.info(
-            "Merged node %s into %s (edges transferred: %d)",
-            remove_id,
-            keep_id,
-            edges_transferred,
-        )
-        return True
 
     # ------------------------------------------------------------------
     # Auto-resolve

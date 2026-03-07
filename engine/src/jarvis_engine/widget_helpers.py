@@ -498,7 +498,7 @@ def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) ->
 def _http_error_details(exc: HTTPError) -> str:
     try:
         raw = exc.read().decode("utf-8", errors="replace").strip()
-    except Exception as exc2:  # boundary: catch-all justified
+    except (OSError, UnicodeDecodeError, AttributeError) as exc2:
         logger.debug("Failed to read HTTP error response body: %s", exc2)
         raw = ""
     if raw:
@@ -527,7 +527,7 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
     except RuntimeError as exc:
         # faster-whisper or sounddevice not available -- fall back to System.Speech
         logger.debug("Whisper STT unavailable, falling back to System.Speech: %s", exc)
-    except Exception as exc:  # boundary: catch-all justified
+    except (OSError, ImportError, ValueError, TypeError) as exc:
         logger.warning("Whisper STT failed, falling back to System.Speech: %s", exc)
     # Fallback: Windows System.Speech via PowerShell
     return _voice_dictate_system_speech(timeout_s)

@@ -78,6 +78,75 @@ def _load_keyterms() -> list[str]:
 # Deepgram Nova-3 STT (cloud, keyterm prompting)
 # ---------------------------------------------------------------------------
 
+
+def _prepare_deepgram_audio(audio: np.ndarray | str) -> tuple[bytes, str]:
+    """Convert audio input to WAV bytes and content type for Deepgram upload."""
+    if isinstance(audio, str):
+        with open(audio, "rb") as f:
+            audio_bytes = f.read()
+    else:
+        audio_bytes = _numpy_to_wav_bytes(audio)
+    return audio_bytes, "audio/wav"
+
+
+def _build_deepgram_params(
+    language: str, keyterms: list[str] | None,
+) -> list[tuple[str, str]]:
+    """Build Deepgram REST API query params with keyword prompting."""
+    if keyterms is None:
+        keyterms = _load_keyterms()
+
+    params: list[tuple[str, str]] = [
+        ("model", "nova-3"),
+        ("language", language),
+        ("punctuate", "true"),
+        ("smart_format", "true"),
+    ]
+    # Deepgram supports up to 500 keywords per request
+    for kt in keyterms[:500]:
+        params.append(("keywords", kt))
+    return params
+
+
+def _parse_deepgram_response(data: dict) -> tuple[str, float, list[dict] | None]:
+    """Extract transcript, confidence, and segments from Deepgram JSON.
+
+    Returns ``("", 0.0, None)`` and logs a warning when the response
+    structure is unexpected.
+    """
+    channels = data.get("results", {}).get("channels", [])
+    if not channels:
+        logger.warning("Deepgram returned no channels")
+        return "", 0.0, None
+
+    alternatives = channels[0].get("alternatives", [])
+    if not alternatives:
+        logger.warning("Deepgram returned no alternatives")
+        return "", 0.0, None
+
+    best = alternatives[0]
+    transcript = best.get("transcript", "").strip()
+    confidence = best.get("confidence", 0.0)
+
+    # Extract per-word data for segments if available
+    words = best.get("words", [])
+    parsed_segments: list[dict] | None = None
+    if words:
+        parsed_segments = []
+        for word_info in words:
+            w_start = word_info.get("start")
+            w_end = word_info.get("end")
+            w_word = word_info.get("word", "")
+            if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
+                parsed_segments.append({
+                    "start": float(w_start),
+                    "end": float(w_end),
+                    "text": str(w_word),
+                })
+
+    return transcript, confidence, parsed_segments if parsed_segments else None
+
+
 def _try_deepgram(
     audio: np.ndarray | str,
     *,
@@ -121,30 +190,8 @@ def _try_deepgram(
 
     try:
         t0 = time.monotonic()
-
-        # Prepare audio bytes
-        if isinstance(audio, str):
-            with open(audio, "rb") as f:
-                audio_bytes = f.read()
-            content_type = "audio/wav"
-        else:
-            audio_bytes = _numpy_to_wav_bytes(audio)
-            content_type = "audio/wav"
-
-        # Build query params as list of tuples to support repeated "keywords"
-        # Deepgram REST API uses "keywords" param (can be repeated)
-        if keyterms is None:
-            keyterms = _load_keyterms()
-
-        params: list[tuple[str, str]] = [
-            ("model", "nova-3"),
-            ("language", language),
-            ("punctuate", "true"),
-            ("smart_format", "true"),
-        ]
-        # Deepgram supports up to 500 keywords per request
-        for kt in keyterms[:500]:
-            params.append(("keywords", kt))
+        audio_bytes, content_type = _prepare_deepgram_audio(audio)
+        params = _build_deepgram_params(language, keyterms)
 
         with httpx.Client(timeout=30.0) as client:
             resp = client.post(
@@ -167,39 +214,10 @@ def _try_deepgram(
             )
             return None
 
-        data = resp.json()
-
-        # Extract transcript and confidence from Deepgram response
-        # Response structure: results.channels[0].alternatives[0]
-        channels = data.get("results", {}).get("channels", [])
-        if not channels:
-            logger.warning("Deepgram returned no channels")
+        transcript, confidence, segments = _parse_deepgram_response(resp.json())
+        if not transcript and confidence == 0.0 and segments is None:
+            # _parse_deepgram_response already logged the warning
             return None
-
-        alternatives = channels[0].get("alternatives", [])
-        if not alternatives:
-            logger.warning("Deepgram returned no alternatives")
-            return None
-
-        best = alternatives[0]
-        transcript = best.get("transcript", "").strip()
-        confidence = best.get("confidence", 0.0)
-
-        # Extract per-word data for segments if available
-        words = best.get("words", [])
-        parsed_segments: list[dict] | None = None
-        if words:
-            parsed_segments = []
-            for word_info in words:
-                w_start = word_info.get("start")
-                w_end = word_info.get("end")
-                w_word = word_info.get("word", "")
-                if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
-                    parsed_segments.append({
-                        "start": float(w_start),
-                        "end": float(w_end),
-                        "text": str(w_word),
-                    })
 
         return TranscriptionResult(
             text=transcript,
@@ -207,7 +225,7 @@ def _try_deepgram(
             confidence=round(float(confidence), 4),
             duration_seconds=round(elapsed, 3),
             backend="deepgram-nova3",
-            segments=parsed_segments if parsed_segments else None,
+            segments=segments,
         )
 
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
@@ -221,6 +239,103 @@ def _try_deepgram(
 # ---------------------------------------------------------------------------
 # Microphone recording
 # ---------------------------------------------------------------------------
+
+
+def _init_vad(sample_rate: int) -> tuple[object | None, bool]:
+    """Initialize Silero VAD detector with graceful fallback.
+
+    Returns ``(detector, use_silero)`` where *use_silero* is ``False``
+    when Silero is unavailable and the caller should fall back to RMS.
+    """
+    vad_detector = None
+    use_silero = False
+    try:
+        from jarvis_engine.stt_vad import get_vad_detector
+        vad_detector = get_vad_detector(sampling_rate=sample_rate)
+        use_silero = vad_detector.available
+    except (ImportError, OSError, RuntimeError) as exc:
+        logger.debug("VAD detector initialization failed: %s", exc)
+
+    if use_silero:
+        logger.info("Using Silero VAD for speech detection")
+    else:
+        logger.warning(
+            "Silero VAD not available, falling back to energy-based VAD"
+        )
+    return vad_detector, use_silero
+
+
+def _detect_speech(
+    chunk: np.ndarray,
+    vad_detector: object | None,
+    use_silero: bool,
+    silence_threshold: float,
+) -> bool:
+    """Return True if *chunk* contains speech using Silero VAD or RMS energy."""
+    if use_silero and vad_detector is not None:
+        mono = chunk[:, 0] if chunk.ndim > 1 else chunk
+        return vad_detector.process_chunk(mono)
+    # RMS energy fallback
+    rms = float(np.sqrt(np.mean(chunk ** 2)))
+    return rms > silence_threshold
+
+
+def _capture_audio_loop(
+    stream: object,
+    *,
+    sample_rate: int,
+    max_duration_seconds: float,
+    silence_threshold: float,
+    silence_duration: float,
+    drain_seconds: float,
+    vad_detector: object | None,
+    use_silero: bool,
+) -> list[np.ndarray]:
+    """Read audio chunks from *stream*, stopping on post-speech silence.
+
+    Returns the list of captured numpy frames.
+    """
+    # Drain stale audio from OS buffer (e.g. wake word remnants)
+    if drain_seconds > 0:
+        drain_samples = int(sample_rate * drain_seconds)
+        stream.read(drain_samples)
+        logger.debug("Drained %.0fms of stale audio", drain_seconds * 1000)
+
+    # Silero VAD works best with 32ms (512-sample) chunks at 16 kHz.
+    # RMS fallback uses 100ms chunks for backward compatibility.
+    chunk_duration = 0.032 if use_silero else 0.1
+    samples_per_chunk = int(sample_rate * chunk_duration)
+    max_silence_chunks = int(silence_duration / chunk_duration)
+    min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
+    max_chunks = int(max_duration_seconds / chunk_duration)
+
+    frames: list[np.ndarray] = []
+    speech_detected = False
+    silence_frames = 0
+
+    for i in range(max_chunks):
+        chunk, _ = stream.read(samples_per_chunk)
+        frames.append(chunk.copy())
+
+        is_speech = _detect_speech(
+            chunk, vad_detector, use_silero, silence_threshold,
+        )
+
+        if is_speech:
+            speech_detected = True
+            silence_frames = 0
+        elif speech_detected:
+            silence_frames += 1
+            if silence_frames >= max_silence_chunks and i >= min_recording_chunks:
+                logger.debug(
+                    "Silence detected after speech, stopping recording "
+                    "(%.1f seconds recorded)",
+                    (i + 1) * chunk_duration,
+                )
+                break
+
+    return frames
+
 
 def record_from_microphone(
     *,
@@ -267,22 +382,7 @@ def record_from_microphone(
             "Install with: pip install sounddevice"
         ) from exc
 
-    # Lazy-import VAD detector (graceful degradation if not installed)
-    _vad_detector = None
-    _use_silero = False
-    try:
-        from jarvis_engine.stt_vad import get_vad_detector
-        _vad_detector = get_vad_detector(sampling_rate=sample_rate)
-        _use_silero = _vad_detector.available
-    except (ImportError, OSError, RuntimeError) as exc:
-        logger.debug("VAD detector initialization failed: %s", exc)
-
-    if _use_silero:
-        logger.info("Using Silero VAD for speech detection")
-    else:
-        logger.warning(
-            "Silero VAD not available, falling back to energy-based VAD"
-        )
+    vad_detector, use_silero = _init_vad(sample_rate)
 
     try:
         logger.info(
@@ -291,58 +391,21 @@ def record_from_microphone(
             sample_rate,
         )
 
-        frames: list[np.ndarray] = []
-        speech_detected = False
-        silence_frames = 0
-
-        # Silero VAD works best with 32ms (512-sample) chunks at 16 kHz.
-        # RMS fallback uses 100ms chunks for backward compatibility.
-        if _use_silero:
-            chunk_duration = 0.032  # 32ms for Silero VAD
-        else:
-            chunk_duration = 0.1   # 100ms for RMS fallback
-        samples_per_chunk = int(sample_rate * chunk_duration)
-        max_silence_chunks = int(silence_duration / chunk_duration)
-        min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
-
         with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:
-            # Drain stale audio from OS buffer (e.g. wake word remnants)
-            if drain_seconds > 0:
-                drain_samples = int(sample_rate * drain_seconds)
-                stream.read(drain_samples)
-                logger.debug("Drained %.0fms of stale audio", drain_seconds * 1000)
-
-            max_chunks = int(max_duration_seconds / chunk_duration)
-            for i in range(max_chunks):
-                chunk, _ = stream.read(samples_per_chunk)
-                frames.append(chunk.copy())
-
-                # --- Speech detection ---
-                if _use_silero and _vad_detector is not None:
-                    # Silero VAD path: process mono channel
-                    mono = chunk[:, 0] if chunk.ndim > 1 else chunk
-                    is_speech = _vad_detector.process_chunk(mono)
-                else:
-                    # RMS energy fallback
-                    rms = float(np.sqrt(np.mean(chunk ** 2)))
-                    is_speech = rms > silence_threshold
-
-                if is_speech:
-                    speech_detected = True
-                    silence_frames = 0
-                elif speech_detected:
-                    silence_frames += 1
-                    if silence_frames >= max_silence_chunks and i >= min_recording_chunks:
-                        logger.debug(
-                            "Silence detected after speech, stopping recording "
-                            "(%.1f seconds recorded)",
-                            (i + 1) * chunk_duration,
-                        )
-                        break
+            frames = _capture_audio_loop(
+                stream,
+                sample_rate=sample_rate,
+                max_duration_seconds=max_duration_seconds,
+                silence_threshold=silence_threshold,
+                silence_duration=silence_duration,
+                drain_seconds=drain_seconds,
+                vad_detector=vad_detector,
+                use_silero=use_silero,
+            )
 
         # Reset VAD state for next recording session (stateful model)
-        if _use_silero and _vad_detector is not None:
-            _vad_detector.reset()
+        if use_silero and vad_detector is not None:
+            vad_detector.reset()
 
     except OSError as exc:
         # PortAudioError or similar -- microphone not available
