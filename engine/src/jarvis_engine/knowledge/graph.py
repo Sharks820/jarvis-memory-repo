@@ -182,7 +182,7 @@ class KnowledgeGraph:
                         USING vec0(node_id TEXT PRIMARY KEY, embedding float[{_EMBEDDING_DIM}])
                     """
                 )
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 self._vec_available = False
                 logger.warning("Failed to create vec_kg_nodes table: %s", exc)
 
@@ -204,7 +204,7 @@ class KnowledgeGraph:
                         (row[0], row[1]),
                     )
                 logger.info("Backfilled %d nodes into fts_kg_nodes", len(missing))
-        except Exception as exc:
+        except sqlite3.Error as exc:
             logger.warning("FTS5 backfill failed (non-fatal): %s", exc)
 
         # Bump schema version to 2
@@ -311,7 +311,7 @@ class KnowledgeGraph:
                 embedding = self._embed_service.embed(label, prefix="search_document")
                 if len(embedding) == _EMBEDDING_DIM:
                     embedding_blob = struct.pack(f"{len(embedding)}f", *embedding)
-            except Exception as exc:
+            except (ImportError, ValueError, struct.error) as exc:
                 logger.debug("Vec embedding for KG node %s failed: %s", node_id, exc)
 
         with self._write_lock:
@@ -406,7 +406,7 @@ class KnowledgeGraph:
                             "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
                             (node_id, embedding_blob),
                         )
-                    except Exception as exc:
+                    except sqlite3.Error as exc:
                         logger.debug("Vec index update for KG node %s failed: %s", node_id, exc)
 
                 self._db.commit()
@@ -419,7 +419,7 @@ class KnowledgeGraph:
         # Auto-lock check (outside write_lock -- check_and_auto_lock acquires its own)
         try:
             self._lock_manager.check_and_auto_lock(node_id)
-        except Exception as exc:
+        except (sqlite3.Error, ValueError) as exc:
             logger.debug("Auto-lock check failed for %s: %s", node_id, exc)
 
         return True
@@ -601,7 +601,7 @@ class KnowledgeGraph:
                         {k: v for k, v in dict(row).items() if k != "rank"}
                         for row in cur.fetchall()
                     ]
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 logger.debug("FTS5 KG search failed, falling back to LIKE: %s", exc)
 
         if fts_results:
@@ -715,7 +715,7 @@ class KnowledgeGraph:
 
             return results
 
-        except Exception as exc:
+        except (sqlite3.Error, struct.error, ValueError) as exc:
             logger.warning("KG semantic search failed: %s", exc)
             return []
 
@@ -778,7 +778,7 @@ class KnowledgeGraph:
                                 f"DELETE FROM vec_kg_nodes WHERE node_id IN ({placeholders})",
                                 chunk,
                             )
-                        except Exception as exc:
+                        except sqlite3.Error as exc:
                             logger.debug("KG chunk extraction failed: %s", exc)
 
                 self._db.commit()

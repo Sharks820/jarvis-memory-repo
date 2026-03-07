@@ -62,7 +62,7 @@ class VoiceSayHandler:
                 output_wav=cmd.output_wav,
                 rate=cmd.rate,
             )
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError) as exc:
             logger.error("TTS speak_text failed: %s", exc, exc_info=True)
             return VoiceSayResult(message="error: TTS failed.")
         return VoiceSayResult(
@@ -182,7 +182,7 @@ class VoiceListenHandler:
                 root_dir=self._root,
                 gateway=self._gateway,
             )
-        except Exception as exc:
+        except (RuntimeError, OSError) as exc:
             logger.warning("Voice listen failed: %s", exc)
             return VoiceListenResult(message="error: voice listen failed.")
 
@@ -241,7 +241,7 @@ class PersonaComposeHandler:
                 model=model,
                 route_reason="persona_reply",
             )
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, RuntimeError, OSError, ValueError) as exc:
             logger.warning("Persona compose failed: %s", exc)
             return PersonaComposeResult(
                 branch=cmd.branch,

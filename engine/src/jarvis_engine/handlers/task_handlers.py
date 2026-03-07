@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from jarvis_engine._constants import make_task_id as _make_task_id
 from pathlib import Path
 
@@ -66,7 +67,7 @@ class RunTaskHandler:
                     f"prompt={cmd.prompt[:400]}"
                 ),
             )
-        except Exception as exc:
+        except (sqlite3.Error, OSError, ValueError, RuntimeError) as exc:
             logger.warning("Auto-ingest failed for task %s: %s", cmd.task_type, exc)
         return RunTaskResult(
             allowed=result.allowed,
@@ -163,7 +164,7 @@ class WebResearchHandler:
                             f"Findings:\n" + "\n".join(lines)
                         ),
                     )
-            except Exception as exc:
+            except (sqlite3.Error, OSError, ValueError, ImportError, RuntimeError) as exc:
                 logger.warning("Auto-ingest failed for web research: %s", exc)
         return WebResearchResult(return_code=0, report=report, auto_ingest_record_id=auto_id)
 
@@ -224,7 +225,7 @@ class QueryHandler:
                 route_reason=route_reason,
                 privacy_routed=is_private,
             )
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, RuntimeError, OSError, ValueError) as exc:
             logger.error("QueryHandler gateway.complete failed: %s", exc, exc_info=True)
             return QueryResult(
                 text=f"error: query failed ({type(exc).__name__})",

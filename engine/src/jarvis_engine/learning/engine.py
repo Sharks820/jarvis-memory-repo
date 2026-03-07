@@ -8,6 +8,7 @@ source/kind/tag metadata.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -116,9 +117,9 @@ class ConversationLearningEngine:
                                 f"Learned preference: {key}={value}",
                                 {"key": key, "value": value},
                             )
-                    except Exception as exc:
+                    except (ImportError, OSError, sqlite3.Error) as exc:
                         logger.warning("Preference activity logging failed: %s", exc)
-            except Exception as exc:
+            except (ValueError, TypeError, sqlite3.Error) as exc:
                 logger.warning("Failed to observe preferences: %s", exc)
 
         # Detect implicit feedback if tracker is available
@@ -126,14 +127,14 @@ class ConversationLearningEngine:
         if self._feedback_tracker is not None:
             try:
                 feedback_detected = self._feedback_tracker.record_feedback(user_message, route=route)
-            except Exception as exc:
+            except (ValueError, TypeError, sqlite3.Error) as exc:
                 logger.warning("Failed to record feedback: %s", exc)
 
         # Record usage pattern if tracker is available
         if self._usage_tracker is not None:
             try:
                 self._usage_tracker.record_interaction(route=route, topic=topic)
-            except Exception as exc:
+            except (ValueError, TypeError, sqlite3.Error) as exc:
                 logger.warning("Failed to record usage pattern: %s", exc)
 
         # Ingest user message if knowledge-bearing
@@ -147,7 +148,7 @@ class ConversationLearningEngine:
                     tags=["conversation", "user"],
                 )
                 records_created += len(ids)
-            except Exception as exc:
+            except (sqlite3.Error, OSError, ValueError) as exc:
                 logger.warning("Failed to ingest user message: %s", exc)
 
         # Ingest assistant response if knowledge-bearing (episodic, not semantic)
@@ -161,7 +162,7 @@ class ConversationLearningEngine:
                     tags=["conversation", "assistant"],
                 )
                 records_created += len(ids)
-            except Exception as exc:
+            except (sqlite3.Error, OSError, ValueError) as exc:
                 logger.warning("Failed to ingest assistant response: %s", exc)
 
         return {

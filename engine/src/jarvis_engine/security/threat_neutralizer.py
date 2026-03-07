@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import threading
 import time
 import urllib.parse
@@ -137,7 +138,7 @@ class ThreatNeutralizer:
                     "evidence_id": evidence_id,
                 })
                 actions_taken.append("evidence_preserved")
-            except Exception as exc:
+            except (OSError, ValueError, TypeError) as exc:
                 logger.warning("Failed to preserve evidence for %s: %s", ip, exc)
 
         # 2. Permanent IP block
@@ -146,7 +147,7 @@ class ThreatNeutralizer:
                 self._ip_tracker.block_ip(ip, duration_hours=None)  # permanent
                 blocked = True
                 actions_taken.append("ip_blocked_permanent")
-            except Exception as exc:
+            except (sqlite3.Error, OSError) as exc:
                 logger.warning("Failed to block IP %s: %s", ip, exc)
 
         # 3. Record in attack memory
@@ -160,7 +161,7 @@ class ThreatNeutralizer:
                     source_ip=ip,
                 )
                 actions_taken.append("attack_recorded")
-            except Exception as exc:
+            except (sqlite3.Error, OSError, ValueError) as exc:
                 logger.warning("Failed to record attack from %s: %s", ip, exc)
 
         # 4. Report to AbuseIPDB
@@ -171,7 +172,7 @@ class ThreatNeutralizer:
                 if self.report_to_abuseipdb(ip, abuseipdb_categories, comment):
                     reported_to.append("abuseipdb")
                     actions_taken.append("reported_abuseipdb")
-            except Exception as exc:
+            except (ConnectionError, TimeoutError, OSError) as exc:
                 logger.warning("AbuseIPDB report failed for %s: %s", ip, exc)
 
         # 5. ISP abuse contact lookup + report
@@ -180,7 +181,7 @@ class ThreatNeutralizer:
             if abuse_email:
                 reported_to.append(abuse_email)
                 actions_taken.append("isp_abuse_notified")
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("ISP abuse lookup failed for %s: %s", ip, exc)
 
         # 6. Send alert to owner
@@ -197,7 +198,7 @@ class ThreatNeutralizer:
                     source_ip=ip,
                 )
                 actions_taken.append("owner_alerted")
-            except Exception as exc:
+            except (RuntimeError, OSError) as exc:
                 logger.warning("Alert dispatch failed for %s: %s", ip, exc)
 
         # Update counters
@@ -294,7 +295,7 @@ class ThreatNeutralizer:
             logger.info("AbuseIPDB report submitted for %s (categories: %s)", ip, categories_str)
             return True
 
-        except Exception as exc:
+        except (OSError, ConnectionError, TimeoutError) as exc:
             logger.warning("AbuseIPDB report failed for %s: %s", ip, exc)
             # Revert cooldown on failure so retry is possible
             with self._lock:
@@ -360,7 +361,7 @@ class ThreatNeutralizer:
                 self._rdap_cache_put(ip, None)
             return None
 
-        except Exception as exc:
+        except (OSError, ConnectionError, TimeoutError, json.JSONDecodeError) as exc:
             logger.debug("RDAP lookup failed for %s: %s", ip, exc)
             return None
 
@@ -446,7 +447,7 @@ class ThreatNeutralizer:
             with self._lock:
                 self._total_blocked += 1
             logger.info("Permanently blocked %s: %s", ip, reason)
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             logger.warning("Failed to permanently block %s: %s", ip, exc)
 
     # ------------------------------------------------------------------

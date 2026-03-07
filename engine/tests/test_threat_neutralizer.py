@@ -257,7 +257,7 @@ def test_lookup_isp_abuse_failure():
 
     tn = ThreatNeutralizer()
 
-    with patch("urllib.request.urlopen", side_effect=Exception("Timeout")):
+    with patch("urllib.request.urlopen", side_effect=OSError("Timeout")):
         email = tn.lookup_isp_abuse_contact("203.0.113.2")
 
     assert email is None
