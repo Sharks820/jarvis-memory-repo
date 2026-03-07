@@ -88,9 +88,14 @@ class KnowledgeGraph:
         return self._mutation_counter
 
     def invalidate_cache(self) -> None:
-        """Invalidate the cached NetworkX graph so the next read rebuilds it."""
-        self._mutation_counter += 1
-        self._cached_graph = None
+        """Invalidate the cached NetworkX graph so the next read rebuilds it.
+
+        Holds ``_db_lock`` to ensure the counter increment and cache clear
+        are atomic with respect to ``to_networkx()`` readers.
+        """
+        with self._db_lock:
+            self._mutation_counter += 1
+            self._cached_graph = None
 
     def ensure_schema(self) -> None:
         """(Re-)create KG tables if they don't exist (idempotent).
