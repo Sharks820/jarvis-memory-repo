@@ -86,7 +86,9 @@ class TestDedup:
 
         # Simulate time passing beyond the dedup window
         cache_key = ("10.0.0.1", 2)
-        chain._dedup_cache[cache_key] = chain._dedup_cache[cache_key] - _DEDUP_WINDOW_S - 1
+        chain._dedup_cache[cache_key] = (
+            chain._dedup_cache[cache_key] - _DEDUP_WINDOW_S - 1
+        )
 
         a2 = chain.send_alert(2, "after window", source_ip="10.0.0.1")
         assert a2["deduped"] is False

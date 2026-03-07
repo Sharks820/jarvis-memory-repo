@@ -64,7 +64,9 @@ class TestBrainStatusHandler:
         assert result.status["regression"]["status"] == "not_available"
 
     @patch("jarvis_engine.handlers.memory_handlers.brain_status", create=True)
-    def test_fallback_uses_brain_status(self, mock_bs: MagicMock, tmp_path: Path) -> None:
+    def test_fallback_uses_brain_status(
+        self, mock_bs: MagicMock, tmp_path: Path
+    ) -> None:
         """When engine is None, handler falls back to brain_status()."""
         # The handler does a lazy import, so we patch in the brain_memory module directly
         fake_status = {
@@ -93,7 +95,15 @@ class TestBrainStatusHandler:
         engine.db.execute.return_value.fetchall.return_value = []
         handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
         result = handler.handle(BrainStatusCommand())
-        for key in ("updated_utc", "branch_count", "fact_count", "total_records", "regression", "branches", "engine"):
+        for key in (
+            "updated_utc",
+            "branch_count",
+            "fact_count",
+            "total_records",
+            "regression",
+            "branches",
+            "engine",
+        ):
             assert key in result.status, f"Missing key: {key}"
 
 
@@ -124,11 +134,29 @@ class TestBrainContextHandler:
         embed.embed_query.return_value = [0.1, 0.2, 0.3]
 
         fake_results = [
-            {"record_id": "r1", "summary": "calendar meeting", "branch": "ops", "source": "user", "kind": "episodic", "ts": "2026-02-25T00:00:00"},
-            {"record_id": "r2", "summary": "code review", "branch": "coding", "source": "user", "kind": "episodic", "ts": "2026-02-25T01:00:00"},
+            {
+                "record_id": "r1",
+                "summary": "calendar meeting",
+                "branch": "ops",
+                "source": "user",
+                "kind": "episodic",
+                "ts": "2026-02-25T00:00:00",
+            },
+            {
+                "record_id": "r2",
+                "summary": "code review",
+                "branch": "coding",
+                "source": "user",
+                "kind": "episodic",
+                "ts": "2026-02-25T01:00:00",
+            },
         ]
-        with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_results):
-            handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=embed)
+        with patch(
+            "jarvis_engine.memory.search.hybrid_search", return_value=fake_results
+        ):
+            handler = BrainContextHandler(
+                root=tmp_path, engine=engine, embed_service=embed
+            )
             cmd = BrainContextCommand(query="calendar", max_items=10, max_chars=2000)
             result = handler.handle(cmd)
 
@@ -146,11 +174,22 @@ class TestBrainContextHandler:
 
         # Each summary is 100 chars; max_chars=500 means 5 fit
         fake_results = [
-            {"record_id": f"r{i}", "summary": "x" * 100, "branch": "general", "source": "user", "kind": "ep", "ts": "2026-01-01"}
+            {
+                "record_id": f"r{i}",
+                "summary": "x" * 100,
+                "branch": "general",
+                "source": "user",
+                "kind": "ep",
+                "ts": "2026-01-01",
+            }
             for i in range(10)
         ]
-        with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_results):
-            handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=embed)
+        with patch(
+            "jarvis_engine.memory.search.hybrid_search", return_value=fake_results
+        ):
+            handler = BrainContextHandler(
+                root=tmp_path, engine=engine, embed_service=embed
+            )
             cmd = BrainContextCommand(query="test", max_items=40, max_chars=500)
             result = handler.handle(cmd)
 
@@ -163,8 +202,12 @@ class TestBrainContextHandler:
         embed = MagicMock()
         embed.embed_query.return_value = [0.1]
 
-        with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]) as mock_hs:
-            handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=embed)
+        with patch(
+            "jarvis_engine.memory.search.hybrid_search", return_value=[]
+        ) as mock_hs:
+            handler = BrainContextHandler(
+                root=tmp_path, engine=engine, embed_service=embed
+            )
             # Request 100 items — should be clamped to 40
             cmd = BrainContextCommand(query="q", max_items=100, max_chars=2400)
             handler.handle(cmd)
@@ -180,7 +223,9 @@ class TestBrainContextHandler:
 
         # Use max_chars=50 (below 500) — handler should clamp to 500
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]):
-            handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=embed)
+            handler = BrainContextHandler(
+                root=tmp_path, engine=engine, embed_service=embed
+            )
             cmd = BrainContextCommand(query="q", max_items=5, max_chars=50)
             result = handler.handle(cmd)
         # Can't directly check internal clamp but at least it doesn't crash
@@ -189,11 +234,21 @@ class TestBrainContextHandler:
 
     def test_fallback_path_no_engine(self, tmp_path: Path) -> None:
         """When engine is None, falls back to build_context_packet."""
-        with patch("jarvis_engine.brain_memory.build_context_packet", return_value={
-            "query": "q", "selected": [], "selected_count": 0, "canonical_facts": [],
-            "max_items": 5, "max_chars": 800, "total_records_scanned": 0,
-        }) as mock_bcp:
-            handler = BrainContextHandler(root=tmp_path, engine=None, embed_service=None)
+        with patch(
+            "jarvis_engine.brain_memory.build_context_packet",
+            return_value={
+                "query": "q",
+                "selected": [],
+                "selected_count": 0,
+                "canonical_facts": [],
+                "max_items": 5,
+                "max_chars": 800,
+                "total_records_scanned": 0,
+            },
+        ) as mock_bcp:
+            handler = BrainContextHandler(
+                root=tmp_path, engine=None, embed_service=None
+            )
             cmd = BrainContextCommand(query="q", max_items=5, max_chars=800)
             result = handler.handle(cmd)
         mock_bcp.assert_called_once()
@@ -202,11 +257,21 @@ class TestBrainContextHandler:
     def test_fallback_when_only_engine_set(self, tmp_path: Path) -> None:
         """If engine is set but embed_service is None, falls back to build_context_packet."""
         engine = MagicMock()
-        with patch("jarvis_engine.brain_memory.build_context_packet", return_value={
-            "query": "q", "selected": [], "selected_count": 0, "canonical_facts": [],
-            "max_items": 5, "max_chars": 800, "total_records_scanned": 0,
-        }):
-            handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=None)
+        with patch(
+            "jarvis_engine.brain_memory.build_context_packet",
+            return_value={
+                "query": "q",
+                "selected": [],
+                "selected_count": 0,
+                "canonical_facts": [],
+                "max_items": 5,
+                "max_chars": 800,
+                "total_records_scanned": 0,
+            },
+        ):
+            handler = BrainContextHandler(
+                root=tmp_path, engine=engine, embed_service=None
+            )
             cmd = BrainContextCommand(query="q", max_items=5, max_chars=800)
             result = handler.handle(cmd)
         # Should have used fallback since embed_service is None
@@ -223,10 +288,17 @@ class TestBrainCompactHandler:
 
     def test_compact_with_mock(self, tmp_path: Path) -> None:
         """Handler delegates to brain_compact with clamped keep_recent."""
-        with patch("jarvis_engine.brain_memory.brain_compact", return_value={
-            "compacted": True, "total_records": 5000, "compacted_records": 3200,
-            "kept_records": 1800, "summary_groups": 12, "summaries_path": "/foo/bar",
-        }) as mock_bc:
+        with patch(
+            "jarvis_engine.brain_memory.brain_compact",
+            return_value={
+                "compacted": True,
+                "total_records": 5000,
+                "compacted_records": 3200,
+                "kept_records": 1800,
+                "summary_groups": 12,
+                "summaries_path": "/foo/bar",
+            },
+        ) as mock_bc:
             handler = BrainCompactHandler(root=tmp_path)
             cmd = BrainCompactCommand(keep_recent=1800)
             result = handler.handle(cmd)
@@ -235,7 +307,15 @@ class TestBrainCompactHandler:
 
     def test_compact_clamps_keep_recent_low(self, tmp_path: Path) -> None:
         """keep_recent below 200 gets clamped to 200."""
-        with patch("jarvis_engine.brain_memory.brain_compact", return_value={"compacted": False, "reason": "below_threshold", "total_records": 0, "kept_records": 0}) as mock_bc:
+        with patch(
+            "jarvis_engine.brain_memory.brain_compact",
+            return_value={
+                "compacted": False,
+                "reason": "below_threshold",
+                "total_records": 0,
+                "kept_records": 0,
+            },
+        ) as mock_bc:
             handler = BrainCompactHandler(root=tmp_path)
             cmd = BrainCompactCommand(keep_recent=5)
             handler.handle(cmd)
@@ -243,7 +323,15 @@ class TestBrainCompactHandler:
 
     def test_compact_clamps_keep_recent_high(self, tmp_path: Path) -> None:
         """keep_recent above 50000 gets clamped to 50000."""
-        with patch("jarvis_engine.brain_memory.brain_compact", return_value={"compacted": False, "reason": "below_threshold", "total_records": 0, "kept_records": 0}) as mock_bc:
+        with patch(
+            "jarvis_engine.brain_memory.brain_compact",
+            return_value={
+                "compacted": False,
+                "reason": "below_threshold",
+                "total_records": 0,
+                "kept_records": 0,
+            },
+        ) as mock_bc:
             handler = BrainCompactHandler(root=tmp_path)
             cmd = BrainCompactCommand(keep_recent=999999)
             handler.handle(cmd)
@@ -268,11 +356,20 @@ class TestBrainRegressionHandler:
 
     def test_regression_with_mock(self, tmp_path: Path) -> None:
         fake_report = {
-            "status": "warn", "total_records": 1000, "unique_hashes": 950,
-            "duplicate_ratio": 0.05, "branch_entropy": 2.1, "branch_count": 5,
-            "unresolved_conflicts": 25, "conflict_total": 30, "generated_utc": "2026-02-25T00:00:00",
+            "status": "warn",
+            "total_records": 1000,
+            "unique_hashes": 950,
+            "duplicate_ratio": 0.05,
+            "branch_entropy": 2.1,
+            "branch_count": 5,
+            "unresolved_conflicts": 25,
+            "conflict_total": 30,
+            "generated_utc": "2026-02-25T00:00:00",
         }
-        with patch("jarvis_engine.brain_memory.brain_regression_report", return_value=fake_report):
+        with patch(
+            "jarvis_engine.brain_memory.brain_regression_report",
+            return_value=fake_report,
+        ):
             handler = BrainRegressionHandler(root=tmp_path)
             result = handler.handle(BrainRegressionCommand())
         assert result.report["status"] == "warn"
@@ -289,9 +386,17 @@ class TestBrainRegressionHandler:
     def test_regression_report_has_all_fields(self, tmp_path: Path) -> None:
         handler = BrainRegressionHandler(root=tmp_path)
         result = handler.handle(BrainRegressionCommand())
-        expected_keys = {"status", "total_records", "unique_hashes", "duplicate_ratio",
-                         "branch_entropy", "branch_count", "unresolved_conflicts",
-                         "conflict_total", "generated_utc"}
+        expected_keys = {
+            "status",
+            "total_records",
+            "unique_hashes",
+            "duplicate_ratio",
+            "branch_entropy",
+            "branch_count",
+            "unresolved_conflicts",
+            "conflict_total",
+            "generated_utc",
+        }
         assert expected_keys.issubset(set(result.report.keys()))
 
 
@@ -308,7 +413,9 @@ class TestIngestHandler:
         pipeline = MagicMock()
         pipeline.ingest.return_value = ["rec_001"]
         handler = IngestHandler(root=tmp_path, pipeline=pipeline)
-        cmd = IngestCommand(source="user", kind="episodic", task_id="t1", content="Remember to buy milk")
+        cmd = IngestCommand(
+            source="user", kind="episodic", task_id="t1", content="Remember to buy milk"
+        )
         result = handler.handle(cmd)
         assert result.record_id == "rec_001"
         assert result.source == "user"
@@ -323,7 +430,9 @@ class TestIngestHandler:
         pipeline = MagicMock()
         pipeline.ingest.return_value = []
         handler = IngestHandler(root=tmp_path, pipeline=pipeline)
-        cmd = IngestCommand(source="user", kind="episodic", task_id="t1", content="Duplicate content")
+        cmd = IngestCommand(
+            source="user", kind="episodic", task_id="t1", content="Duplicate content"
+        )
         result = handler.handle(cmd)
         assert result.record_id == "deduped"
 
@@ -340,10 +449,14 @@ class TestIngestHandler:
         fake_pipeline = MagicMock()
         fake_pipeline.ingest.return_value = FakeRecord()
 
-        with patch("jarvis_engine.memory_store.MemoryStore") as MockStore, \
-             patch("jarvis_engine.ingest.IngestionPipeline", return_value=fake_pipeline):
+        with (
+            patch("jarvis_engine.memory_store.MemoryStore") as MockStore,
+            patch("jarvis_engine.ingest.IngestionPipeline", return_value=fake_pipeline),
+        ):
             handler = IngestHandler(root=tmp_path, pipeline=None)
-            cmd = IngestCommand(source="user", kind="episodic", task_id="t1", content="Some content")
+            cmd = IngestCommand(
+                source="user", kind="episodic", task_id="t1", content="Some content"
+            )
             result = handler.handle(cmd)
 
         assert result.record_id == "fallback_001"
@@ -362,11 +475,23 @@ class TestIngestHandler:
         fake_pipeline = MagicMock()
         fake_pipeline.ingest.return_value = FakeRecord()
 
-        with patch("jarvis_engine.memory_store.MemoryStore"), \
-             patch("jarvis_engine.ingest.IngestionPipeline", return_value=fake_pipeline) as MockPipeline:
+        with (
+            patch("jarvis_engine.memory_store.MemoryStore"),
+            patch(
+                "jarvis_engine.ingest.IngestionPipeline", return_value=fake_pipeline
+            ) as MockPipeline,
+        ):
             handler = IngestHandler(root=tmp_path, pipeline=None)
-            handler.handle(IngestCommand(source="user", kind="ep", task_id="t", content="Content A"))
-            handler.handle(IngestCommand(source="user", kind="ep", task_id="t", content="Content B"))
+            handler.handle(
+                IngestCommand(
+                    source="user", kind="ep", task_id="t", content="Content A"
+                )
+            )
+            handler.handle(
+                IngestCommand(
+                    source="user", kind="ep", task_id="t", content="Content B"
+                )
+            )
 
         # IngestionPipeline should only be instantiated once (cached)
         assert MockPipeline.call_count == 1
@@ -375,7 +500,12 @@ class TestIngestHandler:
         pipeline = MagicMock()
         pipeline.ingest.return_value = ["abc123"]
         handler = IngestHandler(root=tmp_path, pipeline=pipeline)
-        cmd = IngestCommand(source="task_outcome", kind="semantic", task_id="build-42", content="Deployed successfully")
+        cmd = IngestCommand(
+            source="task_outcome",
+            kind="semantic",
+            task_id="build-42",
+            content="Deployed successfully",
+        )
         result = handler.handle(cmd)
         assert result.source == "task_outcome"
         assert result.kind == "semantic"
@@ -401,7 +531,10 @@ class TestMemorySnapshotHandler:
             sha256: str = "abcd1234"
             file_count: int = 7
 
-        with patch("jarvis_engine.memory_snapshots.create_signed_snapshot", return_value=FakeSnapshotResult()) as mock_css:
+        with patch(
+            "jarvis_engine.memory_snapshots.create_signed_snapshot",
+            return_value=FakeSnapshotResult(),
+        ) as mock_css:
             handler = MemorySnapshotHandler(root=tmp_path)
             cmd = MemorySnapshotCommand(create=True, note="test snapshot")
             result = handler.handle(cmd)
@@ -428,7 +561,10 @@ class TestMemorySnapshotHandler:
         snap_path.parent.mkdir(parents=True, exist_ok=True)
         snap_path.touch()
 
-        with patch("jarvis_engine.memory_snapshots.verify_signed_snapshot", return_value=FakeVerification()):
+        with patch(
+            "jarvis_engine.memory_snapshots.verify_signed_snapshot",
+            return_value=FakeVerification(),
+        ):
             handler = MemorySnapshotHandler(root=tmp_path)
             cmd = MemorySnapshotCommand(verify_path=str(snap_path))
             result = handler.handle(cmd)
@@ -472,30 +608,47 @@ class TestMemoryMaintenanceHandler:
 
     def test_maintenance_delegates_correctly(self, tmp_path: Path) -> None:
         fake_report = {"compact": True, "snapshot": "ok"}
-        with patch("jarvis_engine.memory_snapshots.run_memory_maintenance", return_value=fake_report) as mock_rmm:
+        with patch(
+            "jarvis_engine.memory_snapshots.run_memory_maintenance",
+            return_value=fake_report,
+        ) as mock_rmm:
             handler = MemoryMaintenanceHandler(root=tmp_path)
-            cmd = MemoryMaintenanceCommand(keep_recent=500, snapshot_note="  weekly backup  ")
+            cmd = MemoryMaintenanceCommand(
+                keep_recent=500, snapshot_note="  weekly backup  "
+            )
             result = handler.handle(cmd)
 
-        mock_rmm.assert_called_once_with(tmp_path, keep_recent=500, snapshot_note="weekly backup")
+        mock_rmm.assert_called_once_with(
+            tmp_path, keep_recent=500, snapshot_note="weekly backup"
+        )
         assert result.report == fake_report
 
     def test_maintenance_clamps_keep_recent_low(self, tmp_path: Path) -> None:
-        with patch("jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={}) as mock_rmm:
+        with patch(
+            "jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={}
+        ) as mock_rmm:
             handler = MemoryMaintenanceHandler(root=tmp_path)
             cmd = MemoryMaintenanceCommand(keep_recent=10)
             handler.handle(cmd)
-        mock_rmm.assert_called_once_with(tmp_path, keep_recent=200, snapshot_note="nightly")
+        mock_rmm.assert_called_once_with(
+            tmp_path, keep_recent=200, snapshot_note="nightly"
+        )
 
     def test_maintenance_clamps_keep_recent_high(self, tmp_path: Path) -> None:
-        with patch("jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={}) as mock_rmm:
+        with patch(
+            "jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={}
+        ) as mock_rmm:
             handler = MemoryMaintenanceHandler(root=tmp_path)
             cmd = MemoryMaintenanceCommand(keep_recent=999999)
             handler.handle(cmd)
-        mock_rmm.assert_called_once_with(tmp_path, keep_recent=50000, snapshot_note="nightly")
+        mock_rmm.assert_called_once_with(
+            tmp_path, keep_recent=50000, snapshot_note="nightly"
+        )
 
     def test_maintenance_truncates_long_note(self, tmp_path: Path) -> None:
-        with patch("jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={}) as mock_rmm:
+        with patch(
+            "jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={}
+        ) as mock_rmm:
             handler = MemoryMaintenanceHandler(root=tmp_path)
             long_note = "x" * 300
             cmd = MemoryMaintenanceCommand(snapshot_note=long_note)
@@ -504,7 +657,10 @@ class TestMemoryMaintenanceHandler:
         assert len(kwargs["snapshot_note"]) <= 160
 
     def test_maintenance_returns_result_type(self, tmp_path: Path) -> None:
-        with patch("jarvis_engine.memory_snapshots.run_memory_maintenance", return_value={"status": "ok"}):
+        with patch(
+            "jarvis_engine.memory_snapshots.run_memory_maintenance",
+            return_value={"status": "ok"},
+        ):
             handler = MemoryMaintenanceHandler(root=tmp_path)
             result = handler.handle(MemoryMaintenanceCommand())
         assert isinstance(result, MemoryMaintenanceResult)

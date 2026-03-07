@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 
 _ABUSEIPDB_CHECK_URL = "https://api.abuseipdb.com/api/v2/check"
 _OTX_INDICATOR_URL = "https://otx.alienvault.com/api/v1/indicators/IPv4"
-_FEODO_BLOCKLIST_URL = (
-    "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
-)
+_FEODO_BLOCKLIST_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
 
 # AbuseIPDB confidence score at or above this threshold marks an IP as known bad.
 _ABUSEIPDB_BAD_THRESHOLD = 80
@@ -56,7 +54,9 @@ class ThreatIntelFeed:
 
         # In-memory LRU cache: ip -> (enrichment_dict, timestamp)
         # OrderedDict for O(1) eviction of oldest entry at capacity
-        self._cache: collections.OrderedDict[str, tuple[dict[str, Any], float]] = collections.OrderedDict()
+        self._cache: collections.OrderedDict[str, tuple[dict[str, Any], float]] = (
+            collections.OrderedDict()
+        )
         self._lock = threading.Lock()
 
         # Feodo blocklist (set of IPs), cached with its own timestamp
@@ -99,7 +99,10 @@ class ThreatIntelFeed:
         if self._abuseipdb_key:
             abuseipdb_score = self._query_abuseipdb(ip)
             sources_checked.append("abuseipdb")
-            if abuseipdb_score is not None and abuseipdb_score >= _ABUSEIPDB_BAD_THRESHOLD:
+            if (
+                abuseipdb_score is not None
+                and abuseipdb_score >= _ABUSEIPDB_BAD_THRESHOLD
+            ):
                 known_bad = True
 
         # --- AlienVault OTX ---

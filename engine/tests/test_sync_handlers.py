@@ -164,7 +164,9 @@ def test_push_decryption_failure() -> None:
     transport.decrypt.side_effect = ValueError("bad token")
     handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=transport)
     payload = base64.b64encode(b"garbage").decode("ascii")
-    result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload=payload))
+    result = handler.handle(
+        SyncPushCommand(device_id="phone", encrypted_payload=payload)
+    )
     assert "decryption failed" in result.message
 
 
@@ -176,7 +178,9 @@ def test_push_apply_incoming_failure() -> None:
     engine.apply_incoming.side_effect = RuntimeError("conflict")
     handler = SyncPushHandler(ROOT, sync_engine=engine, transport=transport)
     payload = base64.b64encode(b"data").decode("ascii")
-    result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload=payload))
+    result = handler.handle(
+        SyncPushCommand(device_id="phone", encrypted_payload=payload)
+    )
     assert "apply failed" in result.message
 
 
@@ -192,7 +196,9 @@ def test_push_success_no_errors() -> None:
     }
     handler = SyncPushHandler(ROOT, sync_engine=engine, transport=transport)
     payload = base64.b64encode(b"data").decode("ascii")
-    result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload=payload))
+    result = handler.handle(
+        SyncPushCommand(device_id="phone", encrypted_payload=payload)
+    )
 
     assert result.message == "ok"
     assert result.applied == 5
@@ -211,7 +217,9 @@ def test_push_success_with_errors() -> None:
     }
     handler = SyncPushHandler(ROOT, sync_engine=engine, transport=transport)
     payload = base64.b64encode(b"x").decode("ascii")
-    result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload=payload))
+    result = handler.handle(
+        SyncPushCommand(device_id="phone", encrypted_payload=payload)
+    )
 
     assert result.message.startswith("ok with errors")
     assert "bad row 7" in result.message
@@ -223,7 +231,9 @@ def test_push_invalid_base64() -> None:
     transport = MagicMock()
     # base64.b64decode on invalid chars will raise
     handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=transport)
-    result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload="!!!invalid!!!"))
+    result = handler.handle(
+        SyncPushCommand(device_id="phone", encrypted_payload="!!!invalid!!!")
+    )
     assert "decryption failed" in result.message
 
 

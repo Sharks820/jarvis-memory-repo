@@ -49,7 +49,9 @@ class TranscriptionResult:
 
 _stt_metrics_lock = threading.Lock()
 
-CONFIDENCE_RETRY_THRESHOLD = float(os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6"))
+CONFIDENCE_RETRY_THRESHOLD = float(
+    os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6")
+)
 GROQ_STT_MODEL = os.environ.get("JARVIS_GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
 # Default prompt biases local Whisper toward Jarvis-specific vocabulary
@@ -65,6 +67,7 @@ JARVIS_DEFAULT_PROMPT = (
 # Keyterm loading for Deepgram prompting
 # ---------------------------------------------------------------------------
 
+
 def _load_keyterms() -> list[str]:
     """Load keyterms from personal_vocab.txt for Deepgram prompting.
 
@@ -76,6 +79,7 @@ def _load_keyterms() -> list[str]:
     Results are cached in ``_shared.load_personal_vocab_lines``.
     """
     from jarvis_engine._shared import load_personal_vocab_lines
+
     return load_personal_vocab_lines(strip_parens=True)
 
 
@@ -92,6 +96,7 @@ def _log_stt_metric(
     if root_dir is None:
         return
     from jarvis_engine._constants import runtime_dir
+
     metrics_path = runtime_dir(root_dir) / "stt_metrics.jsonl"
     record = {
         "ts": _now_iso(),
@@ -114,6 +119,7 @@ def _log_stt_metric(
 # Groq Whisper STT (cloud)
 # ---------------------------------------------------------------------------
 
+
 def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
     """Convert a mono float32 numpy array to WAV bytes for API upload."""
     audio_int16 = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
@@ -126,11 +132,11 @@ def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
     buf.write(b"WAVE")
     buf.write(b"fmt ")
     buf.write(struct.pack("<I", 16))  # chunk size
-    buf.write(struct.pack("<H", 1))   # PCM format
-    buf.write(struct.pack("<H", 1))   # mono
+    buf.write(struct.pack("<H", 1))  # PCM format
+    buf.write(struct.pack("<H", 1))  # mono
     buf.write(struct.pack("<I", sample_rate))
     buf.write(struct.pack("<I", sample_rate * 2))  # byte rate
-    buf.write(struct.pack("<H", 2))   # block align
+    buf.write(struct.pack("<H", 2))  # block align
     buf.write(struct.pack("<H", 16))  # bits per sample
     buf.write(b"data")
     buf.write(struct.pack("<I", data_size))
@@ -163,9 +169,7 @@ def transcribe_groq(
 
     # Minimum audio duration check: require at least 0.1s (1600 samples at 16kHz)
     if isinstance(audio, np.ndarray) and len(audio) < 1600:
-        logger.debug(
-            "Audio too short for Groq API (%d samples)", len(audio)
-        )
+        logger.debug("Audio too short for Groq API (%d samples)", len(audio))
         return None
 
     t0 = time.monotonic()
@@ -208,13 +212,19 @@ def transcribe_groq(
                     files={"file": (filename, audio_bytes, "audio/wav")},
                 )
                 if resp.status_code >= 500 or resp.status_code == 429:
-                    logger.warning("Groq API returned %d, attempt %d/2", resp.status_code, attempt + 1)
+                    logger.warning(
+                        "Groq API returned %d, attempt %d/2",
+                        resp.status_code,
+                        attempt + 1,
+                    )
                     if attempt < 1:
                         time.sleep(2 if resp.status_code == 429 else 1)
                         continue
                 break
             except httpx.TransportError as exc:
-                logger.warning("Groq API connection error: %s, attempt %d/2", exc, attempt + 1)
+                logger.warning(
+                    "Groq API connection error: %s, attempt %d/2", exc, attempt + 1
+                )
                 if attempt < 1:
                     time.sleep(1)
                     continue
@@ -255,12 +265,16 @@ def transcribe_groq(
                 seg_start = seg.get("start")
                 seg_end = seg.get("end")
                 seg_text = seg.get("text", "")
-                if isinstance(seg_start, (int, float)) and isinstance(seg_end, (int, float)):
-                    parsed_segments.append({
-                        "start": float(seg_start),
-                        "end": float(seg_end),
-                        "text": str(seg_text).strip(),
-                    })
+                if isinstance(seg_start, (int, float)) and isinstance(
+                    seg_end, (int, float)
+                ):
+                    parsed_segments.append(
+                        {
+                            "start": float(seg_start),
+                            "end": float(seg_end),
+                            "text": str(seg_text).strip(),
+                        }
+                    )
 
         if logprobs:
             avg_logprob = sum(logprobs) / len(logprobs)
@@ -269,7 +283,7 @@ def transcribe_groq(
             if no_speech_probs:
                 avg_no_speech = sum(no_speech_probs) / len(no_speech_probs)
                 if avg_no_speech > 0.5:
-                    confidence *= (1.0 - avg_no_speech)
+                    confidence *= 1.0 - avg_no_speech
             confidence = round(confidence, 4)
         else:
             confidence = 0.90  # fallback if segments lack logprobs
@@ -289,6 +303,7 @@ def transcribe_groq(
 # ---------------------------------------------------------------------------
 # Local faster-whisper STT (offline fallback)
 # ---------------------------------------------------------------------------
+
 
 class SpeechToText:
     """Whisper-grade speech-to-text with lazy model loading.
@@ -384,17 +399,20 @@ class SpeechToText:
             seg_start = getattr(segment, "start", None)
             seg_end = getattr(segment, "end", None)
             if seg_start is not None and seg_end is not None:
-                parsed_segments.append({
-                    "start": float(seg_start),
-                    "end": float(seg_end),
-                    "text": segment.text.strip(),
-                })
+                parsed_segments.append(
+                    {
+                        "start": float(seg_start),
+                        "end": float(seg_end),
+                        "text": segment.text.strip(),
+                    }
+                )
         elapsed = time.monotonic() - t0
         full_text = " ".join(texts).strip()
         # Compute confidence from segment avg_logprob (not language_probability which is always ~1.0 for English)
         logprobs = [
-            seg.avg_logprob for seg in segments
-            if hasattr(seg, 'avg_logprob') and math.isfinite(seg.avg_logprob)
+            seg.avg_logprob
+            for seg in segments
+            if hasattr(seg, "avg_logprob") and math.isfinite(seg.avg_logprob)
         ]
         if logprobs:
             avg_logprob = sum(logprobs) / len(logprobs)
@@ -415,6 +433,7 @@ class SpeechToText:
 # ---------------------------------------------------------------------------
 # Smart transcription (auto-selects best available backend)
 # ---------------------------------------------------------------------------
+
 
 def _try_groq(
     audio: np.ndarray | str, *, language: str, prompt: str
@@ -447,7 +466,9 @@ def _try_local(
             with _local_stt_lock:
                 if _local_stt_instance is None:
                     _local_stt_instance = SpeechToText()
-        return _local_stt_instance.transcribe_audio(audio, language=language, prompt=prompt)
+        return _local_stt_instance.transcribe_audio(
+            audio, language=language, prompt=prompt
+        )
     except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local STT attempt failed: %s", exc)
         return None
@@ -519,7 +540,11 @@ def _try_parakeet(
                 logprobs = []
                 for tok in tokens:
                     lp = getattr(tok, "logprob", None) or getattr(tok, "log_prob", None)
-                    if lp is not None and isinstance(lp, (int, float)) and math.isfinite(lp):
+                    if (
+                        lp is not None
+                        and isinstance(lp, (int, float))
+                        and math.isfinite(lp)
+                    ):
                         logprobs.append(lp)
                 if logprobs:
                     avg_logprob = sum(logprobs) / len(logprobs)
@@ -543,6 +568,7 @@ def _try_parakeet(
 # ---------------------------------------------------------------------------
 # Deepgram Nova-3 STT (cloud, keyterm prompting)
 # ---------------------------------------------------------------------------
+
 
 def _try_deepgram(
     audio: np.ndarray | str,
@@ -654,12 +680,16 @@ def _try_deepgram(
                 w_start = word_info.get("start")
                 w_end = word_info.get("end")
                 w_word = word_info.get("word", "")
-                if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
-                    parsed_segments.append({
-                        "start": float(w_start),
-                        "end": float(w_end),
-                        "text": str(w_word),
-                    })
+                if isinstance(w_start, (int, float)) and isinstance(
+                    w_end, (int, float)
+                ):
+                    parsed_segments.append(
+                        {
+                            "start": float(w_start),
+                            "end": float(w_end),
+                            "text": str(w_word),
+                        }
+                    )
 
         return TranscriptionResult(
             text=transcript,
@@ -698,7 +728,9 @@ def _try_local_emergency(
             with _local_emergency_lock:
                 if _local_emergency_instance is None:
                     _local_emergency_instance = SpeechToText(model_size="large-v3")
-        return _local_emergency_instance.transcribe_audio(audio, language=language, prompt=prompt)
+        return _local_emergency_instance.transcribe_audio(
+            audio, language=language, prompt=prompt
+        )
     except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local emergency STT (large-v3) attempt failed: %s", exc)
         return None
@@ -710,10 +742,10 @@ def _try_local_emergency(
 # ---------------------------------------------------------------------------
 
 FALLBACK_CHAIN: list[str] = [
-    "parakeet",     # Best local: 6.05% WER
-    "deepgram",     # Best cloud: keyterm boosting
-    "groq",         # Existing cloud: free tier
-    "local",        # Emergency: faster-whisper large-v3
+    "parakeet",  # Best local: 6.05% WER
+    "deepgram",  # Best cloud: keyterm boosting
+    "groq",  # Existing cloud: free tier
+    "local",  # Emergency: faster-whisper large-v3
 ]
 
 _BACKEND_FN_MAP: dict[str, str] = {
@@ -763,6 +795,7 @@ def transcribe_smart(
     if isinstance(audio, np.ndarray) and len(audio) > 0:
         try:
             from jarvis_engine.stt_postprocess import preprocess_audio
+
             audio = preprocess_audio(audio)
             if len(audio) == 0:
                 logger.info("Audio was pure silence after preprocessing")
@@ -793,15 +826,19 @@ def transcribe_smart(
             # Groq forced mode uses transcribe_groq directly (raises on failure)
             result = transcribe_groq(audio, language=language, prompt=prompt)
         elif backend == "deepgram":
-            result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+            result = try_fn(
+                audio, language=language, prompt=prompt, keyterms=_load_keyterms()
+            )
         else:
             result = try_fn(audio, language=language, prompt=prompt)
 
         if result is None:
             logger.warning("%s transcription returned None in forced mode", backend)
             return TranscriptionResult(
-                text="", language=language or "en",
-                confidence=0.0, duration_seconds=0.0,
+                text="",
+                language=language or "en",
+                confidence=0.0,
+                duration_seconds=0.0,
                 backend=f"{backend}-failed",
             )
         _log_stt_metric(
@@ -817,6 +854,7 @@ def transcribe_smart(
         # Auto mode: 4-tier fallback chain
         # Resolve function references at call time (supports mock patching)
         import sys
+
         _this_module = sys.modules[__name__]
         best_so_far: TranscriptionResult | None = None
 
@@ -824,14 +862,18 @@ def transcribe_smart(
             try_fn = getattr(_this_module, _BACKEND_FN_MAP[name])
             # Call the try function with appropriate kwargs
             if name == "deepgram":
-                result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+                result = try_fn(
+                    audio, language=language, prompt=prompt, keyterms=_load_keyterms()
+                )
             else:
                 result = try_fn(audio, language=language, prompt=prompt)
 
             if result is not None and result.text.strip():
                 logger.info(
                     "%s STT: '%s' in %.2fs (confidence: %.3f)",
-                    name, result.text[:60], result.duration_seconds,
+                    name,
+                    result.text[:60],
+                    result.duration_seconds,
                     result.confidence,
                 )
                 _log_stt_metric(
@@ -873,6 +915,7 @@ def transcribe_smart(
     if final.text.strip():
         try:
             from jarvis_engine.stt_postprocess import postprocess_transcription
+
             processed = postprocess_transcription(
                 final.text,
                 final.confidence,
@@ -897,6 +940,7 @@ def transcribe_smart(
 # ---------------------------------------------------------------------------
 # Microphone recording
 # ---------------------------------------------------------------------------
+
 
 def record_from_microphone(
     *,
@@ -939,8 +983,7 @@ def record_from_microphone(
         import sounddevice as sd  # type: ignore[import-untyped]
     except ImportError as exc:
         raise RuntimeError(
-            "sounddevice is not installed. "
-            "Install with: pip install sounddevice"
+            "sounddevice is not installed. Install with: pip install sounddevice"
         ) from exc
 
     # Lazy-import VAD detector (graceful degradation if not installed)
@@ -948,6 +991,7 @@ def record_from_microphone(
     _use_silero = False
     try:
         from jarvis_engine.stt_vad import get_vad_detector
+
         _vad_detector = get_vad_detector(sampling_rate=sample_rate)
         _use_silero = _vad_detector.available
     except (ImportError, OSError, RuntimeError) as exc:
@@ -956,9 +1000,7 @@ def record_from_microphone(
     if _use_silero:
         logger.info("Using Silero VAD for speech detection")
     else:
-        logger.warning(
-            "Silero VAD not available, falling back to energy-based VAD"
-        )
+        logger.warning("Silero VAD not available, falling back to energy-based VAD")
 
     try:
         logger.info(
@@ -976,12 +1018,14 @@ def record_from_microphone(
         if _use_silero:
             chunk_duration = 0.032  # 32ms for Silero VAD
         else:
-            chunk_duration = 0.1   # 100ms for RMS fallback
+            chunk_duration = 0.1  # 100ms for RMS fallback
         samples_per_chunk = int(sample_rate * chunk_duration)
         max_silence_chunks = int(silence_duration / chunk_duration)
         min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
 
-        with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:
+        with sd.InputStream(
+            samplerate=sample_rate, channels=1, dtype="float32"
+        ) as stream:
             # Drain stale audio from OS buffer (e.g. wake word remnants)
             if drain_seconds > 0:
                 drain_samples = int(sample_rate * drain_seconds)
@@ -1000,7 +1044,7 @@ def record_from_microphone(
                     is_speech = _vad_detector.process_chunk(mono)
                 else:
                     # RMS energy fallback
-                    rms = float(np.sqrt(np.mean(chunk ** 2)))
+                    rms = float(np.sqrt(np.mean(chunk**2)))
                     is_speech = rms > silence_threshold
 
                 if is_speech:
@@ -1008,7 +1052,10 @@ def record_from_microphone(
                     silence_frames = 0
                 elif speech_detected:
                     silence_frames += 1
-                    if silence_frames >= max_silence_chunks and i >= min_recording_chunks:
+                    if (
+                        silence_frames >= max_silence_chunks
+                        and i >= min_recording_chunks
+                    ):
                         logger.debug(
                             "Silence detected after speech, stopping recording "
                             "(%.1f seconds recorded)",
@@ -1047,6 +1094,9 @@ def listen_and_transcribe(
     """
     audio = record_from_microphone(max_duration_seconds=max_duration_seconds)
     return transcribe_smart(
-        audio, language=language, root_dir=root_dir,
-        gateway=gateway, entity_list=entity_list,
+        audio,
+        language=language,
+        root_dir=root_dir,
+        gateway=gateway,
+        entity_list=entity_list,
     )

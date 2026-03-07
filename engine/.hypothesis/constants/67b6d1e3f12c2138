@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/proactive/triggers.py
+# hypothesis_version: 6.151.9
+
+[0.4, 0.5, 1.0, 60.0, 3600.0, -720, 120, 180, 360, 720, 1440, ', ', ':', 'amount', 'attendees', 'bill', 'bill_due_alert', 'bills', 'calendar_events', 'calendar_prep', 'contact_neglect', 'contacts', 'due', 'due_time', 'event', 'high', 'importance', 'kg_context', 'last_contact_date', 'last_topic', 'location', 'medication', 'medication_reminder', 'medications', 'meeting', 'meeting_intelligence', 'name', 'normal', 'overdue', 'prep_needed', 'priority', 'someone', 'start_time', 'status', 'task', 'tasks', 'time', 'title', 'urgent', 'urgent_task_alert']

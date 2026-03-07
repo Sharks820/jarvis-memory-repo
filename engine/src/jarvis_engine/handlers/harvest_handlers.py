@@ -173,7 +173,9 @@ class HarvestBudgetHandler:
                     return_code=0,
                 )
             return HarvestBudgetResult(
-                summary={"error": "provider, period, and limit_usd required for set action"},
+                summary={
+                    "error": "provider, period, and limit_usd required for set action"
+                },
                 return_code=1,
             )
 

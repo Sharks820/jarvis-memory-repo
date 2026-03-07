@@ -57,7 +57,9 @@ class EmbeddingService:
         """Embed a query (uses search_query prefix)."""
         return self.embed(query, prefix="search_query")
 
-    def embed_batch(self, texts: list[str], prefix: str = "search_document") -> list[list[float]]:
+    def embed_batch(
+        self, texts: list[str], prefix: str = "search_document"
+    ) -> list[list[float]]:
         """Embed a batch of texts."""
         model = self._ensure_model()
         prefixed = [f"{prefix}: {t}" if prefix else t for t in texts]

@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/gateway/audit.py
+# hypothesis_version: 6.151.9
+
+[0.0, 100, 500, 1024, 3600, '+00:00', '.1', 'a', 'avg_latency_ms', 'cost_usd', 'failure_count', 'failure_rate_pct', 'fallback_from', 'input_tokens', 'latency_ms', 'model', 'output_tokens', 'period_hours', 'privacy_routed', 'privacy_routed_count', 'provider', 'provider_breakdown', 'rb', 'reason', 'replace', 'success', 'total_cost_usd', 'total_decisions', 'ts', 'unknown', 'utf-8']

@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/alert_chain.py
+# hypothesis_version: 6.151.9
+
+[300, 1000, 10000, 'BACKGROUND', 'IMPORTANT', 'ROUTINE', 'URGENT', '[BACKGROUND] %s', 'alert_dispatched', 'channel', 'containment_action', 'deduped', 'event_type', 'evidence', 'level', 'source_ip', 'summary', 'timestamp']

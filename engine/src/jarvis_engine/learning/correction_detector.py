@@ -194,7 +194,9 @@ class CorrectionDetector:
         if correction.old_claim:
             new_keywords = _extract_keywords(correction.new_claim)
             pre_new_matches = self._kg.query_relevant_facts(
-                new_keywords, min_confidence=0.0, limit=1,
+                new_keywords,
+                min_confidence=0.0,
+                limit=1,
             )
 
         with self._kg._write_lock:
@@ -207,7 +209,9 @@ class CorrectionDetector:
                 if row is None:
                     return False
 
-                existing_confidence = row[0] if isinstance(row[0], float) else float(row[0])
+                existing_confidence = (
+                    row[0] if isinstance(row[0], float) else float(row[0])
+                )
                 is_locked = bool(row[1]) if row[1] is not None else False
 
                 # Respect fact locks -- never modify a locked node
@@ -233,7 +237,9 @@ class CorrectionDetector:
                         ).fetchone()
                         if existing_new_row is not None:
                             existing_new_conf = float(existing_new_row[0])
-                            merged_confidence = min(max(existing_new_conf, new_confidence), 1.0)
+                            merged_confidence = min(
+                                max(existing_new_conf, new_confidence), 1.0
+                            )
                             self._kg._db.execute(
                                 """UPDATE kg_nodes
                                    SET confidence = ?, updated_at = datetime('now')
@@ -255,20 +261,30 @@ class CorrectionDetector:
                         except sqlite3.OperationalError as exc:
                             if "no such table" not in str(exc):
                                 raise
-                            logger.debug("FTS5 table not available, skipping cleanup for retracted node %s", node_id)
+                            logger.debug(
+                                "FTS5 table not available, skipping cleanup for retracted node %s",
+                                node_id,
+                            )
                         # Clean up vec index for the retracted node
                         if getattr(self._kg, "_vec_available", False):
                             try:
                                 self._kg._db.execute(
-                                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+                                    "DELETE FROM vec_kg_nodes WHERE node_id = ?",
+                                    (node_id,),
                                 )
                             except sqlite3.Error as exc:
-                                logger.debug("Vec cleanup for retracted node %s failed: %s", node_id, exc)
+                                logger.debug(
+                                    "Vec cleanup for retracted node %s failed: %s",
+                                    node_id,
+                                    exc,
+                                )
                         self._kg._db.commit()
                         self._kg._mutation_counter += 1
                         logger.info(
                             "Correction merged: node %s retracted, existing node %s boosted to %.2f",
-                            node_id, existing_new_id, merged_confidence if existing_new_row else new_confidence,
+                            node_id,
+                            existing_new_id,
+                            merged_confidence if existing_new_row else new_confidence,
                         )
                         # Add superseded edge for historical audit trail
                         try:
@@ -301,14 +317,19 @@ class CorrectionDetector:
                 except sqlite3.OperationalError as exc:
                     if "no such table" not in str(exc):
                         raise
-                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+                    logger.debug(
+                        "FTS5 table not available, skipping index update for node %s",
+                        node_id,
+                    )
 
                 self._kg._db.commit()
                 # Invalidate NetworkX cache (bypassed add_fact)
                 self._kg._mutation_counter += 1
             except (sqlite3.Error, OSError) as exc:
                 self._kg._db.rollback()
-                logger.debug("Correction apply transaction failed, rolled back: %s", exc)
+                logger.debug(
+                    "Correction apply transaction failed, rolled back: %s", exc
+                )
                 raise
 
         logger.info(
@@ -325,13 +346,56 @@ class CorrectionDetector:
 # Helpers
 # ------------------------------------------------------------------
 
-_CORRECTION_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "it", "its", "was", "were", "be", "been",
-    "am", "are", "do", "did", "does", "to", "of", "in", "on", "at",
-    "for", "by", "and", "or", "but", "not", "no", "so", "if", "as",
-    "my", "me", "i", "we", "us", "he", "she", "they", "that", "this",
-    "with", "from", "has", "had", "have", "s",
-})
+_CORRECTION_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "is",
+        "it",
+        "its",
+        "was",
+        "were",
+        "be",
+        "been",
+        "am",
+        "are",
+        "do",
+        "did",
+        "does",
+        "to",
+        "of",
+        "in",
+        "on",
+        "at",
+        "for",
+        "by",
+        "and",
+        "or",
+        "but",
+        "not",
+        "no",
+        "so",
+        "if",
+        "as",
+        "my",
+        "me",
+        "i",
+        "we",
+        "us",
+        "he",
+        "she",
+        "they",
+        "that",
+        "this",
+        "with",
+        "from",
+        "has",
+        "had",
+        "have",
+        "s",
+    }
+)
 
 
 def _extract_keywords(text: str) -> list[str]:

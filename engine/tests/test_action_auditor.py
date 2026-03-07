@@ -1,4 +1,5 @@
 """Tests for ActionAuditor — bot governance audit trail."""
+
 from __future__ import annotations
 
 import json
@@ -139,7 +140,9 @@ class TestActionAuditor:
                     trigger="internal",
                 )
 
-        threads = [threading.Thread(target=worker, args=(t,)) for t in range(num_threads)]
+        threads = [
+            threading.Thread(target=worker, args=(t,)) for t in range(num_threads)
+        ]
         for t in threads:
             t.start()
         for t in threads:

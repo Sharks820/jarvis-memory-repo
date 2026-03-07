@@ -13,10 +13,10 @@ import threading
 from unittest.mock import MagicMock, patch
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_urlopen_response(data: bytes | str, status: int = 200) -> MagicMock:
     """Build a fake urllib response (context-manager compatible)."""
@@ -39,20 +39,24 @@ def _make_deps():
     forensic_logger.log_event = MagicMock()
 
     from jarvis_engine.security.ip_tracker import IPTracker
+
     ip_tracker = IPTracker(db, lock)
 
     from jarvis_engine.security.attack_memory import AttackPatternMemory
+
     attack_memory = AttackPatternMemory(db, lock)
 
     alert_chain = MagicMock()
     alert_chain.send_alert = MagicMock(return_value={"level": 4, "deduped": False})
 
     threat_intel = MagicMock()
-    threat_intel.enrich_ip = MagicMock(return_value={
-        "ip": "1.2.3.4",
-        "is_known_bad": True,
-        "abuseipdb_score": 90,
-    })
+    threat_intel.enrich_ip = MagicMock(
+        return_value={
+            "ip": "1.2.3.4",
+            "is_known_bad": True,
+            "abuseipdb_score": 90,
+        }
+    )
 
     return {
         "forensic_logger": forensic_logger,
@@ -67,6 +71,7 @@ def _make_deps():
 # 1. Full neutralization pipeline
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "test-key-123"}, clear=True)
 def test_neutralize_full_pipeline():
     """Full pipeline: evidence + block + memory + report + alert."""
@@ -76,21 +81,31 @@ def test_neutralize_full_pipeline():
     tn = ThreatNeutralizer(**deps)
 
     # Mock AbuseIPDB report and RDAP lookup
-    abuseipdb_resp = _make_urlopen_response(json.dumps({
-        "data": {"abuseConfidenceScore": 100},
-    }))
-    rdap_resp = _make_urlopen_response(json.dumps({
-        "entities": [
+    abuseipdb_resp = _make_urlopen_response(
+        json.dumps(
             {
-                "roles": ["abuse"],
-                "vcardArray": [
-                    "vcard",
-                    [["fn", {}, "text", "Abuse Dept"],
-                     ["email", {}, "text", "abuse@example-isp.com"]],
-                ],
+                "data": {"abuseConfidenceScore": 100},
             }
-        ]
-    }))
+        )
+    )
+    rdap_resp = _make_urlopen_response(
+        json.dumps(
+            {
+                "entities": [
+                    {
+                        "roles": ["abuse"],
+                        "vcardArray": [
+                            "vcard",
+                            [
+                                ["fn", {}, "text", "Abuse Dept"],
+                                ["email", {}, "text", "abuse@example-isp.com"],
+                            ],
+                        ],
+                    }
+                ]
+            }
+        )
+    )
 
     def _urlopen_router(req, **kwargs):
         url = req.full_url if hasattr(req, "full_url") else str(req)
@@ -129,6 +144,7 @@ def test_neutralize_full_pipeline():
 # 2. Neutralize with minimal (no) dependencies
 # ---------------------------------------------------------------------------
 
+
 def test_neutralize_minimal_deps():
     """With no optional deps, neutralize still returns a valid result."""
     from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
@@ -152,6 +168,7 @@ def test_neutralize_minimal_deps():
 # 3. AbuseIPDB report submission
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "test-key-abc"}, clear=True)
 def test_report_to_abuseipdb():
     """AbuseIPDB report submission with correct format."""
@@ -159,9 +176,13 @@ def test_report_to_abuseipdb():
 
     tn = ThreatNeutralizer()
 
-    mock_resp = _make_urlopen_response(json.dumps({
-        "data": {"abuseConfidenceScore": 100},
-    }))
+    mock_resp = _make_urlopen_response(
+        json.dumps(
+            {
+                "data": {"abuseConfidenceScore": 100},
+            }
+        )
+    )
 
     with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
         success = tn.report_to_abuseipdb(
@@ -190,6 +211,7 @@ def test_report_to_abuseipdb():
 # 4. AbuseIPDB rate limiting
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "test-key-rate"}, clear=True)
 def test_report_rate_limited():
     """Second report for same IP within 1 hour is skipped."""
@@ -197,9 +219,13 @@ def test_report_rate_limited():
 
     tn = ThreatNeutralizer()
 
-    mock_resp = _make_urlopen_response(json.dumps({
-        "data": {"abuseConfidenceScore": 100},
-    }))
+    mock_resp = _make_urlopen_response(
+        json.dumps(
+            {
+                "data": {"abuseConfidenceScore": 100},
+            }
+        )
+    )
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
         first = tn.report_to_abuseipdb("198.51.100.20", [18], "First report")
@@ -213,32 +239,39 @@ def test_report_rate_limited():
 # 5. RDAP ISP abuse contact lookup
 # ---------------------------------------------------------------------------
 
+
 def test_lookup_isp_abuse():
     """RDAP lookup extracts abuse contact email."""
     from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
 
     tn = ThreatNeutralizer()
 
-    rdap_data = json.dumps({
-        "entities": [
-            {
-                "roles": ["registrant"],
-                "vcardArray": [
-                    "vcard",
-                    [["fn", {}, "text", "Owner Corp"],
-                     ["email", {}, "text", "admin@example.com"]],
-                ],
-            },
-            {
-                "roles": ["abuse"],
-                "vcardArray": [
-                    "vcard",
-                    [["fn", {}, "text", "Abuse Team"],
-                     ["email", {}, "text", "abuse@example-isp.net"]],
-                ],
-            },
-        ]
-    })
+    rdap_data = json.dumps(
+        {
+            "entities": [
+                {
+                    "roles": ["registrant"],
+                    "vcardArray": [
+                        "vcard",
+                        [
+                            ["fn", {}, "text", "Owner Corp"],
+                            ["email", {}, "text", "admin@example.com"],
+                        ],
+                    ],
+                },
+                {
+                    "roles": ["abuse"],
+                    "vcardArray": [
+                        "vcard",
+                        [
+                            ["fn", {}, "text", "Abuse Team"],
+                            ["email", {}, "text", "abuse@example-isp.net"],
+                        ],
+                    ],
+                },
+            ]
+        }
+    )
     mock_resp = _make_urlopen_response(rdap_data)
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
@@ -250,6 +283,7 @@ def test_lookup_isp_abuse():
 # ---------------------------------------------------------------------------
 # 6. RDAP lookup failure — graceful fallback
 # ---------------------------------------------------------------------------
+
 
 def test_lookup_isp_abuse_failure():
     """RDAP lookup failure returns None, no crash."""
@@ -266,6 +300,7 @@ def test_lookup_isp_abuse_failure():
 # ---------------------------------------------------------------------------
 # 7. Law enforcement package generation
 # ---------------------------------------------------------------------------
+
 
 def test_generate_law_enforcement_package():
     """Law enforcement package has all required IC3/FBI fields."""
@@ -300,6 +335,7 @@ def test_generate_law_enforcement_package():
 # 8. Permanent IP block
 # ---------------------------------------------------------------------------
 
+
 def test_permanent_block():
     """permanent_block adds IP to blocklist via ip_tracker."""
     from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
@@ -307,6 +343,7 @@ def test_permanent_block():
     db = sqlite3.connect(":memory:")
     lock = threading.Lock()
     from jarvis_engine.security.ip_tracker import IPTracker
+
     ip_tracker = IPTracker(db, lock)
 
     tn = ThreatNeutralizer(ip_tracker=ip_tracker)
@@ -319,6 +356,7 @@ def test_permanent_block():
 # ---------------------------------------------------------------------------
 # 9. Permanent block without ip_tracker — no crash
 # ---------------------------------------------------------------------------
+
 
 def test_permanent_block_no_tracker():
     """permanent_block without ip_tracker does not crash."""
@@ -333,6 +371,7 @@ def test_permanent_block_no_tracker():
 # ---------------------------------------------------------------------------
 # 10. Status report structure
 # ---------------------------------------------------------------------------
+
 
 def test_status_report():
     """status() returns expected structure with counters."""
@@ -357,6 +396,7 @@ def test_status_report():
 # 11. Status counters increment after neutralize
 # ---------------------------------------------------------------------------
 
+
 def test_status_increments():
     """Counters increase after neutralization actions."""
     from jarvis_engine.security.threat_neutralizer import ThreatNeutralizer
@@ -377,6 +417,7 @@ def test_status_increments():
 # 12. AbuseIPDB report without API key — returns False
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {}, clear=True)
 def test_report_to_abuseipdb_no_key():
     """Without ABUSEIPDB_API_KEY, report returns False immediately."""
@@ -390,6 +431,7 @@ def test_report_to_abuseipdb_no_key():
 # ---------------------------------------------------------------------------
 # 13. Thread safety — concurrent neutralize calls
 # ---------------------------------------------------------------------------
+
 
 def test_thread_safety():
     """Concurrent neutralize calls from multiple threads don't crash."""

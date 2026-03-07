@@ -67,11 +67,7 @@ def _make_kg_db() -> MagicMock:
         "  temporal_type TEXT DEFAULT 'permanent'"
         ")"
     )
-    conn.execute(
-        "CREATE TABLE kg_edges ("
-        "  src TEXT, dst TEXT, relation TEXT"
-        ")"
-    )
+    conn.execute("CREATE TABLE kg_edges (  src TEXT, dst TEXT, relation TEXT)")
     kg = MagicMock()
     kg.db = conn
     return kg, conn
@@ -548,8 +544,20 @@ class TestKgGrowthTrend:
 
     def test_growing_trend(self):
         history = [
-            {"node_count": 10, "edge_count": 5, "avg_confidence": 0.8, "cross_branch_edges": 1, "ts": "t0"},
-            {"node_count": 20, "edge_count": 15, "avg_confidence": 0.85, "cross_branch_edges": 3, "ts": "t1"},
+            {
+                "node_count": 10,
+                "edge_count": 5,
+                "avg_confidence": 0.8,
+                "cross_branch_edges": 1,
+                "ts": "t0",
+            },
+            {
+                "node_count": 20,
+                "edge_count": 15,
+                "avg_confidence": 0.85,
+                "cross_branch_edges": 3,
+                "ts": "t1",
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "growing"
@@ -560,7 +568,13 @@ class TestKgGrowthTrend:
         assert result["snapshots_analyzed"] == 2
 
     def test_stable_trend(self):
-        entry = {"node_count": 10, "edge_count": 5, "avg_confidence": 0.8, "cross_branch_edges": 1, "ts": "t0"}
+        entry = {
+            "node_count": 10,
+            "edge_count": 5,
+            "avg_confidence": 0.8,
+            "cross_branch_edges": 1,
+            "ts": "t0",
+        }
         result = kg_growth_trend([entry, entry])
         assert result["trend"] == "stable"
         assert result["node_growth"] == 0
@@ -568,8 +582,20 @@ class TestKgGrowthTrend:
 
     def test_declining_trend(self):
         history = [
-            {"node_count": 20, "edge_count": 15, "avg_confidence": 0.9, "cross_branch_edges": 5, "ts": "t0"},
-            {"node_count": 15, "edge_count": 10, "avg_confidence": 0.85, "cross_branch_edges": 3, "ts": "t1"},
+            {
+                "node_count": 20,
+                "edge_count": 15,
+                "avg_confidence": 0.9,
+                "cross_branch_edges": 5,
+                "ts": "t0",
+            },
+            {
+                "node_count": 15,
+                "edge_count": 10,
+                "avg_confidence": 0.85,
+                "cross_branch_edges": 3,
+                "ts": "t1",
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "declining"
@@ -579,8 +605,20 @@ class TestKgGrowthTrend:
     def test_mixed_growth_declining(self):
         """Nodes grow but edges shrink => declining."""
         history = [
-            {"node_count": 10, "edge_count": 20, "avg_confidence": 0.8, "cross_branch_edges": 0, "ts": "t0"},
-            {"node_count": 15, "edge_count": 10, "avg_confidence": 0.8, "cross_branch_edges": 0, "ts": "t1"},
+            {
+                "node_count": 10,
+                "edge_count": 20,
+                "avg_confidence": 0.8,
+                "cross_branch_edges": 0,
+                "ts": "t0",
+            },
+            {
+                "node_count": 15,
+                "edge_count": 10,
+                "avg_confidence": 0.8,
+                "cross_branch_edges": 0,
+                "ts": "t1",
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "declining"

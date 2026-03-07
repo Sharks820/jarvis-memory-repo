@@ -38,9 +38,13 @@ class TestConversationLearningEngine:
 
         # Verify user message was ingested
         calls = pipeline.ingest.call_args_list
-        user_call = [c for c in calls if c.kwargs.get("source") == "conversation:user"
-                     or (c.args and c.args[0] == "conversation:user")
-                     or c[1].get("source") == "conversation:user"]
+        user_call = [
+            c
+            for c in calls
+            if c.kwargs.get("source") == "conversation:user"
+            or (c.args and c.args[0] == "conversation:user")
+            or c[1].get("source") == "conversation:user"
+        ]
         assert len(user_call) == 1
         assert result["records_created"] >= 1
 
@@ -56,8 +60,12 @@ class TestConversationLearningEngine:
 
         # Verify assistant response was ingested
         calls = pipeline.ingest.call_args_list
-        assistant_call = [c for c in calls if c.kwargs.get("source") == "conversation:assistant"
-                          or c[1].get("source") == "conversation:assistant"]
+        assistant_call = [
+            c
+            for c in calls
+            if c.kwargs.get("source") == "conversation:assistant"
+            or c[1].get("source") == "conversation:assistant"
+        ]
         assert len(assistant_call) == 1
         assert result["records_created"] == 2  # both user + assistant
 
@@ -205,13 +213,17 @@ class TestTemporalMetadata:
         """)
 
         # Insert an expired fact (yesterday)
-        yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         db.execute(
             "INSERT INTO kg_nodes (node_id, label, temporal_type, expires_at) VALUES (?, ?, ?, ?)",
             ("ops.schedule.old", "Old meeting", "time_sensitive", yesterday),
         )
         # Insert a non-expired fact (tomorrow)
-        tomorrow = (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        tomorrow = (datetime.now(UTC) + timedelta(days=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         db.execute(
             "INSERT INTO kg_nodes (node_id, label, temporal_type, expires_at) VALUES (?, ?, ?, ?)",
             ("ops.schedule.future", "Future meeting", "time_sensitive", tomorrow),
@@ -301,10 +313,16 @@ class TestCrossBranch:
 
         # Build a mock networkx graph
         import networkx as nx
+
         G = nx.DiGraph()
         G.add_node("ingest:rec_001", label="Test fact", node_type="provenance")
         G.add_node("family.member.dad", label="Dad", node_type="fact")
-        G.add_edge("ingest:rec_001", "family.member.dad", relation="extracted_from", confidence=0.8)
+        G.add_edge(
+            "ingest:rec_001",
+            "family.member.dad",
+            relation="extracted_from",
+            confidence=0.8,
+        )
 
         mock_kg = MagicMock()
         mock_kg.to_networkx.return_value = G

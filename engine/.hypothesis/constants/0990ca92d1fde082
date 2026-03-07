@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/harvesting/providers.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.3, 0.6, 1.2, 2.5, 60.0, 2048, 60000, 1000000, 'GEMINI_API_KEY', 'KIMI_API_KEY', 'MINIMAX_API_KEY', 'MiniMax-M2.5', 'NVIDIA_API_KEY', 'config', 'content', 'disabled', 'extra_body', 'gemini', 'gemini-2.5-flash', 'kimi', 'kimi-k2.5', 'kimi_nvidia', 'minimax', 'moonshotai/kimi-k2-5', 'prompt_token_count', 'role', 'system', 'thinking', 'timeout', 'type', 'user']

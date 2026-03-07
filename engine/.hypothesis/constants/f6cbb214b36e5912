@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/cross_branch.py
+# hypothesis_version: 6.151.9
+
+[0.4, '%', '.', ':', 'EmbeddingService', 'KnowledgeGraph', 'MemoryEngine', '[a-zA-Z]+', '\\%', '\\_', '_', 'branches_involved', 'cross_branch_related', 'direct_results', 'distance', 'label', 'node_id', 'record_id', 'related', 'relation', 'search_query', 'source', 'source_branch', 'target', 'target_branch', 'unknown']

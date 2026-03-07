@@ -51,7 +51,6 @@ def _make_mock_engine(
 
 
 class TestRecencyWeight:
-
     def test_recent_timestamp_near_one(self):
         """A just-created timestamp should have weight near 1.0."""
         ts = datetime.now(UTC).isoformat()
@@ -95,7 +94,6 @@ class TestRecencyWeight:
 
 
 class TestHybridSearchGuards:
-
     def test_none_engine_raises(self):
         """Passing None as engine raises ValueError."""
         with pytest.raises(ValueError, match="MemoryEngine is None"):
@@ -114,7 +112,6 @@ class TestHybridSearchGuards:
 
 
 class TestHybridSearch:
-
     def test_empty_results_returns_empty(self):
         """When both FTS and vec return nothing, result is empty list."""
         engine = _make_mock_engine()
@@ -158,7 +155,9 @@ class TestHybridSearch:
             vec_results=[("both", 0.9), ("vec_only", 0.4)],
             records=records,
         )
-        result = hybrid_search(engine, "test", [0.1], k=10, rrf_k=60, recency_weight=0.0)
+        result = hybrid_search(
+            engine, "test", [0.1], k=10, rrf_k=60, recency_weight=0.0
+        )
         # "both" should be first since it appears in both lists
         assert result[0]["record_id"] == "both"
 

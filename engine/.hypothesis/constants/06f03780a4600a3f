@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/attack_memory.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.8, 1.0, -200, 100, 200, 500, 1000, 'category', 'detection_method', 'first_seen', 'frequency', 'last_seen', 'notes', 'pattern_id', 'payload_signature', 'recent_attacks', 'recurring_patterns', 'similarity', 'source_ips', 'top_categories', 'total_events', 'total_frequency', 'total_patterns']

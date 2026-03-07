@@ -44,7 +44,9 @@ def load_call_log(path: Path) -> list[dict[str, Any]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
-def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | None = None) -> list[SpamCandidate]:
+def detect_spam_candidates(
+    call_log: list[dict[str, Any]], now_utc: datetime | None = None
+) -> list[SpamCandidate]:
     now = now_utc or datetime.now(UTC)
     lookback = now - timedelta(days=14)
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -54,7 +56,9 @@ def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | N
         number = _normalize_number(raw_number)
         if not number:
             continue
-        ts = _parse_ts(item.get("ts_utc") or item.get("date_utc") or item.get("date", ""))
+        ts = _parse_ts(
+            item.get("ts_utc") or item.get("date_utc") or item.get("date", "")
+        )
         if not ts or ts < lookback:
             continue
         grouped[number].append(item)
@@ -68,9 +72,15 @@ def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | N
         area_distinct_numbers[area].add(number)
         for record in records:
             call_type = str(record.get("type", record.get("direction", ""))).lower()
-            duration = _safe_float(record.get("duration_sec", record.get("duration", 0.0)))
+            duration = _safe_float(
+                record.get("duration_sec", record.get("duration", 0.0))
+            )
             contact = str(record.get("contact_name", "")).strip()
-            if any(term in call_type for term in ["missed", "rejected", "declined"]) and duration <= 12 and not contact:
+            if (
+                any(term in call_type for term in ["missed", "rejected", "declined"])
+                and duration <= 12
+                and not contact
+            ):
                 area_suspicious_events[area] += 1
 
     candidates: list[SpamCandidate] = []
@@ -87,11 +97,19 @@ def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | N
             call_type = str(r.get("type", r.get("direction", ""))).lower()
             duration = _safe_float(r.get("duration_sec", r.get("duration", 0.0)))
             total_duration += duration
-            if any(term in call_type for term in ["missed", "rejected", "declined", "ignored"]):
+            if any(
+                term in call_type
+                for term in ["missed", "rejected", "declined", "ignored"]
+            ):
                 missed += 1
-            if any(term in call_type for term in ["incoming", "inbound", "missed", "rejected", "declined"]):
+            if any(
+                term in call_type
+                for term in ["incoming", "inbound", "missed", "rejected", "declined"]
+            ):
                 inbound += 1
-            label = (str(r.get("caller_label", "")) + " " + str(r.get("contact_name", ""))).lower()
+            label = (
+                str(r.get("caller_label", "")) + " " + str(r.get("contact_name", ""))
+            ).lower()
             if any(term in label for term in ["spam", "scam", "telemarketer", "fraud"]):
                 flagged_label = True
             if not str(r.get("contact_name", "")).strip():
@@ -193,8 +211,16 @@ def build_spam_block_actions(
     return actions
 
 
-def build_phone_action(action: str, number: str, message: str = "", reason: str = "voice_or_text_request") -> PhoneAction:
-    if action not in {"send_sms", "place_call", "ignore_call", "block_number", "silence_unknown_callers"}:
+def build_phone_action(
+    action: str, number: str, message: str = "", reason: str = "voice_or_text_request"
+) -> PhoneAction:
+    if action not in {
+        "send_sms",
+        "place_call",
+        "ignore_call",
+        "block_number",
+        "silence_unknown_callers",
+    }:
         raise ValueError(f"Unsupported action: {action}")
     normalized = _normalize_number(number)
     if action == "silence_unknown_callers":
@@ -220,7 +246,12 @@ def append_phone_actions(path: Path, actions: list[PhoneAction]) -> None:
                 handle.write(json.dumps(asdict(action), ensure_ascii=True) + "\n")
 
 
-def write_spam_report(path: Path, candidates: list[SpamCandidate], actions: list[PhoneAction], threshold: float) -> None:
+def write_spam_report(
+    path: Path,
+    candidates: list[SpamCandidate],
+    actions: list[PhoneAction],
+    threshold: float,
+) -> None:
     payload = {
         "generated_utc": _now_iso(),
         "threshold": threshold,

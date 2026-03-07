@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/commands/task_commands.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1024, 'low', 'max_quality', 'normal', 'qwen3-coder:30b']

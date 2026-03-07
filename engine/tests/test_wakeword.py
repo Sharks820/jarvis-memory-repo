@@ -14,6 +14,7 @@ from jarvis_engine.wakeword import WakeWordDetector
 # 1. WakeWordDetector initialization defaults
 # ---------------------------------------------------------------------------
 
+
 def test_detector_default_threshold() -> None:
     """Default threshold is 0.5."""
     detector = WakeWordDetector()
@@ -41,6 +42,7 @@ def test_detector_stop_event_not_set_at_init() -> None:
 # ---------------------------------------------------------------------------
 # 2. Custom threshold and model name
 # ---------------------------------------------------------------------------
+
 
 def test_detector_custom_threshold() -> None:
     """Custom threshold is stored correctly."""
@@ -70,6 +72,7 @@ def test_detector_threshold_boundary_one() -> None:
 # 3. stop() sets the stop event
 # ---------------------------------------------------------------------------
 
+
 def test_stop_sets_event() -> None:
     """stop() sets the internal stop event."""
     detector = WakeWordDetector()
@@ -82,13 +85,16 @@ def test_stop_sets_event() -> None:
 # 4. start() with external stop_event
 # ---------------------------------------------------------------------------
 
+
 def test_start_uses_external_stop_event() -> None:
     """When external stop_event is provided, it replaces the internal one."""
     detector = WakeWordDetector()
     external_event = threading.Event()
 
     # Mock _load_model to raise ImportError so start() returns early
-    with patch.object(detector, "_load_model", side_effect=ImportError("no openwakeword")):
+    with patch.object(
+        detector, "_load_model", side_effect=ImportError("no openwakeword")
+    ):
         detector.start(on_detected=lambda: None, stop_event=external_event)
 
     # After start, the detector should use the external event
@@ -99,12 +105,15 @@ def test_start_uses_external_stop_event() -> None:
 # 5. start() handles missing openwakeword
 # ---------------------------------------------------------------------------
 
+
 def test_start_missing_openwakeword_returns_gracefully() -> None:
     """When openwakeword is not installed, start() returns without error."""
     detector = WakeWordDetector()
     callback = MagicMock()
 
-    with patch.object(detector, "_load_model", side_effect=ImportError("not installed")):
+    with patch.object(
+        detector, "_load_model", side_effect=ImportError("not installed")
+    ):
         # Should not raise
         detector.start(on_detected=callback)
 
@@ -115,12 +124,15 @@ def test_start_missing_openwakeword_returns_gracefully() -> None:
 # 6. start() handles model loading error
 # ---------------------------------------------------------------------------
 
+
 def test_start_model_load_error_returns_gracefully() -> None:
     """When model loading fails with non-ImportError, start() returns without error."""
     detector = WakeWordDetector()
     callback = MagicMock()
 
-    with patch.object(detector, "_load_model", side_effect=RuntimeError("corrupt model")):
+    with patch.object(
+        detector, "_load_model", side_effect=RuntimeError("corrupt model")
+    ):
         # Should not raise
         detector.start(on_detected=callback)
 
@@ -131,6 +143,7 @@ def test_start_model_load_error_returns_gracefully() -> None:
 # 7. start() handles missing sounddevice
 # ---------------------------------------------------------------------------
 
+
 def test_start_missing_sounddevice_returns_gracefully() -> None:
     """When sounddevice is not installed, start() returns without error."""
     detector = WakeWordDetector()
@@ -138,7 +151,11 @@ def test_start_missing_sounddevice_returns_gracefully() -> None:
 
     # _load_model succeeds but sounddevice import fails
     with patch.object(detector, "_load_model"):
-        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+        original_import = (
+            __builtins__.__import__
+            if hasattr(__builtins__, "__import__")
+            else __import__
+        )
 
         def _fail_sd(name, *args, **kwargs):
             if name == "sounddevice":
@@ -155,6 +172,7 @@ def test_start_missing_sounddevice_returns_gracefully() -> None:
 # 8. _load_model imports openwakeword
 # ---------------------------------------------------------------------------
 
+
 def test_load_model_imports_openwakeword() -> None:
     """_load_model attempts to import openwakeword.model.Model."""
     detector = WakeWordDetector()
@@ -163,7 +181,9 @@ def test_load_model_imports_openwakeword() -> None:
     mock_model_instance = MagicMock()
     mock_model_cls.return_value = mock_model_instance
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_oww_import(name, *args, **kwargs):
         if name == "openwakeword.model":
@@ -176,12 +196,15 @@ def test_load_model_imports_openwakeword() -> None:
         detector._load_model()
 
     assert detector._model is not None
-    mock_model_cls.assert_called_once_with(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+    mock_model_cls.assert_called_once_with(
+        wakeword_models=["hey_jarvis"], inference_framework="onnx"
+    )
 
 
 # ---------------------------------------------------------------------------
 # 9. Detection callback invocation
 # ---------------------------------------------------------------------------
+
 
 def test_detection_invokes_callback() -> None:
     """When wake word score exceeds threshold, callback is invoked."""
@@ -217,8 +240,15 @@ def test_detection_invokes_callback() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+    with (
+        patch.object(detector, "_load_model"),
+        patch(
+            "builtins.__import__",
+            side_effect=lambda name, *a, **kw: (
+                mock_sd if name == "sounddevice" else __import__(name, *a, **kw)
+            ),
+        ),
+    ):
         # Directly simulate the detection loop logic
         pass
 
@@ -244,6 +274,7 @@ def test_detection_invokes_callback() -> None:
 # 10. No callback when score below threshold
 # ---------------------------------------------------------------------------
 
+
 def test_no_callback_when_below_threshold() -> None:
     """When all scores are below threshold, callback is not invoked."""
     detector = WakeWordDetector(threshold=0.5)
@@ -268,6 +299,7 @@ def test_no_callback_when_below_threshold() -> None:
 # 11. Multiple wake word models in prediction buffer
 # ---------------------------------------------------------------------------
 
+
 def test_multiple_wake_words() -> None:
     """Detection works with multiple wake word models."""
     detector = WakeWordDetector(threshold=0.5)
@@ -275,8 +307,8 @@ def test_multiple_wake_words() -> None:
 
     mock_model = MagicMock()
     mock_model.prediction_buffer = {
-        "hey_jarvis": [0.1, 0.2, 0.3],   # Below threshold
-        "alexa": [0.1, 0.2, 0.9],         # Above threshold
+        "hey_jarvis": [0.1, 0.2, 0.3],  # Below threshold
+        "alexa": [0.1, 0.2, 0.9],  # Above threshold
     }
     detector._model = mock_model
 
@@ -294,6 +326,7 @@ def test_multiple_wake_words() -> None:
 # ---------------------------------------------------------------------------
 # 12. Empty prediction buffer
 # ---------------------------------------------------------------------------
+
 
 def test_empty_prediction_buffer() -> None:
     """Empty prediction buffer does not trigger callback."""
@@ -315,6 +348,7 @@ def test_empty_prediction_buffer() -> None:
 # ---------------------------------------------------------------------------
 # 13. Overflowed audio is skipped
 # ---------------------------------------------------------------------------
+
 
 def test_overflowed_audio_skipped() -> None:
     """When audio stream overflows, the chunk is skipped (continue)."""
@@ -339,21 +373,23 @@ def test_overflowed_audio_skipped() -> None:
 # 14. Audio conversion float32 to int16
 # ---------------------------------------------------------------------------
 
+
 def test_audio_conversion_float32_to_int16() -> None:
     """Float32 [-1,1] audio is correctly converted to int16 for openwakeword."""
     # Simulate what the detection loop does
     audio_data = np.array([[0.5], [-0.5], [1.0], [-1.0]], dtype=np.float32)
     audio_int16 = (audio_data[:, 0] * 32767).astype(np.int16)
 
-    assert audio_int16[0] == 16383   # 0.5 * 32767 truncated
+    assert audio_int16[0] == 16383  # 0.5 * 32767 truncated
     assert audio_int16[1] == -16383  # -0.5 * 32767 truncated
-    assert audio_int16[2] == 32767   # 1.0 * 32767
+    assert audio_int16[2] == 32767  # 1.0 * 32767
     assert audio_int16[3] == -32767  # -1.0 * 32767
 
 
 # ---------------------------------------------------------------------------
 # 15. stop() can be called multiple times safely
 # ---------------------------------------------------------------------------
+
 
 def test_stop_idempotent() -> None:
     """stop() can be called multiple times without error."""
@@ -366,6 +402,7 @@ def test_stop_idempotent() -> None:
 # ---------------------------------------------------------------------------
 # 16. start() with mic_lock parameter
 # ---------------------------------------------------------------------------
+
 
 def test_start_accepts_mic_lock() -> None:
     """start() accepts an optional mic_lock parameter."""
@@ -381,6 +418,7 @@ def test_start_accepts_mic_lock() -> None:
 # ---------------------------------------------------------------------------
 # 17. Detection loop acquires/releases mic lock
 # ---------------------------------------------------------------------------
+
 
 def test_mic_lock_acquired_and_released() -> None:
     """When mic_lock is provided, it is acquired before read and released after."""
@@ -411,6 +449,7 @@ def test_mic_lock_acquired_and_released() -> None:
 # 18. Audio stream open failure handled gracefully
 # ---------------------------------------------------------------------------
 
+
 def test_audio_stream_open_failure() -> None:
     """When opening audio stream fails, start() returns without error."""
     detector = WakeWordDetector()
@@ -420,7 +459,11 @@ def test_audio_stream_open_failure() -> None:
     mock_sd.InputStream.side_effect = OSError("No audio device")
 
     with patch.object(detector, "_load_model"):
-        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+        original_import = (
+            __builtins__.__import__
+            if hasattr(__builtins__, "__import__")
+            else __import__
+        )
 
         def _mock_sd_import(name, *args, **kwargs):
             if name == "sounddevice":
@@ -436,6 +479,7 @@ def test_audio_stream_open_failure() -> None:
 # ---------------------------------------------------------------------------
 # 19. Prediction buffer with empty scores list
 # ---------------------------------------------------------------------------
+
 
 def test_prediction_buffer_empty_scores() -> None:
     """Empty scores list for a model key does not trigger callback."""
@@ -457,6 +501,7 @@ def test_prediction_buffer_empty_scores() -> None:
 # ---------------------------------------------------------------------------
 # 20. Threshold exactly at score boundary
 # ---------------------------------------------------------------------------
+
 
 def test_threshold_exact_boundary() -> None:
     """Score equal to threshold does NOT trigger (requires strictly greater)."""
@@ -502,6 +547,7 @@ def test_threshold_just_above_boundary() -> None:
 # 21. Bug 1 fix: _load_model passes model_name to Model constructor
 # ---------------------------------------------------------------------------
 
+
 def test_load_model_passes_model_name() -> None:
     """_load_model passes self._model_name to Model(wakeword_models=[...])."""
     detector = WakeWordDetector(model_name="custom_wake")
@@ -510,7 +556,9 @@ def test_load_model_passes_model_name() -> None:
     mock_model_instance = MagicMock()
     mock_model_cls.return_value = mock_model_instance
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_oww_import(name, *args, **kwargs):
         if name == "openwakeword.model":
@@ -532,6 +580,7 @@ def test_load_model_passes_model_name() -> None:
 # 22. Bug 2 fix: Detection only checks configured model key
 # ---------------------------------------------------------------------------
 
+
 def test_detection_only_checks_configured_model() -> None:
     """Detection loop only checks self._model_name, not other buffer keys."""
     detector = WakeWordDetector(threshold=0.5, model_name="hey_jarvis")
@@ -541,8 +590,8 @@ def test_detection_only_checks_configured_model() -> None:
     # "alexa" has a high score but should NOT trigger detection
     # "hey_jarvis" has a low score
     mock_model.prediction_buffer = {
-        "hey_jarvis": [0.1, 0.2, 0.3],   # Below threshold
-        "alexa": [0.1, 0.2, 0.9],         # Above threshold but wrong model
+        "hey_jarvis": [0.1, 0.2, 0.3],  # Below threshold
+        "alexa": [0.1, 0.2, 0.9],  # Above threshold but wrong model
     }
     detector._model = mock_model
 
@@ -565,8 +614,8 @@ def test_detection_triggers_only_on_configured_model() -> None:
 
     mock_model = MagicMock()
     mock_model.prediction_buffer = {
-        "hey_jarvis": [0.1, 0.2, 0.8],   # Above threshold
-        "alexa": [0.1, 0.2, 0.3],         # Below threshold
+        "hey_jarvis": [0.1, 0.2, 0.8],  # Above threshold
+        "alexa": [0.1, 0.2, 0.3],  # Below threshold
     }
     detector._model = mock_model
 
@@ -583,6 +632,7 @@ def test_detection_triggers_only_on_configured_model() -> None:
 # ---------------------------------------------------------------------------
 # 23. Bug 3 fix: Cooldown seconds stored and defaults to 2.0
 # ---------------------------------------------------------------------------
+
 
 def test_cooldown_default() -> None:
     """Default cooldown_seconds is 2.0."""
@@ -629,16 +679,20 @@ def test_cooldown_after_detection() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports), \
-         patch("time.sleep") as mock_sleep:
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+        patch("time.sleep") as mock_sleep,
+    ):
         detector.start(on_detected=callback)
 
     callback.assert_called_once()
@@ -649,14 +703,15 @@ def test_cooldown_after_detection() -> None:
 # 24. Bug 6 fix: Float-to-int16 conversion clips out-of-range values
 # ---------------------------------------------------------------------------
 
+
 def test_audio_conversion_clips_out_of_range() -> None:
     """Values outside [-1, 1] are clipped before int16 conversion."""
     audio_data = np.array([[2.0], [-2.0], [1.5], [-1.5]], dtype=np.float32)
     audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
 
-    assert audio_int16[0] == 32767   # 2.0 * 32767 = 65534 -> clipped to 32767
+    assert audio_int16[0] == 32767  # 2.0 * 32767 = 65534 -> clipped to 32767
     assert audio_int16[1] == -32768  # -2.0 * 32767 = -65534 -> clipped to -32768
-    assert audio_int16[2] == 32767   # 1.5 * 32767 = 49150.5 -> clipped to 32767
+    assert audio_int16[2] == 32767  # 1.5 * 32767 = 49150.5 -> clipped to 32767
     assert audio_int16[3] == -32768  # -1.5 * 32767 = -49150.5 -> clipped to -32768
 
 
@@ -665,7 +720,7 @@ def test_audio_conversion_normal_values_unchanged() -> None:
     audio_data = np.array([[0.5], [-0.5], [0.0]], dtype=np.float32)
     audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
 
-    assert audio_int16[0] == 16383   # 0.5 * 32767 truncated
+    assert audio_int16[0] == 16383  # 0.5 * 32767 truncated
     assert audio_int16[1] == -16383  # -0.5 * 32767 truncated
     assert audio_int16[2] == 0
 
@@ -673,6 +728,7 @@ def test_audio_conversion_normal_values_unchanged() -> None:
 # ---------------------------------------------------------------------------
 # 25. Bug 7 fix: mic_lock.acquire uses timeout
 # ---------------------------------------------------------------------------
+
 
 def test_mic_lock_acquire_uses_timeout() -> None:
     """mic_lock.acquire is called with timeout=60."""
@@ -702,15 +758,19 @@ def test_mic_lock_acquire_uses_timeout() -> None:
     stop_event.is_set = _stop_after_one
     detector._stop_event = stop_event
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         detector.start(on_detected=lambda: None, mic_lock=mic_lock)
 
     mic_lock.acquire.assert_called_with(timeout=60)
@@ -747,15 +807,19 @@ def test_mic_lock_timeout_skips_iteration() -> None:
     stop_event.is_set = _stop_after_one
     detector._stop_event = stop_event
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         detector.start(on_detected=callback, mic_lock=mic_lock)
 
     # Callback should NOT have been called because lock timed out
@@ -772,6 +836,7 @@ def test_mic_lock_timeout_skips_iteration() -> None:
 # ---------------------------------------------------------------------------
 # 27. Energy pre-filter: silent audio skips ML inference
 # ---------------------------------------------------------------------------
+
 
 def test_energy_prefilter_skips_predict_on_silence() -> None:
     """Silent audio (RMS < 0.005) skips model.predict() entirely."""
@@ -802,15 +867,19 @@ def test_energy_prefilter_skips_predict_on_silence() -> None:
     stop_event.is_set = _stop_after_one
     detector._stop_event = stop_event
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         detector.start(on_detected=callback)
 
     # predict should NOT have been called because RMS is below threshold
@@ -821,6 +890,7 @@ def test_energy_prefilter_skips_predict_on_silence() -> None:
 # ---------------------------------------------------------------------------
 # 28. Energy pre-filter: loud audio passes through to predict
 # ---------------------------------------------------------------------------
+
 
 def test_energy_prefilter_passes_loud_audio() -> None:
     """Loud audio (RMS > 0.005) passes through to model.predict()."""
@@ -851,15 +921,19 @@ def test_energy_prefilter_passes_loud_audio() -> None:
     stop_event.is_set = _stop_after_one
     detector._stop_event = stop_event
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         detector.start(on_detected=callback)
 
     # predict SHOULD have been called because audio has energy
@@ -869,6 +943,7 @@ def test_energy_prefilter_passes_loud_audio() -> None:
 # ---------------------------------------------------------------------------
 # 29. Score smoothing: single high score does not trigger detection
 # ---------------------------------------------------------------------------
+
 
 def test_score_smoothing_single_high_score_no_trigger() -> None:
     """A single high score no longer triggers detection (need 3+ frames avg)."""
@@ -894,6 +969,7 @@ def test_score_smoothing_single_high_score_no_trigger() -> None:
 # 30. Score smoothing: 3 high scores triggers detection
 # ---------------------------------------------------------------------------
 
+
 def test_score_smoothing_three_high_scores_triggers() -> None:
     """Three consecutive high scores (avg > threshold) triggers detection."""
     detector = WakeWordDetector(threshold=0.5)
@@ -918,6 +994,7 @@ def test_score_smoothing_three_high_scores_triggers() -> None:
 # 31. Score smoothing: mixed scores below average threshold
 # ---------------------------------------------------------------------------
 
+
 def test_score_smoothing_mixed_scores_below_avg() -> None:
     """Three scores where average is below threshold does not trigger."""
     detector = WakeWordDetector(threshold=0.5)
@@ -941,6 +1018,7 @@ def test_score_smoothing_mixed_scores_below_avg() -> None:
 # 32. Score smoothing: long buffer uses last 3 only
 # ---------------------------------------------------------------------------
 
+
 def test_score_smoothing_uses_last_three_only() -> None:
     """Only the last 3 scores matter for the smoothing average."""
     detector = WakeWordDetector(threshold=0.5)
@@ -948,9 +1026,7 @@ def test_score_smoothing_uses_last_three_only() -> None:
 
     mock_model = MagicMock()
     # Many low scores, but last 3 are high
-    mock_model.prediction_buffer = {
-        "hey_jarvis": [0.0, 0.0, 0.0, 0.0, 0.6, 0.7, 0.8]
-    }
+    mock_model.prediction_buffer = {"hey_jarvis": [0.0, 0.0, 0.0, 0.0, 0.6, 0.7, 0.8]}
     detector._model = mock_model
 
     target_key = detector._model_name
@@ -966,6 +1042,7 @@ def test_score_smoothing_uses_last_three_only() -> None:
 # ---------------------------------------------------------------------------
 # 33. Energy pre-filter: boundary RMS value (exactly 0.005)
 # ---------------------------------------------------------------------------
+
 
 def test_energy_prefilter_boundary_value() -> None:
     """RMS exactly at 0.005 is treated as silence (strictly less than)."""
@@ -987,6 +1064,7 @@ def test_energy_prefilter_boundary_value() -> None:
 # ---------------------------------------------------------------------------
 # 34. Energy pre-filter + score smoothing integration through start()
 # ---------------------------------------------------------------------------
+
 
 def test_energy_prefilter_and_smoothing_integration() -> None:
     """Integration test: loud audio + 3 high scores triggers detection."""
@@ -1016,16 +1094,20 @@ def test_energy_prefilter_and_smoothing_integration() -> None:
     stop_event.is_set = _stop_after_one
     detector._stop_event = stop_event
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
             return mock_sd
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports), \
-         patch("time.sleep"):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+        patch("time.sleep"),
+    ):
         detector.start(on_detected=callback)
 
     callback.assert_called_once()
@@ -1041,6 +1123,7 @@ def test_energy_prefilter_and_smoothing_integration() -> None:
 # ---------------------------------------------------------------------------
 # V1. Silero VAD integration: process_chunk called on each audio chunk
 # ---------------------------------------------------------------------------
+
 
 def test_wakeword_silero_vad_integration() -> None:
     """When Silero VAD is available, process_chunk is called on each audio chunk."""
@@ -1074,7 +1157,9 @@ def test_wakeword_silero_vad_integration() -> None:
     mock_vad.available = True
     mock_vad.process_chunk.return_value = True  # Speech detected
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
@@ -1085,8 +1170,10 @@ def test_wakeword_silero_vad_integration() -> None:
             return module
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         detector.start(on_detected=callback)
 
     # process_chunk should have been called with the audio float data
@@ -1099,6 +1186,7 @@ def test_wakeword_silero_vad_integration() -> None:
 # ---------------------------------------------------------------------------
 # V2. VAD reset after wake word detection
 # ---------------------------------------------------------------------------
+
 
 def test_wakeword_vad_reset_after_detection() -> None:
     """vad.reset() is called after wake word is detected."""
@@ -1131,7 +1219,9 @@ def test_wakeword_vad_reset_after_detection() -> None:
     mock_vad.available = True
     mock_vad.process_chunk.return_value = True
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
@@ -1142,9 +1232,11 @@ def test_wakeword_vad_reset_after_detection() -> None:
             return module
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports), \
-         patch("time.sleep"):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+        patch("time.sleep"),
+    ):
         detector.start(on_detected=callback)
 
     callback.assert_called_once()
@@ -1154,6 +1246,7 @@ def test_wakeword_vad_reset_after_detection() -> None:
 # ---------------------------------------------------------------------------
 # V3. RMS fallback when Silero VAD unavailable
 # ---------------------------------------------------------------------------
+
 
 def test_wakeword_rms_fallback() -> None:
     """When SileroVADDetector.available is False, RMS energy fallback is used."""
@@ -1187,7 +1280,9 @@ def test_wakeword_rms_fallback() -> None:
     mock_vad = MagicMock()
     mock_vad.available = False
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
@@ -1198,8 +1293,10 @@ def test_wakeword_rms_fallback() -> None:
             return module
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         detector.start(on_detected=callback)
 
     # RMS fallback: silence -> predict should NOT be called
@@ -1212,6 +1309,7 @@ def test_wakeword_rms_fallback() -> None:
 # V4. VAD stored on instance
 # ---------------------------------------------------------------------------
 
+
 def test_wakeword_vad_stored_on_instance() -> None:
     """self._vad is set after start() initializes VAD."""
     detector = WakeWordDetector()
@@ -1221,7 +1319,9 @@ def test_wakeword_vad_stored_on_instance() -> None:
     mock_vad = MagicMock()
     mock_vad.available = True
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _mock_imports(name, *args, **kwargs):
         if name == "sounddevice":
@@ -1232,8 +1332,10 @@ def test_wakeword_vad_stored_on_instance() -> None:
             return module
         return original_import(name, *args, **kwargs)
 
-    with patch.object(detector, "_load_model"), \
-         patch("builtins.__import__", side_effect=_mock_imports):
+    with (
+        patch.object(detector, "_load_model"),
+        patch("builtins.__import__", side_effect=_mock_imports),
+    ):
         # start() will load model, init VAD, then fail on sounddevice import
         detector.start(on_detected=lambda: None)
 
@@ -1245,6 +1347,7 @@ def test_wakeword_vad_stored_on_instance() -> None:
 # ---------------------------------------------------------------------------
 # V5. VAD reset in resume()
 # ---------------------------------------------------------------------------
+
 
 def test_wakeword_vad_reset_on_resume() -> None:
     """resume() resets VAD state for clean slate after pause."""

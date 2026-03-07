@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel, _hash_password
+from jarvis_engine.security.containment import (
+    ContainmentEngine,
+    ContainmentLevel,
+    _hash_password,
+)
 
 
 # ---------------------------------------------------------------
@@ -181,6 +185,7 @@ class TestRecovery:
     def test_recover_level_4_no_env_hash_denied(self) -> None:
         """Without JARVIS_MASTER_PASSWORD_HASH set, recovery is denied."""
         import os
+
         os.environ.pop("JARVIS_MASTER_PASSWORD_HASH", None)
         eng = _make_engine()
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
@@ -274,8 +279,7 @@ class TestForensicLoggerIntegration:
         # Should have containment + rotation log events
         assert mock_logger.log_event.call_count == 2
         event_types = [
-            call[0][0]["event_type"]
-            for call in mock_logger.log_event.call_args_list
+            call[0][0]["event_type"] for call in mock_logger.log_event.call_args_list
         ]
         assert "credential_rotation" in event_types
         assert "containment_executed" in event_types

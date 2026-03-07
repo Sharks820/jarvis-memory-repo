@@ -30,6 +30,7 @@ def _check_torch() -> bool:
     if _torch_available is None:
         try:
             import torch  # noqa: F401
+
             _torch_available = True
         except ImportError:
             _torch_available = False
@@ -41,6 +42,7 @@ def _check_silero() -> bool:
     if _silero_available is None:
         try:
             import silero_vad  # noqa: F401
+
             _silero_available = True
         except ImportError:
             _silero_available = False
@@ -124,6 +126,7 @@ class SileroVADDetector:
             return 0.0
         try:
             import torch
+
             tensor = torch.FloatTensor(audio_chunk)
             return float(self._model(tensor, self._sampling_rate).item())
         except (RuntimeError, ValueError, TypeError, OSError) as exc:

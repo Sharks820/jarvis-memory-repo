@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/owner_session.py
+# hypothesis_version: 6.151.9
+
+[0.0, 300, 1800, 65536, 600000, 'active', 'argon2', 'locked_out', 'pbkdf2', 'session_count', 'sha256', 'utf-8']

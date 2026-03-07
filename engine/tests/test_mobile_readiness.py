@@ -6,6 +6,7 @@ MOB-03: Learning sync via /feedback and /learning/summary
 MOB-04: Offline command queue simulation
 MOB-05: API surface compatibility checks
 """
+
 from __future__ import annotations
 
 import json
@@ -21,6 +22,7 @@ from conftest import http_request, signed_headers
 # ---------------------------------------------------------------------------
 # MOB-01: Learning tables tracked in sync changelog
 # ---------------------------------------------------------------------------
+
 
 class TestLearningSyncChangelog:
     """Verify that learning tables are tracked by the sync changelog."""
@@ -88,12 +90,14 @@ class TestLearningSyncChangelog:
     def test_learning_tables_in_tracked_tables(self):
         """user_preferences, response_feedback, usage_patterns are in _TRACKED_TABLES."""
         from jarvis_engine.sync.changelog import _TRACKED_TABLES
+
         assert "user_preferences" in _TRACKED_TABLES
         assert "response_feedback" in _TRACKED_TABLES
         assert "usage_patterns" in _TRACKED_TABLES
 
     def test_preferences_tracked_fields(self):
         from jarvis_engine.sync.changelog import _TRACKED_TABLES
+
         pref = _TRACKED_TABLES["user_preferences"]
         assert "category" in pref["fields"]
         assert "preference" in pref["fields"]
@@ -101,6 +105,7 @@ class TestLearningSyncChangelog:
 
     def test_feedback_tracked_fields(self):
         from jarvis_engine.sync.changelog import _TRACKED_TABLES
+
         fb = _TRACKED_TABLES["response_feedback"]
         assert "route" in fb["fields"]
         assert "feedback" in fb["fields"]
@@ -108,6 +113,7 @@ class TestLearningSyncChangelog:
 
     def test_usage_patterns_tracked_fields(self):
         from jarvis_engine.sync.changelog import _TRACKED_TABLES
+
         up = _TRACKED_TABLES["usage_patterns"]
         assert "hour" in up["fields"]
         assert "day_of_week" in up["fields"]
@@ -118,6 +124,7 @@ class TestLearningSyncChangelog:
         """install_changelog_triggers creates triggers for learning tables."""
         db = self._setup_db(tmp_path)
         from jarvis_engine.sync.changelog import install_changelog_triggers
+
         install_changelog_triggers(db, device_id="desktop")
 
         # Check triggers exist for user_preferences
@@ -125,15 +132,22 @@ class TestLearningSyncChangelog:
             "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%user_preferences%'"
         ).fetchall()
         trigger_names = [t[0] for t in triggers]
-        assert any("insert" in n.lower() for n in trigger_names), f"No insert trigger for user_preferences: {trigger_names}"
-        assert any("update" in n.lower() for n in trigger_names), f"No update trigger for user_preferences: {trigger_names}"
-        assert any("delete" in n.lower() for n in trigger_names), f"No delete trigger for user_preferences: {trigger_names}"
+        assert any("insert" in n.lower() for n in trigger_names), (
+            f"No insert trigger for user_preferences: {trigger_names}"
+        )
+        assert any("update" in n.lower() for n in trigger_names), (
+            f"No update trigger for user_preferences: {trigger_names}"
+        )
+        assert any("delete" in n.lower() for n in trigger_names), (
+            f"No delete trigger for user_preferences: {trigger_names}"
+        )
         db.close()
 
     def test_preference_insert_creates_changelog_entry(self, tmp_path):
         """INSERT into user_preferences creates a changelog entry."""
         db = self._setup_db(tmp_path)
         from jarvis_engine.sync.changelog import install_changelog_triggers
+
         install_changelog_triggers(db, device_id="desktop")
 
         db.execute(
@@ -155,6 +169,7 @@ class TestLearningSyncChangelog:
         """INSERT into response_feedback creates a changelog entry."""
         db = self._setup_db(tmp_path)
         from jarvis_engine.sync.changelog import install_changelog_triggers
+
         install_changelog_triggers(db, device_id="desktop")
 
         db.execute(
@@ -174,6 +189,7 @@ class TestLearningSyncChangelog:
         """INSERT into usage_patterns creates a changelog entry."""
         db = self._setup_db(tmp_path)
         from jarvis_engine.sync.changelog import install_changelog_triggers
+
         install_changelog_triggers(db, device_id="desktop")
 
         db.execute(
@@ -193,6 +209,7 @@ class TestLearningSyncChangelog:
         """UPDATE on user_preferences creates a changelog entry."""
         db = self._setup_db(tmp_path)
         from jarvis_engine.sync.changelog import install_changelog_triggers
+
         install_changelog_triggers(db, device_id="desktop")
 
         db.execute(
@@ -267,13 +284,18 @@ class TestLearningSyncChangelog:
 # MOB-02 / MOB-03: New API endpoints
 # ---------------------------------------------------------------------------
 
+
 class TestLearningSummaryEndpoint:
     """Tests for GET /learning/summary endpoint."""
 
     def test_learning_summary_returns_structure(self, mobile_server):
         """GET /learning/summary returns expected JSON structure."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/learning/summary", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/learning/summary", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         assert "preferences" in payload
@@ -332,8 +354,12 @@ class TestLearningSummaryEndpoint:
         db.commit()
         db.close()
 
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/learning/summary", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/learning/summary", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         assert payload["preferences"].get("tone") == "casual"
@@ -357,17 +383,28 @@ class TestFeedbackEndpoint:
                 user_message_snippet TEXT NOT NULL DEFAULT '', recorded_at TEXT NOT NULL
             )
         """)
-        db.execute("CREATE INDEX IF NOT EXISTS idx_feedback_route ON response_feedback(route)")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_feedback_route ON response_feedback(route)"
+        )
         db.commit()
         db.close()
 
-        payload_bytes = json.dumps({
-            "quality": "positive",
-            "route": "kimi-k2",
-            "comment": "Great answer!",
-        }).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("POST", f"{mobile_server.base_url}/feedback", body=payload_bytes, headers=headers)
+        payload_bytes = json.dumps(
+            {
+                "quality": "positive",
+                "route": "kimi-k2",
+                "comment": "Great answer!",
+            }
+        ).encode("utf-8")
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/feedback",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code == 200
         result = json.loads(body.decode("utf-8"))
         assert result["ok"] is True
@@ -376,7 +413,9 @@ class TestFeedbackEndpoint:
 
         # Verify in DB
         db = sqlite3.connect(str(db_path))
-        rows = db.execute("SELECT route, feedback, user_message_snippet FROM response_feedback").fetchall()
+        rows = db.execute(
+            "SELECT route, feedback, user_message_snippet FROM response_feedback"
+        ).fetchall()
         assert len(rows) == 1
         assert rows[0][0] == "kimi-k2"
         assert rows[0][1] == "positive"
@@ -397,17 +436,28 @@ class TestFeedbackEndpoint:
                 user_message_snippet TEXT NOT NULL DEFAULT '', recorded_at TEXT NOT NULL
             )
         """)
-        db.execute("CREATE INDEX IF NOT EXISTS idx_feedback_route ON response_feedback(route)")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_feedback_route ON response_feedback(route)"
+        )
         db.commit()
         db.close()
 
-        payload_bytes = json.dumps({
-            "quality": "negative",
-            "route": "claude-cli",
-            "comment": "Wrong answer",
-        }).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("POST", f"{mobile_server.base_url}/feedback", body=payload_bytes, headers=headers)
+        payload_bytes = json.dumps(
+            {
+                "quality": "negative",
+                "route": "claude-cli",
+                "comment": "Wrong answer",
+            }
+        ).encode("utf-8")
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/feedback",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code == 200
         result = json.loads(body.decode("utf-8"))
         assert result["ok"] is True
@@ -416,9 +466,16 @@ class TestFeedbackEndpoint:
     def test_feedback_invalid_quality(self, mobile_server):
         """POST /feedback rejects invalid quality values."""
         payload_bytes = json.dumps({"quality": "awesome"}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
         headers["Content-Length"] = str(len(payload_bytes))
-        code, body = http_request("POST", f"{mobile_server.base_url}/feedback", body=payload_bytes, headers=headers)
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/feedback",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code == 400
         result = json.loads(body.decode("utf-8"))
         assert result["ok"] is False
@@ -427,18 +484,31 @@ class TestFeedbackEndpoint:
         """POST /feedback without auth returns 401/403."""
         payload_bytes = json.dumps({"quality": "positive"}).encode("utf-8")
         code, _ = http_request(
-            "POST", f"{mobile_server.base_url}/feedback",
+            "POST",
+            f"{mobile_server.base_url}/feedback",
             body=payload_bytes,
-            headers={"Content-Type": "application/json", "Content-Length": str(len(payload_bytes))},
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(payload_bytes)),
+            },
         )
         assert code in (401, 403)
 
     def test_feedback_no_db(self, mobile_server):
         """POST /feedback returns ok with recorded=False when DB missing."""
-        payload_bytes = json.dumps({"quality": "positive", "route": "test"}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
+        payload_bytes = json.dumps({"quality": "positive", "route": "test"}).encode(
+            "utf-8"
+        )
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
         headers["Content-Length"] = str(len(payload_bytes))
-        code, body = http_request("POST", f"{mobile_server.base_url}/feedback", body=payload_bytes, headers=headers)
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/feedback",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code == 200
         result = json.loads(body.decode("utf-8"))
         assert result["ok"] is True
@@ -449,25 +519,46 @@ class TestFeedbackEndpoint:
 # MOB-04: Offline command queue simulation (tests queue + flush behavior)
 # ---------------------------------------------------------------------------
 
+
 class TestCommandQueueReliability:
     """Verify /command endpoint handles concurrent and repeated requests."""
 
     def test_command_endpoint_rejects_missing_text(self, mobile_server):
         """POST /command with no text field returns error."""
         payload_bytes = json.dumps({"execute": True}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("POST", f"{mobile_server.base_url}/command", body=payload_bytes, headers=headers)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/command",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code in (200, 400)
         result = json.loads(body.decode("utf-8"))
         # Should indicate error (ok=False or error message)
         if code == 200:
-            assert result.get("ok") is False or "error" in result or "stderr_tail" in result
+            assert (
+                result.get("ok") is False
+                or "error" in result
+                or "stderr_tail" in result
+            )
 
-    def test_command_endpoint_missing_text_has_structured_error_fields(self, mobile_server):
+    def test_command_endpoint_missing_text_has_structured_error_fields(
+        self, mobile_server
+    ):
         """Missing text errors include lifecycle + diagnostic metadata."""
         payload_bytes = json.dumps({"execute": True}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("POST", f"{mobile_server.base_url}/command", body=payload_bytes, headers=headers)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/command",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code in (200, 400)
         result = json.loads(body.decode("utf-8"))
         if code == 200:
@@ -483,19 +574,31 @@ class TestCommandQueueReliability:
         """POST /command with text >2000 chars is rejected or errors."""
         huge_text = "x" * 2500
         payload_bytes = json.dumps({"text": huge_text}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("POST", f"{mobile_server.base_url}/command", body=payload_bytes, headers=headers)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "POST",
+            f"{mobile_server.base_url}/command",
+            body=payload_bytes,
+            headers=headers,
+        )
         # May be rejected by owner guard (403), rate limit, or text validation (400)
         result = json.loads(body.decode("utf-8"))
         assert code in (200, 400, 403)
         if code == 200:
-            assert result.get("ok") is False or "error" in result or "stderr_tail" in result
+            assert (
+                result.get("ok") is False
+                or "error" in result
+                or "stderr_tail" in result
+            )
 
     def test_command_endpoint_requires_auth(self, mobile_server):
         """POST /command without auth returns 401/403."""
         payload_bytes = json.dumps({"text": "hello"}).encode("utf-8")
         code, _ = http_request(
-            "POST", f"{mobile_server.base_url}/command",
+            "POST",
+            f"{mobile_server.base_url}/command",
             body=payload_bytes,
             headers={"Content-Type": "application/json"},
         )
@@ -505,6 +608,7 @@ class TestCommandQueueReliability:
 # ---------------------------------------------------------------------------
 # MOB-05: API surface compatibility checks
 # ---------------------------------------------------------------------------
+
 
 class TestAPISurfaceCompatibility:
     """Verify all Android-used endpoints exist and return correct shapes."""
@@ -529,8 +633,12 @@ class TestAPISurfaceCompatibility:
 
     def test_settings_endpoint_shape(self, mobile_server):
         """GET /settings returns expected keys (may be nested under 'settings')."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/settings", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/settings", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         # Settings may be nested under a 'settings' key
@@ -539,8 +647,12 @@ class TestAPISurfaceCompatibility:
 
     def test_dashboard_endpoint_shape(self, mobile_server):
         """GET /dashboard returns intelligence dashboard shape."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/dashboard", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/dashboard", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         # Dashboard should have some form of intelligence data
@@ -548,15 +660,23 @@ class TestAPISurfaceCompatibility:
 
     def test_sync_status_endpoint_shape(self, mobile_server):
         """GET /sync/status returns sync cursors shape."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/sync/status", headers=headers
+        )
         # May return 200 with cursors, 500 if error, or 503 if sync engine unavailable
         assert code in (200, 500, 503)
 
     def test_intelligence_growth_endpoint_shape(self, mobile_server):
         """GET /intelligence/growth returns metrics shape."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         # Metrics may be nested under a 'metrics' key
@@ -567,16 +687,24 @@ class TestAPISurfaceCompatibility:
 
     def test_activity_endpoint_shape(self, mobile_server):
         """GET /activity returns events list shape."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/activity", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/activity", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         assert "events" in payload
 
     def test_widget_status_endpoint_shape(self, mobile_server):
         """GET /widget-status returns combined shape."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, body = http_request("GET", f"{mobile_server.base_url}/widget-status", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, body = http_request(
+            "GET", f"{mobile_server.base_url}/widget-status", headers=headers
+        )
         assert code == 200
         payload = json.loads(body.decode("utf-8"))
         assert isinstance(payload, dict)
@@ -591,53 +719,97 @@ class TestAPISurfaceCompatibility:
     def test_sync_pull_endpoint_exists(self, mobile_server):
         """POST /sync/pull returns a response (not 404)."""
         payload_bytes = json.dumps({"device_id": "test_device"}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, _ = http_request("POST", f"{mobile_server.base_url}/sync/pull", body=payload_bytes, headers=headers)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, _ = http_request(
+            "POST",
+            f"{mobile_server.base_url}/sync/pull",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code != 404
 
     def test_sync_push_endpoint_exists(self, mobile_server):
         """POST /sync/push returns a response (not 404)."""
-        payload_bytes = json.dumps({"device_id": "test_device", "payload": ""}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, _ = http_request("POST", f"{mobile_server.base_url}/sync/push", body=payload_bytes, headers=headers)
+        payload_bytes = json.dumps({"device_id": "test_device", "payload": ""}).encode(
+            "utf-8"
+        )
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, _ = http_request(
+            "POST",
+            f"{mobile_server.base_url}/sync/push",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code != 404
 
     def test_ingest_endpoint_exists(self, mobile_server):
         """POST /ingest returns a response (not 404)."""
-        payload_bytes = json.dumps({
-            "source": "user",
-            "kind": "episodic",
-            "task_id": "test",
-            "content": "test memory",
-        }).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", body=payload_bytes, headers=headers)
+        payload_bytes = json.dumps(
+            {
+                "source": "user",
+                "kind": "episodic",
+                "task_id": "test",
+                "content": "test memory",
+            }
+        ).encode("utf-8")
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, _ = http_request(
+            "POST",
+            f"{mobile_server.base_url}/ingest",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code != 404
 
     def test_feedback_endpoint_exists(self, mobile_server):
         """POST /feedback returns a response (not 404)."""
         payload_bytes = json.dumps({"quality": "positive"}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, _ = http_request("POST", f"{mobile_server.base_url}/feedback", body=payload_bytes, headers=headers)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, _ = http_request(
+            "POST",
+            f"{mobile_server.base_url}/feedback",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code != 404
 
     def test_learning_summary_endpoint_exists(self, mobile_server):
         """GET /learning/summary returns a response (not 404)."""
-        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-        code, _ = http_request("GET", f"{mobile_server.base_url}/learning/summary", headers=headers)
+        headers = signed_headers(
+            b"", mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, _ = http_request(
+            "GET", f"{mobile_server.base_url}/learning/summary", headers=headers
+        )
         assert code != 404
 
     def test_deprecated_sync_returns_410(self, mobile_server):
         """POST /sync (deprecated) returns 410 GONE."""
         payload_bytes = json.dumps({}).encode("utf-8")
-        headers = signed_headers(payload_bytes, mobile_server.auth_token, mobile_server.signing_key)
-        code, _ = http_request("POST", f"{mobile_server.base_url}/sync", body=payload_bytes, headers=headers)
+        headers = signed_headers(
+            payload_bytes, mobile_server.auth_token, mobile_server.signing_key
+        )
+        code, _ = http_request(
+            "POST",
+            f"{mobile_server.base_url}/sync",
+            body=payload_bytes,
+            headers=headers,
+        )
         assert code == 410
 
 
 # ---------------------------------------------------------------------------
 # Additional reliability tests
 # ---------------------------------------------------------------------------
+
 
 class TestSyncRoundTrip:
     """End-to-end sync round-trip: desktop change -> pull -> push back."""
@@ -789,18 +961,22 @@ class TestSyncRoundTrip:
         db.commit()
 
         # Desktop updates the summary
-        db.execute("UPDATE records SET summary = 'Desktop updated' WHERE record_id = ?", (rid,))
+        db.execute(
+            "UPDATE records SET summary = 'Desktop updated' WHERE record_id = ?", (rid,)
+        )
         db.commit()
 
         # Simulate mobile pushing a conflicting change (UPDATE with same field)
         incoming = {
-            "records": [{
-                "op": "UPDATE",
-                "row_id": rid,
-                "fields_changed": ["summary"],
-                "new_values": {"summary": "Mobile updated"},
-                "__version": 999,
-            }],
+            "records": [
+                {
+                    "op": "UPDATE",
+                    "row_id": rid,
+                    "fields_changed": ["summary"],
+                    "new_values": {"summary": "Mobile updated"},
+                    "__version": 999,
+                }
+            ],
         }
         result = engine.apply_incoming(incoming, "galaxy_s25_primary")
         # Conflict should be resolved (desktop wins for overlapping fields)
@@ -814,6 +990,7 @@ class TestFeedbackRateLimiting:
     def test_feedback_in_expensive_paths(self):
         """POST /feedback is rate-limited as an expensive endpoint."""
         from jarvis_engine.mobile_api import _EXPENSIVE_PATHS
+
         assert "/feedback" in _EXPENSIVE_PATHS
 
 
@@ -822,6 +999,7 @@ class TestCompositePKSync:
 
     def _full_db(self, tmp_path):
         import sqlite3
+
         db = sqlite3.connect(str(tmp_path / "test.db"))
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("""
@@ -886,18 +1064,20 @@ class TestCompositePKSync:
         engine = SyncEngine(db, lock, device_id="desktop")
 
         incoming = {
-            "user_preferences": [{
-                "operation": "INSERT",
-                "row_id": "tone:casual",
-                "new_values": {
-                    "category": "tone",
-                    "preference": "casual",
-                    "score": 0.85,
-                    "evidence_count": 5,
-                    "last_observed": "2026-03-02",
-                },
-                "__version": 1,
-            }],
+            "user_preferences": [
+                {
+                    "operation": "INSERT",
+                    "row_id": "tone:casual",
+                    "new_values": {
+                        "category": "tone",
+                        "preference": "casual",
+                        "score": 0.85,
+                        "evidence_count": 5,
+                        "last_observed": "2026-03-02",
+                    },
+                    "__version": 1,
+                }
+            ],
         }
         result = engine.apply_incoming(incoming, "galaxy_s25_primary")
         assert result["applied"] >= 1
@@ -931,9 +1111,12 @@ class TestCompositePKSync:
 
         # Advance the mobile cursor past the initial INSERT so it is not seen
         # as a local conflict when the incoming UPDATE arrives.
-        max_ver = db.execute(
-            "SELECT MAX(__version) FROM _sync_changelog WHERE table_name = 'user_preferences'"
-        ).fetchone()[0] or 0
+        max_ver = (
+            db.execute(
+                "SELECT MAX(__version) FROM _sync_changelog WHERE table_name = 'user_preferences'"
+            ).fetchone()[0]
+            or 0
+        )
         db.execute(
             "INSERT INTO _sync_cursor (device_id, table_name, last_version, last_sync_ts) "
             "VALUES ('galaxy_s25_primary', 'user_preferences', ?, datetime('now')) "
@@ -943,13 +1126,15 @@ class TestCompositePKSync:
         db.commit()
 
         incoming = {
-            "user_preferences": [{
-                "operation": "UPDATE",
-                "row_id": "tone:casual",
-                "fields_changed": ["score", "evidence_count"],
-                "new_values": {"score": 0.9, "evidence_count": 10},
-                "__version": 2,
-            }],
+            "user_preferences": [
+                {
+                    "operation": "UPDATE",
+                    "row_id": "tone:casual",
+                    "fields_changed": ["score", "evidence_count"],
+                    "new_values": {"score": 0.9, "evidence_count": 10},
+                    "__version": 2,
+                }
+            ],
         }
         result = engine.apply_incoming(incoming, "galaxy_s25_primary")
         assert result["applied"] >= 1
@@ -982,9 +1167,12 @@ class TestCompositePKSync:
         db.commit()
 
         # Advance cursor past the INSERT
-        max_ver = db.execute(
-            "SELECT MAX(__version) FROM _sync_changelog WHERE table_name = 'user_preferences'"
-        ).fetchone()[0] or 0
+        max_ver = (
+            db.execute(
+                "SELECT MAX(__version) FROM _sync_changelog WHERE table_name = 'user_preferences'"
+            ).fetchone()[0]
+            or 0
+        )
         db.execute(
             "INSERT INTO _sync_cursor (device_id, table_name, last_version, last_sync_ts) "
             "VALUES ('galaxy_s25_primary', 'user_preferences', ?, datetime('now')) "
@@ -994,12 +1182,14 @@ class TestCompositePKSync:
         db.commit()
 
         incoming = {
-            "user_preferences": [{
-                "operation": "DELETE",
-                "row_id": "tone:casual",
-                "old_values": {"category": "tone", "preference": "casual"},
-                "__version": 3,
-            }],
+            "user_preferences": [
+                {
+                    "operation": "DELETE",
+                    "row_id": "tone:casual",
+                    "old_values": {"category": "tone", "preference": "casual"},
+                    "__version": 3,
+                }
+            ],
         }
         result = engine.apply_incoming(incoming, "galaxy_s25_primary")
         assert result["applied"] >= 1
@@ -1024,18 +1214,20 @@ class TestCompositePKSync:
 
         # row_id missing the separator — only 1 part but pk has 2 columns
         incoming = {
-            "user_preferences": [{
-                "operation": "INSERT",
-                "row_id": "tone_no_colon",
-                "new_values": {
-                    "category": "tone",
-                    "preference": "casual",
-                    "score": 0.5,
-                    "evidence_count": 1,
-                    "last_observed": "2026-03-02",
-                },
-                "__version": 1,
-            }],
+            "user_preferences": [
+                {
+                    "operation": "INSERT",
+                    "row_id": "tone_no_colon",
+                    "new_values": {
+                        "category": "tone",
+                        "preference": "casual",
+                        "score": 0.5,
+                        "evidence_count": 1,
+                        "last_observed": "2026-03-02",
+                    },
+                    "__version": 1,
+                }
+            ],
         }
         result = engine.apply_incoming(incoming, "galaxy_s25_primary")
         # Should not crash — malformed row_id is gracefully skipped

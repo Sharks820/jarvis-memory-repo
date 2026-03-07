@@ -22,6 +22,7 @@ from jarvis_engine.handlers.task_handlers import (
 # QueryHandler
 # ---------------------------------------------------------------------------
 
+
 def test_query_handler_explicit_model() -> None:
     """QueryHandler uses explicit model when cmd.model is set."""
     mock_gateway = MagicMock()
@@ -191,6 +192,7 @@ def test_query_handler_conversation_history() -> None:
 # RouteHandler
 # ---------------------------------------------------------------------------
 
+
 def test_route_handler_with_classifier() -> None:
     """RouteHandler uses classifier when query is provided."""
     mock_classifier = MagicMock()
@@ -217,6 +219,7 @@ def test_route_handler_legacy_path() -> None:
 # WebResearchHandler
 # ---------------------------------------------------------------------------
 
+
 def test_web_research_handler_empty_query() -> None:
     handler = WebResearchHandler(root=Path("."))
     cmd = WebResearchCommand(query="   ")
@@ -237,6 +240,7 @@ from jarvis_engine.handlers.task_handlers import RunTaskHandler
 # ---------------------------------------------------------------------------
 # Helper: mock gateway response
 # ---------------------------------------------------------------------------
+
 
 def _gateway_response(**overrides):
     defaults = dict(
@@ -259,7 +263,6 @@ def _gateway_response(**overrides):
 
 
 class TestRunTaskHandler:
-
     def test_run_task_handler_lazy_init(self, tmp_path):
         """Orchestrator is lazily created on first handle() call."""
         handler = RunTaskHandler(root=tmp_path)
@@ -341,7 +344,6 @@ class TestRunTaskHandler:
 
 
 class TestQueryHandlerExtended:
-
     def test_no_system_prompt_injects_datetime(self):
         mock_gateway = MagicMock()
         mock_gateway.complete.return_value = _gateway_response()
@@ -363,7 +365,9 @@ class TestQueryHandlerExtended:
         cmd = QueryCommand(query="test", max_tokens=2048)
         handler.handle(cmd)
         call_args = mock_gateway.complete.call_args
-        assert call_args.kwargs.get("max_tokens", call_args[1].get("max_tokens")) == 2048
+        assert (
+            call_args.kwargs.get("max_tokens", call_args[1].get("max_tokens")) == 2048
+        )
 
     def test_cost_usd_passed_through(self):
         mock_gateway = MagicMock()
@@ -411,7 +415,6 @@ class TestQueryHandlerExtended:
 
 
 class TestRouteHandlerExtended:
-
     def test_route_with_empty_query_and_classifier_uses_legacy(self):
         mock_classifier = MagicMock()
         handler = RouteHandler(root=Path("."), classifier=mock_classifier)
@@ -449,7 +452,6 @@ class TestRouteHandlerExtended:
 
 
 class TestWebResearchHandlerExtended:
-
     def test_successful_research(self):
         handler = WebResearchHandler(root=Path("."))
         cmd = WebResearchCommand(query="test query", auto_ingest=False)
@@ -562,7 +564,6 @@ class TestWebResearchHandlerExtended:
 
 
 class TestQueryHandlerConfigModel:
-
     def test_no_classifier_uses_config_default_model(self):
         """QueryHandler uses config.default_query_model when no classifier is available."""
         mock_gateway = MagicMock()
@@ -573,16 +574,17 @@ class TestQueryHandlerConfigModel:
         handler = QueryHandler(gateway=mock_gateway, classifier=None)
         cmd = QueryCommand(query="what is the meaning of life")
 
-        with patch(
-            "jarvis_engine.config.load_config"
-        ) as mock_load_config:
+        with patch("jarvis_engine.config.load_config") as mock_load_config:
             mock_cfg = MagicMock()
             mock_cfg.default_query_model = "custom-model-from-config"
             mock_load_config.return_value = mock_cfg
             result = handler.handle(cmd)
 
         call_args = mock_gateway.complete.call_args
-        assert call_args.kwargs.get("model", call_args[1].get("model")) == "custom-model-from-config"
+        assert (
+            call_args.kwargs.get("model", call_args[1].get("model"))
+            == "custom-model-from-config"
+        )
         assert "Default" in result.route_reason
 
     def test_no_classifier_default_model_is_claude_sonnet(self):

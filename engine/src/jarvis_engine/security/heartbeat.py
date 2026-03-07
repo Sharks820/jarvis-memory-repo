@@ -72,10 +72,16 @@ class HeartbeatMonitor:
             self._started_at = time.monotonic()
             self._stop_event.clear()
 
-        t = threading.Thread(target=self._watchdog_loop, daemon=True, name="heartbeat-watchdog")
+        t = threading.Thread(
+            target=self._watchdog_loop, daemon=True, name="heartbeat-watchdog"
+        )
         self._thread = t
         t.start()
-        logger.info("HeartbeatMonitor started (interval=%.1fs, max_missed=%d)", self._interval, self._max_missed)
+        logger.info(
+            "HeartbeatMonitor started (interval=%.1fs, max_missed=%d)",
+            self._interval,
+            self._max_missed,
+        )
 
     def stop(self) -> None:
         """Stop the watchdog thread.
@@ -119,7 +125,9 @@ class HeartbeatMonitor:
                 "healthy": self._healthy,
                 "missed_count": self._missed_count,
                 "last_beat": self._last_beat,
-                "uptime": (now - self._started_at) if self._started_at is not None else 0.0,
+                "uptime": (now - self._started_at)
+                if self._started_at is not None
+                else 0.0,
             }
 
     # ------------------------------------------------------------------

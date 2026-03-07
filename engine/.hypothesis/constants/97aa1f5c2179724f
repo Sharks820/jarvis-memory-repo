@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/harvesting/session_ingestors.py
+# hypothesis_version: 6.151.9
+
+[100, '*.jsonl', '.claude', '.codex', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'assistant', 'content', 'message', 'projects', 'r', 'replace', 'rollout-*.jsonl', 'sessions', 'text', 'type', 'utf-8']

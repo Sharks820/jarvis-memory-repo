@@ -288,7 +288,9 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
                     "statement": statement,
                     "source_urls": sorted(u for u in support_urls if u),
                     "source_domains": sorted(d for d in support_domains if d),
-                    "confidence": round(min(1.0, 0.55 + 0.15 * len(support_domains)), 2),
+                    "confidence": round(
+                        min(1.0, 0.55 + 0.15 * len(support_domains)), 2
+                    ),
                 }
             )
             seen_statements.add(norm_key)
@@ -351,7 +353,13 @@ def run_learning_mission(
             continue
         selected.append((url, domain))
     scanned_urls = [url for url, _domain in selected]
-    _update_mission_progress(root, mission_id, status="running", progress_pct=45, status_detail=f"Scanning {len(scanned_urls)} pages")
+    _update_mission_progress(
+        root,
+        mission_id,
+        status="running",
+        progress_pct=45,
+        status_detail=f"Scanning {len(scanned_urls)} pages",
+    )
     workers = max(1, min(4, len(selected)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         future_map = {
@@ -369,9 +377,17 @@ def run_learning_mission(
                 continue
             candidates = _extract_candidates(text, topic=topic, max_candidates=8)
             for statement in candidates:
-                candidate_rows.append({"statement": statement, "url": url, "domain": domain})
+                candidate_rows.append(
+                    {"statement": statement, "url": url, "domain": domain}
+                )
 
-    _update_mission_progress(root, mission_id, status="running", progress_pct=75, status_detail=f"Verifying {len(candidate_rows)} candidate findings")
+    _update_mission_progress(
+        root,
+        mission_id,
+        status="running",
+        progress_pct=75,
+        status_detail=f"Verifying {len(candidate_rows)} candidate findings",
+    )
     verified = _verify_candidates(candidate_rows)
     report = {
         "mission_id": mission_id,
@@ -387,8 +403,16 @@ def run_learning_mission(
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
-    _update_mission_progress(root, mission_id, status="running", progress_pct=90, status_detail="Finalizing mission report")
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8"
+    )
+    _update_mission_progress(
+        root,
+        mission_id,
+        status="running",
+        progress_pct=90,
+        status_detail="Finalizing mission report",
+    )
 
     # Re-read under lock to avoid TOCTOU overwrites from concurrent creates/runs.
     with _MISSIONS_LOCK:
@@ -399,11 +423,16 @@ def run_learning_mission(
                 target = item
                 break
         if target is None:
-            logger.warning("Mission %s disappeared during run — skipping status update", mission_id)
+            logger.warning(
+                "Mission %s disappeared during run — skipping status update", mission_id
+            )
             return report
         # Respect user-initiated cancellation — do not overwrite.
         if target.get("status") == "cancelled":
-            logger.info("Mission %s was cancelled during run — preserving cancelled status", mission_id)
+            logger.info(
+                "Mission %s was cancelled during run — preserving cancelled status",
+                mission_id,
+            )
             return report
         if verified:
             target["status"] = "completed"
@@ -413,13 +442,17 @@ def run_learning_mission(
             # Fire proactive alert so the phone gets notified
             try:
                 from jarvis_engine.proactive.alert_queue import enqueue_alert
-                enqueue_alert(root, {
-                    "type": "mission_completed",
-                    "title": f"Mission Complete: {target.get('topic', '')}",
-                    "body": f"Found {len(verified)} verified findings for '{target.get('topic', '')}'",
-                    "group_key": "jarvis_missions",
-                    "priority": "important",
-                })
+
+                enqueue_alert(
+                    root,
+                    {
+                        "type": "mission_completed",
+                        "title": f"Mission Complete: {target.get('topic', '')}",
+                        "body": f"Found {len(verified)} verified findings for '{target.get('topic', '')}'",
+                        "group_key": "jarvis_missions",
+                        "priority": "important",
+                    },
+                )
             except (OSError, ImportError) as exc:
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
@@ -471,7 +504,9 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         current_status = str(target.get("status", ""))
         _NON_CANCELLABLE = ("completed", "cancelled", "exhausted")
         if current_status in _NON_CANCELLABLE:
-            raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
+            raise ValueError(
+                f"cannot cancel mission in '{current_status}' state: {mission_id}"
+            )
 
         target["status"] = "cancelled"
         target["updated_utc"] = _now_iso()
@@ -494,6 +529,7 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Retry failed missions
 # ---------------------------------------------------------------------------
+
 
 def retry_failed_missions(root: Path) -> int:
     """Re-queue failed missions (up to 2 retries) by setting status back to pending.
@@ -564,11 +600,12 @@ def auto_generate_missions(
     """
     missions = load_missions(root)
     pending_count = sum(
-        1 for m in missions
-        if str(m.get("status", "")).lower() == "pending"
+        1 for m in missions if str(m.get("status", "")).lower() == "pending"
     )
     if pending_count > 0:
-        logger.debug("auto_generate_missions: %d pending missions exist, skipping", pending_count)
+        logger.debug(
+            "auto_generate_missions: %d pending missions exist, skipping", pending_count
+        )
         return []
 
     # Collect existing topics to avoid duplicates
@@ -597,18 +634,21 @@ def auto_generate_missions(
 
     if db_path is None:
         from jarvis_engine._constants import memory_db_path as _memory_db_path
+
         db_path = _memory_db_path(root)
 
     conn = None
     try:
         if db_path.exists():
             from jarvis_engine._db_pragmas import connect_db
+
             conn = connect_db(db_path)
 
         # Source 1: Recent user conversations (last 14 days)
         if conn is not None:
             try:
                 from datetime import timedelta
+
                 cutoff = (datetime.now(UTC) - timedelta(days=14)).isoformat()
                 rows = conn.execute(
                     """SELECT summary FROM records
@@ -624,7 +664,7 @@ def auto_generate_missions(
                     filtered = [w for w in words if w.lower() not in STOPWORDS]
                     # Build 2-4 word phrases from consecutive words
                     for i in range(len(filtered) - 1):
-                        phrase = " ".join(filtered[i:i + min(3, len(filtered) - i)])
+                        phrase = " ".join(filtered[i : i + min(3, len(filtered) - i)])
                         if _add(phrase):
                             break
                     if len(candidates) >= max_new:
@@ -668,7 +708,11 @@ def auto_generate_missions(
                        ORDER BY edge_cnt DESC
                        LIMIT 10""",
                 ).fetchall()
-                suffixes = ["advanced techniques", "real world applications", "recent developments"]
+                suffixes = [
+                    "advanced techniques",
+                    "real world applications",
+                    "recent developments",
+                ]
                 for i, row in enumerate(strong):
                     label = row["label"] or ""
                     words = re.findall(r"[a-zA-Z0-9]{3,}", label)
@@ -699,6 +743,8 @@ def auto_generate_missions(
             created.append(mission)
             logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
         except (OSError, ValueError, sqlite3.Error) as exc:
-            logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
+            logger.warning(
+                "Failed to auto-create mission for topic '%s': %s", topic, exc
+            )
 
     return created

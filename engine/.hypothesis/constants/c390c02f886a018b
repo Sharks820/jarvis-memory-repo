@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/mobile_routes/security.py
+# hypothesis_version: 6.151.9
+
+['action_auditor', 'audit', 'dashboard', 'error', 'heartbeat', 'ok', 'recent_actions', 'resource_monitor', 'resource_usage', 'scope_enforcer', 'scope_violations', 'security', 'security_status', 'threat_intel', 'total']

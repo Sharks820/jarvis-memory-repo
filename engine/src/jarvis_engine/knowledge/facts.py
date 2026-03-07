@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 class FactTriple(NamedTuple):
     """A structured fact extracted from text."""
 
-    subject: str       # node_id for the subject
-    predicate: str     # relationship type / edge relation
-    object_val: str    # the extracted value
+    subject: str  # node_id for the subject
+    predicate: str  # relationship type / edge relation
+    object_val: str  # the extracted value
     confidence: float  # extraction confidence (0.0 - 1.0)
 
 

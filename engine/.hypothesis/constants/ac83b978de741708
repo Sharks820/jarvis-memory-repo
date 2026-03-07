@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/capability.py
+# hypothesis_version: 6.151.9
+
+['bounded_write', 'privileged', 'read']

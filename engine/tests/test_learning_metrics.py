@@ -3,6 +3,7 @@
 Covers knowledge metrics capture with various KG and engine states,
 error handling, and temporal distribution.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -16,6 +17,7 @@ from jarvis_engine.learning.metrics import capture_knowledge_metrics
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_engine(total_records=0, branch_rows=None):
     """Create a mock MemoryEngine with configurable DB responses."""
@@ -53,7 +55,9 @@ def _make_kg(nodes=0, edges=0, locked=0, temporal_rows=None, temporal_error=Fals
     kg.db = db
 
     if temporal_error:
-        db.execute.side_effect = sqlite3.OperationalError("no such column: temporal_type")
+        db.execute.side_effect = sqlite3.OperationalError(
+            "no such column: temporal_type"
+        )
     else:
         temporal_cursor = MagicMock()
         temporal_cursor.fetchall.return_value = temporal_rows or []
@@ -66,14 +70,18 @@ def _make_kg(nodes=0, edges=0, locked=0, temporal_rows=None, temporal_error=Fals
 # Basic capture tests
 # ---------------------------------------------------------------------------
 
+
 class TestCaptureKnowledgeMetrics:
     def test_basic_capture(self):
         kg = _make_kg(nodes=100, edges=250, locked=10)
-        engine = _make_engine(total_records=500, branch_rows=[
-            ("family", 120),
-            ("health", 80),
-            ("finance", 50),
-        ])
+        engine = _make_engine(
+            total_records=500,
+            branch_rows=[
+                ("family", 120),
+                ("health", 80),
+                ("finance", 50),
+            ],
+        )
         result = capture_knowledge_metrics(kg, engine)
 
         assert result["total_records"] == 500
@@ -95,11 +103,13 @@ class TestCaptureKnowledgeMetrics:
         assert parsed is not None
 
     def test_temporal_distribution(self):
-        kg = _make_kg(temporal_rows=[
-            ("permanent", 50),
-            ("recurring", 30),
-            ("temporary", 10),
-        ])
+        kg = _make_kg(
+            temporal_rows=[
+                ("permanent", 50),
+                ("recurring", 30),
+                ("temporary", 10),
+            ]
+        )
         engine = _make_engine()
         result = capture_knowledge_metrics(kg, engine)
         assert result["temporal_distribution"]["permanent"] == 50
@@ -110,6 +120,7 @@ class TestCaptureKnowledgeMetrics:
 # ---------------------------------------------------------------------------
 # Null/None handling
 # ---------------------------------------------------------------------------
+
 
 class TestNullHandling:
     def test_none_kg(self):
@@ -143,6 +154,7 @@ class TestNullHandling:
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
+
 
 class TestErrorHandling:
     def test_engine_db_exception(self):
@@ -204,6 +216,7 @@ class TestErrorHandling:
 # Edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeCases:
     def test_empty_database(self):
         kg = _make_kg(nodes=0, edges=0, locked=0)
@@ -223,7 +236,9 @@ class TestEdgeCases:
     def test_many_branches(self):
         branches = [(f"branch_{i}", i * 10) for i in range(20)]
         kg = _make_kg()
-        engine = _make_engine(total_records=sum(b[1] for b in branches), branch_rows=branches)
+        engine = _make_engine(
+            total_records=sum(b[1] for b in branches), branch_rows=branches
+        )
         result = capture_knowledge_metrics(kg, engine)
         assert result["branches_populated"] == 20
 
@@ -240,8 +255,13 @@ class TestEdgeCases:
         engine = _make_engine()
         result = capture_knowledge_metrics(kg, engine)
         expected_keys = {
-            "total_records", "total_facts", "total_edges", "locked_facts",
-            "branches_populated", "branch_distribution", "temporal_distribution",
+            "total_records",
+            "total_facts",
+            "total_edges",
+            "locked_facts",
+            "branches_populated",
+            "branch_distribution",
+            "temporal_distribution",
             "captured_at",
         }
         assert set(result.keys()) == expected_keys

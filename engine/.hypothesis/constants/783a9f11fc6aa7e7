@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/gateway/cli_providers.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.35, 240, 900, 1024, 1500, 2000, 2500, 6000, 24000, 120000, '--', '--ephemeral', '--max-budget-usd', '--max-turns', '--model', '--output-format', '--quiet', '-m', '-o', '-p', '.txt', '1', '240', 'Assistant', 'CLAUDECODE', 'Codex CLI (GPT-5.3)', 'Context:\n', 'Gemini CLI', 'JARVIS_CLI_TIMEOUT_S', 'Kimi CLI', 'User', '\\s+', 'assistant', 'butler', 'claude', 'claude-cli', 'codex', 'codex-cli', 'codex_out_', 'content', 'cost_usd', 'default_model', 'display', 'empty response', 'error', 'exec', 'executable', 'gemini', 'gemini-cli', 'gpt-5.3-codex', 'json', 'kimi', 'kimi-cli', 'message', 'model', 'opus', 'provider', 'r', 'result', 'role', 'speak like', 'success', 'system', 'text', 'total_cost_usd', 'type', 'user', 'utf-8', 'w', 'you are jarvis']

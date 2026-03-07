@@ -31,16 +31,24 @@ class DataRoutesMixin:
         content = str(payload.get("content", "")).strip()
 
         if source not in ALLOWED_SOURCES:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid source."})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid source."}
+            )
             return
         if kind not in ALLOWED_KINDS:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid kind."})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid kind."}
+            )
             return
         if not task_id or len(task_id) > 128:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid task_id."})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid task_id."}
+            )
             return
         if not content or len(content) > 20_000:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content."}
+            )
             return
 
         rec = self.server.pipeline.ingest(
@@ -67,28 +75,43 @@ class DataRoutesMixin:
             return
         quality = payload.get("quality")
         if quality not in ("positive", "negative", "neutral"):
-            self._write_json(HTTPStatus.BAD_REQUEST, {
-                "ok": False, "error": "quality must be 'positive', 'negative', or 'neutral'",
-            })
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "ok": False,
+                    "error": "quality must be 'positive', 'negative', or 'neutral'",
+                },
+            )
             return
         route = str(payload.get("route", "")).strip()[:100]
         comment = str(payload.get("comment", "")).strip()[:500]
         db_path = _memory_db_path(self._root)
         if not db_path.exists():
-            self._write_json(HTTPStatus.OK, {"ok": True, "recorded": False, "reason": "DB not available"})
+            self._write_json(
+                HTTPStatus.OK,
+                {"ok": True, "recorded": False, "reason": "DB not available"},
+            )
             return
         fb_db = None
         try:
             import sqlite3 as _fb_sqlite3
+
             fb_db = _fb_sqlite3.connect(str(db_path), check_same_thread=False)
             _configure_db(fb_db)
             from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+
             tracker = ResponseFeedbackTracker(fb_db)
             tracker.record_explicit_feedback(quality, route, comment)
-            self._write_json(HTTPStatus.OK, {"ok": True, "recorded": True, "quality": quality, "route": route})
+            self._write_json(
+                HTTPStatus.OK,
+                {"ok": True, "recorded": True, "quality": quality, "route": route},
+            )
         except Exception as exc:
             logger.error("Feedback recording failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Feedback recording failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Feedback recording failed."},
+            )
         finally:
             if fb_db is not None:
                 fb_db.close()
@@ -99,7 +122,10 @@ class DataRoutesMixin:
         try:
             from jarvis_engine.activity_feed import get_activity_feed
         except ImportError:
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "Activity feed not available."})
+            self._write_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"ok": False, "error": "Activity feed not available."},
+            )
             return
         # Parse query params
         qs = _parse_query_params(self.path)
@@ -110,14 +136,20 @@ class DataRoutesMixin:
             feed = get_activity_feed()
             events = feed.query(limit=limit, category=category, since=since)
             stats = feed.stats()
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "events": [_serialize_activity_event(e) for e in events],
-                "stats": stats,
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "events": [_serialize_activity_event(e) for e in events],
+                    "stats": stats,
+                },
+            )
         except Exception as exc:
             logger.error("activity feed query failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Activity feed query failed."},
+            )
 
     def _handle_get_alerts_pending(self) -> None:
         """Return and drain all pending proactive alerts for the phone."""
@@ -125,6 +157,7 @@ class DataRoutesMixin:
             return
         try:
             from jarvis_engine.proactive.alert_queue import drain_alerts
+
             alerts = drain_alerts(self._root, limit=50)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
         except Exception as exc:

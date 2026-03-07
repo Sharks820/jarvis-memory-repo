@@ -39,7 +39,9 @@ class VoiceListHandler:
             return VoiceListResult()
 
         voices = list_windows_voices()
-        edge_voices = [name for name in list_edge_voices() if name.lower().startswith("en-gb-")]
+        edge_voices = [
+            name for name in list_edge_voices() if name.lower().startswith("en-gb-")
+        ]
         return VoiceListResult(windows_voices=voices, edge_voices=edge_voices)
 
 
@@ -79,7 +81,9 @@ class VoiceEnrollHandler:
     def handle(self, cmd: VoiceEnrollCommand) -> VoiceEnrollResult:
         enroll_impl, _, err = _load_voice_auth_impl()
         if enroll_impl is None:
-            return VoiceEnrollResult(message=f"error: voice auth dependency missing ({err}). Install numpy/scipy and retry.")
+            return VoiceEnrollResult(
+                message=f"error: voice auth dependency missing ({err}). Install numpy/scipy and retry."
+            )
         try:
             result = enroll_impl(
                 self._root,
@@ -105,7 +109,9 @@ class VoiceVerifyHandler:
     def handle(self, cmd: VoiceVerifyCommand) -> VoiceVerifyResult:
         _, verify_impl, err = _load_voice_auth_impl()
         if verify_impl is None:
-            return VoiceVerifyResult(message=f"error: voice auth dependency missing ({err}). Install numpy/scipy and retry.")
+            return VoiceVerifyResult(
+                message=f"error: voice auth dependency missing ({err}). Install numpy/scipy and retry."
+            )
         try:
             result = verify_impl(
                 self._root,
@@ -241,7 +247,13 @@ class PersonaComposeHandler:
                 model=model,
                 route_reason="persona_reply",
             )
-        except (ConnectionError, TimeoutError, RuntimeError, OSError, ValueError) as exc:
+        except (
+            ConnectionError,
+            TimeoutError,
+            RuntimeError,
+            OSError,
+            ValueError,
+        ) as exc:
             logger.warning("Persona compose failed: %s", exc)
             return PersonaComposeResult(
                 branch=cmd.branch,

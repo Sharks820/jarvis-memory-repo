@@ -1,4 +1,5 @@
 """Tests for the media adapters module (Image/Video/3D)."""
+
 from __future__ import annotations
 
 import subprocess
@@ -38,8 +39,12 @@ class TestAdapterResult:
 
     def test_all_fields(self):
         r = AdapterResult(
-            ok=False, provider="x", plan="y", reason="z",
-            output_path="/tmp/out.png", output_text="done",
+            ok=False,
+            provider="x",
+            plan="y",
+            reason="z",
+            output_path="/tmp/out.png",
+            output_text="done",
         )
         assert r.ok is False
         assert r.output_path == "/tmp/out.png"
@@ -81,14 +86,17 @@ class TestTimestampedName:
 
 
 class TestIsPortraitPrompt:
-    @pytest.mark.parametrize("term", [
-        "portrait of a person",
-        "phone wallpaper landscape",
-        "a vertical banner",
-        "make a tiktok video",
-        "instagram reel style",
-        "my story background",
-    ])
+    @pytest.mark.parametrize(
+        "term",
+        [
+            "portrait of a person",
+            "phone wallpaper landscape",
+            "a vertical banner",
+            "make a tiktok video",
+            "instagram reel style",
+            "my story background",
+        ],
+    )
     def test_portrait_keywords(self, term):
         assert _is_portrait_prompt(term) is True
 
@@ -153,20 +161,23 @@ class TestVideoProfile:
 
 
 class TestMeshKind:
-    @pytest.mark.parametrize("prompt,expected", [
-        ("a sphere object", "sphere"),
-        ("planet earth", "sphere"),
-        ("an orb of light", "sphere"),
-        ("a rubber ball", "sphere"),
-        ("a cylinder tube", "cylinder"),
-        ("water pipe", "cylinder"),
-        ("wooden barrel", "cylinder"),
-        ("stone tower", "cylinder"),
-        ("marble column", "cylinder"),
-        ("a house", "cube"),
-        ("random thing", "cube"),
-        ("", "cube"),
-    ])
+    @pytest.mark.parametrize(
+        "prompt,expected",
+        [
+            ("a sphere object", "sphere"),
+            ("planet earth", "sphere"),
+            ("an orb of light", "sphere"),
+            ("a rubber ball", "sphere"),
+            ("a cylinder tube", "cylinder"),
+            ("water pipe", "cylinder"),
+            ("wooden barrel", "cylinder"),
+            ("stone tower", "cylinder"),
+            ("marble column", "cylinder"),
+            ("a house", "cube"),
+            ("random thing", "cube"),
+            ("", "cube"),
+        ],
+    )
     def test_detection(self, prompt, expected):
         assert _mesh_kind(prompt) == expected
 
@@ -332,7 +343,10 @@ class TestImageAdapter:
         assert "boom" in result.reason
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=300))
+    @patch(
+        "jarvis_engine.adapters.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="x", timeout=300),
+    )
     def test_execute_timeout(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "fake_script.py"
@@ -433,7 +447,10 @@ class TestVideoAdapter:
         assert "sora error" in result.reason
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
-    @patch("jarvis_engine.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1200))
+    @patch(
+        "jarvis_engine.adapters.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1200),
+    )
     def test_execute_timeout(self, mock_run, tmp_path):
         adapter = self._make(tmp_path)
         script = tmp_path / "sora.py"
@@ -520,6 +537,7 @@ class TestModel3DAdapter:
         meta = tmp_path / "model.json"
         assert meta.exists()
         import json
+
         data = json.loads(meta.read_text())
         assert data["prompt"] == "a house"
         assert data["generator"] == "local_mesh_generator"
@@ -537,7 +555,9 @@ class TestModel3DAdapter:
     def test_execute_oserror_mkdir(self, tmp_path):
         adapter = self._make(tmp_path)
         with patch.object(Path, "mkdir", side_effect=OSError("no perms")):
-            result = adapter.execute("a house", str(tmp_path / "sub" / "out.obj"), "balanced")
+            result = adapter.execute(
+                "a house", str(tmp_path / "sub" / "out.obj"), "balanced"
+            )
         assert result.ok is False
         assert "directory" in result.reason.lower()
 
@@ -575,7 +595,9 @@ class TestModel3DAdapter:
 
 
 class TestEnvOverrides:
-    @patch.dict("os.environ", {"JARVIS_IMAGE_SCRIPT": "/custom/image_gen.py"}, clear=False)
+    @patch.dict(
+        "os.environ", {"JARVIS_IMAGE_SCRIPT": "/custom/image_gen.py"}, clear=False
+    )
     def test_image_script_override(self):
         adapter = ImageAdapter(Path("/repo"))
         assert adapter.script == Path("/custom/image_gen.py")

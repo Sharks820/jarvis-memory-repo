@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/engine.py
+# hypothesis_version: 6.151.9
+
+[100, '[a-z]+', 'address', 'allergic', 'allergy', 'applied', 'assistant', 'bank account', 'birthday', 'blood type', 'born', 'brother', 'college', 'company', 'conversation', 'conversation:user', 'correction_applied', 'correction_detected', 'credit card', 'daughter', 'diagnosed', 'email', 'episodic', 'error', 'father', 'favorite', 'favourite', 'feedback_detected', 'goodbye', 'height', 'hey ', 'husband', 'jarvis ', 'job', 'key', 'lives', 'married', 'medication', 'mother', 'name', 'neutral', 'new_claim', 'no pipeline', 'occupation', 'ok ', 'old_claim', 'phone', 'prefer', 'preference', 'preferences_detected', 'prefers', 'records_created', 'school', 'sister', 'son', 'thank you', 'thanks', 'university', 'user', 'value', 'weighs', 'wife', 'works']

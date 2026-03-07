@@ -75,7 +75,9 @@ def test_status_handler(mock_config: MagicMock, mock_store_cls: MagicMock) -> No
 @patch("jarvis_engine.memory_store.MemoryStore")
 def test_log_handler(mock_store_cls: MagicMock) -> None:
     mock_store = MagicMock()
-    mock_store.append.return_value = SimpleNamespace(ts="2024-01-01T00:00:00", event_type="info", message="hello")
+    mock_store.append.return_value = SimpleNamespace(
+        ts="2024-01-01T00:00:00", event_type="info", message="hello"
+    )
     mock_store_cls.return_value = mock_store
 
     handler = LogHandler(ROOT)
@@ -92,7 +94,11 @@ def test_log_handler(mock_store_cls: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "", "JARVIS_MOBILE_SIGNING_KEY": ""}, clear=False)
+@patch.dict(
+    "os.environ",
+    {"JARVIS_MOBILE_TOKEN": "", "JARVIS_MOBILE_SIGNING_KEY": ""},
+    clear=False,
+)
 def test_serve_mobile_no_token() -> None:
     """Returns rc=2 when no token is provided."""
     handler = ServeMobileHandler(ROOT)
@@ -100,7 +106,11 @@ def test_serve_mobile_no_token() -> None:
     assert result.return_code == 2
 
 
-@patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "tok123", "JARVIS_MOBILE_SIGNING_KEY": ""}, clear=False)
+@patch.dict(
+    "os.environ",
+    {"JARVIS_MOBILE_TOKEN": "tok123", "JARVIS_MOBILE_SIGNING_KEY": ""},
+    clear=False,
+)
 def test_serve_mobile_no_signing_key() -> None:
     """Returns rc=2 when no signing key is provided."""
     handler = ServeMobileHandler(ROOT)
@@ -109,7 +119,11 @@ def test_serve_mobile_no_signing_key() -> None:
 
 
 @patch("jarvis_engine.mobile_api.run_mobile_server")
-@patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "", "JARVIS_MOBILE_SIGNING_KEY": ""}, clear=False)
+@patch.dict(
+    "os.environ",
+    {"JARVIS_MOBILE_TOKEN": "", "JARVIS_MOBILE_SIGNING_KEY": ""},
+    clear=False,
+)
 def test_serve_mobile_explicit_args(mock_run: MagicMock) -> None:
     """Explicit token/signing_key args override env."""
     handler = ServeMobileHandler(ROOT)
@@ -126,7 +140,11 @@ def test_serve_mobile_explicit_args(mock_run: MagicMock) -> None:
 
 
 @patch("jarvis_engine.mobile_api.run_mobile_server", side_effect=KeyboardInterrupt)
-@patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"}, clear=False)
+@patch.dict(
+    "os.environ",
+    {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"},
+    clear=False,
+)
 def test_serve_mobile_keyboard_interrupt(mock_run: MagicMock) -> None:
     """KeyboardInterrupt is caught cleanly, returns rc=0."""
     handler = ServeMobileHandler(ROOT)
@@ -134,8 +152,15 @@ def test_serve_mobile_keyboard_interrupt(mock_run: MagicMock) -> None:
     assert result.return_code == 0
 
 
-@patch("jarvis_engine.mobile_api.run_mobile_server", side_effect=RuntimeError("bind failed"))
-@patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"}, clear=False)
+@patch(
+    "jarvis_engine.mobile_api.run_mobile_server",
+    side_effect=RuntimeError("bind failed"),
+)
+@patch.dict(
+    "os.environ",
+    {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"},
+    clear=False,
+)
 def test_serve_mobile_runtime_error(mock_run: MagicMock) -> None:
     handler = ServeMobileHandler(ROOT)
     result = handler.handle(ServeMobileCommand())
@@ -143,7 +168,11 @@ def test_serve_mobile_runtime_error(mock_run: MagicMock) -> None:
 
 
 @patch("jarvis_engine.mobile_api.run_mobile_server", side_effect=OSError("addr in use"))
-@patch.dict("os.environ", {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"}, clear=False)
+@patch.dict(
+    "os.environ",
+    {"JARVIS_MOBILE_TOKEN": "t", "JARVIS_MOBILE_SIGNING_KEY": "k"},
+    clear=False,
+)
 def test_serve_mobile_os_error(mock_run: MagicMock) -> None:
     handler = ServeMobileHandler(ROOT)
     result = handler.handle(ServeMobileCommand())
@@ -178,7 +207,10 @@ def test_daemon_run_failure(mock_impl: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.resilience.run_mobile_desktop_sync", return_value={"sync_ok": True, "items": 5})
+@patch(
+    "jarvis_engine.resilience.run_mobile_desktop_sync",
+    return_value={"sync_ok": True, "items": 5},
+)
 def test_mobile_desktop_sync_ok(mock_sync: MagicMock) -> None:
     handler = MobileDesktopSyncHandler(ROOT)
     result = handler.handle(MobileDesktopSyncCommand())
@@ -186,7 +218,9 @@ def test_mobile_desktop_sync_ok(mock_sync: MagicMock) -> None:
     assert result.report["sync_ok"] is True
 
 
-@patch("jarvis_engine.resilience.run_mobile_desktop_sync", return_value={"sync_ok": False})
+@patch(
+    "jarvis_engine.resilience.run_mobile_desktop_sync", return_value={"sync_ok": False}
+)
 def test_mobile_desktop_sync_fail(mock_sync: MagicMock) -> None:
     handler = MobileDesktopSyncHandler(ROOT)
     result = handler.handle(MobileDesktopSyncCommand())
@@ -198,7 +232,9 @@ def test_mobile_desktop_sync_fail(mock_sync: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "ok", "fixed": 3})
+@patch(
+    "jarvis_engine.resilience.run_self_heal", return_value={"status": "ok", "fixed": 3}
+)
 def test_self_heal_ok(mock_heal: MagicMock) -> None:
     handler = SelfHealHandler(ROOT)
     result = handler.handle(SelfHealCommand())
@@ -206,7 +242,10 @@ def test_self_heal_ok(mock_heal: MagicMock) -> None:
     assert result.report["status"] == "ok"
 
 
-@patch("jarvis_engine.resilience.run_self_heal", return_value={"status": "attention", "issues": 1})
+@patch(
+    "jarvis_engine.resilience.run_self_heal",
+    return_value={"status": "attention", "issues": 1},
+)
 def test_self_heal_attention(mock_heal: MagicMock) -> None:
     handler = SelfHealHandler(ROOT)
     result = handler.handle(SelfHealCommand())
@@ -270,6 +309,7 @@ def test_desktop_widget_import_error() -> None:
     with patch.dict("sys.modules", {"jarvis_engine.desktop_widget": None}):
         # Force an ImportError by patching the import mechanism
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -288,7 +328,10 @@ def test_desktop_widget_import_error() -> None:
 
 
 @patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch(
+    "jarvis_engine.daemon_loop.read_gaming_mode_state",
+    return_value={"enabled": False, "auto_detect": False},
+)
 def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand())
@@ -296,10 +339,17 @@ def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> 
     assert result.detected is False
 
 
-@patch("jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": True})
+@patch(
+    "jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": True}
+)
 @patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
-def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
+@patch(
+    "jarvis_engine.daemon_loop.read_gaming_mode_state",
+    return_value={"enabled": False, "auto_detect": False},
+)
+def test_gaming_mode_enable(
+    mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock
+) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(enable=True))
     mock_write.assert_called_once()
@@ -307,10 +357,21 @@ def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_w
     assert result.effective_enabled is True
 
 
-@patch("jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
-@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(True, "steam.exe"))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
-def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
+@patch(
+    "jarvis_engine.daemon_loop.write_gaming_mode_state",
+    return_value={"enabled": False, "auto_detect": True},
+)
+@patch(
+    "jarvis_engine.daemon_loop.detect_active_game_process",
+    return_value=(True, "steam.exe"),
+)
+@patch(
+    "jarvis_engine.daemon_loop.read_gaming_mode_state",
+    return_value={"enabled": False, "auto_detect": False},
+)
+def test_gaming_mode_auto_detect_on(
+    mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock
+) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(auto_detect="on"))
     assert result.detected is True
@@ -319,8 +380,13 @@ def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock
 
 
 @patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
-def test_gaming_mode_no_change_no_write(mock_read: MagicMock, mock_detect: MagicMock) -> None:
+@patch(
+    "jarvis_engine.daemon_loop.read_gaming_mode_state",
+    return_value={"enabled": False, "auto_detect": False},
+)
+def test_gaming_mode_no_change_no_write(
+    mock_read: MagicMock, mock_detect: MagicMock
+) -> None:
     """When no flags change state, _write is NOT called."""
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(reason="just checking"))
@@ -391,12 +457,16 @@ def test_open_web_no_hostname() -> None:
 @patch("jarvis_engine.handlers.system_handlers.urlopen")
 @patch.dict("os.environ", {"JARVIS_DEFAULT_LOCATION": ""}, clear=False)
 def test_weather_success(mock_urlopen: MagicMock) -> None:
-    resp_data = json.dumps({
-        "current_condition": [{
-            "temp_F": "72",
-            "weatherDesc": [{"value": "Sunny"}],
-        }]
-    }).encode("utf-8")
+    resp_data = json.dumps(
+        {
+            "current_condition": [
+                {
+                    "temp_F": "72",
+                    "weatherDesc": [{"value": "Sunny"}],
+                }
+            ]
+        }
+    ).encode("utf-8")
     mock_resp = MagicMock()
     mock_resp.read.return_value = resp_data
     mock_resp.__enter__ = lambda s: s
@@ -438,9 +508,9 @@ def test_weather_empty_current_condition(mock_urlopen: MagicMock) -> None:
 @patch.dict("os.environ", {"JARVIS_DEFAULT_LOCATION": "Portland, OR"}, clear=False)
 def test_weather_default_location(mock_urlopen: MagicMock) -> None:
     """Uses JARVIS_DEFAULT_LOCATION env when location is empty."""
-    resp_data = json.dumps({
-        "current_condition": [{"temp_F": "55", "weatherDesc": [{"value": "Rainy"}]}]
-    }).encode("utf-8")
+    resp_data = json.dumps(
+        {"current_condition": [{"temp_F": "55", "weatherDesc": [{"value": "Rainy"}]}]}
+    ).encode("utf-8")
     mock_resp = MagicMock()
     mock_resp.read.return_value = resp_data
     mock_resp.__enter__ = lambda s: s
@@ -457,7 +527,10 @@ def test_weather_default_location(mock_urlopen: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.memory.migration.run_full_migration", return_value={"status": "ok", "migrated": 10})
+@patch(
+    "jarvis_engine.memory.migration.run_full_migration",
+    return_value={"status": "ok", "migrated": 10},
+)
 @patch("jarvis_engine.memory.embeddings.EmbeddingService")
 def test_migrate_memory_success(mock_embed: MagicMock, mock_migrate: MagicMock) -> None:
     handler = MigrateMemoryHandler(ROOT)
@@ -466,7 +539,10 @@ def test_migrate_memory_success(mock_embed: MagicMock, mock_migrate: MagicMock) 
     assert result.summary["status"] == "ok"
 
 
-@patch("jarvis_engine.memory.migration.run_full_migration", return_value={"status": "error", "reason": "corrupt"})
+@patch(
+    "jarvis_engine.memory.migration.run_full_migration",
+    return_value={"status": "error", "reason": "corrupt"},
+)
 @patch("jarvis_engine.memory.embeddings.EmbeddingService")
 def test_migrate_memory_failure(mock_embed: MagicMock, mock_migrate: MagicMock) -> None:
     handler = MigrateMemoryHandler(ROOT)

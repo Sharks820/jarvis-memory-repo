@@ -7,10 +7,10 @@ import threading
 from unittest.mock import MagicMock, patch
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_urlopen_response(data: bytes | str, status: int = 200) -> MagicMock:
     """Build a fake urllib response (context-manager compatible)."""
@@ -27,6 +27,7 @@ def _make_urlopen_response(data: bytes | str, status: int = 200) -> MagicMock:
 # ---------------------------------------------------------------------------
 # 1. No API keys configured — minimal enrichment
 # ---------------------------------------------------------------------------
+
 
 @patch.dict("os.environ", {}, clear=True)
 def test_enrich_ip_no_keys():
@@ -49,6 +50,7 @@ def test_enrich_ip_no_keys():
 # 2. Cached result
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {}, clear=True)
 def test_enrich_ip_cached():
     """Second call for same IP returns cache_hit=True."""
@@ -66,6 +68,7 @@ def test_enrich_ip_cached():
 # ---------------------------------------------------------------------------
 # 3. Cache expiry
 # ---------------------------------------------------------------------------
+
 
 @patch.dict("os.environ", {}, clear=True)
 def test_cache_expiry():
@@ -93,18 +96,21 @@ def test_cache_expiry():
 # 4. AbuseIPDB integration (mocked)
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "test-key-123"}, clear=True)
 def test_abuseipdb_integration():
     """AbuseIPDB query is issued with correct headers and parsed."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
-    abuseipdb_response = json.dumps({
-        "data": {
-            "ipAddress": "8.8.8.8",
-            "abuseConfidenceScore": 42,
-            "totalReports": 7,
+    abuseipdb_response = json.dumps(
+        {
+            "data": {
+                "ipAddress": "8.8.8.8",
+                "abuseConfidenceScore": 42,
+                "totalReports": 7,
+            }
         }
-    })
+    )
 
     mock_resp = _make_urlopen_response(abuseipdb_response)
 
@@ -133,21 +139,24 @@ def test_abuseipdb_integration():
 # 5. OTX integration (mocked)
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"OTX_API_KEY": "otx-key-456"}, clear=True)
 def test_otx_integration():
     """OTX query is issued with correct headers and parsed."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
-    otx_response = json.dumps({
-        "pulse_info": {
-            "count": 3,
-            "pulses": [
-                {"name": "Botnet C2"},
-                {"name": "Malware Distribution"},
-                {"name": "Phishing Campaign"},
-            ],
+    otx_response = json.dumps(
+        {
+            "pulse_info": {
+                "count": 3,
+                "pulses": [
+                    {"name": "Botnet C2"},
+                    {"name": "Malware Distribution"},
+                    {"name": "Phishing Campaign"},
+                ],
+            }
         }
-    })
+    )
 
     mock_resp = _make_urlopen_response(otx_response)
 
@@ -172,17 +181,14 @@ def test_otx_integration():
 # 6. Feodo Tracker blocklist
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {}, clear=True)
 def test_feodo_blocklist():
     """IPs in the Feodo blocklist CSV are detected."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
     blocklist_csv = (
-        "# Feodo Tracker Blocklist\n"
-        "# comment line\n"
-        "1.2.3.4\n"
-        "5.6.7.8\n"
-        "9.10.11.12\n"
+        "# Feodo Tracker Blocklist\n# comment line\n1.2.3.4\n5.6.7.8\n9.10.11.12\n"
     )
     mock_resp = _make_urlopen_response(blocklist_csv)
 
@@ -198,16 +204,13 @@ def test_feodo_blocklist():
 # 7. Feodo blocklist — IP not listed
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {}, clear=True)
 def test_feodo_blocklist_not_listed():
     """IPs NOT in the Feodo blocklist CSV are correctly identified as clean."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
-    blocklist_csv = (
-        "# Feodo Tracker Blocklist\n"
-        "1.2.3.4\n"
-        "5.6.7.8\n"
-    )
+    blocklist_csv = "# Feodo Tracker Blocklist\n1.2.3.4\n5.6.7.8\n"
     mock_resp = _make_urlopen_response(blocklist_csv)
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
@@ -220,6 +223,7 @@ def test_feodo_blocklist_not_listed():
 # ---------------------------------------------------------------------------
 # 8. is_known_bad convenience method
 # ---------------------------------------------------------------------------
+
 
 @patch.dict("os.environ", {}, clear=True)
 def test_is_known_bad():
@@ -238,6 +242,7 @@ def test_is_known_bad():
 # ---------------------------------------------------------------------------
 # 9. status() report structure
 # ---------------------------------------------------------------------------
+
 
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "k1", "OTX_API_KEY": "k2"}, clear=True)
 def test_status_report():
@@ -261,12 +266,16 @@ def test_status_report():
 # 10. Network error handling — graceful degradation
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "k1"}, clear=True)
 def test_network_error_graceful():
     """Network failures don't crash enrichment; return partial data."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
-    with patch("urllib.request.urlopen", side_effect=ConnectionRefusedError("Connection refused")):
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=ConnectionRefusedError("Connection refused"),
+    ):
         feed = ThreatIntelFeed(cache_ttl=3600)
         result = feed.enrich_ip("1.1.1.1")
 
@@ -278,6 +287,7 @@ def test_network_error_graceful():
 # ---------------------------------------------------------------------------
 # 11. Thread safety — concurrent enrichments
 # ---------------------------------------------------------------------------
+
 
 @patch.dict("os.environ", {}, clear=True)
 def test_thread_safety():
@@ -293,7 +303,9 @@ def test_thread_safety():
         except (RuntimeError, ValueError, OSError) as exc:
             errors.append(exc)
 
-    threads = [threading.Thread(target=_enrich, args=(f"10.0.0.{i}",)) for i in range(20)]
+    threads = [
+        threading.Thread(target=_enrich, args=(f"10.0.0.{i}",)) for i in range(20)
+    ]
     for t in threads:
         t.start()
     for t in threads:
@@ -306,18 +318,21 @@ def test_thread_safety():
 # 12. AbuseIPDB high score marks is_known_bad
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "test-key"}, clear=True)
 def test_abuseipdb_high_score_marks_known_bad():
     """An AbuseIPDB confidence score >= 80 should flag is_known_bad."""
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
-    abuseipdb_response = json.dumps({
-        "data": {
-            "ipAddress": "45.33.32.156",
-            "abuseConfidenceScore": 95,
-            "totalReports": 50,
+    abuseipdb_response = json.dumps(
+        {
+            "data": {
+                "ipAddress": "45.33.32.156",
+                "abuseConfidenceScore": 95,
+                "totalReports": 50,
+            }
         }
-    })
+    )
     mock_resp = _make_urlopen_response(abuseipdb_response)
 
     with patch("urllib.request.urlopen", return_value=mock_resp):

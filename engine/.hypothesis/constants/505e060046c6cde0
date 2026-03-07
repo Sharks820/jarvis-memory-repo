@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/session_manager.py
+# hypothesis_version: 6.151.9
+
+[86400, 259200, '...', 'ABSOLUTE_TIMEOUT', 'HIJACK_DETECTED', 'IDLE_TIMEOUT', 'SESSION_NOT_FOUND', 'VALID', 'created_at', 'device_id', 'ip', 'last_active', 'session_id', 'user_agent']

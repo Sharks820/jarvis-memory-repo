@@ -3,6 +3,7 @@
 Covers OpsSnapshot loading, daily brief generation, action suggestions,
 narrative brief with gateway, export, and edge cases.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,6 +27,7 @@ from jarvis_engine.life_ops import (
 # ---------------------------------------------------------------------------
 # Helper to build a snapshot dict
 # ---------------------------------------------------------------------------
+
 
 def _snapshot_dict(**overrides):
     base = {
@@ -52,6 +54,7 @@ def _snapshot(**overrides):
 # ---------------------------------------------------------------------------
 # _safe_bool tests
 # ---------------------------------------------------------------------------
+
 
 class TestSafeBool:
     def test_true_string(self):
@@ -82,6 +85,7 @@ class TestSafeBool:
 # ---------------------------------------------------------------------------
 # _is_due_item tests
 # ---------------------------------------------------------------------------
+
 
 class TestIsDueItem:
     def test_status_due(self):
@@ -116,6 +120,7 @@ class TestIsDueItem:
 # _is_urgent_item tests
 # ---------------------------------------------------------------------------
 
+
 class TestIsUrgentItem:
     def test_high_priority(self):
         assert _is_urgent_item({"priority": "high"}, "2026-02-22") is True
@@ -131,19 +136,27 @@ class TestIsUrgentItem:
 
     def test_delegates_to_is_due(self):
         # Not urgent priority, but status is due -> urgent via _is_due_item
-        assert _is_urgent_item({"priority": "low", "status": "due"}, "2026-02-22") is True
+        assert (
+            _is_urgent_item({"priority": "low", "status": "due"}, "2026-02-22") is True
+        )
 
 
 # ---------------------------------------------------------------------------
 # load_snapshot tests
 # ---------------------------------------------------------------------------
 
+
 class TestLoadSnapshot:
     def test_valid_snapshot(self, tmp_path):
         path = tmp_path / "snap.json"
-        path.write_text(json.dumps(_snapshot_dict(
-            tasks=[{"title": "T1", "priority": "high"}],
-        )), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                _snapshot_dict(
+                    tasks=[{"title": "T1", "priority": "high"}],
+                )
+            ),
+            encoding="utf-8",
+        )
         snap = load_snapshot(path)
         assert snap.date == "2026-02-22"
         assert len(snap.tasks) == 1
@@ -161,7 +174,10 @@ class TestLoadSnapshot:
 
     def test_partial_fields(self, tmp_path):
         path = tmp_path / "partial.json"
-        path.write_text(json.dumps({"date": "2026-02-22", "tasks": [{"title": "A"}]}), encoding="utf-8")
+        path.write_text(
+            json.dumps({"date": "2026-02-22", "tasks": [{"title": "A"}]}),
+            encoding="utf-8",
+        )
         snap = load_snapshot(path)
         assert snap.date == "2026-02-22"
         assert len(snap.tasks) == 1
@@ -173,6 +189,7 @@ class TestLoadSnapshot:
 # build_daily_brief tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildDailyBrief:
     def test_header_present(self):
         snap = _snapshot()
@@ -180,36 +197,44 @@ class TestBuildDailyBrief:
         assert "Jarvis Daily Brief for 2026-02-22" in brief
 
     def test_counts_urgent_tasks(self):
-        snap = _snapshot(tasks=[
-            {"title": "A", "priority": "high"},
-            {"title": "B", "priority": "urgent"},
-            {"title": "C", "priority": "normal"},
-        ])
+        snap = _snapshot(
+            tasks=[
+                {"title": "A", "priority": "high"},
+                {"title": "B", "priority": "urgent"},
+                {"title": "C", "priority": "normal"},
+            ]
+        )
         brief = build_daily_brief(snap)
         assert "Urgent tasks: 2" in brief
 
     def test_counts_unread_important_emails(self):
-        snap = _snapshot(emails=[
-            {"subject": "Hi", "read": False, "importance": "high"},
-            {"subject": "Lo", "read": False, "importance": "normal"},
-            {"subject": "Read", "read": True, "importance": "high"},
-        ])
+        snap = _snapshot(
+            emails=[
+                {"subject": "Hi", "read": False, "importance": "high"},
+                {"subject": "Lo", "read": False, "importance": "normal"},
+                {"subject": "Read", "read": True, "importance": "high"},
+            ]
+        )
         brief = build_daily_brief(snap)
         assert "Important unread emails: 1" in brief
 
     def test_counts_due_bills(self):
-        snap = _snapshot(bills=[
-            {"name": "Power", "amount": 120, "status": "due"},
-            {"name": "Water", "amount": 50, "status": "paid"},
-        ])
+        snap = _snapshot(
+            bills=[
+                {"name": "Power", "amount": 120, "status": "due"},
+                {"name": "Water", "amount": 50, "status": "paid"},
+            ]
+        )
         brief = build_daily_brief(snap)
         assert "Bills due/overdue: 1" in brief
 
     def test_counts_costly_subscriptions(self):
-        snap = _snapshot(subscriptions=[
-            {"name": "Big", "monthly_cost": 25.0},
-            {"name": "Small", "monthly_cost": 5.0},
-        ])
+        snap = _snapshot(
+            subscriptions=[
+                {"name": "Big", "monthly_cost": 25.0},
+                {"name": "Small", "monthly_cost": 5.0},
+            ]
+        )
         brief = build_daily_brief(snap)
         assert "High-cost subscriptions (>= $20/mo): 1" in brief
 
@@ -226,7 +251,9 @@ class TestBuildDailyBrief:
         assert len(action_lines) <= 8
 
     def test_medications_due(self):
-        snap = _snapshot(medications=[{"name": "Rx A", "dose": "10mg", "status": "due"}])
+        snap = _snapshot(
+            medications=[{"name": "Rx A", "dose": "10mg", "status": "due"}]
+        )
         brief = build_daily_brief(snap)
         assert "Medications due: 1" in brief
 
@@ -235,6 +262,7 @@ class TestBuildDailyBrief:
 # suggest_actions tests
 # ---------------------------------------------------------------------------
 
+
 class TestSuggestActions:
     def test_high_priority_task_action(self):
         snap = _snapshot(tasks=[{"title": "Deploy fix", "priority": "high"}])
@@ -242,7 +270,9 @@ class TestSuggestActions:
         assert any("Deploy fix" in a for a in actions)
 
     def test_unread_urgent_email_action(self):
-        snap = _snapshot(emails=[{"subject": "Urgent review", "read": False, "importance": "urgent"}])
+        snap = _snapshot(
+            emails=[{"subject": "Urgent review", "read": False, "importance": "urgent"}]
+        )
         actions = suggest_actions(snap)
         assert any("Urgent review" in a for a in actions)
 
@@ -252,23 +282,29 @@ class TestSuggestActions:
         assert any("Pay bill now" in a and "Electric" in a for a in actions)
 
     def test_low_usage_expensive_subscription(self):
-        snap = _snapshot(subscriptions=[
-            {"name": "ExpensiveTool", "monthly_cost": 30.0, "usage_score": 0.1},
-        ])
+        snap = _snapshot(
+            subscriptions=[
+                {"name": "ExpensiveTool", "monthly_cost": 30.0, "usage_score": 0.1},
+            ]
+        )
         actions = suggest_actions(snap)
         assert any("Review/cancel" in a and "ExpensiveTool" in a for a in actions)
 
     def test_high_usage_expensive_subscription_not_flagged(self):
-        snap = _snapshot(subscriptions=[
-            {"name": "GoodTool", "monthly_cost": 30.0, "usage_score": 0.9},
-        ])
+        snap = _snapshot(
+            subscriptions=[
+                {"name": "GoodTool", "monthly_cost": 30.0, "usage_score": 0.9},
+            ]
+        )
         actions = suggest_actions(snap)
         assert not any("GoodTool" in a for a in actions)
 
     def test_medication_action_with_dose_and_time(self):
-        snap = _snapshot(medications=[
-            {"name": "VitD", "dose": "5000IU", "due_time": "8am", "status": "due"},
-        ])
+        snap = _snapshot(
+            medications=[
+                {"name": "VitD", "dose": "5000IU", "due_time": "8am", "status": "due"},
+            ]
+        )
         actions = suggest_actions(snap)
         med_action = [a for a in actions if "VitD" in a]
         assert len(med_action) == 1
@@ -291,7 +327,9 @@ class TestSuggestActions:
         assert any("Release v2.0" in a for a in actions)
 
     def test_calendar_prep_action(self):
-        snap = _snapshot(calendar_events=[{"title": "Board meeting", "prep_needed": "yes"}])
+        snap = _snapshot(
+            calendar_events=[{"title": "Board meeting", "prep_needed": "yes"}]
+        )
         actions = suggest_actions(snap)
         assert any("Board meeting" in a for a in actions)
 
@@ -310,6 +348,7 @@ class TestSuggestActions:
 # export_actions_json tests
 # ---------------------------------------------------------------------------
 
+
 class TestExportActionsJson:
     def test_exports_valid_json(self, tmp_path):
         actions = ["Complete task X", "Pay bill now: Power ($120.00)"]
@@ -320,7 +359,10 @@ class TestExportActionsJson:
         assert len(data) == 2
 
     def test_privileged_action_class(self, tmp_path):
-        actions = ["Pay bill now: Electric ($50.00)", "Review/cancel low-usage subscription: ToolX ($25.00/mo)"]
+        actions = [
+            "Pay bill now: Electric ($50.00)",
+            "Review/cancel low-usage subscription: ToolX ($25.00/mo)",
+        ]
         path = tmp_path / "actions.json"
         export_actions_json(actions, path)
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -344,6 +386,7 @@ class TestExportActionsJson:
 # _assemble_data_summary tests
 # ---------------------------------------------------------------------------
 
+
 class TestAssembleDataSummary:
     def test_includes_date(self):
         snap = _snapshot()
@@ -358,26 +401,32 @@ class TestAssembleDataSummary:
         assert "9:00" in summary
 
     def test_tasks_sorted_by_priority(self):
-        snap = _snapshot(tasks=[
-            {"title": "Low task", "priority": "low"},
-            {"title": "Urgent task", "priority": "urgent"},
-        ])
+        snap = _snapshot(
+            tasks=[
+                {"title": "Low task", "priority": "low"},
+                {"title": "Urgent task", "priority": "urgent"},
+            ]
+        )
         summary = _assemble_data_summary(snap)
         urgent_pos = summary.find("Urgent task")
         low_pos = summary.find("Low task")
         assert urgent_pos < low_pos
 
     def test_unread_emails_only(self):
-        snap = _snapshot(emails=[
-            {"subject": "Read email", "read": True, "importance": "normal"},
-            {"subject": "Unread email", "read": False, "importance": "normal"},
-        ])
+        snap = _snapshot(
+            emails=[
+                {"subject": "Read email", "read": True, "importance": "normal"},
+                {"subject": "Unread email", "read": False, "importance": "normal"},
+            ]
+        )
         summary = _assemble_data_summary(snap)
         assert "Unread email" in summary
         assert "Read email" not in summary
 
     def test_medications_due_section(self):
-        snap = _snapshot(medications=[{"name": "VitD", "dose": "5000IU", "status": "due"}])
+        snap = _snapshot(
+            medications=[{"name": "VitD", "dose": "5000IU", "status": "due"}]
+        )
         summary = _assemble_data_summary(snap)
         assert "Medications Due:" in summary
         assert "VitD" in summary
@@ -399,6 +448,7 @@ class TestAssembleDataSummary:
 # build_narrative_brief tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildNarrativeBrief:
     def test_no_gateway_falls_back_to_deterministic(self):
         snap = _snapshot(tasks=[{"title": "Test task", "priority": "high"}])
@@ -412,7 +462,9 @@ class TestBuildNarrativeBrief:
         response.text = "Good morning! Here is your briefing..."
         gateway.complete.return_value = response
 
-        result = build_narrative_brief(snap, gateway=gateway, memory_context="test context")
+        result = build_narrative_brief(
+            snap, gateway=gateway, memory_context="test context"
+        )
         assert result == "Good morning! Here is your briefing..."
         gateway.complete.assert_called_once()
 
@@ -452,7 +504,11 @@ class TestBuildNarrativeBrief:
         long_context = "x" * 5000
         build_narrative_brief(snap, gateway=gateway, memory_context=long_context)
         call_args = gateway.complete.call_args
-        prompt = call_args[1]["messages"][0]["content"] if "messages" in call_args[1] else call_args[0][0][0]["content"]
+        prompt = (
+            call_args[1]["messages"][0]["content"]
+            if "messages" in call_args[1]
+            else call_args[0][0][0]["content"]
+        )
         # The safe_context should be at most 2000 chars
         assert len(long_context) > 2000  # verify our test input is longer
 

@@ -60,9 +60,7 @@ def migrate_temporal_metadata(
             )
 
         if "expires_at" not in existing_cols:
-            db.execute(
-                "ALTER TABLE kg_nodes ADD COLUMN expires_at TEXT DEFAULT NULL"
-            )
+            db.execute("ALTER TABLE kg_nodes ADD COLUMN expires_at TEXT DEFAULT NULL")
 
         # Create indexes (IF NOT EXISTS is idempotent)
         db.execute(
@@ -70,8 +68,7 @@ def migrate_temporal_metadata(
             "ON kg_nodes(temporal_type)"
         )
         db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_expires_at "
-            "ON kg_nodes(expires_at)"
+            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_expires_at ON kg_nodes(expires_at)"
         )
         db.commit()
 
@@ -97,9 +94,9 @@ def classify_temporal(node_id: str, label: str) -> tuple[str, str | None]:
             expires_at = _extract_date(label)
             if expires_at is None:
                 # Default: 30 days from now for time-sensitive without explicit date
-                expires_at = (
-                    datetime.now(UTC) + timedelta(days=30)
-                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                expires_at = (datetime.now(UTC) + timedelta(days=30)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
             return ("time_sensitive", expires_at)
 
     # Check for temporal date patterns in the label itself

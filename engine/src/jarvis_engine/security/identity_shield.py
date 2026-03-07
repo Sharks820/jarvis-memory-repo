@@ -25,6 +25,7 @@ from pathlib import Path
 
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     _HAS_THREADPOOL = True
 except ImportError:  # pragma: no cover
     _HAS_THREADPOOL = False
@@ -173,7 +174,9 @@ class FamilyShield:
                 "module": "FamilyShield",
                 "member_count": len(self._members),
                 "total_emails": sum(len(m.get("emails", [])) for m in self._members),
-                "total_usernames": sum(len(m.get("usernames", [])) for m in self._members),
+                "total_usernames": sum(
+                    len(m.get("usernames", [])) for m in self._members
+                ),
                 "total_domains": sum(len(m.get("domains", [])) for m in self._members),
             }
 
@@ -222,12 +225,22 @@ class BreachMonitor:
 
         Returns ``{compromised: bool, count: int}``.
         """
-        sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+        # HIBP k-anonymity API requires SHA1 by specification — not used as a
+        # security primitive here, only as a lookup key for the breach database.
+        sha1 = (
+            hashlib.sha1(  # noqa: S324
+                password.encode("utf-8"), usedforsecurity=False
+            )
+            .hexdigest()
+            .upper()
+        )
         prefix, suffix = sha1[:5], sha1[5:]
 
         url = self._HIBP_RANGE_URL.format(prefix=prefix)
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Jarvis-IdentityShield"})
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Jarvis-IdentityShield"}
+            )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 body = resp.read().decode("utf-8")
         except (urllib.error.URLError, OSError) as exc:
@@ -276,11 +289,13 @@ class BreachMonitor:
 
         results: list[dict] = []
         for breach in data:
-            results.append({
-                "name": breach.get("Name", "Unknown"),
-                "breach_date": breach.get("BreachDate", "Unknown"),
-                "data_classes": breach.get("DataClasses", []),
-            })
+            results.append(
+                {
+                    "name": breach.get("Name", "Unknown"),
+                    "breach_date": breach.get("BreachDate", "Unknown"),
+                    "data_classes": breach.get("DataClasses", []),
+                }
+            )
         return results
 
     # ------------------------------------------------------------------
@@ -347,22 +362,22 @@ class TyposquatMonitor:
 
         # 1. Character omission
         for i in range(len(name)):
-            _add(name[:i] + name[i + 1:] + tld)
+            _add(name[:i] + name[i + 1 :] + tld)
 
         # 2. Adjacent key substitution
         for i, ch in enumerate(name):
             for adj in _ADJACENT_KEYS.get(ch.lower(), ""):
-                _add(name[:i] + adj + name[i + 1:] + tld)
+                _add(name[:i] + adj + name[i + 1 :] + tld)
 
         # 3. Character doubling
         for i, ch in enumerate(name):
             if ch.isalpha():
-                _add(name[:i] + ch + ch + name[i + 1:] + tld)
+                _add(name[:i] + ch + ch + name[i + 1 :] + tld)
 
         # 4. Homoglyph substitution
         for i, ch in enumerate(name):
             for glyph in _HOMOGLYPHS.get(ch.lower(), []):
-                _add(name[:i] + glyph + name[i + 1:] + tld)
+                _add(name[:i] + glyph + name[i + 1 :] + tld)
 
         # 5. TLD swap
         if tld:
@@ -388,7 +403,9 @@ class TyposquatMonitor:
         def _lookup(variant: str) -> dict:
             entry: dict = {"variant": variant, "registered": False, "ips": []}
             try:
-                infos = socket.getaddrinfo(variant, 80, socket.AF_INET, socket.SOCK_STREAM)
+                infos = socket.getaddrinfo(
+                    variant, 80, socket.AF_INET, socket.SOCK_STREAM
+                )
                 ips = list({info[4][0] for info in infos})
                 if ips:
                     entry["registered"] = True
@@ -402,8 +419,7 @@ class TyposquatMonitor:
             # Preserve order: submit all, collect by index
             with ThreadPoolExecutor(max_workers=20) as pool:
                 future_to_idx = {
-                    pool.submit(_lookup, v): i
-                    for i, v in enumerate(variants)
+                    pool.submit(_lookup, v): i for i, v in enumerate(variants)
                 }
                 ordered = [None] * len(variants)
                 for future in as_completed(future_to_idx):
@@ -494,7 +510,7 @@ class ImpersonationDetector:
             for glyph in _HOMOGLYPHS.get(ch.lower(), []):
                 # Only use alphanumeric glyphs for usernames
                 if glyph.isalnum():
-                    _add(username[:i] + glyph + username[i + 1:])
+                    _add(username[:i] + glyph + username[i + 1 :])
 
         return variants
 

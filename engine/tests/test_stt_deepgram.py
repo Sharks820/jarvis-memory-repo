@@ -5,12 +5,12 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 
 def _reset_keyterms_cache():
     """Reset personal vocab caches so tests start with a clean state."""
     import jarvis_engine._shared as shared_mod
+
     shared_mod._personal_vocab_stripped_cache = None
     shared_mod._personal_vocab_raw_cache = None
 
@@ -18,6 +18,7 @@ def _reset_keyterms_cache():
 # ---------------------------------------------------------------------------
 # D1. test_load_keyterms -- reads personal_vocab.txt and returns terms
 # ---------------------------------------------------------------------------
+
 
 def test_load_keyterms():
     """_load_keyterms reads personal_vocab.txt and returns cleaned term list."""
@@ -42,6 +43,7 @@ def test_load_keyterms():
 # D2. test_load_keyterms_caching -- file only read once
 # ---------------------------------------------------------------------------
 
+
 def test_load_keyterms_caching():
     """_load_keyterms caches results: second call returns same list without re-reading."""
     _reset_keyterms_cache()
@@ -62,6 +64,7 @@ def test_load_keyterms_caching():
 # D3. test_try_deepgram_no_api_key -- returns None immediately
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"DEEPGRAM_API_KEY": ""}, clear=False)
 def test_try_deepgram_no_api_key():
     """_try_deepgram returns None immediately when DEEPGRAM_API_KEY is not set."""
@@ -76,6 +79,7 @@ def test_try_deepgram_no_api_key():
 # D4. test_try_deepgram_import_error -- returns None when httpx missing
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False)
 def test_try_deepgram_import_error():
     """_try_deepgram returns None when httpx import fails."""
@@ -83,7 +87,9 @@ def test_try_deepgram_import_error():
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def _fail_httpx(name, *args, **kwargs):
         if name == "httpx":
@@ -100,6 +106,7 @@ def test_try_deepgram_import_error():
 # D5. test_try_deepgram_success -- mock client, verify TranscriptionResult
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False)
 def test_try_deepgram_success():
     """_try_deepgram returns TranscriptionResult with correct fields on success."""
@@ -111,16 +118,30 @@ def test_try_deepgram_success():
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "transcript": "Hello Conner",
-                    "confidence": 0.98,
-                    "words": [
-                        {"word": "Hello", "start": 0.0, "end": 0.4, "confidence": 0.97},
-                        {"word": "Conner", "start": 0.5, "end": 0.9, "confidence": 0.99},
+            "channels": [
+                {
+                    "alternatives": [
+                        {
+                            "transcript": "Hello Conner",
+                            "confidence": 0.98,
+                            "words": [
+                                {
+                                    "word": "Hello",
+                                    "start": 0.0,
+                                    "end": 0.4,
+                                    "confidence": 0.97,
+                                },
+                                {
+                                    "word": "Conner",
+                                    "start": 0.5,
+                                    "end": 0.9,
+                                    "confidence": 0.99,
+                                },
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
         },
     }
 
@@ -150,6 +171,7 @@ def test_try_deepgram_success():
 # D6. test_try_deepgram_with_keyterms -- verify keyterms passed in params
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False)
 def test_try_deepgram_with_keyterms():
     """_try_deepgram passes keyterms as 'keywords' query params."""
@@ -162,13 +184,17 @@ def test_try_deepgram_with_keyterms():
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "transcript": "Jarvis brain status",
-                    "confidence": 0.95,
-                    "words": [],
-                }],
-            }],
+            "channels": [
+                {
+                    "alternatives": [
+                        {
+                            "transcript": "Jarvis brain status",
+                            "confidence": 0.95,
+                            "words": [],
+                        }
+                    ],
+                }
+            ],
         },
     }
 
@@ -202,6 +228,7 @@ def test_try_deepgram_with_keyterms():
 # ---------------------------------------------------------------------------
 # D7. test_try_deepgram_api_error -- returns None on error
 # ---------------------------------------------------------------------------
+
 
 @patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False)
 def test_try_deepgram_api_error():
@@ -243,6 +270,7 @@ def test_try_deepgram_api_error():
 # D8. test_try_deepgram_with_numpy_audio -- verify WAV conversion
 # ---------------------------------------------------------------------------
 
+
 @patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}, clear=False)
 def test_try_deepgram_with_numpy_audio():
     """_try_deepgram converts numpy audio to WAV bytes before API call."""
@@ -254,13 +282,17 @@ def test_try_deepgram_with_numpy_audio():
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "transcript": "testing audio",
-                    "confidence": 0.92,
-                    "words": [],
-                }],
-            }],
+            "channels": [
+                {
+                    "alternatives": [
+                        {
+                            "transcript": "testing audio",
+                            "confidence": 0.92,
+                            "words": [],
+                        }
+                    ],
+                }
+            ],
         },
     }
 

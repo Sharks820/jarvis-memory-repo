@@ -131,13 +131,15 @@ class TestBreachMonitor:
 
     def test_email_check_with_api_key(self) -> None:
         """Email breach check with API key returns parsed breaches."""
-        breaches_json = json.dumps([
-            {
-                "Name": "ExampleBreach",
-                "BreachDate": "2023-01-15",
-                "DataClasses": ["Email addresses", "Passwords"],
-            }
-        ]).encode("utf-8")
+        breaches_json = json.dumps(
+            [
+                {
+                    "Name": "ExampleBreach",
+                    "BreachDate": "2023-01-15",
+                    "DataClasses": ["Email addresses", "Passwords"],
+                }
+            ]
+        ).encode("utf-8")
 
         mock_resp = MagicMock()
         mock_resp.read.return_value = breaches_json
@@ -168,9 +170,9 @@ class TestBreachMonitor:
 
         bm = BreachMonitor(api_key="key")
 
-        breaches_json = json.dumps([
-            {"Name": "Leak", "BreachDate": "2024-06-01", "DataClasses": ["Emails"]}
-        ]).encode("utf-8")
+        breaches_json = json.dumps(
+            [{"Name": "Leak", "BreachDate": "2024-06-01", "DataClasses": ["Emails"]}]
+        ).encode("utf-8")
         mock_resp = MagicMock()
         mock_resp.read.return_value = breaches_json
         mock_resp.status = 200
@@ -215,8 +217,9 @@ class TestTyposquatMonitor:
         tm = TyposquatMonitor()
         variants = tm.generate_variants("google.com")
         # 'o' -> '0' or 'l' -> '1' should produce g00gle.com or goog1e.com
-        assert any("0" in v.split(".")[0] for v in variants) or \
-               any("1" in v.split(".")[0] for v in variants)
+        assert any("0" in v.split(".")[0] for v in variants) or any(
+            "1" in v.split(".")[0] for v in variants
+        )
 
     def test_check_domain_registered(self) -> None:
         """check_domain detects registered typosquat variant via DNS."""
@@ -224,7 +227,9 @@ class TestTyposquatMonitor:
 
         def fake_getaddrinfo(host, port, *a, **kw):
             if host == "exmple.com":
-                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))]
+                return [
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))
+                ]
             raise socket.gaierror("not found")
 
         with patch("socket.getaddrinfo", side_effect=fake_getaddrinfo):
@@ -299,6 +304,7 @@ class TestImpersonationDetector:
         det = ImpersonationDetector()
 
         from urllib.error import HTTPError
+
         err = HTTPError(
             url="https://github.com/john_fake",
             code=404,
@@ -320,6 +326,7 @@ class TestImpersonationDetector:
         det = ImpersonationDetector()
 
         from urllib.error import HTTPError
+
         err = HTTPError(url="x", code=404, msg="Not Found", hdrs=None, fp=None)  # type: ignore[arg-type]
         with patch("urllib.request.urlopen", side_effect=err):
             results = det.scan_all(family)

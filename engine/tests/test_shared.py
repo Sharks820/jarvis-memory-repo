@@ -3,6 +3,7 @@
 Covers: atomic_write_json, safe_float, safe_int, check_path_within_root,
         win_hidden_subprocess_kwargs.
 """
+
 from __future__ import annotations
 
 import json
@@ -239,7 +240,10 @@ class TestAtomicWriteJson:
 
     def test_permission_error_exhausts_retries(self, tmp_path: Path):
         target = tmp_path / "fail.json"
-        with patch("jarvis_engine._shared.os.replace", side_effect=PermissionError("always locked")):
+        with patch(
+            "jarvis_engine._shared.os.replace",
+            side_effect=PermissionError("always locked"),
+        ):
             with patch("jarvis_engine._shared.time.sleep"):
                 with pytest.raises(PermissionError, match="always locked"):
                     atomic_write_json(target, {"x": 1}, retries=3)
@@ -247,7 +251,9 @@ class TestAtomicWriteJson:
     def test_retry_sleep_backoff(self, tmp_path: Path):
         """Verify sleep durations increase with attempt number (0.06 * (attempt + 1))."""
         target = tmp_path / "backoff.json"
-        with patch("jarvis_engine._shared.os.replace", side_effect=PermissionError("locked")):
+        with patch(
+            "jarvis_engine._shared.os.replace", side_effect=PermissionError("locked")
+        ):
             with patch("jarvis_engine._shared.time.sleep") as mock_sleep:
                 with pytest.raises(PermissionError):
                     atomic_write_json(target, {"x": 1}, retries=3)
@@ -305,6 +311,7 @@ class TestWinHiddenSubprocessKwargs:
         result = win_hidden_subprocess_kwargs()
         if "startupinfo" in result:
             import subprocess
+
             assert isinstance(result["startupinfo"], subprocess.STARTUPINFO)
 
     @patch("jarvis_engine._shared.os.name", "nt")

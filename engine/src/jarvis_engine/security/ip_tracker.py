@@ -210,16 +210,18 @@ class IPTracker:
                 attack_types = json.loads(row[4])
             except (json.JSONDecodeError, TypeError):
                 attack_types = []
-            result.append({
-                "ip": row[0],
-                "first_seen": row[1],
-                "last_seen": row[2],
-                "total_attempts": row[3],
-                "attack_types": attack_types,
-                "threat_score": row[5],
-                "blocked_until": row[6],
-                "notes": row[7],
-            })
+            result.append(
+                {
+                    "ip": row[0],
+                    "first_seen": row[1],
+                    "last_seen": row[2],
+                    "total_attempts": row[3],
+                    "attack_types": attack_types,
+                    "threat_score": row[5],
+                    "blocked_until": row[6],
+                    "notes": row[7],
+                }
+            )
         return result
 
     def block_ip(self, ip: str, duration_hours: int | None = None) -> None:
@@ -228,7 +230,9 @@ class IPTracker:
         if duration_hours is None:
             blocked_until = "permanent"
         else:
-            blocked_until = (datetime.now(UTC) + timedelta(hours=duration_hours)).isoformat()
+            blocked_until = (
+                datetime.now(UTC) + timedelta(hours=duration_hours)
+            ).isoformat()
 
         with self._lock:
             row = self._db.execute(
