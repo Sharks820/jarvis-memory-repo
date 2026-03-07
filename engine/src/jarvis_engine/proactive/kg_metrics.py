@@ -108,7 +108,7 @@ def collect_kg_metrics(kg) -> dict:
 
         db.execute("COMMIT")
 
-    except (sqlite3.Error, AttributeError) as exc:
+    except (sqlite3.Error, OSError, AttributeError) as exc:
         try:
             db.execute("ROLLBACK")
         except sqlite3.Error as rollback_exc:

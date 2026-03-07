@@ -213,7 +213,7 @@ def transcribe_groq(
                         time.sleep(2 if resp.status_code == 429 else 1)
                         continue
                 break
-            except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+            except httpx.TransportError as exc:
                 logger.warning("Groq API connection error: %s, attempt %d/2", exc, attempt + 1)
                 if attempt < 1:
                     time.sleep(1)
@@ -673,6 +673,12 @@ def _try_deepgram(
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Deepgram STT attempt failed: %s", exc)
         return None
+    except Exception as exc:
+        # httpx.TransportError and other httpx exceptions (lazily imported)
+        if type(exc).__module__.startswith("httpx"):
+            logger.warning("Deepgram STT network error: %s", exc)
+            return None
+        raise
 
 
 def _try_local_emergency(

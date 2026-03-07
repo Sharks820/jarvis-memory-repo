@@ -1824,7 +1824,7 @@ class JarvisDesktopWidget(tk.Tk):
             highlightthickness=1,
         ).pack(fill=tk.X, padx=6, pady=(2, 0))
 
-    def _check(self, parent: tk.Widget, text: str, variable: tk.BooleanVar, cmd: Any = None) -> tk.Checkbutton:
+    def _check(self, parent: tk.Widget, text: str, variable: tk.BooleanVar, cmd: Callable[[], None] | None = None) -> tk.Checkbutton:
         return tk.Checkbutton(
             parent,
             text=text,
@@ -1839,7 +1839,7 @@ class JarvisDesktopWidget(tk.Tk):
             font=("Segoe UI", 9),
         )
 
-    def _btn(self, parent: tk.Widget, text: str, command: Any, color: str) -> tk.Button:
+    def _btn(self, parent: tk.Widget, text: str, command: Callable[[], None], color: str) -> tk.Button:
         return tk.Button(
             parent,
             text=text,
@@ -1855,7 +1855,7 @@ class JarvisDesktopWidget(tk.Tk):
             cursor="hand2",
         )
 
-    def _btn_lg(self, parent: tk.Widget, text: str, command: Any, color: str) -> tk.Button:
+    def _btn_lg(self, parent: tk.Widget, text: str, command: Callable[[], None], color: str) -> tk.Button:
         """Larger variant of _btn for primary action buttons."""
         return tk.Button(
             parent,

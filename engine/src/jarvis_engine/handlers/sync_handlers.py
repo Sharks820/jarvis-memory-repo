@@ -56,6 +56,11 @@ class SyncPullHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
+        except Exception as exc:
+            if "InvalidToken" in type(exc).__name__:
+                logger.error("SyncPull encryption failed (invalid token): %s", exc)
+                return SyncPullResult(message="error: encryption failed")
+            raise
 
         return SyncPullResult(
             encrypted_payload=encoded,
@@ -91,6 +96,12 @@ class SyncPushHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
+        except Exception as exc:
+            # cryptography.fernet.InvalidToken (lazily loaded, inherits Exception)
+            if "InvalidToken" in type(exc).__name__:
+                logger.error("SyncPush decryption failed (invalid token): %s", exc)
+                return SyncPushResult(message="error: decryption failed")
+            raise
 
         try:
             result = self._sync_engine.apply_incoming(payload, cmd.device_id)
