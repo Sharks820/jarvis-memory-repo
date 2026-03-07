@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from dataclasses import dataclass, asdict
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Iterable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -58,13 +61,15 @@ class MemoryStore:
                 if stripped:
                     lines.append(stripped)
             lines = lines[-limit:]
-        except OSError:
+        except OSError as exc:
+            logger.debug("Cannot read memory event store: %s", exc)
             return []
 
         events: list[MemoryEvent] = []
         for line in lines:
             try:
                 events.append(MemoryEvent(**json.loads(line)))
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.debug("Skipping malformed memory event line: %s", exc)
                 continue
         return events

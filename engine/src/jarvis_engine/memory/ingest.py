@@ -211,6 +211,7 @@ class EnrichedIngestPipeline:
             self._llm_extractor = LLMFactExtractor(gateway=self._gateway)
             return self._llm_extractor
         except ImportError:
+            logger.debug("LLMFactExtractor unavailable (knowledge.llm_extractor not installed)")
             return None
 
     def _extract_facts(

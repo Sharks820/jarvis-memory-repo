@@ -57,6 +57,7 @@ class ClaudeCodeIngestor:
             logger.warning("Permission denied accessing %s", self.SESSION_BASE)
             return []
         except FileNotFoundError:
+            logger.debug("Session base directory not found: %s", self.SESSION_BASE)
             return []
 
     def ingest_session(self, session_path: Path) -> list[str]:
@@ -106,6 +107,7 @@ class CodexIngestor:
             logger.warning("Permission denied accessing %s", self.SESSION_BASE)
             return []
         except FileNotFoundError:
+            logger.debug("Codex session base directory not found: %s", self.SESSION_BASE)
             return []
 
     def ingest_session(self, session_path: Path) -> list[str]:
@@ -171,6 +173,7 @@ def _parse_session_jsonl(path: Path, entry_type: str = "assistant") -> list[str]
                         extracted.append(text)
 
     except FileNotFoundError:
+        logger.debug("Session file not found: %s", path)
         return []
     except PermissionError:
         logger.warning("Permission denied reading %s", path)

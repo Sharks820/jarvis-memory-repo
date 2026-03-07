@@ -32,7 +32,8 @@ def _load_checkpoint(checkpoint_path: Path) -> dict | None:
         return None
     try:
         return json.loads(checkpoint_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.debug("Cannot load migration checkpoint from %s: %s", checkpoint_path, exc)
         return None
 
 

@@ -114,7 +114,8 @@ def drain_alerts(root: Path, *, limit: int = 50) -> list[dict[str, Any]]:
             return []
         try:
             raw = path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Cannot read alert queue file: %s", exc)
             return []
 
         alerts: list[dict[str, Any]] = []
@@ -145,7 +146,8 @@ def peek_alerts(root: Path, *, limit: int = 50) -> list[dict[str, Any]]:
             return []
         try:
             raw = path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            logger.debug("Cannot read alert queue file for peek: %s", exc)
             return []
     alerts: list[dict[str, Any]] = []
     for line in raw.splitlines():

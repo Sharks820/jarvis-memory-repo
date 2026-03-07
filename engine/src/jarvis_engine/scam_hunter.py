@@ -503,7 +503,8 @@ def load_campaigns(path: Path) -> list[ScamCampaign]:
                 if k in ScamCampaign.__dataclass_fields__
             }))
         return campaigns
-    except (json.JSONDecodeError, OSError, TypeError):
+    except (json.JSONDecodeError, OSError, TypeError) as exc:
+        logger.debug("Cannot load scam campaigns from %s: %s", path, exc)
         return []
 
 
@@ -574,7 +575,8 @@ def _load_carrier_cache(path: Path) -> dict[str, Any]:
         return {}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.debug("Cannot load carrier cache from %s: %s", path, exc)
         return {}
 
 

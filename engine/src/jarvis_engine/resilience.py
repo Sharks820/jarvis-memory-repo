@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
 from pathlib import Path
 from typing import Any
 
 from jarvis_engine._constants import runtime_dir as _runtime_dir
+
+logger = logging.getLogger(__name__)
 from jarvis_engine.brain_memory import brain_regression_report, brain_status
 from jarvis_engine.memory_snapshots import run_memory_maintenance
 from jarvis_engine.owner_guard import read_owner_guard
@@ -24,7 +27,8 @@ def _tail_lines(path: Path, *, max_lines: int) -> list[str]:
         return []
     try:
         raw = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except OSError as exc:
+        logger.debug("Cannot read file %s for tail: %s", path, exc)
         return []
     lines = [line.strip() for line in raw.splitlines() if line.strip()]
     return lines[-max(1, max_lines) :]

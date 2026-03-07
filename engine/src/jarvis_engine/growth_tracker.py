@@ -446,6 +446,7 @@ def read_history(history_path: Path) -> list[dict[str, Any]]:
                 try:
                     out.append(json.loads(line))
                 except json.JSONDecodeError:
+                    _logger.debug("Skipping malformed growth history line")
                     continue
         return out
 

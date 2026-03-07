@@ -108,7 +108,8 @@ class ForensicLogger:
         with self._lock:
             try:
                 size = os.path.getsize(self._path)
-            except OSError:
+            except OSError as exc:
+                logger.debug("Cannot stat forensic log for rotation check: %s", exc)
                 return
             if size < max_bytes:
                 return
@@ -219,7 +220,8 @@ class ForensicLogger:
                     if actual_read >= size:
                         # We've read the entire file and no line parses
                         break
-        except OSError:
+        except OSError as exc:
+            logger.debug("Cannot read forensic log for hash chain: %s", exc)
             return _ZERO_HASH
 
         return _ZERO_HASH

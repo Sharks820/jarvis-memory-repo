@@ -161,7 +161,8 @@ class IPTracker:
             if expiry.tzinfo is None:
                 return True  # treat naive datetimes as still blocked
             return datetime.now(UTC) < expiry
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            logger.debug("Invalid blocked_until timestamp for IP %s: %s", ip, exc)
             return False
 
     def get_threat_report(self, ip: str) -> dict | None:

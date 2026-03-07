@@ -62,6 +62,7 @@ def _claude_cli_max_budget_usd() -> str | None:
     try:
         value = float(raw)
     except (TypeError, ValueError):
+        logger.debug("Invalid JARVIS_CLAUDE_CLI_MAX_BUDGET_USD value: %r", raw)
         return None
     if value <= 0:
         return None

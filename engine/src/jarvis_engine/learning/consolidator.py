@@ -214,6 +214,7 @@ class MemoryConsolidator:
                 compute_relevance_score,
             )
         except ImportError:
+            logger.debug("Relevance scoring unavailable (learning.relevance not installed)")
             return 0
 
         now = datetime.now(UTC)

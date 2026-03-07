@@ -483,12 +483,8 @@ def _handle_system_status(ctx: _DispatchCtx) -> tuple[str, int]:
 _IntentRule = tuple[Callable[[str], bool], Callable[[_DispatchCtx], tuple[str, int]]]
 
 
-def _build_dispatch_rules() -> list[_IntentRule]:
-    """Build the ordered list of (matcher, handler) rules.
-
-    The order matters: first match wins, matching the original if/elif
-    semantics exactly.
-    """
+def _system_runtime_rules() -> list[_IntentRule]:
+    """Rules for system setup, runtime control, and safe mode."""
     return [
         # connect/setup
         (
@@ -529,6 +525,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             ]),
             _handle_runtime_status,
         ),
+    ]
+
+
+def _gaming_mode_rules() -> list[_IntentRule]:
+    """Rules for gaming mode control (auto-detect must precede generic)."""
+    return [
         # gaming mode auto enable (must come before generic gaming mode)
         (
             lambda low: "auto gaming mode" in low
@@ -559,6 +561,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             and any(k in low for k in ["status", "state"]),
             _handle_gaming_mode_status,
         ),
+    ]
+
+
+def _info_and_web_rules() -> list[_IntentRule]:
+    """Rules for weather, web research, URL opening, sync, self-heal, and ops."""
+    return [
         # weather (but not "my calendar")
         (
             lambda low: ("weather" in low or "forecast" in low) and "my calendar" not in low,
@@ -605,6 +613,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             ]),
             _handle_ops_autopilot,
         ),
+    ]
+
+
+def _phone_rules() -> list[_IntentRule]:
+    """Rules for phone actions: spam guard, SMS, calls."""
+    return [
         # phone spam guard
         (
             lambda low: (
@@ -639,6 +653,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             ),
             _handle_phone_place_call,
         ),
+    ]
+
+
+def _ops_and_generation_rules() -> list[_IntentRule]:
+    """Rules for ops sync/brief/automation and content generation."""
+    return [
         # ops sync (calendar/email/ops)
         (
             lambda low: "sync" in low
@@ -681,6 +701,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             or "generate 3d model" in low,
             _handle_generate_model3d,
         ),
+    ]
+
+
+def _calendar_task_rules() -> list[_IntentRule]:
+    """Rules for schedule/calendar/meeting and task list queries."""
+    return [
         # schedule / calendar / meeting queries
         (
             lambda low: any(k in low for k in [
@@ -705,6 +731,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             ]),
             _handle_task_queries,
         ),
+    ]
+
+
+def _memory_knowledge_rules() -> list[_IntentRule]:
+    """Rules for memory search, forget, ingest, and knowledge status."""
+    return [
         # memory search / knowledge queries
         (
             lambda low: any(k in low for k in [
@@ -742,6 +774,12 @@ def _build_dispatch_rules() -> list[_IntentRule]:
             ]),
             _handle_brain_status,
         ),
+    ]
+
+
+def _mission_status_rules() -> list[_IntentRule]:
+    """Rules for mission management and system status queries."""
+    return [
         # cancel mission
         (
             lambda low: any(k in low for k in [
@@ -770,6 +808,24 @@ def _build_dispatch_rules() -> list[_IntentRule]:
     ]
 
 
+def _build_dispatch_rules() -> list[_IntentRule]:
+    """Build the ordered list of (matcher, handler) rules.
+
+    The order matters: first match wins, matching the original if/elif
+    semantics exactly.  Rules are grouped by theme for readability.
+    """
+    return [
+        *_system_runtime_rules(),
+        *_gaming_mode_rules(),
+        *_info_and_web_rules(),
+        *_phone_rules(),
+        *_ops_and_generation_rules(),
+        *_calendar_task_rules(),
+        *_memory_knowledge_rules(),
+        *_mission_status_rules(),
+    ]
+
+
 # Module-level singleton — built once at import time.
 _DISPATCH_RULES: list[_IntentRule] = _build_dispatch_rules()
 
@@ -777,6 +833,185 @@ _DISPATCH_RULES: list[_IntentRule] = _build_dispatch_rules()
 # ---------------------------------------------------------------------------
 # Main voice-run implementation
 # ---------------------------------------------------------------------------
+
+def _validate_voice_auth(
+    voice_user: str,
+    voice_auth_wav: str,
+    voice_threshold: float,
+    master_password: str,
+    master_password_ok: bool,
+    execute: bool,
+    approve_privileged: bool,
+    read_only_request: bool,
+    skip_voice_auth_guard: bool,
+    speak: bool,
+    cmd_voice_say: Callable,
+    cmd_voice_verify: Callable,
+    repo_root: Callable,
+) -> int | None:
+    """Check owner-guard, voice-auth, and execution permission.
+
+    Returns None if auth passes and the command may proceed, or an int
+    return code (2) if the command should be rejected.
+    """
+    owner_guard = read_owner_guard(repo_root())
+
+    if bool(owner_guard.get("enabled", False)):
+        expected_owner = str(owner_guard.get("owner_user_id", "")).strip().lower()
+        incoming_owner = voice_user.strip().lower()
+        if expected_owner and incoming_owner != expected_owner and not master_password_ok:
+            print("intent=owner_guard_blocked")
+            print("reason=voice_user_not_owner")
+            if speak:
+                cmd_voice_say(text="Owner guard blocked this command.")
+            return 2
+        if (
+            not skip_voice_auth_guard
+            and not voice_auth_wav.strip()
+            and not master_password_ok
+            and not read_only_request
+        ):
+            print("intent=owner_guard_blocked")
+            print("reason=voice_auth_required_when_owner_guard_enabled")
+            if speak:
+                cmd_voice_say(
+                    text="Owner guard requires voice authentication for state-changing commands.",
+                )
+            return 2
+
+    if (
+        (execute or approve_privileged)
+        and not read_only_request
+        and not skip_voice_auth_guard
+        and not voice_auth_wav.strip()
+        and not master_password_ok
+    ):
+        print("intent=voice_auth_required")
+        print("reason=execute_or_privileged_voice_actions_require_voice_auth_wav")
+        if speak:
+            cmd_voice_say(text="Voice authentication is required for executable commands.")
+        return 2
+
+    if voice_auth_wav.strip():
+        verify_rc = cmd_voice_verify(
+            user_id=voice_user,
+            wav_path=voice_auth_wav,
+            threshold=voice_threshold,
+        )
+        if verify_rc != 0:
+            print("intent=voice_auth_failed")
+            if speak:
+                cmd_voice_say(text="Voice authentication failed. Command blocked.")
+            return 2
+
+    return None
+
+
+def _build_dispatch_ctx(
+    text: str,
+    lowered: str,
+    *,
+    execute: bool,
+    approve_privileged: bool,
+    speak: bool,
+    snapshot_path: Path,
+    actions_path: Path,
+    voice_user: str,
+    voice_auth_wav: str,
+    voice_threshold: float,
+    master_password: str,
+    model_override: str,
+    skip_voice_auth_guard: bool,
+    master_password_ok: bool,
+    repo_root: Callable,
+    respond_fn: Callable,
+    require_auth_fn: Callable,
+    web_augmented_fn: Callable,
+    cmd_fns: dict,
+) -> _DispatchCtx:
+    """Populate a _DispatchCtx with all the values needed by intent handlers."""
+    ctx = _DispatchCtx()
+    ctx.text = text
+    ctx.lowered = lowered
+    ctx.execute = execute
+    ctx.approve_privileged = approve_privileged
+    ctx.speak = speak
+    ctx.snapshot_path = snapshot_path
+    ctx.actions_path = actions_path
+    ctx.voice_user = voice_user
+    ctx.voice_auth_wav = voice_auth_wav
+    ctx.voice_threshold = voice_threshold
+    ctx.master_password = master_password
+    ctx.model_override = model_override
+    ctx.skip_voice_auth_guard = skip_voice_auth_guard
+    ctx.master_password_ok = master_password_ok
+    ctx.phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
+    ctx.phone_report = repo_root() / ".planning" / "phone_spam_report.json"
+    ctx.phone_call_log = Path(os.getenv(
+        "JARVIS_CALL_LOG_JSON",
+        str(repo_root() / ".planning" / "phone_call_log.json"),
+    ))
+    ctx.repo_root_fn = repo_root
+    ctx._respond = respond_fn
+    ctx._require_state_mutation_voice_auth = require_auth_fn
+    ctx._web_augmented_llm_conversation = web_augmented_fn
+    for attr, fn in cmd_fns.items():
+        setattr(ctx, attr, fn)
+    return ctx
+
+
+def _post_dispatch_learn(
+    intent: str,
+    rc: int,
+    text: str,
+    last_response: str,
+    execute: bool,
+    approve_privileged: bool,
+    voice_user: str,
+) -> None:
+    """Auto-ingest memory and fire background enriched learning after dispatch."""
+    try:
+        auto_id = _auto_ingest_memory(
+            source="user",
+            kind="episodic",
+            task_id=_make_task_id(f"voice-{intent}"),
+            content=(
+                f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
+                f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
+            ),
+        )
+        if auto_id:
+            print(f"auto_ingest_record_id={auto_id}")
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.debug("Auto-ingest of voice command memory failed: %s", exc)
+
+    # Enriched learning for ALL successful commands (not just LLM path).
+    # Runs in a daemon thread to avoid blocking the HTTP response -- the
+    # enriched pipeline may lazy-load embedding models on first call.
+    if intent != "llm_conversation":
+        learn_response = last_response or f"[{intent}] Command executed successfully."
+        try:
+            _learn_bus = get_bus()
+        except (OSError, RuntimeError) as exc:
+            logger.debug("get_bus() failed for background learning: %s", exc)
+            _learn_bus = None
+        if _learn_bus is not None:
+            _learn_cmd = LearnInteractionCommand(
+                user_message=text[:1000],
+                assistant_response=learn_response[:1000],
+                task_id=_make_task_id(f"learn-{intent}"),
+                route=intent,
+                topic=text[:100],
+            )
+
+            def _bg_learn(_bus: "CommandBus" = _learn_bus, _cmd: "LearnInteractionCommand" = _learn_cmd) -> None:
+                try:
+                    _bus.dispatch(_cmd)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    logger.warning("Background enriched learning failed: %s", exc)
+
+            threading.Thread(target=_bg_learn, daemon=True).start()
+
 
 def cmd_voice_run_impl(
     text: str,
@@ -814,31 +1049,18 @@ def cmd_voice_run_impl(
     _last_response = ""  # Capture assistant response for learning pipeline
 
     def _respond(msg: str) -> None:
-        """Print response= line and capture text for learning pipeline.
-
-        Newlines in the message are escaped so the entire response stays on
-        one stdout line -- the mobile API parser splits on newlines and would
-        otherwise truncate multi-line LLM answers.
-        """
+        """Print response= line and capture text for learning pipeline."""
         nonlocal _last_response
         _last_response = msg
         print(f"response={escape_response(msg)}")
 
-    phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
-
-    phone_report = repo_root() / ".planning" / "phone_spam_report.json"
-    phone_call_log = Path(os.getenv("JARVIS_CALL_LOG_JSON", str(repo_root() / ".planning" / "phone_call_log.json")))
-    owner_guard = read_owner_guard(repo_root())
     master_password_ok = False
     if master_password.strip():
         master_password_ok = verify_master_password(repo_root(), master_password.strip())
 
     read_only_request = _is_read_only_voice_request(
-        lowered,
-        execute=execute,
-        approve_privileged=approve_privileged,
+        lowered, execute=execute, approve_privileged=approve_privileged,
     )
-
 
     def _require_state_mutation_voice_auth() -> bool:
         if skip_voice_auth_guard:
@@ -848,110 +1070,64 @@ def cmd_voice_run_impl(
         print("intent=voice_auth_required")
         print("reason=state_mutating_voice_actions_require_voice_auth_wav")
         if speak:
-            cmd_voice_say(
-                text="Voice authentication is required for state changing commands.",
-            )
+            cmd_voice_say(text="Voice authentication is required for state changing commands.")
         return False
 
-    if bool(owner_guard.get("enabled", False)):
-        expected_owner = str(owner_guard.get("owner_user_id", "")).strip().lower()
-        incoming_owner = voice_user.strip().lower()
-        if expected_owner and incoming_owner != expected_owner and not master_password_ok:
-            print("intent=owner_guard_blocked")
-            print("reason=voice_user_not_owner")
-            if speak:
-                cmd_voice_say(
-                    text="Owner guard blocked this command.",
-                )
-            return 2
-        if (
-            not skip_voice_auth_guard
-            and not voice_auth_wav.strip()
-            and not master_password_ok
-            and not read_only_request
-        ):
-            print("intent=owner_guard_blocked")
-            print("reason=voice_auth_required_when_owner_guard_enabled")
-            if speak:
-                cmd_voice_say(
-                    text="Owner guard requires voice authentication for state-changing commands.",
-                )
-            return 2
-
-    if (
-        (execute or approve_privileged)
-        and not read_only_request
-        and not skip_voice_auth_guard
-        and not voice_auth_wav.strip()
-        and not master_password_ok
-    ):
-        print("intent=voice_auth_required")
-        print("reason=execute_or_privileged_voice_actions_require_voice_auth_wav")
-        if speak:
-            cmd_voice_say(
-                text="Voice authentication is required for executable commands.",
-            )
-        return 2
-
-    if voice_auth_wav.strip():
-        verify_rc = cmd_voice_verify(
-            user_id=voice_user,
-            wav_path=voice_auth_wav,
-            threshold=voice_threshold,
-        )
-        if verify_rc != 0:
-            print("intent=voice_auth_failed")
-            if speak:
-                cmd_voice_say(
-                    text="Voice authentication failed. Command blocked.",
-                )
-            return 2
+    # --- Auth validation ---
+    auth_rc = _validate_voice_auth(
+        voice_user=voice_user,
+        voice_auth_wav=voice_auth_wav,
+        voice_threshold=voice_threshold,
+        master_password=master_password,
+        master_password_ok=master_password_ok,
+        execute=execute,
+        approve_privileged=approve_privileged,
+        read_only_request=read_only_request,
+        skip_voice_auth_guard=skip_voice_auth_guard,
+        speak=speak,
+        cmd_voice_say=cmd_voice_say,
+        cmd_voice_verify=cmd_voice_verify,
+        repo_root=repo_root,
+    )
+    if auth_rc is not None:
+        return auth_rc
 
     # --- Build dispatch context ---
-    ctx = _DispatchCtx()
-    ctx.text = text
-    ctx.lowered = lowered
-    ctx.execute = execute
-    ctx.approve_privileged = approve_privileged
-    ctx.speak = speak
-    ctx.snapshot_path = snapshot_path
-    ctx.actions_path = actions_path
-    ctx.voice_user = voice_user
-    ctx.voice_auth_wav = voice_auth_wav
-    ctx.voice_threshold = voice_threshold
-    ctx.master_password = master_password
-    ctx.model_override = model_override
-    ctx.skip_voice_auth_guard = skip_voice_auth_guard
-    ctx.master_password_ok = master_password_ok
-    ctx.phone_queue = phone_queue
-    ctx.phone_report = phone_report
-    ctx.phone_call_log = phone_call_log
-    ctx.repo_root_fn = repo_root
-    ctx._respond = _respond
-    ctx._require_state_mutation_voice_auth = _require_state_mutation_voice_auth
-    ctx._web_augmented_llm_conversation = _web_augmented_llm_conversation
-    ctx.cmd_voice_say = cmd_voice_say
-    ctx.cmd_voice_verify = cmd_voice_verify
-    ctx.cmd_connect_bootstrap = cmd_connect_bootstrap
-    ctx.cmd_runtime_control = cmd_runtime_control
-    ctx.cmd_gaming_mode = cmd_gaming_mode
-    ctx.cmd_weather = cmd_weather
-    ctx.cmd_open_web = cmd_open_web
-    ctx.cmd_mobile_desktop_sync = cmd_mobile_desktop_sync
-    ctx.cmd_self_heal = cmd_self_heal
-    ctx.cmd_ops_autopilot = cmd_ops_autopilot
-    ctx.cmd_phone_spam_guard = cmd_phone_spam_guard
-    ctx.cmd_phone_action = cmd_phone_action
-    ctx.cmd_ops_sync = cmd_ops_sync
-    ctx.cmd_ops_brief = cmd_ops_brief
-    ctx.cmd_automation_run = cmd_automation_run
-    ctx.cmd_run_task = cmd_run_task
-    ctx.cmd_brain_context = cmd_brain_context
-    ctx.cmd_ingest = cmd_ingest
-    ctx.cmd_brain_status = cmd_brain_status
-    ctx.cmd_mission_cancel = cmd_mission_cancel
-    ctx.cmd_mission_status = cmd_mission_status
-    ctx.cmd_status = cmd_status
+    cmd_fns = {
+        "cmd_voice_say": cmd_voice_say,
+        "cmd_voice_verify": cmd_voice_verify,
+        "cmd_connect_bootstrap": cmd_connect_bootstrap,
+        "cmd_runtime_control": cmd_runtime_control,
+        "cmd_gaming_mode": cmd_gaming_mode,
+        "cmd_weather": cmd_weather,
+        "cmd_open_web": cmd_open_web,
+        "cmd_mobile_desktop_sync": cmd_mobile_desktop_sync,
+        "cmd_self_heal": cmd_self_heal,
+        "cmd_ops_autopilot": cmd_ops_autopilot,
+        "cmd_phone_spam_guard": cmd_phone_spam_guard,
+        "cmd_phone_action": cmd_phone_action,
+        "cmd_ops_sync": cmd_ops_sync,
+        "cmd_ops_brief": cmd_ops_brief,
+        "cmd_automation_run": cmd_automation_run,
+        "cmd_run_task": cmd_run_task,
+        "cmd_brain_context": cmd_brain_context,
+        "cmd_ingest": cmd_ingest,
+        "cmd_brain_status": cmd_brain_status,
+        "cmd_mission_cancel": cmd_mission_cancel,
+        "cmd_mission_status": cmd_mission_status,
+        "cmd_status": cmd_status,
+    }
+    ctx = _build_dispatch_ctx(
+        text, lowered,
+        execute=execute, approve_privileged=approve_privileged,
+        speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
+        voice_user=voice_user, voice_auth_wav=voice_auth_wav,
+        voice_threshold=voice_threshold, master_password=master_password,
+        model_override=model_override, skip_voice_auth_guard=skip_voice_auth_guard,
+        master_password_ok=master_password_ok, repo_root=repo_root,
+        respond_fn=_respond, require_auth_fn=_require_state_mutation_voice_auth,
+        web_augmented_fn=_web_augmented_llm_conversation, cmd_fns=cmd_fns,
+    )
 
     # --- Dispatch via rules table ---
     intent = "unknown"
@@ -966,79 +1142,34 @@ def cmd_voice_run_impl(
     )
 
     for matcher, handler in _DISPATCH_RULES:
-        # The phone_place_call matcher needs the additional number check
-        if handler is _handle_phone_place_call:
-            if not _phone_place_call_has_number:
-                continue
+        if handler is _handle_phone_place_call and not _phone_place_call_has_number:
+            continue
         if matcher(lowered):
             intent, rc = handler(ctx)
             break
     else:
-        # No keyword match -- route through LLM for a conversational response.
         intent = "llm_conversation"
         rc = _web_augmented_llm_conversation(
-            text,
-            speak=speak,
-            force_web_search=False,
-            model_override=model_override,
-            default_route="routine",
-            try_fallback_classifier=True,
-            response_callback=_respond,
+            text, speak=speak, force_web_search=False,
+            model_override=model_override, default_route="routine",
+            try_fallback_classifier=True, response_callback=_respond,
         )
 
     print(f"intent={intent}")
     print(f"status_code={rc}")
+
     if rc == 0:
-        try:
-            auto_id = _auto_ingest_memory(
-                source="user",
-                kind="episodic",
-                task_id=_make_task_id(f"voice-{intent}"),
-                content=(
-                    f"Voice command accepted. intent={intent}; status_code={rc}; execute={execute}; "
-                    f"approve_privileged={approve_privileged}; voice_user={voice_user}; text={text[:500]}"
-                ),
-            )
-            if auto_id:
-                print(f"auto_ingest_record_id={auto_id}")
-        except (OSError, RuntimeError, ValueError) as exc:
-            logger.debug("Auto-ingest of voice command memory failed: %s", exc)
-        # Enriched learning for ALL successful commands (not just LLM path).
-        # Runs in a daemon thread to avoid blocking the HTTP response -- the
-        # enriched pipeline may lazy-load embedding models on first call.
-        if intent != "llm_conversation":
-            learn_response = _last_response or f"[{intent}] Command executed successfully."
-            # Capture bus reference on current thread (where repo_root override is active)
-            try:
-                _learn_bus = get_bus()
-            except (OSError, RuntimeError) as exc:
-                logger.debug("get_bus() failed for background learning: %s", exc)
-                _learn_bus = None
-            if _learn_bus is not None:
-                _learn_cmd = LearnInteractionCommand(
-                    user_message=text[:1000],
-                    assistant_response=learn_response[:1000],
-                    task_id=_make_task_id(f"learn-{intent}"),
-                    route=intent,
-                    topic=text[:100],
-                )
+        _post_dispatch_learn(
+            intent, rc, text, _last_response,
+            execute, approve_privileged, voice_user,
+        )
 
-                def _bg_learn(_bus: "CommandBus" = _learn_bus, _cmd: "LearnInteractionCommand" = _learn_cmd) -> None:
-                    try:
-                        _bus.dispatch(_cmd)
-                    except (OSError, RuntimeError, ValueError) as exc:
-                        logger.warning("Background enriched learning failed: %s", exc)
-
-                threading.Thread(target=_bg_learn, daemon=True).start()
     if speak and intent != "llm_conversation":
         persona = load_persona_config(repo_root())
         persona_line = compose_persona_reply(
-            persona,
-            intent=intent,
-            success=(rc == 0),
+            persona, intent=intent, success=(rc == 0),
             reason="" if rc == 0 else "failed or requires approval",
         )
-        cmd_voice_say(
-            text=persona_line,
-        )
+        cmd_voice_say(text=persona_line)
+
     return rc

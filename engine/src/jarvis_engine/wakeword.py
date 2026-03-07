@@ -240,6 +240,7 @@ class WakeWordDetector:
                     import sounddevice as _sd  # type: ignore[import-untyped]
                     sd_module = _sd
                 except ImportError:
+                    logger.debug("sounddevice not available; cannot start audio stream")
                     return
             self._stream = sd_module.InputStream(
                 samplerate=16000, channels=1, dtype="float32", blocksize=1280,

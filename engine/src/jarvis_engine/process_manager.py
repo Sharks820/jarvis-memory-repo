@@ -231,7 +231,8 @@ def read_pid_file(service: str, root: Path) -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.debug("Cannot read PID file for %s: %s", service, exc)
         return None
     pid = data.get("pid")
     if not isinstance(pid, int) or not _check_pid_alive(pid):
