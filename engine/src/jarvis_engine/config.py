@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import functools
-import json
 import logging
 import os
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
+
+from jarvis_engine._shared import load_json_file
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +79,8 @@ def load_config() -> EngineConfig:
     profile field from the config file.
     """
     config_path = repo_root() / ".planning" / "config.json"
-    try:
-        data: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
-        logger.warning("Failed to load config from %s: %s; using defaults", config_path, exc)
+    data: dict[str, Any] = load_json_file(config_path, None, expected_type=dict)
+    if data is None:
         cfg = EngineConfig()
         env_profile = os.getenv("JARVIS_ENGINE_PROFILE", "").strip()
         if env_profile:

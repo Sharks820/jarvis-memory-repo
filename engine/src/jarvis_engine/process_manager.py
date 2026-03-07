@@ -16,7 +16,8 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager
 from typing import Any
 
 from jarvis_engine._shared import atomic_write_json
@@ -151,7 +152,7 @@ def _verify_pid_identity(pid: int, stored_create_ts: float | None) -> bool:
 # PID file CRUD
 # ---------------------------------------------------------------------------
 
-def _lock_pid_file(service: str, root: Path):
+def _lock_pid_file(service: str, root: Path) -> AbstractContextManager[None]:
     """Acquire an exclusive lock file for PID operations on *service*.
 
     Returns a context manager. Uses a separate .lock file to avoid
@@ -163,7 +164,7 @@ def _lock_pid_file(service: str, root: Path):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
 
     @contextlib.contextmanager
-    def _lock():
+    def _lock() -> Iterator[None]:
         fd = None
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
@@ -226,13 +227,13 @@ def read_pid_file(service: str, root: Path) -> dict[str, Any] | None:
     Validates both that the PID is alive AND that its creation time matches
     the stored ``started_utc`` to guard against PID reuse by the OS.
     """
+    from jarvis_engine._shared import load_json_file
+
     path = _pid_path(service, root)
     if not path.exists():
         return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("Cannot read PID file for %s: %s", service, exc)
+    data = load_json_file(path, None)
+    if data is None:
         return None
     pid = data.get("pid")
     if not isinstance(pid, int) or not _check_pid_alive(pid):
@@ -429,9 +430,10 @@ def check_and_restart_services(
         # Try to read the raw JSON without the auto-cleanup side effect
         # of read_pid_file so we can distinguish "file present but stale"
         # from "file absent".
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        from jarvis_engine._shared import load_json_file
+
+        data = load_json_file(path, None)
+        if data is None:
             # Corrupt PID file — clean it up.
             _remove_pid_file_path(path)
             dead_services.append(svc)

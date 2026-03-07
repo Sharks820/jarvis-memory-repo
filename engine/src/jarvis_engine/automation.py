@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from jarvis_engine._shared import load_json_file
 from jarvis_engine.capability import CapabilityGate
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.policy import PolicyEngine
@@ -30,10 +30,9 @@ class ActionOutcome:
 
 
 def load_actions(path: Path) -> list[PlannedAction]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise ValueError(f"Failed to load actions from {path}: {exc}") from exc
+    raw = load_json_file(path, None)
+    if raw is None:
+        raise ValueError(f"Failed to load actions from {path}")
     if not isinstance(raw, list):
         raise ValueError(f"Expected JSON array in {path}, got {type(raw).__name__}")
     out: list[PlannedAction] = []

@@ -194,10 +194,11 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
         if not config_path.exists():
             print(f"error: config file not found: {config_file}")
             return 2
-        try:
-            config_data = json.loads(config_path.read_text(encoding="utf-8"))
-        except (ValueError, OSError) as exc:
-            print(f"error: failed to read config file: {exc}")
+        from jarvis_engine._shared import load_json_file
+
+        config_data = load_json_file(config_path, None)
+        if config_data is None:
+            print(f"error: failed to read config file: {config_file}")
             return 2
         # CLI args override config file values
         if not token:
@@ -1073,10 +1074,8 @@ def _dispatch_voice_run(a) -> int:
     )
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Jarvis engine bootstrap CLI.")
-    sub = parser.add_subparsers(dest="command", required=True)
-
+def _register_core_commands(sub: argparse._SubParsersAction) -> None:
+    """Register status, log, ingest, serve-mobile, route subcommands."""
     sub.add_parser("status", help="Show engine bootstrap status.").set_defaults(handler=lambda a: cmd_status())
 
     p_log = sub.add_parser("log", help="Append an event to memory log.")
@@ -1140,6 +1139,9 @@ def main() -> int:
     )
     p_route.set_defaults(handler=lambda a: cmd_route(risk=a.risk, complexity=a.complexity))
 
+
+def _register_growth_commands(sub: argparse._SubParsersAction) -> None:
+    """Register growth-eval, growth-report, growth-audit, intelligence-dashboard."""
     p_growth_eval = sub.add_parser("growth-eval", help="Run golden-task model growth evaluation.")
     p_growth_eval.add_argument("--model", required=True, help="Ollama model id.")
     p_growth_eval.add_argument("--endpoint", default="http://127.0.0.1:11434")
@@ -1197,6 +1199,9 @@ def main() -> int:
     p_intelligence.add_argument("--json", action="store_true", help="Print full JSON payload.")
     p_intelligence.set_defaults(handler=lambda a: cmd_intelligence_dashboard(last_runs=a.last_runs, output_path=a.output_path, as_json=a.json))
 
+
+def _register_brain_knowledge_commands(sub: argparse._SubParsersAction) -> None:
+    """Register brain-status/context/compact/regression, knowledge-status, contradiction, fact-lock."""
     p_brain_status = sub.add_parser("brain-status", help="Show high-level brain memory branch stats.")
     p_brain_status.add_argument("--json", action="store_true")
     p_brain_status.set_defaults(handler=lambda a: cmd_brain_status(as_json=a.json))
@@ -1246,6 +1251,9 @@ def main() -> int:
     p_kg_regression.add_argument("--json", action="store_true")
     p_kg_regression.set_defaults(handler=lambda a: cmd_knowledge_regression(snapshot_path=a.snapshot, as_json=a.json))
 
+
+def _register_memory_commands(sub: argparse._SubParsersAction) -> None:
+    """Register memory-snapshot, maintenance, web-research, sync, self-heal, persona, migrate, widget."""
     p_snapshot = sub.add_parser("memory-snapshot", help="Create or verify signed memory snapshot.")
     p_snapshot_group = p_snapshot.add_mutually_exclusive_group(required=True)
     p_snapshot_group.add_argument("--create", action="store_true")
@@ -1289,6 +1297,9 @@ def main() -> int:
 
     sub.add_parser("desktop-widget", help="Launch desktop-native Jarvis widget window.").set_defaults(handler=lambda a: cmd_desktop_widget())
 
+
+def _register_task_commands(sub: argparse._SubParsersAction) -> None:
+    """Register run-task subcommand."""
     p_run_task = sub.add_parser("run-task", help="Run multimodal Jarvis task.")
     p_run_task.add_argument("--type", required=True, choices=["image", "code", "video", "model3d"])
     p_run_task.add_argument("--prompt", required=True)
@@ -1308,6 +1319,9 @@ def main() -> int:
     p_run_task.add_argument("--output-path")
     p_run_task.set_defaults(handler=lambda a: cmd_run_task(task_type=a.type, prompt=a.prompt, execute=a.execute, approve_privileged=a.approve_privileged, model=a.model, endpoint=a.endpoint, quality_profile=a.quality_profile, output_path=a.output_path))
 
+
+def _register_ops_commands(sub: argparse._SubParsersAction) -> None:
+    """Register ops-brief, ops-export-actions, ops-sync, ops-autopilot, daemon-run."""
     p_ops_brief = sub.add_parser("ops-brief", help="Generate daily life operations brief.")
     p_ops_brief.add_argument(
         "--snapshot-path",
@@ -1370,6 +1384,9 @@ def main() -> int:
     p_daemon.add_argument("--self-test-every-cycles", type=int, default=20)
     p_daemon.set_defaults(handler=lambda a: cmd_daemon_run(interval_s=a.interval_s, snapshot_path=Path(a.snapshot_path), actions_path=Path(a.actions_path), execute=a.execute, approve_privileged=a.approve_privileged, auto_open_connectors=a.auto_open_connectors, max_cycles=a.max_cycles, idle_interval_s=a.idle_interval_s, idle_after_s=a.idle_after_s, run_missions=not a.skip_missions, sync_every_cycles=a.sync_every_cycles, self_heal_every_cycles=a.self_heal_every_cycles, self_test_every_cycles=a.self_test_every_cycles))
 
+
+def _register_mission_learning_commands(sub: argparse._SubParsersAction) -> None:
+    """Register mission-create/status/run/cancel, consolidate."""
     p_mission_create = sub.add_parser("mission-create", help="Create a learning mission.")
     p_mission_create.add_argument("--topic", required=True)
     p_mission_create.add_argument("--objective", default="")
@@ -1402,6 +1419,9 @@ def main() -> int:
     p_consolidate.add_argument("--dry-run", action="store_true", help="Compute clusters but don't write.")
     p_consolidate.set_defaults(handler=lambda a: cmd_consolidate(branch=a.branch, max_groups=a.max_groups, dry_run=a.dry_run))
 
+
+def _register_runtime_security_commands(sub: argparse._SubParsersAction) -> None:
+    """Register runtime-control, owner-guard, gaming-mode, automation-run, connect-*."""
     p_runtime = sub.add_parser("runtime-control", help="Pause/resume daemon and toggle safe mode.")
     p_runtime_group = p_runtime.add_mutually_exclusive_group()
     p_runtime_group.add_argument("--pause", action="store_true")
@@ -1462,6 +1482,9 @@ def main() -> int:
     p_connect_bootstrap.add_argument("--auto-open", action="store_true", help="Open tap URLs in browser.")
     p_connect_bootstrap.set_defaults(handler=lambda a: cmd_connect_bootstrap(auto_open=a.auto_open))
 
+
+def _register_phone_commands(sub: argparse._SubParsersAction) -> None:
+    """Register phone-action, phone-spam-guard."""
     p_phone_action = sub.add_parser("phone-action", help="Queue phone action (send SMS/place call/ignore/block).")
     p_phone_action.add_argument("--action", required=True, choices=["send_sms", "place_call", "ignore_call", "block_number", "silence_unknown_callers"])
     p_phone_action.add_argument("--number", default="")
@@ -1488,6 +1511,9 @@ def main() -> int:
     p_phone_spam.add_argument("--threshold", type=float, default=0.65)
     p_phone_spam.set_defaults(handler=lambda a: cmd_phone_spam_guard(call_log_path=Path(a.call_log_path), report_path=Path(a.report_path), queue_path=Path(a.queue_path), threshold=a.threshold))
 
+
+def _register_voice_commands(sub: argparse._SubParsersAction) -> None:
+    """Register voice-list, voice-say, voice-enroll, voice-verify, voice-run, voice-listen."""
     sub.add_parser("voice-list", help="List available local Windows voices.").set_defaults(handler=lambda a: cmd_voice_list())
 
     p_voice = sub.add_parser("voice-say", help="Speak text with local Windows voice synthesis.")
@@ -1549,7 +1575,9 @@ def main() -> int:
     p_voice_listen.add_argument("--execute", action="store_true", help="Execute transcribed text as a voice command.")
     p_voice_listen.set_defaults(handler=lambda a: cmd_voice_listen(duration=a.duration, language=a.language, execute=a.execute))
 
-    # -- Harvesting --
+
+def _register_harvesting_commands(sub: argparse._SubParsersAction) -> None:
+    """Register harvest, ingest-session, harvest-budget."""
     p_harvest = sub.add_parser("harvest", help="Harvest knowledge about a topic from external AI sources.")
     p_harvest.add_argument("--topic", required=True, help="Topic to harvest knowledge about.")
     p_harvest.add_argument("--providers", default=None, help="Comma-separated list of providers (default: all available).")
@@ -1570,7 +1598,9 @@ def main() -> int:
     p_harvest_budget.add_argument("--limit-requests", type=int, default=None, help="Request count limit.")
     p_harvest_budget.set_defaults(handler=lambda a: cmd_harvest_budget(action=a.action, provider=a.provider, period=a.period, limit_usd=a.limit_usd, limit_requests=a.limit_requests))
 
-    # -- Learning --
+
+def _register_learning_commands(sub: argparse._SubParsersAction) -> None:
+    """Register learn, cross-branch-query, flag-expired, memory-eval."""
     p_learn = sub.add_parser("learn", help="Manually trigger learning from text input.")
     p_learn.add_argument("--user-message", required=True, help="User message text.")
     p_learn.add_argument("--assistant-response", required=True, help="Assistant response text.")
@@ -1585,6 +1615,9 @@ def main() -> int:
 
     sub.add_parser("memory-eval", help="Run memory-recall golden task evaluation.").set_defaults(handler=lambda a: cmd_memory_eval())
 
+
+def _register_proactive_commands(sub: argparse._SubParsersAction) -> None:
+    """Register proactive-check, wake-word, cost-reduction, self-test."""
     p_proactive = sub.add_parser("proactive-check", help="Manually trigger proactive evaluation.")
     p_proactive.add_argument("--snapshot-path", default="", help="Path to ops snapshot JSON.")
     p_proactive.set_defaults(handler=lambda a: cmd_proactive_check(snapshot_path=a.snapshot_path))
@@ -1600,6 +1633,26 @@ def main() -> int:
     p_selftest = sub.add_parser("self-test", help="Run adversarial memory quiz.")
     p_selftest.add_argument("--threshold", type=float, default=0.5, help="Score threshold for alerts.")
     p_selftest.set_defaults(handler=lambda a: cmd_self_test(threshold=a.threshold))
+
+
+def main() -> int:
+    """CLI entrypoint: parse args and dispatch to the matching command handler."""
+    parser = argparse.ArgumentParser(description="Jarvis engine bootstrap CLI.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    _register_core_commands(sub)
+    _register_growth_commands(sub)
+    _register_brain_knowledge_commands(sub)
+    _register_memory_commands(sub)
+    _register_task_commands(sub)
+    _register_ops_commands(sub)
+    _register_mission_learning_commands(sub)
+    _register_runtime_security_commands(sub)
+    _register_phone_commands(sub)
+    _register_voice_commands(sub)
+    _register_harvesting_commands(sub)
+    _register_learning_commands(sub)
+    _register_proactive_commands(sub)
 
     args = parser.parse_args()
     return args.handler(args)

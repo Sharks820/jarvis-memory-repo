@@ -151,8 +151,10 @@ class IntelligenceRoutesMixin:
             mission_file = _runtime_dir(root) / "learning_missions.json"
             active_missions: list[dict[str, Any]] = []
             if mission_file.exists():
-                mission_data = json.loads(mission_file.read_text(encoding="utf-8"))
-                if isinstance(mission_data, dict):
+                from jarvis_engine._shared import load_json_file
+
+                mission_data = load_json_file(mission_file, {}, expected_type=dict)
+                if mission_data:
                     rows = mission_data.get("missions", [])
                     if isinstance(rows, list):
                         active_missions = [

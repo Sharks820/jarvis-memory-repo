@@ -6,7 +6,6 @@ of 30 days ensures stale interests fade naturally.
 
 Thread-safe via a module-level lock on the JSON backing store.
 """
-import json
 import logging
 import math
 import threading
@@ -31,13 +30,9 @@ class InterestLearner:
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     def _load(self) -> dict:
-        if self._path.exists():
-            try:
-                return json.loads(self._path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupt interests file %s — resetting", self._path)
-                return {}
-        return {}
+        from jarvis_engine._shared import load_json_file
+
+        return load_json_file(self._path, {}, expected_type=dict)
 
     def _save(self, data: dict) -> None:
         try:

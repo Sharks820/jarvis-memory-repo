@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 from dataclasses import dataclass
@@ -8,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import load_json_file
 from jarvis_engine._shared import safe_float as _safe_float
 
 logger = logging.getLogger(__name__)
@@ -36,13 +36,7 @@ def _safe_bool(value: Any) -> bool:
 
 
 def load_snapshot(path: Path) -> OpsSnapshot:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
-        logger.warning("Failed to load snapshot from %s: %s", path, exc)
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
+    raw = load_json_file(path, {}, expected_type=dict)
     raw.setdefault("date", "")
     raw.setdefault("tasks", [])
     raw.setdefault("calendar_events", [])

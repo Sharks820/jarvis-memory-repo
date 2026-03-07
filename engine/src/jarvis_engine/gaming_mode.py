@@ -17,7 +17,6 @@ __all__ = [
 ]
 
 import csv
-import json
 import logging
 import os
 import subprocess
@@ -128,11 +127,10 @@ def load_gaming_processes(processes_path: Path) -> list[str]:
     if env_override:
         return [item.strip() for item in env_override.split(",") if item.strip()]
 
-    if not processes_path.exists():
-        return list(DEFAULT_GAMING_PROCESSES)
-    try:
-        raw = json.loads(processes_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    from jarvis_engine._shared import load_json_file
+
+    raw = load_json_file(processes_path, None)
+    if raw is None:
         return list(DEFAULT_GAMING_PROCESSES)
 
     if isinstance(raw, dict):

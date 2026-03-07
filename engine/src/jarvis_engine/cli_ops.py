@@ -66,12 +66,9 @@ def cmd_ops_sync(output_path: Path) -> int:
     print(f"connectors_pending={summary.connectors_pending}")
     print(f"connector_prompts={summary.connector_prompts}")
     if summary.connector_prompts > 0:
-        try:
-            raw = json.loads(output_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            raw = {}
-        if not isinstance(raw, dict):
-            raw = {}
+        from jarvis_engine._shared import load_json_file
+
+        raw = load_json_file(output_path, {}, expected_type=dict)
         prompts_raw = raw.get("connector_prompts", [])
         if not isinstance(prompts_raw, list):
             prompts_raw = []

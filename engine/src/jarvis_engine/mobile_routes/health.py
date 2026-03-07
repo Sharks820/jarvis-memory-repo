@@ -110,13 +110,10 @@ class HealthRoutesMixin:
         from jarvis_engine.process_manager import list_services
 
         services = list_services(self._root)
-        control = {}
+        from jarvis_engine._shared import load_json_file
+
         ctrl_path = _runtime_dir(self._root) / "control.json"
-        if ctrl_path.exists():
-            try:
-                control = json.loads(ctrl_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.debug("Failed to read control.json: %s", exc)
+        control = load_json_file(ctrl_path, {})
         self._write_json(HTTPStatus.OK, {
             "ok": True,
             "services": services,

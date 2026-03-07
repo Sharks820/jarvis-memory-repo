@@ -108,12 +108,12 @@ class FamilyShield:
         self._members: list[dict] = []
         self._lock = threading.Lock()
 
-        if self._config_path and self._config_path.exists():
-            try:
-                data = json.loads(self._config_path.read_text(encoding="utf-8"))
+        if self._config_path:
+            from jarvis_engine._shared import load_json_file
+
+            data = load_json_file(self._config_path, None, expected_type=dict)
+            if data is not None:
                 self._members = data.get("members", [])
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Failed to load FamilyShield config: %s", exc)
 
     # ------------------------------------------------------------------
     # Public API

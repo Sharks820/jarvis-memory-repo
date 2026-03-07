@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable
 
@@ -124,16 +125,13 @@ class ConversationState:
         ``get_history_messages`` which already holds the same lock.
         """
         with self._conversation_history_lock:
-            try:
-                path = self._conversation_history_path()
-                if path.exists():
-                    import json as _json
-                    data = _json.loads(path.read_text(encoding="utf-8"))
-                    if isinstance(data, list):
-                        self._conversation_history.clear()
-                        self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
-            except (OSError, json.JSONDecodeError, ValueError) as exc:
-                logger.debug("Could not load conversation history: %s", exc)
+            from jarvis_engine._shared import load_json_file
+
+            path = self._conversation_history_path()
+            data = load_json_file(path, None, expected_type=list)
+            if data is not None:
+                self._conversation_history.clear()
+                self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
 
     def save_conversation_history(self, *, force: bool = False) -> None:
         """Persist current conversation history to disk (atomic write).
@@ -250,8 +248,8 @@ def _flush_history_atexit() -> None:
     """Flush any unsaved conversation history on process exit."""
     try:
         _state.save_conversation_history(force=True)
-    except Exception:  # noqa: BLE001 — best-effort at shutdown
-        pass
+    except Exception as exc:  # noqa: BLE001 — best-effort at shutdown
+        logger.debug("atexit conversation history flush failed: %s", exc)
 
 
 _atexit.register(_flush_history_atexit)
@@ -289,10 +287,10 @@ class _ConversationHistoryProxy:
         with _state._conversation_history_lock:
             return len(_state._conversation_history)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[dict[str, str]]:
         return iter(_state.get_history_messages())
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int | slice) -> dict[str, str] | list[dict[str, str]]:
         return _state.get_history_messages()[idx]
 
     def __bool__(self) -> bool:

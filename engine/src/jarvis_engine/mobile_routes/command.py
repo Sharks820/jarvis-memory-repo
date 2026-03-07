@@ -310,9 +310,9 @@ class CommandRoutesMixin:
         try:
             snapshot_path = self._root / ".planning" / _OPS_SNAPSHOT_FILENAME
             if snapshot_path.exists():
-                import json as _json
+                from jarvis_engine._shared import load_json_file
 
-                snap = _json.loads(snapshot_path.read_text(encoding="utf-8"))
+                snap = load_json_file(snapshot_path, {})
                 events = snap.get("calendar_events", [])
                 from datetime import datetime as _dt
 

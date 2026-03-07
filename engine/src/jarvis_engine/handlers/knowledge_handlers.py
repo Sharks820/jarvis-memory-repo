@@ -200,11 +200,10 @@ class KnowledgeRegressionHandler:
                 snap_path = snap_path.with_suffix(".json")
 
             # Load previous metrics from snapshot metadata
-            try:
-                meta = json.loads(snap_path.read_text(encoding="utf-8"))
-                prev_metrics = meta.get("kg_metrics")
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Failed to load snapshot metadata from %s: %s", snap_path, exc)
+            from jarvis_engine._shared import load_json_file
+
+            meta = load_json_file(snap_path, None, expected_type=dict)
+            if meta is None:
                 return KnowledgeRegressionResult(
                     report={
                         "status": "error",
@@ -212,6 +211,7 @@ class KnowledgeRegressionHandler:
                         "current": current,
                     },
                 )
+            prev_metrics = meta.get("kg_metrics")
 
             report = checker.compare(prev_metrics, current)
         else:

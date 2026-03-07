@@ -492,10 +492,12 @@ def save_campaigns(path: Path, campaigns: list[ScamCampaign]) -> None:
 
 def load_campaigns(path: Path) -> list[ScamCampaign]:
     """Load campaigns from JSON file."""
-    if not path.exists():
+    from jarvis_engine._shared import load_json_file
+
+    data = load_json_file(path, None)
+    if data is None:
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
         campaigns = []
         for c in data.get("campaigns", []):
             campaigns.append(ScamCampaign(**{
@@ -503,7 +505,7 @@ def load_campaigns(path: Path) -> list[ScamCampaign]:
                 if k in ScamCampaign.__dataclass_fields__
             }))
         return campaigns
-    except (json.JSONDecodeError, OSError, TypeError) as exc:
+    except (TypeError, AttributeError) as exc:
         logger.debug("Cannot load scam campaigns from %s: %s", path, exc)
         return []
 
@@ -571,13 +573,9 @@ def lookup_carrier_cached(path: Path, number: str) -> CarrierIntel | None:
 
 
 def _load_carrier_cache(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("Cannot load carrier cache from %s: %s", path, exc)
-        return {}
+    from jarvis_engine._shared import load_json_file
+
+    return load_json_file(path, {}, expected_type=dict)
 
 
 # ---------------------------------------------------------------------------

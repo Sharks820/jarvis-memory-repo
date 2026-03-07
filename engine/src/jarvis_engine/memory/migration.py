@@ -28,13 +28,9 @@ _MAX_ERROR_DETAILS = 200
 
 def _load_checkpoint(checkpoint_path: Path) -> dict | None:
     """Load migration checkpoint if it exists."""
-    if not checkpoint_path.exists():
-        return None
-    try:
-        return json.loads(checkpoint_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("Cannot load migration checkpoint from %s: %s", checkpoint_path, exc)
-        return None
+    from jarvis_engine._shared import load_json_file
+
+    return load_json_file(checkpoint_path, None)
 
 
 def _save_checkpoint(checkpoint_path: Path, data: dict) -> None:

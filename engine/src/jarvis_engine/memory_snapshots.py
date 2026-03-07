@@ -200,9 +200,10 @@ def verify_signed_snapshot(root: Path, snapshot_path: Path) -> SnapshotVerificat
             actual_signature="",
         )
 
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    from jarvis_engine._shared import load_json_file
+
+    metadata = load_json_file(metadata_path, None)
+    if metadata is None:
         return SnapshotVerification(
             ok=False,
             reason="metadata_invalid_json",
@@ -263,20 +264,20 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
             # Find most recent snapshot metadata with kg_metrics (skip the one we just created)
             prev_kg_metrics = None
             meta_files = sorted(snapshot_dir.glob("brain-snapshot-*.json"), reverse=True)
+            from jarvis_engine._shared import load_json_file
+
             for meta_file in meta_files:
                 if meta_file.resolve() == snapshot.metadata_path.resolve():
                     continue  # Skip the snapshot we just created
-                try:
-                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                    if "kg_metrics" in meta:
-                        prev_kg_metrics = meta["kg_metrics"]
-                        break
-                except (json.JSONDecodeError, OSError) as exc:
-                    logger.debug("Skipping unreadable snapshot metadata %s: %s", meta_file, exc)
+                meta = load_json_file(meta_file, None, expected_type=dict)
+                if meta is None:
                     continue
+                if "kg_metrics" in meta:
+                    prev_kg_metrics = meta["kg_metrics"]
+                    break
 
             # Load current KG metrics from the snapshot we just created
-            current_meta = json.loads(snapshot.metadata_path.read_text(encoding="utf-8"))
+            current_meta = load_json_file(snapshot.metadata_path, {}, expected_type=dict)
             current_kg_metrics = current_meta.get("kg_metrics")
 
             if current_kg_metrics:

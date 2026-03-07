@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -50,14 +49,11 @@ def resource_pressure_path(root: Path) -> Path:
 
 
 def read_control_state(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = control_state_path(root)
-    if not path.exists():
-        return dict(DEFAULT_CONTROL_STATE)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return dict(DEFAULT_CONTROL_STATE)
-    if not isinstance(raw, dict):
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return dict(DEFAULT_CONTROL_STATE)
     state = {
         "daemon_paused": bool(raw.get("daemon_paused", False)),
@@ -82,14 +78,9 @@ def read_control_state(root: Path) -> dict[str, Any]:
 
 def read_resource_budgets(root: Path) -> dict[str, float]:
     path = resource_budgets_path(root)
-    raw: dict[str, Any] = {}
-    if path.exists():
-        try:
-            parsed = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(parsed, dict):
-                raw = parsed
-        except (json.JSONDecodeError, OSError):
-            raw = {}
+    from jarvis_engine._shared import load_json_file
+
+    raw: dict[str, Any] = load_json_file(path, {}, expected_type=dict)
     merged = dict(DEFAULT_RESOURCE_BUDGETS)
     for key, default_val in DEFAULT_RESOURCE_BUDGETS.items():
         value = raw.get(key)

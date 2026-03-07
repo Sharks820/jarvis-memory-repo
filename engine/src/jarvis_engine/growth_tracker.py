@@ -16,6 +16,7 @@ from jarvis_engine._shared import sha256_hex
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
+    from jarvis_engine.memory.engine import MemoryEngine
 
 _logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ _TASK_INDEX: dict[str, MemoryRecallTask] = {t.task_id: t for t in DEFAULT_MEMORY
 
 def evaluate_memory_recall(
     task: MemoryRecallTask,
-    engine: Any,
+    engine: MemoryEngine,
     embed_service: EmbedServiceProtocol,
 ) -> MemoryRecallResult:
     """Evaluate a single memory-recall golden task.
@@ -168,7 +169,7 @@ def evaluate_memory_recall(
 
 def run_memory_eval(
     tasks: list[MemoryRecallTask],
-    engine: Any,
+    engine: MemoryEngine,
     embed_service: EmbedServiceProtocol,
 ) -> list[MemoryRecallResult]:
     """Evaluate all memory-recall golden tasks and return results.
@@ -193,7 +194,7 @@ def run_memory_eval(
 
 def eval_branch(
     branch: str,
-    engine: Any,
+    engine: MemoryEngine,
     embed_service: EmbedServiceProtocol,
 ) -> dict:
     """Evaluate only the golden tasks for a specific branch.
@@ -270,7 +271,11 @@ _history_lock = threading.RLock()
 
 
 def load_golden_tasks(path: Path) -> list[GoldenTask]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    from jarvis_engine._shared import load_json_file
+
+    raw = load_json_file(path, None)
+    if raw is None:
+        raise ValueError(f"Failed to load golden tasks from {path}")
     if not isinstance(raw, list):
         raise ValueError("Golden tasks file must contain a JSON array.")
     tasks: list[GoldenTask] = []
