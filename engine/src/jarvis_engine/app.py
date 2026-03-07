@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any, Callable, cast
 
@@ -256,7 +257,7 @@ def create_app(root: Path) -> CommandBus:
         try:
             from jarvis_engine.learning.temporal import migrate_temporal_metadata
             migrate_temporal_metadata(engine.db, engine.write_lock)
-        except Exception as exc_tm:
+        except (ImportError, sqlite3.Error, OSError) as exc_tm:
             logger.warning("Temporal metadata migration skipped: %s", exc_tm)
         pipeline = EnrichedIngestPipeline(
             engine, embed_service, classifier, knowledge_graph=kg,
@@ -420,7 +421,7 @@ def create_app(root: Path) -> CommandBus:
             _shared_orch = SecurityOrchestrator(
                 db=_sec_db, write_lock=_sec_lock, log_dir=_sec_log_dir,
             )
-        except Exception as exc:
+        except (ImportError, OSError, sqlite3.Error) as exc:
             logger.warning("Shared SecurityOrchestrator init failed (handlers will retry): %s", exc)
 
         _defense_registrations: list[tuple[type[object], Callable[..., Any]]] = [
@@ -438,7 +439,7 @@ def create_app(root: Path) -> CommandBus:
                 bus.register(_cmd_cls, cast(Callable[..., Any], _handler))
             except Exception as exc:
                 logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error) as exc:
         logger.warning("Failed to import defense commands: %s", exc)
 
     # -- Knowledge --
@@ -652,7 +653,7 @@ def create_app(root: Path) -> CommandBus:
             try:
                 embed_service.embed("warmup", prefix="search_document")
                 logger.info("Embedding model warmed up")
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 logger.debug("Embedding warm-up failed (will load on first use): %s", exc)
 
         import threading as _threading

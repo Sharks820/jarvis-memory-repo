@@ -161,7 +161,7 @@ def _get_recently_harvested_topics(root: Path) -> set[str]:
             summary = ev.summary or ""
             if summary:
                 recent.add(summary.lower().strip())
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
         logger.debug("Failed to read recent harvest topics from activity feed: %s", exc)
     return recent
 
@@ -307,7 +307,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                         break
                     if len(candidates) >= _MAX_TOPICS:
                         break
-            except Exception as exc:
+            except (sqlite3.Error, OSError) as exc:
                 logger.debug("Failed to discover harvest topics from knowledge graph: %s", exc)
     finally:
         if conn is not None:
@@ -332,7 +332,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                             break
                     if len(candidates) >= _MAX_TOPICS:
                         break
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
         logger.debug("Failed to extract harvest topics from activity feed fact summaries: %s", exc)
 
     if len(candidates) >= _MAX_TOPICS:
@@ -350,7 +350,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                     if len(topic.split()) >= 2:
                         if _add_candidate(topic):
                             break
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         logger.debug("Failed to discover harvest topics from learning missions: %s", exc)
 
     return candidates[:_MAX_TOPICS]
@@ -714,7 +714,7 @@ def cmd_daemon_run_impl(
                 print(f"resource_process_memory_mb={_rss}")
                 print(f"resource_process_cpu_pct={_cpu}")
                 print(f"resource_embedding_cache_mb={_emb}")
-            except Exception as exc:
+            except (AttributeError, KeyError, TypeError) as exc:
                 logger.debug("Resource metric print failed: %s", exc)
             if pressure_level in {"mild", "severe"}:
                 print(f"resource_throttle_sleep_s={sleep_seconds}")
@@ -736,7 +736,7 @@ def cmd_daemon_run_impl(
                             "skip_heavy_tasks": skip_heavy_tasks,
                         },
                     )
-                except Exception as exc:
+                except (ImportError, OSError, sqlite3.Error) as exc:
                     logger.debug("Resource pressure activity log failed: %s", exc)
             elif pressure_level == "none" and last_pressure_level != "none":
                 try:
@@ -753,7 +753,7 @@ def cmd_daemon_run_impl(
                             "skip_heavy_tasks": skip_heavy_tasks,
                         },
                     )
-                except Exception as exc:
+                except (ImportError, OSError, sqlite3.Error) as exc:
                     logger.debug("Resource pressure recovery log failed: %s", exc)
             last_pressure_level = pressure_level
             if idle_seconds is not None:
@@ -1069,7 +1069,7 @@ def cmd_daemon_run_impl(
                                         h_pipeline = EnrichedIngestPipeline(
                                             h_engine, h_embed, h_classifier, knowledge_graph=h_kg,
                                         )
-                                    except Exception as exc_pipe:
+                                    except (ImportError, OSError, sqlite3.Error) as exc_pipe:
                                         logger.debug("Auto-harvest pipeline init failed: %s", exc_pipe)
                                 if h_available and h_pipeline is not None:
                                     harvester = KnowledgeHarvester(

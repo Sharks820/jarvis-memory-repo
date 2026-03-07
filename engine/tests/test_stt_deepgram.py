@@ -231,7 +231,7 @@ def test_try_deepgram_api_error():
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.side_effect = Exception("Connection refused")
+        mock_client.post.side_effect = OSError("Connection refused")
         mock_client_cls.return_value = mock_client
 
         result = _try_deepgram(fake_audio, language="en")

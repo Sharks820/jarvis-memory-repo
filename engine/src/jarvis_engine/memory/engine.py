@@ -56,7 +56,7 @@ class MemoryEngine:
                 sqlite_vec.load(self._db)
             finally:
                 self._db.enable_load_extension(False)
-        except Exception as exc:
+        except (ImportError, OSError, sqlite3.Error) as exc:
             self._vec_available = False
             logger.warning("sqlite-vec unavailable, falling back to FTS5-only search: %s", exc)
 
@@ -144,7 +144,7 @@ class MemoryEngine:
                         USING vec0(record_id TEXT PRIMARY KEY, embedding float[{_EMBEDDING_DIM}])
                     """
                 )
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 self._vec_available = False
                 logger.warning("Failed to create vec_records table: %s", exc)
 
@@ -370,7 +370,7 @@ class MemoryEngine:
                     (safe_query, limit),
                 )
                 return [(row[0], row[1]) for row in cur.fetchall()]
-        except Exception as exc:
+        except sqlite3.Error as exc:
             logger.warning("FTS5 search failed for query %r: %s", safe_query, exc)
             return []
 
@@ -406,7 +406,7 @@ class MemoryEngine:
                     (blob, limit),
                 )
                 return [(row[0], row[1]) for row in cur.fetchall()]
-        except Exception as exc:
+        except sqlite3.Error as exc:
             logger.warning("Vec search failed: %s", exc)
             return []
 
@@ -497,7 +497,7 @@ class MemoryEngine:
                 with self._db_lock:
                     cur = self._db.execute(query, params)
                     return [(row[0], row[1]) for row in cur.fetchall()]
-        except Exception as exc:
+        except sqlite3.Error as exc:
             logger.warning("Filtered vec search failed: %s", exc)
             return []
 
@@ -616,7 +616,7 @@ class MemoryEngine:
             with self._write_lock:
                 self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 logger.debug("WAL checkpoint completed")
-        except Exception as exc:
+        except sqlite3.Error as exc:
             logger.warning("WAL checkpoint failed: %s", exc)
 
     def optimize(self, *, vacuum: bool = False) -> dict:
@@ -639,7 +639,7 @@ class MemoryEngine:
                 self._db.commit()
             result["analyzed"] = True
             logger.info("ANALYZE completed successfully")
-        except Exception as exc:
+        except sqlite3.Error as exc:
             result["errors"].append(f"ANALYZE failed: {exc}")
             logger.warning("ANALYZE failed: %s", exc)
 
@@ -650,7 +650,7 @@ class MemoryEngine:
                     self._db.execute("VACUUM")
                 result["vacuumed"] = True
                 logger.info("VACUUM completed successfully")
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 result["errors"].append(f"VACUUM failed: {exc}")
                 logger.warning("VACUUM failed: %s", exc)
 
@@ -669,7 +669,7 @@ class MemoryEngine:
                 self._closed = True
                 try:
                     self._db.close()
-                except Exception as exc:
+                except sqlite3.Error as exc:
                     logger.debug("Failed to close MemoryEngine database connection: %s", exc)
 
     def __enter__(self) -> "MemoryEngine":
@@ -681,5 +681,5 @@ class MemoryEngine:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception as exc:
+        except (sqlite3.Error, OSError, AttributeError) as exc:
             logger.debug("MemoryEngine __del__ cleanup failed: %s", exc)

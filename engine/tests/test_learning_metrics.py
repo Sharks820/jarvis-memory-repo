@@ -5,6 +5,7 @@ error handling, and temporal distribution.
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -52,7 +53,7 @@ def _make_kg(nodes=0, edges=0, locked=0, temporal_rows=None, temporal_error=Fals
     kg.db = db
 
     if temporal_error:
-        db.execute.side_effect = Exception("no such column: temporal_type")
+        db.execute.side_effect = sqlite3.OperationalError("no such column: temporal_type")
     else:
         temporal_cursor = MagicMock()
         temporal_cursor.fetchall.return_value = temporal_rows or []
@@ -146,7 +147,7 @@ class TestNullHandling:
 class TestErrorHandling:
     def test_engine_db_exception(self):
         engine = MagicMock()
-        engine.db.execute.side_effect = Exception("DB locked")
+        engine.db.execute.side_effect = sqlite3.OperationalError("DB locked")
         kg = _make_kg(nodes=10)
 
         result = capture_knowledge_metrics(kg, engine)
@@ -156,7 +157,7 @@ class TestErrorHandling:
 
     def test_kg_count_nodes_exception(self):
         kg = MagicMock()
-        kg.count_nodes.side_effect = Exception("Graph corrupted")
+        kg.count_nodes.side_effect = sqlite3.OperationalError("Graph corrupted")
         kg.count_edges.return_value = 50
         kg.count_locked.return_value = 5
         kg.db.execute.return_value = MagicMock(fetchall=MagicMock(return_value=[]))
@@ -169,7 +170,7 @@ class TestErrorHandling:
     def test_kg_count_edges_exception(self):
         kg = MagicMock()
         kg.count_nodes.return_value = 100
-        kg.count_edges.side_effect = Exception("Edge table missing")
+        kg.count_edges.side_effect = sqlite3.OperationalError("Edge table missing")
         kg.count_locked.return_value = 5
         kg.db.execute.return_value = MagicMock(fetchall=MagicMock(return_value=[]))
         engine = _make_engine()
@@ -182,7 +183,7 @@ class TestErrorHandling:
         kg = MagicMock()
         kg.count_nodes.return_value = 100
         kg.count_edges.return_value = 250
-        kg.count_locked.side_effect = Exception("Lock table missing")
+        kg.count_locked.side_effect = sqlite3.OperationalError("Lock table missing")
         kg.db.execute.return_value = MagicMock(fetchall=MagicMock(return_value=[]))
         engine = _make_engine()
 

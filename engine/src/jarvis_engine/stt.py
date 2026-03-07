@@ -422,7 +422,7 @@ def _try_groq(
     """Attempt Groq transcription, returning *None* on failure."""
     try:
         return transcribe_groq(audio, language=language, prompt=prompt)
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Groq STT attempt failed: %s", exc)
         return None
 
@@ -448,7 +448,7 @@ def _try_local(
                 if _local_stt_instance is None:
                     _local_stt_instance = SpeechToText()
         return _local_stt_instance.transcribe_audio(audio, language=language, prompt=prompt)
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local STT attempt failed: %s", exc)
         return None
 
@@ -524,7 +524,7 @@ def _try_parakeet(
                 if logprobs:
                     avg_logprob = sum(logprobs) / len(logprobs)
                     confidence = min(1.0, max(0.0, 1.0 + avg_logprob))
-        except Exception as exc:
+        except (AttributeError, TypeError, ValueError) as exc:
             logger.debug("Parakeet logprob confidence extraction failed: %s", exc)
 
         return TranscriptionResult(
@@ -535,7 +535,7 @@ def _try_parakeet(
             backend="parakeet-tdt",
         )
 
-    except Exception as exc:
+    except (ImportError, RuntimeError, OSError, ValueError) as exc:
         logger.warning("Parakeet STT attempt failed: %s", exc)
         return None
 
@@ -670,7 +670,7 @@ def _try_deepgram(
             segments=parsed_segments if parsed_segments else None,
         )
 
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Deepgram STT attempt failed: %s", exc)
         return None
 
@@ -693,7 +693,7 @@ def _try_local_emergency(
                 if _local_emergency_instance is None:
                     _local_emergency_instance = SpeechToText(model_size="large-v3")
         return _local_emergency_instance.transcribe_audio(audio, language=language, prompt=prompt)
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local emergency STT (large-v3) attempt failed: %s", exc)
         return None
 
@@ -767,7 +767,7 @@ def transcribe_smart(
                     duration_seconds=0.0,
                     backend="preprocessed-silence",
                 )
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
             logger.warning("Audio preprocessing failed, using raw audio: %s", exc)
 
     # Map of forced backend modes to their try functions
@@ -882,7 +882,7 @@ def transcribe_smart(
                 segments=final.segments,
                 retried=final.retried,
             )
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
             logger.warning("Post-processing failed, using raw text: %s", exc)
 
     return final
@@ -944,7 +944,7 @@ def record_from_microphone(
         from jarvis_engine.stt_vad import get_vad_detector
         _vad_detector = get_vad_detector(sampling_rate=sample_rate)
         _use_silero = _vad_detector.available
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError) as exc:
         logger.debug("VAD detector initialization failed: %s", exc)
 
     if _use_silero:
@@ -1014,7 +1014,7 @@ def record_from_microphone(
         if _use_silero and _vad_detector is not None:
             _vad_detector.reset()
 
-    except Exception as exc:
+    except OSError as exc:
         # PortAudioError or similar -- microphone not available
         raise RuntimeError(
             f"Microphone recording failed: {exc}. "
