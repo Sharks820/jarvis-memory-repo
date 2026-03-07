@@ -22,9 +22,35 @@ import threading
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# TypedDicts
+# ---------------------------------------------------------------------------
+
+
+class DNSCacheAnalysis(TypedDict):
+    total_entries: int
+    suspicious_domains: list[str]
+    dga_candidates: list[dict]
+    entropy_alerts: list[dict]
+
+
+class NetworkScanResult(TypedDict):
+    arp: dict
+    dns: dict
+    connections: dict
+    scan_time: float | None
+
+
+class NetworkDefenseStatus(TypedDict):
+    last_scan_time: float | None
+    unknown_devices: int
+    suspicious_connections: int
+    dga_candidates: int
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -354,7 +380,7 @@ class HomeNetworkMonitor:
     # DNS cache analysis
     # ------------------------------------------------------------------
 
-    def analyze_dns_cache(self) -> dict[str, Any]:
+    def analyze_dns_cache(self) -> DNSCacheAnalysis:
         """Analyze the DNS cache for DGA / C2 indicators.
 
         Only works on Windows (``ipconfig /displaydns``).  Returns a dict:
@@ -568,7 +594,7 @@ class HomeNetworkMonitor:
     # Full scan & status
     # ------------------------------------------------------------------
 
-    def full_scan(self) -> dict[str, Any]:
+    def full_scan(self) -> NetworkScanResult:
         """Run ARP, DNS, and connection scans. Return aggregated results."""
         arp_results = self.scan_arp_table()
         dns_results = self.analyze_dns_cache()
@@ -584,7 +610,7 @@ class HomeNetworkMonitor:
             "scan_time": self._last_scan_time,
         }
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> NetworkDefenseStatus:
         """Return current monitor status."""
         with self._lock:
             return {

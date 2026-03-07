@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import urlparse
 
 from jarvis_engine._shared import now_iso as _now_iso
@@ -9,6 +9,18 @@ from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
     search_web as _search_web,
 )
+
+class WebResearchResult(TypedDict):
+    """Result from :func:`run_web_research`."""
+
+    query: str
+    scanned_url_count: int
+    scanned_urls: list[str]
+    finding_count: int
+    findings: list[dict[str, str]]
+    summary_lines: list[str]
+    generated_utc: str
+
 
 STOPWORDS = {
     "about",
@@ -76,7 +88,7 @@ def run_web_research(
     max_results: int = 8,
     max_pages: int = 6,
     max_summary_lines: int = 6,
-) -> dict[str, Any]:
+) -> WebResearchResult:
     cleaned_query = query.strip()[:260]
     if not cleaned_query:
         raise ValueError("query is required")

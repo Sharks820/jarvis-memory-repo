@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 __all__ = [
+    "BrainCompactResult",
+    "BrainStatusResult",
     "ContextPacket",
+    "RegressionReport",
     "BrainRecord",
     "ingest_brain_record",
     "build_context_packet",
@@ -47,6 +50,38 @@ class RegressionReport(TypedDict):
     unresolved_conflicts: int
     conflict_total: int
     generated_utc: str
+
+
+class _BrainCompactBase(TypedDict):
+    """Required keys shared by all :func:`brain_compact` results."""
+
+    compacted: bool
+    total_records: int
+    kept_records: int
+
+
+class BrainCompactResult(_BrainCompactBase, total=False):
+    """Result from :func:`brain_compact`.
+
+    When ``compacted`` is False, ``reason`` is present.
+    When ``compacted`` is True, ``compacted_records``, ``summary_groups``,
+    and ``summaries_path`` are present.
+    """
+
+    reason: str
+    compacted_records: int
+    summary_groups: int
+    summaries_path: str
+
+
+class BrainStatusResult(TypedDict):
+    """Result from :func:`brain_status`."""
+
+    updated_utc: str
+    branch_count: int
+    fact_count: int
+    regression: RegressionReport
+    branches: list[dict[str, Any]]
 
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
@@ -529,12 +564,12 @@ def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_cha
     }
 
 
-def brain_compact(root: Path, *, keep_recent: int = 1800) -> dict[str, Any]:
+def brain_compact(root: Path, *, keep_recent: int = 1800) -> BrainCompactResult:
     with _brain_io_lock:
         return _brain_compact_locked(root, keep_recent=keep_recent)
 
 
-def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, Any]:
+def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> BrainCompactResult:
     records = _load_records(root, limit=200000)
     total = len(records)
     if total <= keep_recent:
@@ -668,7 +703,7 @@ def brain_regression_report(root: Path) -> RegressionReport:
     }
 
 
-def brain_status(root: Path) -> dict[str, Any]:
+def brain_status(root: Path) -> BrainStatusResult:
     # Hold the lock for the entire operation so that the index/facts snapshot
     # and the regression report are computed from the same data.  The lock is
     # an RLock (reentrant), so brain_regression_report() can safely re-acquire

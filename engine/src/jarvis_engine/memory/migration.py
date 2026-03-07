@@ -11,7 +11,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
 
@@ -21,6 +21,47 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+
+class _MigrationResultBase(TypedDict):
+    """Required keys shared by all migration result dicts."""
+
+    status: str
+    source_count: int
+    inserted: int
+    errors: int
+
+
+class MigrationResult(_MigrationResultBase, total=False):
+    """Result from :func:`migrate_brain_records` and :func:`migrate_events`.
+
+    ``skipped`` is present for brain-record and event migrations.
+    ``error_details`` is present for brain-record migrations and
+    fact migrations that encounter read errors.
+    """
+
+    skipped: int
+    error_details: list[str]
+
+
+class _MigrationTotals(TypedDict):
+    """Aggregate counts in :class:`FullMigrationResult`."""
+
+    inserted: int
+    skipped: int
+    errors: int
+
+
+class FullMigrationResult(TypedDict):
+    """Result from :func:`run_full_migration`."""
+
+    status: str
+    brain: MigrationResult
+    facts: MigrationResult
+    events: MigrationResult
+    totals: _MigrationTotals
+    db_path: str
+
 
 _CHECKPOINT_BATCH_SIZE = 50
 _MAX_ERROR_DETAILS = 200
@@ -52,7 +93,7 @@ def migrate_brain_records(
     engine: "MemoryEngine",
     embed_service: "EmbeddingService",
     classifier: "BranchClassifier",
-) -> dict:
+) -> MigrationResult:
     """Migrate brain records from JSONL into SQLite MemoryEngine.
 
     Reads records.jsonl line by line, generates embeddings, classifies branches
@@ -248,7 +289,7 @@ def migrate_brain_records(
 def migrate_facts(
     facts_path: Path,
     engine: "MemoryEngine",
-) -> dict:
+) -> MigrationResult:
     """Migrate facts from facts.json into SQLite facts table.
 
     Args:
@@ -327,7 +368,7 @@ def migrate_events(
     engine: "MemoryEngine",
     embed_service: "EmbeddingService",
     classifier: "BranchClassifier",
-) -> dict:
+) -> MigrationResult:
     """Migrate events from events.jsonl into SQLite as records.
 
     Events are stored as records with source='event_log' and kind='episodic'.
@@ -426,7 +467,7 @@ def run_full_migration(
     root: Path,
     db_path: Path,
     embed_service: "EmbeddingService",
-) -> dict:
+) -> FullMigrationResult:
     """Orchestrate full migration of JSONL/JSON data into SQLite.
 
     Creates MemoryEngine, BranchClassifier, and runs all three migrations:

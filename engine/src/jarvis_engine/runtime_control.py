@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,31 @@ _MB = 1024.0 * 1024.0
 _DEFAULT_THROTTLE = {"mild_scale": 1.35, "severe_scale": 2.0, "max_sleep_s": 1800}
 
 
+class ControlState(TypedDict):
+    daemon_paused: bool
+    safe_mode: bool
+    muted: bool
+    mute_until_utc: str | None
+    reason: str
+    updated_utc: str
+
+
+class ResourceSnapshot(TypedDict):
+    captured_utc: str
+    pressure_level: str
+    over_budget_count: int
+    should_throttle: bool
+    metrics: dict
+    throttle: dict
+
+
+class DaemonSleepRecommendation(TypedDict):
+    base_sleep_s: float
+    sleep_s: float
+    pressure_level: str
+    skip_heavy_tasks: bool
+
+
 from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
@@ -48,7 +73,7 @@ def resource_pressure_path(root: Path) -> Path:
     return _runtime_dir(root) / "resource_pressure.json"
 
 
-def read_control_state(root: Path) -> dict[str, Any]:
+def read_control_state(root: Path) -> ControlState:
     from jarvis_engine._shared import load_json_file
 
     path = control_state_path(root)
@@ -158,7 +183,7 @@ def _metric_is_over_budget(metrics: dict[str, Any], key: str) -> bool:
     return bool(metric.get("over_budget", False))
 
 
-def capture_runtime_resource_snapshot(root: Path) -> dict[str, Any]:
+def capture_runtime_resource_snapshot(root: Path) -> ResourceSnapshot:
     budgets = read_resource_budgets(root)
     memory_mb, cpu_pct = _process_usage()
 
@@ -215,7 +240,7 @@ def write_resource_pressure_state(root: Path, snapshot: dict[str, Any]) -> dict[
     return payload
 
 
-def recommend_daemon_sleep(base_sleep_s: int, snapshot: dict[str, Any]) -> dict[str, Any]:
+def recommend_daemon_sleep(base_sleep_s: int, snapshot: dict[str, Any]) -> DaemonSleepRecommendation:
     level = str(snapshot.get("pressure_level", "none")).lower()
     throttle = snapshot.get("throttle", {})
     mild_scale = float(throttle.get("mild_scale", _DEFAULT_THROTTLE["mild_scale"]))
@@ -244,7 +269,7 @@ def write_control_state(
     muted: bool | None = None,
     mute_until_utc: str | None = None,
     reason: str = "",
-) -> dict[str, Any]:
+) -> ControlState:
     state = read_control_state(root)
     if daemon_paused is not None:
         state["daemon_paused"] = daemon_paused
@@ -265,7 +290,7 @@ def write_control_state(
     return state
 
 
-def reset_control_state(root: Path) -> dict[str, Any]:
+def reset_control_state(root: Path) -> ControlState:
     state = dict(DEFAULT_CONTROL_STATE)
     state["updated_utc"] = _now_iso()
     path = control_state_path(root)

@@ -9,9 +9,23 @@ from __future__ import annotations
 
 import heapq
 import threading
-from typing import Any
+from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
+
+# ---------------------------------------------------------------------------
+# TypedDicts
+# ---------------------------------------------------------------------------
+
+
+class ProvenanceRecord(TypedDict):
+    record_hash: str
+    source: str
+    trust_level: str
+    ingestion_timestamp: str
+    verification_status: str
+    quarantine_reason: str
+
 
 # ---------------------------------------------------------------------------
 # Trust level constants
@@ -57,7 +71,7 @@ class MemoryProvenance:
         record_hash: str,
         source: str,
         trust_level: str = UNVERIFIED_EXTERNAL,
-    ) -> dict[str, Any]:
+    ) -> ProvenanceRecord:
         """Add or update provenance for a memory record.
 
         Parameters

@@ -126,6 +126,132 @@ class ContradictionManager(KGManagerBase):
             return [dict(row) for row in cur.fetchall()]
 
     # ------------------------------------------------------------------
+    # Resolution helpers
+    # ------------------------------------------------------------------
+
+    def _load_contradiction(
+        self,
+        contradiction_id: int,
+        resolution: str,
+    ) -> ResolutionResult | dict:
+        """Load and validate a contradiction record.
+
+        Contract: caller MUST hold ``_write_lock``.
+
+        Returns a normalized contradiction ``dict`` on success, or a
+        :class:`ResolutionResult` error dict if the record is missing or
+        already resolved.
+        """
+        row = self._db.execute(
+            "SELECT * FROM kg_contradictions WHERE contradiction_id = ?",
+            (contradiction_id,),
+        ).fetchone()
+
+        if row is None:
+            return {
+                "success": False,
+                "node_id": "",
+                "resolution": resolution,
+                "message": f"Contradiction {contradiction_id} not found.",
+            }
+
+        contradiction = dict(row)
+        contradiction["status"] = str(contradiction.get("status", "")).strip()
+        contradiction["node_id"] = str(contradiction.get("node_id", ""))
+        contradiction["existing_value"] = str(contradiction.get("existing_value", ""))
+        contradiction["incoming_value"] = str(contradiction.get("incoming_value", ""))
+        contradiction["incoming_confidence"] = float(
+            contradiction.get("incoming_confidence", 0.0) or 0.0,
+        )
+
+        if contradiction["status"] != "pending":
+            return {
+                "success": False,
+                "node_id": contradiction["node_id"],
+                "resolution": resolution,
+                "message": f"Contradiction {contradiction_id} is already resolved.",
+            }
+
+        return contradiction
+
+    def _apply_accept_new(
+        self,
+        node_id: str,
+        incoming_value: str,
+        incoming_confidence: float,
+        current_label: str,
+        history: list,
+        now: str,
+        vec_blob: bytes | None,
+    ) -> None:
+        """Apply the ``accept_new`` branch: replace value, unlock, reset confidence.
+
+        Contract: caller MUST hold ``_write_lock``.
+        """
+        self._db.execute(
+            """UPDATE kg_nodes
+               SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
+                   confidence = ?, updated_at = datetime('now')
+               WHERE node_id = ?""",
+            (incoming_value, incoming_confidence, node_id),
+        )
+        self._update_fts_index(node_id, incoming_value)
+        self._write_vec_embedding(node_id, vec_blob)
+        history.append({
+            "action": "accept_new",
+            "previous_value": current_label,
+            "new_value": incoming_value,
+            "resolved_at": now,
+        })
+
+    def _apply_keep_old(
+        self,
+        current_label: str,
+        incoming_value: str,
+        history: list,
+        now: str,
+    ) -> None:
+        """Apply the ``keep_old`` branch: no node change, just record history.
+
+        Contract: caller MUST hold ``_write_lock``.
+        """
+        history.append({
+            "action": "keep_old",
+            "previous_value": current_label,
+            "new_value": incoming_value,
+            "resolved_at": now,
+        })
+
+    def _apply_merge(
+        self,
+        node_id: str,
+        merge_value: str,
+        current_label: str,
+        history: list,
+        now: str,
+        vec_blob: bytes | None,
+    ) -> None:
+        """Apply the ``merge`` branch: set merged value, unlock node.
+
+        Contract: caller MUST hold ``_write_lock``.
+        """
+        self._db.execute(
+            """UPDATE kg_nodes
+               SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
+                   updated_at = datetime('now')
+               WHERE node_id = ?""",
+            (merge_value, node_id),
+        )
+        self._update_fts_index(node_id, merge_value)
+        self._write_vec_embedding(node_id, vec_blob)
+        history.append({
+            "action": "merge",
+            "previous_value": current_label,
+            "new_value": merge_value,
+            "resolved_at": now,
+        })
+
+    # ------------------------------------------------------------------
     # Resolution
     # ------------------------------------------------------------------
 
@@ -165,10 +291,6 @@ class ContradictionManager(KGManagerBase):
         # other operations during the potentially slow embedding model call.
         vec_blob: bytes | None = None
         if resolution == "accept_new":
-            # We need the incoming_value for embedding, but we don't have
-            # it yet (it's in the DB).  For accept_new we know we'll need
-            # an embedding for *some* value -- pre-load contradiction first
-            # to get the value, compute embedding, then acquire write lock.
             with self._db_lock:
                 pre_row = self._db.execute(
                     "SELECT incoming_value FROM kg_contradictions WHERE contradiction_id = ?",
@@ -180,42 +302,16 @@ class ContradictionManager(KGManagerBase):
             vec_blob = self._precompute_vec_embedding(merge_value.strip())
 
         with self._write_lock:
-            # Load the contradiction inside write lock to prevent TOCTOU race
-            row = self._db.execute(
-                "SELECT * FROM kg_contradictions WHERE contradiction_id = ?",
-                (contradiction_id,),
-            ).fetchone()
-
-            if row is None:
-                return {
-                    "success": False,
-                    "node_id": "",
-                    "resolution": resolution,
-                    "message": f"Contradiction {contradiction_id} not found.",
-                }
-
-            contradiction = dict(row)
-            contradiction["status"] = str(contradiction.get("status", "")).strip()
-            contradiction["node_id"] = str(contradiction.get("node_id", ""))
-            contradiction["existing_value"] = str(contradiction.get("existing_value", ""))
-            contradiction["incoming_value"] = str(contradiction.get("incoming_value", ""))
-            contradiction["incoming_confidence"] = float(
-                contradiction.get("incoming_confidence", 0.0) or 0.0,
-            )
-            if contradiction["status"] != "pending":
-                return {
-                    "success": False,
-                    "node_id": contradiction["node_id"],
-                    "resolution": resolution,
-                    "message": f"Contradiction {contradiction_id} is already resolved.",
-                }
+            result = self._load_contradiction(contradiction_id, resolution)
+            if "success" in result:
+                return result  # type: ignore[return-value]
+            contradiction = result
 
             node_id = contradiction["node_id"]
-            existing_value = contradiction["existing_value"]
             incoming_value = contradiction["incoming_value"]
             incoming_confidence = contradiction["incoming_confidence"]
             now = _now_iso()
-            # Load current node for history
+
             node_row = self._db.execute(
                 "SELECT label, history FROM kg_nodes WHERE node_id = ?",
                 (node_id,),
@@ -229,8 +325,8 @@ class ContradictionManager(KGManagerBase):
                     "message": f"Node {node_id} no longer exists; cannot apply {resolution}.",
                 }
 
-            current_label = node_row["label"] if node_row else existing_value
-            history = []
+            current_label = node_row["label"] if node_row else contradiction["existing_value"]
+            history: list = []
             if node_row:
                 try:
                     history = json.loads(node_row["history"])
@@ -238,53 +334,16 @@ class ContradictionManager(KGManagerBase):
                     history = []
 
             if resolution == "accept_new":
-                # Replace value, unlock node, reset confidence to incoming
-                self._db.execute(
-                    """UPDATE kg_nodes
-                       SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
-                           confidence = ?, updated_at = datetime('now')
-                       WHERE node_id = ?""",
-                    (incoming_value, incoming_confidence, node_id),
+                self._apply_accept_new(
+                    node_id, incoming_value, incoming_confidence,
+                    current_label, history, now, vec_blob,
                 )
-                # Update FTS5 index (defensive — no-ops if table missing)
-                self._update_fts_index(node_id, incoming_value)
-                # Write pre-computed vec embedding (no-ops if blob is None)
-                self._write_vec_embedding(node_id, vec_blob)
-                history.append({
-                    "action": "accept_new",
-                    "previous_value": current_label,
-                    "new_value": incoming_value,
-                    "resolved_at": now,
-                })
-
             elif resolution == "keep_old":
-                # No node change
-                history.append({
-                    "action": "keep_old",
-                    "previous_value": current_label,
-                    "new_value": incoming_value,
-                    "resolved_at": now,
-                })
-
+                self._apply_keep_old(current_label, incoming_value, history, now)
             elif resolution == "merge":
-                # Set merge_value on the node, unlock it (same as accept_new)
-                self._db.execute(
-                    """UPDATE kg_nodes
-                       SET label = ?, locked = 0, locked_at = NULL, locked_by = NULL,
-                           updated_at = datetime('now')
-                       WHERE node_id = ?""",
-                    (merge_value, node_id),
+                self._apply_merge(
+                    node_id, merge_value, current_label, history, now, vec_blob,
                 )
-                # Update FTS5 index (defensive — no-ops if table missing)
-                self._update_fts_index(node_id, merge_value)
-                # Write pre-computed vec embedding (no-ops if blob is None)
-                self._write_vec_embedding(node_id, vec_blob)
-                history.append({
-                    "action": "merge",
-                    "previous_value": current_label,
-                    "new_value": merge_value,
-                    "resolved_at": now,
-                })
 
             # Update history on the node (guard against missing node)
             if node_row is not None:

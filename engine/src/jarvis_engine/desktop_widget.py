@@ -593,6 +593,15 @@ class JarvisDesktopWidget(tk.Tk):
 
     def _build_command_area(self, body: tk.Frame) -> None:
         """Build the session config, command input, flags, action buttons, and quick actions."""
+        self._build_session_config(body)
+        self._build_command_input(body)
+        self._build_command_flags(body)
+        self._build_action_buttons(body)
+        self._build_quick_actions(body)
+        self._build_fetch_buttons(body)
+
+    def _build_session_config(self, body: tk.Frame) -> None:
+        """Build the Secure Session config section with URL, password, and advanced fields."""
         sec = tk.LabelFrame(body, text="Secure Session", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
         sec.pack(fill=tk.X, padx=10, pady=(10, 8))
 
@@ -647,6 +656,8 @@ class JarvisDesktopWidget(tk.Tk):
             command=self._bootstrap_session_async,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+    def _build_command_input(self, body: tk.Frame) -> None:
+        """Build the command text area with model indicator row."""
         cmd_block = tk.Frame(body, bg=self.PANEL)
         cmd_block.pack(fill=tk.X, padx=10)
         tk.Label(cmd_block, text="Command", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w")
@@ -681,6 +692,8 @@ class JarvisDesktopWidget(tk.Tk):
         self._model_label.pack(side=tk.LEFT)
         _Tooltip(self._model_label, "Press Tab to cycle through available LLM models")
 
+    def _build_command_flags(self, body: tk.Frame) -> None:
+        """Build the checkbox flags row (Allow PC Actions, Speak, Wake Word, etc.)."""
         flags = tk.Frame(body, bg=self.PANEL)
         flags.pack(fill=tk.X, padx=10, pady=(2, 0))
         self.execute_var = tk.BooleanVar(value=True)
@@ -696,6 +709,8 @@ class JarvisDesktopWidget(tk.Tk):
         self._check(flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Notifications", self.notify_var).pack(side=tk.LEFT)
 
+    def _build_action_buttons(self, body: tk.Frame) -> None:
+        """Build the Voice Dictate, Send, and Stop action buttons."""
         row = tk.Frame(body, bg=self.PANEL)
         row.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._voice_btn = self._btn(row, "Voice Dictate", self._dictate_async, self.ACCENT_2)
@@ -706,6 +721,8 @@ class JarvisDesktopWidget(tk.Tk):
         self._cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._cancel_btn.pack_forget()  # Hidden by default, shown during processing
 
+    def _build_quick_actions(self, body: tk.Frame) -> None:
+        """Build the Pause, Resume, and Safe Mode quick action buttons."""
         quick = tk.Frame(body, bg=self.PANEL)
         quick.pack(fill=tk.X, padx=10, pady=(8, 0))
         _pause_btn = self._btn(quick, "\u23F8 Pause", lambda: self._quick_phrase("Jarvis, pause daemon"), self.WARN)
@@ -718,6 +735,8 @@ class JarvisDesktopWidget(tk.Tk):
         _safe_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         _Tooltip(_safe_btn, "Enable Safe Mode.\nForces all queries through local Ollama (no cloud).\nUse for private/sensitive conversations.")
 
+    def _build_fetch_buttons(self, body: tk.Frame) -> None:
+        """Build the Refresh, Diagnose, and Activity fetch buttons."""
         fetch = tk.Frame(body, bg=self.PANEL)
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
         _refresh_btn = self._btn(fetch, "\U0001F504 Refresh", self._refresh_dashboard_async, "#35517a")
@@ -766,8 +785,8 @@ class JarvisDesktopWidget(tk.Tk):
             val.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
             self._growth_labels[key] = val
 
-    def _build_chat_area(self, body: tk.Frame) -> None:
-        """Build the conversation output area with header, thinking indicator, and chat text."""
+    def _build_chat_header(self, body: tk.Frame) -> None:
+        """Build the conversation header with Clear, End Conversation, and Pop Out buttons."""
         output_header = tk.Frame(body, bg=self.PANEL)
         output_header.pack(fill=tk.X, padx=10, pady=(10, 0))
         tk.Label(output_header, text="\U0001F4AC  Conversation", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 13, "bold")).pack(side=tk.LEFT)
@@ -813,8 +832,9 @@ class JarvisDesktopWidget(tk.Tk):
             padx=6,
             pady=2,
         ).pack(side=tk.RIGHT)
-        # Thinking indicator (Label-based, hidden by default — much more robust
-        # than text-mark manipulation which caused loading bar spam)
+
+    def _build_thinking_indicator(self, body: tk.Frame) -> None:
+        """Build the thinking indicator label (hidden by default, shown during processing)."""
         self._thinking_frame = tk.Frame(body, bg="#1a1500")
         self._thinking_label_widget = tk.Label(
             self._thinking_frame,
@@ -827,7 +847,11 @@ class JarvisDesktopWidget(tk.Tk):
             pady=4,
         )
         self._thinking_label_widget.pack(fill=tk.X)
-        # Not packed yet — shown only during processing via _show_thinking()
+
+    def _build_chat_area(self, body: tk.Frame) -> None:
+        """Build the conversation output area with header, thinking indicator, and chat text."""
+        self._build_chat_header(body)
+        self._build_thinking_indicator(body)
 
         self._chat_frame = tk.Frame(body, bg="#081127")
         self._chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 10))
@@ -987,7 +1011,17 @@ class JarvisDesktopWidget(tk.Tk):
         self._popout_thinking_label.pack(fill=tk.X)
         # Not packed yet — shown via _show_thinking() when processing
 
-        # --- Conversation display (top, expandable) ---
+        popout_text = self._build_popout_display(win)
+        self._popout_text = popout_text
+        popout_cmd, send_btn = self._build_popout_input(win)
+
+        # Store references for event binding
+        win._popout_cmd = popout_cmd  # type: ignore[attr-defined]
+        win._send_btn = send_btn  # type: ignore[attr-defined]
+        return win
+
+    def _build_popout_display(self, win: tk.Toplevel) -> tk.Text:
+        """Build the conversation display area for the pop-out window and copy existing content."""
         chat_frame = tk.Frame(win, bg=self.BG)
         chat_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(8, 0))
 
@@ -1021,9 +1055,7 @@ class JarvisDesktopWidget(tk.Tk):
         popout_text.config(state=tk.NORMAL)
         full_text = self.output.get("1.0", tk.END)
         if full_text.strip():
-            # Insert all text first (fast bulk copy)
             popout_text.insert(tk.END, full_text)
-            # Apply tags using tag_ranges (each range is a start/end pair)
             for tag in ("user", "jarvis", "system", "error", "separator",
                         "timestamp", "thinking"):
                 try:
@@ -1033,9 +1065,10 @@ class JarvisDesktopWidget(tk.Tk):
                 except tk.TclError:
                     logger.debug("Failed to copy tag %r to popout text widget", tag)
         popout_text.config(state=tk.DISABLED)
-        self._popout_text = popout_text
+        return popout_text
 
-        # --- Command input area (bottom, fixed) ---
+    def _build_popout_input(self, win: tk.Toplevel) -> tuple[tk.Text, tk.Button]:
+        """Build the command input area for the pop-out window. Returns (cmd_text, send_btn)."""
         input_frame = tk.Frame(win, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
         input_frame.pack(fill=tk.X, padx=8, pady=8)
 
@@ -1076,11 +1109,7 @@ class JarvisDesktopWidget(tk.Tk):
             pady=6,
         )
         send_btn.pack(fill=tk.BOTH, expand=True)
-
-        # Store references for event binding
-        win._popout_cmd = popout_cmd  # type: ignore[attr-defined]
-        win._send_btn = send_btn  # type: ignore[attr-defined]
-        return win
+        return popout_cmd, send_btn
 
     def _bind_conversation_events(self, win: tk.Toplevel) -> None:
         """Wire up keyboard and button events for the pop-out conversation window."""
@@ -1498,6 +1527,78 @@ class JarvisDesktopWidget(tk.Tk):
 
         self._thread(worker)
 
+    def _diag_check_connection(self, cfg: WidgetConfig) -> bool:
+        """Diagnostic step 1: check API connection. Returns False if offline."""
+        self._log_async("[1/4] Checking API connection...", role="system")
+        try:
+            health_data = _http_json(cfg, "/health", method="GET")
+            health_ok = bool(health_data.get("ok", False))
+            self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
+            return True
+        except Exception as exc:  # boundary: catch-all justified
+            logger.debug("Diagnostics health check failed: %s", exc)
+            self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
+            self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
+            return False
+
+    def _diag_check_sync(self, cfg: WidgetConfig) -> None:
+        """Diagnostic step 2: check sync status."""
+        self._log_async("[2/4] Checking sync status...", role="system")
+        try:
+            sync_data = _http_json(cfg, "/sync/status", method="GET")
+            sync_ok = bool(sync_data.get("ok", False))
+            last_sync = sync_data.get("last_sync_utc", "unknown")
+            self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
+            self._log_async(f"  Last sync: {last_sync}", role="jarvis")
+        except Exception as exc:  # boundary: catch-all justified
+            self._log_async(f"  Sync: unavailable ({exc})", role="error")
+
+    def _diag_check_intelligence(self, cfg: WidgetConfig) -> None:
+        """Diagnostic step 3: test intelligence pipeline."""
+        self._log_async("[3/4] Testing intelligence pipeline...", role="system")
+        try:
+            dash_data = _http_json(cfg, "/dashboard", method="GET")
+            score = dash_data.get("intelligence_score", "?")
+            mem_count = dash_data.get("memory_count", "?")
+            fact_count = dash_data.get("fact_count", "?")
+            self._log_async(f"  Intelligence score: {score}", role="jarvis")
+            self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
+        except Exception as exc:  # boundary: catch-all justified
+            self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
+
+    def _diag_run_self_heal(self, cfg: WidgetConfig) -> None:
+        """Diagnostic step 4: run self-heal maintenance and display results."""
+        self._log_async("[4/4] Running self-heal maintenance...", role="system")
+        heal_data = _http_json(
+            cfg,
+            "/self-heal",
+            method="POST",
+            payload={
+                "keep_recent": 1800,
+                "force_maintenance": True,
+                "snapshot_note": "widget-diagnose",
+            },
+        )
+        heal_ok = bool(heal_data.get("ok", False))
+        heal_exit = int(heal_data.get("command_exit_code", -1))
+        heal_lines = heal_data.get("stdout_tail", [])
+        if heal_ok:
+            self._log_async("  Self-heal: completed successfully", role="jarvis")
+        else:
+            self._log_async(f"  Self-heal: finished with issues (exit={heal_exit})", role="error")
+        if isinstance(heal_lines, list) and heal_lines:
+            for line in heal_lines[-5:]:
+                s = str(line).strip()
+                if s:
+                    self._log_async(f"  {s}", role="jarvis")
+
+        self._log_async("\u2500" * 40, role="system")
+        if heal_ok:
+            self._log_async("\u2705 All systems healthy.", role="jarvis")
+        else:
+            self._log_async("\u26A0 Some issues detected. Check details above.", role="error")
+            self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
+
     def _diagnose_repair_async(self) -> None:
         cfg = self._current_cfg()  # Read tkinter vars on main thread
 
@@ -1507,72 +1608,11 @@ class JarvisDesktopWidget(tk.Tk):
                 self._log_async("\U0001F527 JARVIS DIAGNOSTICS", role="system")
                 self._log_async("\u2500" * 40, role="system")
 
-                # Step 1: Check connection
-                self._log_async("[1/4] Checking API connection...", role="system")
-                try:
-                    health_data = _http_json(cfg, "/health", method="GET")
-                    health_ok = bool(health_data.get("ok", False))
-                    self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
-                except Exception as exc:  # boundary: catch-all justified
-                    logger.debug("Diagnostics health check failed: %s", exc)
-                    self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
-                    self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
+                if not self._diag_check_connection(cfg):
                     return
-
-                # Step 2: Check sync status
-                self._log_async("[2/4] Checking sync status...", role="system")
-                try:
-                    sync_data = _http_json(cfg, "/sync/status", method="GET")
-                    sync_ok = bool(sync_data.get("ok", False))
-                    last_sync = sync_data.get("last_sync_utc", "unknown")
-                    self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
-                    self._log_async(f"  Last sync: {last_sync}", role="jarvis")
-                except Exception as exc:  # boundary: catch-all justified
-                    self._log_async(f"  Sync: unavailable ({exc})", role="error")
-
-                # Step 3: Check intelligence
-                self._log_async("[3/4] Testing intelligence pipeline...", role="system")
-                try:
-                    dash_data = _http_json(cfg, "/dashboard", method="GET")
-                    score = dash_data.get("intelligence_score", "?")
-                    mem_count = dash_data.get("memory_count", "?")
-                    fact_count = dash_data.get("fact_count", "?")
-                    self._log_async(f"  Intelligence score: {score}", role="jarvis")
-                    self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
-                except Exception as exc:  # boundary: catch-all justified
-                    self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
-
-                # Step 4: Run self-heal
-                self._log_async("[4/4] Running self-heal maintenance...", role="system")
-                heal_data = _http_json(
-                    cfg,
-                    "/self-heal",
-                    method="POST",
-                    payload={
-                        "keep_recent": 1800,
-                        "force_maintenance": True,
-                        "snapshot_note": "widget-diagnose",
-                    },
-                )
-                heal_ok = bool(heal_data.get("ok", False))
-                heal_exit = int(heal_data.get("command_exit_code", -1))
-                heal_lines = heal_data.get("stdout_tail", [])
-                if heal_ok:
-                    self._log_async("  Self-heal: completed successfully", role="jarvis")
-                else:
-                    self._log_async(f"  Self-heal: finished with issues (exit={heal_exit})", role="error")
-                if isinstance(heal_lines, list) and heal_lines:
-                    for line in heal_lines[-5:]:
-                        s = str(line).strip()
-                        if s:
-                            self._log_async(f"  {s}", role="jarvis")
-
-                self._log_async("\u2500" * 40, role="system")
-                if heal_ok:
-                    self._log_async("\u2705 All systems healthy.", role="jarvis")
-                else:
-                    self._log_async("\u26A0 Some issues detected. Check details above.", role="error")
-                    self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
+                self._diag_check_sync(cfg)
+                self._diag_check_intelligence(cfg)
+                self._diag_run_self_heal(cfg)
             except HTTPError as exc:
                 self._log_async(f"Diagnose failed: {_http_error_details(exc)}", role="error")
                 self._notify_toast("Jarvis", "Diagnose & Repair failed", "Error")
@@ -1669,41 +1709,62 @@ class JarvisDesktopWidget(tk.Tk):
         self._log_async("Ready for next command.", role="system")
         self._set_error_briefly_async()
 
-    def _send_command_async(self) -> None:
-        # Guard: warn if already processing but don't silently drop
+    def _validate_and_prepare_command(self) -> str | None:
+        """Validate command text and handle conversation-ending phrases.
+
+        Returns the command text if valid, or None if the command was handled
+        (empty, already processing, or conversation-ending phrase).
+        """
         if getattr(self, "_widget_state", "idle") == "processing":
             self._log("Still processing previous command. Please wait...", role="system")
-            return
+            return None
         self._cancel_event.clear()
         text = self.command_text.get("1.0", tk.END).strip()
         if not text:
             self._log("No command text.")
-            return
-        # Check for conversation-ending phrases
+            return None
         lower = text.lower().strip()
         if lower in ("done", "end conversation", "bye", "goodbye", "that's all", "thats all", "end"):
             self.command_text.delete("1.0", tk.END)
             self._end_conversation()
+            return None
+        return text
+
+    def _make_worker_cleanup(self, gen: int) -> Callable[[], None]:
+        """Create a cleanup callback for a command worker tied to a generation counter."""
+        def _cleanup() -> None:
+            if self._cmd_generation != gen:
+                return  # Stale worker -- a newer command owns the state
+            self._cancel_processing_timeout()
+            self._hide_thinking()
+            try:
+                self.command_text.config(state=tk.NORMAL)
+            except tk.TclError:
+                logger.debug("Failed to re-enable command input after processing")
+            if self._widget_state == "processing":
+                self._set_state("idle")
+        return _cleanup
+
+    def _send_command_async(self) -> None:
+        text = self._validate_and_prepare_command()
+        if text is None:
             return
         # Clear command text immediately after reading
         self.command_text.delete("1.0", tk.END)
-        # Log the user's command with the "user" role
         self._log(text, role="user")
         self._set_state("processing")
         self._show_thinking()
         self.command_text.config(state=tk.DISABLED)
-        # Generation counter: prevents stale worker callbacks from corrupting state
         self._cmd_generation += 1
         gen = self._cmd_generation
-        # Start safety timeout: force-reset after configured timeout
         self._cancel_processing_timeout()
         self._processing_timeout_id = self.after(self._processing_timeout_ms, self._processing_timed_out)
-        # Read all tkinter vars on the main thread before spawning background thread
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())
         approve_privileged = bool(self.priv_var.get())
         speak = bool(self.speak_var.get())
         model_override = self._selected_model_override()
+        cleanup = self._make_worker_cleanup(gen)
 
         def worker() -> None:
             try:
@@ -1717,7 +1778,6 @@ class JarvisDesktopWidget(tk.Tk):
                 if model_override:
                     payload["model_override"] = model_override
                 data = _http_json(cfg, "/command", method="POST", payload=payload)
-                # If user pressed ESC while HTTP was in-flight, discard results
                 if self._cancel_event.is_set():
                     return
                 self.after(0, self._hide_thinking)
@@ -1734,33 +1794,21 @@ class JarvisDesktopWidget(tk.Tk):
             except Exception as exc:  # noqa: BLE001
                 self._handle_command_error(f"Command failed: {exc}")
             finally:
-                # Always clean up: hide thinking, re-enable input, reset state.
-                # Check generation to avoid corrupting state from a newer command.
-                def _cleanup() -> None:
-                    if self._cmd_generation != gen:
-                        return  # Stale worker -- a newer command owns the state
-                    self._cancel_processing_timeout()
-                    self._hide_thinking()
-                    try:
-                        self.command_text.config(state=tk.NORMAL)
-                    except tk.TclError:
-                        logger.debug("Failed to re-enable command input after processing")
-                    if self._widget_state == "processing":
-                        self._set_state("idle")
-
                 if not self._cancel_event.is_set():
                     try:
-                        self.after(0, _cleanup)
+                        self.after(0, cleanup)
                     except (tk.TclError, RuntimeError):  # Widget may be destroyed
                         logger.debug("Failed to schedule post-command cleanup (widget may be destroyed)")
 
         self._thread(worker)
 
-    def _process_worker_response(self, data: dict[str, Any], cfg: WidgetConfig) -> None:
-        """Parse and display the response from a /command API call.
+    @staticmethod
+    def _parse_command_output(data: dict[str, Any]) -> dict[str, Any]:
+        """Parse structured fields from /command API stdout_tail lines.
 
-        Called from the background worker thread.  Uses ``_log_async`` and
-        ``self.after()`` for thread-safe UI updates.
+        Returns a dict with keys: response_text, reason_text, error_text,
+        source_urls, thinking_steps, web_search_used, model_name, provider_name,
+        intent, ok, lines.
         """
         lines = data.get("stdout_tail", [])
         response_text = ""
@@ -1785,7 +1833,6 @@ class JarvisDesktopWidget(tk.Tk):
                     error_text = s[len("error="):]
                     _in_response = False
                 elif s.startswith("source_"):
-                    # source_1=domain url
                     parts = s.split("=", 1)
                     if len(parts) == 2:
                         source_urls.append(parts[1].strip())
@@ -1811,12 +1858,36 @@ class JarvisDesktopWidget(tk.Tk):
                         "query=", "scanned_url_count=",
                     ]
                 ):
-                    # Continuation line of multi-line response
                     response_text += "\n" + s
                 else:
                     _in_response = False
-        intent = str(data.get("intent", "unknown"))
-        ok = bool(data.get("ok", False))
+        return {
+            "response_text": response_text,
+            "reason_text": reason_text,
+            "error_text": error_text,
+            "source_urls": source_urls,
+            "thinking_steps": thinking_steps,
+            "web_search_used": web_search_used,
+            "model_name": model_name,
+            "provider_name": provider_name,
+            "intent": str(data.get("intent", "unknown")),
+            "ok": bool(data.get("ok", False)),
+            "lines": lines,
+        }
+
+    def _display_response(self, parsed: dict[str, Any]) -> None:
+        """Display the parsed response text, trace info, and source URLs."""
+        response_text = parsed["response_text"]
+        reason_text = parsed["reason_text"]
+        error_text = parsed["error_text"]
+        model_name = parsed["model_name"]
+        provider_name = parsed["provider_name"]
+        web_search_used = parsed["web_search_used"]
+        thinking_steps = parsed["thinking_steps"]
+        source_urls = parsed["source_urls"]
+        intent = parsed["intent"]
+        ok = parsed["ok"]
+        lines = parsed["lines"]
 
         # Show processing trace (thinking steps)
         if model_name or web_search_used or thinking_steps:
@@ -1835,7 +1906,6 @@ class JarvisDesktopWidget(tk.Tk):
         if response_text:
             self._log_async(response_text, role="jarvis")
         elif not ok and (reason_text or error_text):
-            # Show a clear error message instead of cryptic [intent] ok=False
             msg = reason_text or error_text
             self._log_async(f"Error: {msg}", role="error")
         else:
@@ -1843,11 +1913,14 @@ class JarvisDesktopWidget(tk.Tk):
             if isinstance(lines, list) and lines:
                 self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
 
-        # Show web search source URLs
         if source_urls:
             self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
 
-        # Expanded learned indicator: fire for knowledge-modifying intents
+    def _handle_post_response_actions(self, parsed: dict[str, Any], cfg: WidgetConfig) -> None:
+        """Handle learned indicators, dashboard refresh, and state updates after a response."""
+        intent = parsed["intent"]
+        ok = parsed["ok"]
+
         _LEARNED_INTENTS = (
             "memory_ingest", "memory_forget", "llm_conversation",
             "mission_create", "mission_run",
@@ -1855,7 +1928,7 @@ class JarvisDesktopWidget(tk.Tk):
         )
         if ok and intent in _LEARNED_INTENTS:
             self.after(0, self._show_learned_indicator)
-        # Immediate dashboard refresh after brain-modifying commands
+
         _REFRESH_INTENTS = (
             "mission_cancel", "mission_create", "mission_run",
             "brain_status", "memory_ingest", "memory_forget",
@@ -1871,12 +1944,22 @@ class JarvisDesktopWidget(tk.Tk):
                     self.after(0, self._update_activity_events, recent_evts)
             except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
+
         if not ok:
             self._set_error_briefly_async()
         else:
             self._set_state_async("idle")
-        # Prompt for continuation
         self._log_async("Ready for next command. Say 'done' or click End Conversation when finished.", role="system")
+
+    def _process_worker_response(self, data: dict[str, Any], cfg: WidgetConfig) -> None:
+        """Parse and display the response from a /command API call.
+
+        Called from the background worker thread.  Uses ``_log_async`` and
+        ``self.after()`` for thread-safe UI updates.
+        """
+        parsed = self._parse_command_output(data)
+        self._display_response(parsed)
+        self._handle_post_response_actions(parsed, cfg)
 
     def _send_text(self, text: str) -> None:
         """Set the command text and send it -- convenience for programmatic use."""
@@ -2075,6 +2158,80 @@ class JarvisDesktopWidget(tk.Tk):
     def _start_status_workers(self) -> None:
         self._thread(self._health_loop)
 
+    def _probe_health_endpoints(self, cfg: WidgetConfig) -> tuple[bool, dict[str, Any] | None]:
+        """Probe health endpoints with localhost fallback. Returns (ok, intel_data)."""
+        from urllib.parse import urlparse as _urlparse
+        _pu = _urlparse(cfg.base_url)
+        _health_urls = [f"{cfg.base_url.rstrip('/')}/health"]
+        if _pu.hostname not in ("127.0.0.1", "localhost", "::1"):
+            _health_urls.append(f"{_pu.scheme}://127.0.0.1:{_pu.port or _DEFAULT_PORT}/health")
+
+        resp = None
+        ok = False
+        intel_data: dict[str, Any] | None = None
+        for url in _health_urls:
+            ssl_ctx = _get_ssl_context(url)
+            for _attempt in range(2):
+                try:
+                    req = Request(url=url, method="GET")
+                    resp = urlopen(req, timeout=5, context=ssl_ctx)
+                    ok = resp.status == 200
+                    if ok:
+                        try:
+                            body = resp.read().decode("utf-8")
+                            health_payload = json.loads(body)
+                            if isinstance(health_payload, dict) and "intelligence" in health_payload:
+                                intel_data = health_payload["intelligence"]
+                        except Exception as exc:  # boundary: catch-all justified
+                            logger.debug("Failed to parse intelligence from health response: %s", exc)
+                    resp.close()
+                    resp = None
+                    if ok:
+                        break
+                except Exception as exc:  # boundary: catch-all justified
+                    logger.debug("Health poll request failed: %s", exc)
+                    ok = False
+                finally:
+                    if resp is not None:
+                        try:
+                            resp.close()
+                        except Exception as exc:  # boundary: catch-all justified
+                            logger.debug("Failed to close health poll HTTP response: %s", exc)
+                        resp = None
+                if self.stop_event.is_set():
+                    break
+                time.sleep(0.2)
+            if ok or self.stop_event.is_set():
+                break
+        return ok, intel_data
+
+    def _fetch_widget_status(self, cfg: WidgetConfig) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        """Fetch growth, alerts, and recent events via /widget-status. Returns (growth_data, recent_events)."""
+        growth_data: dict[str, Any] | None = None
+        recent_events: list[dict[str, Any]] = []
+        try:
+            ws = _http_json(cfg, "/widget-status", method="GET")
+            growth_data = ws.get("growth") if isinstance(ws, dict) else None
+            alerts = ws.get("alerts", []) if isinstance(ws, dict) else []
+            recent_events = ws.get("recent_events", []) if isinstance(ws, dict) else []
+            if isinstance(alerts, list):
+                for alert in alerts:
+                    msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
+                    if msg:
+                        self._notify_toast("Jarvis Alert", msg, "Warning")
+                        break  # One toast per poll cycle
+        except Exception as exc:  # boundary: catch-all justified
+            logger.debug("Failed to fetch widget-status: %s", exc)
+        return growth_data, recent_events
+
+    def _health_sleep(self) -> bool:
+        """Sleep for 8 seconds in small increments. Returns True if stop_event was set."""
+        for _ in range(16):
+            if self.stop_event.is_set():
+                return True
+            time.sleep(0.5)
+        return False
+
     def _health_loop(self) -> None:
         while not self.stop_event.is_set():
             # Schedule tkinter var read on main thread and wait for result
@@ -2093,10 +2250,8 @@ class JarvisDesktopWidget(tk.Tk):
             ready.wait(timeout=5.0)
             cfg = cfg_holder[0]
             if cfg is None:
-                for _ in range(16):
-                    if self.stop_event.is_set():
-                        return
-                    time.sleep(0.5)
+                if self._health_sleep():
+                    return
                 continue
             if not _is_safe_widget_base_url(cfg.base_url):
                 try:
@@ -2104,82 +2259,24 @@ class JarvisDesktopWidget(tk.Tk):
                 except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     logger.debug("Cannot schedule offline state (widget may be destroyed)")
                     return
-                for _ in range(16):
-                    if self.stop_event.is_set():
-                        return
-                    time.sleep(0.5)
+                if self._health_sleep():
+                    return
                 continue
-            # Build list of URLs to try (configured + localhost fallback)
-            from urllib.parse import urlparse as _urlparse
-            _pu = _urlparse(cfg.base_url)
-            _health_urls = [f"{cfg.base_url.rstrip('/')}/health"]
-            if _pu.hostname not in ("127.0.0.1", "localhost", "::1"):
-                _health_urls.append(f"{_pu.scheme}://127.0.0.1:{_pu.port or _DEFAULT_PORT}/health")
 
-            resp = None
-            ok = False
-            intel_data: dict[str, Any] | None = None
-            for url in _health_urls:
-                ssl_ctx = _get_ssl_context(url)
-                for _attempt in range(2):
-                    try:
-                        req = Request(url=url, method="GET")
-                        resp = urlopen(req, timeout=5, context=ssl_ctx)
-                        ok = resp.status == 200
-                        if ok:
-                            try:
-                                body = resp.read().decode("utf-8")
-                                health_payload = json.loads(body)
-                                if isinstance(health_payload, dict) and "intelligence" in health_payload:
-                                    intel_data = health_payload["intelligence"]
-                            except Exception as exc:  # boundary: catch-all justified
-                                logger.debug("Failed to parse intelligence from health response: %s", exc)
-                        resp.close()
-                        resp = None
-                        if ok:
-                            break
-                    except Exception as exc:  # boundary: catch-all justified
-                        logger.debug("Health poll request failed: %s", exc)
-                        ok = False
-                    finally:
-                        if resp is not None:
-                            try:
-                                resp.close()
-                            except Exception as exc:  # boundary: catch-all justified
-                                logger.debug("Failed to close health poll HTTP response: %s", exc)
-                            resp = None
-                    if self.stop_event.is_set():
-                        break
-                    time.sleep(0.2)
-                if ok or self.stop_event.is_set():
-                    break
-            # Fetch growth + alerts + recent events in ONE request via /widget-status
+            ok, intel_data = self._probe_health_endpoints(cfg)
+
             growth_data: dict[str, Any] | None = None
             recent_events: list[dict[str, Any]] = []
             if ok and cfg.token and cfg.signing_key:
-                try:
-                    ws = _http_json(cfg, "/widget-status", method="GET")
-                    growth_data = ws.get("growth") if isinstance(ws, dict) else None
-                    alerts = ws.get("alerts", []) if isinstance(ws, dict) else []
-                    recent_events = ws.get("recent_events", []) if isinstance(ws, dict) else []
-                    if isinstance(alerts, list):
-                        for alert in alerts:
-                            msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
-                            if msg:
-                                self._notify_toast("Jarvis Alert", msg, "Warning")
-                                break  # One toast per poll cycle
-                except Exception as exc:  # boundary: catch-all justified
-                    logger.debug("Failed to fetch widget-status: %s", exc)
+                growth_data, recent_events = self._fetch_widget_status(cfg)
+
             if not self.stop_event.is_set():
                 try:
                     self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
                 except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     logger.debug("Cannot schedule online state update (widget may be destroyed)")
                     return
-            for _ in range(16):
-                if self.stop_event.is_set():
-                    return
-                time.sleep(0.5)
+            self._health_sleep()
 
     def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None,
                     growth_data: dict[str, Any] | None = None,

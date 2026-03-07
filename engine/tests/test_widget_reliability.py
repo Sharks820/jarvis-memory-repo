@@ -319,6 +319,11 @@ class TestWidgetUI:
         widget._log_async = MagicMock()
         widget._notify_toast = MagicMock()
         widget._thread = lambda fn: fn()
+        # Wire up extracted diagnostic helpers to use the real implementations
+        widget._diag_check_connection = lambda cfg: JarvisDesktopWidget._diag_check_connection(widget, cfg)
+        widget._diag_check_sync = lambda cfg: JarvisDesktopWidget._diag_check_sync(widget, cfg)
+        widget._diag_check_intelligence = lambda cfg: JarvisDesktopWidget._diag_check_intelligence(widget, cfg)
+        widget._diag_run_self_heal = lambda cfg: JarvisDesktopWidget._diag_run_self_heal(widget, cfg)
 
         desktop_widget.JarvisDesktopWidget._diagnose_repair_async(widget)
 

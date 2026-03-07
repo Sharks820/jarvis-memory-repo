@@ -9,9 +9,22 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from typing import Any
+from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+
+
+# ---------------------------------------------------------------------------
+# TypedDicts
+# ---------------------------------------------------------------------------
+
+
+class AttackIntelligence(TypedDict):
+    total_patterns: int
+    total_events: int
+    recurring_patterns: int
+    top_categories: list[dict]
+    recent_attacks: list[dict]
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +213,7 @@ class AttackPatternMemory:
 
     # -- Intelligence summary -----------------------------------------------
 
-    def get_attack_intelligence(self) -> dict[str, Any]:
+    def get_attack_intelligence(self) -> AttackIntelligence:
         """Return summary statistics for stored attack patterns."""
         with self._lock:
             cur = self._db.cursor()

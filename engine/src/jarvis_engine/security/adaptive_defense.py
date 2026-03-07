@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.security.attack_memory import AttackPatternMemory
@@ -19,6 +19,20 @@ if TYPE_CHECKING:
 from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# TypedDicts
+# ---------------------------------------------------------------------------
+
+
+class DefenseDashboard(TypedDict):
+    total_attacks: int
+    total_blocked: int
+    rules_generated: int
+    unique_ips: int
+    effectiveness_pct: float
+    top_categories: list[dict]
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +172,7 @@ class AdaptiveDefenseEngine:
     # Dashboard & metrics
     # ------------------------------------------------------------------
 
-    def get_defense_dashboard(self) -> dict[str, Any]:
+    def get_defense_dashboard(self) -> DefenseDashboard:
         """Return a metrics dashboard dict.
 
         Keys: ``total_attacks``, ``total_blocked``, ``rules_generated``,

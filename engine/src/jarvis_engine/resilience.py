@@ -5,7 +5,7 @@ import logging
 import re
 import secrets
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from jarvis_engine._constants import runtime_dir as _runtime_dir
 
@@ -20,6 +20,33 @@ from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import safe_int as _safe_int
+from jarvis_engine.brain_memory import RegressionReport
+
+
+class SyncReport(TypedDict):
+    """Result from :func:`run_mobile_desktop_sync`."""
+
+    sync_ok: bool
+    generated_utc: str
+    security: dict[str, Any]
+    owner_guard: dict[str, Any]
+    runtime_control: dict[str, Any]
+    memory: dict[str, Any]
+    checks: list[dict[str, Any]]
+    report_path: str
+
+
+class SelfHealReport(TypedDict):
+    """Result from :func:`run_self_heal`."""
+
+    status: str
+    generated_utc: str
+    actions: list[str]
+    regression: RegressionReport
+    maintenance: dict[str, Any]
+    sync: SyncReport
+    log_scan: dict[str, Any]
+    report_path: str
 
 
 def _tail_lines(path: Path, *, max_lines: int) -> list[str]:
@@ -76,7 +103,7 @@ def _ensure_mobile_security_config(root: Path) -> dict[str, Any]:
     }
 
 
-def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
+def run_mobile_desktop_sync(root: Path) -> SyncReport:
     security = _ensure_mobile_security_config(root)
     owner_guard = read_owner_guard(root)
     control_state = read_control_state(root)
@@ -158,7 +185,7 @@ def run_self_heal(
     keep_recent: int = 1800,
     snapshot_note: str = "self-heal",
     force_maintenance: bool = False,
-) -> dict[str, Any]:
+) -> SelfHealReport:
     now = _now_iso()
     actions: list[str] = []
     security = _ensure_mobile_security_config(root)

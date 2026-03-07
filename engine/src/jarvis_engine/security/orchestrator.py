@@ -219,61 +219,103 @@ class SecurityOrchestrator:
     # ------------------------------------------------------------------
 
     def check_request(
-        self,
-        path: str,
-        source_ip: str,
-        headers: dict,
-        body: str,
-        user_agent: str = "",
+        self, path: str, source_ip: str, headers: dict,
+        body: str, user_agent: str = "",
     ) -> dict[str, Any]:
         """Run the full security pipeline on an inbound request.
 
-        Returns a dict with keys:
-          - ``allowed`` (bool): whether the request should proceed
-          - ``reason`` (str): human-readable explanation
-          - ``threat_level`` (str): NONE / LOW / MEDIUM / HIGH / CRITICAL
-          - ``injection_verdict`` (str): clean / suspicious / injection_detected / hostile
-          - ``containment_actions`` (list): actions taken by containment engine
+        Returns a dict with ``allowed``, ``reason``, ``threat_level``,
+        ``injection_verdict``, and ``containment_actions``.
         """
+        # Early-exit checks (honeypot, IP blocklist, threat intel)
+        early = self._check_honeypot(path, source_ip, headers)
+        if early is not None:
+            return early
+        early = self._check_ip_blocklist(source_ip, path)
+        if early is not None:
+            return early
+
+        # Threat detection + injection firewall
+        assessment = self._check_threat_detection(
+            source_ip, path, body, user_agent, headers,
+        )
+        threat_level = assessment.threat_level
+        injection_result = self._check_injection(body)
+        injection_verdict = injection_result.verdict.value
+        self._log_assessment(path, source_ip, threat_level, injection_verdict, assessment)
+
+        # Decision logic
+        allowed = True
+        reason = "Request allowed"
         containment_actions: list[str] = []
 
-        # --- Step 1: Honeypot check ---
-        if self._honeypot.is_honeypot_path(path):
-            self._honeypot.record_hit(path, source_ip, headers)
-            self._forensic_logger.log_event({
-                "event_type": "honeypot_triggered",
-                "path": path,
-                "source_ip": source_ip,
-            })
-            # Record in IP tracker as an attack attempt
-            self._ip_tracker.record_attempt(source_ip, "honeypot_probe")
-            self._adaptive_defense.record_detection(
-                category="honeypot_probe",
-                payload_hash=path,
-                source_ip=source_ip,
-                blocked=True,
+        if threat_level in _ESCALATION_LEVELS:
+            allowed = False
+            reason = f"Threat level {threat_level} detected"
+            containment_actions = self._handle_escalation(
+                source_ip, path, body, threat_level, assessment,
             )
-            with self._lock:
-                self._total_requests += 1
-                self._total_blocked += 1
-            return {
-                "allowed": False,
-                "reason": "Honeypot path triggered",
-                "threat_level": "HIGH",
-                "injection_verdict": "clean",
-                "containment_actions": [],
-            }
+        if injection_verdict != "clean":
+            verdict_result = self._handle_injection_verdict(
+                source_ip, path, body, injection_verdict, injection_result,
+            )
+            if not verdict_result["allowed"]:
+                allowed = False
+                reason = verdict_result["reason"]
 
-        # --- Step 2: IP blocklist check ---
+        self._post_request_actions(source_ip, path, threat_level, allowed)
+        return {
+            "allowed": allowed,
+            "reason": reason,
+            "threat_level": threat_level,
+            "injection_verdict": injection_verdict,
+            "containment_actions": containment_actions,
+        }
+
+    # ------------------------------------------------------------------
+    # check_request helper methods
+    # ------------------------------------------------------------------
+
+    def _check_honeypot(
+        self, path: str, source_ip: str, headers: dict,
+    ) -> dict[str, Any] | None:
+        """Return a block result if *path* is a honeypot, else ``None``."""
+        if not self._honeypot.is_honeypot_path(path):
+            return None
+
+        self._honeypot.record_hit(path, source_ip, headers)
+        self._forensic_logger.log_event({
+            "event_type": "honeypot_triggered",
+            "path": path,
+            "source_ip": source_ip,
+        })
+        self._ip_tracker.record_attempt(source_ip, "honeypot_probe")
+        self._adaptive_defense.record_detection(
+            category="honeypot_probe",
+            payload_hash=path,
+            source_ip=source_ip,
+            blocked=True,
+        )
+        self._increment_counters(blocked=True)
+        return {
+            "allowed": False,
+            "reason": "Honeypot path triggered",
+            "threat_level": "HIGH",
+            "injection_verdict": "clean",
+            "containment_actions": [],
+        }
+
+    def _check_ip_blocklist(
+        self, source_ip: str, path: str,
+    ) -> dict[str, Any] | None:
+        """Return a block result if *source_ip* is blocked or flagged by threat intel."""
         if self._ip_tracker.is_blocked(source_ip):
             self._forensic_logger.log_event({
                 "event_type": "blocked_ip_rejected",
                 "source_ip": source_ip,
                 "path": path,
             })
-            with self._lock:
-                self._total_requests += 1
-                self._total_blocked += 1
+            self._increment_counters(blocked=True)
             return {
                 "allowed": False,
                 "reason": "IP is blocked",
@@ -282,7 +324,7 @@ class SecurityOrchestrator:
                 "containment_actions": [],
             }
 
-        # --- Step 2b: Threat intel enrichment ---
+        # Threat intel enrichment
         if self.threat_intel is not None:
             try:
                 intel = self.threat_intel.enrich_ip(source_ip)
@@ -294,9 +336,7 @@ class SecurityOrchestrator:
                         "intel": intel,
                     })
                     self._ip_tracker.record_attempt(source_ip, "threat_intel_bad")
-                    with self._lock:
-                        self._total_requests += 1
-                        self._total_blocked += 1
+                    self._increment_counters(blocked=True)
                     return {
                         "allowed": False,
                         "reason": "IP flagged by threat intelligence feed",
@@ -307,7 +347,17 @@ class SecurityOrchestrator:
             except (OSError, ValueError, TimeoutError) as exc:
                 logger.debug("Threat intel enrichment failed for %s: %s", source_ip, exc)
 
-        # --- Step 3: Threat detection ---
+        return None
+
+    def _check_threat_detection(
+        self,
+        source_ip: str,
+        path: str,
+        body: str,
+        user_agent: str,
+        headers: dict,
+    ) -> Any:
+        """Run the threat detector and return its assessment."""
         request_context = {
             "ip": source_ip,
             "path": path,
@@ -315,16 +365,22 @@ class SecurityOrchestrator:
             "user_agent": user_agent,
             "headers": headers,
         }
-        assessment = self._threat_detector.assess(request_context)
-        threat_level = assessment.threat_level
+        return self._threat_detector.assess(request_context)
 
-        # --- Step 4: Injection firewall ---
-        # Scan body (the main attack surface for prompt injection)
+    def _check_injection(self, body: str) -> Any:
+        """Run the injection firewall on *body* and return the scan result."""
         scan_text = body or ""
-        injection_result = self._injection_firewall.scan(scan_text)
-        injection_verdict = injection_result.verdict.value
+        return self._injection_firewall.scan(scan_text)
 
-        # --- Step 5: Forensic log ---
+    def _log_assessment(
+        self,
+        path: str,
+        source_ip: str,
+        threat_level: str,
+        injection_verdict: str,
+        assessment: Any,
+    ) -> None:
+        """Write a forensic log entry for the completed assessment."""
         self._forensic_logger.log_event({
             "event_type": "request_assessed",
             "path": path,
@@ -334,101 +390,125 @@ class SecurityOrchestrator:
             "signal_count": len(assessment.signals),
         })
 
-        # --- Step 6: Decision logic ---
-        allowed = True
-        reason = "Request allowed"
+    def _handle_escalation(
+        self,
+        source_ip: str,
+        path: str,
+        body: str,
+        threat_level: str,
+        assessment: Any,
+    ) -> list[str]:
+        """Execute containment, alerting, and attack memory for HIGH/CRITICAL threats.
 
-        # On HIGH/CRITICAL threat: auto-escalate, block
-        if threat_level in _ESCALATION_LEVELS:
-            allowed = False
-            reason = f"Threat level {threat_level} detected"
-            containment_level = _THREAT_TO_CONTAINMENT.get(threat_level, 2)
-            try:
-                result = self._containment.contain(
-                    ip=source_ip,
-                    level=containment_level,
-                    reason=f"Auto-escalation: {threat_level} threat on {path}",
-                )
-                containment_actions = result.get("actions", [])
-            except (ValueError, RuntimeError, OSError) as exc:
-                logger.warning("Containment failed: %s", exc)
+        Returns the list of containment actions taken.
+        """
+        containment_actions: list[str] = []
+        containment_level = _THREAT_TO_CONTAINMENT.get(threat_level, 2)
 
-            # Send alert
-            alert_level = _THREAT_TO_ALERT.get(threat_level, 3)
-            categories = ", ".join(s.category for s in assessment.signals)
-            self._alert_chain.send_alert(
-                level=alert_level,
-                summary=f"{threat_level} threat from {source_ip}: {categories}",
-                evidence=f"path={path}",
-                containment_action=f"level {containment_level} containment",
+        try:
+            result = self._containment.contain(
+                ip=source_ip,
+                level=containment_level,
+                reason=f"Auto-escalation: {threat_level} threat on {path}",
+            )
+            containment_actions = result.get("actions", [])
+        except (ValueError, RuntimeError, OSError) as exc:
+            logger.warning("Containment failed: %s", exc)
+
+        # Send alert
+        alert_level = _THREAT_TO_ALERT.get(threat_level, 3)
+        categories = ", ".join(s.category for s in assessment.signals)
+        self._alert_chain.send_alert(
+            level=alert_level,
+            summary=f"{threat_level} threat from {source_ip}: {categories}",
+            evidence=f"path={path}",
+            containment_action=f"level {containment_level} containment",
+            source_ip=source_ip,
+        )
+
+        self._ip_tracker.record_attempt(source_ip, threat_level)
+        self._record_signals(assessment.signals, body or path, source_ip)
+
+        return containment_actions
+
+    def _record_signals(
+        self, signals: list, payload: str, source_ip: str,
+    ) -> None:
+        """Record each threat signal in attack memory and adaptive defense."""
+        for signal in signals:
+            self._attack_memory.record_attack(
+                category=signal.category,
+                payload=payload,
+                detection_method="threat_detector",
                 source_ip=source_ip,
             )
+            self._adaptive_defense.record_detection(
+                category=signal.category,
+                payload_hash=signal.category,
+                source_ip=source_ip,
+                blocked=True,
+            )
+            self._adaptive_defense.check_auto_rule(signal.category)
 
-            # Record IP attempt once (before per-signal processing)
-            self._ip_tracker.record_attempt(source_ip, threat_level)
+    def _handle_injection_verdict(
+        self,
+        source_ip: str,
+        path: str,
+        body: str,
+        injection_verdict: str,
+        injection_result: Any,
+    ) -> dict[str, Any]:
+        """Process a non-clean injection verdict. Returns ``{allowed, reason}``."""
+        if injection_verdict in ("injection_detected", "hostile"):
+            reason = f"Injection {injection_verdict}: {', '.join(injection_result.matched_patterns[:3])}"
+            self._attack_memory.record_attack(
+                category="prompt_injection",
+                payload=body[:500] if body else "",
+                detection_method=f"firewall_{injection_verdict}",
+                source_ip=source_ip,
+            )
+            self._adaptive_defense.record_detection(
+                category="prompt_injection",
+                payload_hash=injection_verdict,
+                source_ip=source_ip,
+                blocked=True,
+            )
+            self._ip_tracker.record_attempt(source_ip, "prompt_injection")
 
-            # Record in attack memory and adaptive defense
-            for signal in assessment.signals:
-                self._attack_memory.record_attack(
-                    category=signal.category,
-                    payload=body or path,
-                    detection_method="threat_detector",
+            if injection_verdict == "hostile":
+                self._alert_chain.send_alert(
+                    level=4,
+                    summary=f"Hostile injection from {source_ip}",
+                    evidence=f"patterns={injection_result.matched_patterns[:5]}",
+                    containment_action="request blocked",
                     source_ip=source_ip,
                 )
-                self._adaptive_defense.record_detection(
-                    category=signal.category,
-                    payload_hash=signal.category,
-                    source_ip=source_ip,
-                    blocked=True,
-                )
-                self._adaptive_defense.check_auto_rule(signal.category)
+            return {"allowed": False, "reason": reason}
 
-        # On injection detected: record attack, block
-        if injection_verdict != "clean":
-            if injection_verdict in ("injection_detected", "hostile"):
-                allowed = False
-                reason = f"Injection {injection_verdict}: {', '.join(injection_result.matched_patterns[:3])}"
-                self._attack_memory.record_attack(
-                    category="prompt_injection",
-                    payload=body[:500] if body else "",
-                    detection_method=f"firewall_{injection_verdict}",
-                    source_ip=source_ip,
-                )
-                self._adaptive_defense.record_detection(
-                    category="prompt_injection",
-                    payload_hash=injection_verdict,
-                    source_ip=source_ip,
-                    blocked=True,
-                )
-                self._ip_tracker.record_attempt(source_ip, "prompt_injection")
+        if injection_verdict == "suspicious":
+            self._forensic_logger.log_event({
+                "event_type": "suspicious_injection",
+                "source_ip": source_ip,
+                "path": path,
+                "patterns": injection_result.matched_patterns[:5],
+            })
 
-                # Send alert for hostile injections
-                if injection_verdict == "hostile":
-                    self._alert_chain.send_alert(
-                        level=4,
-                        summary=f"Hostile injection from {source_ip}",
-                        evidence=f"patterns={injection_result.matched_patterns[:5]}",
-                        containment_action="request blocked",
-                        source_ip=source_ip,
-                    )
+        return {"allowed": True, "reason": ""}
 
-            elif injection_verdict == "suspicious":
-                # Log but allow (may be a false positive)
-                self._forensic_logger.log_event({
-                    "event_type": "suspicious_injection",
-                    "source_ip": source_ip,
-                    "path": path,
-                    "patterns": injection_result.matched_patterns[:5],
-                })
-
-        # --- Step 7: Resource monitoring ---
+    def _post_request_actions(
+        self,
+        source_ip: str,
+        path: str,
+        threat_level: str,
+        allowed: bool,
+    ) -> None:
+        """Resource monitoring, action audit, and counter updates."""
         if self.resource_monitor is not None:
             try:
                 self.resource_monitor.record("api_calls_per_hour", 1)
             except (ValueError, TypeError) as exc:
                 logger.debug("ResourceMonitor record failed: %s", exc)
 
-        # --- Step 8: Action audit ---
         if self.action_auditor is not None:
             try:
                 self.action_auditor.log_action(
@@ -440,19 +520,14 @@ class SecurityOrchestrator:
             except (ValueError, TypeError, OSError) as exc:
                 logger.debug("ActionAuditor log failed: %s", exc)
 
-        # Single atomic counter update for non-early-return paths
+        self._increment_counters(blocked=not allowed)
+
+    def _increment_counters(self, *, blocked: bool) -> None:
+        """Atomically update request/blocked counters."""
         with self._lock:
             self._total_requests += 1
-            if not allowed:
+            if blocked:
                 self._total_blocked += 1
-
-        return {
-            "allowed": allowed,
-            "reason": reason,
-            "threat_level": threat_level,
-            "injection_verdict": injection_verdict,
-            "containment_actions": containment_actions,
-        }
 
     # ------------------------------------------------------------------
     # Outbound output scanning

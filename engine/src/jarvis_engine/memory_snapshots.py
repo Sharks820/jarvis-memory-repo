@@ -13,9 +13,22 @@ from jarvis_engine._compat import UTC
 from jarvis_engine._constants import runtime_dir as _runtime_dir
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+class MemoryMaintenanceReport(TypedDict):
+    """Result from :func:`run_memory_maintenance`."""
+
+    ts: str
+    keep_recent: int
+    compact: dict[str, Any]
+    regression: dict[str, Any]
+    kg_regression: dict[str, Any]
+    snapshot: dict[str, Any]
+    status: str
+    report_path: str
 
 
 @dataclass
@@ -249,7 +262,7 @@ def verify_signed_snapshot(root: Path, snapshot_path: Path) -> SnapshotVerificat
     )
 
 
-def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note: str = "nightly") -> dict[str, Any]:
+def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note: str = "nightly") -> MemoryMaintenanceReport:
     from jarvis_engine.brain_memory import brain_compact, brain_regression_report
 
     compact_result = brain_compact(root, keep_recent=keep_recent)

@@ -24,7 +24,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +156,17 @@ def _get_executable(provider_key: str, bare_name: str) -> str:
 # Common result / subprocess helpers
 # ---------------------------------------------------------------------------
 
+class CLIProviderResult(TypedDict):
+    """Standardised result from a CLI-based LLM provider call."""
+
+    text: str
+    model: str
+    provider: str
+    success: bool
+    error: str
+    cost_usd: float
+
+
 def _cli_result(
     provider: str,
     model: str,
@@ -164,7 +175,7 @@ def _cli_result(
     success: bool = False,
     error: str = "",
     cost_usd: float = 0.0,
-) -> dict[str, Any]:
+) -> CLIProviderResult:
     """Construct a standardised CLI provider result dict."""
     return {
         "text": text,
@@ -185,7 +196,7 @@ def _run_cli_subprocess(
     cli_display_name: str = "",
     env: dict[str, str] | None = None,
     parse_output: Callable[[str], tuple[str, float]] | None = None,
-) -> dict[str, Any]:
+) -> CLIProviderResult:
     """Run a CLI subprocess and return a standardised result dict.
 
     Handles the common subprocess.run + error-catching pattern shared by all
@@ -512,7 +523,7 @@ def call_claude_cli(
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
     model: str = "opus",
-) -> dict:
+) -> CLIProviderResult:
     """Call Claude Code CLI in non-interactive mode.
 
     Uses Opus 4.6 by default (the user's 20x Max plan).
@@ -554,7 +565,7 @@ def call_codex_cli(
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
     model: str = "gpt-5.3-codex",
-) -> dict:
+) -> CLIProviderResult:
     """Call Codex CLI in non-interactive exec mode.
 
     Uses GPT-5.3 (highest reasoning) by default via the user's Codex Pro plan.
@@ -648,7 +659,7 @@ def call_gemini_cli(
     messages: list[dict[str, str]],
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
-) -> dict:
+) -> CLIProviderResult:
     """Call Gemini CLI in non-interactive mode.
 
     Returns dict with keys: text, model, provider, success, error.
@@ -672,7 +683,7 @@ def call_kimi_cli(
     messages: list[dict[str, str]],
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
-) -> dict:
+) -> CLIProviderResult:
     """Call Kimi CLI in non-interactive (quiet) mode.
 
     --quiet = --print --output-format text --final-message-only
@@ -712,7 +723,7 @@ def call_cli_provider(
     max_tokens: int = 1024,
     timeout: int = _DEFAULT_TIMEOUT,
     model: str | None = None,
-) -> dict:
+) -> CLIProviderResult:
     """Call a CLI-based LLM provider by key.
 
     Args:

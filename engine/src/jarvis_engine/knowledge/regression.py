@@ -44,6 +44,14 @@ class KGDiff(TypedDict):
     gained_count: int
 
 
+class NodeDiff(TypedDict):
+    """Node-level changes between two metric snapshots (from ``node_diff``)."""
+
+    added: list[str]
+    removed: list[str]
+    modified: list[str]
+
+
 class KGComparison(TypedDict):
     """Result from :meth:`RegressionChecker.compare`."""
 
@@ -264,7 +272,7 @@ class RegressionChecker:
     # Node-level diff
     # ------------------------------------------------------------------
 
-    def node_diff(self, snapshot_before: dict, snapshot_after: dict) -> dict:
+    def node_diff(self, snapshot_before: dict, snapshot_after: dict) -> NodeDiff:
         """Compute node-level changes between two metric snapshots.
 
         Compares the ``node_labels`` dicts present in each snapshot.

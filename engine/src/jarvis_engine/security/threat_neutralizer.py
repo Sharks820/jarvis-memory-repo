@@ -18,7 +18,7 @@ import time
 import urllib.parse
 import urllib.request
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
@@ -30,6 +30,27 @@ if TYPE_CHECKING:
     from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# TypedDicts
+# ---------------------------------------------------------------------------
+
+
+class NeutralizationResult(TypedDict):
+    ip: str
+    actions_taken: list[str]
+    evidence_id: str
+    reported_to: list[str]
+    blocked: bool
+
+
+class ThreatNeutralizerStatus(TypedDict):
+    total_neutralized: int
+    total_reported: int
+    total_blocked: int
+    recent_actions: list[dict]
+
 
 # AbuseIPDB category codes
 ABUSEIPDB_CATEGORIES = {
@@ -113,7 +134,7 @@ class ThreatNeutralizer:
     # Main neutralization pipeline
     # ------------------------------------------------------------------
 
-    def neutralize(self, ip: str, category: str, evidence: dict) -> dict:
+    def neutralize(self, ip: str, category: str, evidence: dict) -> NeutralizationResult:
         """Execute the full neutralization pipeline for a threat.
 
         Steps (each gracefully skipped if dependency missing):
@@ -459,7 +480,7 @@ class ThreatNeutralizer:
     # Status
     # ------------------------------------------------------------------
 
-    def status(self) -> dict:
+    def status(self) -> ThreatNeutralizerStatus:
         """Return operational status and counters.
 
         Returns

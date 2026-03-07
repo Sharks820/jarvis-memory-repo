@@ -5,7 +5,18 @@ import hashlib
 import hmac
 import secrets
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
+
+
+class OwnerGuardState(TypedDict):
+    enabled: bool
+    owner_user_id: str
+    trusted_mobile_devices: list[str]
+    master_password_hash: str
+    master_password_salt_b64: str
+    master_password_iterations: int
+    updated_utc: str
+
 
 DEFAULT_OWNER_GUARD = {
     "enabled": False,
@@ -27,7 +38,7 @@ def owner_guard_path(root: Path) -> Path:
     return root / ".planning" / "security" / "owner_guard.json"
 
 
-def read_owner_guard(root: Path) -> dict[str, Any]:
+def read_owner_guard(root: Path) -> OwnerGuardState:
     from jarvis_engine._shared import load_json_file
 
     path = owner_guard_path(root)
@@ -54,7 +65,7 @@ def write_owner_guard(
     enabled: bool | None = None,
     owner_user_id: str | None = None,
     trusted_mobile_devices: list[str] | None = None,
-) -> dict[str, Any]:
+) -> OwnerGuardState:
     state = read_owner_guard(root)
     if enabled is not None:
         state["enabled"] = enabled
@@ -74,7 +85,7 @@ def _hash_master_password(password: str, *, salt: bytes, iterations: int) -> str
     return digest.hex()
 
 
-def set_master_password(root: Path, password: str, *, iterations: int = 200000) -> dict[str, Any]:
+def set_master_password(root: Path, password: str, *, iterations: int = 200000) -> OwnerGuardState:
     cleaned = password.strip()
     if len(cleaned) < 10:
         raise ValueError("master password must be at least 10 characters")
@@ -92,7 +103,7 @@ def set_master_password(root: Path, password: str, *, iterations: int = 200000) 
     return state
 
 
-def clear_master_password(root: Path) -> dict[str, Any]:
+def clear_master_password(root: Path) -> OwnerGuardState:
     state = read_owner_guard(root)
     state["master_password_hash"] = ""  # nosec B105
     state["master_password_salt_b64"] = ""  # nosec B105
@@ -116,7 +127,7 @@ def verify_master_password(root: Path, password: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
-def trust_mobile_device(root: Path, device_id: str) -> dict[str, Any]:
+def trust_mobile_device(root: Path, device_id: str) -> OwnerGuardState:
     state = read_owner_guard(root)
     cleaned = device_id.strip()[:128]
     if not cleaned:
@@ -126,7 +137,7 @@ def trust_mobile_device(root: Path, device_id: str) -> dict[str, Any]:
     return write_owner_guard(root, trusted_mobile_devices=sorted(trusted))
 
 
-def revoke_mobile_device(root: Path, device_id: str) -> dict[str, Any]:
+def revoke_mobile_device(root: Path, device_id: str) -> OwnerGuardState:
     state = read_owner_guard(root)
     cleaned = device_id.strip()[:128]
     trusted = [d for d in state.get("trusted_mobile_devices", []) if d != cleaned]

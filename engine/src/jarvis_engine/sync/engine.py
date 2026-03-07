@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from typing import Any
+from typing import Any, TypedDict
 
 from jarvis_engine.sync.changelog import (
     _TRACKED_TABLES,
@@ -19,6 +19,37 @@ from jarvis_engine.sync.changelog import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class OutgoingSyncPayload(TypedDict):
+    """Outgoing diff payload for a target device."""
+
+    changes: dict[str, list[dict[str, Any]]]
+    cursors: dict[str, int]
+
+
+class IncomingSyncResult(TypedDict):
+    """Result of applying incoming sync changes."""
+
+    applied: int
+    conflicts_resolved: int
+    errors: list[str]
+
+
+class SyncCursorEntry(TypedDict):
+    """A single sync cursor row."""
+
+    device_id: str
+    table_name: str
+    last_version: int
+    last_sync_ts: str
+
+
+class SyncStatus(TypedDict):
+    """Current sync status with cursors and changelog size."""
+
+    cursors: list[SyncCursorEntry]
+    changelog_size: int
 
 
 class SyncEngine:
@@ -42,7 +73,7 @@ class SyncEngine:
         self._device_id = device_id
         self._conflict_strategy = conflict_strategy
 
-    def compute_outgoing(self, target_device_id: str, limit: int = 500) -> dict[str, Any]:
+    def compute_outgoing(self, target_device_id: str, limit: int = 500) -> OutgoingSyncPayload:
         """Compute changes to send to *target_device_id*.
 
         Returns ``{"changes": {table: [entries]}, "cursors": {table: max_version}}``.
@@ -61,7 +92,7 @@ class SyncEngine:
 
         return {"changes": changes, "cursors": cursors}
 
-    def apply_incoming(self, changes: dict[str, Any], source_device_id: str) -> dict[str, Any]:
+    def apply_incoming(self, changes: dict[str, Any], source_device_id: str) -> IncomingSyncResult:
         """Apply remote changes within a single transaction.
 
         Only successfully applied operations are counted.  Cursors are only
@@ -386,7 +417,7 @@ class SyncEngine:
 
         return True
 
-    def sync_status(self) -> dict[str, Any]:
+    def sync_status(self) -> SyncStatus:
         """Return cursors for all devices/tables and total changelog size."""
         cur = self._db.execute(
             "SELECT device_id, table_name, last_version, last_sync_ts "

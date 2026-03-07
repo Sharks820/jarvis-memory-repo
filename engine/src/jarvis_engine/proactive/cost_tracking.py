@@ -17,22 +17,22 @@ from typing import Any, TypedDict
 logger = logging.getLogger(__name__)
 
 
-class CostSnapshot(TypedDict):
-    """Snapshot of local-vs-cloud cost metrics for a single time point."""
-
-    date: str
+# Functional-form TypedDict because keys like "7d_local_pct" start with a digit.
+CostSnapshot = TypedDict("CostSnapshot", {
+    "date": str,
     # 7-day window
-    _7d_local_pct: float
-    _7d_cloud_cost_usd: float
-    _7d_failed_count: int
-    _7d_failed_cost_usd: float
-    _7d_total_queries: int
+    "7d_local_pct": float,
+    "7d_cloud_cost_usd": float,
+    "7d_failed_count": int,
+    "7d_failed_cost_usd": float,
+    "7d_total_queries": int,
     # 30-day window
-    _30d_local_pct: float
-    _30d_cloud_cost_usd: float
-    _30d_failed_count: int
-    _30d_failed_cost_usd: float
-    _30d_total_queries: int
+    "30d_local_pct": float,
+    "30d_cloud_cost_usd": float,
+    "30d_failed_count": int,
+    "30d_failed_cost_usd": float,
+    "30d_total_queries": int,
+})
 
 
 class CostTrend(TypedDict):
@@ -46,7 +46,7 @@ class CostTrend(TypedDict):
     trend: str
 
 
-def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict[str, Any]:
+def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> CostSnapshot:
     """Compute 7d and 30d local-vs-cloud summaries and append to JSONL history.
 
     Returns a snapshot dict with date, local_pct, cloud_cost_usd, failed metrics,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -25,13 +25,21 @@ from jarvis_engine._constants import STOP_WORDS as _STOP_WORDS
 from jarvis_engine._constants import extract_keywords as _extract_keywords_core
 
 
+class CrossBranchQueryResult(TypedDict):
+    """Result of a cross-branch semantic query."""
+
+    direct_results: list[dict]
+    cross_branch_connections: list[dict]
+    branches_involved: list[str]
+
+
 def cross_branch_query(
     query: str,
     engine: "MemoryEngine",
     kg: "KnowledgeGraph",
     embed_service: "EmbeddingService",
     k: int = 10,
-) -> dict:
+) -> CrossBranchQueryResult:
     """Perform a cross-branch semantic query.
 
     1. Embed the query.

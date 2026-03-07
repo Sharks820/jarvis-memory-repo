@@ -16,6 +16,135 @@ from jarvis_engine._constants import runtime_dir as _runtime_dir
 logger = logging.getLogger(__name__)
 
 
+def _gather_kg_metrics(root: Any, metrics: dict[str, Any]) -> None:
+    """Populate KG node/edge counts, branch breakdown, 7-day facts, and growth trend."""
+    try:
+        from jarvis_engine.proactive.kg_metrics import kg_growth_trend, load_kg_history
+
+        history_path = _runtime_dir(root) / _KG_METRICS_LOG
+        history = load_kg_history(history_path, limit=50)
+        if history:
+            latest = history[-1]
+            metrics["kg_nodes"] = int(latest.get("node_count", 0))
+            metrics["kg_edges"] = int(latest.get("edge_count", 0))
+            metrics["facts_total"] = metrics["kg_nodes"]
+            branch_counts = latest.get("branch_counts", {})
+            if isinstance(branch_counts, dict):
+                metrics["branches"] = {str(k): int(v) for k, v in branch_counts.items()}
+
+            cutoff_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+            recent_entries = [
+                e for e in history
+                if str(e.get("ts", "")) >= cutoff_7d
+            ]
+            if recent_entries and len(history) > len(recent_entries):
+                before_idx = len(history) - len(recent_entries) - 1
+                if before_idx >= 0:
+                    old_count = int(history[before_idx].get("node_count", 0))
+                    metrics["facts_last_7d"] = max(0, metrics["kg_nodes"] - old_count)
+
+            try:
+                trend = kg_growth_trend(history)
+                if isinstance(trend, dict):
+                    node_growth = trend.get("node_growth", 0)
+                    if isinstance(node_growth, (int, float)):
+                        if node_growth > 0:
+                            metrics["growth_trend"] = "increasing"
+                        elif node_growth < 0:
+                            metrics["growth_trend"] = "declining"
+                        else:
+                            metrics["growth_trend"] = "stable"
+            except (ValueError, TypeError, KeyError) as exc:
+                logger.debug("intelligence growth metric failed: %s", exc)
+    except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
+        logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
+
+
+def _gather_activity_corrections(metrics: dict[str, Any]) -> None:
+    """Populate correction and consolidation counts from the activity feed."""
+    try:
+        from jarvis_engine.activity_feed import get_activity_feed
+
+        feed = get_activity_feed()
+        stats = feed.stats()
+        if isinstance(stats, dict):
+            metrics["corrections_applied"] = int(stats.get("correction_applied", 0))
+            metrics["consolidations_run"] = int(stats.get("consolidation", 0))
+        since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+        try:
+            recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
+            metrics["corrections_last_7d"] = len(recent_events)
+        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
+            logger.debug("intelligence growth metric failed: %s", exc)
+    except (ImportError, RuntimeError, ValueError, TypeError) as exc:
+        logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
+
+
+def _gather_self_test_score(root: Any, metrics: dict[str, Any]) -> None:
+    """Read the latest self-test average score into metrics."""
+    try:
+        from jarvis_engine._shared import load_jsonl_tail
+
+        self_test_path = _runtime_dir(root) / _SELF_TEST_HISTORY
+        tail = load_jsonl_tail(self_test_path, limit=1)
+        if tail:
+            latest_test = tail[-1]
+            score = latest_test.get("average_score", 0.0)
+            metrics["last_self_test_score"] = round(float(score), 3)
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+        logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
+
+
+def _gather_capability_trend(root: Any, metrics: dict[str, Any]) -> None:
+    """Override growth_trend based on capability history score progression."""
+    try:
+        from jarvis_engine.growth_tracker import read_history
+
+        cap_path = root / ".planning" / "capability_history.jsonl"
+        cap_rows = read_history(cap_path)
+        if len(cap_rows) >= 2:
+            latest_score = float(cap_rows[-1].get("score_pct", 0.0))
+            prev_score = float(cap_rows[-2].get("score_pct", 0.0))
+            if latest_score > prev_score:
+                metrics["growth_trend"] = "increasing"
+            elif latest_score < prev_score:
+                metrics["growth_trend"] = "declining"
+    except (ImportError, OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.debug("Intelligence growth: capability history unavailable: %s", exc)
+
+
+def _gather_active_missions(root: Any, metrics: dict[str, Any]) -> None:
+    """Load active learning missions and summarise them into metrics."""
+    try:
+        mission_file = _runtime_dir(root) / "learning_missions.json"
+        active_missions: list[dict[str, Any]] = []
+        if mission_file.exists():
+            from jarvis_engine._shared import load_json_file
+
+            mission_data = load_json_file(mission_file, {}, expected_type=dict)
+            if mission_data:
+                rows = mission_data.get("missions", [])
+                if isinstance(rows, list):
+                    active_missions = [
+                        m for m in rows
+                        if isinstance(m, dict)
+                        and str(m.get("status", "")).lower() not in {"completed", "failed", "cancelled", "exhausted"}
+                    ]
+        metrics["mission_count"] = len(active_missions)
+        metrics["active_missions"] = [
+            {
+                "topic": str(m.get("topic", "")),
+                "status": str(m.get("status", "")),
+                "findings": int(m.get("verified_findings", 0) or 0),
+            }
+            for m in active_missions[:5]
+        ]
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+        logger.debug("Intelligence growth: mission status unavailable: %s", exc)
+        metrics["mission_count"] = 0
+        metrics["active_missions"] = []
+
+
 class IntelligenceRoutesMixin:
     """Endpoint handlers for intelligence growth, learning, and knowledge export."""
 
@@ -42,73 +171,16 @@ class IntelligenceRoutesMixin:
             "memory_pressure_incidents": 0,
         }
 
-        # --- Knowledge graph metrics from KG history ---
-        try:
-            from jarvis_engine.proactive.kg_metrics import kg_growth_trend, load_kg_history
+        _gather_kg_metrics(root, metrics)
+        _gather_activity_corrections(metrics)
 
-            history_path = _runtime_dir(root) / _KG_METRICS_LOG
-            history = load_kg_history(history_path, limit=50)
-            if history:
-                latest = history[-1]
-                metrics["kg_nodes"] = int(latest.get("node_count", 0))
-                metrics["kg_edges"] = int(latest.get("edge_count", 0))
-                metrics["facts_total"] = metrics["kg_nodes"]
-                branch_counts = latest.get("branch_counts", {})
-                if isinstance(branch_counts, dict):
-                    metrics["branches"] = {str(k): int(v) for k, v in branch_counts.items()}
-
-                cutoff_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
-                recent_entries = [
-                    e for e in history
-                    if str(e.get("ts", "")) >= cutoff_7d
-                ]
-                if recent_entries and len(history) > len(recent_entries):
-                    before_idx = len(history) - len(recent_entries) - 1
-                    if before_idx >= 0:
-                        old_count = int(history[before_idx].get("node_count", 0))
-                        metrics["facts_last_7d"] = max(0, metrics["kg_nodes"] - old_count)
-
-                try:
-                    trend = kg_growth_trend(history)
-                    if isinstance(trend, dict):
-                        node_growth = trend.get("node_growth", 0)
-                        if isinstance(node_growth, (int, float)):
-                            if node_growth > 0:
-                                metrics["growth_trend"] = "increasing"
-                            elif node_growth < 0:
-                                metrics["growth_trend"] = "declining"
-                            else:
-                                metrics["growth_trend"] = "stable"
-                except (ValueError, TypeError, KeyError) as exc:
-                    logger.debug("intelligence growth metric failed: %s", exc)
-        except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
-            logger.debug("Intelligence growth: KG metrics unavailable: %s", exc)
-
-        # --- Activity feed: corrections ---
-        try:
-            from jarvis_engine.activity_feed import get_activity_feed
-
-            feed = get_activity_feed()
-            stats = feed.stats()
-            if isinstance(stats, dict):
-                metrics["corrections_applied"] = int(stats.get("correction_applied", 0))
-                metrics["consolidations_run"] = int(stats.get("consolidation", 0))
-            since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
-            try:
-                recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
-                metrics["corrections_last_7d"] = len(recent_events)
-            except (ImportError, RuntimeError, ValueError, TypeError) as exc:
-                logger.debug("intelligence growth metric failed: %s", exc)
-        except (ImportError, RuntimeError, ValueError, TypeError) as exc:
-            logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
-
-        # --- Command reliability and pressure ---
+        # Command reliability and pressure
         reliability = reliability_cache if reliability_cache is not None else _compute_command_reliability()
         metrics["command_success_rate_pct"] = reliability["command_success_rate_pct"]
         metrics["timeout_count"] = reliability["timeout_count"]
         metrics["memory_pressure_incidents"] = reliability["memory_pressure_incidents"]
 
-        # --- Memory engine: record count ---
+        # Memory engine: record count
         try:
             server = self.server
             mem_engine = server.ensure_memory_engine()
@@ -117,64 +189,9 @@ class IntelligenceRoutesMixin:
         except (ImportError, RuntimeError, OSError) as exc:
             logger.debug("Intelligence growth: memory records unavailable: %s", exc)
 
-        # --- Self-test score ---
-        try:
-            from jarvis_engine._shared import load_jsonl_tail
-
-            self_test_path = _runtime_dir(root) / _SELF_TEST_HISTORY
-            tail = load_jsonl_tail(self_test_path, limit=1)
-            if tail:
-                latest_test = tail[-1]
-                score = latest_test.get("average_score", 0.0)
-                metrics["last_self_test_score"] = round(float(score), 3)
-        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
-            logger.debug("Intelligence growth: self-test history unavailable: %s", exc)
-
-        # --- Capability history for overall trend confirmation ---
-        try:
-            from jarvis_engine.growth_tracker import read_history
-
-            cap_path = root / ".planning" / "capability_history.jsonl"
-            cap_rows = read_history(cap_path)
-            if len(cap_rows) >= 2:
-                latest_score = float(cap_rows[-1].get("score_pct", 0.0))
-                prev_score = float(cap_rows[-2].get("score_pct", 0.0))
-                if latest_score > prev_score:
-                    metrics["growth_trend"] = "increasing"
-                elif latest_score < prev_score:
-                    metrics["growth_trend"] = "declining"
-        except (ImportError, OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-            logger.debug("Intelligence growth: capability history unavailable: %s", exc)
-
-        # --- Active learning missions ---
-        try:
-            mission_file = _runtime_dir(root) / "learning_missions.json"
-            active_missions: list[dict[str, Any]] = []
-            if mission_file.exists():
-                from jarvis_engine._shared import load_json_file
-
-                mission_data = load_json_file(mission_file, {}, expected_type=dict)
-                if mission_data:
-                    rows = mission_data.get("missions", [])
-                    if isinstance(rows, list):
-                        active_missions = [
-                            m for m in rows
-                            if isinstance(m, dict)
-                            and str(m.get("status", "")).lower() not in {"completed", "failed", "cancelled", "exhausted"}
-                        ]
-            metrics["mission_count"] = len(active_missions)
-            metrics["active_missions"] = [
-                {
-                    "topic": str(m.get("topic", "")),
-                    "status": str(m.get("status", "")),
-                    "findings": int(m.get("verified_findings", 0) or 0),
-                }
-                for m in active_missions[:5]
-            ]
-        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
-            logger.debug("Intelligence growth: mission status unavailable: %s", exc)
-            metrics["mission_count"] = 0
-            metrics["active_missions"] = []
+        _gather_self_test_score(root, metrics)
+        _gather_capability_trend(root, metrics)
+        _gather_active_missions(root, metrics)
 
         return {"ok": True, "metrics": metrics}
 

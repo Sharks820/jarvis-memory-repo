@@ -22,6 +22,7 @@ import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import TypedDict
 
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -30,6 +31,53 @@ except ImportError:  # pragma: no cover
     _HAS_THREADPOOL = False
 
 logger = logging.getLogger(__name__)
+
+
+class FamilyShieldStatus(TypedDict):
+    """Result from :meth:`FamilyShield.status`."""
+
+    module: str
+    member_count: int
+    total_emails: int
+    total_usernames: int
+    total_domains: int
+
+
+class PasswordCheckResult(TypedDict):
+    """Result from :meth:`BreachMonitor.check_password`."""
+
+    compromised: bool
+    count: int
+
+
+class BreachMonitorStatus(TypedDict):
+    """Result from :meth:`BreachMonitor.status`."""
+
+    module: str
+    api_key_configured: bool
+
+
+class TyposquatMonitorStatus(TypedDict):
+    """Result from :meth:`TyposquatMonitor.status`."""
+
+    module: str
+
+
+class PlatformCheckResult(TypedDict):
+    """Result from :meth:`ImpersonationDetector.check_platform`."""
+
+    platform: str
+    username: str
+    exists: bool
+    url: str
+
+
+class ImpersonationDetectorStatus(TypedDict):
+    """Result from :meth:`ImpersonationDetector.status`."""
+
+    module: str
+    supported_platforms: list[str]
+
 
 # ---------------------------------------------------------------------------
 # Adjacent-key map (QWERTY layout)
@@ -166,7 +214,7 @@ class FamilyShield:
                 result.extend(m.get("domains", []))
             return result
 
-    def status(self) -> dict:
+    def status(self) -> FamilyShieldStatus:
         """Return a summary of the family registry."""
         with self._lock:
             return {
@@ -217,7 +265,7 @@ class BreachMonitor:
     # Password k-anonymity check
     # ------------------------------------------------------------------
 
-    def check_password(self, password: str) -> dict:
+    def check_password(self, password: str) -> PasswordCheckResult:
         """Check if *password* appears in known breaches using k-anonymity.
 
         Returns ``{compromised: bool, count: int}``.
@@ -301,7 +349,7 @@ class BreachMonitor:
     # Status
     # ------------------------------------------------------------------
 
-    def status(self) -> dict:
+    def status(self) -> BreachMonitorStatus:
         """Return module status summary."""
         return {
             "module": "BreachMonitor",
@@ -433,7 +481,7 @@ class TyposquatMonitor:
     # Status
     # ------------------------------------------------------------------
 
-    def status(self) -> dict:
+    def status(self) -> TyposquatMonitorStatus:
         """Return module status summary."""
         return {
             "module": "TyposquatMonitor",
@@ -502,7 +550,7 @@ class ImpersonationDetector:
     # Platform profile check
     # ------------------------------------------------------------------
 
-    def check_platform(self, username: str, platform: str) -> dict | None:
+    def check_platform(self, username: str, platform: str) -> PlatformCheckResult | None:
         """Check if *username* exists on *platform*.
 
         Returns ``{platform, username, exists: bool, url: str}``
@@ -590,7 +638,7 @@ class ImpersonationDetector:
     # Status
     # ------------------------------------------------------------------
 
-    def status(self) -> dict:
+    def status(self) -> ImpersonationDetectorStatus:
         """Return module status summary."""
         return {
             "module": "ImpersonationDetector",

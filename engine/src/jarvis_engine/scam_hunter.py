@@ -88,6 +88,214 @@ class CarrierIntel:
 #  Campaign Detection
 # ---------------------------------------------------------------------------
 
+def _group_reports_by_prefix(
+    call_reports: list[dict[str, Any]],
+    lookback: datetime,
+) -> dict[str, list[dict[str, Any]]]:
+    """Group call reports by NPA-NXX prefix, filtering out old entries."""
+    prefix_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for report in call_reports:
+        number = _normalize_number(str(report.get("number", "")))
+        if not number:
+            continue
+        ts = _parse_ts(report.get("timestamp_utc", ""))
+        if ts and ts < lookback:
+            continue
+        prefix = _area_key(number)
+        if not prefix:
+            continue
+        entry = dict(report)
+        entry["_normalized"] = number
+        entry["_prefix"] = prefix
+        prefix_groups[prefix].append(entry)
+    return prefix_groups
+
+
+def _classify_prefix_numbers(
+    reports: list[dict[str, Any]],
+) -> tuple[set[str], set[str]]:
+    """Separate distinct unknown numbers from known contacts."""
+    distinct_numbers: set[str] = set()
+    contact_numbers: set[str] = set()
+    for r in reports:
+        num = r.get("_normalized", "")
+        contact = str(r.get("contact_name", "")).strip()
+        if contact:
+            contact_numbers.add(num)
+        else:
+            distinct_numbers.add(num)
+    return distinct_numbers, contact_numbers
+
+
+def _score_number_rotation(
+    distinct_numbers: set[str],
+    signals: list[str],
+) -> float:
+    """Score based on how many distinct numbers share the same prefix."""
+    if len(distinct_numbers) >= 5:
+        signals.append(f"rotating_numbers_{len(distinct_numbers)}")
+        return 0.35
+    if len(distinct_numbers) >= 3:
+        signals.append(f"multiple_numbers_{len(distinct_numbers)}")
+        return 0.25
+    signals.append("number_pair")
+    return 0.15
+
+
+def _score_sequential_numbers(
+    distinct_numbers: set[str],
+    signals: list[str],
+) -> float:
+    """Score based on sequential last-4-digit patterns (robodialer detection)."""
+    last4_values = []
+    for num in distinct_numbers:
+        digits = re.sub(r"\D", "", num)
+        if len(digits) >= 4:
+            try:
+                last4_values.append(int(digits[-4:]))
+            except ValueError:
+                logger.debug("Non-numeric last-4 digits in number: %s", num)
+    if len(last4_values) >= 2:
+        last4_sorted = sorted(last4_values)
+        sequential_count = sum(
+            1 for i in range(len(last4_sorted) - 1)
+            if last4_sorted[i + 1] - last4_sorted[i] <= 5
+        )
+        if sequential_count >= 1:
+            signals.append("sequential_numbers")
+            return 0.20
+    return 0.0
+
+
+def _score_stir_shaken(
+    reports: list[dict[str, Any]],
+    signals: list[str],
+) -> tuple[float, int, int]:
+    """Score based on STIR/SHAKEN verification failures.
+
+    Returns (confidence_delta, stir_failed_count, stir_not_verified_count).
+    """
+    stir_failed = sum(1 for r in reports if r.get("stir_status") == "failed")
+    stir_not_verified = sum(
+        1 for r in reports if r.get("stir_status") == "not_verified"
+    )
+    confidence = 0.0
+    if stir_failed >= 1:
+        confidence = 0.25
+        signals.append(f"stir_failed_{stir_failed}")
+    elif stir_not_verified >= 2:
+        confidence = 0.05
+        signals.append("stir_not_verified")
+    return confidence, stir_failed, stir_not_verified
+
+
+def _score_call_patterns(
+    reports: list[dict[str, Any]],
+    signals: list[str],
+) -> float:
+    """Score based on unanswered and short-duration call patterns."""
+    total = len(reports)
+    if total == 0:
+        return 0.0
+    unanswered = sum(1 for r in reports if not r.get("answered", False))
+    short_calls = sum(
+        1 for r in reports
+        if _safe_float(r.get("duration_sec", 0)) < 5 and r.get("answered", False)
+    )
+    confidence = 0.0
+    if unanswered / total >= 0.8:
+        confidence += 0.10
+        signals.append("mostly_unanswered")
+    if short_calls >= 2:
+        confidence += 0.10
+        signals.append("short_duration_calls")
+    return confidence
+
+
+def _score_burst_pattern(
+    reports: list[dict[str, Any]],
+    signals: list[str],
+) -> float:
+    """Score based on temporal burst patterns (many calls in short window)."""
+    timestamps = []
+    for r in reports:
+        ts = _parse_ts(r.get("timestamp_utc", ""))
+        if ts:
+            timestamps.append(ts)
+    if len(timestamps) < 3:
+        return 0.0
+    timestamps.sort()
+    span = (timestamps[-1] - timestamps[0]).total_seconds()
+    if span == 0:
+        signals.append("burst_pattern_instant")
+        return 0.15
+    if len(timestamps) / (span / 3600) >= 3:
+        signals.append("burst_pattern")
+        return 0.10
+    return 0.0
+
+
+def _score_presentation(
+    reports: list[dict[str, Any]],
+    signals: list[str],
+) -> float:
+    """Score based on restricted/unknown caller presentation."""
+    restricted = sum(
+        1 for r in reports
+        if r.get("presentation") in ("restricted", "unknown")
+    )
+    if restricted >= 1:
+        signals.append("restricted_presentation")
+        return 0.10
+    return 0.0
+
+
+def _build_campaign(
+    prefix: str,
+    reports: list[dict[str, Any]],
+    distinct_numbers: set[str],
+    confidence: float,
+    signals: list[str],
+    stir_failed: int,
+    stir_not_verified: int,
+) -> ScamCampaign:
+    """Assemble a ScamCampaign from scored reports and signals."""
+    all_ts = [_parse_ts(r.get("timestamp_utc", "")) for r in reports]
+    valid_ts = [t for t in all_ts if t]
+    first_seen = min(valid_ts).isoformat() if valid_ts else ""
+    last_seen = max(valid_ts).isoformat() if valid_ts else ""
+
+    carrier = ""
+    line_type = ""
+    for r in reports:
+        if r.get("carrier"):
+            carrier = r["carrier"]
+        if r.get("line_type"):
+            line_type = r["line_type"]
+
+    total_calls = sum(
+        int(r.get("calls", 1)) if isinstance(r.get("calls"), (int, float)) else 1
+        for r in reports
+    )
+
+    sorted_numbers = sorted(distinct_numbers)
+    campaign_id = _generate_campaign_id(prefix, sorted_numbers)
+    return ScamCampaign(
+        campaign_id=campaign_id,
+        prefix=prefix,
+        numbers=sorted_numbers,
+        total_calls=total_calls,
+        first_seen_utc=first_seen,
+        last_seen_utc=last_seen,
+        confidence=round(confidence, 4),
+        signals=signals,
+        carrier=carrier,
+        line_type=line_type,
+        stir_failed_count=stir_failed,
+        stir_not_verified_count=stir_not_verified,
+    )
+
+
 def detect_campaigns(
     call_reports: list[dict[str, Any]],
     *,
@@ -106,161 +314,29 @@ def detect_campaigns(
     """
     now = now_utc or datetime.now(UTC)
     lookback = now - timedelta(hours=window_hours)
-
-    # Group by prefix — shallow-copy to avoid mutating caller's data
-    prefix_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for report in call_reports:
-        number = _normalize_number(str(report.get("number", "")))
-        if not number:
-            continue
-        ts = _parse_ts(report.get("timestamp_utc", ""))
-        if ts and ts < lookback:
-            continue
-        prefix = _area_key(number)
-        if not prefix:
-            continue
-        entry = dict(report)
-        entry["_normalized"] = number
-        entry["_prefix"] = prefix
-        prefix_groups[prefix].append(entry)
+    prefix_groups = _group_reports_by_prefix(call_reports, lookback)
 
     campaigns: list[ScamCampaign] = []
     for prefix, reports in prefix_groups.items():
-        # Get distinct numbers, excluding known contacts
-        distinct_numbers: set[str] = set()
-        contact_numbers: set[str] = set()
-        for r in reports:
-            num = r.get("_normalized", "")
-            contact = str(r.get("contact_name", "")).strip()
-            if contact:
-                contact_numbers.add(num)
-            else:
-                distinct_numbers.add(num)
-
-        # Skip if not enough unknown numbers
+        distinct_numbers, _ = _classify_prefix_numbers(reports)
         if len(distinct_numbers) < min_numbers_for_campaign:
             continue
 
-        # Build campaign
         signals: list[str] = []
-        confidence = 0.0
-
-        # Signal: multiple distinct numbers from same prefix
-        if len(distinct_numbers) >= 5:
-            confidence += 0.35
-            signals.append(f"rotating_numbers_{len(distinct_numbers)}")
-        elif len(distinct_numbers) >= 3:
-            confidence += 0.25
-            signals.append(f"multiple_numbers_{len(distinct_numbers)}")
-        else:
-            confidence += 0.15
-            signals.append("number_pair")
-
-        # Signal: sequential last-4 detection
-        last4_values = []
-        for num in distinct_numbers:
-            digits = re.sub(r"\D", "", num)
-            if len(digits) >= 4:
-                try:
-                    last4_values.append(int(digits[-4:]))
-                except ValueError:
-                    logger.debug("Non-numeric last-4 digits in number: %s", num)
-        if len(last4_values) >= 2:
-            last4_sorted = sorted(last4_values)
-            sequential_count = sum(
-                1 for i in range(len(last4_sorted) - 1)
-                if last4_sorted[i + 1] - last4_sorted[i] <= 5
-            )
-            if sequential_count >= 1:
-                confidence += 0.20
-                signals.append("sequential_numbers")
-
-        # Signal: STIR/SHAKEN failures
-        stir_failed = sum(1 for r in reports if r.get("stir_status") == "failed")
-        stir_not_verified = sum(1 for r in reports if r.get("stir_status") == "not_verified")
-        if stir_failed >= 1:
-            confidence += 0.25
-            signals.append(f"stir_failed_{stir_failed}")
-        elif stir_not_verified >= 2:
-            confidence += 0.05
-            signals.append("stir_not_verified")
-
-        # Signal: all calls unanswered / short duration
-        total = len(reports)
-        unanswered = sum(1 for r in reports if not r.get("answered", False))
-        short_calls = sum(
-            1 for r in reports
-            if _safe_float(r.get("duration_sec", 0)) < 5 and r.get("answered", False)
+        confidence = _score_number_rotation(distinct_numbers, signals)
+        confidence += _score_sequential_numbers(distinct_numbers, signals)
+        stir_conf, stir_failed, stir_not_verified = _score_stir_shaken(
+            reports, signals,
         )
-        if total > 0 and unanswered / total >= 0.8:
-            confidence += 0.10
-            signals.append("mostly_unanswered")
-        if short_calls >= 2:
-            confidence += 0.10
-            signals.append("short_duration_calls")
-
-        # Signal: burst pattern (many calls in short window)
-        timestamps = []
-        for r in reports:
-            ts = _parse_ts(r.get("timestamp_utc", ""))
-            if ts:
-                timestamps.append(ts)
-        if len(timestamps) >= 3:
-            timestamps.sort()
-            span = (timestamps[-1] - timestamps[0]).total_seconds()
-            if span == 0:
-                # All calls at exact same second — extreme burst
-                confidence += 0.15
-                signals.append("burst_pattern_instant")
-            elif len(timestamps) / (span / 3600) >= 3:
-                confidence += 0.10
-                signals.append("burst_pattern")
-
-        # Signal: restricted/unknown presentation
-        restricted = sum(
-            1 for r in reports
-            if r.get("presentation") in ("restricted", "unknown")
-        )
-        if restricted >= 1:
-            confidence += 0.10
-            signals.append("restricted_presentation")
-
+        confidence += stir_conf
+        confidence += _score_call_patterns(reports, signals)
+        confidence += _score_burst_pattern(reports, signals)
+        confidence += _score_presentation(reports, signals)
         confidence = min(confidence, 0.99)
 
-        # Determine timestamps
-        all_ts = [_parse_ts(r.get("timestamp_utc", "")) for r in reports]
-        valid_ts = [t for t in all_ts if t]
-        first_seen = min(valid_ts).isoformat() if valid_ts else ""
-        last_seen = max(valid_ts).isoformat() if valid_ts else ""
-
-        # Aggregate carrier info
-        carrier = ""
-        line_type = ""
-        for r in reports:
-            if r.get("carrier"):
-                carrier = r["carrier"]
-            if r.get("line_type"):
-                line_type = r["line_type"]
-
-        total_calls = sum(
-            int(r.get("calls", 1)) if isinstance(r.get("calls"), (int, float)) else 1
-            for r in reports
-        )
-
-        campaign_id = _generate_campaign_id(prefix, sorted(distinct_numbers))
-        campaigns.append(ScamCampaign(
-            campaign_id=campaign_id,
-            prefix=prefix,
-            numbers=sorted(distinct_numbers),
-            total_calls=total_calls,
-            first_seen_utc=first_seen,
-            last_seen_utc=last_seen,
-            confidence=round(confidence, 4),
-            signals=signals,
-            carrier=carrier,
-            line_type=line_type,
-            stir_failed_count=stir_failed,
-            stir_not_verified_count=stir_not_verified,
+        campaigns.append(_build_campaign(
+            prefix, reports, distinct_numbers,
+            confidence, signals, stir_failed, stir_not_verified,
         ))
 
     campaigns.sort(key=lambda c: c.confidence, reverse=True)
