@@ -6,6 +6,13 @@ import logging
 import sqlite3
 from jarvis_engine._constants import make_task_id as _make_task_id
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.models import ModelGateway
+    from jarvis_engine.gateway.classifier import IntentClassifier
+    from jarvis_engine.memory_store import MemoryStore
+    from jarvis_engine.task_orchestrator import TaskOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +31,10 @@ from jarvis_engine.commands.task_commands import (
 class RunTaskHandler:
     def __init__(self, root: Path) -> None:
         self._root = root
-        self._store: object | None = None
-        self._orchestrator: object | None = None
+        self._store: MemoryStore | None = None
+        self._orchestrator: TaskOrchestrator | None = None
 
-    def _get_orchestrator(self) -> object:
+    def _get_orchestrator(self) -> TaskOrchestrator:
         """Lazily create and cache MemoryStore + TaskOrchestrator."""
         if self._orchestrator is None:
             from jarvis_engine.memory_store import MemoryStore
@@ -82,7 +89,7 @@ class RunTaskHandler:
 
 
 class RouteHandler:
-    def __init__(self, root: Path, classifier: object | None = None, gateway: object | None = None) -> None:
+    def __init__(self, root: Path, classifier: IntentClassifier | None = None, gateway: ModelGateway | None = None) -> None:
         self._root = root
         self._classifier = classifier
         self._gateway = gateway
@@ -172,7 +179,7 @@ class WebResearchHandler:
 class QueryHandler:
     """Handle QueryCommand by dispatching through ModelGateway with optional auto-routing."""
 
-    def __init__(self, gateway: object, classifier: object | None = None) -> None:
+    def __init__(self, gateway: ModelGateway, classifier: IntentClassifier | None = None) -> None:
         self._gateway = gateway
         self._classifier = classifier
 

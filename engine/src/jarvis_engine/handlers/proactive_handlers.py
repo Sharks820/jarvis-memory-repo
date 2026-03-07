@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.costs import CostTracker
+    from jarvis_engine.gateway.models import ModelGateway
     from jarvis_engine.memory.embeddings import EmbeddingService
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.proactive import ProactiveEngine
@@ -123,7 +124,7 @@ class ProactiveCheckHandler:
 class WakeWordStartHandler:
     """Start wake word detection in a daemon thread."""
 
-    def __init__(self, root: Path, gateway: object | None = None) -> None:
+    def __init__(self, root: Path, gateway: ModelGateway | None = None) -> None:
         self._root = root
         self._gateway = gateway
         self._stop_event: threading.Event | None = None

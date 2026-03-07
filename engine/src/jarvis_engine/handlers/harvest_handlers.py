@@ -6,7 +6,7 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from jarvis_engine.commands.harvest_commands import (
     HarvestBudgetCommand,
@@ -18,7 +18,9 @@ from jarvis_engine.commands.harvest_commands import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from jarvis_engine.harvesting.budget import BudgetManager
+    from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+    from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 class HarvestTopicHandler:
     """Delegates HarvestTopicCommand to KnowledgeHarvester."""
 
-    def __init__(self, harvester: Any = None) -> None:
+    def __init__(self, harvester: KnowledgeHarvester | None = None) -> None:
         self._harvester = harvester
 
     def handle(self, cmd: HarvestTopicCommand) -> HarvestTopicResult:
@@ -55,7 +57,7 @@ class HarvestTopicHandler:
 class IngestSessionHandler:
     """Discovers and ingests session JSONL files through the pipeline."""
 
-    def __init__(self, pipeline: Any = None) -> None:
+    def __init__(self, pipeline: EnrichedIngestPipeline | None = None) -> None:
         self._pipeline = pipeline
 
     def handle(self, cmd: IngestSessionCommand) -> IngestSessionResult:
@@ -144,7 +146,7 @@ class IngestSessionHandler:
 class HarvestBudgetHandler:
     """View or set harvest budget limits."""
 
-    def __init__(self, budget_manager: Any = None) -> None:
+    def __init__(self, budget_manager: BudgetManager | None = None) -> None:
         self._budget = budget_manager
 
     def handle(self, cmd: HarvestBudgetCommand) -> HarvestBudgetResult:

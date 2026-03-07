@@ -42,6 +42,7 @@ from jarvis_engine.gaming_mode import (  # noqa: F401
     _windows_idle_seconds,
 )
 from jarvis_engine.gaming_mode import (
+    GamingModeState,
     detect_active_game_process as _gm_detect_active_game_process,
     load_gaming_processes as _gm_load_gaming_processes,
     read_gaming_mode_state as _gm_read_gaming_mode_state,
@@ -297,12 +298,12 @@ def gaming_processes_path() -> Path:
     return repo_root() / ".planning" / "gaming_processes.json"
 
 
-def read_gaming_mode_state() -> dict[str, object]:
+def read_gaming_mode_state() -> GamingModeState:
     """Read gaming mode state using the daemon's repo_root."""
     return _gm_read_gaming_mode_state(gaming_mode_state_path())
 
 
-def write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
+def write_gaming_mode_state(state: dict[str, object]) -> GamingModeState:
     """Write gaming mode state using the daemon's repo_root."""
     return _gm_write_gaming_mode_state(state, gaming_mode_state_path())
 

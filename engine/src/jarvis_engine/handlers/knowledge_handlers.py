@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
 
 from jarvis_engine.commands.knowledge_commands import (
     ContradictionListCommand,
@@ -24,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class KnowledgeStatusHandler:
-    def __init__(self, root: Path, kg: Any = None) -> None:
+    def __init__(self, root: Path, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._kg = kg
 
@@ -49,7 +52,7 @@ class KnowledgeStatusHandler:
 
 
 class ContradictionListHandler:
-    def __init__(self, root: Path, kg: Any = None) -> None:
+    def __init__(self, root: Path, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._kg = kg
 
@@ -72,7 +75,7 @@ class ContradictionListHandler:
 
 
 class ContradictionResolveHandler:
-    def __init__(self, root: Path, kg: Any = None) -> None:
+    def __init__(self, root: Path, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._kg = kg
 
@@ -107,7 +110,7 @@ class ContradictionResolveHandler:
 
 
 class FactLockHandler:
-    def __init__(self, root: Path, kg: Any = None) -> None:
+    def __init__(self, root: Path, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._kg = kg
 
@@ -156,7 +159,7 @@ class FactLockHandler:
 
 
 class KnowledgeRegressionHandler:
-    def __init__(self, root: Path, kg: Any = None) -> None:
+    def __init__(self, root: Path, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._kg = kg
 

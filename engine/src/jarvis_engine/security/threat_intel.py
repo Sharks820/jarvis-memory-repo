@@ -19,7 +19,28 @@ import os
 import threading
 import time
 import urllib.request
-from typing import Any
+from typing import Any, TypedDict
+
+
+class ThreatEnrichment(TypedDict):
+    """Structured result from :meth:`ThreatIntelFeed.enrich_ip`."""
+
+    ip: str
+    abuseipdb_score: int | None
+    otx_pulses: int | None
+    feodo_listed: bool
+    is_known_bad: bool
+    cache_hit: bool
+    sources_checked: list[str]
+
+
+class ThreatIntelStatus(TypedDict):
+    """Structured result from :meth:`ThreatIntelFeed.status`."""
+
+    cache_size: int
+    api_keys_configured: list[str]
+    last_feed_update: float | None
+    requests_total: int
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +78,7 @@ class ThreatIntelFeed:
 
         # In-memory LRU cache: ip -> (enrichment_dict, timestamp)
         # OrderedDict for O(1) eviction of oldest entry at capacity
-        self._cache: collections.OrderedDict[str, tuple[dict[str, Any], float]] = collections.OrderedDict()
+        self._cache: collections.OrderedDict[str, tuple[ThreatEnrichment, float]] = collections.OrderedDict()
         self._lock = threading.Lock()
 
         # Feodo blocklist (set of IPs), cached with its own timestamp
@@ -89,7 +110,7 @@ class ThreatIntelFeed:
     # Public API
     # ------------------------------------------------------------------
 
-    def enrich_ip(self, ip: str) -> dict[str, Any]:
+    def enrich_ip(self, ip: str) -> ThreatEnrichment:
         """Enrich *ip* with threat intelligence data.
 
         Returns a dict with keys:
@@ -142,7 +163,7 @@ class ThreatIntelFeed:
         if feodo_listed:
             known_bad = True
 
-        result: dict[str, Any] = {
+        result: ThreatEnrichment = {
             "ip": ip,
             "abuseipdb_score": abuseipdb_score,
             "otx_pulses": otx_pulses,
@@ -169,7 +190,7 @@ class ThreatIntelFeed:
         data = self.enrich_ip(ip)
         return data.get("is_known_bad", False)
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> ThreatIntelStatus:
         """Return operational status of the threat intel feed."""
         with self._lock:
             cache_size = len(self._cache)

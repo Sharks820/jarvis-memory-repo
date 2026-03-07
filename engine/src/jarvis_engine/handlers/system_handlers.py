@@ -8,7 +8,7 @@ import os
 import re
 import webbrowser
 from pathlib import Path
-from typing import Any
+from typing import Any  # used for WeatherHandler.current dict (external API shape)
 from urllib.parse import quote
 from urllib.request import urlopen
 

@@ -5,11 +5,14 @@ from __future__ import annotations
 import logging
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
     from jarvis_engine.ingest import IngestionPipeline
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.memory.engine import MemoryEngine
+    from jarvis_engine.memory.ingest import EnrichedIngestPipeline
     from jarvis_engine.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
@@ -33,7 +36,7 @@ from jarvis_engine.commands.memory_commands import (
 
 
 class BrainStatusHandler:
-    def __init__(self, root: Path, engine: Any = None, kg: Any = None) -> None:
+    def __init__(self, root: Path, engine: MemoryEngine | None = None, kg: KnowledgeGraph | None = None) -> None:
         self._root = root
         self._engine = engine
         self._kg = kg
@@ -87,7 +90,7 @@ class BrainStatusHandler:
 
 
 class BrainContextHandler:
-    def __init__(self, root: Path, engine: Any = None, embed_service: EmbedServiceProtocol | None = None) -> None:
+    def __init__(self, root: Path, engine: MemoryEngine | None = None, embed_service: EmbedServiceProtocol | None = None) -> None:
         self._root = root
         self._engine = engine
         self._embed_service = embed_service
@@ -167,7 +170,7 @@ class BrainRegressionHandler:
 
 
 class IngestHandler:
-    def __init__(self, root: Path, pipeline: Any = None) -> None:
+    def __init__(self, root: Path, pipeline: EnrichedIngestPipeline | None = None) -> None:
         self._root = root
         self._pipeline = pipeline
         self._fallback_store: MemoryStore | None = None

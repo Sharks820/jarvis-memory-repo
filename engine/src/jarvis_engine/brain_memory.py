@@ -12,7 +12,19 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
+
+
+class ContextPacket(TypedDict):
+    """Structured result from :func:`build_context_packet`."""
+
+    query: str
+    selected: list[dict[str, Any]]
+    selected_count: int
+    canonical_facts: list[dict[str, Any]]
+    max_items: int
+    max_chars: int
+    total_records_scanned: int
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
@@ -412,7 +424,7 @@ def _recency_weight(ts_text: str) -> float:
     return _recency_weight_core(ts_text, default=0.3, decay_hours=96.0)
 
 
-def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> dict[str, Any]:
+def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> ContextPacket:
     with _brain_io_lock:
         rows = _load_records(root, limit=200)
         facts_state = _load_facts(root)

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.models import ModelGateway
+    from jarvis_engine.voice_auth import VoiceEnrollResult as _VoiceEnrollResultAuth
+    from jarvis_engine.voice_auth import VoiceVerifyResult as _VoiceVerifyResultAuth
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
 
@@ -164,7 +170,7 @@ class VoiceRunHandler:
 class VoiceListenHandler:
     """Capture microphone audio and transcribe via faster-whisper."""
 
-    def __init__(self, root: Path, gateway: object | None = None) -> None:
+    def __init__(self, root: Path, gateway: ModelGateway | None = None) -> None:
         self._root = root
         self._gateway = gateway
 
@@ -196,7 +202,7 @@ class VoiceListenHandler:
 class PersonaComposeHandler:
     """Compose a personality-aware LLM response via the Intelligence Gateway."""
 
-    def __init__(self, root: Path, gateway: object | None = None) -> None:
+    def __init__(self, root: Path, gateway: ModelGateway | None = None) -> None:
         self._root = root
         self._gateway = gateway
 
@@ -256,7 +262,11 @@ class PersonaComposeHandler:
         )
 
 
-def _load_voice_auth_impl():  # type: ignore[no-untyped-def]
+def _load_voice_auth_impl() -> tuple[
+    Callable[..., _VoiceEnrollResultAuth] | None,
+    Callable[..., _VoiceVerifyResultAuth] | None,
+    str,
+]:
     try:
         from jarvis_engine.voice_auth import enroll_voiceprint, verify_voiceprint
     except ModuleNotFoundError as exc:

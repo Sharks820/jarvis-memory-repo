@@ -15,8 +15,18 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from typing import TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
+
+
+class GamingModeState(TypedDict):
+    """Typed shape for gaming mode state."""
+
+    enabled: bool
+    auto_detect: bool
+    updated_utc: str
+    reason: str
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +73,7 @@ DEFAULT_GAMING_PROCESSES = (
 )
 
 
-def read_gaming_mode_state(state_path: Path) -> dict[str, object]:
+def read_gaming_mode_state(state_path: Path) -> GamingModeState:
     """Read gaming mode state from *state_path*.
 
     Returns a dict with keys ``enabled``, ``auto_detect``, ``updated_utc``,
@@ -72,7 +82,7 @@ def read_gaming_mode_state(state_path: Path) -> dict[str, object]:
     """
     from jarvis_engine._shared import load_json_file
 
-    default: dict[str, object] = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
+    default: GamingModeState = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
     raw = load_json_file(state_path, None, expected_type=dict)
     if raw is None:
         return default
@@ -84,11 +94,11 @@ def read_gaming_mode_state(state_path: Path) -> dict[str, object]:
     }
 
 
-def write_gaming_mode_state(state: dict[str, object], state_path: Path) -> dict[str, object]:
+def write_gaming_mode_state(state: dict[str, object], state_path: Path) -> GamingModeState:
     """Atomically write *state* to *state_path* and return the normalised payload."""
     from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
-    payload = {
+    payload: GamingModeState = {
         "enabled": bool(state.get("enabled", False)),
         "auto_detect": bool(state.get("auto_detect", False)),
         "updated_utc": str(state.get("updated_utc", "")) or _now_iso(),

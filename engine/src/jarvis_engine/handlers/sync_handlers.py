@@ -7,7 +7,11 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jarvis_engine.sync.engine import SyncEngine
+    from jarvis_engine.sync.transport import SyncTransport
 
 from jarvis_engine.commands.sync_commands import (
     SyncPullCommand,
@@ -25,7 +29,7 @@ class SyncPullHandler:
     """Compute outgoing changes, encrypt, and return."""
 
     def __init__(
-        self, root: Path, sync_engine: Any = None, transport: Any = None,
+        self, root: Path, sync_engine: SyncEngine | None = None, transport: SyncTransport | None = None,
     ) -> None:
         self._root = root
         self._sync_engine = sync_engine
@@ -56,8 +60,9 @@ class SyncPullHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
-        except Exception as exc:  # noqa: BLE001 -- cryptography.fernet.InvalidToken (lazily loaded); re-raises others
-            if "InvalidToken" in type(exc).__name__:
+        except Exception as exc:  # noqa: BLE001 -- catch-and-retype for lazily-loaded InvalidToken
+            from cryptography.fernet import InvalidToken
+            if isinstance(exc, InvalidToken):
                 logger.error("SyncPull encryption failed (invalid token): %s", exc)
                 return SyncPullResult(message="error: encryption failed")
             raise
@@ -74,7 +79,7 @@ class SyncPushHandler:
     """Decrypt incoming payload and apply changes."""
 
     def __init__(
-        self, root: Path, sync_engine: Any = None, transport: Any = None,
+        self, root: Path, sync_engine: SyncEngine | None = None, transport: SyncTransport | None = None,
     ) -> None:
         self._root = root
         self._sync_engine = sync_engine
@@ -96,8 +101,9 @@ class SyncPushHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
-        except Exception as exc:  # noqa: BLE001 -- cryptography.fernet.InvalidToken (lazily loaded); re-raises others
-            if "InvalidToken" in type(exc).__name__:
+        except Exception as exc:  # noqa: BLE001 -- catch-and-retype for lazily-loaded InvalidToken
+            from cryptography.fernet import InvalidToken
+            if isinstance(exc, InvalidToken):
                 logger.error("SyncPush decryption failed (invalid token): %s", exc)
                 return SyncPushResult(message="error: decryption failed")
             raise
@@ -121,7 +127,7 @@ class SyncPushHandler:
 class SyncStatusHandler:
     """Return sync status."""
 
-    def __init__(self, root: Path, sync_engine: Any = None) -> None:
+    def __init__(self, root: Path, sync_engine: SyncEngine | None = None) -> None:
         self._root = root
         self._sync_engine = sync_engine
 
