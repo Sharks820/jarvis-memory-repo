@@ -552,8 +552,8 @@ def _build_system_parts(
 ) -> list[str]:
     """Assemble the system prompt parts for an LLM conversation.
 
-    Called from both ``_web_augmented_llm_conversation`` and
-    ``cmd_voice_run_impl`` to avoid duplicate prompt construction.
+    Called from ``_web_augmented_llm_conversation`` to assemble
+    the LLM system prompt.
     """
     from jarvis_engine.persona import get_persona_prompt
     persona = load_persona_config(repo_root())
@@ -590,8 +590,8 @@ def _classify_and_route(
 ) -> tuple[str, str]:
     """Classify intent and select the target LLM model.
 
-    Shared by ``_web_augmented_llm_conversation`` and ``cmd_voice_run_impl``
-    to avoid duplicating the ~30-line classification + fallback chain.
+    Used by ``_web_augmented_llm_conversation`` for intent classification
+    and LLM model selection.
 
     Returns ``(route, llm_model)``.
     """
@@ -825,13 +825,40 @@ def _web_augmented_llm_conversation(
     *,
     speak: bool = False,
     force_web_search: bool = False,
+    model_override: str = "",
+    default_route: str = "web_research",
+    try_fallback_classifier: bool = False,
+    response_callback: "Callable[[str], None] | None" = None,
 ) -> int:
     """Run a web-search-augmented LLM conversation for a single query.
 
     This is the shared implementation used by:
-    - Explicit "search the web for X" voice commands
-    - Weather fallback when the dedicated handler fails
-    - Any keyword branch that needs web-augmented LLM responses
+    - Explicit "search the web for X" voice commands (force_web_search=True)
+    - Weather fallback when the dedicated handler fails (force_web_search=True)
+    - The general LLM conversation fallback in cmd_voice_run_impl
+
+    Parameters
+    ----------
+    text : str
+        The user's query text.
+    speak : bool
+        Whether to speak the response aloud via TTS.
+    force_web_search : bool
+        When True, always attempt web search regardless of route/query signals.
+        When False, only search when the classified route is "web_research" or
+        ``_needs_web_search(text)`` returns True.
+    model_override : str
+        If non-empty, override the classified model with this value (used by
+        widget Tab-cycling).
+    default_route : str
+        Default intent route when classification fails.
+    try_fallback_classifier : bool
+        Whether to attempt a fallback IntentClassifier when the bus classifier
+        is unavailable.
+    response_callback : Callable[[str], None] | None
+        Optional callback invoked with the response text.  Used by
+        ``cmd_voice_run_impl`` to capture ``_last_response`` for the
+        learning pipeline.
 
     Returns 0 on success, 1 on failure.
     """
@@ -844,64 +871,89 @@ def _web_augmented_llm_conversation(
     system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
     # --- Intent classification + model routing ---
-    _route, _llm_model = _classify_and_route(bus, text, default_route="web_research")
+    _route, _llm_model = _classify_and_route(
+        bus, text, default_route=default_route, try_fallback_classifier=try_fallback_classifier,
+    )
 
-    # --- Web search (always performed for this code path) ---
+    # --- Model override from widget Tab-cycling ---
+    if model_override:
+        _llm_model = model_override
+        logger.debug("Model overridden by user selection: %s", model_override)
+
+    # --- Web search augmentation ---
     _web_searched = False
-    _web_context_text = ""
+    _web_attempted = False
     _web_result: dict[str, object] = {}
-    try:
-        from jarvis_engine.web_research import run_web_research
-        _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
-        _web_lines = _web_result.get("summary_lines", [])
-        if _web_lines:
-            _web_searched = True
-            _web_context_text = (
-                "Web search results (use these to answer with current information):\n"
-                + "\n".join(f"- {line}" for line in _web_lines[:4])
-            )
-            _web_urls = _web_result.get("scanned_urls", [])
-            if _web_urls:
-                _web_context_text += "\nSources: " + ", ".join(_web_urls[:3])
-            system_parts.append(_web_context_text)
-            # Emit source URLs for widget display
-            _findings = _web_result.get("findings", [])
-            if isinstance(_findings, list):
-                for _idx, _row in enumerate(_findings[:4], start=1):
-                    if isinstance(_row, dict):
-                        _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
-                        if _src:
-                            print(f"source_{_idx}={_src}")
-            logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
-        else:
-            logger.warning("Web search returned no summary lines for query: %s", text[:80])
-    except (ImportError, OSError, RuntimeError, ValueError) as exc:
-        logger.warning("Web search failed for query %r: %s", text[:80], exc)
 
-    # --- Instructions ---
+    _should_search = force_web_search or _route == "web_research" or _needs_web_search(text)
+    if _should_search:
+        _web_attempted = True
+        try:
+            from jarvis_engine.web_research import run_web_research
+            _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
+            _web_lines = _web_result.get("summary_lines", [])
+            if _web_lines:
+                _web_searched = True
+                _web_context_text = (
+                    "Web search results (use these to answer with current information):\n"
+                    + "\n".join(f"- {line}" for line in _web_lines[:4])
+                )
+                _web_urls = _web_result.get("scanned_urls", [])
+                if _web_urls:
+                    _web_context_text += "\nSources: " + ", ".join(_web_urls[:3])
+                system_parts.append(_web_context_text)
+                # Emit source URLs for widget display
+                _findings = _web_result.get("findings", [])
+                if isinstance(_findings, list):
+                    for _idx, _row in enumerate(_findings[:4], start=1):
+                        if isinstance(_row, dict):
+                            _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
+                            if _src:
+                                print(f"source_{_idx}={_src}")
+                logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
+            else:
+                logger.warning("Web search returned no summary lines for query: %s", text[:80])
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
+            logger.warning("Web search failed for query %r: %s", text[:80], exc)
+
+    # --- Finalize system prompt with context-aware instructions ---
     if _web_searched:
         system_parts.append(
-            "Instructions: You have web search results above. Use them to give a current, accurate answer. "
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "You have web search results above -- use them to give current, accurate answers. "
             "Cite the source when using web search results. "
-            "If the web results don't fully answer the question, say what you found and note what's missing. "
+            "If you don't have relevant information, say so honestly. "
+            "Do not re-introduce yourself unless explicitly asked."
+        )
+    elif _web_attempted:
+        system_parts.append(
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "Answer the question using your knowledge. "
+            "Do NOT say you cannot access the web or that you are not wired for web access. "
+            "Simply provide the best answer you can. "
             "Do not re-introduce yourself unless explicitly asked."
         )
     else:
         system_parts.append(
-            "Instructions: Answer the question using your knowledge. "
-            "Do NOT say you cannot access the web or that you are not wired for web access. "
-            "Simply provide the best answer you can with the information available. "
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
+            "If you don't have relevant information, say so honestly. "
             "Do not re-introduce yourself unless explicitly asked."
         )
     system_prompt = "\n\n".join(system_parts)
 
-    if not _web_searched and _requires_fresh_web_confirmation(text):
+    if _web_attempted and not _web_searched and _requires_fresh_web_confirmation(text):
         print("intent=web_confirmation_unavailable")
         print("reason=Unable to fetch current web results right now. Please retry or check network access.")
         return 1
 
     # --- Dynamic max_tokens ---
-    _max_tokens = max(_MAX_TOKENS_BY_ROUTE.get(_route, 512), 768)
+    _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
+    if _web_searched or force_web_search:
+        _max_tokens = max(_max_tokens, 768)
 
     # --- Build messages with conversation history ---
     _hist = _get_history_messages()
@@ -926,6 +978,8 @@ def _web_augmented_llm_conversation(
                 if isinstance(fallback_lines, list) and fallback_lines:
                     fallback_text = "Based on live web results: " + " ".join(str(x) for x in fallback_lines[:3])
                     print(f"response={escape_response(fallback_text)}")
+                    if response_callback is not None:
+                        response_callback(fallback_text)
                     print("model=web-research-fallback")
                     print("provider=web")
                     print("web_search_used=true")
@@ -936,6 +990,8 @@ def _web_augmented_llm_conversation(
         elif _response:
             _add_to_history("assistant", _response)
             print(f"response={escape_response(_response)}")
+            if response_callback is not None:
+                response_callback(_response)
             print(f"model={result.model}")
             print(f"provider={result.provider}")
             _mark_routed_model(result.model, result.provider)
@@ -1653,140 +1709,15 @@ def cmd_voice_run_impl(
     else:
         # No keyword match -- route through LLM for a conversational response.
         intent = "llm_conversation"
-        bus = get_bus()
-
-        # --- Smart context + system prompt assembly ---
-        memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
-        system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
-
-        # --- Intent classification + model routing (reuse bus classifier) ---
-        _route, _llm_model = _classify_and_route(
-            bus, text, default_route="routine", try_fallback_classifier=True,
+        rc = _web_augmented_llm_conversation(
+            text,
+            speak=speak,
+            force_web_search=False,
+            model_override=model_override,
+            default_route="routine",
+            try_fallback_classifier=True,
+            response_callback=_respond,
         )
-
-        # --- Model override from widget Tab-cycling ---
-        if model_override:
-            _llm_model = model_override
-            logger.debug("Model overridden by user selection: %s", model_override)
-
-        # --- Web search augmentation for queries needing current info ---
-        _web_searched = False
-        _web_attempted = False
-        if _route == "web_research" or _needs_web_search(text):
-            _web_attempted = True
-            try:
-                from jarvis_engine.web_research import run_web_research
-                _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
-                _web_lines = _web_result.get("summary_lines", [])
-                if _web_lines:
-                    _web_searched = True
-                    _web_context = (
-                        "Web search results (use these to answer with current information):\n"
-                        + "\n".join(f"- {line}" for line in _web_lines[:4])
-                    )
-                    _web_urls = _web_result.get("scanned_urls", [])
-                    if _web_urls:
-                        _web_context += "\nSources: " + ", ".join(_web_urls[:3])
-                    system_parts.append(_web_context)
-                    # Emit source URLs for widget display
-                    _findings = _web_result.get("findings", [])
-                    if isinstance(_findings, list):
-                        for _idx, _row in enumerate(_findings[:4], start=1):
-                            if isinstance(_row, dict):
-                                _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
-                                if _src:
-                                    print(f"source_{_idx}={_src}")
-                    logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
-                else:
-                    logger.warning("Web search returned no summary lines for query: %s", text[:80])
-            except (ImportError, OSError, RuntimeError, ValueError) as exc:
-                logger.warning("Web search augmentation failed for %r: %s", text[:80], exc)
-
-        # --- Finalize system prompt with context-aware instructions ---
-        if _web_searched:
-            system_parts.append(
-                "Instructions: Reference the user's known facts and memories when relevant. "
-                "If the user asks about something you have facts for, use those facts directly. "
-                "You have web search results above -- use them to give current, accurate answers. "
-                "Cite the source when using web search results. "
-                "If you don't have relevant information, say so honestly. "
-                "Do not re-introduce yourself unless explicitly asked."
-            )
-        elif _web_attempted:
-            system_parts.append(
-                "Instructions: Reference the user's known facts and memories when relevant. "
-                "If the user asks about something you have facts for, use those facts directly. "
-                "Answer the question using your knowledge. "
-                "Do NOT say you cannot access the web or that you are not wired for web access. "
-                "Simply provide the best answer you can. "
-                "Do not re-introduce yourself unless explicitly asked."
-            )
-        else:
-            system_parts.append(
-                "Instructions: Reference the user's known facts and memories when relevant. "
-                "If the user asks about something you have facts for, use those facts directly. "
-                "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
-                "If you don't have relevant information, say so honestly. "
-                "Do not re-introduce yourself unless explicitly asked."
-            )
-        system_prompt = "\n\n".join(system_parts)
-
-        if _web_attempted and not _web_searched and _requires_fresh_web_confirmation(text):
-            print("intent=web_confirmation_unavailable")
-            print("reason=Unable to fetch current web results right now. Please retry or check network access.")
-            return 1
-
-        # --- Dynamic max_tokens based on query complexity ---
-        _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
-        if _web_searched:
-            _max_tokens = max(_max_tokens, 768)  # Ensure enough tokens for web-augmented responses
-
-        # --- Build messages with conversation history ---
-        _hist = _get_history_messages()
-        _continuity_instruction = _conversation_continuity_instruction(_llm_model, len(_hist))
-        if _continuity_instruction:
-            system_parts.append(_continuity_instruction)
-            system_prompt = "\n\n".join(system_parts)
-        # Don't include the current query in history (it goes as the main query)
-        _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
-        _add_to_history("user", text)
-        try:
-            result: QueryResult = bus.dispatch(QueryCommand(
-                query=text,
-                system_prompt=system_prompt,
-                max_tokens=_max_tokens,
-                model=_llm_model,
-                history=_hist_tuples,
-            ))
-            _response = result.text.strip()
-            if result.return_code != 0:
-                print("intent=llm_unavailable")
-                print(f"reason={_response or 'LLM gateway not available.'}")
-                rc = 1
-            elif _response:
-                _add_to_history("assistant", _response)
-                _respond(_response)
-                print(f"model={result.model}")
-                print(f"provider={result.provider}")
-                _mark_routed_model(result.model, result.provider)
-                if _web_searched:
-                    print("web_search_used=true")
-                _learn_conversation(bus, text, _response, _route, result.model)
-                if speak:
-                    cmd_voice_say(text=_response)
-                rc = 0
-            else:
-                print("intent=llm_empty_response")
-                print("reason=LLM returned empty response.")
-                rc = 1
-        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
-            print("intent=llm_error")
-            print(f"reason={exc}")
-            if speak:
-                cmd_voice_say(
-                    text="I'm having trouble connecting to my language model. Please try again.",
-                )
-            rc = 1
 
     print(f"intent={intent}")
     print(f"status_code={rc}")
