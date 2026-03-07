@@ -162,10 +162,15 @@ def mock_bus(monkeypatch):
     Shared across test_main*.py modules.
     """
     from jarvis_engine import main as main_mod
+    from jarvis_engine import cli_ops as cli_ops_mod
+    from jarvis_engine import cli_knowledge as cli_knowledge_mod
 
     def _factory(result_obj):
         bus = _make_bus_mock(result_obj)
-        monkeypatch.setattr(main_mod, "_get_bus", lambda: bus)
+        _get_bus_fn = lambda: bus
+        monkeypatch.setattr(main_mod, "_get_bus", _get_bus_fn)
+        monkeypatch.setattr(cli_ops_mod, "_get_bus", _get_bus_fn)
+        monkeypatch.setattr(cli_knowledge_mod, "_get_bus", _get_bus_fn)
         return bus
 
     return _factory

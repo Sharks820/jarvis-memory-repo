@@ -377,7 +377,7 @@ class TestConsolidateCLI:
         mock_result.message = "Consolidated 5 facts from 5 groups."
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=False)
 
@@ -398,7 +398,7 @@ class TestConsolidateCLI:
         mock_result.message = "Consolidated 0 facts with 1 error(s)."
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=False)
 
@@ -417,7 +417,7 @@ class TestConsolidateCLI:
         mock_result.message = "Consolidated 0 facts from 3 groups."
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=True)
 
@@ -625,12 +625,12 @@ class TestDaemonConsolidationUsesBus:
     """Verify daemon loop now dispatches via ConsolidateMemoryCommand."""
 
     def test_daemon_consolidation_imports_command(self):
-        """The daemon consolidation section imports ConsolidateMemoryCommand."""
-        # Read the relevant section of main.py and verify it uses CQRS
+        """The consolidation CLI uses ConsolidateMemoryCommand via CQRS."""
+        # After SoC split, cmd_consolidate lives in cli_knowledge
         import inspect
-        from jarvis_engine import main as main_mod
-        source = inspect.getsource(main_mod)
-        # After refactor, daemon should use ConsolidateMemoryCommand, not MemoryConsolidator directly
+        from jarvis_engine import cli_knowledge as cli_knowledge_mod
+        source = inspect.getsource(cli_knowledge_mod)
+        # Verify it uses ConsolidateMemoryCommand, not MemoryConsolidator directly
         assert "ConsolidateMemoryCommand" in source
         # The old inline pattern should be gone from the consolidation block
-        # (MemoryConsolidator may still exist elsewhere, but daemon should dispatch via bus)
+        # (MemoryConsolidator may still exist elsewhere, but CLI should dispatch via bus)

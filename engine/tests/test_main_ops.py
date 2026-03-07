@@ -16,6 +16,7 @@ from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine import _bus as bus_mod
+from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine.command_bus import AppContext
 
 
@@ -631,6 +632,7 @@ class TestIntelligenceDashboardOutputPath:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(cli_ops_mod, "repo_root", lambda: tmp_path)
         # Use a path clearly outside repo root
         rc = main_mod.cmd_intelligence_dashboard(
             last_runs=5, output_path="/tmp/totally/outside/dashboard.json", as_json=True,
@@ -648,6 +650,7 @@ class TestIntelligenceDashboardOutputPath:
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(cli_ops_mod, "repo_root", lambda: tmp_path)
         out_path = str(tmp_path / "output" / "dash.json")
         rc = main_mod.cmd_intelligence_dashboard(last_runs=5, output_path=out_path, as_json=True)
         assert rc == 0

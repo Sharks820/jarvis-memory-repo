@@ -285,7 +285,7 @@ class TestResponseOutputLines:
         }
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_brain_status
             rc = cmd_brain_status(as_json=False)
 
@@ -304,7 +304,7 @@ class TestResponseOutputLines:
         ]
         mock_result.total_count = 1
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_ops._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_status
             mock_bus.dispatch.return_value = mock_result
             rc = cmd_mission_status(last=5)
@@ -322,7 +322,7 @@ class TestResponseOutputLines:
         mock_result.mission = {"mission_id": "m-001", "topic": "Test", "status": "cancelled"}
         mock_result.message = ""
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_ops._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_cancel
             mock_bus.dispatch.return_value = mock_result
             rc = cmd_mission_cancel(mission_id="m-001")
@@ -339,7 +339,7 @@ class TestResponseOutputLines:
         mock_result.missions = []
         mock_result.total_count = 0
 
-        with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine.cli_ops._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_mission_status
             mock_bus.dispatch.return_value = mock_result
             rc = cmd_mission_status(last=5)
