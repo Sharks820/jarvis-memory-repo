@@ -6,13 +6,16 @@ import re
 import threading
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.error import URLError
 
 import logging
 from jarvis_engine._shared import call_ollama_generate as _call_ollama_generate
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import sha256_hex
+
+if TYPE_CHECKING:
+    from jarvis_engine._protocols import EmbedServiceProtocol
 
 _logger = logging.getLogger(__name__)
 
@@ -95,7 +98,7 @@ _TASK_INDEX: dict[str, MemoryRecallTask] = {t.task_id: t for t in DEFAULT_MEMORY
 def evaluate_memory_recall(
     task: MemoryRecallTask,
     engine: Any,
-    embed_service: Any,
+    embed_service: EmbedServiceProtocol,
 ) -> MemoryRecallResult:
     """Evaluate a single memory-recall golden task.
 
@@ -166,7 +169,7 @@ def evaluate_memory_recall(
 def run_memory_eval(
     tasks: list[MemoryRecallTask],
     engine: Any,
-    embed_service: Any,
+    embed_service: EmbedServiceProtocol,
 ) -> list[MemoryRecallResult]:
     """Evaluate all memory-recall golden tasks and return results.
 
@@ -191,7 +194,7 @@ def run_memory_eval(
 def eval_branch(
     branch: str,
     engine: Any,
-    embed_service: Any,
+    embed_service: EmbedServiceProtocol,
 ) -> dict:
     """Evaluate only the golden tasks for a specific branch.
 

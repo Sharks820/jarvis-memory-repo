@@ -14,6 +14,10 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +214,7 @@ class HoneypotEngine:
         If provided, all hits are forwarded for forensic analysis.
     """
 
-    def __init__(self, forensic_logger: object | None = None) -> None:
+    def __init__(self, forensic_logger: ForensicLoggerProtocol | None = None) -> None:
         self._forensic_logger = forensic_logger
         self._lock = threading.Lock()
         self._hits: dict[str, list[_HitRecord]] = defaultdict(list)

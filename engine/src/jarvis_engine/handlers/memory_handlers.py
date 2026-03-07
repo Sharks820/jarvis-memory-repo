@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from jarvis_engine._protocols import EmbedServiceProtocol
     from jarvis_engine.ingest import IngestionPipeline
     from jarvis_engine.memory_store import MemoryStore
 
@@ -86,7 +87,7 @@ class BrainStatusHandler:
 
 
 class BrainContextHandler:
-    def __init__(self, root: Path, engine: Any = None, embed_service: Any = None) -> None:
+    def __init__(self, root: Path, engine: Any = None, embed_service: EmbedServiceProtocol | None = None) -> None:
         self._root = root
         self._engine = engine
         self._embed_service = embed_service

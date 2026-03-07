@@ -11,6 +11,10 @@ import logging
 import threading
 import time
 from collections import deque
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +41,7 @@ class AlertChain:
         all alert dispatches.
     """
 
-    def __init__(self, forensic_logger: object | None = None) -> None:
+    def __init__(self, forensic_logger: ForensicLoggerProtocol | None = None) -> None:
         self._forensic_logger = forensic_logger
         self._lock = threading.Lock()
         self._alerts: deque[dict] = deque(maxlen=10000)

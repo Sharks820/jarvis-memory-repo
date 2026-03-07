@@ -16,8 +16,11 @@ import threading
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote as _url_unquote
+
+if TYPE_CHECKING:
+    from jarvis_engine._protocols import EmbedServiceProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -446,7 +449,7 @@ class PromptInjectionFirewall:
 
     _SEMANTIC_THRESHOLD: float = 0.75
 
-    def __init__(self, embed_service: Any | None = None) -> None:
+    def __init__(self, embed_service: EmbedServiceProtocol | None = None) -> None:
         self._patterns = ALL_PATTERNS
         self._embed_service = embed_service
         # Lazy-cached template embeddings (computed once, reused)

@@ -68,6 +68,23 @@ class ThreatIntelFeed:
         self._requests_total: int = 0
         self._last_feed_update: float | None = None
 
+        # Shared thread pool for parallel feed queries (reused across calls)
+        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+
+    def close(self) -> None:
+        """Shut down the internal thread pool.
+
+        Safe to call multiple times.  After ``close()`` the instance must
+        not be used for further enrichment.
+        """
+        self._pool.shutdown(wait=False)
+
+    def __enter__(self) -> "ThreatIntelFeed":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -97,12 +114,14 @@ class ThreatIntelFeed:
         known_bad = False
 
         futures: dict[str, concurrent.futures.Future[Any]] = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-            if self._abuseipdb_key:
-                futures["abuseipdb"] = pool.submit(self._query_abuseipdb, ip)
-            if self._otx_key:
-                futures["otx"] = pool.submit(self._query_otx, ip)
-            futures["feodo"] = pool.submit(self._refresh_feodo_blocklist)
+        if self._abuseipdb_key:
+            futures["abuseipdb"] = self._pool.submit(self._query_abuseipdb, ip)
+        if self._otx_key:
+            futures["otx"] = self._pool.submit(self._query_otx, ip)
+        futures["feodo"] = self._pool.submit(self._refresh_feodo_blocklist)
+
+        # Wait for all futures to complete before collecting results
+        concurrent.futures.wait(futures.values())
 
         # Collect results
         if "abuseipdb" in futures:

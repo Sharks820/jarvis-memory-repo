@@ -18,9 +18,12 @@ import time
 import urllib.parse
 import urllib.request
 from collections import deque
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+
+if TYPE_CHECKING:
+    from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,7 @@ class ThreatNeutralizer:
 
     def __init__(
         self,
-        forensic_logger: Any | None = None,
+        forensic_logger: ForensicLoggerProtocol | None = None,
         ip_tracker: Any | None = None,
         attack_memory: Any | None = None,
         alert_chain: Any | None = None,

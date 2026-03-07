@@ -16,6 +16,10 @@ import threading
 import time
 from collections import deque
 from enum import IntEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +75,7 @@ class ContainmentEngine:
 
     def __init__(
         self,
-        forensic_logger: object | None = None,
+        forensic_logger: ForensicLoggerProtocol | None = None,
         ip_tracker: object | None = None,
         session_manager: object | None = None,
         on_credential_rotate: object | None = None,
