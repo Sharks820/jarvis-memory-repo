@@ -673,8 +673,7 @@ def _try_deepgram(
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Deepgram STT attempt failed: %s", exc)
         return None
-    except Exception as exc:
-        # httpx.TransportError and other httpx exceptions (lazily imported)
+    except Exception as exc:  # noqa: BLE001 -- httpx exceptions (lazily imported); re-raises others
         if type(exc).__module__.startswith("httpx"):
             logger.warning("Deepgram STT network error: %s", exc)
             return None

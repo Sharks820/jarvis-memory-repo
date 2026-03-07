@@ -184,7 +184,7 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
         startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
         startupinfo.wShowWindow = 0
         kwargs["startupinfo"] = startupinfo
-    except Exception as exc:
+    except (AttributeError, OSError, TypeError) as exc:
         logger.debug("Failed to configure STARTUPINFO for hidden window: %s", exc)
     return kwargs
 

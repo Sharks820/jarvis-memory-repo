@@ -209,7 +209,7 @@ def _register_with_fallback(
     """
     try:
         handler = handler_factory()
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError, TypeError) as exc:
         logger.warning(
             "Handler factory for %s failed, using fallback: %s",
             command_type.__name__, exc,
@@ -262,7 +262,7 @@ def create_app(root: Path) -> CommandBus:
         pipeline = EnrichedIngestPipeline(
             engine, embed_service, classifier, knowledge_graph=kg,
         )
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         # Graceful degradation: if SQLite engine fails, fall back to adapter shims
         logger.warning("Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc)
         engine = None
@@ -291,7 +291,7 @@ def create_app(root: Path) -> CommandBus:
         # Keep classifier lazy to avoid heavy startup latency in request paths.
         # It will be instantiated on-demand where needed (e.g. voice fallback).
         intent_classifier = None
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.warning("Failed to initialize Intelligence Gateway, continuing without: %s", exc)
         gateway = None
         intent_classifier = None
@@ -402,7 +402,6 @@ def create_app(root: Path) -> CommandBus:
             UnblockIPHandler,
         )
 
-        import sqlite3
         import threading
 
         _sec_db_path = root / ".planning" / "brain" / "security.db"
@@ -437,7 +436,7 @@ def create_app(root: Path) -> CommandBus:
         for _cmd_cls, _handler in _defense_registrations:
             try:
                 bus.register(_cmd_cls, cast(Callable[..., Any], _handler))
-            except Exception as exc:
+            except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
                 logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
     except (ImportError, OSError, sqlite3.Error) as exc:
         logger.warning("Failed to import defense commands: %s", exc)
@@ -481,7 +480,7 @@ def create_app(root: Path) -> CommandBus:
         # Classifier is created before learning subsystem, so we set it after the fact
         if intent_classifier is not None:
             intent_classifier.set_feedback_tracker(feedback_tracker)
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.warning("Failed to initialize Learning subsystem, continuing without: %s", exc)
 
     _register_with_fallback(
@@ -589,7 +588,7 @@ def create_app(root: Path) -> CommandBus:
             cost_tracker=cost_tracker,
             budget_manager=budget_manager,
         )
-    except Exception as exc:
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.warning("Failed to initialize Harvesting subsystem, continuing without: %s", exc)
 
     _register_with_fallback(
@@ -619,7 +618,7 @@ def create_app(root: Path) -> CommandBus:
 
         notifier = Notifier()
         proactive_engine = ProactiveEngine(rules=DEFAULT_TRIGGER_RULES, notifier=notifier, root=root)
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
         logger.warning("Failed to initialize Proactive subsystem, continuing without: %s", exc)
 
     _register_with_fallback(

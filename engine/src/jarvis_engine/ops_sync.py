@@ -198,7 +198,7 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
     try:
         cal = Calendar.from_ical(text)
-    except Exception as exc:
+    except (ValueError, TypeError, KeyError) as exc:
         logger.debug("Calendar parsing failed, using fallback: %s", exc)
         return _parse_ics_fallback(text, target_date)
 
@@ -209,7 +209,7 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 
     try:
         expanded = recurring_ical_events.of(cal).between(start, end)
-    except Exception as exc:
+    except (ValueError, TypeError, KeyError, RuntimeError) as exc:
         logger.debug("Recurring event expansion failed, using fallback: %s", exc)
         return _parse_ics_fallback(text, target_date)
 
@@ -329,7 +329,7 @@ def _load_todoist_tasks() -> list[dict]:
             }
             for t in tasks
         ]
-    except Exception as exc:
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         logger.warning("Todoist API call failed: %s", exc)
         return []
 

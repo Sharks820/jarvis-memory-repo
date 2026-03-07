@@ -132,7 +132,7 @@ class ScamRoutesMixin:
                 "stir_status": stir_status,
                 "signals": campaign_signals,
             })
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.warning("Scam report-call failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": "Scam report processing failed."})
 
@@ -184,7 +184,7 @@ class ScamRoutesMixin:
                 "campaign_signals": campaign_signals,
             }
             self._write_json(HTTPStatus.OK, result)
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.warning("Scam lookup failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "number": str(body.get("number", "")),
@@ -210,7 +210,7 @@ class ScamRoutesMixin:
                 "total_campaigns": len(campaigns),
                 "total_scam_numbers": sum(len(c.numbers) for c in campaigns),
             })
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.warning("Scam campaigns fetch failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "campaigns": [], "block_actions": []})
 
@@ -261,6 +261,6 @@ class ScamRoutesMixin:
                 "top_scam_prefixes": [{"prefix": p, "numbers": n} for p, n in top_prefixes],
                 "top_scam_carriers": [{"carrier": c, "numbers": n} for c, n in top_carriers],
             })
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.warning("Scam stats fetch failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "total_screened": 0, "active_campaigns": 0})

@@ -162,7 +162,7 @@ def auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> st
     def _bg() -> None:
         try:
             auto_ingest_memory_sync(source, kind, task_id, content)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
             logger.debug("Background auto-ingest failed: %s", exc)
 
     t = threading.Thread(target=_bg, daemon=True)

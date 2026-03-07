@@ -1356,7 +1356,7 @@ def cmd_memory_eval() -> int:
 
             embed_service = EmbeddingService()
             engine = MemoryEngine(db_path, embed_service=embed_service)
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
             print(f"error=failed to init memory engine: {exc}")
             return 1
 
@@ -1495,7 +1495,7 @@ def _emit_voice_listen_state(state: str, *, details: dict[str, object] | None = 
             f"Voice listen state: {state}",
             payload,
         )
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
         logger.debug("Voice listen state activity logging failed: %s", exc)
 
 

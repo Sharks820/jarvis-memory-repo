@@ -56,7 +56,7 @@ class SyncPullHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- cryptography.fernet.InvalidToken (lazily loaded); re-raises others
             if "InvalidToken" in type(exc).__name__:
                 logger.error("SyncPull encryption failed (invalid token): %s", exc)
                 return SyncPullResult(message="error: encryption failed")
@@ -96,8 +96,7 @@ class SyncPushHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
-        except Exception as exc:
-            # cryptography.fernet.InvalidToken (lazily loaded, inherits Exception)
+        except Exception as exc:  # noqa: BLE001 -- cryptography.fernet.InvalidToken (lazily loaded); re-raises others
             if "InvalidToken" in type(exc).__name__:
                 logger.error("SyncPush decryption failed (invalid token): %s", exc)
                 return SyncPushResult(message="error: decryption failed")

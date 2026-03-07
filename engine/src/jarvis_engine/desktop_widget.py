@@ -286,7 +286,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         if value:
             try:
                 payload[f"{field}_protected"] = _dpapi_encrypt(value)
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("DPAPI encrypt failed for %s, storing plaintext: %s", field, exc)
                 payload[field] = value
 
@@ -481,7 +481,7 @@ from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_su
 def _http_error_details(exc: HTTPError) -> str:
     try:
         raw = exc.read().decode("utf-8", errors="replace").strip()
-    except Exception as exc2:
+    except Exception as exc2:  # boundary: catch-all justified
         logger.debug("Failed to read HTTP error response body: %s", exc2)
         raw = ""
     if raw:
@@ -506,7 +506,7 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
     except RuntimeError as exc:
         # faster-whisper or sounddevice not available -- fall back to System.Speech
         logger.debug("Whisper STT unavailable, falling back to System.Speech: %s", exc)
-    except Exception as exc:
+    except Exception as exc:  # boundary: catch-all justified
         logger.warning("Whisper STT failed, falling back to System.Speech: %s", exc)
     # Fallback: Windows System.Speech via PowerShell
     return _voice_dictate_system_speech(timeout_s)
@@ -891,7 +891,7 @@ class JarvisDesktopWidget(tk.Tk):
                     if info is not None:
                         kill_service(service, root)
                         logger.info("Killed %s (pid=%s) on widget shutdown.", service, info.get("pid"))
-                except Exception as exc:
+                except Exception as exc:  # boundary: catch-all justified
                     logger.debug("Failed to kill %s on shutdown: %s", service, exc)
         except ImportError:
             # Fallback: kill by command line pattern
@@ -905,7 +905,7 @@ class JarvisDesktopWidget(tk.Tk):
                      "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
                     capture_output=True, timeout=10,
                 )
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Fallback process kill failed: %s", exc)
 
     def _confirm_exit(self) -> None:
@@ -946,12 +946,12 @@ class JarvisDesktopWidget(tk.Tk):
         if self._orb_after_id is not None:
             try:
                 self.after_cancel(self._orb_after_id)
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Failed to cancel orb animation callback: %s", exc)
         if self._launcher_after_id is not None:
             try:
                 self.after_cancel(self._launcher_after_id)
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Failed to cancel launcher animation callback: %s", exc)
         # Wait briefly for background threads to finish
         for t in threading.enumerate():
@@ -960,11 +960,11 @@ class JarvisDesktopWidget(tk.Tk):
         if self.launcher_win is not None:
             try:
                 self.launcher_win.destroy()
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Failed to destroy launcher window during shutdown: %s", exc)
         try:
             self.destroy()
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to destroy main widget window during shutdown: %s", exc)
 
     def _bind_shortcuts(self) -> None:
@@ -1031,7 +1031,7 @@ class JarvisDesktopWidget(tk.Tk):
         self.cfg.panel_y = y
         try:
             _save_widget_cfg(self.root_path, self.cfg)
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to save widget position to config: %s", exc)
 
     def _save_launcher_position(self) -> None:
@@ -1053,7 +1053,7 @@ class JarvisDesktopWidget(tk.Tk):
         self.cfg.launcher_y = y
         try:
             _save_widget_cfg(self.root_path, self.cfg)
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to save launcher position to config: %s", exc)
 
     def _build_launcher(self) -> None:
@@ -1063,7 +1063,7 @@ class JarvisDesktopWidget(tk.Tk):
         launcher.configure(bg=self.LAUNCHER_TRANSPARENT)
         try:
             launcher.wm_attributes("-transparentcolor", self.LAUNCHER_TRANSPARENT)
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to set launcher transparent color attribute: %s", exc)
         size = self._launcher_size
         # Restore saved launcher position or default to bottom-right
@@ -1218,7 +1218,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._tray_icon is not None:
             try:
                 self._tray_icon.stop()
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Failed to stop tray icon: %s", exc)
             self._tray_icon = None
 
@@ -1643,7 +1643,7 @@ class JarvisDesktopWidget(tk.Tk):
         def worker() -> None:
             try:
                 _http_json(cfg, "/conversation/clear", method="POST", payload={})
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.debug("Best-effort conversation clear failed: %s", exc)
 
         self._thread(worker)
@@ -2192,7 +2192,7 @@ class JarvisDesktopWidget(tk.Tk):
                     health_data = _http_json(cfg, "/health", method="GET")
                     health_ok = bool(health_data.get("ok", False))
                     self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
-                except Exception as exc:
+                except Exception as exc:  # boundary: catch-all justified
                     logger.debug("Diagnostics health check failed: %s", exc)
                     self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
                     self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
@@ -2206,7 +2206,7 @@ class JarvisDesktopWidget(tk.Tk):
                     last_sync = sync_data.get("last_sync_utc", "unknown")
                     self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
                     self._log_async(f"  Last sync: {last_sync}", role="jarvis")
-                except Exception as exc:
+                except Exception as exc:  # boundary: catch-all justified
                     self._log_async(f"  Sync: unavailable ({exc})", role="error")
 
                 # Step 3: Check intelligence
@@ -2218,7 +2218,7 @@ class JarvisDesktopWidget(tk.Tk):
                     fact_count = dash_data.get("fact_count", "?")
                     self._log_async(f"  Intelligence score: {score}", role="jarvis")
                     self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
-                except Exception as exc:
+                except Exception as exc:  # boundary: catch-all justified
                     self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
 
                 # Step 4: Run self-heal
@@ -2317,7 +2317,7 @@ class JarvisDesktopWidget(tk.Tk):
                  "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
                 capture_output=True, timeout=5,
             )
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to kill TTS/speech processes during cancel: %s", exc)
         self.command_text.config(state=tk.NORMAL)
         self._log("Command cancelled.", role="system")
@@ -2509,7 +2509,7 @@ class JarvisDesktopWidget(tk.Tk):
                         self.after(0, self._update_growth_labels, growth_data)
                         if recent_evts:
                             self.after(0, self._update_activity_events, recent_evts)
-                    except Exception as exc:
+                    except Exception as exc:  # boundary: catch-all justified
                         logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
                 if not ok:
                     self._set_error_briefly_async()
@@ -2590,7 +2590,7 @@ class JarvisDesktopWidget(tk.Tk):
                     if self._prev_svc_running.get(name, False):
                         self._notify_toast("Jarvis Service Down", f"{name} has stopped", "Warning")
                 self._prev_svc_running[name] = svc["running"]
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to refresh service status: %s", exc)
         # Re-schedule every 10 seconds
         self.after(10000, self._refresh_services)
@@ -2736,7 +2736,7 @@ class JarvisDesktopWidget(tk.Tk):
                     except Exception:  # Widget may be destroyed
                         logger.debug("Cannot schedule wake word actions (widget may be destroyed)")
                         return
-            except Exception as exc:
+            except Exception as exc:  # boundary: catch-all justified
                 logger.warning("Hotword detection error: %s", exc)
             # Cooldown: 10s after wake word to avoid re-triggering during processing
             for _ in range(20):
@@ -2804,20 +2804,20 @@ class JarvisDesktopWidget(tk.Tk):
                                 health_payload = json.loads(body)
                                 if isinstance(health_payload, dict) and "intelligence" in health_payload:
                                     intel_data = health_payload["intelligence"]
-                            except Exception as exc:
+                            except Exception as exc:  # boundary: catch-all justified
                                 logger.debug("Failed to parse intelligence from health response: %s", exc)
                         resp.close()
                         resp = None
                         if ok:
                             break
-                    except Exception as exc:
+                    except Exception as exc:  # boundary: catch-all justified
                         logger.debug("Health poll request failed: %s", exc)
                         ok = False
                     finally:
                         if resp is not None:
                             try:
                                 resp.close()
-                            except Exception as exc:
+                            except Exception as exc:  # boundary: catch-all justified
                                 logger.debug("Failed to close health poll HTTP response: %s", exc)
                             resp = None
                     if self.stop_event.is_set():
@@ -2840,7 +2840,7 @@ class JarvisDesktopWidget(tk.Tk):
                             if msg:
                                 self._notify_toast("Jarvis Alert", msg, "Warning")
                                 break  # One toast per poll cycle
-                except Exception as exc:
+                except Exception as exc:  # boundary: catch-all justified
                     logger.debug("Failed to fetch widget-status: %s", exc)
             if not self.stop_event.is_set():
                 try:

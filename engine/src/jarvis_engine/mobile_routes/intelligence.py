@@ -276,7 +276,7 @@ class IntelligenceRoutesMixin:
                 "total_received": len(items),
             })
             logger.info("Intelligence merge: %d items from phone", merged)
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.error("intelligence/merge failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence merge failed.",
@@ -359,7 +359,7 @@ class IntelligenceRoutesMixin:
                 "total": len(items),
             })
             logger.info("Intelligence export: %d items for phone", len(items))
-        except Exception as exc:
+        except Exception as exc:  # boundary: catch-all justified
             logger.error("intelligence/export failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence export failed.",

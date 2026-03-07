@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
+import sqlite3
 import threading
 import time
 from datetime import datetime
@@ -57,7 +58,7 @@ def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> No
     if flush_ids:
         try:
             engine.update_access_batch(flush_ids)
-        except Exception:
+        except (sqlite3.Error, OSError, RuntimeError):
             logger.debug("Failed to flush access count updates", exc_info=True)
 
 

@@ -64,7 +64,7 @@ class ContradictionManager(KGManagerBase):
             embedding = embed_service.embed(label, prefix="search_document")
             if len(embedding) == 768:
                 return struct.pack(f"{len(embedding)}f", *embedding)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, ImportError) as exc:
             logger.debug("Vec embedding pre-compute for label %r failed: %s", label[:50], exc)
         return None
 
@@ -86,7 +86,7 @@ class ContradictionManager(KGManagerBase):
                 "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
                 (node_id, blob),
             )
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             logger.debug("Vec embedding write for node %s failed: %s", node_id, exc)
 
     # ------------------------------------------------------------------

@@ -235,7 +235,7 @@ class BudgetManager:
             self._closed = True
             try:
                 self._db.close()
-            except Exception as exc:
+            except (OSError, RuntimeError) as exc:
                 logger.warning("Failed to close BudgetManager database connection: %s", exc)
 
     def __enter__(self) -> "BudgetManager":
@@ -247,8 +247,5 @@ class BudgetManager:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception as exc:
-            try:
-                logger.debug("Failed to close BudgetManager database in __del__: %s", exc)
-            except Exception:
-                pass
+        except Exception:  # noqa: BLE001 -- __del__: interpreter may be shutting down
+            pass

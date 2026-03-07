@@ -243,12 +243,8 @@ class ModelGateway:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception as exc:
-            # Logger may be None during interpreter shutdown; best-effort debug log
-            try:
-                logger.debug("ModelGateway.__del__ cleanup failed: %s", exc)
-            except Exception:
-                pass
+        except Exception:  # noqa: BLE001 -- __del__: interpreter may be shutting down
+            pass
 
     def __enter__(self) -> "ModelGateway":
         return self
