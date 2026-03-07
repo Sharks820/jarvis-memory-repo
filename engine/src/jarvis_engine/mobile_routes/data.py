@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from http import HTTPStatus
-from typing import Any
-
 from jarvis_engine._constants import memory_db_path as _memory_db_path
 from jarvis_engine.mobile_routes._helpers import (
     ALLOWED_KINDS,

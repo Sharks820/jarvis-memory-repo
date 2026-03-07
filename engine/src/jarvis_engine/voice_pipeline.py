@@ -266,15 +266,6 @@ def _conversation_history_path() -> Path:
     return _state._conversation_history_path()
 
 
-def _load_conversation_history() -> None:
-    """Load persisted conversation history from disk.
-
-    The underlying method acquires the reentrant conversation history
-    lock, so callers do not need to hold it beforehand.
-    """
-    _state.load_conversation_history()
-
-
 def save_conversation_history() -> None:
     """Persist current conversation history to disk (atomic write)."""
     _state.save_conversation_history()

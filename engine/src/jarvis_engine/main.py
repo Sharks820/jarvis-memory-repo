@@ -787,26 +787,6 @@ def cmd_ops_sync(output_path: Path) -> int:
     return 0
 
 
-def _cmd_ops_autopilot_impl(
-    snapshot_path: Path,
-    actions_path: Path,
-    *,
-    execute: bool,
-    approve_privileged: bool,
-    auto_open_connectors: bool,
-) -> int:
-    """Thin wrapper — delegates to :func:`jarvis_engine.ops_autopilot.run_ops_autopilot`."""
-    from jarvis_engine.ops_autopilot import run_ops_autopilot
-
-    return run_ops_autopilot(
-        snapshot_path=snapshot_path,
-        actions_path=actions_path,
-        execute=execute,
-        approve_privileged=approve_privileged,
-        auto_open_connectors=auto_open_connectors,
-    )
-
-
 def cmd_ops_autopilot(
     snapshot_path: Path,
     actions_path: Path,

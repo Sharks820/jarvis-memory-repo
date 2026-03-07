@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from http import HTTPStatus
-from typing import Any
-
 from jarvis_engine._constants import (
     GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG,
     runtime_dir as _runtime_dir,

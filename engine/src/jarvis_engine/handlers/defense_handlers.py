@@ -342,14 +342,6 @@ class ReviewQuarantineHandler(_DefenseHandlerBase):
 
     _shared_provenance: "MemoryProvenance | None" = None
 
-    def set_provenance(self, provenance: object) -> None:
-        """Inject the shared ``MemoryProvenance`` instance.
-
-        Called during handler registration so that ``handle()`` queries
-        the same provenance tracker the rest of the engine writes to.
-        """
-        self._shared_provenance = provenance  # type: ignore[assignment]
-
     def handle(self, cmd: ReviewQuarantineCommand) -> ReviewQuarantineResult:
         try:
             provenance = self._shared_provenance

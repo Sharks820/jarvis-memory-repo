@@ -49,11 +49,6 @@ class AlertChain:
     # Public API
     # ------------------------------------------------------------------
 
-    def register_dispatch(self, callback) -> None:
-        """Register a callback for alert dispatch. Callback receives (level, summary, evidence)."""
-        with self._lock:
-            self._dispatch_callbacks.append(callback)
-
     def send_alert(
         self,
         level: int,

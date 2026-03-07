@@ -348,39 +348,6 @@ _SCAM_LABELS = frozenset({
 
 
 # ---------------------------------------------------------------------------
-#  NANPA NPA-NXX carrier identification (free, no API key)
-# ---------------------------------------------------------------------------
-
-# Known VoIP wholesale provider OCNs and their NPA-NXX blocks.
-# This is a subset — the full NANPA file has ~50k entries.
-# These are the top robocall-associated carriers by FCC enforcement data.
-KNOWN_VOIP_OCNS: dict[str, str] = {
-    "981E": "Bandwidth.com",
-    "6943": "Twilio",
-    "8561": "Vonage",
-    "B067": "Telnyx",
-    "692E": "Lingo Telecom",
-    "8825": "Peerless Network",
-    "6529": "Level 3 / Lumen",
-    "935F": "Commio",
-    "5765": "Intelepeer",
-    "508E": "MagicJack",
-}
-
-
-def identify_voip_carrier_from_prefix(number: str) -> str | None:
-    """Check if a number's NPA-NXX is assigned to a known VoIP provider.
-
-    Uses the area key to look up against known VoIP OCN prefixes.
-    Returns the carrier name if known VoIP, None otherwise.
-    """
-    # This is a stub for NANPA integration. When the NANPA CSV is loaded,
-    # this function would look up the NPA-NXX block assignment.
-    # For now it returns None — the carrier cache handles external lookups.
-    return None
-
-
-# ---------------------------------------------------------------------------
 #  Time-of-day scoring
 # ---------------------------------------------------------------------------
 

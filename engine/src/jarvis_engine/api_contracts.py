@@ -9,11 +9,8 @@ contract checks.
 from __future__ import annotations
 
 import dataclasses
-import logging
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Optional, Type, get_type_hints, Union
-
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -27,14 +24,6 @@ class HealthResponse:
     ok: bool = True
     status: str = ""
     intelligence: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class IntelligenceStatus:
-    """Nested intelligence data within HealthResponse."""
-    score: float = 0.0
-    regression: bool = False
-    last_test: str = ""
 
 
 @dataclass
@@ -95,45 +84,10 @@ class DashboardResponse:
 
 
 @dataclass
-class SpamCandidateDto:
-    """Individual spam candidate entry."""
-    number: str = ""
-    score: float = 0.0
-    calls: int = 0
-    missed_ratio: float = 0.0
-    avg_duration_s: float = 0.0
-    reasons: List[str] = field(default_factory=list)
-
-
-@dataclass
 class SpamCandidatesResponse:
     """GET /spam/candidates response."""
     ok: bool = False
     candidates: List[Dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class ProactiveAlertDto:
-    """Individual proactive alert entry."""
-    id: str = ""
-    type: str = ""
-    title: str = ""
-    body: str = ""
-    group_key: str = ""
-
-
-@dataclass
-class ProactiveAlertsResponse:
-    """Future dedicated proactive alerts endpoint response."""
-    ok: bool = False
-    alerts: List[Dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class ConflictCheckResponse:
-    """Calendar conflict checking response."""
-    ok: bool = False
-    conflicts: List[str] = field(default_factory=list)
 
 
 @dataclass

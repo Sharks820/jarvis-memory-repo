@@ -224,11 +224,6 @@ class WakeWordStartHandler:
             message="Wake word detection started. Say 'Jarvis' to activate.",
         )
 
-    @property
-    def in_conversation_mode(self) -> bool:
-        """True if within the 20-second follow-up window after a wake word command."""
-        return _time_mod.time() < self._conversation_until
-
     def stop(self) -> None:
         """Stop the wake word detection thread if running."""
         if self._stop_event is not None:

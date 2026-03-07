@@ -16,11 +16,8 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from ipaddress import ip_address
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
@@ -39,7 +36,6 @@ from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
 from jarvis_engine._constants import memory_db_path as _memory_db_path
 from jarvis_engine._constants import runtime_dir as _runtime_dir
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
@@ -146,9 +142,6 @@ class _ThreadCapturingStdout:
         if not isinstance(sys.stdout, _ThreadCapturingStdout):
             sys.stdout = _ThreadCapturingStdout(sys.stdout)  # type: ignore[assignment]
 
-
-# Kept for backward compatibility — no longer blocks execution
-_repo_root_lock = threading.Lock()
 
 # CORS whitelist: only allow localhost/loopback origins and file:// protocol.
 # LAN IPs are added dynamically at server startup via _build_cors_whitelist().
@@ -649,25 +642,6 @@ class MobileIngestServer(ThreadingHTTPServer):
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
 
-    def ensure_embed_service(self) -> EmbeddingService | None:
-        """Lazy-initialize an EmbeddingService for self-test queries.
-
-        Returns the EmbeddingService instance, or None on failure.
-        Thread-safe via double-checked locking.
-        """
-        if self._embed_service is not None:
-            return self._embed_service
-        with self._embed_init_lock:
-            if self._embed_service is not None:
-                return self._embed_service
-            try:
-                from jarvis_engine.memory.embeddings import EmbeddingService
-                self._embed_service = EmbeddingService()
-                logger.info("EmbeddingService lazy-initialized for mobile API self-test")
-            except Exception as exc:
-                logger.warning("Failed to lazy-initialize EmbeddingService: %s", exc)
-                self._embed_service = None
-        return self._embed_service
 
 
 class MobileIngestHandler(
@@ -1251,14 +1225,6 @@ class MobileIngestHandler(
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."})
             return None, None
         return payload, body
-
-    def _client_is_private_or_loopback(self) -> bool:
-        raw_ip = str(self.client_address[0]).strip()
-        try:
-            ip = ip_address(raw_ip)
-            return bool(ip.is_loopback or ip.is_private or ip.is_link_local)
-        except ValueError:
-            return False
 
     def _cleanup_nonces(self, now: float, *, force: bool = False) -> None:
         should_persist = False
