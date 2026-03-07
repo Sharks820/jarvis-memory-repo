@@ -101,6 +101,55 @@ class TestGetProvenance:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# returns_false parametrized (covers promote, quarantine, purge, approve)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "setup_steps, method, method_args",
+    [
+        pytest.param([], "promote", ["nonexistent"], id="promote-unknown"),
+        pytest.param(
+            [("tag", "abc123", "user", VERIFIED_EXTERNAL)],
+            "promote", ["abc123"], id="promote-already_verified",
+        ),
+        pytest.param(
+            [("tag", "abc123", "user", OWNER_INPUT)],
+            "promote", ["abc123"], id="promote-owner_input",
+        ),
+        pytest.param(
+            [("tag", "abc123", "llm", None), ("quarantine", "abc123", "suspicious")],
+            "promote", ["abc123"], id="promote-quarantined",
+        ),
+        pytest.param([], "quarantine", ["nonexistent", "reason"], id="quarantine-unknown"),
+        pytest.param([], "purge_quarantined", ["nonexistent"], id="purge-unknown"),
+        pytest.param(
+            [("tag", "abc123", "llm", None)],
+            "purge_quarantined", ["abc123"], id="purge-non_quarantined",
+        ),
+        pytest.param([], "approve_quarantined", ["nonexistent"], id="approve-unknown"),
+        pytest.param(
+            [("tag", "abc123", "llm", None)],
+            "approve_quarantined", ["abc123"], id="approve-non_quarantined",
+        ),
+    ],
+)
+def test_returns_false(prov, setup_steps, method, method_args):
+    for step in setup_steps:
+        if step[0] == "tag":
+            kwargs = {"trust_level": step[3]} if step[3] else {}
+            prov.tag_record(step[1], step[2], **kwargs)
+        elif step[0] == "quarantine":
+            prov.quarantine(step[1], step[2])
+    assert getattr(prov, method)(*method_args) is False
+
+
+# ---------------------------------------------------------------------------
+# promote
+# ---------------------------------------------------------------------------
+
+
 class TestPromote:
     def test_promotes_unverified_to_verified(self, prov: MemoryProvenance) -> None:
         prov.tag_record("abc123", "llm")
@@ -109,22 +158,6 @@ class TestPromote:
         assert p is not None
         assert p["trust_level"] == VERIFIED_EXTERNAL
         assert p["verification_status"] == "verified"
-
-    def test_returns_false_for_unknown(self, prov: MemoryProvenance) -> None:
-        assert prov.promote("nonexistent") is False
-
-    def test_returns_false_for_already_verified(self, prov: MemoryProvenance) -> None:
-        prov.tag_record("abc123", "user", trust_level=VERIFIED_EXTERNAL)
-        assert prov.promote("abc123") is False
-
-    def test_returns_false_for_owner_input(self, prov: MemoryProvenance) -> None:
-        prov.tag_record("abc123", "user", trust_level=OWNER_INPUT)
-        assert prov.promote("abc123") is False
-
-    def test_returns_false_for_quarantined(self, prov: MemoryProvenance) -> None:
-        prov.tag_record("abc123", "llm")
-        prov.quarantine("abc123", "suspicious")
-        assert prov.promote("abc123") is False
 
 
 # ---------------------------------------------------------------------------
@@ -141,9 +174,6 @@ class TestQuarantine:
         assert p["trust_level"] == QUARANTINED
         assert p["quarantine_reason"] == "contradiction detected"
         assert p["verification_status"] == "pending"
-
-    def test_returns_false_for_unknown(self, prov: MemoryProvenance) -> None:
-        assert prov.quarantine("nonexistent", "reason") is False
 
     def test_can_quarantine_verified(self, prov: MemoryProvenance) -> None:
         prov.tag_record("abc123", "user", trust_level=VERIFIED_EXTERNAL)
@@ -192,13 +222,6 @@ class TestPurgeQuarantined:
         assert prov.purge_quarantined("abc123") is True
         assert prov.get_provenance("abc123") is None
 
-    def test_returns_false_for_unknown(self, prov: MemoryProvenance) -> None:
-        assert prov.purge_quarantined("nonexistent") is False
-
-    def test_returns_false_for_non_quarantined(self, prov: MemoryProvenance) -> None:
-        prov.tag_record("abc123", "llm")
-        assert prov.purge_quarantined("abc123") is False
-
 
 # ---------------------------------------------------------------------------
 # approve_quarantined
@@ -215,10 +238,3 @@ class TestApproveQuarantined:
         assert p["trust_level"] == VERIFIED_EXTERNAL
         assert p["verification_status"] == "verified"
         assert p["quarantine_reason"] == ""
-
-    def test_returns_false_for_unknown(self, prov: MemoryProvenance) -> None:
-        assert prov.approve_quarantined("nonexistent") is False
-
-    def test_returns_false_for_non_quarantined(self, prov: MemoryProvenance) -> None:
-        prov.tag_record("abc123", "llm")
-        assert prov.approve_quarantined("abc123") is False

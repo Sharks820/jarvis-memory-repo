@@ -273,8 +273,9 @@ class TestWakeWordDetector:
             import threading
             stop = threading.Event()
             stop.set()  # set immediately so loop exits
-            detector.start(callback, stop)
-            # callback should not have been called
+            result = detector.start(callback, stop)
+            # Should return None and callback should not have been called
+            assert result is None
             callback.assert_not_called()
 
 

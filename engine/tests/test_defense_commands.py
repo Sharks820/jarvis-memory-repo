@@ -74,25 +74,64 @@ class TestFrozen:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Result defaults (parametrized)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cls, expected_fields",
+    [
+        (SecurityStatusResult, {"dashboard": {}, "message": ""}),
+        (ThreatReportResult, {"report": {}, "message": ""}),
+        (ExportForensicsResult, {"export_path": "", "message": ""}),
+        (ContainmentOverrideResult, {"success": False, "message": ""}),
+        (BlockIPResult, {"success": False, "message": ""}),
+        (UnblockIPResult, {"success": False, "message": ""}),
+        (ReviewQuarantineResult, {"records": [], "message": ""}),
+        (SecurityBriefingResult, {"briefing": "", "message": ""}),
+    ],
+    ids=lambda v: v.__name__ if isinstance(v, type) else "",
+)
+def test_result_defaults(cls: type, expected_fields: dict) -> None:
+    r = cls()
+    for field, expected in expected_fields.items():
+        assert getattr(r, field) == expected
+
+
+# ---------------------------------------------------------------------------
+# Result custom values (parametrized)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cls, kwargs, check_field, check_value",
+    [
+        (SecurityStatusResult, {"dashboard": {"key": "val"}, "message": "ok"}, "dashboard", {"key": "val"}),
+        (ThreatReportResult, {"report": {"threats": 5}, "message": "found"}, "report", {"threats": 5}),
+        (ExportForensicsResult, {"export_path": "/tmp/export.json", "message": "done"}, "export_path", "/tmp/export.json"),
+        (ContainmentOverrideResult, {"success": True, "message": "recovered"}, "success", True),
+        (BlockIPResult, {"success": True, "message": "blocked"}, "success", True),
+        (UnblockIPResult, {"success": True, "message": "unblocked"}, "success", True),
+        (ReviewQuarantineResult, {"records": [{"hash": "abc"}], "message": "1 record"}, "records", [{"hash": "abc"}]),
+        (SecurityBriefingResult, {"briefing": "All clear", "message": "ok"}, "briefing", "All clear"),
+    ],
+    ids=lambda v: v.__name__ if isinstance(v, type) else "",
+)
+def test_result_custom(cls: type, kwargs: dict, check_field: str, check_value: object) -> None:
+    r = cls(**kwargs)
+    assert getattr(r, check_field) == check_value
+
+
+# ---------------------------------------------------------------------------
+# Command-specific tests
+# ---------------------------------------------------------------------------
+
+
 class TestSecurityStatus:
     def test_command_no_fields(self) -> None:
         cmd = SecurityStatusCommand()
         assert dataclasses.fields(cmd) == ()
-
-    def test_result_defaults(self) -> None:
-        r = SecurityStatusResult()
-        assert r.dashboard == {}
-        assert r.message == ""
-
-    def test_result_custom(self) -> None:
-        r = SecurityStatusResult(dashboard={"key": "val"}, message="ok")
-        assert r.dashboard == {"key": "val"}
-        assert r.message == "ok"
-
-
-# ---------------------------------------------------------------------------
-# ThreatReportCommand / Result
-# ---------------------------------------------------------------------------
 
 
 class TestThreatReport:
@@ -103,20 +142,6 @@ class TestThreatReport:
     def test_command_custom_ip(self) -> None:
         cmd = ThreatReportCommand(ip="10.0.0.1")
         assert cmd.ip == "10.0.0.1"
-
-    def test_result_defaults(self) -> None:
-        r = ThreatReportResult()
-        assert r.report == {}
-        assert r.message == ""
-
-    def test_result_custom(self) -> None:
-        r = ThreatReportResult(report={"threats": 5}, message="found")
-        assert r.report["threats"] == 5
-
-
-# ---------------------------------------------------------------------------
-# ExportForensicsCommand / Result
-# ---------------------------------------------------------------------------
 
 
 class TestExportForensics:
@@ -130,20 +155,6 @@ class TestExportForensics:
         assert cmd.start_date == "2026-01-01"
         assert cmd.end_date == "2026-02-01"
 
-    def test_result_defaults(self) -> None:
-        r = ExportForensicsResult()
-        assert r.export_path == ""
-        assert r.message == ""
-
-    def test_result_custom(self) -> None:
-        r = ExportForensicsResult(export_path="/tmp/export.json", message="done")
-        assert r.export_path == "/tmp/export.json"
-
-
-# ---------------------------------------------------------------------------
-# ContainmentOverrideCommand / Result
-# ---------------------------------------------------------------------------
-
 
 class TestContainmentOverride:
     def test_command_defaults(self) -> None:
@@ -155,20 +166,6 @@ class TestContainmentOverride:
         cmd = ContainmentOverrideCommand(level=3, action="isolate")
         assert cmd.level == 3
         assert cmd.action == "isolate"
-
-    def test_result_defaults(self) -> None:
-        r = ContainmentOverrideResult()
-        assert r.success is False
-        assert r.message == ""
-
-    def test_result_custom(self) -> None:
-        r = ContainmentOverrideResult(success=True, message="recovered")
-        assert r.success is True
-
-
-# ---------------------------------------------------------------------------
-# BlockIPCommand / Result
-# ---------------------------------------------------------------------------
 
 
 class TestBlockIP:
@@ -182,16 +179,6 @@ class TestBlockIP:
         assert cmd.ip == "192.168.1.1"
         assert cmd.duration_hours == 48
 
-    def test_result_defaults(self) -> None:
-        r = BlockIPResult()
-        assert r.success is False
-        assert r.message == ""
-
-
-# ---------------------------------------------------------------------------
-# UnblockIPCommand / Result
-# ---------------------------------------------------------------------------
-
 
 class TestUnblockIP:
     def test_command_defaults(self) -> None:
@@ -202,50 +189,17 @@ class TestUnblockIP:
         cmd = UnblockIPCommand(ip="192.168.1.1")
         assert cmd.ip == "192.168.1.1"
 
-    def test_result_defaults(self) -> None:
-        r = UnblockIPResult()
-        assert r.success is False
-        assert r.message == ""
-
-
-# ---------------------------------------------------------------------------
-# ReviewQuarantineCommand / Result
-# ---------------------------------------------------------------------------
-
 
 class TestReviewQuarantine:
     def test_command_no_fields(self) -> None:
         cmd = ReviewQuarantineCommand()
         assert dataclasses.fields(cmd) == ()
 
-    def test_result_defaults(self) -> None:
-        r = ReviewQuarantineResult()
-        assert r.records == []
-        assert r.message == ""
-
-    def test_result_custom(self) -> None:
-        r = ReviewQuarantineResult(records=[{"hash": "abc"}], message="1 record")
-        assert len(r.records) == 1
-
-
-# ---------------------------------------------------------------------------
-# SecurityBriefingCommand / Result
-# ---------------------------------------------------------------------------
-
 
 class TestSecurityBriefing:
     def test_command_no_fields(self) -> None:
         cmd = SecurityBriefingCommand()
         assert dataclasses.fields(cmd) == ()
-
-    def test_result_defaults(self) -> None:
-        r = SecurityBriefingResult()
-        assert r.briefing == ""
-        assert r.message == ""
-
-    def test_result_custom(self) -> None:
-        r = SecurityBriefingResult(briefing="All clear", message="ok")
-        assert r.briefing == "All clear"
 
 
 # ---------------------------------------------------------------------------

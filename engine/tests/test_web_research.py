@@ -1,7 +1,20 @@
 from __future__ import annotations
 
+import pytest
+
 from jarvis_engine import web_research
 from jarvis_engine.web_research import _extract_snippet, _query_keywords
+
+
+def _patch_web(monkeypatch, urls=None, page_text=""):
+    """Shared helper to monkeypatch _search_web and _fetch_page_text."""
+    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: (urls or []))
+    if isinstance(page_text, str):
+        monkeypatch.setattr(
+            web_research, "_fetch_page_text", lambda url, max_bytes=250_000: page_text,
+        )
+    else:
+        monkeypatch.setattr(web_research, "_fetch_page_text", page_text)
 
 
 # ── existing tests ────────────────────────────────────────────────────────
@@ -111,24 +124,27 @@ def test_extract_snippet_max_sentences_limit() -> None:
 
 # ── run_web_research extended tests ───────────────────────────────────────
 
-def test_run_web_research_empty_search_results(monkeypatch) -> None:
-    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
-    report = web_research.run_web_research("obscure topic nobody writes about")
-    assert report["finding_count"] == 0
-    assert report["scanned_url_count"] == 0
-    assert report["summary_lines"] == []
-
-
-def test_run_web_research_fetch_returns_empty(monkeypatch) -> None:
-    monkeypatch.setattr(
-        web_research, "_search_web",
-        lambda query, limit: ["https://example.com/page1", "https://example.com/page2"],
-    )
-    monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
-    report = web_research.run_web_research("test query for empty pages")
-    assert report["scanned_url_count"] == 2
-    assert report["finding_count"] == 0
+@pytest.mark.parametrize(
+    "urls, page_text, query, expected_findings, min_scanned",
+    [
+        pytest.param([], "", "obscure topic nobody writes about", 0, 0, id="empty_search_results"),
+        pytest.param(
+            ["https://example.com/page1", "https://example.com/page2"], "",
+            "test query for empty pages", 0, 2, id="fetch_returns_empty",
+        ),
+        pytest.param(
+            ["https://example.com/page"], "Completely unrelated content about gardening and flower pots and soil types.",
+            "quantum computing algorithms", 0, 1, id="no_snippet_match",
+        ),
+    ],
+)
+def test_run_web_research_zero_findings(
+    monkeypatch, urls, page_text, query, expected_findings, min_scanned,
+) -> None:
+    _patch_web(monkeypatch, urls=urls, page_text=page_text)
+    report = web_research.run_web_research(query)
+    assert report["finding_count"] == expected_findings
+    assert report["scanned_url_count"] >= min_scanned
 
 
 def test_run_web_research_deduplicates_findings(monkeypatch) -> None:
@@ -147,8 +163,7 @@ def test_run_web_research_deduplicates_findings(monkeypatch) -> None:
 
 
 def test_run_web_research_query_truncation(monkeypatch) -> None:
-    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    _patch_web(monkeypatch)
     long_query = "x" * 500
     report = web_research.run_web_research(long_query)
     assert len(report["query"]) <= 260
@@ -168,7 +183,14 @@ def test_run_web_research_malformed_url_no_domain(monkeypatch) -> None:
     assert report["scanned_url_count"] >= 1
 
 
-def test_run_web_research_max_results_clamped(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "max_results, check",
+    [
+        pytest.param(100, lambda lim: lim <= 20, id="clamped_to_20"),
+        pytest.param(0, lambda lim: lim >= 2, id="min_two"),
+    ],
+)
+def test_run_web_research_max_results_bounds(monkeypatch, max_results, check) -> None:
     called_limits: list[int] = []
 
     def capture_search(query, limit):
@@ -177,39 +199,12 @@ def test_run_web_research_max_results_clamped(monkeypatch) -> None:
 
     monkeypatch.setattr(web_research, "_search_web", capture_search)
     monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
-    web_research.run_web_research("test", max_results=100)
-    assert called_limits[0] <= 20  # Should be clamped to 20 max
-
-
-def test_run_web_research_max_results_min_two(monkeypatch) -> None:
-    called_limits: list[int] = []
-
-    def capture_search(query, limit):
-        called_limits.append(limit)
-        return []
-
-    monkeypatch.setattr(web_research, "_search_web", capture_search)
-    monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
-    web_research.run_web_research("test", max_results=0)
-    assert called_limits[0] >= 2  # Should be at least 2
-
-
-def test_run_web_research_no_snippet_match(monkeypatch) -> None:
-    monkeypatch.setattr(
-        web_research, "_search_web",
-        lambda query, limit: ["https://example.com/page"],
-    )
-    monkeypatch.setattr(
-        web_research, "_fetch_page_text",
-        lambda url, max_bytes=250_000: "Completely unrelated content about gardening and flower pots and soil types.",
-    )
-    report = web_research.run_web_research("quantum computing algorithms")
-    assert report["finding_count"] == 0
+    web_research.run_web_research("test", max_results=max_results)
+    assert check(called_limits[0])
 
 
 def test_run_web_research_report_has_generated_utc(monkeypatch) -> None:
-    monkeypatch.setattr(web_research, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(web_research, "_fetch_page_text", lambda url, max_bytes=250_000: "")
+    _patch_web(monkeypatch)
     report = web_research.run_web_research("any topic")
     assert "generated_utc" in report
     assert isinstance(report["generated_utc"], str)

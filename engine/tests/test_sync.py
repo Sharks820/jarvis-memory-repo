@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import make_test_db
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -18,8 +20,7 @@ import pytest
 
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite database with the core tables."""
-    db = sqlite3.connect(":memory:", check_same_thread=False)
-    db.execute("PRAGMA journal_mode=WAL")
+    db = make_test_db(check_same_thread=False, row_factory=False)
 
     # records table
     db.execute("""

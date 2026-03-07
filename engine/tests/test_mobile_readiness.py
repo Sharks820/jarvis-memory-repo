@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 from conftest import http_request, signed_headers
+from jarvis_engine._db_pragmas import configure_sqlite
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ class TestLearningSyncChangelog:
     def _setup_db(self, tmp_path: Path) -> sqlite3.Connection:
         db_path = tmp_path / "test.db"
         db = sqlite3.connect(str(db_path))
-        db.execute("PRAGMA journal_mode=WAL")
+        configure_sqlite(db)
         # Create ALL tracked tables (changelog triggers need them all)
         db.execute("""
             CREATE TABLE IF NOT EXISTS records (
@@ -294,7 +295,7 @@ class TestLearningSummaryEndpoint:
         brain_dir.mkdir(parents=True, exist_ok=True)
         db_path = brain_dir / "jarvis_memory.db"
         db = sqlite3.connect(str(db_path))
-        db.execute("PRAGMA journal_mode=WAL")
+        configure_sqlite(db)
         db.execute("""
             CREATE TABLE IF NOT EXISTS user_preferences (
                 category TEXT NOT NULL, preference TEXT NOT NULL,
@@ -349,7 +350,7 @@ class TestFeedbackEndpoint:
         brain_dir.mkdir(parents=True, exist_ok=True)
         db_path = brain_dir / "jarvis_memory.db"
         db = sqlite3.connect(str(db_path))
-        db.execute("PRAGMA journal_mode=WAL")
+        configure_sqlite(db)
         db.execute("""
             CREATE TABLE IF NOT EXISTS response_feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, route TEXT NOT NULL DEFAULT '',
@@ -376,6 +377,7 @@ class TestFeedbackEndpoint:
 
         # Verify in DB
         db = sqlite3.connect(str(db_path))
+        configure_sqlite(db)
         rows = db.execute("SELECT route, feedback, user_message_snippet FROM response_feedback").fetchall()
         assert len(rows) == 1
         assert rows[0][0] == "kimi-k2"
@@ -389,7 +391,7 @@ class TestFeedbackEndpoint:
         brain_dir.mkdir(parents=True, exist_ok=True)
         db_path = brain_dir / "jarvis_memory.db"
         db = sqlite3.connect(str(db_path))
-        db.execute("PRAGMA journal_mode=WAL")
+        configure_sqlite(db)
         db.execute("""
             CREATE TABLE IF NOT EXISTS response_feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, route TEXT NOT NULL DEFAULT '',
@@ -645,7 +647,7 @@ class TestSyncRoundTrip:
     def _full_db(self, tmp_path: Path) -> sqlite3.Connection:
         db_path = tmp_path / "sync_rt.db"
         db = sqlite3.connect(str(db_path))
-        db.execute("PRAGMA journal_mode=WAL")
+        configure_sqlite(db)
         # Create all tracked tables
         db.execute("""
             CREATE TABLE IF NOT EXISTS records (
@@ -821,9 +823,8 @@ class TestCompositePKSync:
     """Verify incoming sync correctly handles composite primary keys."""
 
     def _full_db(self, tmp_path):
-        import sqlite3
         db = sqlite3.connect(str(tmp_path / "test.db"))
-        db.execute("PRAGMA journal_mode=WAL")
+        configure_sqlite(db)
         db.execute("""
             CREATE TABLE IF NOT EXISTS records (
                 record_id TEXT PRIMARY KEY, ts REAL, source TEXT, kind TEXT,

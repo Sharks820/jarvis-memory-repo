@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, PropertyMock
 
 import pytest
 
+from conftest import make_test_db
+
 from jarvis_engine.proactive.kg_metrics import (
     append_kg_metrics,
     collect_kg_metrics,
@@ -26,7 +28,7 @@ def _make_db(
     with_temporal: bool = False,
 ) -> sqlite3.Connection:
     """Create an in-memory SQLite DB with kg_nodes/kg_edges tables and optional data."""
-    db = sqlite3.connect(":memory:")
+    db = make_test_db(row_factory=False)
     db.execute(
         "CREATE TABLE kg_nodes ("
         "  node_id TEXT PRIMARY KEY,"
@@ -171,7 +173,7 @@ class TestCollectKgMetrics:
 
     def test_missing_tables_graceful(self):
         """When kg tables do not exist, returns defaults without raising."""
-        db = sqlite3.connect(":memory:")
+        db = make_test_db(row_factory=False)
         kg = _make_kg_mock(db)
 
         m = collect_kg_metrics(kg)

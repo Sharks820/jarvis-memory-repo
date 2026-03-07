@@ -7,6 +7,7 @@ import threading
 
 import pytest
 
+from conftest import make_test_db
 from jarvis_engine.sync.changelog import (
     _DEVICE_ID_RE,
     _TRACKED_TABLES,
@@ -29,7 +30,7 @@ from jarvis_engine.sync.changelog import (
 
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite database with a minimal 'records' table."""
-    db = sqlite3.connect(":memory:")
+    db = make_test_db(row_factory=False)
     db.execute("""
         CREATE TABLE records (
             record_id TEXT PRIMARY KEY,

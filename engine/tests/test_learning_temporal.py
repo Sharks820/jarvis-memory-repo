@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-
+from conftest import make_test_db
 from jarvis_engine._compat import UTC
 from jarvis_engine.learning.temporal import (
     _extract_date,
@@ -21,7 +21,7 @@ from jarvis_engine.learning.temporal import (
 
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite DB with a minimal kg_nodes table."""
-    db = sqlite3.connect(":memory:")
+    db = make_test_db(row_factory=False)
     db.execute(
         "CREATE TABLE kg_nodes (id TEXT PRIMARY KEY, label TEXT)"
     )
@@ -31,7 +31,7 @@ def _make_db() -> sqlite3.Connection:
 
 def _make_db_with_temporal() -> sqlite3.Connection:
     """Create an in-memory DB with kg_nodes including temporal columns."""
-    db = sqlite3.connect(":memory:")
+    db = make_test_db(row_factory=False)
     db.execute(
         """CREATE TABLE kg_nodes (
             id TEXT PRIMARY KEY,

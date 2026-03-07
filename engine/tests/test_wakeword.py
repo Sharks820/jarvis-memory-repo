@@ -106,8 +106,9 @@ def test_start_missing_openwakeword_returns_gracefully() -> None:
 
     with patch.object(detector, "_load_model", side_effect=ImportError("not installed")):
         # Should not raise
-        detector.start(on_detected=callback)
+        result = detector.start(on_detected=callback)
 
+    assert result is None
     callback.assert_not_called()
 
 
@@ -122,8 +123,9 @@ def test_start_model_load_error_returns_gracefully() -> None:
 
     with patch.object(detector, "_load_model", side_effect=RuntimeError("corrupt model")):
         # Should not raise
-        detector.start(on_detected=callback)
+        result = detector.start(on_detected=callback)
 
+    assert result is None
     callback.assert_not_called()
 
 
@@ -146,8 +148,9 @@ def test_start_missing_sounddevice_returns_gracefully() -> None:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=_fail_sd):
-            detector.start(on_detected=callback)
+            result = detector.start(on_detected=callback)
 
+    assert result is None
     callback.assert_not_called()
 
 
@@ -309,6 +312,8 @@ def test_empty_prediction_buffer() -> None:
         if scores and scores[-1] > detector._threshold:
             callback()
 
+    assert len(mock_model.prediction_buffer) == 0
+    mock_model.reset.assert_not_called()
     callback.assert_not_called()
 
 
@@ -452,6 +457,8 @@ def test_prediction_buffer_empty_scores() -> None:
         if scores and scores[-1] > detector._threshold:
             callback()
 
+    assert mock_model.prediction_buffer["hey_jarvis"] == []
+    mock_model.reset.assert_not_called()
     callback.assert_not_called()
 
 
