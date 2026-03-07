@@ -436,6 +436,55 @@ def migrate_facts(
     return {"status": status, "source_count": source_count, "inserted": inserted, "errors": errors}
 
 
+def _parse_event_summary(event: dict) -> str | None:
+    """Extract a summary string from an event dict.
+
+    Returns ``None`` if the event has no usable content.
+    """
+    message = str(event.get("message", ""))
+    event_type = str(event.get("event_type", ""))
+    summary = f"{event_type}: {message}" if event_type else message
+    if not summary.strip():
+        return None
+    return summary[:2000]
+
+
+def _build_event_record(
+    event: dict,
+    summary: str,
+    embed_service: "EmbeddingService",
+    classifier: "BranchClassifier",
+) -> tuple[dict, list[float]]:
+    """Build a memory record and embedding for a single event.
+
+    Returns ``(record_dict, embedding_vector)``.
+    """
+    embedding = embed_service.embed(summary, prefix="search_document")
+    branch = classifier.classify(embedding)
+
+    content_hash = sha256_hex(summary)
+    ts = str(event.get("ts", _now_iso()))
+    id_material = f"event_log|episodic|{ts}|{content_hash}".encode("utf-8")
+    record_id = sha256_short(id_material)
+
+    record = {
+        "record_id": record_id,
+        "ts": ts,
+        "source": "event_log",
+        "kind": "episodic",
+        "task_id": str(event.get("task_id", "")),
+        "branch": branch,
+        "tags": "[]",
+        "summary": summary,
+        "content_hash": content_hash,
+        "confidence": 0.6,
+        "tier": "warm",
+        "access_count": 0,
+        "last_accessed": "",
+    }
+    return record, embedding
+
+
 def migrate_events(
     events_path: Path,
     engine: "MemoryEngine",
@@ -465,7 +514,6 @@ def migrate_events(
         return {"status": "error", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 1, "error_details": [str(exc)]}
 
     source_count = len(lines)
-
     inserted = 0
     skipped = 0
     errors = 0
@@ -482,40 +530,12 @@ def migrate_events(
             continue
 
         try:
-            message = str(event.get("message", ""))
-            event_type = str(event.get("event_type", ""))
-            summary = f"{event_type}: {message}" if event_type else message
-            if not summary.strip():
+            summary = _parse_event_summary(event)
+            if summary is None:
                 errors += 1
                 continue
 
-            summary = summary[:2000]
-
-            # Generate embedding and classify
-            embedding = embed_service.embed(summary, prefix="search_document")
-            branch = classifier.classify(embedding)
-
-            content_hash = sha256_hex(summary)
-            ts = str(event.get("ts", _now_iso()))
-            id_material = f"event_log|episodic|{ts}|{content_hash}".encode("utf-8")
-            record_id = sha256_short(id_material)
-
-            record = {
-                "record_id": record_id,
-                "ts": ts,
-                "source": "event_log",
-                "kind": "episodic",
-                "task_id": str(event.get("task_id", "")),
-                "branch": branch,
-                "tags": "[]",
-                "summary": summary,
-                "content_hash": content_hash,
-                "confidence": 0.6,
-                "tier": "warm",
-                "access_count": 0,
-                "last_accessed": "",
-            }
-
+            record, embedding = _build_event_record(event, summary, embed_service, classifier)
             was_inserted = engine.insert_record(record, embedding=embedding)
             if was_inserted:
                 inserted += 1

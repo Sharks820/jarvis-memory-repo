@@ -1347,7 +1347,8 @@ class MobileIngestHandler(
         if should_persist:
             self.server._persist_nonces()
 
-    def _validate_auth(self, body: bytes) -> bool:
+    def _validate_bearer_token(self, body: bytes) -> bool:
+        """Check body size and bearer token validity."""
         if len(body) > MAX_AUTH_BODY_SIZE:
             self._unauthorized("Request body too large.")
             return False
@@ -1356,29 +1357,37 @@ class MobileIngestHandler(
         if not hmac.compare_digest(auth, expected_auth):
             self._unauthorized("Invalid bearer token.")
             return False
+        return True
 
+    def _validate_hmac_signature(self, body: bytes) -> tuple[bool, str, str, float]:
+        """Parse and validate timestamp, nonce, and HMAC signature.
+
+        Returns ``(ok, ts_raw, nonce, now)``.  On failure, sends the
+        appropriate HTTP error and returns ``(False, "", "", 0.0)``.
+        """
+        _fail = (False, "", "", 0.0)
         ts_raw = self.headers.get("X-Jarvis-Timestamp", "").strip()
         nonce = self.headers.get("X-Jarvis-Nonce", "").strip()
         if not ts_raw or not nonce:
             self._unauthorized("Missing replay-protection headers.")
-            return False
+            return _fail
         if len(nonce) < 8 or len(nonce) > 128 or (not nonce.isascii()):
             self._unauthorized("Invalid nonce.")
-            return False
+            return _fail
         # Timestamps MUST be integers (no decimal point).  Float timestamps
         # leak sub-second precision and violate the HMAC signing contract.
         if "." in ts_raw:
             self._unauthorized("Timestamp must be an integer (no decimal point).")
-            return False
+            return _fail
         try:
             ts = int(ts_raw)
         except (ValueError, OverflowError):
             self._unauthorized("Invalid timestamp.")
-            return False
+            return _fail
         now = time.time()
         if abs(now - ts) > REPLAY_WINDOW_SECONDS:
             self._unauthorized("Expired timestamp.")
-            return False
+            return _fail
 
         signature = self.headers.get("X-Jarvis-Signature", "").strip().lower()
         # Signing material format: "<timestamp>\n<nonce>\n<body_bytes>"
@@ -1393,11 +1402,16 @@ class MobileIngestHandler(
         ).hexdigest()
         if not hmac.compare_digest(signature, expected_sig):
             self._unauthorized("Invalid request signature.")
-            return False
+            return _fail
+        return (True, ts_raw, nonce, now)
 
-        # Check nonce for replay but do NOT record it yet.  The nonce is
-        # only committed after the owner_guard check succeeds so that a
-        # rejected request does not consume the nonce (Handoff-M1 fix).
+    def _check_nonce_replay(self, nonce: str, now: float) -> bool:
+        """Check nonce for replay but do NOT record it yet.
+
+        The nonce is only committed after the owner_guard check succeeds
+        so that a rejected request does not consume the nonce (Handoff-M1
+        fix).  Returns *True* if the nonce is fresh.
+        """
         with self.server.nonce_lock:
             nonce_seen: dict[str, float] = self.server.nonce_seen
             # Use _cleanup_nonces_unlocked to avoid nested lock acquisition (M2 fix).
@@ -1410,39 +1424,63 @@ class MobileIngestHandler(
             if nonce in nonce_seen:
                 self._unauthorized("Replay detected.")
                 return False
+        return True
 
-        # --- owner_guard check (nonce not yet recorded) ---
+    def _check_owner_guard(self) -> bool:
+        """Validate the requesting device against the owner guard config.
+
+        Returns *True* if owner guard is disabled or the device is trusted
+        (possibly after master-password based trust).
+        """
         owner_guard = read_owner_guard(self._root)
-        if bool(owner_guard.get("enabled", False)):
-            trusted = {
-                str(device_id).strip()
-                for device_id in owner_guard.get("trusted_mobile_devices", [])
-                if str(device_id).strip()
-            }
-            device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
-            if not device_id or len(device_id) > 128 or (not device_id.isascii()):
-                self._unauthorized("Missing trusted mobile device id.")
-                return False
-            if device_id not in trusted:
-                master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
-                if master_password:
-                    client_ip = str(self.client_address[0]).strip()
-                    server = self.server
-                    if server.check_master_pw_rate(client_ip):
-                        self._write_json(
-                            HTTPStatus.TOO_MANY_REQUESTS,
-                            {"ok": False, "error": "Too many master password attempts. Try again later."},
-                        )
-                        return False
-                    server.record_master_pw_attempt(client_ip)
-                    if verify_master_password(self._root, master_password):
-                        trust_mobile_device(self._root, device_id)
-                    else:
-                        self._unauthorized("Untrusted mobile device.")
-                        return False
-                else:
-                    self._unauthorized("Untrusted mobile device.")
-                    return False
+        if not bool(owner_guard.get("enabled", False)):
+            return True
+
+        trusted = {
+            str(device_id).strip()
+            for device_id in owner_guard.get("trusted_mobile_devices", [])
+            if str(device_id).strip()
+        }
+        device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
+        if not device_id or len(device_id) > 128 or (not device_id.isascii()):
+            self._unauthorized("Missing trusted mobile device id.")
+            return False
+        if device_id in trusted:
+            return True
+
+        master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
+        if not master_password:
+            self._unauthorized("Untrusted mobile device.")
+            return False
+
+        client_ip = str(self.client_address[0]).strip()
+        server = self.server
+        if server.check_master_pw_rate(client_ip):
+            self._write_json(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"ok": False, "error": "Too many master password attempts. Try again later."},
+            )
+            return False
+        server.record_master_pw_attempt(client_ip)
+        if verify_master_password(self._root, master_password):
+            trust_mobile_device(self._root, device_id)
+            return True
+        self._unauthorized("Untrusted mobile device.")
+        return False
+
+    def _validate_auth(self, body: bytes) -> bool:
+        if not self._validate_bearer_token(body):
+            return False
+
+        ok, ts_raw, nonce, now = self._validate_hmac_signature(body)
+        if not ok:
+            return False
+
+        if not self._check_nonce_replay(nonce, now):
+            return False
+
+        if not self._check_owner_guard():
+            return False
 
         # All checks passed — now record the nonce to prevent replays.
         with self.server.nonce_lock:

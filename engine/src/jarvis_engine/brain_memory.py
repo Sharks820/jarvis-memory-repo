@@ -371,6 +371,101 @@ def _update_fact_store(
     _save_facts(root, state)
 
 
+def _check_dedup(
+    index: dict[str, Any], content_hash: str,
+    source: str, kind: str, task_id: str, confidence: float,
+) -> BrainRecord | None:
+    """Return an existing BrainRecord if *content_hash* is already known."""
+    known = index.get("hash_to_record_id", {})
+    if isinstance(known, dict) and content_hash in known:
+        return BrainRecord(
+            record_id=str(known[content_hash]),
+            ts=_now_iso(),
+            source=source,
+            kind=kind,
+            task_id=task_id,
+            branch="deduped",
+            tags=[],
+            summary="deduped",
+            confidence=confidence,
+            content_hash=content_hash,
+        )
+    return None
+
+
+def _build_brain_record(
+    cleaned: str, content_hash: str,
+    source: str, kind: str, task_id: str,
+    tags: list[str] | None, confidence: float,
+) -> BrainRecord:
+    """Construct a new BrainRecord from cleaned content."""
+    tokens = _tokenize(cleaned)
+    branch = _pick_branch(tokens)
+    summary = _summarize(cleaned)
+    unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
+    ts = _now_iso()
+    # Exclude timestamp from hash material so identical content ingested at
+    # different times produces the same record_id (cross-temporal dedup).
+    material = f"{source}|{kind}|{task_id}|{content_hash}".encode("utf-8")
+    record_id = sha256_short(material)
+    return BrainRecord(
+        record_id=record_id,
+        ts=ts,
+        source=source,
+        kind=kind,
+        task_id=task_id[:128],
+        branch=branch,
+        tags=unique_tags,
+        summary=summary,
+        confidence=max(0.0, min(1.0, confidence)),
+        content_hash=content_hash,
+    )
+
+
+def _persist_record(root: Path, record: BrainRecord) -> None:
+    """Append a BrainRecord to the JSONL records file with fsync."""
+    rpath = _records_path(root)
+    rpath.parent.mkdir(parents=True, exist_ok=True)
+    with rpath.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(asdict(record), ensure_ascii=True) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def _update_index(
+    root: Path, index: dict[str, Any], record: BrainRecord,
+    content_hash: str, summary: str,
+) -> None:
+    """Update branches and hash_to_record_id in the index, then save."""
+    branches = index.get("branches", {})
+    if not isinstance(branches, dict):
+        branches = {}
+    branch_state = branches.get(record.branch, {})
+    if not isinstance(branch_state, dict):
+        branch_state = {}
+    ids = branch_state.get("record_ids", [])
+    if not isinstance(ids, list):
+        ids = []
+    ids.append(record.record_id)
+    branch_state["record_ids"] = ids[-500:]
+    branch_state["count"] = int(branch_state.get("count", 0)) + 1
+    branch_state["last_ts"] = record.ts
+    branch_state["last_summary"] = summary
+    branches[record.branch] = branch_state
+    index["branches"] = branches
+
+    hash_map = index.get("hash_to_record_id", {})
+    if not isinstance(hash_map, dict):
+        hash_map = {}
+    hash_map[content_hash] = record.record_id
+    if len(hash_map) > 6000:
+        recent = _load_records(root, limit=1200)
+        keep = {str(item.get("content_hash", "")): str(item.get("record_id", "")) for item in recent}
+        hash_map = {k: v for k, v in keep.items() if k and v}
+    index["hash_to_record_id"] = hash_map
+    _save_index(root, index)
+
+
 def ingest_brain_record(
     root: Path,
     *,
@@ -388,86 +483,22 @@ def ingest_brain_record(
 
     with _brain_io_lock:
         index = _load_index(root)
-        known = index.get("hash_to_record_id", {})
-        if isinstance(known, dict) and content_hash in known:
-            existing_id = str(known[content_hash])
-            return BrainRecord(
-                record_id=existing_id,
-                ts=_now_iso(),
-                source=source,
-                kind=kind,
-                task_id=task_id,
-                branch="deduped",
-                tags=[],
-                summary="deduped",
-                confidence=confidence,
-                content_hash=content_hash,
-            )
 
-        tokens = _tokenize(cleaned)
-        branch = _pick_branch(tokens)
-        summary = _summarize(cleaned)
-        unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
-        ts = _now_iso()
-        # Exclude timestamp from hash material so identical content ingested at
-        # different times produces the same record_id (cross-temporal dedup).
-        material = f"{source}|{kind}|{task_id}|{content_hash}".encode("utf-8")
-        record_id = sha256_short(material)
+        existing = _check_dedup(index, content_hash, source, kind, task_id, confidence)
+        if existing is not None:
+            return existing
 
-        record = BrainRecord(
-            record_id=record_id,
-            ts=ts,
-            source=source,
-            kind=kind,
-            task_id=task_id[:128],
-            branch=branch,
-            tags=unique_tags,
-            summary=summary,
-            confidence=max(0.0, min(1.0, confidence)),
-            content_hash=content_hash,
+        record = _build_brain_record(
+            cleaned, content_hash, source, kind, task_id, tags, confidence,
         )
-
-        records_path = _records_path(root)
-        records_path.parent.mkdir(parents=True, exist_ok=True)
-        with records_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(asdict(record), ensure_ascii=True) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-
-        branches = index.get("branches", {})
-        if not isinstance(branches, dict):
-            branches = {}
-        branch_state = branches.get(branch, {})
-        if not isinstance(branch_state, dict):
-            branch_state = {}
-        ids = branch_state.get("record_ids", [])
-        if not isinstance(ids, list):
-            ids = []
-        ids.append(record_id)
-        branch_state["record_ids"] = ids[-500:]
-        branch_state["count"] = int(branch_state.get("count", 0)) + 1
-        branch_state["last_ts"] = record.ts
-        branch_state["last_summary"] = summary
-        branches[branch] = branch_state
-
-        index["branches"] = branches
-        hash_map = index.get("hash_to_record_id", {})
-        if not isinstance(hash_map, dict):
-            hash_map = {}
-        hash_map[content_hash] = record_id
-        if len(hash_map) > 6000:
-            recent = _load_records(root, limit=1200)
-            keep = {str(item.get("content_hash", "")): str(item.get("record_id", "")) for item in recent}
-            hash_map = {k: v for k, v in keep.items() if k and v}
-        index["hash_to_record_id"] = hash_map
-        _save_index(root, index)
-
+        _persist_record(root, record)
+        _update_index(root, index, record, content_hash, record.summary)
         _update_fact_store(
             root,
-            record_id=record_id,
-            ts=ts,
-            branch=branch,
-            summary=summary,
+            record_id=record.record_id,
+            ts=record.ts,
+            branch=record.branch,
+            summary=record.summary,
             base_confidence=record.confidence,
         )
     return record

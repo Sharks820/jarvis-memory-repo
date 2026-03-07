@@ -280,24 +280,12 @@ def _safe_knowledge_snapshot(kg: KnowledgeGraph | None = None, engine: MemoryEng
         return {}
 
 
-def build_intelligence_dashboard(
-    root: Path,
-    *,
-    last_runs: int = 20,
-    pref_tracker: PreferenceTracker | None = None,
-    feedback_tracker: ResponseFeedbackTracker | None = None,
-    usage_tracker: UsagePatternTracker | None = None,
-    kg: KnowledgeGraph | None = None,
-    engine: MemoryEngine | None = None,
-) -> IntelligenceDashboard:
-    history_rows = read_history(_history_path(root))
-    summary = summarize_history(history_rows, last=last_runs)
-    latest_score = _to_float(summary.get("latest_score_pct", 0.0), 0.0)
-    slope = _score_slope_per_run(history_rows, window=max(4, min(20, last_runs)))
-    avg_days = _average_run_interval_days(history_rows, window=max(4, min(20, last_runs)))
-
-    targets = _load_targets(root)
-    ranking = [
+def _build_ranking_and_etas(
+    targets: list[dict[str, Any]], latest_score: float,
+    slope: float, avg_days: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build the sorted ranking list and ETA entries from proxy targets."""
+    ranking: list[dict[str, Any]] = [
         {
             "id": "jarvis_unlimited",
             "name": "Jarvis Unlimited",
@@ -325,16 +313,20 @@ def build_intelligence_dashboard(
                 "eta": eta,
             }
         )
-
     ranking.sort(key=lambda item: _to_float(item.get("score_pct", 0.0), 0.0), reverse=True)
+    return ranking, etas
 
+
+def _check_milestone_unlocks(
+    root: Path, latest_score: float, now: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return (new_unlocks, all_unlocked) after persisting any new milestones."""
     achievements = _load_achievements(root)
     unlocked = achievements.get("unlocked", [])
     if not isinstance(unlocked, list):
         unlocked = []
     unlocked_ids = {str(item.get("id", "")) for item in unlocked if isinstance(item, dict)}
     new_unlocks: list[dict[str, Any]] = []
-    now = _now_iso()
     for milestone in MILESTONES:
         milestone_score = _to_float(milestone.get("score", 0.0), 0.0)
         milestone_id = str(milestone.get("id", ""))
@@ -350,6 +342,32 @@ def build_intelligence_dashboard(
     if new_unlocks:
         unlocked.extend(new_unlocks)
         _save_achievements(root, {"unlocked": unlocked})
+    return new_unlocks, unlocked
+
+
+def build_intelligence_dashboard(
+    root: Path,
+    *,
+    last_runs: int = 20,
+    pref_tracker: PreferenceTracker | None = None,
+    feedback_tracker: ResponseFeedbackTracker | None = None,
+    usage_tracker: UsagePatternTracker | None = None,
+    kg: KnowledgeGraph | None = None,
+    engine: MemoryEngine | None = None,
+) -> IntelligenceDashboard:
+    history_rows = read_history(_history_path(root))
+    summary = summarize_history(history_rows, last=last_runs)
+    latest_score = _to_float(summary.get("latest_score_pct", 0.0), 0.0)
+    window = max(4, min(20, last_runs))
+    slope = _score_slope_per_run(history_rows, window=window)
+    avg_days = _average_run_interval_days(history_rows, window=window)
+
+    ranking, etas = _build_ranking_and_etas(
+        _load_targets(root), latest_score, slope, avg_days,
+    )
+
+    now = _now_iso()
+    new_unlocks, unlocked = _check_milestone_unlocks(root, latest_score, now)
 
     return {
         "generated_utc": now,

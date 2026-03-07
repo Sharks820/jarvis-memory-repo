@@ -693,6 +693,32 @@ def _dispatch_and_handle_response(
 # Web-augmented LLM conversation
 # ---------------------------------------------------------------------------
 
+
+def _resolve_max_tokens(route: str, web_searched: bool, force_web: bool) -> int:
+    """Pick dynamic max_tokens based on route and whether web results exist."""
+    tokens = _MAX_TOKENS_BY_ROUTE.get(route, 512)
+    if web_searched or force_web:
+        tokens = max(tokens, 768)
+    return tokens
+
+
+def _prepare_history(
+    system_parts: list[str], llm_model: str, text: str,
+) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """Assemble conversation history and finalize the system prompt.
+
+    Returns (system_prompt, history_tuples).
+    """
+    hist = _get_history_messages()
+    continuity = _conversation_continuity_instruction(llm_model, len(hist))
+    if continuity:
+        system_parts.append(continuity)
+    system_prompt = "\n\n".join(system_parts)
+    hist_tuples = tuple((m["role"], m["content"]) for m in hist)
+    _add_to_history("user", text)
+    return system_prompt, hist_tuples
+
+
 def _web_augmented_llm_conversation(
     text: str,
     *,
@@ -705,33 +731,8 @@ def _web_augmented_llm_conversation(
 ) -> int:
     """Run a web-search-augmented LLM conversation for a single query.
 
-    This is the shared implementation used by:
-    - Explicit "search the web for X" voice commands (force_web_search=True)
-    - Weather fallback when the dedicated handler fails (force_web_search=True)
-    - The general LLM conversation fallback in cmd_voice_run_impl
-
-    Parameters
-    ----------
-    text : str
-        The user's query text.
-    speak : bool
-        Whether to speak the response aloud via TTS.
-    force_web_search : bool
-        When True, always attempt web search regardless of route/query signals.
-        When False, only search when the classified route is "web_research" or
-        ``_needs_web_search(text)`` returns True.
-    model_override : str
-        If non-empty, override the classified model with this value (used by
-        widget Tab-cycling).
-    default_route : str
-        Default intent route when classification fails.
-    try_fallback_classifier : bool
-        Whether to attempt a fallback IntentClassifier when the bus classifier
-        is unavailable.
-    response_callback : Callable[[str], None] | None
-        Optional callback invoked with the response text.  Used by
-        ``cmd_voice_run_impl`` to capture ``_last_response`` for the
-        learning pipeline.
+    Shared implementation for explicit web-search voice commands, weather
+    fallback, and the general LLM conversation path.
 
     Returns 0 on success, 1 on failure.
     """
@@ -739,47 +740,28 @@ def _web_augmented_llm_conversation(
 
     bus = get_bus()
 
-    # --- Smart context + system prompt assembly ---
     memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
     system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
-    # --- Intent classification + model routing ---
     _route, _llm_model = _classify_and_route(
         bus, text, default_route=default_route, try_fallback_classifier=try_fallback_classifier,
     )
-
-    # --- Model override from widget Tab-cycling ---
     if model_override:
         _llm_model = model_override
         logger.debug("Model overridden by user selection: %s", model_override)
 
-    # --- Web search augmentation ---
     _web_searched, _web_attempted, _web_result = _perform_web_search(
         text, system_parts, force=force_web_search, route=_route,
     )
-
-    # --- Finalize system prompt with context-aware instructions ---
     _append_final_instructions(system_parts, _web_searched, _web_attempted)
-    system_prompt = "\n\n".join(system_parts)
 
     if _web_attempted and not _web_searched and _requires_fresh_web_confirmation(text):
         print("intent=web_confirmation_unavailable")
         print("reason=Unable to fetch current web results right now. Please retry or check network access.")
         return 1
 
-    # --- Dynamic max_tokens ---
-    _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
-    if _web_searched or force_web_search:
-        _max_tokens = max(_max_tokens, 768)
-
-    # --- Build messages with conversation history ---
-    _hist = _get_history_messages()
-    _continuity_instruction = _conversation_continuity_instruction(_llm_model, len(_hist))
-    if _continuity_instruction:
-        system_parts.append(_continuity_instruction)
-        system_prompt = "\n\n".join(system_parts)
-    _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
-    _add_to_history("user", text)
+    _max_tokens = _resolve_max_tokens(_route, _web_searched, force_web_search)
+    system_prompt, _hist_tuples = _prepare_history(system_parts, _llm_model, text)
 
     return _dispatch_and_handle_response(
         bus, text, system_prompt, _max_tokens, _llm_model, _hist_tuples,

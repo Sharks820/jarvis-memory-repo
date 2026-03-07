@@ -309,6 +309,90 @@ class SyncEngine:
             "new_values": merged_new,
         }
 
+    # ------------------------------------------------------------------
+    # _apply_single_change helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_and_parse_pk(
+        table_name: str, pk: str | list[str], row_id: str,
+    ) -> tuple[list[str], list[str], str, set[str]] | None:
+        """Validate table/pk and return (pk_cols, pk_values, where_clause, allowed_fields).
+
+        Returns None if the composite row_id has the wrong number of parts.
+        """
+        if table_name not in _TRACKED_TABLES:
+            raise ValueError(f"Unknown table: {table_name}")
+        if not table_name.isidentifier():
+            raise ValueError(f"Invalid table name: {table_name}")
+
+        pk_cols: list[str] = pk if isinstance(pk, list) else [pk]
+        is_composite = len(pk_cols) > 1
+
+        if is_composite:
+            pk_values = row_id.split(":", len(pk_cols) - 1)
+            if len(pk_values) != len(pk_cols):
+                logger.warning(
+                    "Composite row_id %r has %d parts but pk has %d columns — skipping",
+                    row_id, len(pk_values), len(pk_cols),
+                )
+                return None
+        else:
+            pk_values = [row_id]
+
+        where_clause = " AND ".join(col + " = ?" for col in pk_cols)
+        allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
+        allowed_fields.update(pk_cols)
+        return pk_cols, pk_values, where_clause, allowed_fields
+
+    def _apply_insert(
+        self, table_name: str, pk_cols: list[str], pk_values: list[str],
+        new_values: dict[str, Any], allowed_fields: set[str],
+    ) -> None:
+        """Execute an INSERT OR IGNORE for a sync change."""
+        if not new_values:
+            return
+        safe_values = {k: v for k, v in new_values.items() if k in allowed_fields}
+        if not safe_values:
+            return
+        pk_set = set(pk_cols)
+        extra_cols = [k for k in safe_values if k not in pk_set]
+        cols = pk_cols + extra_cols
+        placeholders = ", ".join(["?"] * len(cols))
+        col_names = ", ".join(cols)
+        values = pk_values + [safe_values[k] for k in extra_cols]
+        self._db.execute(
+            "INSERT OR IGNORE INTO " + table_name
+            + " (" + col_names + ") VALUES (" + placeholders + ")",
+            values,
+        )
+
+    def _apply_update(
+        self, table_name: str, pk_values: list[str], where_clause: str,
+        fields_changed: list[str], new_values: dict[str, Any],
+        allowed_fields: set[str],
+    ) -> None:
+        """Execute an UPDATE for a sync change."""
+        if not fields_changed or not new_values:
+            return
+        set_parts: list[str] = []
+        values: list[Any] = []
+        for field in fields_changed:
+            if field not in allowed_fields:
+                continue
+            if field in new_values:
+                set_parts.append(field + " = ?")
+                values.append(new_values[field])
+        if not set_parts:
+            return
+        values.extend(pk_values)
+        self._db.execute(
+            "UPDATE " + table_name + " SET "
+            + ", ".join(set_parts)
+            + " WHERE " + where_clause,
+            values,
+        )
+
     def _apply_single_change(
         self, table_name: str, pk: str | list[str], entry: dict[str, Any],
     ) -> bool:
@@ -326,86 +410,23 @@ class SyncEngine:
         new_values = entry.get("new_values", {})
         fields_changed = [f for f in entry.get("fields_changed", []) if f]
 
-        # Defense-in-depth: table_name must be in _TRACKED_TABLES (validated
-        # by the caller) and must be a simple identifier — never user input.
-        if table_name not in _TRACKED_TABLES:
-            raise ValueError(f"Unknown table: {table_name}")
-        if not table_name.isidentifier():
-            raise ValueError(f"Invalid table name: {table_name}")
-
-        # Normalize pk to a list for uniform handling below.
-        pk_cols: list[str] = pk if isinstance(pk, list) else [pk]
-        is_composite = len(pk_cols) > 1
-
-        # Split row_id into parts for composite PKs ("tone:casual" → ["tone", "casual"]).
-        if is_composite:
-            pk_values = row_id.split(":", len(pk_cols) - 1)
-            if len(pk_values) != len(pk_cols):
-                logger.warning(
-                    "Composite row_id %r has %d parts but pk has %d columns — skipping",
-                    row_id, len(pk_values), len(pk_cols),
-                )
-                return False
-        else:
-            pk_values = [row_id]
-
-        # WHERE clause for UPDATE/DELETE: "col1 = ? AND col2 = ?" for composite,
-        # "pk = ?" for simple.
-        where_clause = " AND ".join(col + " = ?" for col in pk_cols)
-
-        # Validate all field/column names against the known schema to prevent
-        # SQL injection via crafted sync payloads.
-        allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
-        allowed_fields.update(pk_cols)
+        parsed = self._validate_and_parse_pk(table_name, pk, row_id)
+        if parsed is None:
+            return False
+        pk_cols, pk_values, where_clause, allowed_fields = parsed
 
         if operation == "INSERT":
-            if not new_values:
-                return True
-            # Filter to only allowed columns
-            safe_values = {k: v for k, v in new_values.items() if k in allowed_fields}
-            if not safe_values:
-                return True
-            # Build column list: PK columns first (using split row_id values),
-            # then remaining value columns.
-            pk_set = set(pk_cols)
-            extra_cols = [k for k in safe_values if k not in pk_set]
-            cols = pk_cols + extra_cols
-            placeholders = ", ".join(["?"] * len(cols))
-            col_names = ", ".join(cols)
-            values = pk_values + [safe_values[k] for k in extra_cols]
-            self._db.execute(
-                "INSERT OR IGNORE INTO " + table_name
-                + " (" + col_names + ") VALUES (" + placeholders + ")",
-                values,
-            )
-
+            self._apply_insert(table_name, pk_cols, pk_values, new_values, allowed_fields)
         elif operation == "UPDATE":
-            if not fields_changed or not new_values:
-                return True
-            set_parts: list[str] = []
-            values: list[Any] = []
-            for field in fields_changed:
-                if field not in allowed_fields:
-                    continue  # Skip unknown fields
-                if field in new_values:
-                    set_parts.append(field + " = ?")
-                    values.append(new_values[field])
-            if not set_parts:
-                return True
-            values.extend(pk_values)
-            self._db.execute(
-                "UPDATE " + table_name + " SET "
-                + ", ".join(set_parts)
-                + " WHERE " + where_clause,
-                values,
+            self._apply_update(
+                table_name, pk_values, where_clause,
+                fields_changed, new_values, allowed_fields,
             )
-
         elif operation == "DELETE":
             self._db.execute(
                 "DELETE FROM " + table_name + " WHERE " + where_clause,
                 pk_values,
             )
-
         else:
             logger.warning(
                 "Unknown sync operation %r for table %s row %s — skipping",

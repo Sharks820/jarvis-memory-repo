@@ -182,6 +182,75 @@ class RegressionChecker:
 
         return backup_path
 
+    # ------------------------------------------------------------------
+    # restore_graph helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _copy_backup_to_temp(backup_path: Path, tmp_dst: Path) -> None:
+        """Copy backup to a temp location; clean up temp on failure."""
+        try:
+            shutil.copy2(str(backup_path), str(tmp_dst))
+        except OSError as exc:
+            logger.debug("Backup copy to temp failed: %s", exc)
+            try:
+                tmp_dst.unlink(missing_ok=True)
+            except OSError as cleanup_exc:
+                logger.debug("Failed to remove temp file %s: %s", tmp_dst, cleanup_exc)
+            raise
+
+    def _close_old_and_clean_wal(self, dst_path: Path) -> None:
+        """Close the live DB connection and remove stale WAL/SHM files."""
+        import sqlite3
+        old_db = self._kg._engine._db
+        try:
+            old_db.close()
+        except sqlite3.Error as exc:
+            logger.debug("Old DB close failed during restore: %s", exc)
+
+        for suffix in (".db-wal", ".db-shm"):
+            wal = dst_path.with_suffix(suffix)
+            if wal.exists():
+                wal.unlink()
+
+    def _swap_temp_to_live(self, tmp_dst: Path, dst_path: Path) -> None:
+        """Move the temp copy into the live path; recover on failure."""
+        import sqlite3
+        try:
+            shutil.move(str(tmp_dst), str(dst_path))
+        except OSError as exc:
+            logger.debug("Backup swap into live path failed: %s", exc)
+            try:
+                tmp_dst.unlink(missing_ok=True)
+            except OSError as cleanup_exc:
+                logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
+            reopen_db = sqlite3.connect(str(dst_path), check_same_thread=False)
+            reopen_db.row_factory = sqlite3.Row
+            self._kg._engine._db = reopen_db
+            self._kg._db = reopen_db
+            self._kg._lock_manager._db = reopen_db
+            raise
+
+    def _reopen_restored_db(self, dst_path: Path) -> None:
+        """Open a fresh connection on the restored file with PRAGMAs and sqlite-vec."""
+        import sqlite3
+        new_db = sqlite3.connect(str(dst_path), check_same_thread=False)
+        new_db.row_factory = sqlite3.Row
+        from jarvis_engine._db_pragmas import configure_sqlite
+        configure_sqlite(new_db, full=True)
+        try:
+            import sqlite_vec
+            new_db.enable_load_extension(True)
+            try:
+                sqlite_vec.load(new_db)
+            finally:
+                new_db.enable_load_extension(False)
+        except (ImportError, sqlite3.Error) as exc:
+            logger.debug("sqlite-vec reload after restore failed: %s", exc)
+        self._kg._engine._db = new_db
+        self._kg._db = new_db
+        self._kg._lock_manager._db = new_db
+
     def restore_graph(self, backup_path: Path) -> bool:
         """Restore the knowledge graph from a backup file.
 
@@ -194,89 +263,17 @@ class RegressionChecker:
             logger.error("Backup file does not exist: %s", backup_path)
             return False
 
+        import sqlite3
         dst_path = self._kg.db_path
         try:
             with self._kg.write_lock:
-                # Acquire _db_lock too so no readers are mid-query when we
-                # close the old connection (mirrors MemoryEngine.close()).
                 with self._kg.db_lock:
-                    # Copy backup to a temp location first (before closing DB)
-                    # so if the copy fails, the live DB is untouched.
-                    import sqlite3
                     tmp_dst = dst_path.with_suffix(".db-restore-tmp")
-                    try:
-                        shutil.copy2(str(backup_path), str(tmp_dst))
-                    except OSError as exc:
-                        logger.debug("Backup copy to temp failed: %s", exc)
-                        # Copy failed -- live DB is still open and valid
-                        try:
-                            tmp_dst.unlink(missing_ok=True)
-                        except OSError as cleanup_exc:
-                            logger.debug("Failed to remove temp file %s: %s", tmp_dst, cleanup_exc)
-                        raise
-
-                    # Copy succeeded -- now close the live connection and swap
-                    old_db = self._kg._engine._db
-                    try:
-                        old_db.close()
-                    except sqlite3.Error as exc:
-                        logger.debug("Old DB close failed during restore: %s", exc)
-
-                    # Delete stale WAL/SHM files before swapping in the backup.
-                    # These belong to the old connection and would corrupt the
-                    # restored database if left in place.
-                    wal_path = dst_path.with_suffix(".db-wal")
-                    shm_path = dst_path.with_suffix(".db-shm")
-                    if wal_path.exists():
-                        wal_path.unlink()
-                    if shm_path.exists():
-                        shm_path.unlink()
-
-                    # Swap temp copy into the live path
-                    try:
-                        shutil.move(str(tmp_dst), str(dst_path))
-                    except OSError as exc:
-                        logger.debug("Backup swap into live path failed: %s", exc)
-                        # Swap failed -- reopen the original DB to avoid
-                        # leaving the KG with a closed connection
-                        try:
-                            tmp_dst.unlink(missing_ok=True)
-                        except OSError as cleanup_exc:
-                            logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
-                        reopen_db = sqlite3.connect(
-                            str(dst_path), check_same_thread=False,
-                        )
-                        reopen_db.row_factory = sqlite3.Row
-                        self._kg._engine._db = reopen_db
-                        self._kg._db = reopen_db
-                        self._kg._lock_manager._db = reopen_db
-                        raise
-
-                    # Reopen the DB connection on the restored file
-                    new_db = sqlite3.connect(
-                        str(dst_path), check_same_thread=False,
-                    )
-                    new_db.row_factory = sqlite3.Row
-                    # Re-apply PRAGMAs (match MemoryEngine.__init__)
-                    from jarvis_engine._db_pragmas import configure_sqlite
-                    configure_sqlite(new_db, full=True)
-                    # Reload sqlite-vec
-                    try:
-                        import sqlite_vec
-                        new_db.enable_load_extension(True)
-                        try:
-                            sqlite_vec.load(new_db)
-                        finally:
-                            new_db.enable_load_extension(False)
-                    except (ImportError, sqlite3.Error) as exc:
-                        logger.debug("sqlite-vec reload after restore failed: %s", exc)
-                    # Update ALL references (engine, KG, lock manager)
-                    self._kg._engine._db = new_db
-                    self._kg._db = new_db
-                    self._kg._lock_manager._db = new_db
-                # Invalidate NetworkX cache (outside _db_lock to avoid holding it long)
+                    self._copy_backup_to_temp(backup_path, tmp_dst)
+                    self._close_old_and_clean_wal(dst_path)
+                    self._swap_temp_to_live(tmp_dst, dst_path)
+                    self._reopen_restored_db(dst_path)
                 self._kg.invalidate_cache()
-                # Reinitialize schema on the fresh connection
                 self._kg.ensure_schema()
             logger.info("Knowledge graph restored from %s", backup_path)
             return True

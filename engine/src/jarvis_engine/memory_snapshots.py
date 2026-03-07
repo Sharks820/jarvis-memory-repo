@@ -94,22 +94,13 @@ def _load_snapshot_key(root: Path) -> str:
     return key
 
 
-def create_signed_snapshot(
-    root: Path,
-    *,
-    note: str = "",
-    targets: list[Path] | None = None,
-) -> SnapshotResult:
-    root_resolved = root.resolve()
-    snapshot_dir = _snapshot_dir(root)
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    snapshot_path = snapshot_dir / f"brain-snapshot-{ts}.zip"
-    metadata_path = snapshot_path.with_suffix(".json")
-    signature_path = snapshot_path.with_suffix(".sig")
-
-    include_targets = targets if targets is not None else _default_targets(root)
+def _collect_snapshot_files(
+    include_targets: list[Path],
+    snapshot_path: Path,
+    snapshot_dir: Path,
+    root_resolved: Path,
+) -> tuple[int, list[str]]:
+    """Archive target files into a zip and return ``(file_count, archived_files)``."""
     file_count = 0
     archived_files: list[str] = []
 
@@ -137,10 +128,65 @@ def create_signed_snapshot(
                 archived_files.append(rel)
                 file_count += 1
 
+    return file_count, archived_files
+
+
+def _sign_snapshot(snapshot_path: Path, root: Path) -> tuple[str, str]:
+    """Compute SHA-256 digest and HMAC signature for the snapshot file.
+
+    Returns ``(digest_hex, signature_hex)``.
+    """
     payload = snapshot_path.read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     key = _load_snapshot_key(root)
     signature = hmac.new(key.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    return digest, signature
+
+
+def _capture_kg_metrics(root_resolved: Path) -> dict[str, Any] | None:
+    """Attempt to capture knowledge graph metrics.  Returns ``None`` on failure."""
+    try:
+        from jarvis_engine.knowledge.regression import RegressionChecker
+        from jarvis_engine.knowledge.graph import KnowledgeGraph
+        from jarvis_engine.memory.engine import MemoryEngine
+        from jarvis_engine._constants import memory_db_path as _memory_db_path
+
+        db_path = _memory_db_path(root_resolved)
+        if not db_path.exists():
+            return None
+        _kg_engine = MemoryEngine(db_path)
+        try:
+            _kg = KnowledgeGraph(_kg_engine)
+            _checker = RegressionChecker(_kg)
+            return _checker.capture_metrics()
+        finally:
+            _kg_engine.close()
+    except (ImportError, OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+        logger.warning("KG metrics capture failed: %s", exc)
+        return None
+
+
+def create_signed_snapshot(
+    root: Path,
+    *,
+    note: str = "",
+    targets: list[Path] | None = None,
+) -> SnapshotResult:
+    root_resolved = root.resolve()
+    snapshot_dir = _snapshot_dir(root)
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    snapshot_path = snapshot_dir / f"brain-snapshot-{ts}.zip"
+    metadata_path = snapshot_path.with_suffix(".json")
+    signature_path = snapshot_path.with_suffix(".sig")
+
+    include_targets = targets if targets is not None else _default_targets(root)
+    file_count, archived_files = _collect_snapshot_files(
+        include_targets, snapshot_path, snapshot_dir, root_resolved,
+    )
+
+    digest, signature = _sign_snapshot(snapshot_path, root)
 
     metadata: dict[str, Any] = {
         "snapshot_file": snapshot_path.name,
@@ -152,25 +198,10 @@ def create_signed_snapshot(
         "note": note.strip()[:400],
         "archived_files": archived_files,
     }
+    kg_metrics = _capture_kg_metrics(root_resolved)
+    if kg_metrics is not None:
+        metadata["kg_metrics"] = kg_metrics
 
-    # Attempt to include knowledge graph metrics in snapshot metadata
-    try:
-        from jarvis_engine.knowledge.regression import RegressionChecker
-        from jarvis_engine.knowledge.graph import KnowledgeGraph
-        from jarvis_engine.memory.engine import MemoryEngine
-
-        from jarvis_engine._constants import memory_db_path as _memory_db_path
-        db_path = _memory_db_path(root_resolved)
-        if db_path.exists():
-            _kg_engine = MemoryEngine(db_path)
-            try:
-                _kg = KnowledgeGraph(_kg_engine)
-                _checker = RegressionChecker(_kg)
-                metadata["kg_metrics"] = _checker.capture_metrics()
-            finally:
-                _kg_engine.close()
-    except (ImportError, OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
-        logger.warning("KG metrics capture failed: %s", exc)
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
     signature_path.write_text(signature, encoding="utf-8")
 

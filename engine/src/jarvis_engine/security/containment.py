@@ -134,6 +134,75 @@ class ContainmentEngine:
     # Public API
     # ------------------------------------------------------------------
 
+    def _apply_containment_actions(
+        self, ip: str, level: int,
+    ) -> tuple[list[str], bool, bool]:
+        """Apply containment state changes under the lock.
+
+        Returns ``(actions, do_block_ip, credentials_rotated)``.
+        Caller MUST hold ``self._lock``.
+        """
+        actions: list[str] = []
+        do_block_ip = False
+        credentials_rotated = False
+
+        if level >= ContainmentLevel.THROTTLE:
+            self._throttled_ips[ip] = 1.0  # 1 req/min
+            actions.append(f"THROTTLE: rate limited {ip} to 1 req/min")
+
+        if level >= ContainmentLevel.BLOCK:
+            self._blocked_ips.add(ip)
+            do_block_ip = True
+            actions.append(f"BLOCK: added {ip} to blocklist")
+
+        if level >= ContainmentLevel.ISOLATE:
+            endpoint = f"/api/from/{ip}"
+            self._isolated_endpoints.add(endpoint)
+            actions.append(f"ISOLATE: disabled endpoint {endpoint}")
+
+        if level >= ContainmentLevel.LOCKDOWN:
+            self._lockdown_active = True
+            if self._session_manager is not None:
+                self._session_manager.terminate_all_sessions()
+            credentials_rotated = True
+            actions.append("LOCKDOWN: mobile API shut down, credentials rotated")
+            actions.append("LOCKDOWN: all sessions invalidated")
+
+        if level >= ContainmentLevel.FULL_KILL:
+            self._killed = True
+            actions.append("FULL_KILL: all services stopped")
+            actions.append("FULL_KILL: incident report generated")
+            actions.append("FULL_KILL: URGENT notification chain triggered")
+
+        if level > self._current_level:
+            self._current_level = level
+
+        return actions, do_block_ip, credentials_rotated
+
+    def _run_post_containment(
+        self, ip: str, level: int, reason: str,
+        actions: list[str], do_block_ip: bool, do_rotate: bool,
+    ) -> None:
+        """Run side-effects outside the lock after containment."""
+        if do_rotate:
+            self._rotate_credentials()
+
+        if do_block_ip and self._ip_tracker is not None:
+            self._ip_tracker.block_ip(ip)
+
+        self._log_forensic(
+            "containment_executed",
+            severity="CRITICAL" if level >= ContainmentLevel.LOCKDOWN else "HIGH",
+            ip=ip, level=level,
+            level_name=ContainmentLevel(level).name,
+            reason=reason, actions=actions,
+        )
+
+        logger.warning(
+            "Containment level %d (%s) executed against %s: %s",
+            level, ContainmentLevel(level).name, ip, reason,
+        )
+
     def contain(self, ip: str, level: int, reason: str) -> ContainResult:
         """Execute containment at the specified *level* against *ip*.
 
@@ -143,54 +212,10 @@ class ContainmentEngine:
         if level < ContainmentLevel.THROTTLE or level > ContainmentLevel.FULL_KILL:
             raise ValueError(f"Invalid containment level: {level}")
 
-        _do_block_ip = False
-        _do_rotate_credentials = False
         with self._lock:
-            actions: list[str] = []
-            credentials_rotated = False
+            actions, do_block_ip, credentials_rotated = self._apply_containment_actions(ip, level)
 
-            # Level 1+: THROTTLE
-            if level >= ContainmentLevel.THROTTLE:
-                self._throttled_ips[ip] = 1.0  # 1 req/min
-                actions.append(f"THROTTLE: rate limited {ip} to 1 req/min")
-
-            # Level 2+: BLOCK
-            if level >= ContainmentLevel.BLOCK:
-                self._blocked_ips.add(ip)
-                _do_block_ip = True
-                actions.append(f"BLOCK: added {ip} to blocklist")
-
-            # Level 3+: ISOLATE
-            if level >= ContainmentLevel.ISOLATE:
-                # Isolate a generic endpoint associated with the threat
-                endpoint = f"/api/from/{ip}"
-                self._isolated_endpoints.add(endpoint)
-                actions.append(f"ISOLATE: disabled endpoint {endpoint}")
-
-            # Level 4+: LOCKDOWN
-            if level >= ContainmentLevel.LOCKDOWN:
-                self._lockdown_active = True
-                if self._session_manager is not None:
-                    self._session_manager.terminate_all_sessions()
-                # Defer credential rotation to outside the lock to avoid
-                # deadlock if the callback acquires this or another lock.
-                _do_rotate_credentials = True
-                credentials_rotated = True
-                actions.append("LOCKDOWN: mobile API shut down, credentials rotated")
-                actions.append("LOCKDOWN: all sessions invalidated")
-
-            # Level 5: FULL KILL
-            if level >= ContainmentLevel.FULL_KILL:
-                self._killed = True
-                actions.append("FULL_KILL: all services stopped")
-                actions.append("FULL_KILL: incident report generated")
-                actions.append("FULL_KILL: URGENT notification chain triggered")
-
-            # Update current level (always escalate, never de-escalate implicitly)
-            if level > self._current_level:
-                self._current_level = level
-
-            result = {
+            result: ContainResult = {
                 "ip": ip,
                 "level": level,
                 "level_name": ContainmentLevel(level).name,
@@ -200,36 +225,9 @@ class ContainmentEngine:
             }
             if credentials_rotated:
                 result["credentials_rotated"] = True
-
             self._containment_history.append(result)
 
-        # Credential rotation (outside lock — callback may acquire other locks)
-        if _do_rotate_credentials:
-            self._rotate_credentials()
-
-        # IP tracker operations (outside lock — avoids lock-ordering deadlock)
-        if _do_block_ip and self._ip_tracker is not None:
-            self._ip_tracker.block_ip(ip)
-
-        # Log to forensic logger (outside lock — no shared state mutation)
-        self._log_forensic(
-            "containment_executed",
-            severity="CRITICAL" if level >= ContainmentLevel.LOCKDOWN else "HIGH",
-            ip=ip,
-            level=level,
-            level_name=ContainmentLevel(level).name,
-            reason=reason,
-            actions=actions,
-        )
-
-        logger.warning(
-            "Containment level %d (%s) executed against %s: %s",
-            level,
-            ContainmentLevel(level).name,
-            ip,
-            reason,
-        )
-
+        self._run_post_containment(ip, level, reason, actions, do_block_ip, credentials_rotated)
         return result
 
     def get_containment_status(self) -> ContainmentStatus:
@@ -253,6 +251,74 @@ class ContainmentEngine:
                 "history_count": len(self._containment_history),
             }
 
+    def _verify_recovery_password(
+        self, level: int, master_password: str | None,
+    ) -> RecoveryResult | None:
+        """Gate recovery behind master password for levels 4-5.
+
+        Returns a denial :class:`RecoveryResult` if the password is missing
+        or invalid, or ``None`` if verification passed (or not required).
+        """
+        if level < ContainmentLevel.LOCKDOWN:
+            return None
+        if master_password is None:
+            self._log_forensic(
+                "recovery_denied", severity="HIGH",
+                level=level, reason="master password not provided",
+            )
+            return {"recovered": False, "reason": "Master password required for level 4+ recovery"}
+        if not self._verify_master_password(master_password):
+            self._log_forensic(
+                "recovery_denied", severity="CRITICAL",
+                level=level, reason="invalid master password",
+            )
+            return {"recovered": False, "reason": "Invalid master password"}
+        return None
+
+    def _clear_containment_state(self, level: int) -> tuple[list[str], list[str]]:
+        """Clear containment state for the given level and below.
+
+        Caller MUST hold ``self._lock``.
+        Returns ``(actions, ips_to_unblock)``.
+        """
+        actions: list[str] = []
+        ips_to_unblock: list[str] = []
+
+        if level >= ContainmentLevel.FULL_KILL and self._killed:
+            self._killed = False
+            actions.append("Services restart permitted")
+        if level >= ContainmentLevel.LOCKDOWN and self._lockdown_active:
+            self._lockdown_active = False
+            actions.append("Lockdown lifted, API re-enabled")
+        if level >= ContainmentLevel.ISOLATE and self._isolated_endpoints:
+            self._isolated_endpoints.clear()
+            actions.append("All endpoint isolations removed")
+        if level >= ContainmentLevel.BLOCK and self._blocked_ips:
+            ips_to_unblock = list(self._blocked_ips)
+            self._blocked_ips.clear()
+            actions.append("All IP blocks cleared")
+        if level >= ContainmentLevel.THROTTLE and self._throttled_ips:
+            self._throttled_ips.clear()
+            actions.append("All throttles cleared")
+
+        # Adjust the current containment level.
+        if self._current_level <= level:
+            self._current_level = 0
+        else:
+            self._current_level = level + 1 if level < ContainmentLevel.FULL_KILL else 0
+
+        return actions, ips_to_unblock
+
+    def _unblock_recovered_ips(self, ips_to_unblock: list[str]) -> None:
+        """Unblock IPs via the IP tracker (outside the lock)."""
+        if not ips_to_unblock or self._ip_tracker is None:
+            return
+        for ip in ips_to_unblock:
+            try:
+                self._ip_tracker.unblock_ip(ip)
+            except (OSError, ValueError, AttributeError) as exc:
+                logger.debug("IP unblock during recovery failed: %s", exc)
+
     def recover(self, level: int, master_password: str | None = None) -> RecoveryResult:
         """Recover from containment at the specified *level*.
 
@@ -265,92 +331,19 @@ class ContainmentEngine:
         if level < ContainmentLevel.THROTTLE or level > ContainmentLevel.FULL_KILL:
             raise ValueError(f"Invalid containment level: {level}")
 
-        # Levels 4-5 require master password
-        if level >= ContainmentLevel.LOCKDOWN:
-            if master_password is None:
-                self._log_forensic(
-                    "recovery_denied",
-                    severity="HIGH",
-                    level=level,
-                    reason="master password not provided",
-                )
-                return {
-                    "recovered": False,
-                    "reason": "Master password required for level 4+ recovery",
-                }
-            if not self._verify_master_password(master_password):
-                self._log_forensic(
-                    "recovery_denied",
-                    severity="CRITICAL",
-                    level=level,
-                    reason="invalid master password",
-                )
-                return {
-                    "recovered": False,
-                    "reason": "Invalid master password",
-                }
+        denial = self._verify_recovery_password(level, master_password)
+        if denial is not None:
+            return denial
 
         with self._lock:
-            actions: list[str] = []
+            actions, ips_to_unblock = self._clear_containment_state(level)
 
-            # Only recover if the current containment level is at or below
-            # the requested recovery level.  Each branch clears its own
-            # level's state without touching higher levels.
+        self._unblock_recovered_ips(ips_to_unblock)
 
-            if level >= ContainmentLevel.FULL_KILL and self._killed:
-                self._killed = False
-                actions.append("Services restart permitted")
-
-            if level >= ContainmentLevel.LOCKDOWN and self._lockdown_active:
-                self._lockdown_active = False
-                actions.append("Lockdown lifted, API re-enabled")
-
-            if level >= ContainmentLevel.ISOLATE and self._isolated_endpoints:
-                self._isolated_endpoints.clear()
-                actions.append("All endpoint isolations removed")
-
-            _ips_to_unblock: list[str] = []
-            if level >= ContainmentLevel.BLOCK and self._blocked_ips:
-                _ips_to_unblock = list(self._blocked_ips)
-                self._blocked_ips.clear()
-                actions.append("All IP blocks cleared")
-
-            if level >= ContainmentLevel.THROTTLE and self._throttled_ips:
-                self._throttled_ips.clear()
-                actions.append("All throttles cleared")
-
-            # Only lower the current level if we recovered at or above it.
-            # If recovering level 2 but containment is at level 4, the
-            # current level drops to 3 (next level above the recovered one).
-            if self._current_level <= level:
-                self._current_level = 0
-            else:
-                # Higher containment levels remain; adjust current level to
-                # the next level above what was recovered.
-                self._current_level = level + 1 if level < ContainmentLevel.FULL_KILL else 0
-
-        # IP tracker operations (outside lock — avoids lock-ordering deadlock)
-        if _ips_to_unblock and self._ip_tracker is not None:
-            for _unblock_ip in _ips_to_unblock:
-                try:
-                    self._ip_tracker.unblock_ip(_unblock_ip)
-                except (OSError, ValueError, AttributeError) as exc:
-                    logger.debug("IP unblock during recovery failed: %s", exc)
-
-        self._log_forensic(
-            "recovery_executed",
-            severity="INFO",
-            level=level,
-            actions=actions,
-        )
-
+        self._log_forensic("recovery_executed", severity="INFO", level=level, actions=actions)
         logger.info("Recovery from level %d completed: %s", level, actions)
 
-        return {
-            "recovered": True,
-            "level_recovered": level,
-            "actions": actions,
-        }
+        return {"recovered": True, "level_recovered": level, "actions": actions}
 
     # ------------------------------------------------------------------
     # Credential rotation
