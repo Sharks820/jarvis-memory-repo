@@ -38,6 +38,7 @@ dev = [
     "bandit>=1.7.9",
     "pip-audit>=2.7.0",
     "hypothesis>=6.112.0",
+    "Pillow>=10.0.0",
 ]
 
 [project.scripts]

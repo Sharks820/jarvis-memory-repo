@@ -788,7 +788,7 @@ def create_app(root: Path) -> CommandBus:
             try:
                 embed_service.embed("warmup", prefix="search_document")
                 logger.info("Embedding model warmed up")
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:
                 logger.debug(
                     "Embedding warm-up failed (will load on first use): %s", exc
                 )

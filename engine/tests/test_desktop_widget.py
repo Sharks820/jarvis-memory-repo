@@ -21,6 +21,17 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
+# PIL availability check — tray icon tests require Pillow
+# ---------------------------------------------------------------------------
+try:
+    from PIL import Image as _PIL_Image  # noqa: F401
+
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
+
+# ---------------------------------------------------------------------------
 # Module-level imports (desktop_widget depends on tkinter at import time for
 # the class definition, so we mock tkinter at import to avoid GUI creation).
 # The module also does a top-level import of _win_hidden_subprocess_kwargs.
@@ -1214,9 +1225,13 @@ class TestChatDisplay:
 
         self._widget_cls = JarvisDesktopWidget
         yield
+        import tkinter as _tk_mod
+
         try:
+            self._root.quit()
+            self._root.update()
             self._root.destroy()
-        except (RuntimeError, AttributeError):
+        except (RuntimeError, AttributeError, _tk_mod.TclError):
             pass
 
     def _configure_tags(self):
@@ -1853,6 +1868,7 @@ class TestPositionPersistence:
 class TestCreateTrayIconImage:
     """Test the tray icon image generation (requires PIL)."""
 
+    @pytest.mark.skipif(not HAS_PIL, reason="Pillow not installed")
     def test_creates_64x64_image(self):
         from jarvis_engine.desktop_widget import _create_tray_icon_image
 
@@ -1861,6 +1877,7 @@ class TestCreateTrayIconImage:
         assert img.size == (64, 64)
         assert img.mode == "RGBA"
 
+    @pytest.mark.skipif(not HAS_PIL, reason="Pillow not installed")
     def test_image_has_blue_pixel(self):
         """The icon should contain blue pixels (from the background)."""
         from jarvis_engine.desktop_widget import _create_tray_icon_image
@@ -1872,6 +1889,7 @@ class TestCreateTrayIconImage:
         # Blue channel should be dominant
         assert pixel[2] > 200  # B channel
 
+    @pytest.mark.skipif(not HAS_PIL, reason="Pillow not installed")
     def test_image_has_white_text_area(self):
         """The center area should contain white pixels from the 'J' text."""
         from jarvis_engine.desktop_widget import _create_tray_icon_image
