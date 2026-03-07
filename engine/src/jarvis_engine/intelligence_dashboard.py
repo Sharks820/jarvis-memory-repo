@@ -75,12 +75,11 @@ def _history_path(root: Path) -> Path:
 
 
 def _load_targets(root: Path) -> list[dict[str, Any]]:
+    from jarvis_engine._shared import load_json_file
+
     path = _targets_path(root)
-    if not path.exists():
-        return list(DEFAULT_TARGETS)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    raw = load_json_file(path, None, expected_type=list)
+    if raw is None:
         return list(DEFAULT_TARGETS)
 
     values: list[dict[str, Any]] = []
@@ -94,10 +93,8 @@ def _load_targets(root: Path) -> list[dict[str, Any]]:
                 continue
             values.append(
                 {
-                    "id": str(item.get("id", "")).strip()
-                    or f"target_{len(values) + 1}",
-                    "name": str(item.get("name", "")).strip()
-                    or f"Target {len(values) + 1}",
+                    "id": str(item.get("id", "")).strip() or f"target_{len(values) + 1}",
+                    "name": str(item.get("name", "")).strip() or f"Target {len(values) + 1}",
                     "target_score_pct": max(0.0, min(100.0, score_value)),
                 }
             )
@@ -105,15 +102,13 @@ def _load_targets(root: Path) -> list[dict[str, Any]]:
 
 
 def _load_achievements(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = _achievements_path(root)
-    if not path.exists():
-        return {"unlocked": []}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"unlocked": []}
-    if not isinstance(raw, dict):
-        return {"unlocked": []}
+    default: dict[str, Any] = {"unlocked": []}
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
+        return default
     unlocked = raw.get("unlocked", [])
     if not isinstance(unlocked, list):
         unlocked = []
@@ -165,12 +160,7 @@ def _score_slope_per_run(rows: list[dict[str, Any]], window: int = 12) -> float:
     return (end - start) / float(len(sample) - 1)
 
 
-def _estimate_eta(
-    latest_score: float,
-    slope_per_run: float,
-    avg_days_per_run: float,
-    target_score: float,
-) -> dict[str, Any]:
+def _estimate_eta(latest_score: float, slope_per_run: float, avg_days_per_run: float, target_score: float) -> dict[str, Any]:
     if latest_score >= target_score:
         return {"runs": 0, "days": 0.0, "status": "met"}
     if slope_per_run <= 0.0:
@@ -226,7 +216,6 @@ def _safe_knowledge_snapshot(kg: Any = None, engine: Any = None) -> dict[str, An
         return {}
     try:
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
-
         return capture_knowledge_metrics(kg, engine)
     except (ImportError, AttributeError, OSError, ValueError) as exc:
         logger.debug("Knowledge snapshot capture failed: %s", exc)
@@ -247,9 +236,7 @@ def build_intelligence_dashboard(
     summary = summarize_history(history_rows, last=last_runs)
     latest_score = _to_float(summary.get("latest_score_pct", 0.0), 0.0)
     slope = _score_slope_per_run(history_rows, window=max(4, min(20, last_runs)))
-    avg_days = _average_run_interval_days(
-        history_rows, window=max(4, min(20, last_runs))
-    )
+    avg_days = _average_run_interval_days(history_rows, window=max(4, min(20, last_runs)))
 
     targets = _load_targets(root)
     ranking = [
@@ -281,17 +268,13 @@ def build_intelligence_dashboard(
             }
         )
 
-    ranking.sort(
-        key=lambda item: _to_float(item.get("score_pct", 0.0), 0.0), reverse=True
-    )
+    ranking.sort(key=lambda item: _to_float(item.get("score_pct", 0.0), 0.0), reverse=True)
 
     achievements = _load_achievements(root)
     unlocked = achievements.get("unlocked", [])
     if not isinstance(unlocked, list):
         unlocked = []
-    unlocked_ids = {
-        str(item.get("id", "")) for item in unlocked if isinstance(item, dict)
-    }
+    unlocked_ids = {str(item.get("id", "")) for item in unlocked if isinstance(item, dict)}
     new_unlocks: list[dict[str, Any]] = []
     now = _now_iso()
     for milestone in MILESTONES:
@@ -331,9 +314,7 @@ def build_intelligence_dashboard(
         "memory_regression": brain_regression_report(root),
         "knowledge_graph": _safe_kg_metrics(root),
         "gateway_audit": _safe_gateway_summary(root),
-        "learning": _safe_learning_metrics(
-            pref_tracker, feedback_tracker, usage_tracker
-        ),
+        "learning": _safe_learning_metrics(pref_tracker, feedback_tracker, usage_tracker),
         "knowledge_snapshot": _safe_knowledge_snapshot(kg, engine),
         "achievements": {
             "new": new_unlocks,
@@ -347,7 +328,6 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
     try:
         from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
         from jarvis_engine._constants import runtime_dir, KG_METRICS_LOG
-
         history_path = runtime_dir(root) / KG_METRICS_LOG
         history = load_kg_history(history_path, limit=50)
         if history:
@@ -363,9 +343,7 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
                 "trend": trend,
             }
     except (ImportError, OSError, ValueError):
-        logger.debug(
-            "Failed to collect KG metrics (knowledge graph module may not be available)"
-        )
+        logger.debug("Failed to collect KG metrics (knowledge graph module may not be available)")
     return {}
 
 
@@ -374,12 +352,9 @@ def _safe_gateway_summary(root: Path) -> dict[str, Any]:
     try:
         from jarvis_engine._constants import runtime_dir, GATEWAY_AUDIT_LOG
         from jarvis_engine.gateway.audit import GatewayAudit
-
         audit_path = runtime_dir(root) / GATEWAY_AUDIT_LOG
         audit = GatewayAudit(audit_path)
         return audit.summary(hours=24)
     except (ImportError, OSError, ValueError):
-        logger.debug(
-            "Failed to collect gateway audit summary (audit log may not exist)"
-        )
+        logger.debug("Failed to collect gateway audit summary (audit log may not exist)")
     return {}

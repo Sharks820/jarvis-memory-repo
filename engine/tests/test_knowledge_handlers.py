@@ -138,9 +138,7 @@ class TestContradictionListHandler:
             "sys.modules", {"jarvis_engine.knowledge.contradictions": mock_contra_mod}
         ):
             handler = ContradictionListHandler(root=tmp_path, kg=kg)
-            result = handler.handle(
-                ContradictionListCommand(status="pending", limit=50)
-            )
+            result = handler.handle(ContradictionListCommand(status="pending", limit=50))
 
         assert len(result.contradictions) == 2
         mock_contra_mod.ContradictionManager.assert_called_once_with(
@@ -368,9 +366,7 @@ class TestFactLockHandler:
         mock_lock_mgr.owner_confirm_lock.return_value = True
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}):
             handler = FactLockHandler(root=tmp_path, kg=kg)
             result = handler.handle(FactLockCommand(node_id="n42", action="lock"))
 
@@ -388,9 +384,7 @@ class TestFactLockHandler:
         mock_lock_mgr.owner_confirm_lock.return_value = False
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}):
             handler = FactLockHandler(root=tmp_path, kg=kg)
             result = handler.handle(FactLockCommand(node_id="n42", action="lock"))
 
@@ -405,9 +399,7 @@ class TestFactLockHandler:
         mock_lock_mgr.unlock_fact.return_value = True
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}):
             handler = FactLockHandler(root=tmp_path, kg=kg)
             result = handler.handle(FactLockCommand(node_id="n42", action="unlock"))
 
@@ -424,9 +416,7 @@ class TestFactLockHandler:
         mock_lock_mgr.unlock_fact.return_value = False
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}):
             handler = FactLockHandler(root=tmp_path, kg=kg)
             result = handler.handle(FactLockCommand(node_id="n42", action="unlock"))
 
@@ -446,15 +436,11 @@ class TestFactLockHandler:
         mock_lock_mgr.owner_confirm_lock.return_value = True
         mock_locks_mod.FactLockManager.return_value = mock_lock_mgr
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.knowledge.locks": mock_locks_mod}):
             handler = FactLockHandler(root=tmp_path, kg=kg)
             handler.handle(FactLockCommand(node_id="n1", action="lock"))
 
-        mock_locks_mod.FactLockManager.assert_called_once_with(
-            kg.db, kg.write_lock, kg.db_lock, kg=kg
-        )
+        mock_locks_mod.FactLockManager.assert_called_once_with(kg.db, kg.write_lock, kg.db_lock, kg=kg)
 
 
 # ---------------------------------------------------------------------------
@@ -486,10 +472,7 @@ class TestKnowledgeRegressionHandler:
         mock_regression_mod = MagicMock()
         mock_checker = MagicMock()
         mock_checker.capture_metrics.return_value = current_metrics
-        mock_checker.compare.return_value = {
-            "status": "baseline",
-            "current": current_metrics,
-        }
+        mock_checker.compare.return_value = {"status": "baseline", "current": current_metrics}
         mock_regression_mod.RegressionChecker.return_value = mock_checker
 
         with patch.dict(
@@ -543,9 +526,7 @@ class TestKnowledgeRegressionHandler:
                 KnowledgeRegressionCommand(snapshot_path=str(tmp_path / "snapshot.zip"))
             )
 
-        mock_checker.compare.assert_called_once_with(
-            {"node_count": 40}, {"node_count": 50}
-        )
+        mock_checker.compare.assert_called_once_with({"node_count": 40}, {"node_count": 50})
         assert result.report["status"] == "pass"
 
     def test_snapshot_json_load_failure(self, tmp_path: Path) -> None:
@@ -584,7 +565,9 @@ class TestKnowledgeRegressionHandler:
         ):
             handler = KnowledgeRegressionHandler(root=tmp_path, kg=kg)
             result = handler.handle(
-                KnowledgeRegressionCommand(snapshot_path=str(tmp_path / "missing.json"))
+                KnowledgeRegressionCommand(
+                    snapshot_path=str(tmp_path / "missing.json")
+                )
             )
 
         assert result.report["status"] == "error"
@@ -595,7 +578,9 @@ class TestKnowledgeRegressionHandler:
         kg = MagicMock()
         prev_metrics = {"node_count": 30, "edge_count": 60}
         meta_path = tmp_path / "snap.json"
-        meta_path.write_text(json.dumps({"kg_metrics": prev_metrics}), encoding="utf-8")
+        meta_path.write_text(
+            json.dumps({"kg_metrics": prev_metrics}), encoding="utf-8"
+        )
 
         current = {"node_count": 35, "edge_count": 70}
 

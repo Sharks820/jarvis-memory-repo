@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -125,7 +126,7 @@ class IngestSessionHandler:
                         tags=["session", cmd.source],
                     )
                     total_records += len(inserted)
-                except Exception as exc:
+                except (sqlite3.Error, OSError, ValueError) as exc:
                     logger.warning(
                         "Failed to ingest session chunk from %s: %s",
                         session_path.name,
@@ -172,9 +173,7 @@ class HarvestBudgetHandler:
                     return_code=0,
                 )
             return HarvestBudgetResult(
-                summary={
-                    "error": "provider, period, and limit_usd required for set action"
-                },
+                summary={"error": "provider, period, and limit_usd required for set action"},
                 return_code=1,
             )
 

@@ -65,13 +65,7 @@ def _create_test_db() -> sqlite3.Connection:
     return db
 
 
-def _insert_node(
-    db: sqlite3.Connection,
-    node_id: str,
-    label: str,
-    confidence: float = 0.7,
-    locked: int = 1,
-) -> None:
+def _insert_node(db: sqlite3.Connection, node_id: str, label: str, confidence: float = 0.7, locked: int = 1) -> None:
     db.execute(
         "INSERT INTO kg_nodes (node_id, label, confidence, locked) VALUES (?, ?, ?, ?)",
         (node_id, label, confidence, locked),
@@ -93,14 +87,7 @@ def _insert_contradiction(
            (node_id, existing_value, incoming_value,
             existing_confidence, incoming_confidence, status)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (
-            node_id,
-            existing_value,
-            incoming_value,
-            existing_confidence,
-            incoming_confidence,
-            status,
-        ),
+        (node_id, existing_value, incoming_value, existing_confidence, incoming_confidence, status),
     )
     db.commit()
     return cur.lastrowid
@@ -124,6 +111,7 @@ def mgr(db):
 
 
 class TestListPending:
+
     def test_empty_returns_empty(self, mgr, db):
         assert mgr.list_pending() == []
 
@@ -159,6 +147,7 @@ class TestListPending:
 
 
 class TestListAll:
+
     def test_no_filter_returns_all(self, mgr, db):
         _insert_node(db, "n1", "val")
         _insert_contradiction(db, "n1", "old", "new1", status="pending")
@@ -188,6 +177,7 @@ class TestListAll:
 
 
 class TestResolveValidation:
+
     def test_invalid_resolution_returns_failure(self, mgr, db):
         result = mgr.resolve(1, "bad_option")
         assert result["success"] is False
@@ -221,18 +211,15 @@ class TestResolveValidation:
 
 
 class TestResolveAcceptNew:
+
     def test_accept_new_updates_node_label(self, mgr, db):
         _insert_node(db, "n1", "old_label", confidence=0.7, locked=1)
-        cid = _insert_contradiction(
-            db, "n1", "old_label", "new_label", incoming_confidence=0.9
-        )
+        cid = _insert_contradiction(db, "n1", "old_label", "new_label", incoming_confidence=0.9)
         result = mgr.resolve(cid, "accept_new")
         assert result["success"] is True
         assert result["node_id"] == "n1"
         # Verify node updated
-        node = db.execute(
-            "SELECT label, locked FROM kg_nodes WHERE node_id = ?", ("n1",)
-        ).fetchone()
+        node = db.execute("SELECT label, locked FROM kg_nodes WHERE node_id = ?", ("n1",)).fetchone()
         assert node["label"] == "new_label"
         assert node["locked"] == 0  # unlocked
 
@@ -251,9 +238,7 @@ class TestResolveAcceptNew:
         _insert_node(db, "n1", "old")
         cid = _insert_contradiction(db, "n1", "old", "new")
         mgr.resolve(cid, "accept_new")
-        node = db.execute(
-            "SELECT history FROM kg_nodes WHERE node_id = ?", ("n1",)
-        ).fetchone()
+        node = db.execute("SELECT history FROM kg_nodes WHERE node_id = ?", ("n1",)).fetchone()
         history = json.loads(node["history"])
         assert len(history) == 1
         assert history[0]["action"] == "accept_new"
@@ -266,13 +251,12 @@ class TestResolveAcceptNew:
 
 
 class TestResolveKeepOld:
+
     def test_keep_old_does_not_change_node(self, mgr, db):
         _insert_node(db, "n1", "original")
         cid = _insert_contradiction(db, "n1", "original", "incoming")
         mgr.resolve(cid, "keep_old")
-        node = db.execute(
-            "SELECT label FROM kg_nodes WHERE node_id = ?", ("n1",)
-        ).fetchone()
+        node = db.execute("SELECT label FROM kg_nodes WHERE node_id = ?", ("n1",)).fetchone()
         assert node["label"] == "original"
 
     def test_keep_old_marks_resolved(self, mgr, db):
@@ -290,9 +274,7 @@ class TestResolveKeepOld:
         _insert_node(db, "n1", "val")
         cid = _insert_contradiction(db, "n1", "val", "alt")
         mgr.resolve(cid, "keep_old")
-        node = db.execute(
-            "SELECT history FROM kg_nodes WHERE node_id = ?", ("n1",)
-        ).fetchone()
+        node = db.execute("SELECT history FROM kg_nodes WHERE node_id = ?", ("n1",)).fetchone()
         history = json.loads(node["history"])
         assert history[0]["action"] == "keep_old"
 
@@ -303,23 +285,20 @@ class TestResolveKeepOld:
 
 
 class TestResolveMerge:
+
     def test_merge_sets_custom_value(self, mgr, db):
         _insert_node(db, "n1", "old")
         cid = _insert_contradiction(db, "n1", "old", "new")
         result = mgr.resolve(cid, "merge", merge_value="merged_val")
         assert result["success"] is True
-        node = db.execute(
-            "SELECT label FROM kg_nodes WHERE node_id = ?", ("n1",)
-        ).fetchone()
+        node = db.execute("SELECT label FROM kg_nodes WHERE node_id = ?", ("n1",)).fetchone()
         assert node["label"] == "merged_val"
 
     def test_merge_appends_history(self, mgr, db):
         _insert_node(db, "n1", "old")
         cid = _insert_contradiction(db, "n1", "old", "new")
         mgr.resolve(cid, "merge", merge_value="combo")
-        node = db.execute(
-            "SELECT history FROM kg_nodes WHERE node_id = ?", ("n1",)
-        ).fetchone()
+        node = db.execute("SELECT history FROM kg_nodes WHERE node_id = ?", ("n1",)).fetchone()
         history = json.loads(node["history"])
         assert history[0]["action"] == "merge"
         assert history[0]["new_value"] == "combo"

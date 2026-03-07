@@ -39,21 +39,13 @@ def is_safe_public_url(url: str) -> bool:
         return False
     try:
         ip = ip_address(host)
-        return not (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        )
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
     except ValueError:
         pass
     default_port = 443 if parsed.scheme == "https" else 80
     try:
-        resolved = socket.getaddrinfo(
-            host, parsed.port or default_port, proto=socket.IPPROTO_TCP
-        )
+        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
         return False
     for item in resolved:
@@ -62,14 +54,8 @@ def is_safe_public_url(url: str) -> bool:
             ip = ip_address(raw_ip)
         except ValueError:
             return False
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return False
     return True
 
@@ -86,9 +72,7 @@ def resolve_and_check_ip(url: str) -> bool:
         return False
     default_port = 443 if parsed.scheme == "https" else 80
     try:
-        resolved = socket.getaddrinfo(
-            host, parsed.port or default_port, proto=socket.IPPROTO_TCP
-        )
+        resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
         return False
     for item in resolved:
@@ -97,14 +81,8 @@ def resolve_and_check_ip(url: str) -> bool:
             ip = ip_address(raw_ip)
         except ValueError:
             return False
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return False
     return True
 
@@ -182,7 +160,6 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
     # DDG returns redirect links: //duckduckgo.com/l/?uddg=<encoded_url>&rut=...
     # Extract target URLs from the uddg= parameter first (primary method)
     from urllib.parse import unquote
-
     for uddg_match in re.findall(r'uddg=([^&"]+)', text):
         candidate = html_mod.unescape(unquote(uddg_match)).strip()
         parsed = urlparse(candidate)
@@ -203,7 +180,7 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
             if not is_safe_public_url(candidate):
                 continue
             urls.append(candidate)
-    return list(dict.fromkeys(urls))[: max(1, limit)]
+    return list(dict.fromkeys(urls))[:max(1, limit)]
 
 
 def search_brave(query: str, *, limit: int) -> list[str]:
@@ -255,7 +232,7 @@ def search_brave(query: str, *, limit: int) -> list[str]:
             continue
         urls.append(url)
 
-    return list(dict.fromkeys(urls))[: max(1, limit)]
+    return list(dict.fromkeys(urls))[:max(1, limit)]
 
 
 def search_web(query: str, *, limit: int) -> list[str]:
@@ -277,13 +254,9 @@ def search_web(query: str, *, limit: int) -> list[str]:
             if urls:
                 logger.info("search_web: used Brave Search (%d results)", len(urls))
                 return urls
-            logger.info(
-                "search_web: Brave returned no results, falling back to DuckDuckGo"
-            )
+            logger.info("search_web: Brave returned no results, falling back to DuckDuckGo")
         except (OSError, ValueError, TimeoutError) as exc:
-            logger.warning(
-                "search_web: Brave Search failed (%s), falling back to DuckDuckGo", exc
-            )
+            logger.warning("search_web: Brave Search failed (%s), falling back to DuckDuckGo", exc)
 
     # Fallback to DuckDuckGo
     urls = search_duckduckgo(query, limit=limit)

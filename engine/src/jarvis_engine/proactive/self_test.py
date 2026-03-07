@@ -48,11 +48,14 @@ class AdversarialSelfTest:
         results = run_memory_eval(tasks, self._engine, self._embed_service)
 
         per_task_scores = [
-            {"task_id": r.task_id, "score": r.overall_score} for r in results
+            {"task_id": r.task_id, "score": r.overall_score}
+            for r in results
         ]
 
         avg_score = (
-            sum(r.overall_score for r in results) / len(results) if results else 0.0
+            sum(r.overall_score for r in results) / len(results)
+            if results
+            else 0.0
         )
         avg_score = round(avg_score, 4)
 
@@ -65,7 +68,7 @@ class AdversarialSelfTest:
                     f"Average score {avg_score:.2f} "
                     f"below threshold {self._score_threshold:.2f}",
                 )
-            except Exception as exc:
+            except (RuntimeError, OSError) as exc:
                 logger.warning("Failed to send self-test alert: %s", exc)
 
         return {
@@ -128,9 +131,7 @@ class AdversarialSelfTest:
         baseline = sum(e.get("average_score", 0.0) for e in previous) / len(previous)
 
         regression = current_score < baseline * 0.8 if baseline > 0 else False
-        drop = round(
-            ((baseline - current_score) / baseline * 100) if baseline > 0 else 0.0, 1
-        )
+        drop = round(((baseline - current_score) / baseline * 100) if baseline > 0 else 0.0, 1)
 
         return {
             "regression_detected": regression,

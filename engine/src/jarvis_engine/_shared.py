@@ -1,6 +1,7 @@
 """Shared utility functions used across multiple jarvis_engine modules.
 
 Consolidates duplicated helpers to a single source of truth:
+- load_json_file: safe JSON file reads with default-on-failure
 - atomic_write_json: safe JSON file writes with atomic replace
 - env_int: bounded integer env-var reader
 - safe_float / safe_int: type coercion with defaults
@@ -23,7 +24,10 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
+from urllib.request import urlopen
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +99,31 @@ def atomic_write_json(
         raise last_error
 
 
+def load_json_file(path: Path, default: T, *, expected_type: type | None = None) -> Any:
+    """Load a JSON file, returning *default* on any failure.
+
+    Parameters
+    ----------
+    path : Path
+        File to read.
+    default
+        Value returned when the file is missing, unreadable, or has
+        unexpected structure.
+    expected_type : type, optional
+        If given, the parsed JSON root must be an instance of this type
+        (typically ``dict`` or ``list``); otherwise *default* is returned.
+    """
+    if not path.exists():
+        return default
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return default
+    if expected_type is not None and not isinstance(raw, expected_type):
+        return default
+    return raw
+
+
 def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
     """Read a bounded integer from an environment variable.
 
@@ -163,15 +192,78 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
 def sha256_hex(text: str) -> str:
     """Return the SHA-256 hex digest of *text* (UTF-8 encoded)."""
     import hashlib
-
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def sha256_short(data: bytes, length: int = 32) -> str:
+    """Return a truncated SHA-256 hex digest of *data*.
+
+    Args:
+        data: Raw bytes to hash.
+        length: Number of hex characters to return (default 32).
+
+    Returns:
+        The first *length* characters of the full SHA-256 hex digest.
+    """
+    import hashlib
+    return hashlib.sha256(data).hexdigest()[:length]
+
+
+def call_ollama_generate(
+    endpoint: str,
+    model: str,
+    prompt: str,
+    options: dict[str, Any],
+    *,
+    timeout_s: int = 120,
+) -> dict[str, Any]:
+    """Send a non-streaming generate request to Ollama's ``/api/generate``.
+
+    Args:
+        endpoint: Ollama base URL (e.g. ``http://localhost:11434``).
+        model: Model name (e.g. ``qwen3:14b``).
+        prompt: The text prompt to send.
+        options: Ollama options dict (num_ctx, num_predict, temperature, etc.).
+        timeout_s: HTTP timeout in seconds.
+
+    Returns:
+        The parsed JSON response dict from Ollama.
+
+    Raises:
+        ValueError: If the endpoint fails the safety check or the response
+            is not a JSON object.
+        urllib.error.URLError: On network errors.
+        TimeoutError: On request timeout.
+    """
+    from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
+    from urllib.request import Request
+
+    if not is_safe_ollama_endpoint(endpoint):
+        raise ValueError(f"Unsafe Ollama endpoint: {endpoint}")
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": options,
+    }
+    req = Request(
+        url=f"{endpoint.rstrip('/')}/api/generate",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        data=json.dumps(payload).encode("utf-8"),
+    )
+    with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
+        data = json.loads(resp.read().decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Expected JSON object from Ollama")
+    return data
 
 
 def set_process_title(name: str) -> None:
     """Set the OS process title (requires ``setproctitle``; no-op if absent)."""
     try:
         import setproctitle
-
         setproctitle.setproctitle(name)
     except ImportError:
         logger.debug("setproctitle not available; process title unchanged")
@@ -319,7 +411,7 @@ def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
     if file_size > chunk_size:
         newline_pos = text.find("\n")
         if newline_pos >= 0:
-            text = text[newline_pos + 1 :]
+            text = text[newline_pos + 1:]
 
     entries = _parse_lines(text)
 

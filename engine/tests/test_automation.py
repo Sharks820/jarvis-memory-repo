@@ -20,7 +20,6 @@ from jarvis_engine.memory_store import MemoryStore
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture
 def store(tmp_path: Path) -> MemoryStore:
     return MemoryStore(tmp_path / "memory")
@@ -44,7 +43,6 @@ def _write_actions_json(path: Path, data: list | dict | str) -> Path:
 # ---------------------------------------------------------------------------
 # load_actions
 # ---------------------------------------------------------------------------
-
 
 class TestLoadActions:
     def test_load_valid_actions(self, tmp_path: Path) -> None:
@@ -123,23 +121,16 @@ class TestLoadActions:
 # AutomationExecutor - capability gate
 # ---------------------------------------------------------------------------
 
-
 class TestAutomationCapabilityGate:
-    def test_read_action_allowed_without_approval(
-        self, executor: AutomationExecutor
-    ) -> None:
+    def test_read_action_allowed_without_approval(self, executor: AutomationExecutor) -> None:
         actions = [
-            PlannedAction(
-                title="Read test", action_class="read", command="", reason="check"
-            )
+            PlannedAction(title="Read test", action_class="read", command="", reason="check")
         ]
         outcomes = executor.run(actions, has_explicit_approval=False, execute=False)
         assert len(outcomes) == 1
         assert outcomes[0].allowed is True
 
-    def test_bounded_write_allowed_without_approval(
-        self, executor: AutomationExecutor
-    ) -> None:
+    def test_bounded_write_allowed_without_approval(self, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
                 title="Write test",
@@ -152,9 +143,7 @@ class TestAutomationCapabilityGate:
         assert len(outcomes) == 1
         assert outcomes[0].allowed is True
 
-    def test_privileged_denied_without_approval(
-        self, executor: AutomationExecutor
-    ) -> None:
+    def test_privileged_denied_without_approval(self, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
                 title="Pay utility",
@@ -167,9 +156,7 @@ class TestAutomationCapabilityGate:
         assert len(outcomes) == 1
         assert outcomes[0].allowed is False
 
-    def test_privileged_allowed_with_approval(
-        self, executor: AutomationExecutor
-    ) -> None:
+    def test_privileged_allowed_with_approval(self, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
                 title="Pay utility",
@@ -200,7 +187,6 @@ class TestAutomationCapabilityGate:
 # ---------------------------------------------------------------------------
 # AutomationExecutor - dry-run and empty command
 # ---------------------------------------------------------------------------
-
 
 class TestAutomationDryRun:
     def test_dry_run_does_not_execute(self, executor: AutomationExecutor) -> None:
@@ -235,12 +221,9 @@ class TestAutomationDryRun:
 # AutomationExecutor - policy engine
 # ---------------------------------------------------------------------------
 
-
 class TestAutomationPolicyGate:
     @patch("jarvis_engine.automation.run_shell_command", return_value=(0, "ok", ""))
-    def test_allowed_command_executes(
-        self, mock_shell: MagicMock, executor: AutomationExecutor
-    ) -> None:
+    def test_allowed_command_executes(self, mock_shell: MagicMock, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
                 title="Run git",
@@ -254,9 +237,7 @@ class TestAutomationPolicyGate:
         assert outcomes[0].executed is True
         assert outcomes[0].return_code == 0
         assert outcomes[0].stdout == "ok"
-        mock_shell.assert_called_once_with(
-            "git status", timeout_s=90, has_explicit_approval=False
-        )
+        mock_shell.assert_called_once_with("git status", timeout_s=90, has_explicit_approval=False)
 
     def test_disallowed_command_blocked(self, executor: AutomationExecutor) -> None:
         actions = [
@@ -272,12 +253,8 @@ class TestAutomationPolicyGate:
         assert outcomes[0].executed is False
         assert "policy allowlist" in outcomes[0].reason.lower()
 
-    @patch(
-        "jarvis_engine.automation.run_shell_command", return_value=(1, "", "error msg")
-    )
-    def test_command_failure_captured(
-        self, mock_shell: MagicMock, executor: AutomationExecutor
-    ) -> None:
+    @patch("jarvis_engine.automation.run_shell_command", return_value=(1, "", "error msg"))
+    def test_command_failure_captured(self, mock_shell: MagicMock, executor: AutomationExecutor) -> None:
         actions = [
             PlannedAction(
                 title="Failing cmd",
@@ -295,7 +272,6 @@ class TestAutomationPolicyGate:
 # ---------------------------------------------------------------------------
 # AutomationExecutor - multiple actions
 # ---------------------------------------------------------------------------
-
 
 class TestAutomationMultipleActions:
     @patch("jarvis_engine.automation.run_shell_command", return_value=(0, "", ""))
@@ -339,7 +315,6 @@ class TestAutomationMultipleActions:
 # AutomationExecutor - logging
 # ---------------------------------------------------------------------------
 
-
 class TestAutomationLogging:
     def test_log_called_for_each_outcome(self, store: MemoryStore) -> None:
         executor = AutomationExecutor(store)
@@ -352,9 +327,4 @@ class TestAutomationLogging:
             assert mock_append.call_count == 2
             # Verify event_type is automation_executor
             for call_args in mock_append.call_args_list:
-                assert (
-                    call_args.kwargs.get(
-                        "event_type", call_args[0][0] if call_args[0] else None
-                    )
-                    == "automation_executor"
-                )
+                assert call_args.kwargs.get("event_type", call_args[0][0] if call_args[0] else None) == "automation_executor"

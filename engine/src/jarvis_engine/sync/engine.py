@@ -42,9 +42,7 @@ class SyncEngine:
         self._device_id = device_id
         self._conflict_strategy = conflict_strategy
 
-    def compute_outgoing(
-        self, target_device_id: str, limit: int = 500
-    ) -> dict[str, Any]:
+    def compute_outgoing(self, target_device_id: str, limit: int = 500) -> dict[str, Any]:
         """Compute changes to send to *target_device_id*.
 
         Returns ``{"changes": {table: [entries]}, "cursors": {table: max_version}}``.
@@ -63,9 +61,7 @@ class SyncEngine:
 
         return {"changes": changes, "cursors": cursors}
 
-    def apply_incoming(
-        self, changes: dict[str, Any], source_device_id: str
-    ) -> dict[str, Any]:
+    def apply_incoming(self, changes: dict[str, Any], source_device_id: str) -> dict[str, Any]:
         """Apply remote changes within a single transaction.
 
         Only successfully applied operations are counted.  Cursors are only
@@ -99,9 +95,7 @@ class SyncEngine:
 
                     # Fetch cursor once per table (same for all entries)
                     source_cursor = get_sync_cursor(
-                        self._db,
-                        source_device_id,
-                        table_name,
+                        self._db, source_device_id, table_name,
                     )
 
                     for entry in entries:
@@ -116,16 +110,12 @@ class SyncEngine:
                         # Check for local conflict: same row modified locally since
                         # last sync from source_device_id
                         local_conflict = self._find_local_conflict(
-                            table_name,
-                            row_id,
-                            source_cursor,
+                            table_name, row_id, source_cursor,
                         )
 
                         if local_conflict:
                             resolved = self._resolve_conflict(
-                                local_conflict,
-                                entry,
-                                desktop_is_local,
+                                local_conflict, entry, desktop_is_local,
                             )
                             ok = self._apply_single_change(table_name, pk, resolved)
                             if ok:
@@ -178,7 +168,7 @@ class SyncEngine:
                     )
 
                 self._db.commit()
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 self._db.rollback()
                 applied = 0
                 conflicts_resolved = 0
@@ -192,10 +182,7 @@ class SyncEngine:
         }
 
     def _find_local_conflict(
-        self,
-        table_name: str,
-        row_id: str,
-        since_version: int,
+        self, table_name: str, row_id: str, since_version: int,
     ) -> dict[str, Any] | None:
         """Check if *row_id* has been modified locally since *since_version*."""
         cur = self._db.execute(
@@ -294,10 +281,7 @@ class SyncEngine:
         }
 
     def _apply_single_change(
-        self,
-        table_name: str,
-        pk: str | list[str],
-        entry: dict[str, Any],
+        self, table_name: str, pk: str | list[str], entry: dict[str, Any],
     ) -> bool:
         """Execute INSERT/UPDATE/DELETE based on *entry* operation.
 
@@ -330,9 +314,7 @@ class SyncEngine:
             if len(pk_values) != len(pk_cols):
                 logger.warning(
                     "Composite row_id %r has %d parts but pk has %d columns — skipping",
-                    row_id,
-                    len(pk_values),
-                    len(pk_cols),
+                    row_id, len(pk_values), len(pk_cols),
                 )
                 return False
         else:
@@ -363,13 +345,8 @@ class SyncEngine:
             col_names = ", ".join(cols)
             values = pk_values + [safe_values[k] for k in extra_cols]
             self._db.execute(
-                "INSERT OR IGNORE INTO "
-                + table_name
-                + " ("
-                + col_names
-                + ") VALUES ("
-                + placeholders
-                + ")",
+                "INSERT OR IGNORE INTO " + table_name
+                + " (" + col_names + ") VALUES (" + placeholders + ")",
                 values,
             )
 
@@ -388,12 +365,9 @@ class SyncEngine:
                 return True
             values.extend(pk_values)
             self._db.execute(
-                "UPDATE "
-                + table_name
-                + " SET "
+                "UPDATE " + table_name + " SET "
                 + ", ".join(set_parts)
-                + " WHERE "
-                + where_clause,
+                + " WHERE " + where_clause,
                 values,
             )
 
@@ -406,9 +380,7 @@ class SyncEngine:
         else:
             logger.warning(
                 "Unknown sync operation %r for table %s row %s — skipping",
-                operation,
-                table_name,
-                row_id,
+                operation, table_name, row_id,
             )
             return False
 
@@ -422,14 +394,12 @@ class SyncEngine:
         )
         cursors: list[dict[str, Any]] = []
         for row in cur.fetchall():
-            cursors.append(
-                {
-                    "device_id": row[0],
-                    "table_name": row[1],
-                    "last_version": row[2],
-                    "last_sync_ts": row[3],
-                }
-            )
+            cursors.append({
+                "device_id": row[0],
+                "table_name": row[1],
+                "last_version": row[2],
+                "last_sync_ts": row[3],
+            })
 
         count_cur = self._db.execute("SELECT COUNT(*) FROM _sync_changelog")
         total = count_cur.fetchone()[0]

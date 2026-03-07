@@ -13,15 +13,16 @@ Additional test modules split from this file:
   - test_main_memory.py: Memory/brain/knowledge/harvesting/learning commands (mock bus)
   - test_main_security.py: Security-related command tests
 """
-
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
 
 
@@ -86,9 +87,7 @@ def test_cmd_memory_snapshot_create_and_verify(tmp_path: Path, monkeypatch) -> N
     snaps = list(snap_dir.glob("*.zip"))
     assert snaps
 
-    rc_verify = main_mod.cmd_memory_snapshot(
-        create=False, verify_path=str(snaps[0]), note=""
-    )
+    rc_verify = main_mod.cmd_memory_snapshot(create=False, verify_path=str(snaps[0]), note="")
     assert rc_verify == 0
 
 
@@ -153,15 +152,10 @@ class TestStatusCommand:
 
     def test_status_basic(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import StatusResult
-
         result = StatusResult(
-            profile="personal",
-            primary_runtime="python3.12",
-            secondary_runtime="ollama",
-            security_strictness="high",
-            operation_mode="hybrid",
-            cloud_burst_enabled=True,
-            events=[],
+            profile="personal", primary_runtime="python3.12",
+            secondary_runtime="ollama", security_strictness="high",
+            operation_mode="hybrid", cloud_burst_enabled=True, events=[],
         )
         bus = mock_bus(result)
         rc = main_mod.cmd_status()
@@ -172,7 +166,6 @@ class TestStatusCommand:
 
     def test_status_with_events(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import StatusResult
-
         event = MagicMock()
         event.ts = "2026-02-25T10:00:00"
         event.event_type = "startup"
@@ -187,7 +180,6 @@ class TestStatusCommand:
 
     def test_status_no_events(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import StatusResult
-
         result = StatusResult(events=[])
         bus = mock_bus(result)
         rc = main_mod.cmd_status()
@@ -201,7 +193,6 @@ class TestLogCommand:
 
     def test_log_event(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import LogResult
-
         result = LogResult(ts="2026-02-25T10:00:00", event_type="test", message="hello")
         bus = mock_bus(result)
         rc = main_mod.cmd_log(event_type="test", message="hello")
@@ -216,7 +207,6 @@ class TestRouteCommand:
 
     def test_route_low_easy(self, capsys, mock_bus):
         from jarvis_engine.commands.task_commands import RouteResult
-
         result = RouteResult(provider="ollama", reason="low risk local model")
         bus = mock_bus(result)
         rc = main_mod.cmd_route(risk="low", complexity="easy")
@@ -234,35 +224,26 @@ class TestWebResearch:
     """Tests for cmd_web_research."""
 
     def test_web_research_empty_query(self, capsys, monkeypatch):
-        rc = main_mod.cmd_web_research(
-            query="   ", max_results=8, max_pages=6, auto_ingest=True
-        )
+        rc = main_mod.cmd_web_research(query="   ", max_results=8, max_pages=6, auto_ingest=True)
         assert rc == 2
         out = capsys.readouterr().out
         assert "error" in out
 
     def test_web_research_success(self, capsys, mock_bus):
         from jarvis_engine.commands.task_commands import WebResearchResult
-
         result = WebResearchResult(
             return_code=0,
             report={
-                "query": "python asyncio",
-                "scanned_url_count": 4,
+                "query": "python asyncio", "scanned_url_count": 4,
                 "findings": [
-                    {
-                        "domain": "docs.python.org",
-                        "url": "https://docs.python.org/3/lib/asyncio.html",
-                        "snippet": "asyncio is a library for writing concurrent code",
-                    },
+                    {"domain": "docs.python.org", "url": "https://docs.python.org/3/lib/asyncio.html",
+                     "snippet": "asyncio is a library for writing concurrent code"},
                 ],
             },
             auto_ingest_record_id="rec-99",
         )
         bus = mock_bus(result)
-        rc = main_mod.cmd_web_research(
-            query="python asyncio", max_results=8, max_pages=6, auto_ingest=True
-        )
+        rc = main_mod.cmd_web_research(query="python asyncio", max_results=8, max_pages=6, auto_ingest=True)
         assert rc == 0
         out = capsys.readouterr().out
         assert "web_research" in out
@@ -271,12 +252,9 @@ class TestWebResearch:
 
     def test_web_research_failure(self, capsys, mock_bus):
         from jarvis_engine.commands.task_commands import WebResearchResult
-
         result = WebResearchResult(return_code=2, report={})
         bus = mock_bus(result)
-        rc = main_mod.cmd_web_research(
-            query="something", max_results=8, max_pages=6, auto_ingest=False
-        )
+        rc = main_mod.cmd_web_research(query="something", max_results=8, max_pages=6, auto_ingest=False)
         assert rc == 2
 
 
@@ -290,16 +268,9 @@ class TestWeather:
 
     def test_weather_success(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import WeatherResult
-
         result = WeatherResult(
-            return_code=0,
-            location="Austin, TX",
-            current={
-                "temp_F": "75",
-                "temp_C": "24",
-                "FeelsLikeF": "73",
-                "humidity": "50",
-            },
+            return_code=0, location="Austin, TX",
+            current={"temp_F": "75", "temp_C": "24", "FeelsLikeF": "73", "humidity": "50"},
             description="Partly cloudy",
         )
         bus = mock_bus(result)
@@ -312,7 +283,6 @@ class TestWeather:
 
     def test_weather_failure(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import WeatherResult
-
         result = WeatherResult(return_code=2)
         bus = mock_bus(result)
         rc = main_mod.cmd_weather(location="Nonexistent Place")
@@ -324,7 +294,6 @@ class TestOpenWeb:
 
     def test_open_web_success(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import OpenWebResult
-
         result = OpenWebResult(return_code=0, opened_url="https://example.com")
         bus = mock_bus(result)
         rc = main_mod.cmd_open_web(url="https://example.com")
@@ -334,7 +303,6 @@ class TestOpenWeb:
 
     def test_open_web_failure(self, capsys, mock_bus):
         from jarvis_engine.commands.system_commands import OpenWebResult
-
         result = OpenWebResult(return_code=2)
         bus = mock_bus(result)
         rc = main_mod.cmd_open_web(url="")

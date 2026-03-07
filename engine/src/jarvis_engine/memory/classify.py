@@ -14,11 +14,9 @@ logger = logging.getLogger(__name__)
 
 try:
     import numpy as np
-
     _HAS_NUMPY = True
 except ImportError:
     import math
-
     _HAS_NUMPY = False
 
 if TYPE_CHECKING:

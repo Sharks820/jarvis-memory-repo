@@ -268,12 +268,9 @@ class TestWakeWordDetector:
         callback = MagicMock()
 
         # Mock openwakeword import to fail
-        with patch.dict(
-            sys.modules, {"openwakeword": None, "openwakeword.model": None}
-        ):
+        with patch.dict(sys.modules, {"openwakeword": None, "openwakeword.model": None}):
             # start should return without error
             import threading
-
             stop = threading.Event()
             stop.set()  # set immediately so loop exits
             detector.start(callback, stop)
@@ -316,7 +313,6 @@ class TestProactiveCheckHandler:
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
 
         from pathlib import Path
-
         handler = ProactiveCheckHandler(Path("."))
         result = handler.handle(ProactiveCheckCommand())
         assert "not available" in result.message
@@ -326,12 +322,9 @@ class TestProactiveCheckHandler:
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
 
         from pathlib import Path
-
         mock_engine = MagicMock()
         handler = ProactiveCheckHandler(Path("."), proactive_engine=mock_engine)
-        result = handler.handle(
-            ProactiveCheckCommand(snapshot_path="./nonexistent.json")
-        )
+        result = handler.handle(ProactiveCheckCommand(snapshot_path="./nonexistent.json"))
         assert "not found" in result.message
 
     def test_handler_snapshot_path_traversal(self):
@@ -339,7 +332,6 @@ class TestProactiveCheckHandler:
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
 
         from pathlib import Path
-
         mock_engine = MagicMock()
         handler = ProactiveCheckHandler(Path("."), proactive_engine=mock_engine)
         result = handler.handle(ProactiveCheckCommand(snapshot_path="/etc/passwd"))

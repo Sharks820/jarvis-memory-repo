@@ -84,20 +84,11 @@ scripts/                        # PowerShell launchers, installers, maintenance
 
 ```bash
 python -m pytest engine/tests/ -x -q     # Run all (fast, ~100s)
-python -m pytest engine/tests/test_smoke.py -v   # Smoke tests (261+ tests, anti-regression)
 python -m pytest engine/tests/test_main.py -x -q   # CLI tests only
 python -m pytest engine/tests/ -k "memory" -q       # Memory tests only
 ```
 
-1 test skipped (live Ollama). All others should pass.
-
-**Quality gates (run before every merge):**
-```bash
-ruff check engine/src && ruff format --check engine/src
-bandit -r engine/src -ll -x engine/src/jarvis_engine/security/honeypot.py
-cd engine && PYTHONPATH=src python -m pytest tests/ -x -q --cov=jarvis_engine --cov-fail-under=50
-cd engine && PYTHONPATH=src python -m pytest tests/test_smoke.py -v
-```
+7 tests skipped (1 live Ollama + optional deps). All others should pass.
 
 ## Security
 

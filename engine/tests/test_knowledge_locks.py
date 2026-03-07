@@ -65,6 +65,7 @@ def regression_checker(kg: KnowledgeGraph) -> RegressionChecker:
 
 
 class TestFactLockManager:
+
     def test_auto_lock_threshold_met(
         self, kg: KnowledgeGraph, lock_mgr: FactLockManager
     ) -> None:
@@ -114,7 +115,9 @@ class TestFactLockManager:
         assert node["locked"] == 1
         assert node["locked_by"] == "owner"
 
-    def test_unlock_fact(self, kg: KnowledgeGraph, lock_mgr: FactLockManager) -> None:
+    def test_unlock_fact(
+        self, kg: KnowledgeGraph, lock_mgr: FactLockManager
+    ) -> None:
         """unlock_fact returns True and sets locked=0."""
         kg.add_fact("fact.a", "value_a", 0.5)
         lock_mgr.owner_confirm_lock("fact.a")
@@ -137,6 +140,7 @@ class TestFactLockManager:
 
 
 class TestLockedFactEnforcement:
+
     def test_locked_fact_blocks_overwrite(self, kg: KnowledgeGraph) -> None:
         """Attempt to update locked fact with different value is blocked."""
         kg.add_fact("family.wife", "Sarah", 0.9, source_record="src1")
@@ -185,6 +189,7 @@ class TestLockedFactEnforcement:
 
 
 class TestContradictionManager:
+
     def _create_contradiction(self, kg: KnowledgeGraph) -> int:
         """Helper: create a locked fact and trigger a contradiction."""
         kg.add_fact("family.wife", "Sarah", 0.9, source_record="src1")
@@ -261,9 +266,7 @@ class TestContradictionManager:
         """Resolving with 'merge' sets the merge_value on the node."""
         cid = self._create_contradiction(kg)
 
-        result = contradiction_mgr.resolve(
-            cid, "merge", merge_value="Sarah (also known as Jessica)"
-        )
+        result = contradiction_mgr.resolve(cid, "merge", merge_value="Sarah (also known as Jessica)")
         assert result["success"] is True
         assert result["resolution"] == "merge"
 
@@ -284,6 +287,7 @@ class TestContradictionManager:
 
 
 class TestRegressionChecker:
+
     def test_regression_capture_metrics(
         self, kg: KnowledgeGraph, regression_checker: RegressionChecker
     ) -> None:
@@ -293,7 +297,9 @@ class TestRegressionChecker:
         kg.add_edge("n1", "n2", "related_to", 0.5)
 
         # Lock one node
-        kg._db.execute("UPDATE kg_nodes SET locked = 1 WHERE node_id = 'n1'")
+        kg._db.execute(
+            "UPDATE kg_nodes SET locked = 1 WHERE node_id = 'n1'"
+        )
         kg._db.commit()
 
         metrics = regression_checker.capture_metrics()
@@ -399,17 +405,11 @@ class TestHandlerDegradation:
         assert result.contradictions == []
 
     def test_contradiction_resolve_handler_no_kg(self, tmp_path: Path) -> None:
-        from jarvis_engine.handlers.knowledge_handlers import (
-            ContradictionResolveHandler,
-        )
-        from jarvis_engine.commands.knowledge_commands import (
-            ContradictionResolveCommand,
-        )
+        from jarvis_engine.handlers.knowledge_handlers import ContradictionResolveHandler
+        from jarvis_engine.commands.knowledge_commands import ContradictionResolveCommand
 
         handler = ContradictionResolveHandler(tmp_path, kg=None)
-        result = handler.handle(
-            ContradictionResolveCommand(contradiction_id=1, resolution="keep_old")
-        )
+        result = handler.handle(ContradictionResolveCommand(contradiction_id=1, resolution="keep_old"))
         assert result.success is False
         assert "not available" in result.message
 
@@ -532,14 +532,7 @@ class TestQueryRelevantFacts:
         results = kg.query_relevant_facts(["test"])
         assert len(results) == 1
         row = results[0]
-        expected_keys = {
-            "node_id",
-            "label",
-            "node_type",
-            "confidence",
-            "locked",
-            "updated_at",
-        }
+        expected_keys = {"node_id", "label", "node_type", "confidence", "locked", "updated_at"}
         assert expected_keys == set(row.keys())
 
     def test_sql_injection_safe_percent(self, kg: KnowledgeGraph) -> None:

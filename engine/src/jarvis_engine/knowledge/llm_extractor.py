@@ -14,10 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import (
-    DEFAULT_CLOUD_MODEL,
-    PRIVACY_KEYWORDS as _PRIVACY_KW,
-)
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, PRIVACY_KEYWORDS as _PRIVACY_KW
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.models import ModelGateway
@@ -136,12 +133,13 @@ class LLMFactExtractor:
         """
         if self._contains_privacy_keyword(text):
             from jarvis_engine._constants import get_local_model as _get_local_model
-
             local_model = _get_local_model()
             return local_model, True
         return DEFAULT_CLOUD_MODEL, False
 
-    def extract_facts(self, text: str, branch: str = "") -> list[ExtractedFact]:
+    def extract_facts(
+        self, text: str, branch: str = ""
+    ) -> list[ExtractedFact]:
         """Extract structured facts from text using an LLM.
 
         Args:
@@ -208,15 +206,11 @@ class LLMFactExtractor:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
-            logger.debug(
-                "LLM fact extractor: malformed JSON response: %s", cleaned[:200]
-            )
+            logger.debug("LLM fact extractor: malformed JSON response: %s", cleaned[:200])
             return []
 
         if not isinstance(data, list):
-            logger.debug(
-                "LLM fact extractor: expected list, got %s", type(data).__name__
-            )
+            logger.debug("LLM fact extractor: expected list, got %s", type(data).__name__)
             return []
 
         facts: list[ExtractedFact] = []

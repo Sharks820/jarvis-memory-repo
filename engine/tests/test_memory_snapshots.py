@@ -13,12 +13,9 @@ from jarvis_engine.memory_snapshots import (
 
 # ── existing tests ────────────────────────────────────────────────────────
 
-
 def test_create_and_verify_signed_snapshot(tmp_path: Path) -> None:
     (tmp_path / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".planning" / "brain" / "records.jsonl").write_text(
-        "{}\n", encoding="utf-8"
-    )
+    (tmp_path / ".planning" / "brain" / "records.jsonl").write_text("{}\n", encoding="utf-8")
     result = create_signed_snapshot(tmp_path, note="unit-test")
     assert result.snapshot_path.exists()
     verification = verify_signed_snapshot(tmp_path, result.snapshot_path)
@@ -27,9 +24,7 @@ def test_create_and_verify_signed_snapshot(tmp_path: Path) -> None:
 
 def test_verify_fails_after_tamper(tmp_path: Path) -> None:
     (tmp_path / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".planning" / "brain" / "records.jsonl").write_text(
-        "{}\n", encoding="utf-8"
-    )
+    (tmp_path / ".planning" / "brain" / "records.jsonl").write_text("{}\n", encoding="utf-8")
     result = create_signed_snapshot(tmp_path, note="tamper-test")
     with result.snapshot_path.open("ab") as f:
         f.write(b"tamper")
@@ -39,9 +34,7 @@ def test_verify_fails_after_tamper(tmp_path: Path) -> None:
 
 def test_run_memory_maintenance_outputs_report(tmp_path: Path) -> None:
     (tmp_path / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".planning" / "brain" / "records.jsonl").write_text(
-        "{}\n", encoding="utf-8"
-    )
+    (tmp_path / ".planning" / "brain" / "records.jsonl").write_text("{}\n", encoding="utf-8")
     report = run_memory_maintenance(tmp_path, keep_recent=100, snapshot_note="nightly")
     assert "snapshot" in report
     assert "regression" in report
@@ -49,7 +42,6 @@ def test_run_memory_maintenance_outputs_report(tmp_path: Path) -> None:
 
 
 # ── ensure_snapshot_key tests ─────────────────────────────────────────────
-
 
 def test_ensure_snapshot_key_creates_new_key(tmp_path: Path) -> None:
     key = ensure_snapshot_key(tmp_path)
@@ -75,7 +67,6 @@ def test_ensure_snapshot_key_idempotent(tmp_path: Path) -> None:
 
 # ── create_signed_snapshot tests ──────────────────────────────────────────
 
-
 def test_create_snapshot_missing_target_files(tmp_path: Path) -> None:
     """Snapshot with no existing target files should create a valid zip with 0 files."""
     result = create_signed_snapshot(tmp_path, note="empty")
@@ -90,9 +81,7 @@ def test_create_snapshot_with_custom_targets(tmp_path: Path) -> None:
     custom_dir.mkdir()
     (custom_dir / "file1.txt").write_text("hello", encoding="utf-8")
     (custom_dir / "file2.txt").write_text("world", encoding="utf-8")
-    result = create_signed_snapshot(
-        tmp_path, note="custom-targets", targets=[custom_dir]
-    )
+    result = create_signed_snapshot(tmp_path, note="custom-targets", targets=[custom_dir])
     assert result.file_count == 2
 
 
@@ -128,7 +117,6 @@ def test_create_snapshot_large_payload(tmp_path: Path) -> None:
 
 
 # ── verify_signed_snapshot tests ──────────────────────────────────────────
-
 
 def test_verify_nonexistent_snapshot(tmp_path: Path) -> None:
     fake_path = tmp_path / "nonexistent.zip"
@@ -203,12 +191,9 @@ def test_verify_wrong_key(tmp_path: Path) -> None:
 
 # ── run_memory_maintenance tests ──────────────────────────────────────────
 
-
 def test_run_memory_maintenance_creates_maintenance_file(tmp_path: Path) -> None:
     (tmp_path / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
-    report = run_memory_maintenance(
-        tmp_path, keep_recent=100, snapshot_note="maint-test"
-    )
+    report = run_memory_maintenance(tmp_path, keep_recent=100, snapshot_note="maint-test")
     assert "report_path" in report
     report_path = Path(report["report_path"])
     assert report_path.exists()
@@ -218,7 +203,5 @@ def test_run_memory_maintenance_creates_maintenance_file(tmp_path: Path) -> None
 
 def test_run_memory_maintenance_status_field(tmp_path: Path) -> None:
     (tmp_path / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
-    report = run_memory_maintenance(
-        tmp_path, keep_recent=100, snapshot_note="status-test"
-    )
+    report = run_memory_maintenance(tmp_path, keep_recent=100, snapshot_note="status-test")
     assert report["status"] in {"pass", "warn"}

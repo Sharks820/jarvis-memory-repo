@@ -14,6 +14,7 @@ import sqlite3
 from unittest.mock import MagicMock, patch
 
 
+
 # ---------------------------------------------------------------------------
 # STAB-01: db_path.exists() gate removal
 # ---------------------------------------------------------------------------
@@ -40,7 +41,6 @@ class TestFreshDBCreation:
 
                 mock_engine.assert_not_called()  # not yet
                 from jarvis_engine.app import create_app
-
                 bus = create_app(tmp_path)
                 # MemoryEngine should be called even without existing DB file
                 mock_engine.assert_called_once()
@@ -50,11 +50,9 @@ class TestFreshDBCreation:
         brain_dir = tmp_path / ".planning" / "brain"
         brain_dir.mkdir(parents=True)
 
-        with (
-            patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed,
-            patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine,
-            patch("jarvis_engine.gateway.costs.CostTracker") as mock_ct,
-        ):
+        with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed, \
+             patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine, \
+             patch("jarvis_engine.gateway.costs.CostTracker") as mock_ct:
             mock_embed.return_value = MagicMock()
             me = MagicMock()
             me._db = MagicMock()
@@ -63,7 +61,6 @@ class TestFreshDBCreation:
             mock_engine.return_value = me
 
             from jarvis_engine.app import create_app
-
             bus = create_app(tmp_path)
             mock_ct.assert_called_once()
 
@@ -72,11 +69,9 @@ class TestFreshDBCreation:
         brain_dir = tmp_path / ".planning" / "brain"
         brain_dir.mkdir(parents=True)
 
-        with (
-            patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed,
-            patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine,
-            patch("jarvis_engine.harvesting.budget.BudgetManager") as mock_bm,
-        ):
+        with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed, \
+             patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine, \
+             patch("jarvis_engine.harvesting.budget.BudgetManager") as mock_bm:
             mock_embed.return_value = MagicMock()
             me = MagicMock()
             me._db = MagicMock()
@@ -85,7 +80,6 @@ class TestFreshDBCreation:
             mock_engine.return_value = me
 
             from jarvis_engine.app import create_app
-
             bus = create_app(tmp_path)
             mock_bm.assert_called_once()
 
@@ -94,12 +88,8 @@ class TestFreshDBCreation:
         brain_dir = tmp_path / ".planning" / "brain"
         brain_dir.mkdir(parents=True)
 
-        with patch(
-            "jarvis_engine.memory.embeddings.EmbeddingService",
-            side_effect=RuntimeError("test"),
-        ):
+        with patch("jarvis_engine.memory.embeddings.EmbeddingService", side_effect=RuntimeError("test")):
             from jarvis_engine.app import create_app
-
             bus = create_app(tmp_path)
             # Bus should still be created even without engine
             assert bus is not None
@@ -132,8 +122,7 @@ class TestSilentExceptLogging:
             auto_generate_missions(tmp_path, max_new=1, db_path=db_path)
             # Should have called logger.debug at least once for a failed query
             debug_calls = [
-                c
-                for c in mock_logger.debug.call_args_list
+                c for c in mock_logger.debug.call_args_list
                 if "Topic extraction" in str(c) or "failed" in str(c).lower()
             ]
             assert len(debug_calls) >= 1, "Expected debug log for Source 1 DB error"
@@ -157,8 +146,7 @@ class TestSilentExceptLogging:
         with patch("jarvis_engine.learning_missions.logger") as mock_logger:
             auto_generate_missions(tmp_path, max_new=1, db_path=db_path)
             debug_calls = [
-                c
-                for c in mock_logger.debug.call_args_list
+                c for c in mock_logger.debug.call_args_list
                 if "KG gap" in str(c) or "KG strength" in str(c)
             ]
             assert len(debug_calls) >= 1, "Expected debug log for Source 2/3 DB error"
@@ -167,7 +155,6 @@ class TestSilentExceptLogging:
         """ImportError blocks in learning/engine.py have logger.debug calls."""
         import inspect
         from jarvis_engine.learning import engine as engine_mod
-
         source = inspect.getsource(engine_mod)
         # After STAB-02, "except ImportError as exc" should exist (not bare "except ImportError:\n    pass")
         assert "except ImportError as exc:" in source
@@ -180,9 +167,7 @@ class TestSilentExceptLogging:
 
         mock_kg = MagicMock()
         mock_db = MagicMock()
-        mock_db.execute.side_effect = sqlite3.OperationalError(
-            "no such column: temporal_type"
-        )
+        mock_db.execute.side_effect = sqlite3.OperationalError("no such column: temporal_type")
         mock_kg.db = mock_db
         mock_kg.db_lock = MagicMock()
         mock_kg.db_lock.__enter__ = MagicMock(return_value=None)
@@ -194,8 +179,7 @@ class TestSilentExceptLogging:
         with patch("jarvis_engine.learning.metrics.logger") as mock_logger:
             result = capture_knowledge_metrics(engine=mock_engine, kg=mock_kg)
             debug_calls = [
-                c
-                for c in mock_logger.debug.call_args_list
+                c for c in mock_logger.debug.call_args_list
                 if "Temporal" in str(c) or "migration" in str(c).lower()
             ]
             assert len(debug_calls) >= 1, "Expected debug log for temporal query error"
@@ -254,9 +238,7 @@ class TestConsolidateMemoryCommand:
 
         mock_engine = MagicMock()
         handler = ConsolidateMemoryHandler(
-            tmp_path,
-            engine=mock_engine,
-            gateway=MagicMock(),
+            tmp_path, engine=mock_engine, gateway=MagicMock(),
             embed_service=MagicMock(),
         )
 
@@ -266,9 +248,7 @@ class TestConsolidateMemoryCommand:
         mock_consolidation_result.new_facts_created = 3
         mock_consolidation_result.errors = []
 
-        with patch(
-            "jarvis_engine.learning.consolidator.MemoryConsolidator"
-        ) as mock_cls:
+        with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls:
             mock_cls.return_value.consolidate.return_value = mock_consolidation_result
             result = handler.handle(ConsolidateMemoryCommand(max_groups=10))
 
@@ -290,9 +270,7 @@ class TestConsolidateMemoryCommand:
         mock_result.new_facts_created = 0
         mock_result.errors = []
 
-        with patch(
-            "jarvis_engine.learning.consolidator.MemoryConsolidator"
-        ) as mock_cls:
+        with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls:
             mock_cls.return_value.consolidate.return_value = mock_result
             handler.handle(ConsolidateMemoryCommand(branch="health"))
             call_kwargs = mock_cls.return_value.consolidate.call_args[1]
@@ -312,9 +290,7 @@ class TestConsolidateMemoryCommand:
         mock_result.new_facts_created = 0
         mock_result.errors = []
 
-        with patch(
-            "jarvis_engine.learning.consolidator.MemoryConsolidator"
-        ) as mock_cls:
+        with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls:
             mock_cls.return_value.consolidate.return_value = mock_result
             handler.handle(ConsolidateMemoryCommand(dry_run=True))
             call_kwargs = mock_cls.return_value.consolidate.call_args[1]
@@ -328,9 +304,7 @@ class TestConsolidateMemoryCommand:
         mock_engine = MagicMock()
         mock_kg = MagicMock()
         handler = ConsolidateMemoryHandler(
-            tmp_path,
-            engine=mock_engine,
-            kg=mock_kg,
+            tmp_path, engine=mock_engine, kg=mock_kg,
         )
 
         mock_result = MagicMock()
@@ -339,10 +313,8 @@ class TestConsolidateMemoryCommand:
         mock_result.new_facts_created = 0
         mock_result.errors = []
 
-        with (
-            patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls,
-            patch("jarvis_engine.knowledge.regression.RegressionChecker") as mock_rc,
-        ):
+        with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls, \
+             patch("jarvis_engine.knowledge.regression.RegressionChecker") as mock_rc:
             mock_cls.return_value.consolidate.return_value = mock_result
             handler.handle(ConsolidateMemoryCommand())
             mock_rc.assert_called_once_with(mock_kg)
@@ -362,17 +334,13 @@ class TestConsolidateMemoryCommand:
         mock_result.new_facts_created = 2
         mock_result.errors = []
 
-        with (
-            patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls,
-            patch("jarvis_engine.activity_feed.log_activity") as mock_log,
-        ):
+        with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls, \
+             patch("jarvis_engine.activity_feed.log_activity") as mock_log:
             mock_cls.return_value.consolidate.return_value = mock_result
             handler.handle(ConsolidateMemoryCommand())
             mock_log.assert_called_once()
             call_args = mock_log.call_args[0]
-            assert "consolidation" in str(
-                call_args[0]
-            ).lower() or "CONSOLIDATION" in str(call_args[0])
+            assert "consolidation" in str(call_args[0]).lower() or "CONSOLIDATION" in str(call_args[0])
 
     def test_handler_reports_errors(self, tmp_path):
         """Handler message reflects errors when consolidation fails partially."""
@@ -388,9 +356,7 @@ class TestConsolidateMemoryCommand:
         mock_result.new_facts_created = 2
         mock_result.errors = ["fetch failed: timeout"]
 
-        with patch(
-            "jarvis_engine.learning.consolidator.MemoryConsolidator"
-        ) as mock_cls:
+        with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls:
             mock_cls.return_value.consolidate.return_value = mock_result
             result = handler.handle(ConsolidateMemoryCommand())
             assert "error" in result.message.lower()
@@ -413,7 +379,6 @@ class TestConsolidateCLI:
 
         with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
-
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=False)
 
         assert rc == 0
@@ -435,7 +400,6 @@ class TestConsolidateCLI:
 
         with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
-
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=False)
 
         assert rc == 2
@@ -455,7 +419,6 @@ class TestConsolidateCLI:
 
         with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_consolidate
-
             rc = cmd_consolidate(branch="", max_groups=20, dry_run=True)
 
         assert rc == 0
@@ -474,7 +437,6 @@ class TestProactiveDiagnostics:
 
     def _make_handler(self, tmp_path):
         from jarvis_engine.handlers.proactive_handlers import ProactiveCheckHandler
-
         mock_engine = MagicMock()
         mock_engine.evaluate.return_value = []
         return ProactiveCheckHandler(tmp_path, proactive_engine=mock_engine)
@@ -488,12 +450,8 @@ class TestProactiveDiagnostics:
     def test_empty_medications_diagnostic(self, tmp_path):
         """Empty medications array produces diagnostic message."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [], "bills": [1], "calendar_events": [1], "tasks": [1]},
-        )
+        self._write_snapshot(tmp_path, {"medications": [], "bills": [1], "calendar_events": [1], "tasks": [1]})
 
         result = handler.handle(ProactiveCheckCommand())
         assert "medication_reminder" in result.diagnostics
@@ -502,12 +460,8 @@ class TestProactiveDiagnostics:
     def test_empty_bills_diagnostic(self, tmp_path):
         """Empty bills array produces diagnostic message."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [1], "bills": [], "calendar_events": [1], "tasks": [1]},
-        )
+        self._write_snapshot(tmp_path, {"medications": [1], "bills": [], "calendar_events": [1], "tasks": [1]})
 
         result = handler.handle(ProactiveCheckCommand())
         assert "bill_due_alert" in result.diagnostics
@@ -516,12 +470,8 @@ class TestProactiveDiagnostics:
     def test_empty_calendar_diagnostic(self, tmp_path):
         """Empty calendar_events produces diagnostic."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [1], "bills": [1], "calendar_events": [], "tasks": [1]},
-        )
+        self._write_snapshot(tmp_path, {"medications": [1], "bills": [1], "calendar_events": [], "tasks": [1]})
 
         result = handler.handle(ProactiveCheckCommand())
         assert "calendar_prep" in result.diagnostics
@@ -529,12 +479,8 @@ class TestProactiveDiagnostics:
     def test_empty_tasks_diagnostic(self, tmp_path):
         """Empty tasks produces diagnostic."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [1], "bills": [1], "calendar_events": [1], "tasks": []},
-        )
+        self._write_snapshot(tmp_path, {"medications": [1], "bills": [1], "calendar_events": [1], "tasks": []})
 
         result = handler.handle(ProactiveCheckCommand())
         assert "urgent_task_alert" in result.diagnostics
@@ -542,12 +488,8 @@ class TestProactiveDiagnostics:
     def test_all_empty_shows_all_diagnostics(self, tmp_path):
         """All data sources empty shows all diagnostics."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [], "bills": [], "calendar_events": [], "tasks": []},
-        )
+        self._write_snapshot(tmp_path, {"medications": [], "bills": [], "calendar_events": [], "tasks": []})
 
         result = handler.handle(ProactiveCheckCommand())
         assert "medication_reminder" in result.diagnostics
@@ -559,12 +501,8 @@ class TestProactiveDiagnostics:
     def test_all_populated_no_diagnostic(self, tmp_path):
         """All data sources populated shows 'All data sources populated'."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [1], "bills": [1], "calendar_events": [1], "tasks": [1]},
-        )
+        self._write_snapshot(tmp_path, {"medications": [1], "bills": [1], "calendar_events": [1], "tasks": [1]})
 
         result = handler.handle(ProactiveCheckCommand())
         assert result.diagnostics == ""
@@ -573,21 +511,14 @@ class TestProactiveDiagnostics:
     def test_connectors_not_ready(self, tmp_path):
         """Connectors not ready are included in diagnostics."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {
-                "medications": [1],
-                "bills": [1],
-                "calendar_events": [1],
-                "tasks": [1],
-                "connector_statuses": [
-                    {"name": "google_calendar", "ready": True},
-                    {"name": "email_imap", "ready": False},
-                ],
-            },
-        )
+        self._write_snapshot(tmp_path, {
+            "medications": [1], "bills": [1], "calendar_events": [1], "tasks": [1],
+            "connector_statuses": [
+                {"name": "google_calendar", "ready": True},
+                {"name": "email_imap", "ready": False},
+            ],
+        })
 
         result = handler.handle(ProactiveCheckCommand())
         assert "email_imap" in result.diagnostics
@@ -607,15 +538,7 @@ class TestProactiveDiagnostics:
         mock_engine = MagicMock()
         mock_engine.evaluate.return_value = [mock_alert]
         handler = ProactiveCheckHandler(tmp_path, proactive_engine=mock_engine)
-        self._write_snapshot(
-            tmp_path,
-            {
-                "medications": [{"name": "test"}],
-                "bills": [],
-                "calendar_events": [],
-                "tasks": [],
-            },
-        )
+        self._write_snapshot(tmp_path, {"medications": [{"name": "test"}], "bills": [], "calendar_events": [], "tasks": []})
 
         result = handler.handle(ProactiveCheckCommand())
         assert result.alerts_fired == 1
@@ -624,12 +547,8 @@ class TestProactiveDiagnostics:
     def test_missing_connector_statuses_key(self, tmp_path):
         """Graceful when connector_statuses key is missing."""
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
-
         handler = self._make_handler(tmp_path)
-        self._write_snapshot(
-            tmp_path,
-            {"medications": [1], "bills": [1], "calendar_events": [1], "tasks": [1]},
-        )
+        self._write_snapshot(tmp_path, {"medications": [1], "bills": [1], "calendar_events": [1], "tasks": [1]})
         # No connector_statuses key at all
 
         result = handler.handle(ProactiveCheckCommand())
@@ -655,7 +574,6 @@ class TestProactiveDiagnostics:
 
         with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_proactive_check
-
             rc = cmd_proactive_check(snapshot_path="")
 
         assert rc == 0
@@ -679,10 +597,8 @@ class TestConsolidateRegisteredOnBus:
         brain_dir = tmp_path / ".planning" / "brain"
         brain_dir.mkdir(parents=True)
 
-        with (
-            patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed,
-            patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine,
-        ):
+        with patch("jarvis_engine.memory.embeddings.EmbeddingService") as mock_embed, \
+             patch("jarvis_engine.memory.engine.MemoryEngine") as mock_engine:
             mock_embed.return_value = MagicMock()
             me = MagicMock()
             me._db = MagicMock()
@@ -691,13 +607,10 @@ class TestConsolidateRegisteredOnBus:
             mock_engine.return_value = me
 
             from jarvis_engine.app import create_app
-
             bus = create_app(tmp_path)
 
             # Should not raise — command is registered
-            with patch(
-                "jarvis_engine.learning.consolidator.MemoryConsolidator"
-            ) as mock_cls:
+            with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls:
                 mock_r = MagicMock()
                 mock_r.groups_found = 0
                 mock_r.records_consolidated = 0
@@ -716,7 +629,6 @@ class TestDaemonConsolidationUsesBus:
         # Read the relevant section of main.py and verify it uses CQRS
         import inspect
         from jarvis_engine import main as main_mod
-
         source = inspect.getsource(main_mod)
         # After refactor, daemon should use ConsolidateMemoryCommand, not MemoryConsolidator directly
         assert "ConsolidateMemoryCommand" in source

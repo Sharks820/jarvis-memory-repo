@@ -32,7 +32,7 @@ class Notifier:
         except ImportError:
             logger.info("[%s] %s: %s", self._app_name, title, message)
             return False
-        except Exception as exc:
+        except (RuntimeError, OSError) as exc:
             logger.warning("Failed to send notification: %s", exc)
             return False
 

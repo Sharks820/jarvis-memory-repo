@@ -110,7 +110,9 @@ class TestContentDedup:
         assert rec2.deduplicated is False
         assert rec1.record_id != rec2.record_id
 
-    def test_different_kind_not_deduplicated(self, pipeline: IngestionPipeline) -> None:
+    def test_different_kind_not_deduplicated(
+        self, pipeline: IngestionPipeline
+    ) -> None:
         """Same content with different kinds should produce different hashes."""
         rec1 = pipeline.ingest("user", "episodic", "t1", "shared content")
         rec2 = pipeline.ingest("user", "semantic", "t1", "shared content")
@@ -162,7 +164,9 @@ class TestDedupCacheEviction:
         # After eviction: 50,001 - 25,000 = 25,001 entries
         assert len(pipeline._seen_hashes) == 25_001
 
-    def test_cache_preserves_newest_entries(self, pipeline: IngestionPipeline) -> None:
+    def test_cache_preserves_newest_entries(
+        self, pipeline: IngestionPipeline
+    ) -> None:
         """After eviction, the newest entries should still be present."""
         # Pre-populate with 50,000 entries
         for i in range(50_000):
@@ -194,7 +198,9 @@ class TestDedupCacheEviction:
 
 
 class TestThreadSafety:
-    def test_concurrent_ingests_no_crash(self, mock_store: MagicMock) -> None:
+    def test_concurrent_ingests_no_crash(
+        self, mock_store: MagicMock
+    ) -> None:
         """Multiple threads ingesting concurrently should not raise exceptions."""
         pipeline = IngestionPipeline(mock_store)
         errors: list[Exception] = []
@@ -216,7 +222,9 @@ class TestThreadSafety:
 
         assert errors == [], f"Concurrent ingest errors: {errors}"
 
-    def test_concurrent_dedup_consistent(self, mock_store: MagicMock) -> None:
+    def test_concurrent_dedup_consistent(
+        self, mock_store: MagicMock
+    ) -> None:
         """Concurrent identical ingests should all see the same record_id."""
         pipeline = IngestionPipeline(mock_store)
         results: list[IngestRecord] = []
@@ -244,7 +252,9 @@ class TestThreadSafety:
 
 
 class TestContentRedaction:
-    def test_short_content_not_truncated(self, pipeline: IngestionPipeline) -> None:
+    def test_short_content_not_truncated(
+        self, pipeline: IngestionPipeline
+    ) -> None:
         """Content <= 200 chars should appear in full without truncation marker."""
         short = "x" * 200
         result = pipeline._redacted_content(short)
@@ -259,13 +269,17 @@ class TestContentRedaction:
         assert result.endswith("...(truncated)")
         assert result.startswith("x" * 200)
 
-    def test_exact_boundary_200_chars(self, pipeline: IngestionPipeline) -> None:
+    def test_exact_boundary_200_chars(
+        self, pipeline: IngestionPipeline
+    ) -> None:
         """Exactly 200 chars should NOT be truncated."""
         exact = "a" * 200
         result = pipeline._redacted_content(exact)
         assert result == exact
 
-    def test_one_over_boundary_truncated(self, pipeline: IngestionPipeline) -> None:
+    def test_one_over_boundary_truncated(
+        self, pipeline: IngestionPipeline
+    ) -> None:
         """201 chars should be truncated."""
         content = "a" * 201
         result = pipeline._redacted_content(content)
@@ -359,7 +373,9 @@ class TestContentHash:
         h2 = pipeline._content_hash("user", "episodic", "t1", "hello")
         assert h1 == h2
 
-    def test_hash_changes_with_content(self, pipeline: IngestionPipeline) -> None:
+    def test_hash_changes_with_content(
+        self, pipeline: IngestionPipeline
+    ) -> None:
         h1 = pipeline._content_hash("user", "episodic", "t1", "hello")
         h2 = pipeline._content_hash("user", "episodic", "t1", "world")
         assert h1 != h2

@@ -11,13 +11,11 @@ import numpy as np
 # 62. VAD: record_from_microphone stops early on silence after speech
 # ---------------------------------------------------------------------------
 
-
 def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
     """record_from_microphone stops early when silence follows speech."""
     from jarvis_engine.stt import record_from_microphone
 
     call_count = [0]
-
     # First 3 chunks: speech (RMS > threshold), next 25 chunks: silence
     # With silence_duration=2.0 and chunk_duration=0.1, need 20 silence chunks
     def mock_read(n):
@@ -38,12 +36,7 @@ def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with patch(
-        "builtins.__import__",
-        side_effect=lambda name, *a, **kw: (
-            mock_sd if name == "sounddevice" else __import__(name, *a, **kw)
-        ),
-    ):
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
         audio = record_from_microphone(
             max_duration_seconds=30.0,
             silence_threshold=0.01,
@@ -59,13 +52,11 @@ def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
 # 63. VAD: record_from_microphone records full duration when no speech
 # ---------------------------------------------------------------------------
 
-
 def test_record_microphone_vad_no_speech_records_full() -> None:
     """When no speech is detected, recording continues for max_duration."""
     from jarvis_engine.stt import record_from_microphone
 
     call_count = [0]
-
     def mock_read(n):
         call_count[0] += 1
         chunk = np.zeros((n, 1), dtype=np.float32)
@@ -79,12 +70,7 @@ def test_record_microphone_vad_no_speech_records_full() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with patch(
-        "builtins.__import__",
-        side_effect=lambda name, *a, **kw: (
-            mock_sd if name == "sounddevice" else __import__(name, *a, **kw)
-        ),
-    ):
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
         audio = record_from_microphone(
             max_duration_seconds=2.0,  # 2s = 20 chunks
             silence_threshold=0.01,
@@ -99,13 +85,11 @@ def test_record_microphone_vad_no_speech_records_full() -> None:
 # 64. VAD: record_from_microphone honors minimum recording duration
 # ---------------------------------------------------------------------------
 
-
 def test_record_microphone_vad_minimum_recording() -> None:
     """Recording always captures at least 0.5s even if silence detected immediately."""
     from jarvis_engine.stt import record_from_microphone
 
     call_count = [0]
-
     def mock_read(n):
         call_count[0] += 1
         if call_count[0] == 1:
@@ -123,12 +107,7 @@ def test_record_microphone_vad_minimum_recording() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with patch(
-        "builtins.__import__",
-        side_effect=lambda name, *a, **kw: (
-            mock_sd if name == "sounddevice" else __import__(name, *a, **kw)
-        ),
-    ):
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
         audio = record_from_microphone(
             max_duration_seconds=30.0,
             silence_threshold=0.01,
@@ -143,7 +122,6 @@ def test_record_microphone_vad_minimum_recording() -> None:
 # 65. VAD: record_from_microphone returns empty on no frames
 # ---------------------------------------------------------------------------
 
-
 def test_record_microphone_vad_returns_empty_array_on_zero_duration() -> None:
     """record_from_microphone returns empty array when max_duration is 0."""
     from jarvis_engine.stt import record_from_microphone
@@ -155,12 +133,7 @@ def test_record_microphone_vad_returns_empty_array_on_zero_duration() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with patch(
-        "builtins.__import__",
-        side_effect=lambda name, *a, **kw: (
-            mock_sd if name == "sounddevice" else __import__(name, *a, **kw)
-        ),
-    ):
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
         audio = record_from_microphone(
             max_duration_seconds=0.0,
             silence_threshold=0.01,
@@ -179,7 +152,6 @@ def test_record_microphone_vad_returns_empty_array_on_zero_duration() -> None:
 # ---------------------------------------------------------------------------
 # record_from_microphone uses Silero VAD when available
 # ---------------------------------------------------------------------------
-
 
 def test_record_from_microphone_with_silero_vad() -> None:
     """record_from_microphone uses Silero VAD for speech detection."""
@@ -203,11 +175,9 @@ def test_record_from_microphone_with_silero_vad() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with (
-        patch.dict("sys.modules", {"sounddevice": mock_sd}),
-        patch("jarvis_engine.stt.get_vad_detector", return_value=mock_vad, create=True),
-        patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad),
-    ):
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt.get_vad_detector", return_value=mock_vad, create=True), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
         result = stt_mod.record_from_microphone()
 
     assert len(result) > 0
@@ -220,7 +190,6 @@ def test_record_from_microphone_with_silero_vad() -> None:
 # ---------------------------------------------------------------------------
 # record_from_microphone falls back to RMS when Silero unavailable
 # ---------------------------------------------------------------------------
-
 
 def test_record_from_microphone_rms_fallback() -> None:
     """record_from_microphone uses RMS energy when Silero VAD unavailable."""
@@ -254,10 +223,8 @@ def test_record_from_microphone_rms_fallback() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with (
-        patch.dict("sys.modules", {"sounddevice": mock_sd}),
-        patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad),
-    ):
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
         result = stt_mod.record_from_microphone()
 
     assert len(result) > 0
@@ -270,7 +237,6 @@ def test_record_from_microphone_rms_fallback() -> None:
 # ---------------------------------------------------------------------------
 # record_from_microphone uses 32ms chunks when Silero is active
 # ---------------------------------------------------------------------------
-
 
 def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
     """When Silero VAD is active, chunk size is 512 samples (32ms at 16kHz)."""
@@ -290,10 +256,8 @@ def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with (
-        patch.dict("sys.modules", {"sounddevice": mock_sd}),
-        patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad),
-    ):
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone()
 
     # stream.read should be called with 512 samples (32ms at 16kHz)
@@ -304,7 +268,6 @@ def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
 # ---------------------------------------------------------------------------
 # record_from_microphone RMS fallback uses 100ms chunks
 # ---------------------------------------------------------------------------
-
 
 def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
     """When RMS fallback is active, chunk size is 1600 samples (100ms at 16kHz)."""
@@ -334,10 +297,8 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with (
-        patch.dict("sys.modules", {"sounddevice": mock_sd}),
-        patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad),
-    ):
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone()
 
     # stream.read should be called with 1600 samples (100ms at 16kHz)
@@ -348,7 +309,6 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
 # ---------------------------------------------------------------------------
 # record_from_microphone resets VAD state after recording
 # ---------------------------------------------------------------------------
-
 
 def test_record_from_microphone_resets_vad_state() -> None:
     """VAD state is reset after recording completes (stateful model)."""
@@ -368,10 +328,8 @@ def test_record_from_microphone_resets_vad_state() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with (
-        patch.dict("sys.modules", {"sounddevice": mock_sd}),
-        patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad),
-    ):
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone(max_duration_seconds=0.1)
 
     mock_vad.reset.assert_called_once()
@@ -380,7 +338,6 @@ def test_record_from_microphone_resets_vad_state() -> None:
 # ---------------------------------------------------------------------------
 # record_from_microphone graceful when stt_vad import fails entirely
 # ---------------------------------------------------------------------------
-
 
 def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
     """If stt_vad module fails to import, falls back to RMS."""
@@ -406,13 +363,8 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    with (
-        patch.dict("sys.modules", {"sounddevice": mock_sd}),
-        patch(
-            "jarvis_engine.stt_vad.get_vad_detector",
-            side_effect=ImportError("no module"),
-        ),
-    ):
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
+         patch("jarvis_engine.stt_vad.get_vad_detector", side_effect=ImportError("no module")):
         result = stt_mod.record_from_microphone()
 
     # Should still produce audio (fell back to RMS)

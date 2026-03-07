@@ -36,21 +36,13 @@ class RuntimeControlHandler:
         self._root = root
 
     def handle(self, cmd: RuntimeControlCommand) -> RuntimeControlResult:
-        from jarvis_engine.runtime_control import (
-            read_control_state,
-            reset_control_state,
-            write_control_state,
-        )
+        from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
 
         # Reject conflicting flags
         if cmd.pause and cmd.resume:
-            return RuntimeControlResult(
-                state={"error": "Cannot pause and resume simultaneously."}
-            )
+            return RuntimeControlResult(state={"error": "Cannot pause and resume simultaneously."})
         if cmd.safe_on and cmd.safe_off:
-            return RuntimeControlResult(
-                state={"error": "Cannot enable and disable safe mode simultaneously."}
-            )
+            return RuntimeControlResult(state={"error": "Cannot enable and disable safe mode simultaneously."})
 
         if cmd.reset:
             state = reset_control_state(self._root)
@@ -92,9 +84,7 @@ class OwnerGuardHandler:
 
         try:
             if cmd.set_master_password_value.strip():
-                state = set_master_password(
-                    self._root, cmd.set_master_password_value.strip()
-                )
+                state = set_master_password(self._root, cmd.set_master_password_value.strip())
             elif cmd.clear_master_password_value:
                 state = clear_master_password(self._root)
             elif cmd.trust_device.strip():
@@ -104,15 +94,11 @@ class OwnerGuardHandler:
             elif cmd.enable:
                 if not cmd.owner_user.strip():
                     return OwnerGuardResult(return_code=2)
-                state = write_owner_guard(
-                    self._root, enabled=True, owner_user_id=cmd.owner_user.strip()
-                )
+                state = write_owner_guard(self._root, enabled=True, owner_user_id=cmd.owner_user.strip())
             elif cmd.disable:
                 state = write_owner_guard(self._root, enabled=False)
             elif cmd.owner_user.strip():
-                state = write_owner_guard(
-                    self._root, owner_user_id=cmd.owner_user.strip()
-                )
+                state = write_owner_guard(self._root, owner_user_id=cmd.owner_user.strip())
             else:
                 state = read_owner_guard(self._root)
         except ValueError as exc:
@@ -126,10 +112,7 @@ class ConnectStatusHandler:
         self._root = root
 
     def handle(self, cmd: ConnectStatusCommand) -> ConnectStatusResult:
-        from jarvis_engine.connectors import (
-            build_connector_prompts,
-            evaluate_connector_statuses,
-        )
+        from jarvis_engine.connectors import build_connector_prompts, evaluate_connector_statuses
 
         statuses = evaluate_connector_statuses(self._root)
         prompts = build_connector_prompts(statuses)
@@ -168,10 +151,7 @@ class ConnectBootstrapHandler:
     def handle(self, cmd: ConnectBootstrapCommand) -> ConnectBootstrapResult:
         import webbrowser
 
-        from jarvis_engine.connectors import (
-            build_connector_prompts,
-            evaluate_connector_statuses,
-        )
+        from jarvis_engine.connectors import build_connector_prompts, evaluate_connector_statuses
 
         statuses = evaluate_connector_statuses(self._root)
         prompts = build_connector_prompts(statuses)
@@ -240,9 +220,7 @@ class PhoneSpamGuardHandler:
             logger.warning("PhoneSpamGuard call log parse failed: %s", exc)
             return PhoneSpamGuardResult(return_code=2)
         candidates = detect_spam_candidates(call_log)
-        actions = build_spam_block_actions(
-            candidates, threshold=cmd.threshold, add_global_silence_rule=True
-        )
+        actions = build_spam_block_actions(candidates, threshold=cmd.threshold, add_global_silence_rule=True)
         write_spam_report(cmd.report_path, candidates, actions, cmd.threshold)
         if actions and cmd.queue_actions:
             append_phone_actions(cmd.queue_path, actions)
@@ -262,9 +240,7 @@ class PersonaConfigHandler:
 
         # Reject conflicting flags
         if cmd.enable and cmd.disable:
-            return PersonaConfigResult(
-                config={"error": "Cannot enable and disable persona simultaneously."}
-            )
+            return PersonaConfigResult(config={"error": "Cannot enable and disable persona simultaneously."})
 
         enabled_opt: bool | None = None
         if cmd.enable:
@@ -275,12 +251,7 @@ class PersonaConfigHandler:
         mode_val = cmd.mode.strip() or None
         style_val = cmd.style.strip() or None
 
-        if (
-            enabled_opt is not None
-            or cmd.humor_level is not None
-            or mode_val
-            or style_val
-        ):
+        if enabled_opt is not None or cmd.humor_level is not None or mode_val or style_val:
             cfg = save_persona_config(
                 self._root,
                 enabled=enabled_opt,

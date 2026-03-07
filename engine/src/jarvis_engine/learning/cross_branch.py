@@ -61,12 +61,10 @@ def cross_branch_query(
     branches_seen: set[str] = set()
 
     for record_id, distance in vec_results[:k]:
-        direct_results.append(
-            {
-                "record_id": record_id,
-                "distance": distance,
-            }
-        )
+        direct_results.append({
+            "record_id": record_id,
+            "distance": distance,
+        })
 
         # Look for KG neighbors in other branches
         # Check if this record has a provenance node in the graph
@@ -85,15 +83,13 @@ def cross_branch_query(
             if neighbor_branch and neighbor_branch != source_branch:
                 branches_seen.add(neighbor_branch)
                 edge_data = G.edges[provenance_id, neighbor]
-                cross_branch_connections.append(
-                    {
-                        "source": provenance_id,
-                        "target": neighbor,
-                        "source_branch": source_branch or "unknown",
-                        "target_branch": neighbor_branch,
-                        "relation": edge_data.get("relation", "related"),
-                    }
-                )
+                cross_branch_connections.append({
+                    "source": provenance_id,
+                    "target": neighbor,
+                    "source_branch": source_branch or "unknown",
+                    "target_branch": neighbor_branch,
+                    "relation": edge_data.get("relation", "related"),
+                })
 
         # Also check predecessors (incoming edges)
         for predecessor in G.predecessors(provenance_id):
@@ -101,15 +97,13 @@ def cross_branch_query(
             if pred_branch and pred_branch != source_branch:
                 branches_seen.add(pred_branch)
                 edge_data = G.edges[predecessor, provenance_id]
-                cross_branch_connections.append(
-                    {
-                        "source": predecessor,
-                        "target": provenance_id,
-                        "source_branch": pred_branch,
-                        "target_branch": source_branch or "unknown",
-                        "relation": edge_data.get("relation", "related"),
-                    }
-                )
+                cross_branch_connections.append({
+                    "source": predecessor,
+                    "target": provenance_id,
+                    "source_branch": pred_branch,
+                    "target_branch": source_branch or "unknown",
+                    "relation": edge_data.get("relation", "related"),
+                })
 
     return {
         "direct_results": direct_results,
@@ -167,16 +161,11 @@ def create_cross_branch_edges(
                        WHERE label LIKE ? ESCAPE '\\'
                        AND node_id NOT LIKE ? ESCAPE '\\'
                        LIMIT 10""",
-                    (
-                        f"%{safe_keyword}%",
-                        f"{safe_branch}.%" if source_branch else new_fact_id,
-                    ),
+                    (f"%{safe_keyword}%", f"{safe_branch}.%" if source_branch else new_fact_id),
                 )
                 matches = cursor.fetchall()
         except Exception as exc:
-            logger.warning(
-                "Cross-branch keyword search failed for %r: %s", keyword, exc
-            )
+            logger.warning("Cross-branch keyword search failed for %r: %s", keyword, exc)
             continue
 
         for match in matches:
@@ -236,7 +225,10 @@ def _extract_keywords(label: str) -> list[str]:
     words = re.findall(r"[a-zA-Z]+", label.lower())
 
     # Filter short words and stop words
-    keywords = [w for w in words if len(w) >= _MIN_KEYWORD_LEN and w not in _STOP_WORDS]
+    keywords = [
+        w for w in words
+        if len(w) >= _MIN_KEYWORD_LEN and w not in _STOP_WORDS
+    ]
 
     # Deduplicate while preserving order
     seen: set[str] = set()

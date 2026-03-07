@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -30,18 +31,13 @@ logger = logging.getLogger(__name__)
 class LearnInteractionHandler:
     """Delegates LearnInteractionCommand to ConversationLearningEngine."""
 
-    def __init__(
-        self, root: Path, learning_engine: Optional[ConversationLearningEngine] = None
-    ) -> None:
+    def __init__(self, root: Path, learning_engine: Optional[ConversationLearningEngine] = None) -> None:
         self._root = root
         self._learning_engine = learning_engine
 
     def handle(self, cmd: LearnInteractionCommand) -> LearnInteractionResult:
         if self._learning_engine is None:
-            logger.warning(
-                "LearnInteractionCommand dropped: learning engine not available (task=%s)",
-                cmd.task_id,
-            )
+            logger.warning("LearnInteractionCommand dropped: learning engine not available (task=%s)", cmd.task_id)
             return LearnInteractionResult(
                 message="Learning engine not available.",
             )
@@ -56,13 +52,9 @@ class LearnInteractionHandler:
         records = result.get("records_created", 0)
         error = result.get("error", "")
         if records > 0:
-            logger.info(
-                "Learned %d record(s) from interaction (task=%s)", records, cmd.task_id
-            )
+            logger.info("Learned %d record(s) from interaction (task=%s)", records, cmd.task_id)
         elif error:
-            logger.warning(
-                "Learning produced 0 records (task=%s): %s", cmd.task_id, error
-            )
+            logger.warning("Learning produced 0 records (task=%s): %s", cmd.task_id, error)
         return LearnInteractionResult(
             records_created=records,
             message=error or "ok",
@@ -168,10 +160,9 @@ class ConsolidateMemoryHandler:
         if self._kg is not None:
             try:
                 from jarvis_engine.knowledge.regression import RegressionChecker
-
                 rc_checker = RegressionChecker(self._kg)
                 rc_checker.backup_graph(tag="pre-consolidation")
-            except Exception as exc:
+            except (sqlite3.Error, OSError) as exc:
                 logger.warning("KG backup before consolidation failed: %s", exc)
 
         consolidator = MemoryConsolidator(
@@ -188,7 +179,6 @@ class ConsolidateMemoryHandler:
         # Log to activity feed
         try:
             from jarvis_engine.activity_feed import log_activity, ActivityCategory
-
             log_activity(
                 ActivityCategory.CONSOLIDATION,
                 f"Memory consolidation: {result.new_facts_created} facts from {result.groups_found} groups",
@@ -198,7 +188,7 @@ class ConsolidateMemoryHandler:
                     "new_facts_created": result.new_facts_created,
                 },
             )
-        except Exception as exc:
+        except (ImportError, OSError) as exc:
             logger.debug("Activity feed logging for consolidation failed: %s", exc)
 
         return ConsolidateMemoryResult(

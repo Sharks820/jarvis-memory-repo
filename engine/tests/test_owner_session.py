@@ -17,7 +17,6 @@ from jarvis_engine.security.owner_session import OwnerSessionManager
 # Helpers — deterministic clock
 # ---------------------------------------------------------------------------
 
-
 class _MockClock:
     """Deterministic replacement for ``time.monotonic``."""
 
@@ -235,7 +234,9 @@ def test_lockout_exponential_backoff(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
 
-    mgr = OwnerSessionManager(max_failures=2, lockout_duration=1, force_pbkdf2=True)
+    mgr = OwnerSessionManager(
+        max_failures=2, lockout_duration=1, force_pbkdf2=True
+    )
     mgr.set_password("correct")
 
     # First lockout: 2 failures -> locked for 1s (base * 2^0 = 1s)

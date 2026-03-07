@@ -22,3 +22,4 @@ def test_nonlocal_only_allowed_with_explicit_env(monkeypatch) -> None:
     assert is_safe_ollama_endpoint("https://example.com:11434")
     monkeypatch.setenv("JARVIS_ALLOW_NONLOCAL_OLLAMA_ENDPOINT", "")
     assert not is_safe_ollama_endpoint("https://example.com:11434")
+

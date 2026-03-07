@@ -21,7 +21,6 @@ from typing import Any, Dict, List, Optional, Type, get_type_hints, Union
 @dataclass
 class HealthResponse:
     """GET /health response."""
-
     ok: bool = True
     status: str = ""
     intelligence: Optional[Dict[str, Any]] = None
@@ -30,7 +29,6 @@ class HealthResponse:
 @dataclass
 class BootstrapSession:
     """Nested session credentials within BootstrapResponse."""
-
     base_url: str = ""
     token: str = ""
     signing_key: str = ""
@@ -41,7 +39,6 @@ class BootstrapSession:
 @dataclass
 class BootstrapResponse:
     """POST /bootstrap response."""
-
     ok: bool = False
     session: Optional[Dict[str, Any]] = None
     owner_guard: Optional[Dict[str, Any]] = None
@@ -51,7 +48,6 @@ class BootstrapResponse:
 @dataclass
 class CommandResponse:
     """POST /command response."""
-
     ok: bool = False
     lifecycle_state: str = ""
     intent: str = ""
@@ -76,7 +72,6 @@ class CommandResponse:
 @dataclass
 class SettingsResponse:
     """GET /settings and POST /settings response."""
-
     ok: bool = True
     settings: Optional[Dict[str, Any]] = None
 
@@ -84,7 +79,6 @@ class SettingsResponse:
 @dataclass
 class DashboardResponse:
     """GET /dashboard response."""
-
     ok: bool = True
     dashboard: Optional[Dict[str, Any]] = None
 
@@ -92,7 +86,6 @@ class DashboardResponse:
 @dataclass
 class SpamCandidatesResponse:
     """GET /spam/candidates response."""
-
     ok: bool = False
     candidates: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -100,7 +93,6 @@ class SpamCandidatesResponse:
 @dataclass
 class CertFingerprintResponse:
     """GET /cert-fingerprint response."""
-
     ok: bool = True
     fingerprint: str = ""
     algorithm: str = "sha256"
@@ -109,7 +101,6 @@ class CertFingerprintResponse:
 @dataclass
 class IngestResponse:
     """POST /ingest response."""
-
     ok: bool = True
     record_id: str = ""
     ts: str = ""
@@ -121,7 +112,6 @@ class IngestResponse:
 @dataclass
 class ProcessesResponse:
     """GET /processes response."""
-
     ok: bool = True
     services: List[Dict[str, Any]] = field(default_factory=list)
     control: Dict[str, Any] = field(default_factory=dict)
@@ -130,7 +120,6 @@ class ProcessesResponse:
 @dataclass
 class SyncPullResponse:
     """POST /sync/pull response."""
-
     ok: bool = True
     encrypted_payload: str = ""
     new_cursors: Dict[str, Any] = field(default_factory=dict)
@@ -140,7 +129,6 @@ class SyncPullResponse:
 @dataclass
 class SyncPushResponse:
     """POST /sync/push response."""
-
     ok: bool = True
     applied: int = 0
     conflicts_resolved: int = 0
@@ -150,7 +138,6 @@ class SyncPushResponse:
 @dataclass
 class SyncStatusResponse:
     """GET /sync/status response."""
-
     ok: bool = True
     sync_status: Optional[Dict[str, Any]] = None
 
@@ -158,7 +145,6 @@ class SyncStatusResponse:
 @dataclass
 class ErrorResponse:
     """Generic error response from any endpoint."""
-
     ok: bool = False
     error: str = ""
 
@@ -290,9 +276,7 @@ def validate_contract(endpoint_name: str, response_dict: Dict[str, Any]) -> List
         elif expected_type == "int" and not isinstance(value, int):
             # Allow float for int fields (JSON has no int/float distinction)
             if not isinstance(value, (int, float)):
-                errors.append(
-                    f"Field {fname}: expected int, got {type(value).__name__}"
-                )
+                errors.append(f"Field {fname}: expected int, got {type(value).__name__}")
         elif expected_type == "float" and not isinstance(value, (int, float)):
             errors.append(f"Field {fname}: expected float, got {type(value).__name__}")
 
@@ -363,21 +347,14 @@ def get_android_expected_fields() -> Dict[str, List[str]]:
         "GET /health": ["status"],
         "POST /bootstrap": ["ok", "session", "message"],
         "POST /bootstrap.session": [
-            "base_url",
-            "token",
-            "signing_key",
-            "device_id",
-            "trusted_device",
+            "base_url", "token", "signing_key", "device_id", "trusted_device",
         ],
         "POST /command": ["ok", "intent", "stdout_tail"],
         "GET /settings": ["settings"],
         "GET /settings.settings": ["runtime_control", "gaming_mode"],
         "GET /dashboard": ["dashboard"],
         "GET /dashboard.dashboard": [
-            "jarvis",
-            "ranking",
-            "etas",
-            "memory_regression",
+            "jarvis", "ranking", "etas", "memory_regression",
         ],
         "GET /spam/candidates": ["ok", "candidates"],
         "GET /cert-fingerprint": ["ok", "fingerprint", "algorithm"],

@@ -124,23 +124,17 @@ class TestCrossBranchQueryHandler:
     """Tests for CrossBranchQueryHandler."""
 
     def test_no_engine_returns_error(self, tmp_path: Path) -> None:
-        handler = CrossBranchQueryHandler(
-            root=tmp_path, engine=None, kg=MagicMock(), embed_service=MagicMock()
-        )
+        handler = CrossBranchQueryHandler(root=tmp_path, engine=None, kg=MagicMock(), embed_service=MagicMock())
         result = handler.handle(CrossBranchQueryCommand(query="test"))
         assert "requires engine" in result.message.lower()
 
     def test_no_kg_returns_error(self, tmp_path: Path) -> None:
-        handler = CrossBranchQueryHandler(
-            root=tmp_path, engine=MagicMock(), kg=None, embed_service=MagicMock()
-        )
+        handler = CrossBranchQueryHandler(root=tmp_path, engine=MagicMock(), kg=None, embed_service=MagicMock())
         result = handler.handle(CrossBranchQueryCommand(query="test"))
         assert "requires" in result.message.lower()
 
     def test_no_embed_returns_error(self, tmp_path: Path) -> None:
-        handler = CrossBranchQueryHandler(
-            root=tmp_path, engine=MagicMock(), kg=MagicMock(), embed_service=None
-        )
+        handler = CrossBranchQueryHandler(root=tmp_path, engine=MagicMock(), kg=MagicMock(), embed_service=None)
         result = handler.handle(CrossBranchQueryCommand(query="test"))
         assert "requires" in result.message.lower()
 
@@ -176,15 +170,11 @@ class TestCrossBranchQueryHandler:
         kg = MagicMock()
         embed = MagicMock()
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}):
             handler = CrossBranchQueryHandler(
                 root=tmp_path, engine=engine, kg=kg, embed_service=embed
             )
-            result = handler.handle(
-                CrossBranchQueryCommand(query="quantum computing", k=5)
-            )
+            result = handler.handle(CrossBranchQueryCommand(query="quantum computing", k=5))
 
         assert result.message == "ok"
         assert len(result.direct_results) == 1
@@ -207,9 +197,7 @@ class TestCrossBranchQueryHandler:
             "branches_involved": [],
         }
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}):
             handler = CrossBranchQueryHandler(
                 root=tmp_path,
                 engine=MagicMock(),
@@ -226,9 +214,7 @@ class TestCrossBranchQueryHandler:
         mock_module = MagicMock()
         mock_module.cross_branch_query.return_value = {}
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}):
             handler = CrossBranchQueryHandler(
                 root=tmp_path,
                 engine=MagicMock(),
@@ -273,9 +259,7 @@ class TestFlagExpiredFactsHandler:
         mock_module = MagicMock()
         mock_module.flag_expired_facts.return_value = 7
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.temporal": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
             kg = MagicMock()
             handler = FlagExpiredFactsHandler(root=tmp_path, kg=kg)
             result = handler.handle(FlagExpiredFactsCommand())
@@ -288,9 +272,7 @@ class TestFlagExpiredFactsHandler:
         mock_module = MagicMock()
         mock_module.flag_expired_facts.return_value = 0
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.temporal": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
             handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock())
             result = handler.handle(FlagExpiredFactsCommand())
 
@@ -301,9 +283,7 @@ class TestFlagExpiredFactsHandler:
         mock_module = MagicMock()
         mock_module.flag_expired_facts.return_value = 500
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.temporal": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
             handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock())
             result = handler.handle(FlagExpiredFactsCommand())
 
@@ -317,9 +297,7 @@ class TestFlagExpiredFactsHandler:
 
         kg = MagicMock(name="my_kg")
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.learning.temporal": mock_module}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
             handler = FlagExpiredFactsHandler(root=tmp_path, kg=kg)
             handler.handle(FlagExpiredFactsCommand())
 

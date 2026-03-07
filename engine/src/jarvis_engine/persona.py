@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,11 +67,11 @@ def get_persona_prompt(cfg: "PersonaConfig") -> str:
     """
     if cfg.enabled:
         return (
-            PERSONA_BASE_PROMPT.rstrip() + " You are witty, knowledgeable. "
+            PERSONA_BASE_PROMPT.rstrip()
+            + " You are witty, knowledgeable. "
             "Never repeat the same phrases. Vary your language."
         )
     return PERSONA_DISABLED_PROMPT
-
 
 # Pre-computed reverse map: branch -> tone profile name
 _BRANCH_TO_TONE: dict[str, str] = {}
@@ -127,11 +126,12 @@ class PersonaConfig:
 
 def _persona_path(root: Path) -> Path:
     from jarvis_engine._constants import runtime_dir
-
     return runtime_dir(root) / "persona.json"
 
 
 def load_persona_config(root: Path) -> PersonaConfig:
+    from jarvis_engine._shared import load_json_file
+
     path = _persona_path(root)
     if not path.exists():
         return PersonaConfig(
@@ -141,12 +141,7 @@ def load_persona_config(root: Path) -> PersonaConfig:
             style="historically_witty_secret_agent",
             updated_utc="",
         )
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
+    raw = load_json_file(path, {}, expected_type=dict)
     raw = {
         "mode": raw.get("mode", "jarvis_british"),
         "enabled": raw.get("enabled", True),
@@ -184,14 +179,10 @@ def save_persona_config(
     else:
         humor_val = current.humor_level
     payload = {
-        "mode": current.mode
-        if mode is None
-        else str(mode).strip()[:64] or current.mode,
+        "mode": current.mode if mode is None else str(mode).strip()[:64] or current.mode,
         "enabled": current.enabled if enabled is None else bool(enabled),
         "humor_level": humor_val,
-        "style": current.style
-        if style is None
-        else str(style).strip()[:80] or current.style,
+        "style": current.style if style is None else str(style).strip()[:80] or current.style,
         "updated_utc": _now_iso(),
     }
     _atomic_write_json(_persona_path(root), payload)

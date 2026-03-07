@@ -149,9 +149,7 @@ class TestVoiceSayHandler:
 
         mock_voice.speak_text.assert_called_once()
         call_kwargs = mock_voice.speak_text.call_args
-        assert (
-            call_kwargs.kwargs.get("rate") == 200 or call_kwargs[1].get("rate") == 200
-        )
+        assert call_kwargs.kwargs.get("rate") == 200 or call_kwargs[1].get("rate") == 200
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +166,7 @@ class TestVoiceEnrollHandler:
             return_value=(None, None, "numpy not found"),
         ):
             handler = VoiceEnrollHandler(root=tmp_path)
-            result = handler.handle(
-                VoiceEnrollCommand(user_id="conner", wav_path="test.wav")
-            )
+            result = handler.handle(VoiceEnrollCommand(user_id="conner", wav_path="test.wav"))
         assert "dependency missing" in result.message.lower()
         assert "numpy not found" in result.message
 
@@ -189,9 +185,7 @@ class TestVoiceEnrollHandler:
         ):
             handler = VoiceEnrollHandler(root=tmp_path)
             result = handler.handle(
-                VoiceEnrollCommand(
-                    user_id="conner", wav_path="sample.wav", replace=False
-                )
+                VoiceEnrollCommand(user_id="conner", wav_path="sample.wav", replace=False)
             )
 
         assert result.user_id == "conner"
@@ -215,9 +209,7 @@ class TestVoiceEnrollHandler:
             handler = VoiceEnrollHandler(root=tmp_path)
             handler.handle(VoiceEnrollCommand(user_id="u", wav_path="w", replace=True))
 
-        enroll_fn.assert_called_once_with(
-            tmp_path, user_id="u", wav_path="w", replace=True
-        )
+        enroll_fn.assert_called_once_with(tmp_path, user_id="u", wav_path="w", replace=True)
 
     def test_enrollment_value_error(self, tmp_path: Path) -> None:
         enroll_fn = MagicMock(side_effect=ValueError("bad wav"))
@@ -236,9 +228,7 @@ class TestVoiceEnrollHandler:
             return_value=(enroll_fn, MagicMock(), ""),
         ):
             handler = VoiceEnrollHandler(root=tmp_path)
-            result = handler.handle(
-                VoiceEnrollCommand(user_id="u", wav_path="missing.wav")
-            )
+            result = handler.handle(VoiceEnrollCommand(user_id="u", wav_path="missing.wav"))
         assert "failed" in result.message.lower()
 
 
@@ -275,9 +265,7 @@ class TestVoiceVerifyHandler:
         ):
             handler = VoiceVerifyHandler(root=tmp_path)
             result = handler.handle(
-                VoiceVerifyCommand(
-                    user_id="conner", wav_path="test.wav", threshold=0.82
-                )
+                VoiceVerifyCommand(user_id="conner", wav_path="test.wav", threshold=0.82)
             )
 
         assert result.matched is True
@@ -299,9 +287,7 @@ class TestVoiceVerifyHandler:
             return_value=(MagicMock(), verify_fn, ""),
         ):
             handler = VoiceVerifyHandler(root=tmp_path)
-            result = handler.handle(
-                VoiceVerifyCommand(user_id="conner", wav_path="test.wav")
-            )
+            result = handler.handle(VoiceVerifyCommand(user_id="conner", wav_path="test.wav"))
 
         assert result.matched is False
         assert result.score == 0.5
@@ -375,9 +361,7 @@ class TestVoiceRunHandler:
         assert result.return_code == 1
 
     @patch("jarvis_engine.voice_pipeline.cmd_voice_run_impl", return_value=0)
-    def test_all_parameters_forwarded(
-        self, mock_impl: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_all_parameters_forwarded(self, mock_impl: MagicMock, tmp_path: Path) -> None:
         """All VoiceRunCommand fields are forwarded to cmd_voice_run_impl."""
         snap = Path("snap.json")
         actions = Path("actions.json")
@@ -555,10 +539,8 @@ class TestPersonaComposeHandler:
 
         call_kwargs = mock_gateway.complete.call_args
         # Default model should be kimi-k2
-        assert (
-            call_kwargs.kwargs.get("model") == "kimi-k2"
-            or call_kwargs[1].get("model") == "kimi-k2"
-        )
+        assert call_kwargs.kwargs.get("model") == "kimi-k2" or \
+            call_kwargs[1].get("model") == "kimi-k2"
 
     def test_custom_model_used(self, tmp_path: Path) -> None:
         mock_gateway = MagicMock()
@@ -582,10 +564,8 @@ class TestPersonaComposeHandler:
             handler.handle(PersonaComposeCommand(query="hi", model="gpt-4"))
 
         call_kwargs = mock_gateway.complete.call_args
-        assert (
-            call_kwargs.kwargs.get("model") == "gpt-4"
-            or call_kwargs[1].get("model") == "gpt-4"
-        )
+        assert call_kwargs.kwargs.get("model") == "gpt-4" or \
+            call_kwargs[1].get("model") == "gpt-4"
 
     def test_gateway_connection_error(self, tmp_path: Path) -> None:
         mock_gateway = MagicMock()

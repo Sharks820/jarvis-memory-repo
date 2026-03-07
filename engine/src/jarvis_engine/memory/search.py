@@ -44,9 +44,7 @@ def _recency_weight(ts_str: str) -> float:
         return 0.0
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
-    delta_hours = max(
-        0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0
-    )
+    delta_hours = max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0)
     return math.exp(-delta_hours / 168.0)
 
 
@@ -114,7 +112,7 @@ def hybrid_search(
         # Avoids double-counting recency (already handled above)
         access_count = record.get("access_count", 0) or 0
         freq_factor = math.log1p(max(access_count, 0)) / math.log1p(10)
-        boosted_score *= 0.9 + 0.2 * min(freq_factor, 1.0)
+        boosted_score *= (0.9 + 0.2 * min(freq_factor, 1.0))
 
         scored_records.append((boosted_score, record))
 

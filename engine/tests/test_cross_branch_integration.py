@@ -27,9 +27,7 @@ class TestExtractFactsCrossBranch:
         engine = MagicMock()
         embed_service = MagicMock()
         classifier = MagicMock()
-        return EnrichedIngestPipeline(
-            engine, embed_service, classifier, knowledge_graph=kg
-        )
+        return EnrichedIngestPipeline(engine, embed_service, classifier, knowledge_graph=kg)
 
     def _make_triple(self, subject, predicate, object_val, confidence=0.8):
         """Create a mock triple object."""
@@ -46,9 +44,7 @@ class TestExtractFactsCrossBranch:
         pipeline = self._make_pipeline(kg=kg)
 
         triples = [
-            self._make_triple(
-                "health.medication.metformin", "takes", "Metformin daily"
-            ),
+            self._make_triple("health.medication.metformin", "takes", "Metformin daily"),
             self._make_triple("health.condition.diabetes", "has", "Type 2 diabetes"),
         ]
 
@@ -143,12 +139,10 @@ class TestBuildSmartContextCrossBranch:
         import jarvis_engine.voice_pipeline as voice_pipeline_mod
 
         from jarvis_engine.command_bus import AppContext
-
         bus = MagicMock(spec=[])  # No engine attribute
         bus.ctx = AppContext()  # All None defaults
         with patch.object(
-            voice_pipeline_mod,
-            "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             return_value={"selected": []},
         ):
             result = voice_pipeline_mod._build_smart_context(bus, "test query")
@@ -188,20 +182,10 @@ class TestBuildSmartContextCrossBranch:
             "branches_involved": ["health", "family"],
         }
 
-        with (
-            patch("jarvis_engine.memory.search.hybrid_search", return_value=[]),
-            patch(
-                "jarvis_engine.knowledge.graph.KnowledgeGraph",
-                return_value=mock_kg_instance,
-            ),
-            patch(
-                "jarvis_engine.learning.cross_branch.cross_branch_query",
-                return_value=cb_result,
-            ),
-        ):
-            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(
-                bus, "dad medication"
-            )
+        with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
+             patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
+             patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=cb_result):
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "dad medication")
 
         assert len(cross_branch_lines) == 1
         line = cross_branch_lines[0]
@@ -228,20 +212,10 @@ class TestBuildSmartContextCrossBranch:
             "branches_involved": [],
         }
 
-        with (
-            patch("jarvis_engine.memory.search.hybrid_search", return_value=[]),
-            patch(
-                "jarvis_engine.knowledge.graph.KnowledgeGraph",
-                return_value=mock_kg_instance,
-            ),
-            patch(
-                "jarvis_engine.learning.cross_branch.cross_branch_query",
-                return_value=cb_result,
-            ),
-        ):
-            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(
-                bus, "random query"
-            )
+        with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
+             patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
+             patch("jarvis_engine.learning.cross_branch.cross_branch_query", return_value=cb_result):
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "random query")
 
         assert cross_branch_lines == []
 
@@ -258,20 +232,13 @@ class TestBuildSmartContextCrossBranch:
         mock_kg_instance = MagicMock()
         mock_kg_instance.query_relevant_facts.return_value = []
 
-        with (
-            patch("jarvis_engine.memory.search.hybrid_search", return_value=[]),
-            patch(
-                "jarvis_engine.knowledge.graph.KnowledgeGraph",
-                return_value=mock_kg_instance,
-            ),
-            patch(
-                "jarvis_engine.learning.cross_branch.cross_branch_query",
-                side_effect=RuntimeError("cross-branch DB error"),
-            ),
-        ):
-            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(
-                bus, "query"
-            )
+        with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
+             patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance), \
+             patch(
+                 "jarvis_engine.learning.cross_branch.cross_branch_query",
+                 side_effect=RuntimeError("cross-branch DB error"),
+             ):
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "query")
 
         assert cross_branch_lines == []
 
@@ -283,19 +250,13 @@ class TestBuildSmartContextCrossBranch:
         bus = MagicMock(spec=[])
         bus.ctx = AppContext()  # engine=None by default
 
-        with (
-            patch.object(
-                voice_pipeline_mod,
-                "build_context_packet",
-                return_value={"selected": []},
-            ),
-            patch(
-                "jarvis_engine.learning.cross_branch.cross_branch_query"
-            ) as mock_cb_query,
-        ):
-            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(
-                bus, "test"
-            )
+        with patch.object(
+            voice_pipeline_mod, "build_context_packet",
+            return_value={"selected": []},
+        ), patch(
+            "jarvis_engine.learning.cross_branch.cross_branch_query"
+        ) as mock_cb_query:
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "test")
 
         mock_cb_query.assert_not_called()
         assert cross_branch_lines == []
@@ -311,23 +272,16 @@ class TestBuildSmartContextCrossBranch:
         mock_kg_instance = MagicMock()
         mock_kg_instance.query_relevant_facts.return_value = []
 
-        with (
-            patch.object(
-                voice_pipeline_mod,
-                "build_context_packet",
-                return_value={"selected": []},
-            ),
-            patch(
-                "jarvis_engine.knowledge.graph.KnowledgeGraph",
-                return_value=mock_kg_instance,
-            ),
-            patch(
-                "jarvis_engine.learning.cross_branch.cross_branch_query"
-            ) as mock_cb_query,
-        ):
-            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(
-                bus, "test"
-            )
+        with patch.object(
+            voice_pipeline_mod, "build_context_packet",
+            return_value={"selected": []},
+        ), patch(
+            "jarvis_engine.knowledge.graph.KnowledgeGraph",
+            return_value=mock_kg_instance,
+        ), patch(
+            "jarvis_engine.learning.cross_branch.cross_branch_query"
+        ) as mock_cb_query:
+            _, _, cross_branch_lines, _ = voice_pipeline_mod._build_smart_context(bus, "test")
 
         mock_cb_query.assert_not_called()
         assert cross_branch_lines == []

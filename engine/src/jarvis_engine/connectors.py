@@ -39,11 +39,7 @@ CONNECTORS: tuple[ConnectorDefinition, ...] = (
         name="Calendar (Google/ICS)",
         setup_url="https://calendar.google.com/calendar/u/0/r/settings/export",
         required_permission=True,
-        required_any_env=(
-            "JARVIS_CALENDAR_JSON",
-            "JARVIS_CALENDAR_ICS_FILE",
-            "JARVIS_CALENDAR_ICS_URL",
-        ),
+        required_any_env=("JARVIS_CALENDAR_JSON", "JARVIS_CALENDAR_ICS_FILE", "JARVIS_CALENDAR_ICS_URL"),
     ),
     ConnectorDefinition(
         connector_id="email",
@@ -58,11 +54,7 @@ CONNECTORS: tuple[ConnectorDefinition, ...] = (
         name="Tasks Source",
         setup_url="https://github.com/gsd-build/get-shit-done",
         required_permission=False,
-        required_any_env=(
-            "JARVIS_TASKS_JSON",
-            "JARVIS_TASK_SOURCE",
-            "JARVIS_TODOIST_TOKEN",
-        ),
+        required_any_env=("JARVIS_TASKS_JSON", "JARVIS_TASK_SOURCE", "JARVIS_TODOIST_TOKEN"),
         fallback_local_files=(".planning/tasks.json",),
     ),
     ConnectorDefinition(
@@ -92,14 +84,11 @@ CONNECTORS: tuple[ConnectorDefinition, ...] = (
 
 
 def load_connector_permissions(repo_root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = _permissions_path(repo_root)
-    if not path.exists():
-        return {"connectors": {}}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"connectors": {}}
-    if not isinstance(raw, dict):
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return {"connectors": {}}
     connectors = raw.get("connectors")
     if not isinstance(connectors, dict):
@@ -107,9 +96,7 @@ def load_connector_permissions(repo_root: Path) -> dict[str, Any]:
     return {"connectors": connectors}
 
 
-def grant_connector_permission(
-    repo_root: Path, connector_id: str, scopes: list[str]
-) -> dict[str, Any]:
+def grant_connector_permission(repo_root: Path, connector_id: str, scopes: list[str]) -> dict[str, Any]:
     connector_id = connector_id.strip().lower()
     known = {c.connector_id for c in CONNECTORS}
     if connector_id not in known:
@@ -142,17 +129,13 @@ def evaluate_connector_statuses(repo_root: Path) -> list[ConnectorStatus]:
 
         any_env_ok = _any_env_set(definition.required_any_env)
         all_env_ok, missing_all = _all_env_set(definition.required_all_env)
-        file_ok, missing_files = _any_file_exists(
-            repo_root, definition.fallback_local_files
-        )
+        file_ok, missing_files = _any_file_exists(repo_root, definition.fallback_local_files)
         # Connector is configured if ANY of these holds:
         #   1. At least one env var from required_any_env is set, OR
         #   2. All env vars from required_all_env are set (only checked when the
         #      tuple is non-empty -- _all_env_set returns True for empty tuples), OR
         #   3. A fallback local file exists on disk.
-        configured = (
-            any_env_ok or (definition.required_all_env and all_env_ok) or file_ok
-        )
+        configured = any_env_ok or (definition.required_all_env and all_env_ok) or file_ok
         ready = configured and permission_granted
 
         if ready:
@@ -235,9 +218,7 @@ def _all_env_set(keys: tuple[str, ...]) -> tuple[bool, list[str]]:
     return len(missing) == 0, missing
 
 
-def _any_file_exists(
-    repo_root: Path, relative_files: tuple[str, ...]
-) -> tuple[bool, list[str]]:
+def _any_file_exists(repo_root: Path, relative_files: tuple[str, ...]) -> tuple[bool, list[str]]:
     if not relative_files:
         return False, []
     missing = []

@@ -67,12 +67,8 @@ class ConversationLearningEngine:
             'correction_applied' bool (and 'error' key on failure).
         """
         if self._pipeline is None:
-            return {
-                "records_created": 0,
-                "correction_detected": False,
-                "correction_applied": False,
-                "error": "no pipeline",
-            }
+            return {"records_created": 0, "correction_detected": False,
+                    "correction_applied": False, "error": "no pipeline"}
 
         records_created = 0
         correction_detected = False
@@ -103,9 +99,7 @@ class ConversationLearningEngine:
                         },
                     )
                 except ImportError as exc:
-                    logger.warning(
-                        "activity_feed not available for correction logging: %s", exc
-                    )
+                    logger.warning("activity_feed not available for correction logging: %s", exc)
         except ImportError as exc:
             logger.warning("correction_detector not available: %s", exc)
 
@@ -116,11 +110,7 @@ class ConversationLearningEngine:
                 preferences_detected = self._preference_tracker.observe(user_message)
                 if preferences_detected:
                     try:
-                        from jarvis_engine.activity_feed import (
-                            ActivityCategory,
-                            log_activity,
-                        )
-
+                        from jarvis_engine.activity_feed import ActivityCategory, log_activity
                         for key, value in preferences_detected:
                             log_activity(
                                 ActivityCategory.PREFERENCE_LEARNED,
@@ -136,9 +126,7 @@ class ConversationLearningEngine:
         feedback_detected = "neutral"
         if self._feedback_tracker is not None:
             try:
-                feedback_detected = self._feedback_tracker.record_feedback(
-                    user_message, route=route
-                )
+                feedback_detected = self._feedback_tracker.record_feedback(user_message, route=route)
             except (ValueError, TypeError, sqlite3.Error) as exc:
                 logger.warning("Failed to record feedback: %s", exc)
 
@@ -190,45 +178,15 @@ class ConversationLearningEngine:
     # false positives like "age" in "message" or "son" in "reason".
     # Multi-word phrases checked via substring match (safe since they're specific).
     _PERSONAL_DATA_SINGLE_WORDS: set[str] = {
-        "name",
-        "birthday",
-        "born",
-        "lives",
-        "works",
-        "prefer",
-        "prefers",
-        "preference",
-        "allergy",
-        "allergic",
-        "wife",
-        "husband",
-        "daughter",
-        "son",
-        "mother",
-        "father",
-        "brother",
-        "sister",
-        "married",
-        "favorite",
-        "favourite",
-        "address",
-        "phone",
-        "email",
-        "job",
-        "occupation",
-        "school",
-        "college",
-        "university",
-        "company",
-        "weighs",
-        "height",
-        "diagnosed",
-        "medication",
+        "name", "birthday", "born", "lives", "works", "prefer", "prefers",
+        "preference", "allergy", "allergic", "wife", "husband", "daughter",
+        "son", "mother", "father", "brother", "sister", "married", "favorite",
+        "favourite", "address", "phone", "email", "job", "occupation",
+        "school", "college", "university", "company", "weighs", "height",
+        "diagnosed", "medication",
     }
     _PERSONAL_DATA_PHRASES: tuple[str, ...] = (
-        "blood type",
-        "credit card",
-        "bank account",
+        "blood type", "credit card", "bank account",
     )
 
     @staticmethod
@@ -251,7 +209,6 @@ class ConversationLearningEngine:
         # personal facts like "My son is Jake" are always accepted.
         # Strip punctuation from words for boundary matching (handles "son,", "email.")
         import re
-
         words = set(re.findall(r"[a-z]+", lower))
         has_personal_data = bool(
             words & ConversationLearningEngine._PERSONAL_DATA_SINGLE_WORDS

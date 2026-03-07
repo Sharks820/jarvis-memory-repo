@@ -29,7 +29,6 @@ from jarvis_engine.runtime_control import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     """Project root with the runtime directory pre-created."""
@@ -42,7 +41,6 @@ def root(tmp_path: Path) -> Path:
 # control_state_path
 # ---------------------------------------------------------------------------
 
-
 class TestControlStatePath:
     def test_returns_expected_path(self, tmp_path: Path) -> None:
         result = control_state_path(tmp_path)
@@ -52,7 +50,6 @@ class TestControlStatePath:
 # ---------------------------------------------------------------------------
 # DEFAULT_CONTROL_STATE
 # ---------------------------------------------------------------------------
-
 
 class TestDefaultControlState:
     def test_default_values(self) -> None:
@@ -75,7 +72,6 @@ class TestDefaultControlState:
 # ---------------------------------------------------------------------------
 # read_control_state
 # ---------------------------------------------------------------------------
-
 
 class TestReadControlState:
     def test_returns_defaults_when_file_missing(self, tmp_path: Path) -> None:
@@ -151,7 +147,6 @@ class TestReadControlState:
 # write_control_state
 # ---------------------------------------------------------------------------
 
-
 class TestWriteControlState:
     def test_write_creates_file(self, root: Path) -> None:
         state = write_control_state(root, daemon_paused=True)
@@ -198,9 +193,7 @@ class TestWriteControlState:
         assert control_state_path(tmp_path).exists()
 
     def test_roundtrip_persistence(self, root: Path) -> None:
-        write_control_state(
-            root, daemon_paused=True, safe_mode=True, reason="roundtrip"
-        )
+        write_control_state(root, daemon_paused=True, safe_mode=True, reason="roundtrip")
         state = read_control_state(root)
         assert state["daemon_paused"] is True
         assert state["safe_mode"] is True
@@ -210,7 +203,6 @@ class TestWriteControlState:
 # ---------------------------------------------------------------------------
 # reset_control_state
 # ---------------------------------------------------------------------------
-
 
 class TestResetControlState:
     def test_reset_clears_all_flags(self, root: Path) -> None:
@@ -243,14 +235,8 @@ class TestResetControlState:
 
 class TestResourceBudgetFiles:
     def test_budget_and_pressure_paths(self, tmp_path: Path) -> None:
-        assert (
-            resource_budgets_path(tmp_path)
-            == tmp_path / ".planning" / "runtime" / "resource_budgets.json"
-        )
-        assert (
-            resource_pressure_path(tmp_path)
-            == tmp_path / ".planning" / "runtime" / "resource_pressure.json"
-        )
+        assert resource_budgets_path(tmp_path) == tmp_path / ".planning" / "runtime" / "resource_budgets.json"
+        assert resource_pressure_path(tmp_path) == tmp_path / ".planning" / "runtime" / "resource_pressure.json"
 
 
 class TestReadResourceBudgets:
@@ -273,17 +259,12 @@ class TestReadResourceBudgets:
         )
         budgets = read_resource_budgets(tmp_path)
         assert budgets["embedding_cache_mb"] == 128.0
-        assert (
-            budgets["process_memory_mb"]
-            == DEFAULT_RESOURCE_BUDGETS["process_memory_mb"]
-        )
+        assert budgets["process_memory_mb"] == DEFAULT_RESOURCE_BUDGETS["process_memory_mb"]
         assert budgets["process_cpu_pct"] == DEFAULT_RESOURCE_BUDGETS["process_cpu_pct"]
 
 
 class TestResourceSnapshotAndThrottle:
-    def test_capture_snapshot_detects_pressure(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_capture_snapshot_detects_pressure(self, tmp_path: Path, monkeypatch) -> None:
         cache_dir = tmp_path / ".planning" / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         (cache_dir / "blob.bin").write_bytes(b"x" * 50_000)
@@ -327,28 +308,8 @@ class TestResourceSnapshotAndThrottle:
         assert loaded["should_throttle"] is True
 
     def test_recommend_daemon_sleep_mild_and_severe(self) -> None:
-        mild = recommend_daemon_sleep(
-            120,
-            {
-                "pressure_level": "mild",
-                "throttle": {
-                    "mild_scale": 1.5,
-                    "severe_scale": 2.0,
-                    "max_sleep_s": 999,
-                },
-            },
-        )
-        severe = recommend_daemon_sleep(
-            120,
-            {
-                "pressure_level": "severe",
-                "throttle": {
-                    "mild_scale": 1.5,
-                    "severe_scale": 2.0,
-                    "max_sleep_s": 999,
-                },
-            },
-        )
+        mild = recommend_daemon_sleep(120, {"pressure_level": "mild", "throttle": {"mild_scale": 1.5, "severe_scale": 2.0, "max_sleep_s": 999}})
+        severe = recommend_daemon_sleep(120, {"pressure_level": "severe", "throttle": {"mild_scale": 1.5, "severe_scale": 2.0, "max_sleep_s": 999}})
         assert mild["sleep_s"] == 180
         assert mild["skip_heavy_tasks"] is False
         assert severe["sleep_s"] == 240

@@ -24,37 +24,23 @@ class HealthRoutesMixin:
         except OSError:
             return "<h1>Jarvis Quick Panel unavailable.</h1>"
 
-    def _build_reliability_panel(
-        self, root: Path, *, reliability_cache: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _build_reliability_panel(self, root: Path, *, reliability_cache: dict[str, Any] | None = None) -> dict[str, Any]:
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
         from jarvis_engine.runtime_control import read_resource_pressure_state
 
-        panel = (
-            reliability_cache
-            if reliability_cache is not None
-            else _compute_command_reliability()
-        )
+        panel = reliability_cache if reliability_cache is not None else _compute_command_reliability()
         panel.setdefault("resource_snapshot", {})
 
         try:
             pressure_state = read_resource_pressure_state(root)
             if isinstance(pressure_state, dict):
                 metrics = pressure_state.get("metrics", {})
-                panel["last_pressure_level"] = str(
-                    pressure_state.get("pressure_level", panel["last_pressure_level"])
-                )
+                panel["last_pressure_level"] = str(pressure_state.get("pressure_level", panel["last_pressure_level"]))
                 panel["resource_snapshot"] = {
                     "captured_utc": pressure_state.get("captured_utc", ""),
-                    "process_memory_mb": (
-                        metrics.get("process_memory_mb", {}) or {}
-                    ).get("current", 0.0),
-                    "process_cpu_pct": (metrics.get("process_cpu_pct", {}) or {}).get(
-                        "current", 0.0
-                    ),
-                    "embedding_cache_mb": (
-                        metrics.get("embedding_cache_mb", {}) or {}
-                    ).get("current", 0.0),
+                    "process_memory_mb": (metrics.get("process_memory_mb", {}) or {}).get("current", 0.0),
+                    "process_cpu_pct": (metrics.get("process_cpu_pct", {}) or {}).get("current", 0.0),
+                    "embedding_cache_mb": (metrics.get("embedding_cache_mb", {}) or {}).get("current", 0.0),
                 }
         except (ImportError, RuntimeError, OSError, ValueError) as exc:
             logger.debug("Reliability panel runtime snapshot unavailable: %s", exc)
@@ -67,11 +53,7 @@ class HealthRoutesMixin:
         from jarvis_engine._shared import load_jsonl_tail
 
         self_test_history_path = _runtime_dir(self._root) / _SELF_TEST_HISTORY
-        intelligence_status: dict[str, Any] = {
-            "score": 0.0,
-            "regression": False,
-            "last_test": "",
-        }
+        intelligence_status: dict[str, Any] = {"score": 0.0, "regression": False, "last_test": ""}
         try:
             tail = load_jsonl_tail(self_test_history_path, limit=1)
             if tail:
@@ -81,10 +63,7 @@ class HealthRoutesMixin:
                 intelligence_status["regression"] = latest.get("below_threshold", False)
         except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
             logger.debug("self-test history parse failed: %s", exc)
-        self._write_json(
-            HTTPStatus.OK,
-            {"ok": True, "status": "healthy", "intelligence": intelligence_status},
-        )
+        self._write_json(HTTPStatus.OK, {"ok": True, "status": "healthy", "intelligence": intelligence_status})
 
     def _handle_get_cert_fingerprint(self) -> None:
         from jarvis_engine.mobile_routes._helpers import _get_cert_fingerprint
@@ -93,31 +72,20 @@ class HealthRoutesMixin:
         security_dir = server_obj.repo_root / ".planning" / "security"
         cert_path_str = str(security_dir / "tls_cert.pem")
         if not (security_dir / "tls_cert.pem").exists():
-            self._write_json(
-                HTTPStatus.NOT_FOUND,
-                {"ok": False, "error": "No TLS certificate found."},
-            )
+            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "No TLS certificate found."})
             return
         fingerprint = _get_cert_fingerprint(cert_path_str)
         if fingerprint is None:
-            self._write_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"ok": False, "error": "Failed to compute fingerprint."},
-            )
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Failed to compute fingerprint."})
             return
-        self._write_json(
-            HTTPStatus.OK,
-            {
-                "ok": True,
-                "fingerprint": fingerprint,
-                "algorithm": "sha256",
-            },
-        )
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "fingerprint": fingerprint,
+            "algorithm": "sha256",
+        })
 
     def _handle_get_quick_panel(self) -> None:
-        self._write_text(
-            HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html()
-        )
+        self._write_text(HTTPStatus.OK, "text/html; charset=utf-8", self._quick_panel_html())
 
     def _handle_get_favicon(self) -> None:
         self.send_response(HTTPStatus.NO_CONTENT)
@@ -149,14 +117,11 @@ class HealthRoutesMixin:
                 control = json.loads(ctrl_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError) as exc:
                 logger.debug("Failed to read control.json: %s", exc)
-        self._write_json(
-            HTTPStatus.OK,
-            {
-                "ok": True,
-                "services": services,
-                "control": control,
-            },
-        )
+        self._write_json(HTTPStatus.OK, {
+            "ok": True,
+            "services": services,
+            "control": control,
+        })
 
     def _handle_post_processes_kill(self) -> None:
         payload, _ = self._read_json_body(max_content_length=1_000)
@@ -166,15 +131,10 @@ class HealthRoutesMixin:
         from jarvis_engine.process_manager import SERVICES, kill_service
 
         if service_name not in SERVICES:
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": f"Unknown service: {service_name}"},
-            )
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"Unknown service: {service_name}"})
             return
         killed = kill_service(service_name, self._root)
-        self._write_json(
-            HTTPStatus.OK, {"ok": True, "service": service_name, "killed": killed}
-        )
+        self._write_json(HTTPStatus.OK, {"ok": True, "service": service_name, "killed": killed})
 
     def _handle_get_widget_status(self) -> None:
         if not self._validate_auth(b""):
@@ -185,9 +145,7 @@ class HealthRoutesMixin:
         _reliability = _compute_command_reliability()
         combined: dict[str, Any] = {"ok": True}
         try:
-            combined["growth"] = self._gather_intelligence_growth(
-                reliability_cache=_reliability
-            )
+            combined["growth"] = self._gather_intelligence_growth(reliability_cache=_reliability)
         except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
             logger.debug("Intelligence growth gather failed: %s", exc)
             combined["growth"] = {}
@@ -198,9 +156,7 @@ class HealthRoutesMixin:
             logger.debug("Proactive alerts gather failed: %s", exc)
             combined["alerts"] = []
         try:
-            combined["reliability"] = self._build_reliability_panel(
-                self._root, reliability_cache=_reliability
-            )
+            combined["reliability"] = self._build_reliability_panel(self._root, reliability_cache=_reliability)
         except (ImportError, RuntimeError, OSError, ValueError) as exc:
             logger.debug("Reliability panel build failed: %s", exc)
             combined["reliability"] = {}

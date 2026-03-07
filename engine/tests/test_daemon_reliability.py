@@ -1,5 +1,4 @@
 """Tests for 24/7 daemon reliability and error handling."""
-
 from __future__ import annotations
 
 import time
@@ -18,18 +17,14 @@ from jarvis_engine.command_bus import AppContext
 class TestDaemonReliability:
     """Test suite for daemon 24/7 operation reliability."""
 
-    def test_daemon_continues_after_cycle_exception(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_daemon_continues_after_cycle_exception(self, tmp_path: Path, monkeypatch) -> None:
         """C1: Daemon should not crash when a cycle raises an exception."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(
-            daemon_loop_mod, "detect_active_game_process", lambda: (False, "")
-        )
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
         call_count = 0
 
@@ -56,23 +51,19 @@ class TestDaemonReliability:
             idle_after_s=300,
             run_missions=False,
         )
-
+        
         assert rc == 0  # Should not crash
         assert call_count == 3  # All 3 cycles attempted
         assert len(sleeps) == 2  # Slept between cycles
 
-    def test_daemon_circuit_breaker_after_too_many_errors(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_daemon_circuit_breaker_after_too_many_errors(self, tmp_path: Path, monkeypatch) -> None:
         """C1: Daemon circuit breaker should cooldown (sleep) then reset, not exit."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(
-            daemon_loop_mod, "detect_active_game_process", lambda: (False, "")
-        )
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
         def always_failing_autopilot(*args, **kwargs) -> int:
             raise RuntimeError("Always fails")
@@ -111,9 +102,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(
-            daemon_loop_mod, "detect_active_game_process", lambda: (False, "")
-        )
+        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
 
         autopilot_calls = 0
 
@@ -126,9 +115,7 @@ class TestDaemonReliability:
             raise RuntimeError("Mission failed")
 
         monkeypatch.setattr(main_mod, "cmd_ops_autopilot", working_autopilot)
-        monkeypatch.setattr(
-            daemon_loop_mod, "_run_next_pending_mission", failing_mission
-        )
+        monkeypatch.setattr(daemon_loop_mod, "_run_next_pending_mission", failing_mission)
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
 
         rc = main_mod.cmd_daemon_run(
@@ -143,7 +130,7 @@ class TestDaemonReliability:
             idle_after_s=300,
             run_missions=True,  # Enable missions
         )
-
+        
         assert rc == 0
         assert autopilot_calls == 2  # Autopilot still ran despite mission failures
 
@@ -160,9 +147,7 @@ class TestDaemonResourceGuardrails:
             "capture_runtime_resource_snapshot",
             lambda root: {"pressure_level": "mild", "metrics": {}, "throttle": {}},
         )
-        monkeypatch.setattr(
-            daemon_loop_mod, "write_resource_pressure_state", lambda root, snap: snap
-        )
+        monkeypatch.setattr(daemon_loop_mod, "write_resource_pressure_state", lambda root, snap: snap)
         monkeypatch.setattr(
             daemon_loop_mod,
             "recommend_daemon_sleep",
@@ -173,9 +158,7 @@ class TestDaemonResourceGuardrails:
                 "skip_heavy_tasks": False,
             },
         )
-        monkeypatch.setattr(
-            daemon_loop_mod.time, "sleep", lambda s: sleeps.append(int(s))
-        )
+        monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: sleeps.append(int(s)))
 
         rc = _run_daemon_impl(tmp_path, max_cycles=2)
         assert rc == 0
@@ -191,9 +174,7 @@ class TestDaemonResourceGuardrails:
             "capture_runtime_resource_snapshot",
             lambda root: {"pressure_level": "severe", "metrics": {}, "throttle": {}},
         )
-        monkeypatch.setattr(
-            daemon_loop_mod, "write_resource_pressure_state", lambda root, snap: snap
-        )
+        monkeypatch.setattr(daemon_loop_mod, "write_resource_pressure_state", lambda root, snap: snap)
         monkeypatch.setattr(
             daemon_loop_mod,
             "recommend_daemon_sleep",
@@ -205,9 +186,7 @@ class TestDaemonResourceGuardrails:
             },
         )
 
-        with patch(
-            "jarvis_engine.proactive.self_test.AdversarialSelfTest"
-        ) as mock_self_test:
+        with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_self_test:
             rc = _run_daemon_impl(tmp_path, max_cycles=1, self_test_every_cycles=1)
 
         assert rc == 0
@@ -225,26 +204,20 @@ class TestSTTReliability:
 
         # Mock subprocess to simulate hanging
         import subprocess
-
+        
         class HangingProcess:
             def __init__(self, *args, **kwargs):
                 pass
-
             def communicate(self, timeout=None):
                 raise subprocess.TimeoutExpired(cmd="test", timeout=timeout)
-
             def kill(self):
                 pass
-
             def wait(self, timeout=None):
                 pass
-
             stdout = property(lambda self: "")
             stderr = property(lambda self: "")
 
-        monkeypatch.setattr(
-            subprocess, "Popen", lambda *args, **kwargs: HangingProcess()
-        )
+        monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: HangingProcess())
 
         # Should raise RuntimeError on timeout, not hang
         with pytest.raises(RuntimeError):
@@ -255,7 +228,7 @@ class TestSTTReliability:
         import threading
 
         stop_event = threading.Event()
-
+        
         # Start hotword loop in thread
         def run_loop():
             # Simulate the hotword loop logic
@@ -270,12 +243,12 @@ class TestSTTReliability:
 
         thread = threading.Thread(target=run_loop)
         thread.start()
-
+        
         # Signal stop quickly
         time.sleep(0.05)
         stop_event.set()
         thread.join(timeout=2.0)
-
+        
         assert not thread.is_alive(), "Hotword loop should stop when stop_event is set"
 
 
@@ -295,19 +268,22 @@ class TestMobileAPISecurity:
             "content": "race condition test",
         }
         raw = json.dumps(payload).encode("utf-8")
-
+        
         results = []
-
+        
         def make_request(i: int) -> int:
             # All use same nonce to trigger replay detection
             headers = signed_headers(
-                raw,
-                mobile_server.auth_token,
+                raw, 
+                mobile_server.auth_token, 
                 mobile_server.signing_key,
-                nonce="racetestnonce123",
+                nonce="racetestnonce123"
             )
             code, _ = http_request(
-                "POST", f"{mobile_server.base_url}/ingest", raw, headers
+                "POST", 
+                f"{mobile_server.base_url}/ingest", 
+                raw, 
+                headers
             )
             return code
 
@@ -318,7 +294,7 @@ class TestMobileAPISecurity:
         # Exactly one should succeed, rest should be 401 (replay detected)
         success_count = sum(1 for c in results if c == 201)
         replay_count = sum(1 for c in results if c == 401)
-
+        
         assert success_count == 1, f"Expected exactly 1 success, got {success_count}"
         assert replay_count == 49, f"Expected 49 replays detected, got {replay_count}"
 
@@ -346,7 +322,7 @@ class TestLearningMissionPerformance:
         monkeypatch.setattr(
             learning_missions,
             "_search_web",
-            lambda q, limit: [f"https://example.com/{i}" for i in range(8)],
+            lambda q, limit: [f"https://example.com/{i}" for i in range(8)]
         )
 
         # Create mission
@@ -385,13 +361,9 @@ class TestLearningMissionPerformance:
         monkeypatch.setattr(learning_missions, "_fetch_page_text", counting_fetch)
 
         # First call
-        result1 = learning_missions._fetch_page_cached(
-            "https://example.com/page", max_bytes=1000
-        )
+        result1 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)
         # Second call (should use cache)
-        result2 = learning_missions._fetch_page_cached(
-            "https://example.com/page", max_bytes=1000
-        )
+        result2 = learning_missions._fetch_page_cached("https://example.com/page", max_bytes=1000)
 
         assert fetch_count == 1, f"Expected 1 fetch, got {fetch_count}"
         assert result1 == result2
@@ -401,7 +373,6 @@ class TestLearningMissionPerformance:
 # Helpers for daemon integration tests
 # ---------------------------------------------------------------------------
 
-
 def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     """Apply the standard monkeypatches needed by every daemon test."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
@@ -409,9 +380,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-    monkeypatch.setattr(
-        daemon_loop_mod, "detect_active_game_process", lambda: (False, "")
-    )
+    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
     # Reset module-level KG regression state so tests are isolated
@@ -454,22 +423,20 @@ class TestDaemonActivityLogging:
 
         log_calls: list[tuple[str, str, dict]] = []
 
-        def mock_log_activity(
-            category: str, summary: str, details: dict | None = None
-        ) -> str:
+        def mock_log_activity(category: str, summary: str, details: dict | None = None) -> str:
             log_calls.append((category, summary, details or {}))
             return "mock-event-id"
 
-        with patch("jarvis_engine.activity_feed.log_activity", mock_log_activity):
+        with patch(
+            "jarvis_engine.activity_feed.log_activity", mock_log_activity
+        ):
             rc = _run_daemon_impl(tmp_path, max_cycles=2)
 
         assert rc == 0
         # Each cycle produces a start and end event => 4 total for 2 cycles
         start_events = [c for c in log_calls if c[2].get("phase") == "start"]
         end_events = [c for c in log_calls if c[2].get("phase") == "end"]
-        assert len(start_events) == 2, (
-            f"Expected 2 start events, got {len(start_events)}"
-        )
+        assert len(start_events) == 2, f"Expected 2 start events, got {len(start_events)}"
         assert len(end_events) == 2, f"Expected 2 end events, got {len(end_events)}"
         # Verify cycle numbers are correct
         assert start_events[0][2]["cycle"] == 1
@@ -486,7 +453,9 @@ class TestDaemonActivityLogging:
         def exploding_log(*args, **kwargs):
             raise RuntimeError("Activity feed DB corrupt")
 
-        with patch("jarvis_engine.activity_feed.log_activity", exploding_log):
+        with patch(
+            "jarvis_engine.activity_feed.log_activity", exploding_log
+        ):
             rc = _run_daemon_impl(tmp_path, max_cycles=3)
 
         assert rc == 0  # Daemon completes normally despite activity feed errors
@@ -521,14 +490,12 @@ class TestDaemonRegressionCheck:
         mock_checker.capture_metrics = mock_capture
         mock_checker.compare.return_value = {"status": "pass", "discrepancies": []}
 
-        with (
-            patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-            patch(
-                "jarvis_engine.knowledge.regression.RegressionChecker",
-                return_value=mock_checker,
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 return_value=mock_checker,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=25)
 
         assert rc == 0
@@ -563,12 +530,7 @@ class TestDaemonRegressionCheck:
         }
         # First call sets baseline (status=baseline), second call detects regression
         mock_checker.compare.side_effect = [
-            {
-                "status": "baseline",
-                "discrepancies": [],
-                "current": {},
-                "previous": None,
-            },
+            {"status": "baseline", "discrepancies": [], "current": {}, "previous": None},
             {
                 "status": "fail",
                 "discrepancies": [{"type": "node_loss", "severity": "fail"}],
@@ -579,14 +541,12 @@ class TestDaemonRegressionCheck:
         mock_checker.restore_graph.return_value = True
 
         try:
-            with (
-                patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-                patch(
-                    "jarvis_engine.knowledge.regression.RegressionChecker",
-                    return_value=mock_checker,
-                ),
-                patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-            ):
+            with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+                 patch(
+                     "jarvis_engine.knowledge.regression.RegressionChecker",
+                     return_value=mock_checker,
+                 ), \
+                 patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
                 rc = _run_daemon_impl(tmp_path, max_cycles=20)
 
             assert rc == 0
@@ -596,7 +556,6 @@ class TestDaemonRegressionCheck:
         finally:
             # Clean up the fake backup directory
             import shutil
-
             if backup_dir.exists():
                 shutil.rmtree(backup_dir)
 
@@ -611,16 +570,12 @@ class TestDaemonRegressionCheck:
             bus.ctx = AppContext(kg=MagicMock())
             return bus
 
-        with (
-            patch.object(
-                daemon_loop_mod, "_get_daemon_bus", side_effect=exploding_get_bus
-            ),
-            patch(
-                "jarvis_engine.knowledge.regression.RegressionChecker",
-                side_effect=RuntimeError("RegressionChecker init failed"),
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=exploding_get_bus), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 side_effect=RuntimeError("RegressionChecker init failed"),
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=10)
 
         assert rc == 0  # Daemon survives the error
@@ -646,28 +601,20 @@ class TestDaemonConsolidation:
         )
 
         consolidation_result = ConsolidateMemoryResult(
-            groups_found=3,
-            records_consolidated=9,
-            new_facts_created=2,
-            errors=[],
-            message="Consolidated 2 facts from 3 groups.",
+            groups_found=3, records_consolidated=9, new_facts_created=2,
+            errors=[], message="Consolidated 2 facts from 3 groups.",
         )
 
         def _dispatch_side_effect(cmd):
-            from jarvis_engine.commands.learning_commands import (
-                ConsolidateMemoryCommand,
-            )
-
+            from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
             if isinstance(cmd, ConsolidateMemoryCommand):
                 return consolidation_result
             return MagicMock()
 
         mock_bus.dispatch.side_effect = _dispatch_side_effect
 
-        with (
-            patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
         assert rc == 0
@@ -681,12 +628,8 @@ class TestDaemonConsolidation:
         """Consolidation failure should not crash the daemon."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        with (
-            patch.object(
-                daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError("bus down")
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError("bus down")), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
         assert rc == 0
@@ -708,10 +651,8 @@ class TestDaemonConsolidation:
         )
         mock_bus.dispatch.return_value = consolidation_result
 
-        with (
-            patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=50)
 
         assert rc == 0
@@ -743,18 +684,16 @@ class TestDaemonEntityResolution:
 
         mock_rc_checker = MagicMock()
 
-        with (
-            patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-            patch(
-                "jarvis_engine.knowledge.entity_resolver.EntityResolver",
-                return_value=mock_resolver,
-            ),
-            patch(
-                "jarvis_engine.knowledge.regression.RegressionChecker",
-                return_value=mock_rc_checker,
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+             patch(
+                 "jarvis_engine.knowledge.entity_resolver.EntityResolver",
+                 return_value=mock_resolver,
+             ), \
+             patch(
+                 "jarvis_engine.knowledge.regression.RegressionChecker",
+                 return_value=mock_rc_checker,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
         assert rc == 0
@@ -770,14 +709,10 @@ class TestDaemonEntityResolution:
         """Entity resolution failure should not crash the daemon."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        with (
-            patch.object(
-                daemon_loop_mod,
-                "_get_daemon_bus",
-                side_effect=RuntimeError("bus broken"),
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(
+            daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError("bus broken")
+        ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
         assert rc == 0
@@ -791,10 +726,8 @@ class TestDaemonEntityResolution:
         mock_bus = MagicMock(spec=[])
         mock_bus.ctx = AppContext(kg=None)
 
-        with (
-            patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
         assert rc == 0
@@ -815,10 +748,10 @@ class TestDaemonSubsystemIsolation:
         def bomb(*a, **kw):
             raise RuntimeError("Subsystem exploded")
 
-        with (
-            patch("jarvis_engine.activity_feed.log_activity", side_effect=bomb),
-            patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=bomb),
-        ):
+        with patch(
+            "jarvis_engine.activity_feed.log_activity", side_effect=bomb
+        ), \
+             patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=bomb):
             rc = _run_daemon_impl(tmp_path, max_cycles=100)
 
         assert rc == 0
@@ -832,39 +765,17 @@ class TestDaemonAutoHarvest:
     ) -> None:
         """_discover_harvest_topics should find topics from learning missions."""
         import json
-
         missions_path = tmp_path / ".planning" / "missions.json"
         missions_path.parent.mkdir(parents=True, exist_ok=True)
-        missions_path.write_text(
-            json.dumps(
-                [
-                    {
-                        "mission_id": "m-1",
-                        "topic": "quantum computing basics",
-                        "status": "completed",
-                    },
-                    {
-                        "mission_id": "m-2",
-                        "topic": "machine learning fundamentals",
-                        "status": "done",
-                    },
-                    {
-                        "mission_id": "m-3",
-                        "topic": "pending topic review",
-                        "status": "pending",
-                    },
-                ]
-            ),
-            encoding="utf-8",
-        )
+        missions_path.write_text(json.dumps([
+            {"mission_id": "m-1", "topic": "quantum computing basics", "status": "completed"},
+            {"mission_id": "m-2", "topic": "machine learning fundamentals", "status": "done"},
+            {"mission_id": "m-3", "topic": "pending topic review", "status": "pending"},
+        ]), encoding="utf-8")
 
-        with patch.object(
-            daemon_loop_mod,
-            "load_missions",
-            side_effect=lambda r: json.loads(
-                (r / ".planning" / "missions.json").read_text(encoding="utf-8")
-            ),
-        ):
+        with patch.object(daemon_loop_mod, "load_missions", side_effect=lambda r: json.loads(
+            (r / ".planning" / "missions.json").read_text(encoding="utf-8")
+        )):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
@@ -966,14 +877,7 @@ class TestDaemonAutoHarvest:
         mock_harvester = MagicMock()
         mock_harvester.harvest.return_value = {
             "topic": "test topic",
-            "results": [
-                {
-                    "provider": "mock",
-                    "status": "ok",
-                    "records_created": 3,
-                    "cost_usd": 0.001,
-                }
-            ],
+            "results": [{"provider": "mock", "status": "ok", "records_created": 3, "cost_usd": 0.001}],
         }
 
         mock_provider = MagicMock()
@@ -986,45 +890,41 @@ class TestDaemonAutoHarvest:
             kg=MagicMock(),
         )
 
-        with (
-            patch.object(
-                daemon_loop_mod, "_discover_harvest_topics", return_value=["test topic"]
-            ),
-            patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus),
-            patch(
-                "jarvis_engine.harvesting.providers.MiniMaxProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.KimiProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.KimiNvidiaProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.GeminiProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.harvester.KnowledgeHarvester",
-                return_value=mock_harvester,
-            ),
-            patch(
-                "jarvis_engine.harvesting.budget.BudgetManager",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "jarvis_engine.memory.classify.BranchClassifier",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "jarvis_engine.memory.ingest.EnrichedIngestPipeline",
-                return_value=MagicMock(),
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["test topic"]), \
+             patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
+             patch(
+                 "jarvis_engine.harvesting.providers.MiniMaxProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiNvidiaProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.GeminiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.harvester.KnowledgeHarvester",
+                 return_value=mock_harvester,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.budget.BudgetManager",
+                 return_value=MagicMock(),
+             ), \
+             patch(
+                 "jarvis_engine.memory.classify.BranchClassifier",
+                 return_value=MagicMock(),
+             ), \
+             patch(
+                 "jarvis_engine.memory.ingest.EnrichedIngestPipeline",
+                 return_value=MagicMock(),
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=200)
 
         assert rc == 0
@@ -1054,9 +954,7 @@ class TestDaemonAutoHarvest:
         def exploding_discover(root):
             raise RuntimeError("Discovery exploded")
 
-        monkeypatch.setattr(
-            daemon_loop_mod, "_discover_harvest_topics", exploding_discover
-        )
+        monkeypatch.setattr(daemon_loop_mod, "_discover_harvest_topics", exploding_discover)
 
         rc = _run_daemon_impl(tmp_path, max_cycles=200)
         assert rc == 0  # Daemon survives
@@ -1083,28 +981,24 @@ class TestDaemonAutoHarvest:
         mock_provider = MagicMock()
         mock_provider.is_available = False
 
-        with (
-            patch.object(
-                daemon_loop_mod, "_discover_harvest_topics", return_value=["some topic"]
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.MiniMaxProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.KimiProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.KimiNvidiaProvider",
-                return_value=mock_provider,
-            ),
-            patch(
-                "jarvis_engine.harvesting.providers.GeminiProvider",
-                return_value=mock_provider,
-            ),
-            patch("jarvis_engine.activity_feed.log_activity", return_value="id"),
-        ):
+        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["some topic"]), \
+             patch(
+                 "jarvis_engine.harvesting.providers.MiniMaxProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.KimiNvidiaProvider",
+                 return_value=mock_provider,
+             ), \
+             patch(
+                 "jarvis_engine.harvesting.providers.GeminiProvider",
+                 return_value=mock_provider,
+             ), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=200)
 
         assert rc == 0
@@ -1115,7 +1009,6 @@ class TestDaemonAutoHarvest:
 # ---------------------------------------------------------------------------
 # Helper: create a mock memory DB with records and KG tables
 # ---------------------------------------------------------------------------
-
 
 def _create_mock_memory_db(tmp_path: Path) -> Path:
     """Create a mock jarvis_memory.db with records, kg_nodes, and kg_edges tables."""
@@ -1191,12 +1084,7 @@ class TestImprovedTopicDiscovery:
         conn.execute(
             "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
             "VALUES (?, ?, 'user', 'episodic', ?, ?)",
-            (
-                "r1",
-                recent_ts,
-                "How do Python async patterns work with coroutines",
-                "hash1",
-            ),
+            ("r1", recent_ts, "How do Python async patterns work with coroutines", "hash1"),
         )
         conn.execute(
             "INSERT INTO records (record_id, ts, source, kind, summary, content_hash) "
@@ -1211,11 +1099,11 @@ class TestImprovedTopicDiscovery:
         assert len(topics) <= 3
         for t in topics:
             word_count = len(t.split())
-            assert 2 <= word_count <= 5, (
-                f"Topic must be 2-5 words, got {word_count}: {t!r}"
-            )
+            assert 2 <= word_count <= 5, f"Topic must be 2-5 words, got {word_count}: {t!r}"
 
-    def test_topics_are_multi_word_not_single(self, tmp_path: Path) -> None:
+    def test_topics_are_multi_word_not_single(
+        self, tmp_path: Path
+    ) -> None:
         """All discovered topics should be multi-word (2-5 words), never single words."""
         import sqlite3
         from datetime import datetime, timedelta
@@ -1238,7 +1126,9 @@ class TestImprovedTopicDiscovery:
         for t in topics:
             assert len(t.split()) >= 2, f"Single-word topic not allowed: {t!r}"
 
-    def test_deduplication_against_recently_harvested(self, tmp_path: Path) -> None:
+    def test_deduplication_against_recently_harvested(
+        self, tmp_path: Path
+    ) -> None:
         """Topics that were recently harvested (last 14 days) should be skipped."""
         import sqlite3
         from datetime import datetime, timedelta
@@ -1257,19 +1147,19 @@ class TestImprovedTopicDiscovery:
 
         # Mock _get_recently_harvested_topics to return the same topic
         with patch.object(
-            daemon_loop_mod,
-            "_get_recently_harvested_topics",
+            daemon_loop_mod, "_get_recently_harvested_topics",
             return_value={"python async patterns"},
         ):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         # The exact phrase "Python async patterns" should be deduplicated
         for t in topics:
-            assert t.lower() != "python async patterns", (
+            assert t.lower() != "python async patterns", \
                 f"Recently harvested topic should be skipped: {t!r}"
-            )
 
-    def test_kg_gap_analysis_finds_low_edge_nodes(self, tmp_path: Path) -> None:
+    def test_kg_gap_analysis_finds_low_edge_nodes(
+        self, tmp_path: Path
+    ) -> None:
         """Source 2: nodes with zero/one outgoing edges should be surfaced."""
         import sqlite3
 
@@ -1306,7 +1196,9 @@ class TestImprovedTopicDiscovery:
         for t in topics:
             assert len(t.split()) >= 2
 
-    def test_complementary_topics_from_strong_kg_areas(self, tmp_path: Path) -> None:
+    def test_complementary_topics_from_strong_kg_areas(
+        self, tmp_path: Path
+    ) -> None:
         """Source 3: strong KG areas should be expanded with suffixes like 'best practices'."""
         import sqlite3
 
@@ -1316,20 +1208,17 @@ class TestImprovedTopicDiscovery:
         for i in range(6):
             conn.execute(
                 "INSERT INTO kg_nodes (node_id, label, confidence) VALUES (?, ?, 0.8)",
-                (
-                    f"n{i}",
-                    f"Python testing {['frameworks', 'patterns', 'mocking', 'coverage', 'fixtures', 'assertions'][i]}",
-                ),
+                (f"n{i}", f"Python testing {['frameworks', 'patterns', 'mocking', 'coverage', 'fixtures', 'assertions'][i]}", ),
             )
         # Give them all edges so they are NOT caught by source 2
         for i in range(5):
             conn.execute(
                 "INSERT INTO kg_edges (source_id, target_id, relation) VALUES (?, ?, 'related_to')",
-                (f"n{i}", f"n{i + 1}"),
+                (f"n{i}", f"n{i+1}"),
             )
             conn.execute(
                 "INSERT INTO kg_edges (source_id, target_id, relation) VALUES (?, ?, 'part_of')",
-                (f"n{i + 1}", f"n{i}"),
+                (f"n{i+1}", f"n{i}"),
             )
         conn.commit()
         conn.close()
@@ -1339,15 +1228,14 @@ class TestImprovedTopicDiscovery:
         found_expanded = False
         for t in topics:
             tl = t.lower()
-            if any(
-                s in tl
-                for s in ("best practices", "advanced techniques", "common patterns")
-            ):
+            if any(s in tl for s in ("best practices", "advanced techniques", "common patterns")):
                 found_expanded = True
                 break
         assert found_expanded, f"Expected complementary expansion, got: {topics}"
 
-    def test_returns_up_to_three_topics(self, tmp_path: Path) -> None:
+    def test_returns_up_to_three_topics(
+        self, tmp_path: Path
+    ) -> None:
         """Should return at most 3 topics."""
         import sqlite3
         from datetime import datetime, timedelta
@@ -1380,37 +1268,33 @@ class TestImprovedTopicDiscovery:
         conn.close()
 
         topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
-        assert len(topics) <= 3, (
-            f"Expected at most 3 topics, got {len(topics)}: {topics}"
-        )
+        assert len(topics) <= 3, f"Expected at most 3 topics, got {len(topics)}: {topics}"
         assert len(topics) >= 1, "Expected at least 1 topic from rich data"
 
-    def test_fallback_chain_all_sources_empty(self, tmp_path: Path) -> None:
+    def test_fallback_chain_all_sources_empty(
+        self, tmp_path: Path
+    ) -> None:
         """When all data sources are empty, should return [] without errors."""
         # tmp_path has no brain directory, no missions, no activity feed
         topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         assert topics == []
 
-    def test_fallback_chain_only_missions_available(self, tmp_path: Path) -> None:
+    def test_fallback_chain_only_missions_available(
+        self, tmp_path: Path
+    ) -> None:
         """When only mission data exists, should fall through to source 5."""
 
-        with patch.object(
-            daemon_loop_mod,
-            "load_missions",
-            return_value=[
-                {
-                    "mission_id": "m-1",
-                    "topic": "quantum computing fundamentals",
-                    "status": "completed",
-                },
-            ],
-        ):
+        with patch.object(daemon_loop_mod, "load_missions", return_value=[
+            {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},
+        ]):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         assert len(topics) >= 1
         assert "quantum computing fundamentals" in topics
 
-    def test_old_memories_not_preferred_over_recent(self, tmp_path: Path) -> None:
+    def test_old_memories_not_preferred_over_recent(
+        self, tmp_path: Path
+    ) -> None:
         """Source 1 should only look at memories from the last 7 days."""
         import sqlite3
         from datetime import datetime, timedelta
@@ -1432,9 +1316,8 @@ class TestImprovedTopicDiscovery:
         topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
         # The old memory topic should not appear (it's beyond 7-day window)
         for t in topics:
-            assert "sumerian" not in t.lower(), (
+            assert "sumerian" not in t.lower(), \
                 f"Old memory should not be selected: {t!r}"
-            )
 
     def test_extract_topic_phrases_utility(self) -> None:
         """_extract_topic_phrases should produce multi-word phrases from text."""
@@ -1448,9 +1331,7 @@ class TestImprovedTopicDiscovery:
 
     def test_extract_topic_phrases_filters_stopwords(self) -> None:
         """_extract_topic_phrases should filter common stop words."""
-        phrases = daemon_loop_mod._extract_topic_phrases(
-            "the is a an of in to for with on"
-        )
+        phrases = daemon_loop_mod._extract_topic_phrases("the is a an of in to for with on")
         # All stop words — should produce no phrases
         assert phrases == []
 
@@ -1459,25 +1340,23 @@ class TestImprovedTopicDiscovery:
         assert daemon_loop_mod._extract_topic_phrases("") == []
         assert daemon_loop_mod._extract_topic_phrases("   ") == []
 
-    def test_single_word_mission_topics_are_skipped(self, tmp_path: Path) -> None:
+    def test_single_word_mission_topics_are_skipped(
+        self, tmp_path: Path
+    ) -> None:
         """Source 5 should skip single-word mission topics (poor quality)."""
-        with patch.object(
-            daemon_loop_mod,
-            "load_missions",
-            return_value=[
-                {"mission_id": "m-1", "topic": "Python", "status": "completed"},
-                {"mission_id": "m-2", "topic": "AI", "status": "done"},
-            ],
-        ):
+        with patch.object(daemon_loop_mod, "load_missions", return_value=[
+            {"mission_id": "m-1", "topic": "Python", "status": "completed"},
+            {"mission_id": "m-2", "topic": "AI", "status": "done"},
+        ]):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
 
         # Single-word topics should be skipped
         for t in topics:
-            assert t not in ("Python", "AI"), (
-                f"Single-word topic should be skipped: {t!r}"
-            )
+            assert t not in ("Python", "AI"), f"Single-word topic should be skipped: {t!r}"
 
-    def test_never_raises_on_corrupt_db(self, tmp_path: Path) -> None:
+    def test_never_raises_on_corrupt_db(
+        self, tmp_path: Path
+    ) -> None:
         """Should return [] without raising even if the DB file is corrupt."""
         db_dir = tmp_path / ".planning" / "brain"
         db_dir.mkdir(parents=True, exist_ok=True)

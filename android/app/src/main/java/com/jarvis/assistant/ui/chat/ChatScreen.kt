@@ -133,7 +133,6 @@ fun ChatScreen(
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Message Jarvis...") },
                 maxLines = 4,
-                enabled = !isSending,
             )
 
             if (isSending) {

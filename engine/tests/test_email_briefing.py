@@ -103,9 +103,7 @@ class TestTriageEmail:
         assert result == "high"
 
     def test_triage_email_expiring_subject(self) -> None:
-        result = _triage_email(
-            "service@example.com", "Your subscription is expiring soon"
-        )
+        result = _triage_email("service@example.com", "Your subscription is expiring soon")
         assert result == "high"
 
     def test_triage_email_overdue_subject(self) -> None:
@@ -172,9 +170,7 @@ class TestBuildNarrativeBrief:
         )
         assert result == "Based on your recent patterns..."
         call_args = mock_gw.complete.call_args
-        prompt_content = call_args.kwargs.get(
-            "messages", call_args.args[0] if call_args.args else []
-        )[0]["content"]
+        prompt_content = call_args.kwargs.get("messages", call_args.args[0] if call_args.args else [])[0]["content"]
         assert "User sleeps late on weekends" in prompt_content
 
 
@@ -186,15 +182,11 @@ class TestBuildNarrativeBrief:
 class TestAssembleDataSummary:
     def test_assemble_data_summary_truncation(self) -> None:
         """Snapshot with 50 calendar events should truncate to 10."""
-        events = [
-            {"title": f"Event {i}", "time": f"{i % 24:02d}:00"} for i in range(50)
-        ]
+        events = [{"title": f"Event {i}", "time": f"{i % 24:02d}:00"} for i in range(50)]
         snapshot = _make_snapshot(calendar_events=events)
         summary = _assemble_data_summary(snapshot)
         # Count event lines (lines starting with "  - ")
-        event_lines = [
-            l for l in summary.splitlines() if l.strip().startswith("- Event ")
-        ]
+        event_lines = [l for l in summary.splitlines() if l.strip().startswith("- Event ")]
         assert len(event_lines) <= 10
 
     def test_assemble_data_summary_includes_date(self) -> None:
@@ -255,9 +247,7 @@ class TestAssembleDataSummary:
         )
         summary = _assemble_data_summary(snapshot)
         lines = summary.splitlines()
-        task_lines = [
-            l for l in lines if "[urgent]" in l or "[high]" in l or "[low]" in l
-        ]
+        task_lines = [l for l in lines if "[urgent]" in l or "[high]" in l or "[low]" in l]
         assert len(task_lines) == 3
         # Urgent should come before low
         urgent_idx = next(i for i, l in enumerate(task_lines) if "Urgent" in l)
@@ -325,13 +315,9 @@ class TestExistingBuildDailyBriefUnchanged:
             date="2026-02-22",
             tasks=[{"title": "Critical task", "priority": "high"}],
             calendar_events=[{"title": "Board call", "prep_needed": "yes"}],
-            emails=[
-                {"subject": "Urgent approval", "read": "false", "importance": "high"}
-            ],
+            emails=[{"subject": "Urgent approval", "read": "false", "importance": "high"}],
             bills=[{"name": "Power", "amount": "120", "status": "due"}],
-            subscriptions=[
-                {"name": "ToolX", "monthly_cost": "n/a", "usage_score": "n/a"}
-            ],
+            subscriptions=[{"name": "ToolX", "monthly_cost": "n/a", "usage_score": "n/a"}],
             medications=[{"name": "Rx A", "dose": "10mg", "status": "due"}],
             school_items=[{"title": "Exam prep", "priority": "high"}],
             family_items=[{"title": "Pickup child", "due_today": True}],

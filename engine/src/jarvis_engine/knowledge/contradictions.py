@@ -42,10 +42,7 @@ class ContradictionManager(KGManagerBase):
                 )
             except sqlite3.OperationalError as exc:
                 if "no such table" in str(exc):
-                    logger.debug(
-                        "FTS5 table not available, skipping index update for node %s",
-                        node_id,
-                    )
+                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
                 else:
                     raise
 
@@ -65,14 +62,11 @@ class ContradictionManager(KGManagerBase):
             return None
         try:
             import struct
-
             embedding = embed_service.embed(label, prefix="search_document")
             if len(embedding) == 768:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except Exception as exc:
-            logger.debug(
-                "Vec embedding pre-compute for label %r failed: %s", label[:50], exc
-            )
+            logger.debug("Vec embedding pre-compute for label %r failed: %s", label[:50], exc)
         return None
 
     def _write_vec_embedding(self, node_id: str, blob: bytes | None) -> None:
@@ -203,12 +197,8 @@ class ContradictionManager(KGManagerBase):
             contradiction = dict(row)
             contradiction["status"] = str(contradiction.get("status", "")).strip()
             contradiction["node_id"] = str(contradiction.get("node_id", ""))
-            contradiction["existing_value"] = str(
-                contradiction.get("existing_value", "")
-            )
-            contradiction["incoming_value"] = str(
-                contradiction.get("incoming_value", "")
-            )
+            contradiction["existing_value"] = str(contradiction.get("existing_value", ""))
+            contradiction["incoming_value"] = str(contradiction.get("incoming_value", ""))
             contradiction["incoming_confidence"] = float(
                 contradiction.get("incoming_confidence", 0.0) or 0.0,
             )
@@ -260,25 +250,21 @@ class ContradictionManager(KGManagerBase):
                 self._update_fts_index(node_id, incoming_value)
                 # Write pre-computed vec embedding (no-ops if blob is None)
                 self._write_vec_embedding(node_id, vec_blob)
-                history.append(
-                    {
-                        "action": "accept_new",
-                        "previous_value": current_label,
-                        "new_value": incoming_value,
-                        "resolved_at": now,
-                    }
-                )
+                history.append({
+                    "action": "accept_new",
+                    "previous_value": current_label,
+                    "new_value": incoming_value,
+                    "resolved_at": now,
+                })
 
             elif resolution == "keep_old":
                 # No node change
-                history.append(
-                    {
-                        "action": "keep_old",
-                        "previous_value": current_label,
-                        "new_value": incoming_value,
-                        "resolved_at": now,
-                    }
-                )
+                history.append({
+                    "action": "keep_old",
+                    "previous_value": current_label,
+                    "new_value": incoming_value,
+                    "resolved_at": now,
+                })
 
             elif resolution == "merge":
                 # Set merge_value on the node, unlock it (same as accept_new)
@@ -293,14 +279,12 @@ class ContradictionManager(KGManagerBase):
                 self._update_fts_index(node_id, merge_value)
                 # Write pre-computed vec embedding (no-ops if blob is None)
                 self._write_vec_embedding(node_id, vec_blob)
-                history.append(
-                    {
-                        "action": "merge",
-                        "previous_value": current_label,
-                        "new_value": merge_value,
-                        "resolved_at": now,
-                    }
-                )
+                history.append({
+                    "action": "merge",
+                    "previous_value": current_label,
+                    "new_value": merge_value,
+                    "resolved_at": now,
+                })
 
             # Update history on the node (guard against missing node)
             if node_row is not None:

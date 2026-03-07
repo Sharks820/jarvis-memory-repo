@@ -23,7 +23,6 @@ from jarvis_engine.gateway.cli_providers import (
 # Message formatting
 # ---------------------------------------------------------------------------
 
-
 class TestBuildMessagesText:
     def test_single_user_message(self) -> None:
         msgs = [{"role": "user", "content": "hello"}]
@@ -58,9 +57,7 @@ class TestBuildMessagesText:
         msgs = [{"role": "system", "content": "System context " + ("x" * 4000)}]
         for i in range(40):
             msgs.append({"role": "user", "content": f"user turn {i} " + ("y" * 280)})
-            msgs.append(
-                {"role": "assistant", "content": f"assistant turn {i} " + ("z" * 280)}
-            )
+            msgs.append({"role": "assistant", "content": f"assistant turn {i} " + ("z" * 280)})
         msgs.append({"role": "user", "content": "FINAL_USER_TURN keep this context"})
 
         text = _build_messages_text(msgs)
@@ -73,15 +70,8 @@ class TestBuildMessagesText:
     def test_claude_prompt_compaction_keeps_recent_turn(self) -> None:
         msgs = [{"role": "system", "content": "You are Jarvis. " + ("persona " * 300)}]
         for i in range(30):
-            msgs.append(
-                {"role": "user", "content": f"historic user {i} " + ("a" * 220)}
-            )
-            msgs.append(
-                {
-                    "role": "assistant",
-                    "content": f"historic assistant {i} " + ("b" * 220),
-                }
-            )
+            msgs.append({"role": "user", "content": f"historic user {i} " + ("a" * 220)})
+            msgs.append({"role": "assistant", "content": f"historic assistant {i} " + ("b" * 220)})
         msgs.append({"role": "user", "content": "LATEST_USER_REQUEST please continue"})
 
         text = _build_claude_cli_prompt(msgs)
@@ -92,7 +82,6 @@ class TestBuildMessagesText:
 # ---------------------------------------------------------------------------
 # Provider detection
 # ---------------------------------------------------------------------------
-
 
 class TestDetectProviders:
     @patch("jarvis_engine.gateway.cli_providers._detect_cli")
@@ -119,7 +108,6 @@ class TestDetectProviders:
 # ---------------------------------------------------------------------------
 # Claude CLI
 # ---------------------------------------------------------------------------
-
 
 class TestCallClaudeCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
@@ -176,9 +164,7 @@ class TestCallClaudeCli:
         assert result["cost_usd"] == 0.123
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
-    def test_event_array_without_result_uses_assistant_text(
-        self, mock_run: MagicMock
-    ) -> None:
+    def test_event_array_without_result_uses_assistant_text(self, mock_run: MagicMock) -> None:
         payload = [
             {
                 "type": "assistant",
@@ -210,7 +196,6 @@ class TestCallClaudeCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_timeout(self, mock_run: MagicMock) -> None:
         import subprocess
-
         mock_run.side_effect = subprocess.TimeoutExpired("claude", 120)
         result = call_claude_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
@@ -263,7 +248,6 @@ class TestCallClaudeCli:
 # Codex CLI
 # ---------------------------------------------------------------------------
 
-
 class TestCallCodexCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_success_with_output_file(self, mock_run: MagicMock) -> None:
@@ -286,7 +270,6 @@ class TestCallCodexCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_timeout(self, mock_run: MagicMock) -> None:
         import subprocess
-
         mock_run.side_effect = subprocess.TimeoutExpired("codex", 120)
         result = call_codex_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
@@ -294,7 +277,9 @@ class TestCallCodexCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure_exit_code(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="codex error")
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="codex error"
+        )
         result = call_codex_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert "exit 1" in result["error"]
@@ -315,7 +300,9 @@ class TestCallCodexCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_success_but_empty_response(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
         result = call_codex_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert "empty response" in result["error"]
@@ -324,7 +311,6 @@ class TestCallCodexCli:
 # ---------------------------------------------------------------------------
 # Gemini CLI
 # ---------------------------------------------------------------------------
-
 
 class TestCallGeminiCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
@@ -352,7 +338,6 @@ class TestCallGeminiCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_timeout(self, mock_run: MagicMock) -> None:
         import subprocess
-
         mock_run.side_effect = subprocess.TimeoutExpired("gemini", 120)
         result = call_gemini_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
@@ -374,7 +359,9 @@ class TestCallGeminiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_empty_response(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
         result = call_gemini_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert result["error"] == "empty response"
@@ -383,7 +370,6 @@ class TestCallGeminiCli:
 # ---------------------------------------------------------------------------
 # Kimi CLI
 # ---------------------------------------------------------------------------
-
 
 class TestCallKimiCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
@@ -400,7 +386,9 @@ class TestCallKimiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="kimi error")
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="kimi error"
+        )
         result = call_kimi_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert "exit 1" in result["error"]
@@ -408,7 +396,6 @@ class TestCallKimiCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_timeout(self, mock_run: MagicMock) -> None:
         import subprocess
-
         mock_run.side_effect = subprocess.TimeoutExpired("kimi", 120)
         result = call_kimi_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
@@ -430,7 +417,9 @@ class TestCallKimiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_empty_response(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
+        )
         result = call_kimi_cli([{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert result["error"] == "empty response"
@@ -440,27 +429,26 @@ class TestCallKimiCli:
 # Unified dispatcher
 # ---------------------------------------------------------------------------
 
-
 class TestCallCliProvider:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_dispatches_to_claude(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="ok", stderr=""
+        )
         result = call_cli_provider("claude-cli", [{"role": "user", "content": "hi"}])
         assert result["provider"] == "claude-cli"
 
     def test_unknown_provider(self) -> None:
-        result = call_cli_provider(
-            "nonexistent-cli", [{"role": "user", "content": "hi"}]
-        )
+        result = call_cli_provider("nonexistent-cli", [{"role": "user", "content": "hi"}])
         assert result["success"] is False
         assert "unknown" in result["error"]
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_model_override_forwarded_to_claude(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
-        call_cli_provider(
-            "claude-cli", [{"role": "user", "content": "hi"}], model="sonnet"
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="ok", stderr=""
         )
+        call_cli_provider("claude-cli", [{"role": "user", "content": "hi"}], model="sonnet")
         # Verify --model sonnet was passed in the subprocess command
         cmd = mock_run.call_args[0][0]
         assert "--model" in cmd
@@ -469,10 +457,10 @@ class TestCallCliProvider:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_model_override_forwarded_to_codex(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        call_cli_provider(
-            "codex-cli", [{"role": "user", "content": "hi"}], model="gpt-4o"
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="", stderr=""
         )
+        call_cli_provider("codex-cli", [{"role": "user", "content": "hi"}], model="gpt-4o")
         cmd = mock_run.call_args[0][0]
         assert "-m" in cmd
         model_idx = cmd.index("-m") + 1
@@ -481,10 +469,10 @@ class TestCallCliProvider:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_model_override_ignored_for_gemini(self, mock_run: MagicMock) -> None:
         """Model override should NOT be forwarded to gemini/kimi (they don't accept it)."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="hello", stderr="")
-        result = call_cli_provider(
-            "gemini-cli", [{"role": "user", "content": "hi"}], model="custom-model"
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="hello", stderr=""
         )
+        result = call_cli_provider("gemini-cli", [{"role": "user", "content": "hi"}], model="custom-model")
         assert result["success"] is True
         # Gemini cmd should not have the model parameter
         cmd = mock_run.call_args[0][0]
@@ -494,7 +482,6 @@ class TestCallCliProvider:
 # ---------------------------------------------------------------------------
 # ModelGateway integration
 # ---------------------------------------------------------------------------
-
 
 class TestGatewayCliIntegration:
     """Test that ModelGateway properly wires CLI providers."""
@@ -510,7 +497,6 @@ class TestGatewayCliIntegration:
         }.get(name)
 
         from jarvis_engine.gateway.models import ModelGateway
-
         gw = ModelGateway(groq_api_key="test")
         try:
             providers = gw.available_providers()
@@ -531,7 +517,6 @@ class TestGatewayCliIntegration:
         }.get(name)
 
         from jarvis_engine.gateway.models import ModelGateway
-
         gw = ModelGateway(groq_api_key="test")
         try:
             models = gw.available_model_names()
@@ -549,7 +534,6 @@ class TestGatewayCliIntegration:
         mock_detect.return_value = "/usr/bin/claude"
 
         from jarvis_engine.gateway.models import ModelGateway
-
         gw = ModelGateway(groq_api_key="test")
         try:
             provider = gw._resolve_provider("claude-cli")
@@ -559,14 +543,11 @@ class TestGatewayCliIntegration:
 
     @patch("jarvis_engine.gateway.cli_providers._detect_cli")
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}, clear=False)
-    def test_resolve_provider_claude_cli_not_hijacked_by_anthropic(
-        self, mock_detect: MagicMock
-    ) -> None:
+    def test_resolve_provider_claude_cli_not_hijacked_by_anthropic(self, mock_detect: MagicMock) -> None:
         """claude-cli must route to CLI, NOT to Anthropic API, even when Anthropic is configured."""
         mock_detect.return_value = "/usr/bin/claude"
 
         from jarvis_engine.gateway.models import ModelGateway
-
         gw = ModelGateway(groq_api_key="test", anthropic_api_key="sk-ant-test")
         try:
             provider = gw._resolve_provider("claude-cli")
@@ -581,14 +562,11 @@ class TestGatewayCliIntegration:
 
     @patch("jarvis_engine.gateway.cli_providers._detect_cli")
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}, clear=False)
-    def test_complete_does_not_remap_claude_cli_to_cloud(
-        self, mock_detect: MagicMock
-    ) -> None:
+    def test_complete_does_not_remap_claude_cli_to_cloud(self, mock_detect: MagicMock) -> None:
         """claude-cli must NOT be remapped to a cloud model when Anthropic is unavailable."""
         mock_detect.return_value = "/usr/bin/claude"
 
         from jarvis_engine.gateway.models import ModelGateway
-
         # No anthropic_api_key — previously this would remap claude-cli to kimi-k2
         gw = ModelGateway(groq_api_key="test")
         try:
@@ -600,9 +578,7 @@ class TestGatewayCliIntegration:
             gw.close()
 
     @patch("jarvis_engine.gateway.models.detect_cli_providers")
-    def test_gateway_refreshes_cli_providers_without_restart(
-        self, mock_detect: MagicMock
-    ) -> None:
+    def test_gateway_refreshes_cli_providers_without_restart(self, mock_detect: MagicMock) -> None:
         codex_info = CLIProviderInfo(
             name="Codex CLI",
             executable="/usr/bin/codex",
@@ -619,7 +595,6 @@ class TestGatewayCliIntegration:
         mock_detect.side_effect = _fake_detect
 
         from jarvis_engine.gateway.models import ModelGateway
-
         gw = ModelGateway()
         try:
             assert "codex-cli" not in gw.check_cli()
@@ -634,13 +609,11 @@ class TestGatewayCliIntegration:
 # Classifier route-to-model resolution
 # ---------------------------------------------------------------------------
 
-
 class TestClassifierModelResolution:
     """Test that IntentClassifier resolves models based on availability."""
 
     def test_resolve_model_uses_primary_when_available(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-
         available = {"codex-cli", "kimi-k2", "gemini-cli"}
         # _resolve_model_for_route is a method; test via class access
         # We need an instance — use a mock embed service
@@ -654,7 +627,6 @@ class TestClassifierModelResolution:
 
     def test_resolve_model_falls_back_when_primary_unavailable(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-
         available = {"kimi-k2", "gemini-cli"}  # No codex-cli
         mock_embed = MagicMock()
         mock_embed.embed.return_value = [0.0] * 384
@@ -668,7 +640,6 @@ class TestClassifierModelResolution:
 
     def test_resolve_model_ultimate_fallback(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-
         available: set[str] = set()  # Nothing available
         mock_embed = MagicMock()
         mock_embed.embed.return_value = [0.0] * 384
@@ -682,7 +653,6 @@ class TestClassifierModelResolution:
 
     def test_resolve_model_respects_available_set(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-
         available = {"gemini-cli"}  # Only gemini available
         mock_embed = MagicMock()
         mock_embed.embed.return_value = [0.0] * 384
@@ -697,10 +667,7 @@ class TestClassifierModelResolution:
     def test_resolve_provider_unavailable_cli_falls_to_ollama(self) -> None:
         """CLI model that's not installed should route to Ollama, not Anthropic."""
         from jarvis_engine.gateway.models import ModelGateway
-
-        with patch(
-            "jarvis_engine.gateway.cli_providers._detect_cli", return_value=None
-        ):
+        with patch("jarvis_engine.gateway.cli_providers._detect_cli", return_value=None):
             gw = ModelGateway(anthropic_api_key="sk-ant-test", groq_api_key="test")
             try:
                 # claude-cli is in CLI_MODEL_MAP but no CLIs are installed
@@ -713,7 +680,6 @@ class TestClassifierModelResolution:
 
     def test_resolve_model_no_available_set_uses_primary(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-
         mock_embed = MagicMock()
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384

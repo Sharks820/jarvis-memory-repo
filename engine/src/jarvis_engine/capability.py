@@ -46,6 +46,5 @@ class CapabilityGate:
                 "Task may require expansion, but privileged execution still needs explicit approval.",
             )
 
-        return CapabilityDecision(
-            False, "Privileged action denied without explicit approval."
-        )
+        return CapabilityDecision(False, "Privileged action denied without explicit approval.")
+

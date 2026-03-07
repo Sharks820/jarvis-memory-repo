@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import struct
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -15,23 +16,12 @@ import pytest
 # 22-23, 29-31, 47, 49-50. Groq confidence calculation (parametrized)
 # ---------------------------------------------------------------------------
 
-
 @pytest.mark.parametrize(
     "response_json, expected_confidence",
     [
         pytest.param(
-            {
-                "text": "hello jarvis",
-                "language": "en",
-                "segments": [
-                    {
-                        "text": "hello jarvis",
-                        "start": 0.0,
-                        "end": 1.5,
-                        "avg_logprob": -0.15,
-                    }
-                ],
-            },
+            {"text": "hello jarvis", "language": "en",
+             "segments": [{"text": "hello jarvis", "start": 0.0, "end": 1.5, "avg_logprob": -0.15}]},
             round(min(1.0, max(0.0, 1.0 + (-0.15))), 4),  # 0.85
             id="single_segment_logprob",
         ),
@@ -41,17 +31,12 @@ import pytest
             id="no_segments_key_fallback",
         ),
         pytest.param(
-            {
-                "text": "hello world",
-                "language": "en",
-                "segments": [
-                    {"text": "hello", "avg_logprob": -0.1, "no_speech_prob": 0.01},
-                    {"text": "world", "avg_logprob": -0.2, "no_speech_prob": 0.03},
-                ],
-            },
-            round(
-                min(1.0, max(0.0, 1.0 + (-0.15))), 4
-            ),  # avg(-0.1,-0.2) = -0.15 -> 0.85
+            {"text": "hello world", "language": "en",
+             "segments": [
+                 {"text": "hello", "avg_logprob": -0.1, "no_speech_prob": 0.01},
+                 {"text": "world", "avg_logprob": -0.2, "no_speech_prob": 0.03},
+             ]},
+            round(min(1.0, max(0.0, 1.0 + (-0.15))), 4),  # avg(-0.1,-0.2) = -0.15 -> 0.85
             id="multi_segment_averaged",
         ),
         pytest.param(
@@ -60,47 +45,27 @@ import pytest
             id="empty_segments_list_fallback",
         ),
         pytest.param(
-            {
-                "text": "hello",
-                "language": "en",
-                "segments": [{"text": "hello"}],
-            },  # no avg_logprob
+            {"text": "hello", "language": "en",
+             "segments": [{"text": "hello"}]},  # no avg_logprob
             0.90,
             id="segments_without_logprobs_fallback",
         ),
         pytest.param(
-            {
-                "text": "noise",
-                "language": "en",
-                "segments": [
-                    {"text": "noise", "avg_logprob": -100.0, "no_speech_prob": 0.0}
-                ],
-            },
+            {"text": "noise", "language": "en",
+             "segments": [{"text": "noise", "avg_logprob": -100.0, "no_speech_prob": 0.0}]},
             0.0,  # 1.0 + (-100) clamped to 0.0
             id="extreme_logprob_clamped_to_zero",
         ),
         pytest.param(
-            {
-                "text": "test",
-                "language": "en",
-                "segments": [
-                    {"text": "test", "avg_logprob": float("nan"), "no_speech_prob": 0.0}
-                ],
-            },
+            {"text": "test", "language": "en",
+             "segments": [{"text": "test", "avg_logprob": float("nan"), "no_speech_prob": 0.0}]},
             0.90,  # NaN skipped -> no valid logprobs -> fallback
             id="nan_logprob_skipped_fallback",
         ),
         pytest.param(
-            {
-                "text": "maybe noise",
-                "language": "en",
-                "segments": [
-                    {"text": "maybe noise", "avg_logprob": -0.1, "no_speech_prob": 0.9}
-                ],
-            },
-            round(
-                min(1.0, max(0.0, 1.0 + (-0.1))) * (1.0 - 0.9), 4
-            ),  # 0.9 * 0.1 = 0.09
+            {"text": "maybe noise", "language": "en",
+             "segments": [{"text": "maybe noise", "avg_logprob": -0.1, "no_speech_prob": 0.9}]},
+            round(min(1.0, max(0.0, 1.0 + (-0.1))) * (1.0 - 0.9), 4),  # 0.9 * 0.1 = 0.09
             id="high_no_speech_prob_penalty",
         ),
     ],
@@ -133,7 +98,6 @@ def test_groq_confidence_calculation(response_json, expected_confidence) -> None
 # ---------------------------------------------------------------------------
 # 24. _numpy_to_wav_bytes produces valid WAV header
 # ---------------------------------------------------------------------------
-
 
 def test_numpy_to_wav_bytes_valid_header() -> None:
     """WAV bytes start with RIFF header and contain correct format."""
@@ -183,7 +147,7 @@ def test_numpy_to_wav_bytes_clips_values() -> None:
 
     # Extract int16 data (after 44-byte header)
     data = np.frombuffer(wav_bytes[44:], dtype=np.int16)
-    assert data[0] == 32767  # clipped to max
+    assert data[0] == 32767   # clipped to max
     assert data[1] == -32768  # clipped to min
     assert 16000 < data[2] < 16500  # roughly 0.5 * 32767
 
@@ -191,7 +155,6 @@ def test_numpy_to_wav_bytes_clips_values() -> None:
 # ---------------------------------------------------------------------------
 # 25. Groq transcription with file path input
 # ---------------------------------------------------------------------------
-
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_file_path_input() -> None:
@@ -232,7 +195,6 @@ def test_groq_transcription_file_path_input() -> None:
 # 26. Groq transcription API error
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_api_error_raises() -> None:
     """Non-200 status code raises RuntimeError."""
@@ -259,7 +221,6 @@ def test_groq_transcription_api_error_raises() -> None:
 # 27. Groq transcription missing API key
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": ""}, clear=False)
 def test_groq_transcription_no_api_key_raises() -> None:
     """Missing GROQ_API_KEY raises RuntimeError."""
@@ -274,7 +235,6 @@ def test_groq_transcription_no_api_key_raises() -> None:
 # 28. Groq transcription custom prompt
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_custom_prompt() -> None:
     """Custom prompt is passed to the API (truncated to 224 chars)."""
@@ -285,9 +245,7 @@ def test_groq_transcription_custom_prompt() -> None:
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "text": "custom",
-        "language": "en",
-        "segments": [],
+        "text": "custom", "language": "en", "segments": []
     }
 
     with patch("httpx.Client") as mock_client_cls:
@@ -308,7 +266,6 @@ def test_groq_transcription_custom_prompt() -> None:
 # 35. _try_groq returns None on failure
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_try_groq_returns_none_on_exception() -> None:
     """_try_groq catches exceptions and returns None."""
@@ -316,9 +273,7 @@ def test_try_groq_returns_none_on_exception() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    with patch(
-        "jarvis_engine.stt.transcribe_groq", side_effect=RuntimeError("API error")
-    ):
+    with patch("jarvis_engine.stt.transcribe_groq", side_effect=RuntimeError("API error")):
         result = _try_groq(fake_audio, language="en", prompt="")
 
     assert result is None
@@ -327,7 +282,6 @@ def test_try_groq_returns_none_on_exception() -> None:
 # ---------------------------------------------------------------------------
 # 51. Groq transcription detected language propagated
 # ---------------------------------------------------------------------------
-
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_detected_language() -> None:
@@ -359,7 +313,6 @@ def test_groq_transcription_detected_language() -> None:
 # ---------------------------------------------------------------------------
 # 54. Groq retry on 500 response
 # ---------------------------------------------------------------------------
-
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_retry_on_500_response() -> None:
@@ -399,7 +352,6 @@ def test_groq_retry_on_500_response() -> None:
 # 55. Groq retry on connection error
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_retry_on_connection_error() -> None:
     """transcribe_groq retries once on ConnectError; returns None-like result after exhaustion."""
@@ -431,7 +383,6 @@ def test_groq_retry_on_connection_error() -> None:
 # 56. Groq retry on ReadTimeout
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_retry_on_read_timeout() -> None:
     """transcribe_groq retries once on ReadTimeout; returns empty result after exhaustion."""
@@ -460,7 +411,6 @@ def test_groq_retry_on_read_timeout() -> None:
 # ---------------------------------------------------------------------------
 # 57. Groq connection error recovers on second attempt
 # ---------------------------------------------------------------------------
-
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_connection_error_recovers_on_retry() -> None:
@@ -499,7 +449,6 @@ def test_groq_connection_error_recovers_on_retry() -> None:
 # 61. Groq API uses GROQ_STT_MODEL constant in request
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_api_uses_model_constant() -> None:
     """transcribe_groq sends the GROQ_STT_MODEL value in the API request."""
@@ -509,7 +458,9 @@ def test_groq_api_uses_model_constant() -> None:
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {"text": "test", "language": "en", "segments": []}
+    mock_response.json.return_value = {
+        "text": "test", "language": "en", "segments": []
+    }
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
@@ -527,7 +478,6 @@ def test_groq_api_uses_model_constant() -> None:
 # ---------------------------------------------------------------------------
 # 66. Minimum audio duration: transcribe_groq returns None for short audio
 # ---------------------------------------------------------------------------
-
 
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_too_short_returns_none() -> None:
@@ -548,7 +498,6 @@ def test_groq_transcription_too_short_returns_none() -> None:
 # 67. Minimum audio duration: exactly 1600 samples passes
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_exact_threshold_passes() -> None:
     """Audio with exactly 1600 samples is sent to the API."""
@@ -559,9 +508,7 @@ def test_groq_transcription_exact_threshold_passes() -> None:
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "text": "short but valid",
-        "language": "en",
-        "segments": [],
+        "text": "short but valid", "language": "en", "segments": []
     }
 
     with patch("httpx.Client") as mock_client_cls:
@@ -581,7 +528,6 @@ def test_groq_transcription_exact_threshold_passes() -> None:
 # 68. Minimum audio duration: file path input bypasses check
 # ---------------------------------------------------------------------------
 
-
 @patch.dict("os.environ", {"GROQ_API_KEY": "fake-key"}, clear=False)
 def test_groq_transcription_file_path_bypasses_duration_check() -> None:
     """File path input is not subject to minimum duration check."""
@@ -590,9 +536,7 @@ def test_groq_transcription_file_path_bypasses_duration_check() -> None:
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "text": "from file",
-        "language": "en",
-        "segments": [],
+        "text": "from file", "language": "en", "segments": []
     }
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:

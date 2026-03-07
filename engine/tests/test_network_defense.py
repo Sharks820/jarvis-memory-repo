@@ -17,7 +17,6 @@ from jarvis_engine.security.network_defense import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture
 def tmp_registry(tmp_path: Path) -> KnownDeviceRegistry:
     """Return a KnownDeviceRegistry backed by a temp file."""
@@ -106,7 +105,6 @@ tcp   ESTAB  0      0       192.168.1.100:55434  198.51.100.1:4444  users:(("unk
 # KnownDeviceRegistry tests
 # ---------------------------------------------------------------------------
 
-
 class TestKnownDeviceRegistry:
     def test_register_and_check(self, tmp_registry: KnownDeviceRegistry) -> None:
         """Register device, is_known returns True."""
@@ -171,9 +169,7 @@ class TestKnownDeviceRegistry:
             except (OSError, RuntimeError, ValueError) as exc:
                 errors.append(str(exc))
 
-        threads = [
-            threading.Thread(target=register_batch, args=(n * 20,)) for n in range(4)
-        ]
+        threads = [threading.Thread(target=register_batch, args=(n * 20,)) for n in range(4)]
         for t in threads:
             t.start()
         for t in threads:
@@ -187,13 +183,10 @@ class TestKnownDeviceRegistry:
 # HomeNetworkMonitor — ARP scanning
 # ---------------------------------------------------------------------------
 
-
 class TestARPScanning:
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_scan_arp_table_windows(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_scan_arp_table_windows(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Parse Windows arp -a output correctly."""
         mock_sys.platform = "win32"
         mock_subprocess.run.return_value = MagicMock(
@@ -208,9 +201,7 @@ class TestARPScanning:
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_scan_arp_table_linux(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_scan_arp_table_linux(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Parse Linux ip neigh output correctly."""
         mock_sys.platform = "linux"
         mock_subprocess.run.return_value = MagicMock(
@@ -224,9 +215,7 @@ class TestARPScanning:
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_arp_unknown_device_detected(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_arp_unknown_device_detected(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Unknown MAC triggers alert."""
         mock_sys.platform = "win32"
         mock_subprocess.run.return_value = MagicMock(
@@ -249,9 +238,7 @@ class TestARPScanning:
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_arp_poisoning_detection(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_arp_poisoning_detection(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Detect ARP poisoning: multiple MACs for same IP."""
         poisoned_output = """\
 Interface: 192.168.1.100 --- 0x5
@@ -279,13 +266,10 @@ Interface: 192.168.1.100 --- 0x5
 # HomeNetworkMonitor — DNS analysis
 # ---------------------------------------------------------------------------
 
-
 class TestDNSAnalysis:
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_dns_entropy_detection(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_dns_entropy_detection(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """High-entropy domains flagged as DGA candidates."""
         mock_sys.platform = "win32"
         mock_subprocess.run.return_value = MagicMock(
@@ -308,9 +292,7 @@ class TestDNSAnalysis:
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_dns_graceful_on_linux(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_dns_graceful_on_linux(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """DNS cache analysis returns empty result on non-Windows (graceful skip)."""
         mock_sys.platform = "linux"
         result = monitor.analyze_dns_cache()
@@ -323,13 +305,10 @@ class TestDNSAnalysis:
 # HomeNetworkMonitor — connection monitoring
 # ---------------------------------------------------------------------------
 
-
 class TestConnectionMonitoring:
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_check_connections_windows(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_check_connections_windows(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Parse netstat output and flag suspicious connections."""
         mock_sys.platform = "win32"
 
@@ -344,7 +323,7 @@ svchost.exe                    900 Services                   0      20,000 K
 """
         mock_subprocess.run.side_effect = [
             MagicMock(stdout=WINDOWS_NETSTAT_OUTPUT, returncode=0),  # netstat
-            MagicMock(stdout=tasklist_output, returncode=0),  # tasklist
+            MagicMock(stdout=tasklist_output, returncode=0),          # tasklist
         ]
 
         conns = monitor.check_connections()
@@ -358,9 +337,7 @@ svchost.exe                    900 Services                   0      20,000 K
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_check_connections_linux(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_check_connections_linux(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Parse Linux ss output."""
         mock_sys.platform = "linux"
         mock_subprocess.run.return_value = MagicMock(
@@ -376,13 +353,10 @@ svchost.exe                    900 Services                   0      20,000 K
 # HomeNetworkMonitor — full scan & status
 # ---------------------------------------------------------------------------
 
-
 class TestFullScanAndStatus:
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_full_scan(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_full_scan(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """full_scan aggregates ARP, DNS, and connection results."""
         mock_sys.platform = "win32"
 
@@ -421,9 +395,7 @@ class TestFullScanAndStatus:
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_status_updates_after_scan(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_status_updates_after_scan(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Status counters update after a full scan."""
         mock_sys.platform = "win32"
         tasklist_output = "Image Name PID\nfirefox.exe 1234\n"
@@ -447,13 +419,10 @@ class TestFullScanAndStatus:
 # Edge cases
 # ---------------------------------------------------------------------------
 
-
 class TestEdgeCases:
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_subprocess_failure_arp(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_subprocess_failure_arp(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """ARP scan returns empty list on subprocess failure."""
         mock_sys.platform = "win32"
         mock_subprocess.run.side_effect = OSError("command not found")
@@ -462,9 +431,7 @@ class TestEdgeCases:
 
     @patch("jarvis_engine.security.network_defense.subprocess")
     @patch("jarvis_engine.security.network_defense.sys")
-    def test_subprocess_failure_connections(
-        self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor
-    ) -> None:
+    def test_subprocess_failure_connections(self, mock_sys, mock_subprocess, monitor: HomeNetworkMonitor) -> None:
         """Connection check returns empty list on subprocess failure."""
         mock_sys.platform = "win32"
         mock_subprocess.run.side_effect = OSError("command not found")

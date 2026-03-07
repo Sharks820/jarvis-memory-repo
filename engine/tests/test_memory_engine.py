@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from jarvis_engine._shared import sanitize_fts_query
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.memory.search import hybrid_search
 from jarvis_engine.memory.tiers import Tier, TierManager
@@ -251,9 +252,7 @@ class TestHybridSearch:
         now = datetime.now(UTC).isoformat()
 
         # r_vec_only: matches embedding only (no keyword overlap at all)
-        r1 = _make_record(
-            record_id="vec_only", summary="cooking recipe tutorial guide", ts=now
-        )
+        r1 = _make_record(record_id="vec_only", summary="cooking recipe tutorial guide", ts=now)
         engine.insert_record(r1, embedding=_make_embedding(seed=1.001))
 
         # r_both: matches BOTH keyword AND embedding
@@ -294,12 +293,8 @@ class TestHybridSearch:
         recent_emb = _make_embedding(seed=2.01)
         query_emb = _make_embedding(seed=2.0)
 
-        r_old = _make_record(
-            record_id="old1", summary="database optimization tips", ts=old_ts
-        )
-        r_recent = _make_record(
-            record_id="new1", summary="database performance tuning", ts=recent_ts
-        )
+        r_old = _make_record(record_id="old1", summary="database optimization tips", ts=old_ts)
+        r_recent = _make_record(record_id="new1", summary="database performance tuning", ts=recent_ts)
 
         engine.insert_record(r_old, embedding=old_emb)
         engine.insert_record(r_recent, embedding=recent_emb)
@@ -348,9 +343,7 @@ class TestMemoryEngineDelete:
         fts_results = engine.search_fts("delete")
         assert all(rid != "del1" for rid, _ in fts_results)
 
-    def test_delete_nonexistent_record_returns_false(
-        self, engine: MemoryEngine
-    ) -> None:
+    def test_delete_nonexistent_record_returns_false(self, engine: MemoryEngine) -> None:
         """Deleting a record that does not exist returns False."""
         assert engine.delete_record("does_not_exist") is False
 
@@ -361,9 +354,7 @@ class TestMemoryEngineDelete:
             engine.insert_record(r)
         assert engine.count_records() == 5
 
-        deleted = engine.delete_records_batch(
-            ["batch_del_0", "batch_del_2", "batch_del_4"]
-        )
+        deleted = engine.delete_records_batch(["batch_del_0", "batch_del_2", "batch_del_4"])
         assert deleted == 3
         assert engine.count_records() == 2
         assert engine.get_record("batch_del_1") is not None
@@ -405,9 +396,7 @@ class TestMemoryEngineRetrieve:
     def test_get_records_batch(self, engine: MemoryEngine) -> None:
         """get_records_batch retrieves multiple records in one call."""
         for i in range(4):
-            engine.insert_record(
-                _make_record(record_id=f"batch_{i}", summary=f"record {i}")
-            )
+            engine.insert_record(_make_record(record_id=f"batch_{i}", summary=f"record {i}"))
 
         results = engine.get_records_batch(["batch_0", "batch_2"])
         assert len(results) == 2
@@ -421,9 +410,7 @@ class TestMemoryEngineRetrieve:
     def test_get_all_record_ids(self, engine: MemoryEngine) -> None:
         """get_all_record_ids returns all stored record IDs."""
         for i in range(3):
-            engine.insert_record(
-                _make_record(record_id=f"all_{i}", summary=f"record {i}")
-            )
+            engine.insert_record(_make_record(record_id=f"all_{i}", summary=f"record {i}"))
 
         ids = engine.get_all_record_ids()
         assert set(ids) == {"all_0", "all_1", "all_2"}
@@ -444,18 +431,14 @@ class TestMemoryEngineRetrieve:
 class TestMemoryEngineUpdate:
     """Tests for record update operations."""
 
-    def test_update_access_nonexistent_returns_false(
-        self, engine: MemoryEngine
-    ) -> None:
+    def test_update_access_nonexistent_returns_false(self, engine: MemoryEngine) -> None:
         """update_access on missing record returns False."""
         assert engine.update_access("missing") is False
 
     def test_update_access_batch(self, engine: MemoryEngine) -> None:
         """Batch access update increments counts for all specified records."""
         for i in range(3):
-            engine.insert_record(
-                _make_record(record_id=f"acc_b_{i}", summary=f"access batch {i}")
-            )
+            engine.insert_record(_make_record(record_id=f"acc_b_{i}", summary=f"access batch {i}"))
 
         engine.update_access_batch(["acc_b_0", "acc_b_1"])
         engine.update_access_batch(["acc_b_0"])
@@ -474,9 +457,7 @@ class TestMemoryEngineUpdate:
 
     def test_update_tier(self, engine: MemoryEngine) -> None:
         """update_tier changes the tier of a record."""
-        engine.insert_record(
-            _make_record(record_id="tier1", summary="tier update test")
-        )
+        engine.insert_record(_make_record(record_id="tier1", summary="tier update test"))
         engine.update_tier("tier1", "hot")
         record = engine.get_record("tier1")
         assert record["tier"] == "hot"
@@ -484,9 +465,7 @@ class TestMemoryEngineUpdate:
     def test_update_tiers_batch(self, engine: MemoryEngine) -> None:
         """Batch tier update changes tiers for multiple records."""
         for i in range(3):
-            engine.insert_record(
-                _make_record(record_id=f"tb_{i}", summary=f"tier batch {i}")
-            )
+            engine.insert_record(_make_record(record_id=f"tb_{i}", summary=f"tier batch {i}"))
 
         engine.update_tiers_batch([("tb_0", "hot"), ("tb_2", "cold")])
 
@@ -505,16 +484,12 @@ class TestMemoryEngineFTS:
 
     def test_fts_empty_query_returns_empty(self, engine: MemoryEngine) -> None:
         """Empty query after sanitization returns empty list."""
-        engine.insert_record(
-            _make_record(record_id="fts_e", summary="some content here")
-        )
+        engine.insert_record(_make_record(record_id="fts_e", summary="some content here"))
         assert engine.search_fts("") == []
 
     def test_fts_special_chars_sanitized(self, engine: MemoryEngine) -> None:
         """FTS5 special characters are stripped from queries."""
-        engine.insert_record(
-            _make_record(record_id="fts_s", summary="special test content")
-        )
+        engine.insert_record(_make_record(record_id="fts_s", summary="special test content"))
         # Queries with special chars should still work (chars are stripped)
         results = engine.search_fts('"special"')
         ids = [rid for rid, _ in results]
@@ -522,7 +497,7 @@ class TestMemoryEngineFTS:
 
     def test_fts_boolean_operators_stripped(self, engine: MemoryEngine) -> None:
         """FTS5 boolean operators (AND, OR, NOT) are stripped from queries."""
-        sanitized = MemoryEngine._sanitize_fts_query("python AND java OR NOT ruby")
+        sanitized = sanitize_fts_query("python AND java OR NOT ruby")
         assert "AND" not in sanitized.split()
         assert "OR" not in sanitized.split()
         assert "NOT" not in sanitized.split()
@@ -533,11 +508,9 @@ class TestMemoryEngineFTS:
     def test_fts_limit_parameter(self, engine: MemoryEngine) -> None:
         """FTS search respects the limit parameter."""
         for i in range(10):
-            engine.insert_record(
-                _make_record(
-                    record_id=f"lim_{i}", summary=f"python tutorial chapter {i}"
-                )
-            )
+            engine.insert_record(_make_record(
+                record_id=f"lim_{i}", summary=f"python tutorial chapter {i}"
+            ))
         results = engine.search_fts("python", limit=3)
         assert len(results) <= 3
 
@@ -586,7 +559,6 @@ class TestMemoryEngineTagHandling:
         engine.insert_record(r)
         retrieved = engine.get_record("tag1")
         import json
-
         assert json.loads(retrieved["tags"]) == ["alpha", "beta"]
 
     def test_tags_string_stored_as_is(self, engine: MemoryEngine) -> None:
@@ -597,9 +569,7 @@ class TestMemoryEngineTagHandling:
         retrieved = engine.get_record("tag2")
         assert retrieved["tags"] == '["x","y"]'
 
-    def test_tags_non_list_non_string_defaults_to_empty(
-        self, engine: MemoryEngine
-    ) -> None:
+    def test_tags_non_list_non_string_defaults_to_empty(self, engine: MemoryEngine) -> None:
         """Tags of unexpected type default to '[]'."""
         r = _make_record(record_id="tag3", summary="tag test 3")
         r["tags"] = 12345  # neither list nor string
@@ -708,9 +678,7 @@ class TestMemoryEngineConcurrency:
         import threading
 
         for i in range(10):
-            engine.insert_record(
-                _make_record(record_id=f"cr_{i}", summary=f"concurrent read {i}")
-            )
+            engine.insert_record(_make_record(record_id=f"cr_{i}", summary=f"concurrent read {i}"))
 
         errors = []
 

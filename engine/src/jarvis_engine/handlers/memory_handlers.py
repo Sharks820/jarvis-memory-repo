@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -52,7 +53,7 @@ class BrainStatusHandler:
                     edge_count = self._kg.count_edges()
                     locked_count = self._kg.count_locked()
                     pending_contradictions = self._kg.count_pending_contradictions()
-                except Exception as exc:
+                except sqlite3.Error as exc:
                     logger.warning("Failed to query KnowledgeGraph stats: %s", exc)
 
             # Query distinct branches from records table
@@ -63,23 +64,21 @@ class BrainStatusHandler:
                         "SELECT DISTINCT branch FROM records ORDER BY branch"
                     ).fetchall()
                 branches = [row[0] for row in rows]
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 logger.warning("Failed to query branches: %s", exc)
 
-            return BrainStatusResult(
-                status={
-                    "updated_utc": "",
-                    "branch_count": len(branches),
-                    "fact_count": fact_count,
-                    "edge_count": edge_count,
-                    "locked_facts": locked_count,
-                    "pending_contradictions": pending_contradictions,
-                    "total_records": count,
-                    "regression": {"status": "not_available"},
-                    "branches": branches,
-                    "engine": "sqlite",
-                }
-            )
+            return BrainStatusResult(status={
+                "updated_utc": "",
+                "branch_count": len(branches),
+                "fact_count": fact_count,
+                "edge_count": edge_count,
+                "locked_facts": locked_count,
+                "pending_contradictions": pending_contradictions,
+                "total_records": count,
+                "regression": {"status": "not_available"},
+                "branches": branches,
+                "engine": "sqlite",
+            })
         from jarvis_engine.brain_memory import brain_status
 
         status = brain_status(self._root)
@@ -87,9 +86,7 @@ class BrainStatusHandler:
 
 
 class BrainContextHandler:
-    def __init__(
-        self, root: Path, engine: Any = None, embed_service: Any = None
-    ) -> None:
+    def __init__(self, root: Path, engine: Any = None, embed_service: Any = None) -> None:
         self._root = root
         self._engine = engine
         self._embed_service = embed_service
@@ -101,13 +98,7 @@ class BrainContextHandler:
 
             query_embedding = self._embed_service.embed_query(cmd.query)
             if not query_embedding:
-                return BrainContextResult(
-                    packet={
-                        "query": cmd.query,
-                        "selected": [],
-                        "error": "embedding failed",
-                    }
-                )
+                return BrainContextResult(packet={"query": cmd.query, "selected": [], "error": "embedding failed"})
             results = hybrid_search(
                 self._engine,
                 cmd.query,
@@ -121,30 +112,26 @@ class BrainContextHandler:
                 summary = str(record.get("summary", ""))
                 if total_chars + len(summary) > max_chars:
                     break  # Stop collecting once budget exceeded (not skip)
-                selected.append(
-                    {
-                        "record_id": record.get("record_id", ""),
-                        "branch": record.get("branch", "general"),
-                        "summary": summary,
-                        "source": record.get("source", ""),
-                        "kind": record.get("kind", ""),
-                        "ts": record.get("ts", ""),
-                        "score": 0.0,
-                    }
-                )
+                selected.append({
+                    "record_id": record.get("record_id", ""),
+                    "branch": record.get("branch", "general"),
+                    "summary": summary,
+                    "source": record.get("source", ""),
+                    "kind": record.get("kind", ""),
+                    "ts": record.get("ts", ""),
+                    "score": 0.0,
+                })
                 total_chars += len(summary)
-            return BrainContextResult(
-                packet={
-                    "query": cmd.query,
-                    "selected": selected,
-                    "selected_count": len(selected),
-                    "canonical_facts": [],
-                    "max_items": cmd.max_items,
-                    "max_chars": cmd.max_chars,
-                    "total_records_scanned": self._engine.count_records(),
-                    "engine": "sqlite",
-                }
-            )
+            return BrainContextResult(packet={
+                "query": cmd.query,
+                "selected": selected,
+                "selected_count": len(selected),
+                "canonical_facts": [],
+                "max_items": cmd.max_items,
+                "max_chars": cmd.max_chars,
+                "total_records_scanned": self._engine.count_records(),
+                "engine": "sqlite",
+            })
         from jarvis_engine.brain_memory import build_context_packet
 
         packet = build_context_packet(
@@ -163,9 +150,7 @@ class BrainCompactHandler:
     def handle(self, cmd: BrainCompactCommand) -> BrainCompactResult:
         from jarvis_engine.brain_memory import brain_compact
 
-        result = brain_compact(
-            self._root, keep_recent=max(200, min(cmd.keep_recent, 50000))
-        )
+        result = brain_compact(self._root, keep_recent=max(200, min(cmd.keep_recent, 50000)))
         return BrainCompactResult(result=result)
 
 
@@ -235,10 +220,7 @@ class MemorySnapshotHandler:
         self._root = root
 
     def handle(self, cmd: MemorySnapshotCommand) -> MemorySnapshotResult:
-        from jarvis_engine.memory_snapshots import (
-            create_signed_snapshot,
-            verify_signed_snapshot,
-        )
+        from jarvis_engine.memory_snapshots import create_signed_snapshot, verify_signed_snapshot
 
         if cmd.create:
             result = create_signed_snapshot(self._root, note=cmd.note)
@@ -257,9 +239,7 @@ class MemorySnapshotHandler:
             except ValueError as exc:
                 logger.warning("Snapshot verify path check failed: %s", exc)
                 return MemorySnapshotResult(
-                    verified=True,
-                    ok=False,
-                    reason="Path outside project root",
+                    verified=True, ok=False, reason="Path outside project root",
                 )
             verification = verify_signed_snapshot(self._root, target)
             return MemorySnapshotResult(

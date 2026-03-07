@@ -4,7 +4,6 @@ Covers: HMAC signing, URL safety, config loading/saving, HTTP helpers,
 health loop logic, service status parsing, widget state, hotword detection,
 voice dictation, error detail extraction, and utility functions.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -53,7 +52,6 @@ from jarvis_engine.desktop_widget import (
 
 # ---- WidgetConfig dataclass ------------------------------------------------
 
-
 class TestWidgetConfig:
     def test_dataclass_fields(self):
         cfg = WidgetConfig(
@@ -76,7 +74,6 @@ class TestWidgetConfig:
 
 
 # ---- HMAC signed headers ---------------------------------------------------
-
 
 class TestSignedHeaders:
     def test_timestamp_is_integer_string(self):
@@ -103,25 +100,17 @@ class TestSignedHeaders:
         body = b'{"text":"hello"}'
         device_id = "galaxy_s25_primary"
 
-        with (
-            patch("jarvis_engine.desktop_widget.time") as mock_time,
-            patch("jarvis_engine.desktop_widget.uuid") as mock_uuid,
-        ):
+        with patch("jarvis_engine.desktop_widget.time") as mock_time, \
+             patch("jarvis_engine.desktop_widget.uuid") as mock_uuid:
             mock_time.time.return_value = 1700000000.7  # float to verify int conversion
-            mock_uuid.uuid4.return_value = SimpleNamespace(
-                hex="deadbeef1234567890abcdef12345678"
-            )
+            mock_uuid.uuid4.return_value = SimpleNamespace(hex="deadbeef1234567890abcdef12345678")
 
             headers = _signed_headers(token, signing_key, body, device_id)
 
         ts = "1700000000"  # must be integer (truncated, not rounded)
         nonce = "deadbeef1234567890abcdef12345678"
-        signing_material = (
-            ts.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
-        )
-        expected_sig = hmac.new(
-            signing_key.encode("utf-8"), signing_material, hashlib.sha256
-        ).hexdigest()
+        signing_material = ts.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
+        expected_sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()
         assert headers["X-Jarvis-Signature"] == expected_sig
         assert headers["X-Jarvis-Timestamp"] == ts
         assert headers["X-Jarvis-Nonce"] == nonce
@@ -147,12 +136,9 @@ class TestSignedHeaders:
 
 # ---- URL safety check ------------------------------------------------------
 
-
 class TestIsSafeWidgetBaseUrl:
     def test_https_always_safe(self):
-        assert (
-            _is_safe_widget_base_url("https://remote-server.example.com:9090") is True
-        )
+        assert _is_safe_widget_base_url("https://remote-server.example.com:9090") is True
 
     def test_localhost_http_safe(self):
         assert _is_safe_widget_base_url("http://127.0.0.1:8787") is True
@@ -186,7 +172,6 @@ class TestIsSafeWidgetBaseUrl:
 
 # ---- Config loading ---------------------------------------------------------
 
-
 class TestLoadMobileApiCfg:
     def test_missing_file_returns_empty(self, tmp_path):
         result = _load_mobile_api_cfg(tmp_path)
@@ -219,9 +204,7 @@ class TestLoadMobileApiCfg:
         assert result == {}
 
 
-@patch(
-    "jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests")
-)
+@patch("jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests"))
 class TestLoadWidgetCfg:
     def test_defaults_when_no_files(self, _mock_urlopen, tmp_path):
         cfg = _load_widget_cfg(tmp_path)
@@ -262,9 +245,7 @@ class TestLoadWidgetCfg:
         assert cfg.token == "mobile_tok"
         assert cfg.signing_key == "mobile_sk"
 
-    def test_auto_upgrade_http_to_https_when_tls_certs_exist(
-        self, _mock_urlopen, tmp_path
-    ):
+    def test_auto_upgrade_http_to_https_when_tls_certs_exist(self, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         # Create TLS cert files to trigger auto-upgrade
@@ -362,7 +343,6 @@ class TestLoadWidgetCfg:
 
 # ---- Path helpers -----------------------------------------------------------
 
-
 class TestPathHelpers:
     def test_security_dir(self, tmp_path):
         result = _security_dir(tmp_path)
@@ -384,7 +364,6 @@ class TestPathHelpers:
 
 
 # ---- HTTP error detail extraction -------------------------------------------
-
 
 class TestHttpErrorDetails:
     def test_with_body(self):
@@ -430,17 +409,12 @@ class TestHttpErrorDetails:
 
 # ---- _http_json helper -----------------------------------------------------
 
-
 class TestHttpJson:
     def test_rejects_unsafe_base_url(self):
         from jarvis_engine.desktop_widget import _http_json
-
         cfg = WidgetConfig(
             base_url="http://evil.example.com:8787",
-            token="t",
-            signing_key="k",
-            device_id="d",
-            master_password="p",
+            token="t", signing_key="k", device_id="d", master_password="p",
         )
         with pytest.raises(RuntimeError, match="HTTPS"):
             _http_json(cfg, "/health")
@@ -448,7 +422,6 @@ class TestHttpJson:
     @patch("jarvis_engine.desktop_widget.urlopen")
     def test_get_request_success(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-
         resp_mock = MagicMock()
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
@@ -457,10 +430,7 @@ class TestHttpJson:
 
         cfg = WidgetConfig(
             base_url="http://127.0.0.1:8787",
-            token="t",
-            signing_key="k",
-            device_id="d",
-            master_password="p",
+            token="t", signing_key="k", device_id="d", master_password="p",
         )
         result = _http_json(cfg, "/health")
         assert result == {"ok": True}
@@ -468,7 +438,6 @@ class TestHttpJson:
     @patch("jarvis_engine.desktop_widget.urlopen")
     def test_post_request_includes_content_type(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-
         resp_mock = MagicMock()
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
@@ -477,10 +446,7 @@ class TestHttpJson:
 
         cfg = WidgetConfig(
             base_url="http://127.0.0.1:8787",
-            token="t",
-            signing_key="k",
-            device_id="d",
-            master_password="p",
+            token="t", signing_key="k", device_id="d", master_password="p",
         )
         _http_json(cfg, "/command", method="POST", payload={"text": "hello"})
 
@@ -492,7 +458,6 @@ class TestHttpJson:
     @patch("jarvis_engine.desktop_widget.urlopen")
     def test_invalid_json_response_raises(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-
         resp_mock = MagicMock()
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
@@ -501,10 +466,7 @@ class TestHttpJson:
 
         cfg = WidgetConfig(
             base_url="http://localhost:8787",
-            token="t",
-            signing_key="k",
-            device_id="d",
-            master_password="",
+            token="t", signing_key="k", device_id="d", master_password="",
         )
         with pytest.raises(RuntimeError, match="Invalid JSON"):
             _http_json(cfg, "/health")
@@ -512,19 +474,15 @@ class TestHttpJson:
     @patch("jarvis_engine.desktop_widget.urlopen")
     def test_non_dict_response_raises(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-
         resp_mock = MagicMock()
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
-        resp_mock.read.return_value = b"[1, 2, 3]"
+        resp_mock.read.return_value = b'[1, 2, 3]'
         mock_urlopen.return_value = resp_mock
 
         cfg = WidgetConfig(
             base_url="http://localhost:8787",
-            token="t",
-            signing_key="k",
-            device_id="d",
-            master_password="",
+            token="t", signing_key="k", device_id="d", master_password="",
         )
         with pytest.raises(RuntimeError, match="Invalid response"):
             _http_json(cfg, "/health")
@@ -532,39 +490,32 @@ class TestHttpJson:
 
 # ---- _http_json_bootstrap ---------------------------------------------------
 
-
 class TestHttpJsonBootstrap:
     def test_empty_base_url_raises(self):
         from jarvis_engine.desktop_widget import _http_json_bootstrap
-
         with pytest.raises(RuntimeError, match="Base URL is required"):
             _http_json_bootstrap("", "password", "dev1")
 
     def test_unsafe_url_raises(self):
         from jarvis_engine.desktop_widget import _http_json_bootstrap
-
         with pytest.raises(RuntimeError, match="HTTPS"):
             _http_json_bootstrap("http://public.example.com", "password", "dev1")
 
     def test_empty_password_raises(self):
         from jarvis_engine.desktop_widget import _http_json_bootstrap
-
         with pytest.raises(RuntimeError, match="Master password"):
             _http_json_bootstrap("http://127.0.0.1:8787", "  ", "dev1")
 
     @patch("jarvis_engine.desktop_widget.urlopen")
     def test_successful_bootstrap(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json_bootstrap
-
         resp_mock = MagicMock()
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
-        resp_mock.read.return_value = json.dumps(
-            {
-                "ok": True,
-                "session": {"token": "new_tok", "signing_key": "new_sk"},
-            }
-        ).encode("utf-8")
+        resp_mock.read.return_value = json.dumps({
+            "ok": True,
+            "session": {"token": "new_tok", "signing_key": "new_sk"},
+        }).encode("utf-8")
         mock_urlopen.return_value = resp_mock
 
         result = _http_json_bootstrap("http://127.0.0.1:8787", "secret", "dev1")
@@ -574,13 +525,11 @@ class TestHttpJsonBootstrap:
 
 # ---- _save_widget_cfg -------------------------------------------------------
 
-
 class TestSaveWidgetCfg:
     @patch("jarvis_engine._shared.atomic_write_json")
     def test_save_calls_atomic_write_with_dpapi(self, mock_write):
         """On Windows, save should encrypt master_password via DPAPI."""
         from jarvis_engine.desktop_widget import _save_widget_cfg
-
         cfg = WidgetConfig("http://127.0.0.1:8787", "tok", "sk", "dev", "pw")
         root = Path("/fake/root")
         _save_widget_cfg(root, cfg)
@@ -614,7 +563,6 @@ class TestSaveWidgetCfg:
     def test_save_empty_password_omits_both_keys(self, mock_write):
         """When master_password is empty, neither key should be written."""
         from jarvis_engine.desktop_widget import _save_widget_cfg
-
         cfg = WidgetConfig("http://127.0.0.1:8787", "tok", "sk", "dev", "")
         root = Path("/fake/root")
         _save_widget_cfg(root, cfg)
@@ -625,18 +573,15 @@ class TestSaveWidgetCfg:
 
 # ---- _detect_hotword_once ---------------------------------------------------
 
-
 class TestDetectHotwordOnce:
     def test_invalid_keyword_returns_false(self):
         from jarvis_engine.desktop_widget import _detect_hotword_once
-
         # Keywords with special chars should fail regex and return False
         assert _detect_hotword_once("jar!vis") is False
 
     @patch("jarvis_engine.desktop_widget.subprocess")
     def test_detected_keyword_returns_true(self, mock_subprocess):
         from jarvis_engine.desktop_widget import _detect_hotword_once
-
         mock_subprocess.run.return_value = SimpleNamespace(
             returncode=0, stdout="jarvis\n", stderr=""
         )
@@ -645,7 +590,6 @@ class TestDetectHotwordOnce:
     @patch("jarvis_engine.desktop_widget.subprocess")
     def test_no_detection_returns_false(self, mock_subprocess):
         from jarvis_engine.desktop_widget import _detect_hotword_once
-
         mock_subprocess.run.return_value = SimpleNamespace(
             returncode=0, stdout="", stderr=""
         )
@@ -654,7 +598,6 @@ class TestDetectHotwordOnce:
     @patch("jarvis_engine.desktop_widget.subprocess")
     def test_nonzero_returncode_returns_false(self, mock_subprocess):
         from jarvis_engine.desktop_widget import _detect_hotword_once
-
         mock_subprocess.run.return_value = SimpleNamespace(
             returncode=1, stdout="jarvis", stderr="error"
         )
@@ -662,7 +605,6 @@ class TestDetectHotwordOnce:
 
     def test_empty_keyword_uses_jarvis(self):
         from jarvis_engine.desktop_widget import _detect_hotword_once
-
         with patch("jarvis_engine.desktop_widget.subprocess") as mock_sub:
             mock_sub.run.return_value = SimpleNamespace(
                 returncode=0, stdout="jarvis\n", stderr=""
@@ -673,25 +615,13 @@ class TestDetectHotwordOnce:
 
 # ---- _voice_dictate_once ----------------------------------------------------
 
-
 class TestVoiceDictateOnce:
     @patch("jarvis_engine.desktop_widget.listen_and_transcribe", create=True)
     def test_whisper_stt_success(self, mock_listen):
         # Need to patch the import inside the function
         mock_result = SimpleNamespace(text="hello world")
-        with patch.dict(
-            "sys.modules",
-            {
-                "jarvis_engine.stt": MagicMock(
-                    listen_and_transcribe=MagicMock(return_value=mock_result)
-                )
-            },
-        ):
-            with patch(
-                "jarvis_engine.desktop_widget.listen_and_transcribe",
-                mock_listen,
-                create=True,
-            ):
+        with patch.dict("sys.modules", {"jarvis_engine.stt": MagicMock(listen_and_transcribe=MagicMock(return_value=mock_result))}):
+            with patch("jarvis_engine.desktop_widget.listen_and_transcribe", mock_listen, create=True):
                 mock_listen.return_value = mock_result
                 # Verify the mock is properly configured with expected text
                 assert mock_result.text == "hello world"
@@ -700,21 +630,17 @@ class TestVoiceDictateOnce:
     @patch("jarvis_engine.desktop_widget._voice_dictate_system_speech")
     def test_fallback_to_system_speech_on_runtime_error(self, mock_fallback):
         from jarvis_engine.desktop_widget import _voice_dictate_once
-
         mock_fallback.return_value = "fallback text"
         with patch.dict("sys.modules", {}):
             # Make the stt import raise RuntimeError
             stt_mod = MagicMock()
-            stt_mod.listen_and_transcribe = MagicMock(
-                side_effect=RuntimeError("no device")
-            )
+            stt_mod.listen_and_transcribe = MagicMock(side_effect=RuntimeError("no device"))
             with patch.dict("sys.modules", {"jarvis_engine.stt": stt_mod}):
                 result = _voice_dictate_once(timeout_s=5)
                 assert result == "fallback text"
 
 
 # ---- Service status uptime formatting (extracted logic) ---------------------
-
 
 class TestServiceUptimeFormatting:
     """Test the uptime formatting logic from _refresh_services."""
@@ -746,7 +672,6 @@ class TestServiceUptimeFormatting:
 
 # ---- Widget orb animation math (extracted) ----------------------------------
 
-
 class TestOrbAnimationMath:
     """Test the time-based pulse math from _animate_orb."""
 
@@ -765,7 +690,6 @@ class TestOrbAnimationMath:
 
 
 # ---- Launcher animation math -----------------------------------------------
-
 
 class TestLauncherAnimationMath:
     def test_launcher_core_breathing_bounds(self):
@@ -794,7 +718,7 @@ class TestLauncherAnimationMath:
         for t in [0, 0.5, 1.0, 3.0, 10.0]:
             for i in range(3):
                 orbit_r = 34 - i * 5
-                orbit_speed = 45 + i * 25
+                orbit_speed = (45 + i * 25)
                 angle = math.radians((t * orbit_speed) % 360 + i * 120)
                 px = cx + orbit_r * math.cos(angle) - 2
                 py = cy + orbit_r * math.sin(angle) - 2
@@ -805,12 +729,8 @@ class TestLauncherAnimationMath:
 
 # ---- Integration: full config round-trip ------------------------------------
 
-
 class TestConfigRoundTrip:
-    @patch(
-        "jarvis_engine.desktop_widget.urlopen",
-        side_effect=OSError("no network in tests"),
-    )
+    @patch("jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests"))
     @patch("jarvis_engine.desktop_widget._save_widget_cfg")
     def test_load_with_both_files_present(self, mock_save, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
@@ -820,15 +740,13 @@ class TestConfigRoundTrip:
             encoding="utf-8-sig",
         )
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://192.168.1.10:9000",
-                    "token": "",
-                    "signing_key": "",
-                    "device_id": "my_phone",
-                    "master_password": "pw123",
-                }
-            ),
+            json.dumps({
+                "base_url": "http://192.168.1.10:9000",
+                "token": "",
+                "signing_key": "",
+                "device_id": "my_phone",
+                "master_password": "pw123",
+            }),
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
@@ -843,7 +761,6 @@ class TestConfigRoundTrip:
 
 
 # ---- DPAPI encrypt/decrypt --------------------------------------------------
-
 
 class TestDpapiEncryptDecrypt:
     """Test DPAPI encryption/decryption round-trip (native on Windows)."""
@@ -891,14 +808,12 @@ class TestDpapiEncryptDecrypt:
     def test_decrypt_wrong_data_raises(self):
         """Decrypting valid base64 that is not DPAPI ciphertext should raise."""
         import base64
-
         fake = base64.b64encode(b"this is not encrypted data").decode("ascii")
         with pytest.raises(OSError):
             _dpapi_decrypt(fake)
 
 
 # ---- Config migration from plaintext to DPAPI-protected --------------------
-
 
 class TestConfigMigration:
     """Test that loading a config with plaintext master_password migrates to DPAPI."""
@@ -910,12 +825,10 @@ class TestConfigMigration:
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "master_password": "migrate_me",
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password": "migrate_me",
+            }),
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
@@ -928,9 +841,7 @@ class TestConfigMigration:
         assert "master_password_protected" in saved_payload
         assert "master_password" not in saved_payload
         # Verify the protected value decrypts back to original
-        assert (
-            _dpapi_decrypt(saved_payload["master_password_protected"]) == "migrate_me"
-        )
+        assert _dpapi_decrypt(saved_payload["master_password_protected"]) == "migrate_me"
 
     @patch("jarvis_engine.desktop_widget._save_widget_cfg")
     def test_empty_plaintext_password_no_migration(self, mock_save, tmp_path):
@@ -938,12 +849,10 @@ class TestConfigMigration:
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "master_password": "",
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password": "",
+            }),
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
@@ -958,12 +867,10 @@ class TestConfigMigration:
         # Pre-encrypt the password
         protected = _dpapi_encrypt("already_protected")
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "master_password_protected": protected,
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password_protected": protected,
+            }),
             encoding="utf-8",
         )
         with patch("jarvis_engine.desktop_widget._save_widget_cfg") as mock_save:
@@ -979,13 +886,11 @@ class TestConfigMigration:
         sec.mkdir(parents=True)
         protected = _dpapi_encrypt("the_real_password")
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "master_password": "stale_plaintext",
-                    "master_password_protected": protected,
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "master_password": "stale_plaintext",
+                "master_password_protected": protected,
+            }),
             encoding="utf-8",
         )
         with patch("jarvis_engine.desktop_widget._save_widget_cfg") as mock_save:
@@ -996,14 +901,12 @@ class TestConfigMigration:
 
 # ---- Full save/load round-trip with DPAPI -----------------------------------
 
-
 class TestSaveLoadRoundTripDpapi:
     """Integration: save config then load it back, verifying DPAPI protection."""
 
     @pytest.mark.skipif(not _DPAPI_AVAILABLE, reason="DPAPI only available on Windows")
     def test_full_round_trip(self, tmp_path):
         from jarvis_engine.desktop_widget import _save_widget_cfg
-
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
 
@@ -1018,9 +921,7 @@ class TestSaveLoadRoundTripDpapi:
 
         # Verify the JSON on disk does NOT contain plaintext password
         raw = json.loads((sec / "desktop_widget.json").read_text(encoding="utf-8"))
-        assert "master_password" not in raw, (
-            "Plaintext master_password should not be in saved config"
-        )
+        assert "master_password" not in raw, "Plaintext master_password should not be in saved config"
         assert "master_password_protected" in raw
 
         # Load it back
@@ -1034,14 +935,12 @@ class TestSaveLoadRoundTripDpapi:
 
 # ---- Toast notification function --------------------------------------------
 
-
 class TestShowToast:
     """Test _show_toast without actually launching PowerShell."""
 
     def _reset_throttle(self):
         """Reset the module-level toast throttle state for test isolation."""
         import jarvis_engine.desktop_widget as dw
-
         dw._last_toast_time = 0.0
 
     @patch("jarvis_engine.desktop_widget.subprocess.Popen")
@@ -1131,7 +1030,6 @@ class TestShowToast:
         # stdout/stderr should be DEVNULL (fire-and-forget)
         kwargs = mock_popen.call_args[1]
         import subprocess as _sp
-
         assert kwargs.get("stdout") == _sp.DEVNULL
         assert kwargs.get("stderr") == _sp.DEVNULL
 
@@ -1141,7 +1039,6 @@ class TestToastThrottle:
 
     def _reset_throttle(self):
         import jarvis_engine.desktop_widget as dw
-
         dw._last_toast_time = 0.0
 
     @patch("jarvis_engine.desktop_widget.subprocess.Popen")
@@ -1160,7 +1057,6 @@ class TestToastThrottle:
         assert mock_popen.call_count == 1
         # Simulate time passing beyond cooldown
         import jarvis_engine.desktop_widget as dw
-
         dw._last_toast_time = time.time() - _TOAST_COOLDOWN_SECONDS - 1
         _show_toast("Second", "msg")
         assert mock_popen.call_count == 2
@@ -1189,7 +1085,6 @@ class TestToastConstants:
 
 # ---- Chat-style conversation display ----------------------------------------
 
-
 class TestChatDisplay:
     """Test the chat-style conversation display using a headless tkinter Text widget.
 
@@ -1201,7 +1096,6 @@ class TestChatDisplay:
     def _tk_text(self):
         """Create a minimal tkinter root + Text widget for each test."""
         import tkinter as _tk
-
         try:
             self._root = _tk.Tk()
         except _tk.TclError:
@@ -1211,7 +1105,6 @@ class TestChatDisplay:
         self._text.pack()
         # Import the class to access tag configuration logic
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         self._widget_cls = JarvisDesktopWidget
         yield
         try:
@@ -1282,7 +1175,6 @@ class TestChatDisplay:
     def _insert_with_role(self, message: str, role: str = "system"):
         """Simulate the _log method's insert logic on our test Text widget."""
         import tkinter as _tk
-
         stamp = time.strftime("%H:%M:%S")
         self._text.config(state=_tk.NORMAL)
 
@@ -1343,7 +1235,6 @@ class TestChatDisplay:
     def test_user_role_inserts_separator_and_timestamp(self):
         """User messages should be preceded by a separator line and timestamp."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("hello world", role="user")
         content = self._text.get("1.0", _tk.END)
@@ -1355,7 +1246,6 @@ class TestChatDisplay:
     def test_jarvis_role_shows_prefix(self):
         """Jarvis messages should show 'Jarvis:' prefix."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("I understand.", role="jarvis")
         content = self._text.get("1.0", _tk.END)
@@ -1364,7 +1254,6 @@ class TestChatDisplay:
     def test_error_role_shows_error_prefix(self):
         """Error messages should show 'ERROR:' with timestamp."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("connection refused", role="error")
         content = self._text.get("1.0", _tk.END)
@@ -1373,7 +1262,6 @@ class TestChatDisplay:
     def test_system_role_shows_timestamp(self):
         """System messages should include a timestamp bracket."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("Widget online.", role="system")
         content = self._text.get("1.0", _tk.END)
@@ -1383,7 +1271,6 @@ class TestChatDisplay:
     def test_tags_applied_to_inserted_text(self):
         """Verify that inserted text actually has the correct tag applied."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("test message", role="jarvis")
         # Find the line containing the message and check its tags
@@ -1398,7 +1285,6 @@ class TestChatDisplay:
     def test_line_cap_removes_old_lines(self):
         """When exceeding 500 lines, old lines should be pruned."""
         import tkinter as _tk
-
         self._configure_tags()
         # Insert 510 system messages (1 line each)
         self._text.config(state=_tk.NORMAL)
@@ -1416,7 +1302,6 @@ class TestChatDisplay:
     def test_clear_history_empties_widget(self):
         """The clear history action should remove all text."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("some message", role="system")
         self._insert_with_role("another message", role="jarvis")
@@ -1441,7 +1326,6 @@ class TestChatDisplay:
     def test_multiple_roles_interleave_correctly(self):
         """Inserting messages with different roles should produce correct ordering."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("hello", role="user")
         self._insert_with_role("[chat] ok=True", role="jarvis")
@@ -1463,7 +1347,6 @@ class TestChatDisplay:
     def test_unknown_role_falls_back_to_system(self):
         """An unrecognized role should be treated as system."""
         import tkinter as _tk
-
         self._configure_tags()
         self._insert_with_role("mystery", role="unknown_role")
         content = self._text.get("1.0", _tk.END)
@@ -1474,14 +1357,12 @@ class TestChatDisplay:
 
 # ---- Visual State Machine ---------------------------------------------------
 
-
 class TestWidgetStateMachine:
     """Test the widget visual state machine logic (no tkinter required)."""
 
     def test_orb_color_idle_online(self):
         """Idle + online should return ACCENT (teal)."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.ACCENT = "#12c9b1"
         widget.ACCENT_2 = "#1aa3ff"
@@ -1494,7 +1375,6 @@ class TestWidgetStateMachine:
     def test_orb_color_idle_offline(self):
         """Idle + offline should return indigo (cool offline color)."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.ACCENT = "#12c9b1"
         widget.ACCENT_2 = "#1aa3ff"
@@ -1507,7 +1387,6 @@ class TestWidgetStateMachine:
     def test_orb_color_listening(self):
         """Listening should return ACCENT_2 (blue)."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.ACCENT = "#12c9b1"
         widget.ACCENT_2 = "#1aa3ff"
@@ -1520,7 +1399,6 @@ class TestWidgetStateMachine:
     def test_orb_color_processing(self):
         """Processing should return orange."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.ACCENT = "#12c9b1"
         widget.ACCENT_2 = "#1aa3ff"
@@ -1533,7 +1411,6 @@ class TestWidgetStateMachine:
     def test_orb_color_error(self):
         """Error should return WARN (red)."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.ACCENT = "#12c9b1"
         widget.ACCENT_2 = "#1aa3ff"
@@ -1546,7 +1423,6 @@ class TestWidgetStateMachine:
     def test_set_state_rejects_invalid_state(self):
         """_set_state with invalid state should default to idle."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._widget_state = "processing"
         widget._refresh_status_view = MagicMock()
@@ -1557,7 +1433,6 @@ class TestWidgetStateMachine:
     def test_set_state_valid_states(self):
         """_set_state should accept all valid states."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         for state in ("idle", "listening", "processing", "error"):
             widget = MagicMock(spec=JarvisDesktopWidget)
             widget._refresh_status_view = MagicMock()
@@ -1567,15 +1442,13 @@ class TestWidgetStateMachine:
     def test_send_command_sets_processing_state(self):
         """_send_command_async should set processing state before HTTP call."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.command_text = MagicMock()
         widget.command_text.get.return_value = "hello\n"
         widget._log = MagicMock()
         widget._set_state = MagicMock()
-        widget._current_cfg = MagicMock(
-            return_value=WidgetConfig("http://127.0.0.1:8787", "t", "k", "d", "p")
-        )
+        widget._current_cfg = MagicMock(return_value=WidgetConfig(
+            "http://127.0.0.1:8787", "t", "k", "d", "p"))
         widget.execute_var = MagicMock()
         widget.execute_var.get.return_value = False
         widget.priv_var = MagicMock()
@@ -1595,7 +1468,6 @@ class TestWidgetStateMachine:
     def test_on_escape_cancels_when_processing(self):
         """ESC should cancel command when widget is processing."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._widget_state = "processing"
         widget._cancel_command = MagicMock()
@@ -1609,7 +1481,6 @@ class TestWidgetStateMachine:
     def test_on_escape_minimizes_when_idle(self):
         """ESC should minimize widget when not processing."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._widget_state = "idle"
         widget._cancel_command = MagicMock()
@@ -1623,7 +1494,6 @@ class TestWidgetStateMachine:
     def test_dictate_sets_listening_state(self):
         """_dictate_async should set listening state before dictation."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.auto_send_var = MagicMock()
         widget.auto_send_var.get.return_value = False
@@ -1636,7 +1506,6 @@ class TestWidgetStateMachine:
 
 
 # ---- Position Persistence & Edge Snapping -----------------------------------
-
 
 class TestSnapToEdge:
     """Test edge-snapping logic (no tkinter display required)."""
@@ -1755,15 +1624,13 @@ class TestPositionPersistence:
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "panel_x": 200,
-                    "panel_y": 100,
-                    "launcher_x": 1800,
-                    "launcher_y": 950,
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "panel_x": 200,
+                "panel_y": 100,
+                "launcher_x": 1800,
+                "launcher_y": 950,
+            }),
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
@@ -1777,13 +1644,11 @@ class TestPositionPersistence:
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "panel_x": "not_a_number",
-                    "panel_y": None,
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "panel_x": "not_a_number",
+                "panel_y": None,
+            }),
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
@@ -1794,18 +1659,8 @@ class TestPositionPersistence:
     def test_save_includes_position_fields(self, mock_write):
         """Save should include position fields when set."""
         from jarvis_engine.desktop_widget import _save_widget_cfg
-
-        cfg = WidgetConfig(
-            "http://127.0.0.1:8787",
-            "t",
-            "k",
-            "d",
-            "",
-            panel_x=300,
-            panel_y=150,
-            launcher_x=1800,
-            launcher_y=950,
-        )
+        cfg = WidgetConfig("http://127.0.0.1:8787", "t", "k", "d", "",
+                          panel_x=300, panel_y=150, launcher_x=1800, launcher_y=950)
         _save_widget_cfg(Path("/fake"), cfg)
         payload = mock_write.call_args[0][1]
         assert payload["panel_x"] == 300
@@ -1817,7 +1672,6 @@ class TestPositionPersistence:
     def test_save_omits_none_positions(self, mock_write):
         """Save should not include position fields when None."""
         from jarvis_engine.desktop_widget import _save_widget_cfg
-
         cfg = WidgetConfig("http://127.0.0.1:8787", "t", "k", "d", "")
         _save_widget_cfg(Path("/fake"), cfg)
         payload = mock_write.call_args[0][1]
@@ -1831,14 +1685,12 @@ class TestPositionPersistence:
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
         (sec / "desktop_widget.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:8787",
-                    "token": "old_tok",
-                    "signing_key": "old_sk",
-                    "device_id": "old_dev",
-                }
-            ),
+            json.dumps({
+                "base_url": "http://127.0.0.1:8787",
+                "token": "old_tok",
+                "signing_key": "old_sk",
+                "device_id": "old_dev",
+            }),
             encoding="utf-8",
         )
         cfg = _load_widget_cfg(tmp_path)
@@ -1849,13 +1701,11 @@ class TestPositionPersistence:
 
 # ---- System Tray Icon -------------------------------------------------------
 
-
 class TestCreateTrayIconImage:
     """Test the tray icon image generation (requires PIL)."""
 
     def test_creates_64x64_image(self):
         from jarvis_engine.desktop_widget import _create_tray_icon_image
-
         img = _create_tray_icon_image()
         assert img is not None
         assert img.size == (64, 64)
@@ -1864,7 +1714,6 @@ class TestCreateTrayIconImage:
     def test_image_has_blue_pixel(self):
         """The icon should contain blue pixels (from the background)."""
         from jarvis_engine.desktop_widget import _create_tray_icon_image
-
         img = _create_tray_icon_image()
         assert img is not None
         # Sample the edge -- should be blue (18, 163, 255, 255)
@@ -1875,7 +1724,6 @@ class TestCreateTrayIconImage:
     def test_image_has_white_text_area(self):
         """The center area should contain white pixels from the 'J' text."""
         from jarvis_engine.desktop_widget import _create_tray_icon_image
-
         img = _create_tray_icon_image()
         assert img is not None
         # Sample center area -- should have some white pixels
@@ -1889,7 +1737,6 @@ class TestTrayMenuCallbacks:
 
     def test_tray_show_widget_calls_show_panel(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.after = MagicMock()
         widget._show_panel = MagicMock()
@@ -1898,7 +1745,6 @@ class TestTrayMenuCallbacks:
 
     def test_tray_voice_dictate_shows_panel_then_dictates(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.after = MagicMock()
         widget._show_panel = MagicMock()
@@ -1911,7 +1757,6 @@ class TestTrayMenuCallbacks:
 
     def test_tray_quit_calls_confirm_exit(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.after = MagicMock()
         widget._confirm_exit = MagicMock()
@@ -1920,7 +1765,6 @@ class TestTrayMenuCallbacks:
 
     def test_stop_tray_icon_cleans_up(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         mock_icon = MagicMock()
         widget._tray_icon = mock_icon
@@ -1930,7 +1774,6 @@ class TestTrayMenuCallbacks:
 
     def test_stop_tray_icon_none_is_noop(self):
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._tray_icon = None
         JarvisDesktopWidget._stop_tray_icon(widget)
@@ -1940,7 +1783,6 @@ class TestTrayMenuCallbacks:
     def test_hide_panel_with_tray_shows_launcher(self):
         """When tray icon is present, hide_panel should still show the launcher orb."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._tray_icon = MagicMock()  # Tray icon present
         widget.launcher_win = MagicMock()
@@ -1953,7 +1795,6 @@ class TestTrayMenuCallbacks:
     def test_hide_panel_without_tray_shows_launcher(self):
         """Without tray icon, hide_panel should show the launcher orb."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._tray_icon = None  # No tray icon
         widget.launcher_win = MagicMock()
@@ -1965,7 +1806,6 @@ class TestTrayMenuCallbacks:
     def test_shutdown_stops_tray_icon(self):
         """_shutdown should stop the tray icon."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.stop_event = threading.Event()
         widget._stop_tray_icon = MagicMock()
@@ -1979,7 +1819,6 @@ class TestTrayMenuCallbacks:
     def test_confirm_exit_yes_calls_shutdown(self, mock_msgbox):
         """When user confirms exit, _shutdown should be called."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         mock_msgbox.askyesno.return_value = True
         mock_msgbox.WARNING = "warning"
         widget = MagicMock(spec=JarvisDesktopWidget)
@@ -1992,7 +1831,6 @@ class TestTrayMenuCallbacks:
     def test_confirm_exit_no_does_not_shutdown(self, mock_msgbox):
         """When user cancels exit, _shutdown should NOT be called."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         mock_msgbox.askyesno.return_value = False
         mock_msgbox.WARNING = "warning"
         widget = MagicMock(spec=JarvisDesktopWidget)
@@ -2005,18 +1843,13 @@ class TestTrayMenuCallbacks:
     def test_confirm_exit_dialog_contains_key_info(self, mock_msgbox):
         """Confirmation dialog should mention services and memory safety."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         mock_msgbox.askyesno.return_value = False
         mock_msgbox.WARNING = "warning"
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._shutdown = MagicMock()
         JarvisDesktopWidget._confirm_exit(widget)
         call_args = mock_msgbox.askyesno.call_args
-        msg = (
-            call_args[0][1]
-            if len(call_args[0]) > 1
-            else call_args[1].get("message", "")
-        )
+        msg = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("message", "")
         # Must mention key shutdown info
         assert "Daemon" in msg or "daemon" in msg.lower()
         assert "Mobile API" in msg or "mobile" in msg.lower()
@@ -2030,13 +1863,11 @@ class TestModelTabCycling:
     def test_model_rotation_has_entries(self):
         """MODEL_ROTATION must have at least Auto + 1 model."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         assert len(JarvisDesktopWidget.MODEL_ROTATION) >= 2
 
     def test_model_rotation_auto_first(self):
         """First entry must be the Auto smart router."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         first = JarvisDesktopWidget.MODEL_ROTATION[0]
         assert first[0] == "auto"
         assert first[1] == "Auto"
@@ -2044,14 +1875,12 @@ class TestModelTabCycling:
     def test_model_rotation_has_planner(self):
         """MODEL_ROTATION must include a Planner entry."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         names = [entry[1] for entry in JarvisDesktopWidget.MODEL_ROTATION]
         assert "Planner" in names
 
     def test_model_rotation_tuples_have_4_fields(self):
         """Each MODEL_ROTATION entry must be (alias, name, title, color)."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         for entry in JarvisDesktopWidget.MODEL_ROTATION:
             assert len(entry) == 4
             assert all(isinstance(f, str) for f in entry)
@@ -2060,7 +1889,6 @@ class TestModelTabCycling:
     def test_tab_cycle_wraps_around(self):
         """_on_tab_cycle_model should wrap from last entry back to 0."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
         widget._model_index = len(widget.MODEL_ROTATION) - 1
@@ -2073,7 +1901,6 @@ class TestModelTabCycling:
     def test_tab_cycle_increments(self):
         """_on_tab_cycle_model should advance index by 1."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
         widget._model_index = 0
@@ -2085,7 +1912,6 @@ class TestModelTabCycling:
     def test_selected_model_override_auto_returns_empty(self):
         """When on Auto, _selected_model_override should return empty string."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
         widget._model_index = 0  # Auto
@@ -2095,7 +1921,6 @@ class TestModelTabCycling:
     def test_selected_model_override_non_auto_returns_alias(self):
         """When on a specific model, _selected_model_override returns its alias."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION
         widget._model_index = 1  # Claude CLI (first non-auto entry)
@@ -2105,7 +1930,6 @@ class TestModelTabCycling:
     def test_update_model_label_none_label_is_noop(self):
         """_update_model_label should be a no-op when _model_label is None."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
-
         widget = MagicMock(spec=JarvisDesktopWidget)
         widget._model_label = None
         widget.MODEL_ROTATION = JarvisDesktopWidget.MODEL_ROTATION

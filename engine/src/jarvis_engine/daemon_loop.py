@@ -24,6 +24,9 @@ from jarvis_engine._constants import (
     KG_METRICS_LOG as _KG_METRICS_LOG,
     SELF_TEST_HISTORY as _SELF_TEST_HISTORY,
     runtime_dir as _runtime_dir,
+    ACTIONS_FILENAME as _ACTIONS_FILENAME,
+    OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME,
+    make_task_id as _make_task_id,
 )
 from jarvis_engine._shared import set_process_title as _set_process_title
 from jarvis_engine.command_bus import CommandBus
@@ -118,9 +121,7 @@ def _extract_topic_phrases(text: str) -> list[str]:
     for frag in fragments:
         words = frag.strip().split()
         # Filter out stop words and very short tokens
-        meaningful = [
-            w for w in words if w.lower() not in _HARVEST_STOP_WORDS and len(w) > 1
-        ]
+        meaningful = [w for w in words if w.lower() not in _HARVEST_STOP_WORDS and len(w) > 1]
         if len(meaningful) < 2:
             continue
         # Take up to 5 consecutive meaningful words
@@ -210,7 +211,6 @@ def _discover_harvest_topics(root: Path) -> list[str]:
         if db_path.exists():
             try:
                 from jarvis_engine._db_pragmas import connect_db as _connect_db
-
                 conn = _connect_db(db_path)
             except (sqlite3.Error, OSError) as exc:
                 # Corrupt or inaccessible DB — skip all DB-based sources
@@ -224,8 +224,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
             try:
                 cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
                 rows = conn.execute(
-                    _SQL_RECENT_SUMMARIES,
-                    (cutoff,),
+                    _SQL_RECENT_SUMMARIES, (cutoff,),
                 ).fetchall()
                 for row in rows:
                     summary = row["summary"] or ""
@@ -264,8 +263,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                         # Turn relation into a topic: "causes" -> look up nodes
                         # Find a node connected by this rare relation for context
                         node_row = conn.execute(
-                            _SQL_NODE_BY_RELATION,
-                            (relation,),
+                            _SQL_NODE_BY_RELATION, (relation,),
                         ).fetchone()
                         if node_row:
                             label = node_row["label"] or ""
@@ -310,9 +308,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                     if len(candidates) >= _MAX_TOPICS:
                         break
             except (sqlite3.Error, OSError) as exc:
-                logger.debug(
-                    "Failed to discover harvest topics from knowledge graph: %s", exc
-                )
+                logger.debug("Failed to discover harvest topics from knowledge graph: %s", exc)
     finally:
         if conn is not None:
             conn.close()
@@ -323,7 +319,6 @@ def _discover_harvest_topics(root: Path) -> list[str]:
     # --- Source 4: Activity feed fact-extraction summaries ---
     try:
         from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
-
         feed_db = root / ".planning" / "brain" / "activity_feed.db"
         if feed_db.exists():
             feed = ActivityFeed(db_path=feed_db)
@@ -338,10 +333,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                     if len(candidates) >= _MAX_TOPICS:
                         break
     except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
-        logger.debug(
-            "Failed to extract harvest topics from activity feed fact summaries: %s",
-            exc,
-        )
+        logger.debug("Failed to extract harvest topics from activity feed fact summaries: %s", exc)
 
     if len(candidates) >= _MAX_TOPICS:
         return candidates[:_MAX_TOPICS]
@@ -359,9 +351,7 @@ def _discover_harvest_topics(root: Path) -> list[str]:
                         if _add_candidate(topic):
                             break
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        logger.debug(
-            "Failed to discover harvest topics from learning missions: %s", exc
-        )
+        logger.debug("Failed to discover harvest topics from learning missions: %s", exc)
 
     return candidates[:_MAX_TOPICS]
 
@@ -413,20 +403,12 @@ DEFAULT_GAMING_PROCESSES = (
 
 
 def read_gaming_mode_state() -> dict[str, object]:
+    from jarvis_engine._shared import load_json_file
+
     path = gaming_mode_state_path()
-    default: dict[str, object] = {
-        "enabled": False,
-        "auto_detect": False,
-        "updated_utc": "",
-        "reason": "",
-    }
-    if not path.exists():
-        return default
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return default
-    if not isinstance(raw, dict):
+    default: dict[str, object] = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return default
     return {
         "enabled": bool(raw.get("enabled", False)),
@@ -522,17 +504,10 @@ def detect_active_game_process() -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def cmd_mission_run(
-    mission_id: str, max_results: int, max_pages: int, auto_ingest: bool
-) -> int:
-    result = _get_daemon_bus().dispatch(
-        MissionRunCommand(
-            mission_id=mission_id,
-            max_results=max_results,
-            max_pages=max_pages,
-            auto_ingest=auto_ingest,
-        )
-    )
+def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_ingest: bool) -> int:
+    result = _get_daemon_bus().dispatch(MissionRunCommand(
+        mission_id=mission_id, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
+    ))
     if result.return_code != 0:
         print("error: mission run failed")
         return result.return_code
@@ -545,14 +520,8 @@ def cmd_mission_run(
     verified = report.get("verified_findings", [])
     if isinstance(verified, list):
         for idx, finding in enumerate(verified[:10], start=1):
-            statement = (
-                str(finding.get("statement", "")) if isinstance(finding, dict) else ""
-            )
-            sources = (
-                ",".join(finding.get("source_domains", []))
-                if isinstance(finding, dict)
-                else ""
-            )
+            statement = str(finding.get("statement", "")) if isinstance(finding, dict) else ""
+            sources = ",".join(finding.get("source_domains", [])) if isinstance(finding, dict) else ""
             print(f"verified_{idx}={statement}")
             print(f"verified_{idx}_sources={sources}")
 
@@ -597,23 +566,14 @@ def _restart_mobile_api(service_name: str) -> None:
     root = repo_root()
     config_path = root / ".planning" / "security" / "mobile_api.json"
     if not config_path.exists():
-        logger.warning(
-            "Watchdog: cannot restart mobile_api — config file missing: %s", config_path
-        )
+        logger.warning("Watchdog: cannot restart mobile_api — config file missing: %s", config_path)
         return
     python = _sys.executable
     engine_src = str(root / "engine" / "src")
     cmd = [
-        python,
-        "-m",
-        "jarvis_engine.main",
-        "serve-mobile",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        str(_DEFAULT_API_PORT),
-        "--config-file",
-        str(config_path),
+        python, "-m", "jarvis_engine.main", "serve-mobile",
+        "--host", "127.0.0.1", "--port", str(_DEFAULT_API_PORT),
+        "--config-file", str(config_path),
     ]
     env = os.environ.copy()
     # Ensure engine source is on PYTHONPATH
@@ -626,8 +586,7 @@ def _restart_mobile_api(service_name: str) -> None:
                 cmd,
                 env=env,
                 cwd=str(root / "engine"),
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                | subprocess.DETACHED_PROCESS,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -681,12 +640,7 @@ def cmd_daemon_run_impl(
 
     root = repo_root()
     # Register PID file for duplicate detection and dashboard visibility
-    from jarvis_engine.process_manager import (
-        is_service_running,
-        write_pid_file,
-        remove_pid_file,
-    )
-
+    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
     if is_service_running("daemon", root):
         print("error: daemon is already running")
         return 4
@@ -722,9 +676,7 @@ def cmd_daemon_run_impl(
             detected_process = ""
             if auto_detect:
                 auto_detect_hit, detected_process = detect_active_game_process()
-            gaming_mode_enabled = (
-                bool(gaming_state.get("enabled", False)) or auto_detect_hit
-            )
+            gaming_mode_enabled = bool(gaming_state.get("enabled", False)) or auto_detect_hit
             daemon_paused = bool(control_state.get("daemon_paused", False))
             safe_mode = bool(control_state.get("safe_mode", False))
             cycle_start_ts = _now_iso()
@@ -732,7 +684,6 @@ def cmd_daemon_run_impl(
             # --- Activity feed: log cycle start ---
             try:
                 from jarvis_engine.activity_feed import log_activity, ActivityCategory
-
                 log_activity(
                     ActivityCategory.DAEMON_CYCLE,
                     f"Daemon cycle {cycles} started",
@@ -766,14 +717,9 @@ def cmd_daemon_run_impl(
                 print(f"resource_throttle_sleep_s={sleep_seconds}")
                 if skip_heavy_tasks:
                     print("resource_skip_heavy_tasks=true")
-            if pressure_level != "none" and (
-                pressure_level != last_pressure_level or cycles % 5 == 0
-            ):
+            if pressure_level != "none" and (pressure_level != last_pressure_level or cycles % 5 == 0):
                 try:
-                    from jarvis_engine.activity_feed import (
-                        ActivityCategory,
-                        log_activity,
-                    )
+                    from jarvis_engine.activity_feed import ActivityCategory, log_activity
 
                     log_activity(
                         ActivityCategory.RESOURCE_PRESSURE,
@@ -791,10 +737,7 @@ def cmd_daemon_run_impl(
                     logger.debug("Resource pressure activity log failed: %s", exc)
             elif pressure_level == "none" and last_pressure_level != "none":
                 try:
-                    from jarvis_engine.activity_feed import (
-                        ActivityCategory,
-                        log_activity,
-                    )
+                    from jarvis_engine.activity_feed import ActivityCategory, log_activity
 
                     log_activity(
                         ActivityCategory.RESOURCE_PRESSURE,
@@ -848,7 +791,6 @@ def cmd_daemon_run_impl(
                                 auto_generate_missions,
                                 retry_failed_missions,
                             )
-
                             # First, retry any failed missions
                             retried = retry_failed_missions(root)
                             if retried:
@@ -856,20 +798,12 @@ def cmd_daemon_run_impl(
                             # Then auto-generate if still no pending
                             generated = auto_generate_missions(root, max_new=3)
                             if generated:
-                                topics = ", ".join(
-                                    m.get("topic", "") for m in generated
-                                )
-                                print(
-                                    f"mission_auto_generated={len(generated)} topics=[{topics}]"
-                                )
+                                topics = ", ".join(m.get("topic", "") for m in generated)
+                                print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
                         except Exception as exc:  # noqa: BLE001
-                            logger.warning(
-                                "Daemon mission auto-generation failed: %s", exc
-                            )
+                            logger.warning("Daemon mission auto-generation failed: %s", exc)
                             print(f"mission_autogen_error={exc}")
-            if sync_every_cycles > 0 and (
-                cycles == 1 or cycles % sync_every_cycles == 0
-            ):
+            if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
                 try:
                     sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
                 except Exception as exc:  # noqa: BLE001
@@ -882,18 +816,13 @@ def cmd_daemon_run_impl(
             if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
                 try:
                     from jarvis_engine.process_manager import check_and_restart_services
-
-                    dead = check_and_restart_services(
-                        root, restart_callback=_restart_mobile_api
-                    )
+                    dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
                     if dead:
                         print(f"watchdog_dead_services={','.join(dead)}")
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Daemon watchdog check failed: %s", exc)
                     print(f"watchdog_error={exc}")
-            if self_heal_every_cycles > 0 and (
-                cycles == 1 or cycles % self_heal_every_cycles == 0
-            ):
+            if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
                 if skip_heavy_tasks:
                     print("self_heal_cycle_skipped=resource_pressure")
                 else:
@@ -913,27 +842,17 @@ def cmd_daemon_run_impl(
                     # Collect KG growth metrics alongside self-heal
                     try:
                         import sqlite3 as _sqlite3
-                        from jarvis_engine.proactive.kg_metrics import (
-                            collect_kg_metrics,
-                            append_kg_metrics,
-                        )
-
+                        from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
                         db_path = _memory_db_path(root)
                         if db_path.exists():
                             _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
-                            from jarvis_engine._db_pragmas import (
-                                configure_sqlite as _cfg_sql,
-                            )
-
+                            from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
                             _cfg_sql(_kg_conn)
                             try:
                                 # collect_kg_metrics uses kg.db — provide a lightweight shim
                                 class _KGShim:
-                                    def __init__(
-                                        self, conn: _sqlite3.Connection
-                                    ) -> None:
+                                    def __init__(self, conn: _sqlite3.Connection) -> None:
                                         self.db = conn
-
                                 metrics = collect_kg_metrics(_KGShim(_kg_conn))
                             finally:
                                 _kg_conn.close()
@@ -941,9 +860,7 @@ def cmd_daemon_run_impl(
                             metrics = {"node_count": 0, "edge_count": 0}
                         history_path = _runtime_dir(root) / _KG_METRICS_LOG
                         append_kg_metrics(metrics, history_path)
-                        print(
-                            f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}"
-                        )
+                        print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Daemon KG metrics collection failed: %s", exc)
                         print(f"kg_metrics_error={exc}")
@@ -953,29 +870,20 @@ def cmd_daemon_run_impl(
                     print("self_test_skipped=resource_pressure")
                 else:
                     try:
-                        from jarvis_engine.proactive.self_test import (
-                            AdversarialSelfTest,
-                        )
-
+                        from jarvis_engine.proactive.self_test import AdversarialSelfTest
                         bus = _get_daemon_bus()
                         engine = bus.ctx.engine
                         embed_svc = bus.ctx.embed_service
                         if engine is not None and embed_svc is not None:
-                            tester = AdversarialSelfTest(
-                                engine, embed_svc, score_threshold=0.5
-                            )
+                            tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
                             quiz_result = tester.run_memory_quiz()
                             quiz_history = _runtime_dir(root) / _SELF_TEST_HISTORY
                             tester.save_quiz_result(quiz_result, quiz_history)
                             regression = tester.check_regression(quiz_history)
-                            print(
-                                f"self_test_score={quiz_result.get('average_score', 0.0):.4f}"
-                            )
+                            print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
                             print(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
                             if regression.get("regression_detected"):
-                                print(
-                                    f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}"
-                                )
+                                print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
                         else:
                             print("self_test_skipped=engine_not_initialized")
                     except Exception as exc:  # noqa: BLE001
@@ -990,15 +898,11 @@ def cmd_daemon_run_impl(
                         bus = _get_daemon_bus()
                         engine = bus.ctx.engine
                         if engine is not None:
-                            do_vacuum = cycles % 500 == 0
+                            do_vacuum = (cycles % 500 == 0)
                             opt_result = engine.optimize(vacuum=do_vacuum)
-                            print(
-                                f"db_optimize_analyzed={opt_result.get('analyzed', False)}"
-                            )
+                            print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
                             if do_vacuum:
-                                print(
-                                    f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}"
-                                )
+                                print(f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}")
                             if opt_result.get("errors"):
                                 print(f"db_optimize_errors={len(opt_result['errors'])}")
                         else:
@@ -1010,11 +914,7 @@ def cmd_daemon_run_impl(
             if cycles % 10 == 0:
                 try:
                     from jarvis_engine.knowledge.regression import RegressionChecker
-                    from jarvis_engine.activity_feed import (
-                        log_activity,
-                        ActivityCategory,
-                    )
-
+                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
                     bus = _get_daemon_bus()
                     kg = bus.ctx.kg
                     if kg is not None:
@@ -1025,40 +925,27 @@ def cmd_daemon_run_impl(
                         prev_metrics = _daemon_kg_prev_metrics
                         comparison = rc_checker.compare(prev_metrics, current_metrics)
                         _daemon_kg_prev_metrics = current_metrics
-                        print(
-                            f"kg_regression_status={comparison.get('status', 'unknown')}"
-                        )
+                        print(f"kg_regression_status={comparison.get('status', 'unknown')}")
                         if comparison.get("status") in ("fail", "warn"):
                             discrepancies = comparison.get("discrepancies", [])
                             print(f"kg_regression_discrepancies={len(discrepancies)}")
                             log_activity(
                                 ActivityCategory.REGRESSION_CHECK,
                                 f"KG regression detected: {comparison['status']}",
-                                {
-                                    "status": comparison["status"],
-                                    "discrepancies": discrepancies,
-                                },
+                                {"status": comparison["status"], "discrepancies": discrepancies},
                             )
                             # Auto-restore from backup on failure
                             if comparison["status"] == "fail":
                                 backup_dir = _runtime_dir(root) / "kg_backups"
                                 if backup_dir.exists():
-                                    backups = sorted(
-                                        backup_dir.glob("*.db"),
-                                        key=lambda p: p.stat().st_mtime,
-                                    )
+                                    backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
                                     if backups:
                                         restored = rc_checker.restore_graph(backups[-1])
-                                        print(
-                                            f"kg_regression_auto_restore={'ok' if restored else 'failed'}"
-                                        )
+                                        print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
                                         log_activity(
                                             ActivityCategory.REGRESSION_CHECK,
                                             f"KG auto-restore {'succeeded' if restored else 'failed'}",
-                                            {
-                                                "backup": str(backups[-1]),
-                                                "restored": restored,
-                                            },
+                                            {"backup": str(backups[-1]), "restored": restored},
                                         )
                     else:
                         print("kg_regression_skipped=kg_not_initialized")
@@ -1072,20 +959,13 @@ def cmd_daemon_run_impl(
                     usage_tracker = bus.ctx.usage_tracker
                     if usage_tracker is not None:
                         from datetime import datetime as _dt
-
                         _now = _dt.now(UTC)
-                        prediction = usage_tracker.predict_context(
-                            _now.hour, _now.weekday()
-                        )
+                        prediction = usage_tracker.predict_context(_now.hour, _now.weekday())
                         if prediction["interaction_count"] > 0:
                             print(f"usage_predicted_route={prediction['likely_route']}")
                             if prediction["common_topics"]:
-                                print(
-                                    f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}"
-                                )
-                            print(
-                                f"usage_interaction_count={prediction['interaction_count']}"
-                            )
+                                print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
+                            print(f"usage_interaction_count={prediction['interaction_count']}")
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Daemon usage prediction failed: %s", exc)
                     print(f"usage_prediction_error={exc}")
@@ -1095,10 +975,7 @@ def cmd_daemon_run_impl(
                     print("consolidation_skipped=resource_pressure")
                 else:
                     try:
-                        from jarvis_engine.commands.learning_commands import (
-                            ConsolidateMemoryCommand,
-                        )
-
+                        from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
                         bus = _get_daemon_bus()
                         result = bus.dispatch(ConsolidateMemoryCommand())
                         print(f"consolidation_groups={result.groups_found}")
@@ -1114,15 +991,9 @@ def cmd_daemon_run_impl(
                     print("entity_resolve_skipped=resource_pressure")
                 else:
                     try:
-                        from jarvis_engine.knowledge.entity_resolver import (
-                            EntityResolver,
-                        )
+                        from jarvis_engine.knowledge.entity_resolver import EntityResolver
                         from jarvis_engine.knowledge.regression import RegressionChecker
-                        from jarvis_engine.activity_feed import (
-                            log_activity,
-                            ActivityCategory,
-                        )
-
+                        from jarvis_engine.activity_feed import log_activity, ActivityCategory
                         bus = _get_daemon_bus()
                         kg = bus.ctx.kg
                         embed_svc = bus.ctx.embed_service
@@ -1133,22 +1004,14 @@ def cmd_daemon_run_impl(
                                 rc_checker.backup_graph(tag="pre-entity-resolve")
                                 print("entity_resolve_kg_backup=ok")
                             except Exception as exc:  # noqa: BLE001
-                                logger.warning(
-                                    "Daemon entity resolve KG backup failed: %s", exc
-                                )
+                                logger.warning("Daemon entity resolve KG backup failed: %s", exc)
                                 print(f"entity_resolve_kg_backup_error={exc}")
                             resolver = EntityResolver(kg, embed_service=embed_svc)
                             resolve_result = resolver.auto_resolve()
-                            print(
-                                f"entity_resolve_candidates={resolve_result.candidates_found}"
-                            )
-                            print(
-                                f"entity_resolve_merges={resolve_result.merges_applied}"
-                            )
+                            print(f"entity_resolve_candidates={resolve_result.candidates_found}")
+                            print(f"entity_resolve_merges={resolve_result.merges_applied}")
                             if resolve_result.errors:
-                                print(
-                                    f"entity_resolve_errors={len(resolve_result.errors)}"
-                                )
+                                print(f"entity_resolve_errors={len(resolve_result.errors)}")
                             log_activity(
                                 ActivityCategory.CONSOLIDATION,
                                 f"Entity resolution: {resolve_result.merges_applied} merges from {resolve_result.candidates_found} candidates",
@@ -1169,10 +1032,7 @@ def cmd_daemon_run_impl(
                     print("auto_harvest_skipped=resource_pressure")
                 else:
                     try:
-                        from jarvis_engine.harvesting.harvester import (
-                            KnowledgeHarvester,
-                            HarvestCommand,
-                        )
+                        from jarvis_engine.harvesting.harvester import KnowledgeHarvester, HarvestCommand
                         from jarvis_engine.harvesting.providers import (
                             GeminiProvider,
                             KimiNvidiaProvider,
@@ -1180,10 +1040,7 @@ def cmd_daemon_run_impl(
                             MiniMaxProvider,
                         )
                         from jarvis_engine.harvesting.budget import BudgetManager
-                        from jarvis_engine.activity_feed import (
-                            log_activity,
-                            ActivityCategory,
-                        )
+                        from jarvis_engine.activity_feed import log_activity, ActivityCategory
 
                         harvest_topics = _discover_harvest_topics(root)
                         if harvest_topics:
@@ -1193,12 +1050,7 @@ def cmd_daemon_run_impl(
                             if harvest_db_path.exists():
                                 h_budget = BudgetManager(harvest_db_path)
                             try:
-                                h_providers = [
-                                    MiniMaxProvider(),
-                                    KimiProvider(),
-                                    KimiNvidiaProvider(),
-                                    GeminiProvider(),
-                                ]
+                                h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
                                 h_available = [p for p in h_providers if p.is_available]
                                 # Get pipeline components from daemon bus
                                 h_bus = _get_daemon_bus()
@@ -1208,29 +1060,14 @@ def cmd_daemon_run_impl(
                                 h_pipeline = None
                                 if h_engine is not None and h_embed is not None:
                                     try:
-                                        from jarvis_engine.memory.classify import (
-                                            BranchClassifier,
-                                        )
-                                        from jarvis_engine.memory.ingest import (
-                                            EnrichedIngestPipeline,
-                                        )
-
+                                        from jarvis_engine.memory.classify import BranchClassifier
+                                        from jarvis_engine.memory.ingest import EnrichedIngestPipeline
                                         h_classifier = BranchClassifier(h_embed)
                                         h_pipeline = EnrichedIngestPipeline(
-                                            h_engine,
-                                            h_embed,
-                                            h_classifier,
-                                            knowledge_graph=h_kg,
+                                            h_engine, h_embed, h_classifier, knowledge_graph=h_kg,
                                         )
-                                    except (
-                                        ImportError,
-                                        OSError,
-                                        sqlite3.Error,
-                                    ) as exc_pipe:
-                                        logger.debug(
-                                            "Auto-harvest pipeline init failed: %s",
-                                            exc_pipe,
-                                        )
+                                    except (ImportError, OSError, sqlite3.Error) as exc_pipe:
+                                        logger.debug("Auto-harvest pipeline init failed: %s", exc_pipe)
                                 if h_available and h_pipeline is not None:
                                     harvester = KnowledgeHarvester(
                                         providers=h_available,
@@ -1241,24 +1078,15 @@ def cmd_daemon_run_impl(
                                     total_records = 0
                                     for topic in harvest_topics:
                                         topic_records = 0
-                                        h_result = harvester.harvest(
-                                            HarvestCommand(topic=topic, max_tokens=1024)
-                                        )
+                                        h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
                                         for entry in h_result.get("results", []):
-                                            topic_records += entry.get(
-                                                "records_created", 0
-                                            )
+                                            topic_records += entry.get("records_created", 0)
                                         total_records += topic_records
-                                        print(
-                                            f"auto_harvest_topic={topic} records={topic_records}"
-                                        )
+                                        print(f"auto_harvest_topic={topic} records={topic_records}")
                                     log_activity(
                                         ActivityCategory.HARVEST,
                                         f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
-                                        {
-                                            "topics": harvest_topics,
-                                            "total_records": total_records,
-                                        },
+                                        {"topics": harvest_topics, "total_records": total_records},
                                     )
                                 elif not h_available:
                                     print("auto_harvest_skipped=no_providers_available")
@@ -1293,7 +1121,6 @@ def cmd_daemon_run_impl(
             # --- Activity feed: log cycle end ---
             try:
                 from jarvis_engine.activity_feed import log_activity, ActivityCategory
-
                 log_activity(
                     ActivityCategory.DAEMON_CYCLE,
                     f"Daemon cycle {cycles} ended (rc={rc})",

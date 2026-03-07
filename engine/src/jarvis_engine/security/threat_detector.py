@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 import threading
 import time
 from collections import defaultdict, deque
@@ -57,13 +58,13 @@ _DANGEROUS_CMDS = r"(?:rm|cat|curl|wget|chmod|chown|kill|dd|sh|bash|python|perl|
 _COMMAND_INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p)
     for p in [
-        rf";\s*{_DANGEROUS_CMDS}\b",  # ; dangerous_cmd
-        rf"\|\s*{_DANGEROUS_CMDS}\b",  # | dangerous_cmd
-        r"`[^`]+`",  # `command`
-        r"\$\([^)]+\)",  # $(command)
-        r"\$\{[^}]+\}",  # ${variable}
-        rf"&&\s*{_DANGEROUS_CMDS}\b",  # && dangerous_cmd
-        rf"\|\|\s*{_DANGEROUS_CMDS}\b",  # || dangerous_cmd
+        rf";\s*{_DANGEROUS_CMDS}\b",   # ; dangerous_cmd
+        rf"\|\s*{_DANGEROUS_CMDS}\b",   # | dangerous_cmd
+        r"`[^`]+`",                      # `command`
+        r"\$\([^)]+\)",                  # $(command)
+        r"\$\{[^}]+\}",                 # ${variable}
+        rf"&&\s*{_DANGEROUS_CMDS}\b",   # && dangerous_cmd
+        rf"\|\|\s*{_DANGEROUS_CMDS}\b", # || dangerous_cmd
     ]
 ]
 
@@ -97,9 +98,9 @@ _SUSPICIOUS_USER_AGENTS: list[str] = [
 class ThreatSignal:
     """A single threat indicator produced by a detection rule."""
 
-    severity: str  # LOW / MEDIUM / HIGH / CRITICAL
-    category: str  # rule name (e.g. "payload_injection")
-    confidence: float  # 0.0 – 1.0
+    severity: str       # LOW / MEDIUM / HIGH / CRITICAL
+    category: str       # rule name (e.g. "payload_injection")
+    confidence: float   # 0.0 – 1.0
     evidence: dict = field(default_factory=dict)
 
 
@@ -107,7 +108,7 @@ class ThreatSignal:
 class ThreatAssessment:
     """Aggregated result from running all detection rules."""
 
-    threat_level: str  # NONE / LOW / MEDIUM / HIGH / CRITICAL
+    threat_level: str           # NONE / LOW / MEDIUM / HIGH / CRITICAL
     signals: list[ThreatSignal] = field(default_factory=list)
     recommended_action: str = "ALLOW"  # ALLOW / THROTTLE / CHALLENGE / BLOCK / KILL
 
@@ -149,9 +150,7 @@ class ThreatDetector:
         self._nonce_prune_counter: int = 0
         # ip -> deque of request timestamps (for rate anomaly detection)
         # maxlen=200 caps per-IP memory: 200 entries is >3x the 60/min threshold
-        self._request_log: dict[str, deque[float]] = defaultdict(
-            lambda: deque(maxlen=200)
-        )
+        self._request_log: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=200))
         self._request_log_cap: int = 10000  # max distinct IPs tracked
         # Counter for periodic stale-IP cleanup (avoid O(n) scan every request)
         self._rate_check_counter: int = 0
@@ -175,11 +174,7 @@ class ThreatDetector:
         """
         signals: list[ThreatSignal] = []
         # Rules that must fail-closed: if they error, treat as suspicious
-        _critical_rules = {
-            "_rule_replay_attack",
-            "_rule_known_bad_ip",
-            "_rule_auth_brute_force",
-        }
+        _critical_rules = {"_rule_replay_attack", "_rule_known_bad_ip", "_rule_auth_brute_force"}
         for rule in [
             self._rule_payload_injection,
             self._rule_path_traversal,
@@ -198,17 +193,12 @@ class ThreatDetector:
                 logger.warning("Rule %s raised an exception: %s", rule.__name__, exc)
                 # Fail-closed for critical security rules
                 if rule.__name__ in _critical_rules:
-                    signals.append(
-                        ThreatSignal(
-                            severity="MEDIUM",
-                            category=f"rule_error:{rule.__name__}",
-                            confidence=0.50,
-                            evidence={
-                                "rule": rule.__name__,
-                                "error": "rule raised exception",
-                            },
-                        )
-                    )
+                    signals.append(ThreatSignal(
+                        severity="MEDIUM",
+                        category=f"rule_error:{rule.__name__}",
+                        confidence=0.50,
+                        evidence={"rule": rule.__name__, "error": "rule raised exception"},
+                    ))
 
         return self._aggregate(signals)
 
@@ -218,9 +208,7 @@ class ThreatDetector:
 
     def _aggregate(self, signals: list[ThreatSignal]) -> ThreatAssessment:
         if not signals:
-            return ThreatAssessment(
-                threat_level="NONE", signals=[], recommended_action="ALLOW"
-            )
+            return ThreatAssessment(threat_level="NONE", signals=[], recommended_action="ALLOW")
 
         counts: dict[str, int] = defaultdict(int)
         for s in signals:
@@ -342,9 +330,7 @@ class ThreatDetector:
             self._nonce_prune_counter += 1
             if self._nonce_prune_counter >= 100:
                 self._nonce_prune_counter = 0
-                expired = [
-                    k for k, v in self._nonce_cache.items() if now - v > self._nonce_ttl
-                ]
+                expired = [k for k, v in self._nonce_cache.items() if now - v > self._nonce_ttl]
                 for k in expired:
                     del self._nonce_cache[k]
 
@@ -354,10 +340,7 @@ class ThreatDetector:
                     severity="MEDIUM",
                     category="nonce_cache_overflow",
                     confidence=0.70,
-                    evidence={
-                        "cache_size": len(self._nonce_cache),
-                        "nonce": nonce[:16],
-                    },
+                    evidence={"cache_size": len(self._nonce_cache), "nonce": nonce[:16]},
                 )
 
             if nonce in self._nonce_cache:
@@ -365,10 +348,7 @@ class ThreatDetector:
                     severity="HIGH",
                     category="replay_attack",
                     confidence=0.95,
-                    evidence={
-                        "nonce": nonce,
-                        "first_seen_ago_s": round(now - self._nonce_cache[nonce], 1),
-                    },
+                    evidence={"nonce": nonce, "first_seen_ago_s": round(now - self._nonce_cache[nonce], 1)},
                 )
             self._nonce_cache[nonce] = now
         return None
@@ -383,17 +363,9 @@ class ThreatDetector:
         window = 60.0  # 1 minute
         with self._lock:
             # Prevent unbounded growth from IP spoofing: cap distinct IPs
-            if (
-                ip not in self._request_log
-                and len(self._request_log) >= self._request_log_cap
-            ):
+            if ip not in self._request_log and len(self._request_log) >= self._request_log_cap:
                 # Evict the stalest IP before adding a new one
-                stalest_ip = min(
-                    self._request_log,
-                    key=lambda k: (
-                        self._request_log[k][-1] if self._request_log[k] else 0.0
-                    ),
-                )
+                stalest_ip = min(self._request_log, key=lambda k: self._request_log[k][-1] if self._request_log[k] else 0.0)
                 del self._request_log[stalest_ip]
             log = self._request_log[ip]
             log.append(now)
@@ -409,9 +381,7 @@ class ThreatDetector:
             self._rate_check_counter += 1
             if self._rate_check_counter >= 100:
                 self._rate_check_counter = 0
-                stale = [
-                    k for k, v in self._request_log.items() if not v or v[-1] < cutoff
-                ]
+                stale = [k for k, v in self._request_log.items() if not v or v[-1] < cutoff]
                 for k in stale:
                     del self._request_log[k]
 
@@ -433,7 +403,7 @@ class ThreatDetector:
             return None
         try:
             report = self._ip_tracker.get_threat_report(ip)
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             logger.debug("IP tracker threat report failed for %s: %s", ip, exc)
             return None
         if report is None:
@@ -470,7 +440,7 @@ class ThreatDetector:
                     confidence=1.0,
                     evidence={"ip": ip, "status": "blocked"},
                 )
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             logger.debug("IP tracker blocked check failed for %s: %s", ip, exc)
             return None
         return None

@@ -14,7 +14,6 @@ import numpy as np
 # 1. Constructor defaults
 # ---------------------------------------------------------------------------
 
-
 def test_constructor_defaults() -> None:
     """SileroVADDetector stores threshold and sampling_rate."""
     from jarvis_engine.stt_vad import SileroVADDetector
@@ -38,7 +37,6 @@ def test_constructor_custom_params() -> None:
 # 2. _ensure_model loads via silero_vad and sets torch threads
 # ---------------------------------------------------------------------------
 
-
 def test_ensure_model_loads_silero_and_sets_threads() -> None:
     """_ensure_model loads Silero VAD model and calls torch.set_num_threads(1)."""
     from jarvis_engine.stt_vad import SileroVADDetector
@@ -49,10 +47,7 @@ def test_ensure_model_loads_silero_and_sets_threads() -> None:
     mock_torch = MagicMock()
     mock_load = MagicMock(return_value=mock_model)
 
-    with patch.dict(
-        "sys.modules",
-        {"torch": mock_torch, "silero_vad": MagicMock(load_silero_vad=mock_load)},
-    ):
+    with patch.dict("sys.modules", {"torch": mock_torch, "silero_vad": MagicMock(load_silero_vad=mock_load)}):
         d._ensure_model()
 
     mock_torch.set_num_threads.assert_called_once_with(1)
@@ -75,7 +70,6 @@ def test_ensure_model_called_once() -> None:
 # ---------------------------------------------------------------------------
 # 3. is_speech with high confidence -> True
 # ---------------------------------------------------------------------------
-
 
 def test_is_speech_high_confidence_returns_true() -> None:
     """is_speech returns True when model confidence > threshold."""
@@ -103,7 +97,6 @@ def test_is_speech_high_confidence_returns_true() -> None:
 # 4. is_speech with low confidence -> False
 # ---------------------------------------------------------------------------
 
-
 def test_is_speech_low_confidence_returns_false() -> None:
     """is_speech returns False when model confidence < threshold."""
     from jarvis_engine.stt_vad import SileroVADDetector
@@ -128,7 +121,6 @@ def test_is_speech_low_confidence_returns_false() -> None:
 # 5. get_confidence returns raw float value
 # ---------------------------------------------------------------------------
 
-
 def test_get_confidence_returns_raw_value() -> None:
     """get_confidence returns the raw probability from the model."""
     from jarvis_engine.stt_vad import SileroVADDetector
@@ -152,7 +144,6 @@ def test_get_confidence_returns_raw_value() -> None:
 # ---------------------------------------------------------------------------
 # 6. process_chunk with 1280-sample chunk splits correctly
 # ---------------------------------------------------------------------------
-
 
 def test_process_chunk_splits_large_chunk() -> None:
     """process_chunk splits 1280-sample chunk into 2x 512-sample windows."""
@@ -224,7 +215,6 @@ def test_process_chunk_small_chunk_delegates_to_is_speech() -> None:
 # 7. reset calls model.reset_states()
 # ---------------------------------------------------------------------------
 
-
 def test_reset_calls_model_reset_states() -> None:
     """reset() calls model.reset_states() when model is loaded."""
     from jarvis_engine.stt_vad import SileroVADDetector
@@ -253,7 +243,6 @@ def test_reset_noop_when_model_not_loaded() -> None:
 # 8. Graceful degradation when silero_vad import fails
 # ---------------------------------------------------------------------------
 
-
 def test_graceful_degradation_no_silero() -> None:
     """When silero_vad is not installed, is_speech returns False, get_confidence returns 0.0."""
     from jarvis_engine.stt_vad import SileroVADDetector
@@ -274,7 +263,6 @@ def test_graceful_degradation_no_silero() -> None:
 # ---------------------------------------------------------------------------
 # 9. available property
 # ---------------------------------------------------------------------------
-
 
 def test_available_when_both_installed() -> None:
     """available returns True when torch and silero_vad are importable."""
@@ -336,7 +324,6 @@ def test_available_when_silero_missing() -> None:
 # 10. get_vad_detector singleton
 # ---------------------------------------------------------------------------
 
-
 def test_get_vad_detector_returns_singleton() -> None:
     """get_vad_detector returns the same instance on repeated calls."""
     from jarvis_engine import stt_vad
@@ -356,7 +343,6 @@ def test_get_vad_detector_returns_singleton() -> None:
 # ---------------------------------------------------------------------------
 # 11. process_chunk with exact 1024-sample chunk (2 full windows)
 # ---------------------------------------------------------------------------
-
 
 def test_process_chunk_exact_two_windows() -> None:
     """process_chunk with 1024 samples processes exactly 2 windows."""
@@ -382,7 +368,6 @@ def test_process_chunk_exact_two_windows() -> None:
 # ---------------------------------------------------------------------------
 # 12. get_confidence handles model exception gracefully
 # ---------------------------------------------------------------------------
-
 
 def test_get_confidence_handles_model_exception() -> None:
     """get_confidence returns 0.0 if model inference raises."""

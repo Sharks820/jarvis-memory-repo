@@ -111,6 +111,7 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
 
 
 class TestMigrateBrainRecords:
+
     def test_migrate_brain_records_count_verification(
         self,
         tmp_dir: Path,
@@ -130,10 +131,7 @@ class TestMigrateBrainRecords:
         assert result["skipped"] == 0
         assert result["errors"] == 0
         # Verify count: inserted + skipped + errors == source_count
-        assert (
-            result["inserted"] + result["skipped"] + result["errors"]
-            == result["source_count"]
-        )
+        assert result["inserted"] + result["skipped"] + result["errors"] == result["source_count"]
 
     def test_migrate_brain_records_handles_malformed_json(
         self,
@@ -168,9 +166,7 @@ class TestMigrateBrainRecords:
         classifier: BranchClassifier,
     ) -> None:
         """Migrate a known record, verify all fields present in SQLite."""
-        record = _make_brain_record(
-            0, summary="Doctor appointment for annual checkup tomorrow"
-        )
+        record = _make_brain_record(0, summary="Doctor appointment for annual checkup tomorrow")
         jsonl_path = tmp_dir / "records.jsonl"
         _write_jsonl(jsonl_path, [record])
 
@@ -206,9 +202,7 @@ class TestMigrateBrainRecords:
         assert result["inserted"] == 5
         # embed() should be called at least once per record for the summary embedding
         # (classifier centroid calls add more, but at minimum 5 for records)
-        summary_calls = [
-            c for c in embed_service.embed_calls if "Test brain record" in c
-        ]
+        summary_calls = [c for c in embed_service.embed_calls if "Test brain record" in c]
         assert len(summary_calls) == 5
 
     def test_migrate_brain_records_classifies_branches(
@@ -233,12 +227,14 @@ class TestMigrateBrainRecords:
             assert stored["branch"] != ""
             # Branch should be one of the known branches or "general"
             from jarvis_engine.memory.classify import BRANCH_DESCRIPTIONS
-
             assert stored["branch"] in list(BRANCH_DESCRIPTIONS.keys()) + ["general"]
 
 
 class TestMigrateFacts:
-    def test_migrate_facts(self, tmp_dir: Path, engine: MemoryEngine) -> None:
+
+    def test_migrate_facts(
+        self, tmp_dir: Path, engine: MemoryEngine
+    ) -> None:
         """Create temp facts.json with 3 facts, migrate, verify all 3 in facts table."""
         facts_data = {
             "facts": {
@@ -281,9 +277,7 @@ class TestMigrateFacts:
         assert count == 3
 
         # Verify a specific fact
-        cur = engine._db.execute(
-            "SELECT value, confidence FROM facts WHERE key = ?", ("runtime.safe_mode",)
-        )
+        cur = engine._db.execute("SELECT value, confidence FROM facts WHERE key = ?", ("runtime.safe_mode",))
         row = cur.fetchone()
         assert row is not None
         assert row[0] == "enabled"
@@ -291,6 +285,7 @@ class TestMigrateFacts:
 
 
 class TestFullMigration:
+
     def test_full_migration_returns_summary(
         self, tmp_dir: Path, embed_service: MockEmbeddingService
     ) -> None:
@@ -320,11 +315,7 @@ class TestFullMigration:
 
         # Create events
         events = [
-            {
-                "event_type": "test",
-                "message": f"Event {i}",
-                "ts": datetime.now(UTC).isoformat(),
-            }
+            {"event_type": "test", "message": f"Event {i}", "ts": datetime.now(UTC).isoformat()}
             for i in range(3)
         ]
         events_path = tmp_dir / ".planning" / "events.jsonl"
@@ -363,6 +354,7 @@ from jarvis_engine.memory.migration import (
 
 
 class TestCheckpointUtils:
+
     def test_load_checkpoint_nonexistent_returns_none(self, tmp_path):
         assert _load_checkpoint(tmp_path / "nonexistent.json") is None
 
@@ -404,6 +396,7 @@ class TestCheckpointUtils:
 
 
 class TestMigrateBrainRecordsEdgeCases:
+
     def test_missing_file_returns_ok_zero(
         self, tmp_dir, engine, embed_service, classifier
     ):
@@ -451,7 +444,9 @@ class TestMigrateBrainRecordsEdgeCases:
         assert result["errors"] == 2
         assert result["inserted"] == 0
 
-    def test_confidence_clamping(self, tmp_dir, engine, embed_service, classifier):
+    def test_confidence_clamping(
+        self, tmp_dir, engine, embed_service, classifier
+    ):
         """Confidence values are clamped to [0.0, 1.0]."""
         record = _make_brain_record(0)
         record["confidence"] = 5.0
@@ -475,7 +470,9 @@ class TestMigrateBrainRecordsEdgeCases:
         stored = engine.get_record(engine.get_all_record_ids()[0])
         assert abs(stored["confidence"] - 0.72) < 0.01
 
-    def test_tags_as_string_preserved(self, tmp_dir, engine, embed_service, classifier):
+    def test_tags_as_string_preserved(
+        self, tmp_dir, engine, embed_service, classifier
+    ):
         record = _make_brain_record(0)
         record["tags"] = '["custom_tag"]'
         jsonl_path = tmp_dir / "records.jsonl"
@@ -506,7 +503,9 @@ class TestMigrateBrainRecordsEdgeCases:
         stored_ids = engine.get_all_record_ids()
         assert len(stored_ids[0]) == 32
 
-    def test_long_record_id_truncated(self, tmp_dir, engine, embed_service, classifier):
+    def test_long_record_id_truncated(
+        self, tmp_dir, engine, embed_service, classifier
+    ):
         """Record IDs >= 32 chars are truncated to 32."""
         record = _make_brain_record(0)
         record["record_id"] = "a" * 64
@@ -550,6 +549,7 @@ class TestMigrateBrainRecordsEdgeCases:
 
 
 class TestBrainRecordCheckpoint:
+
     def test_checkpoint_saved_during_migration(
         self, tmp_dir, engine, embed_service, classifier
     ):
@@ -577,13 +577,10 @@ class TestBrainRecordCheckpoint:
 
             # Pre-seed checkpoint at offset 5
             cp_path = Path(str(db_path) + ".migration_checkpoint.json")
-            _save_checkpoint(
-                cp_path,
-                {
-                    "file": "records.jsonl",
-                    "line_offset": 5,
-                },
-            )
+            _save_checkpoint(cp_path, {
+                "file": "records.jsonl",
+                "line_offset": 5,
+            })
 
             result = migrate_brain_records(jsonl_path, eng, embed_service, classifier)
             assert result["source_count"] == 10
@@ -599,6 +596,7 @@ class TestBrainRecordCheckpoint:
 
 
 class TestMigrateFactsEdgeCases:
+
     def test_missing_file_returns_ok_zero(self, tmp_dir, engine):
         result = migrate_facts(tmp_dir / "nonexistent.json", engine)
         assert result["status"] == "ok"
@@ -627,9 +625,7 @@ class TestMigrateFactsEdgeCases:
         result = migrate_facts(facts_path, engine)
         assert result["status"] == "ok"
         assert result["inserted"] == 1
-        cur = engine._db.execute(
-            "SELECT value, confidence FROM facts WHERE key = ?", ("simple_key",)
-        )
+        cur = engine._db.execute("SELECT value, confidence FROM facts WHERE key = ?", ("simple_key",))
         row = cur.fetchone()
         assert row is not None
         assert row[0] == "simple_value"
@@ -639,13 +635,7 @@ class TestMigrateFactsEdgeCases:
         """Running migrate_facts twice with same data should INSERT OR REPLACE."""
         facts_data = {
             "facts": {
-                "key1": {
-                    "value": "v1",
-                    "confidence": 0.9,
-                    "updated_utc": "2026-01-01",
-                    "sources": [],
-                    "history": [],
-                }
+                "key1": {"value": "v1", "confidence": 0.9, "updated_utc": "2026-01-01", "sources": [], "history": []}
             }
         }
         facts_path = tmp_dir / "facts.json"
@@ -683,9 +673,7 @@ class TestMigrateFactsEdgeCases:
         facts_path.write_text(json.dumps(facts_data), encoding="utf-8")
         result = migrate_facts(facts_path, engine)
         assert result["inserted"] == 1
-        cur = engine._db.execute(
-            "SELECT locked FROM facts WHERE key = ?", ("locked_fact",)
-        )
+        cur = engine._db.execute("SELECT locked FROM facts WHERE key = ?", ("locked_fact",))
         assert cur.fetchone()[0] == 1
 
 
@@ -695,6 +683,7 @@ class TestMigrateFactsEdgeCases:
 
 
 class TestMigrateEventsEdgeCases:
+
     def test_missing_file_returns_ok_zero(
         self, tmp_dir, engine, embed_service, classifier
     ):
@@ -704,14 +693,18 @@ class TestMigrateEventsEdgeCases:
         assert result["status"] == "ok"
         assert result["source_count"] == 0
 
-    def test_empty_event_file(self, tmp_dir, engine, embed_service, classifier):
+    def test_empty_event_file(
+        self, tmp_dir, engine, embed_service, classifier
+    ):
         events_path = tmp_dir / "events.jsonl"
         events_path.write_text("", encoding="utf-8")
         result = migrate_events(events_path, engine, embed_service, classifier)
         assert result["status"] == "ok"
         assert result["source_count"] == 0
 
-    def test_event_with_only_message(self, tmp_dir, engine, embed_service, classifier):
+    def test_event_with_only_message(
+        self, tmp_dir, engine, embed_service, classifier
+    ):
         events = [{"message": "Something happened"}]
         events_path = tmp_dir / "events.jsonl"
         _write_jsonl(events_path, events)
@@ -761,11 +754,7 @@ class TestMigrateEventsEdgeCases:
         self, tmp_dir, engine, embed_service, classifier
     ):
         events = [
-            {
-                "event_type": "test",
-                "message": f"Event {i}",
-                "ts": datetime.now(UTC).isoformat(),
-            }
+            {"event_type": "test", "message": f"Event {i}", "ts": datetime.now(UTC).isoformat()}
             for i in range(20)
         ]
         events_path = tmp_dir / "events.jsonl"
@@ -792,7 +781,10 @@ class TestMigrateEventsEdgeCases:
 
 
 class TestFullMigrationEdgeCases:
-    def test_full_migration_with_no_source_files(self, tmp_dir, embed_service):
+
+    def test_full_migration_with_no_source_files(
+        self, tmp_dir, embed_service
+    ):
         """Full migration with no source files should return ok with zero counts."""
         db_path = tmp_dir / "empty_migration.db"
         result = run_full_migration(tmp_dir, db_path, embed_service)
@@ -800,7 +792,9 @@ class TestFullMigrationEdgeCases:
         assert result["totals"]["inserted"] == 0
         assert result["totals"]["errors"] == 0
 
-    def test_full_migration_partial_errors(self, tmp_dir, embed_service):
+    def test_full_migration_partial_errors(
+        self, tmp_dir, embed_service
+    ):
         """Full migration with some errors should report partial status."""
         brain_dir = tmp_dir / ".planning" / "brain"
         brain_dir.mkdir(parents=True, exist_ok=True)
@@ -819,7 +813,9 @@ class TestFullMigrationEdgeCases:
         assert result["totals"]["errors"] > 0
         assert result["totals"]["inserted"] > 0
 
-    def test_full_migration_db_path_in_result(self, tmp_dir, embed_service):
+    def test_full_migration_db_path_in_result(
+        self, tmp_dir, embed_service
+    ):
         db_path = tmp_dir / "test.db"
         result = run_full_migration(tmp_dir, db_path, embed_service)
         assert result["db_path"] == str(db_path)

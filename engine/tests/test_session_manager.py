@@ -1,5 +1,4 @@
 """Tests for SessionManager — session tracking with hijack detection."""
-
 from __future__ import annotations
 
 import hashlib

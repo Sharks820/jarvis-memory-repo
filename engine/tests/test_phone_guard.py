@@ -3,7 +3,6 @@
 Covers spam detection, phone action building, call log loading, number
 normalization, timestamp parsing, and report generation.
 """
-
 from __future__ import annotations
 
 import json
@@ -30,7 +29,6 @@ from jarvis_engine.phone_guard import (
 # ---------------------------------------------------------------------------
 # _normalize_number tests
 # ---------------------------------------------------------------------------
-
 
 class TestNormalizeNumber:
     def test_us_10_digit(self):
@@ -68,7 +66,6 @@ class TestNormalizeNumber:
 # _parse_ts tests
 # ---------------------------------------------------------------------------
 
-
 class TestParseTs:
     def test_iso_format(self):
         result = _parse_ts("2026-02-20T10:30:00+00:00")
@@ -98,7 +95,6 @@ class TestParseTs:
 # _area_key tests
 # ---------------------------------------------------------------------------
 
-
 class TestAreaKey:
     def test_us_number(self):
         # NPA-NXX precision: +1 + NPA(415) + NXX(555) = 8 chars
@@ -125,19 +121,13 @@ class TestAreaKey:
 # load_call_log tests
 # ---------------------------------------------------------------------------
 
-
 class TestLoadCallLog:
     def test_valid_json_list(self, tmp_path):
         log_file = tmp_path / "calls.json"
-        log_file.write_text(
-            json.dumps(
-                [
-                    {"number": "+14155551234", "type": "incoming"},
-                    {"number": "+14155555678", "type": "missed"},
-                ]
-            ),
-            encoding="utf-8",
-        )
+        log_file.write_text(json.dumps([
+            {"number": "+14155551234", "type": "incoming"},
+            {"number": "+14155555678", "type": "missed"},
+        ]), encoding="utf-8")
         result = load_call_log(log_file)
         assert len(result) == 2
 
@@ -156,17 +146,12 @@ class TestLoadCallLog:
 
     def test_filters_non_dict_items(self, tmp_path):
         log_file = tmp_path / "mixed.json"
-        log_file.write_text(
-            json.dumps(
-                [
-                    {"number": "+14155551234"},
-                    "not a dict",
-                    42,
-                    {"number": "+14155555678"},
-                ]
-            ),
-            encoding="utf-8",
-        )
+        log_file.write_text(json.dumps([
+            {"number": "+14155551234"},
+            "not a dict",
+            42,
+            {"number": "+14155555678"},
+        ]), encoding="utf-8")
         result = load_call_log(log_file)
         assert len(result) == 2
 
@@ -175,17 +160,8 @@ class TestLoadCallLog:
 # detect_spam_candidates tests
 # ---------------------------------------------------------------------------
 
-
 class TestDetectSpamCandidates:
-    def _make_call(
-        self,
-        number,
-        call_type="missed",
-        duration=0,
-        contact="",
-        ts_offset_min=0,
-        label="",
-    ):
+    def _make_call(self, number, call_type="missed", duration=0, contact="", ts_offset_min=0, label=""):
         now = datetime(2026, 2, 20, 12, 0, tzinfo=UTC)
         return {
             "number": number,
@@ -239,13 +215,8 @@ class TestDetectSpamCandidates:
         # Calls older than 14 days
         old_ts = (now - timedelta(days=20)).isoformat()
         log = [
-            {
-                "number": "+14155551234",
-                "type": "missed",
-                "duration_sec": 0,
-                "contact_name": "",
-                "ts_utc": old_ts,
-            },
+            {"number": "+14155551234", "type": "missed", "duration_sec": 0,
+             "contact_name": "", "ts_utc": old_ts},
         ] * 5
         result = detect_spam_candidates(log, now_utc=now)
         assert len(result) == 0
@@ -281,9 +252,7 @@ class TestDetectSpamCandidates:
             log.append(self._make_call("+14155550001", "missed", 0, "", i))
         # Number B: high spam (repeat + spam label)
         for i in range(4):
-            log.append(
-                self._make_call("+14155550002", "missed", 0, "", i, "telemarketer")
-            )
+            log.append(self._make_call("+14155550002", "missed", 0, "", i, "telemarketer"))
         result = detect_spam_candidates(log, now_utc=now)
         assert len(result) >= 2
         assert result[0].score >= result[1].score
@@ -291,10 +260,7 @@ class TestDetectSpamCandidates:
     def test_score_capped_at_099(self):
         now = datetime(2026, 2, 20, 12, 0, tzinfo=UTC)
         # Trigger all scoring factors
-        log = [
-            self._make_call("+14155551234", "missed", 0, "", i, "spam")
-            for i in range(5)
-        ]
+        log = [self._make_call("+14155551234", "missed", 0, "", i, "spam") for i in range(5)]
         result = detect_spam_candidates(log, now_utc=now)
         assert len(result) == 1
         assert result[0].score <= 0.99
@@ -311,7 +277,6 @@ class TestDetectSpamCandidates:
 # build_spam_block_actions tests
 # ---------------------------------------------------------------------------
 
-
 class TestBuildSpamBlockActions:
     def test_blocks_above_threshold(self):
         candidates = [
@@ -325,40 +290,28 @@ class TestBuildSpamBlockActions:
 
     def test_global_silence_rule_when_5_plus(self):
         candidates = [
-            SpamCandidate(
-                f"+141555500{i:02d}", 0.90, 4, 1.0, 0.0, ["high_repeat_volume"]
-            )
+            SpamCandidate(f"+141555500{i:02d}", 0.90, 4, 1.0, 0.0, ["high_repeat_volume"])
             for i in range(6)
         ]
-        actions = build_spam_block_actions(
-            candidates, threshold=0.65, add_global_silence_rule=True
-        )
+        actions = build_spam_block_actions(candidates, threshold=0.65, add_global_silence_rule=True)
         silence = [a for a in actions if a.action == "silence_unknown_callers"]
         assert len(silence) == 1
 
     def test_no_silence_rule_below_5(self):
         candidates = [
-            SpamCandidate(
-                f"+141555500{i:02d}", 0.90, 4, 1.0, 0.0, ["high_repeat_volume"]
-            )
+            SpamCandidate(f"+141555500{i:02d}", 0.90, 4, 1.0, 0.0, ["high_repeat_volume"])
             for i in range(3)
         ]
-        actions = build_spam_block_actions(
-            candidates, threshold=0.65, add_global_silence_rule=True
-        )
+        actions = build_spam_block_actions(candidates, threshold=0.65, add_global_silence_rule=True)
         silence = [a for a in actions if a.action == "silence_unknown_callers"]
         assert len(silence) == 0
 
     def test_no_silence_rule_when_disabled(self):
         candidates = [
-            SpamCandidate(
-                f"+141555500{i:02d}", 0.90, 4, 1.0, 0.0, ["high_repeat_volume"]
-            )
+            SpamCandidate(f"+141555500{i:02d}", 0.90, 4, 1.0, 0.0, ["high_repeat_volume"])
             for i in range(6)
         ]
-        actions = build_spam_block_actions(
-            candidates, threshold=0.65, add_global_silence_rule=False
-        )
+        actions = build_spam_block_actions(candidates, threshold=0.65, add_global_silence_rule=False)
         silence = [a for a in actions if a.action == "silence_unknown_callers"]
         assert len(silence) == 0
 
@@ -369,7 +322,6 @@ class TestBuildSpamBlockActions:
 # ---------------------------------------------------------------------------
 # build_phone_action tests
 # ---------------------------------------------------------------------------
-
 
 class TestBuildPhoneAction:
     def test_send_sms_valid(self):
@@ -419,9 +371,7 @@ class TestBuildPhoneAction:
         datetime.fromisoformat(action.created_utc)
 
     def test_custom_reason(self):
-        action = build_phone_action(
-            "block_number", "+14155551234", reason="manual_block"
-        )
+        action = build_phone_action("block_number", "+14155551234", reason="manual_block")
         assert action.reason == "manual_block"
 
 
@@ -429,17 +379,12 @@ class TestBuildPhoneAction:
 # append_phone_actions tests
 # ---------------------------------------------------------------------------
 
-
 class TestAppendPhoneActions:
     def test_appends_to_file(self, tmp_path):
         actions_file = tmp_path / "sub" / "actions.jsonl"
         actions = [
-            PhoneAction(
-                "block_number", "+14155551234", "", "2026-02-20T00:00:00", "spam"
-            ),
-            PhoneAction(
-                "send_sms", "+14155555678", "hi", "2026-02-20T00:00:00", "user"
-            ),
+            PhoneAction("block_number", "+14155551234", "", "2026-02-20T00:00:00", "spam"),
+            PhoneAction("send_sms", "+14155555678", "hi", "2026-02-20T00:00:00", "user"),
         ]
         append_phone_actions(actions_file, actions)
         lines = actions_file.read_text(encoding="utf-8").strip().split("\n")
@@ -449,14 +394,8 @@ class TestAppendPhoneActions:
 
     def test_appends_incrementally(self, tmp_path):
         actions_file = tmp_path / "actions.jsonl"
-        a1 = [
-            PhoneAction(
-                "block_number", "+14155551234", "", "2026-02-20T00:00:00", "spam"
-            )
-        ]
-        a2 = [
-            PhoneAction("send_sms", "+14155555678", "hi", "2026-02-20T00:00:00", "user")
-        ]
+        a1 = [PhoneAction("block_number", "+14155551234", "", "2026-02-20T00:00:00", "spam")]
+        a2 = [PhoneAction("send_sms", "+14155555678", "hi", "2026-02-20T00:00:00", "user")]
         append_phone_actions(actions_file, a1)
         append_phone_actions(actions_file, a2)
         lines = actions_file.read_text(encoding="utf-8").strip().split("\n")
@@ -467,18 +406,11 @@ class TestAppendPhoneActions:
 # write_spam_report tests
 # ---------------------------------------------------------------------------
 
-
 class TestWriteSpamReport:
     def test_writes_valid_json(self, tmp_path):
         report_path = tmp_path / "report.json"
-        candidates = [
-            SpamCandidate("+14155551234", 0.80, 4, 1.0, 2.0, ["high_repeat_volume"])
-        ]
-        actions = [
-            PhoneAction(
-                "block_number", "+14155551234", "", "2026-02-20T00:00:00", "spam_guard"
-            )
-        ]
+        candidates = [SpamCandidate("+14155551234", 0.80, 4, 1.0, 2.0, ["high_repeat_volume"])]
+        actions = [PhoneAction("block_number", "+14155551234", "", "2026-02-20T00:00:00", "spam_guard")]
         write_spam_report(report_path, candidates, actions, threshold=0.65)
         data = json.loads(report_path.read_text(encoding="utf-8"))
         assert data["threshold"] == 0.65

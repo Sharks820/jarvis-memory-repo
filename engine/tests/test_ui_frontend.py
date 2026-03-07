@@ -6,6 +6,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 
+
 # ---------------------------------------------------------------------------
 # Activity event deduplication and display logic
 # ---------------------------------------------------------------------------
@@ -28,18 +29,8 @@ class TestActivityEventDedup:
 
         stub = self._make_widget_stub()
         events = [
-            {
-                "event_id": "evt-001",
-                "timestamp": "2026-03-02T10:00:00",
-                "category": "llm_routing",
-                "summary": "Routed to kimi-k2",
-            },
-            {
-                "event_id": "evt-002",
-                "timestamp": "2026-03-02T09:55:00",
-                "category": "preference_learned",
-                "summary": "Learned style=concise",
-            },
+            {"event_id": "evt-001", "timestamp": "2026-03-02T10:00:00", "category": "llm_routing", "summary": "Routed to kimi-k2"},
+            {"event_id": "evt-002", "timestamp": "2026-03-02T09:55:00", "category": "preference_learned", "summary": "Learned style=concise"},
         ]
         # Call the method bound to our stub
         JarvisDesktopWidget._update_activity_events(stub, events)
@@ -54,18 +45,8 @@ class TestActivityEventDedup:
         stub = self._make_widget_stub()
         stub._seen_event_ids = {"evt-001": None}
         events = [
-            {
-                "event_id": "evt-001",
-                "timestamp": "2026-03-02T10:00:00",
-                "category": "llm_routing",
-                "summary": "Routed to kimi-k2",
-            },
-            {
-                "event_id": "evt-003",
-                "timestamp": "2026-03-02T09:50:00",
-                "category": "harvest",
-                "summary": "Harvest complete",
-            },
+            {"event_id": "evt-001", "timestamp": "2026-03-02T10:00:00", "category": "llm_routing", "summary": "Routed to kimi-k2"},
+            {"event_id": "evt-003", "timestamp": "2026-03-02T09:50:00", "category": "harvest", "summary": "Harvest complete"},
         ]
         JarvisDesktopWidget._update_activity_events(stub, events)
         # Only evt-003 should be displayed (evt-001 is duplicate)
@@ -89,12 +70,7 @@ class TestActivityEventDedup:
         # Pre-fill with 510 event IDs (ordered dict)
         stub._seen_event_ids = dict.fromkeys(f"evt-{i:04d}" for i in range(510))
         events = [
-            {
-                "event_id": "evt-new",
-                "timestamp": "2026-03-02T10:00:00",
-                "category": "llm_routing",
-                "summary": "Test",
-            },
+            {"event_id": "evt-new", "timestamp": "2026-03-02T10:00:00", "category": "llm_routing", "summary": "Test"},
         ]
         JarvisDesktopWidget._update_activity_events(stub, events)
         # After cap, should have been trimmed to ~200 + 1 new
@@ -106,12 +82,7 @@ class TestActivityEventDedup:
 
         stub = self._make_widget_stub()
         events = [
-            {
-                "event_id": "evt-err",
-                "timestamp": "2026-03-02T10:00:00",
-                "category": "error",
-                "summary": "Something failed",
-            },
+            {"event_id": "evt-err", "timestamp": "2026-03-02T10:00:00", "category": "error", "summary": "Something failed"},
         ]
         JarvisDesktopWidget._update_activity_events(stub, events)
         call_kwargs = stub._log.call_args
@@ -130,13 +101,9 @@ class TestLearnedIndicatorIntents:
         """Knowledge-modifying intents should be in the learned intents list."""
         # This mirrors the actual tuple in desktop_widget.py _send_command_async
         _LEARNED_INTENTS = (
-            "memory_ingest",
-            "memory_forget",
-            "llm_conversation",
-            "mission_create",
-            "mission_run",
-            "harvest",
-            "fact_extracted",
+            "memory_ingest", "memory_forget", "llm_conversation",
+            "mission_create", "mission_run",
+            "harvest", "fact_extracted",
         )
         assert "mission_create" in _LEARNED_INTENTS
         assert "harvest" in _LEARNED_INTENTS
@@ -148,13 +115,9 @@ class TestLearnedIndicatorIntents:
     def test_original_intents_still_present(self):
         """Original three intents (memory_ingest, memory_forget, llm_conversation) remain."""
         _LEARNED_INTENTS = (
-            "memory_ingest",
-            "memory_forget",
-            "llm_conversation",
-            "mission_create",
-            "mission_run",
-            "harvest",
-            "fact_extracted",
+            "memory_ingest", "memory_forget", "llm_conversation",
+            "mission_create", "mission_run",
+            "harvest", "fact_extracted",
         )
         assert "memory_ingest" in _LEARNED_INTENTS
         assert "memory_forget" in _LEARNED_INTENTS
@@ -184,7 +147,6 @@ class TestCmdStatusResponse:
 
         with patch("jarvis_engine.main._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_status
-
             rc = cmd_status()
 
         assert rc == 0
@@ -207,7 +169,6 @@ class TestSetOnlineSignature:
         """_set_online method signature includes recent_events parameter."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         import inspect
-
         sig = inspect.signature(JarvisDesktopWidget._set_online)
         param_names = list(sig.parameters.keys())
         assert "recent_events" in param_names
@@ -216,7 +177,6 @@ class TestSetOnlineSignature:
         """recent_events parameter defaults to None."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         import inspect
-
         sig = inspect.signature(JarvisDesktopWidget._set_online)
         param = sig.parameters["recent_events"]
         assert param.default is None

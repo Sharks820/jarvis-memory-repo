@@ -24,7 +24,6 @@ from jarvis_engine.owner_guard import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     """Project root with the security directory pre-created."""
@@ -37,7 +36,6 @@ def root(tmp_path: Path) -> Path:
 # owner_guard_path
 # ---------------------------------------------------------------------------
 
-
 class TestOwnerGuardPath:
     def test_returns_expected_path(self, tmp_path: Path) -> None:
         result = owner_guard_path(tmp_path)
@@ -47,7 +45,6 @@ class TestOwnerGuardPath:
 # ---------------------------------------------------------------------------
 # read_owner_guard
 # ---------------------------------------------------------------------------
-
 
 class TestReadOwnerGuard:
     def test_defaults_when_file_missing(self, tmp_path: Path) -> None:
@@ -121,7 +118,6 @@ class TestReadOwnerGuard:
 # write_owner_guard
 # ---------------------------------------------------------------------------
 
-
 class TestWriteOwnerGuard:
     def test_write_creates_file(self, root: Path) -> None:
         state = write_owner_guard(root, enabled=True)
@@ -159,7 +155,6 @@ class TestWriteOwnerGuard:
 # ---------------------------------------------------------------------------
 # trust_mobile_device / revoke_mobile_device
 # ---------------------------------------------------------------------------
-
 
 class TestDeviceTrust:
     def test_trust_adds_device(self, root: Path) -> None:
@@ -200,7 +195,6 @@ class TestDeviceTrust:
 # ---------------------------------------------------------------------------
 # Master password
 # ---------------------------------------------------------------------------
-
 
 class TestMasterPassword:
     def test_set_and_verify_password(self, root: Path) -> None:
@@ -256,7 +250,6 @@ class TestMasterPassword:
 # ---------------------------------------------------------------------------
 # Guard enabling/disabling
 # ---------------------------------------------------------------------------
-
 
 class TestGuardEnableDisable:
     def test_enable_guard(self, root: Path) -> None:

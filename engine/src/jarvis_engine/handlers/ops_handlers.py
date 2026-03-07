@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -58,11 +59,7 @@ class OpsBriefHandler:
         self._gateway = gateway
 
     def handle(self, cmd: OpsBriefCommand) -> OpsBriefResult:
-        from jarvis_engine.life_ops import (
-            build_daily_brief,
-            build_narrative_brief,
-            load_snapshot,
-        )
+        from jarvis_engine.life_ops import build_daily_brief, build_narrative_brief, load_snapshot
 
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
@@ -74,7 +71,7 @@ class OpsBriefHandler:
         if self._gateway is not None:
             try:
                 brief = build_narrative_brief(snapshot, gateway=self._gateway)
-            except Exception as exc:
+            except (ConnectionError, TimeoutError, ValueError) as exc:
                 logger.warning("Narrative brief generation failed in handler: %s", exc)
                 brief = ""
         if not brief:
@@ -97,11 +94,7 @@ class OpsExportActionsHandler:
         self._root = root
 
     def handle(self, cmd: OpsExportActionsCommand) -> OpsExportActionsResult:
-        from jarvis_engine.life_ops import (
-            export_actions_json,
-            load_snapshot,
-            suggest_actions,
-        )
+        from jarvis_engine.life_ops import export_actions_json, load_snapshot, suggest_actions
 
         try:
             _check_path_within_root(cmd.snapshot_path, self._root, "snapshot_path")
@@ -242,9 +235,7 @@ class MissionCancelHandler:
 
 
 class MissionRunHandler:
-    def __init__(
-        self, root: Path, enriched_pipeline: Optional[EnrichedIngestPipeline] = None
-    ) -> None:
+    def __init__(self, root: Path, enriched_pipeline: Optional[EnrichedIngestPipeline] = None) -> None:
         self._root = root
         self._enriched_pipeline = enriched_pipeline
         self._store: Optional[MemoryStore] = None
@@ -300,11 +291,10 @@ class MissionRunHandler:
                         ingested_ids.extend(result)
                     elif hasattr(result, "record_id"):
                         ingested_ids.append(result.record_id)
-                except Exception as exc:
+                except (sqlite3.Error, OSError, ValueError, RuntimeError) as exc:
                     logger.warning("Mission auto-ingest failed for finding: %s", exc)
         return MissionRunResult(
-            report=report,
-            return_code=0,
+            report=report, return_code=0,
             ingested_record_id=ingested_ids[0] if ingested_ids else "",
         )
 
@@ -314,11 +304,7 @@ class GrowthEvalHandler:
         self._root = root
 
     def handle(self, cmd: GrowthEvalCommand) -> GrowthEvalResult:
-        from jarvis_engine.growth_tracker import (
-            append_history,
-            load_golden_tasks,
-            run_eval,
-        )
+        from jarvis_engine.growth_tracker import append_history, load_golden_tasks, run_eval
 
         try:
             _check_path_within_root(cmd.tasks_path, self._root, "tasks_path")

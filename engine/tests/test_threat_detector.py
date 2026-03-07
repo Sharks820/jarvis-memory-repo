@@ -204,9 +204,7 @@ class TestSuspiciousUserAgent:
 
     def test_normal_browser_ok(self) -> None:
         d = ThreatDetector()
-        result = d.assess(
-            _clean_ctx(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-        )
+        result = d.assess(_clean_ctx(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"))
         assert not any(s.category == "suspicious_user_agent" for s in result.signals)
 
     def test_empty_ua_severity_medium(self) -> None:

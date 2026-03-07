@@ -3,7 +3,6 @@
 Covers connector definitions, permission management, status evaluation,
 environment variable checks, fallback files, and prompt generation.
 """
-
 from __future__ import annotations
 
 import json
@@ -31,7 +30,6 @@ from jarvis_engine.connectors import (
 # CONNECTORS tuple tests
 # ---------------------------------------------------------------------------
 
-
 class TestConnectorDefinitions:
     def test_connectors_is_nonempty_tuple(self):
         assert isinstance(CONNECTORS, tuple)
@@ -57,7 +55,6 @@ class TestConnectorDefinitions:
 # _any_env_set tests
 # ---------------------------------------------------------------------------
 
-
 class TestAnyEnvSet:
     def test_empty_keys_returns_false(self):
         assert _any_env_set(()) is False
@@ -78,7 +75,6 @@ class TestAnyEnvSet:
 # ---------------------------------------------------------------------------
 # _all_env_set tests
 # ---------------------------------------------------------------------------
-
 
 class TestAllEnvSet:
     def test_empty_keys_returns_true(self):
@@ -109,7 +105,6 @@ class TestAllEnvSet:
 # _any_file_exists tests
 # ---------------------------------------------------------------------------
 
-
 class TestAnyFileExists:
     def test_empty_files_returns_false(self, tmp_path):
         ok, missing = _any_file_exists(tmp_path, ())
@@ -138,7 +133,6 @@ class TestAnyFileExists:
 # load_connector_permissions tests
 # ---------------------------------------------------------------------------
 
-
 class TestLoadConnectorPermissions:
     def test_no_file_returns_empty(self, tmp_path):
         result = load_connector_permissions(tmp_path)
@@ -147,16 +141,9 @@ class TestLoadConnectorPermissions:
     def test_valid_permissions_file(self, tmp_path):
         perms_path = _permissions_path(tmp_path)
         perms_path.parent.mkdir(parents=True, exist_ok=True)
-        perms_path.write_text(
-            json.dumps(
-                {
-                    "connectors": {
-                        "calendar": {"granted": True, "scopes": ["read_calendar"]}
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
+        perms_path.write_text(json.dumps({
+            "connectors": {"calendar": {"granted": True, "scopes": ["read_calendar"]}}
+        }), encoding="utf-8")
         result = load_connector_permissions(tmp_path)
         assert result["connectors"]["calendar"]["granted"] is True
 
@@ -186,7 +173,6 @@ class TestLoadConnectorPermissions:
 # grant_connector_permission tests
 # ---------------------------------------------------------------------------
 
-
 class TestGrantConnectorPermission:
     def test_grants_permission(self, tmp_path):
         result = grant_connector_permission(tmp_path, "calendar", ["read_calendar"])
@@ -203,9 +189,7 @@ class TestGrantConnectorPermission:
         assert result["granted"] is True
 
     def test_filters_empty_scopes(self, tmp_path):
-        result = grant_connector_permission(
-            tmp_path, "calendar", ["read", "", "  ", "write"]
-        )
+        result = grant_connector_permission(tmp_path, "calendar", ["read", "", "  ", "write"])
         assert result["scopes"] == ["read", "write"]
 
     def test_persists_to_file(self, tmp_path):
@@ -224,7 +208,6 @@ class TestGrantConnectorPermission:
 # ---------------------------------------------------------------------------
 # evaluate_connector_statuses tests
 # ---------------------------------------------------------------------------
-
 
 class TestEvaluateConnectorStatuses:
     def test_returns_status_for_each_connector(self, tmp_path, monkeypatch):
@@ -302,9 +285,7 @@ class TestEvaluateConnectorStatuses:
         assert email.configured is True
         assert email.ready is True
 
-    def test_no_permission_required_connector_ready_with_env(
-        self, tmp_path, monkeypatch
-    ):
+    def test_no_permission_required_connector_ready_with_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv("JARVIS_BILLS_JSON", "/tmp/bills.json")
         statuses = evaluate_connector_statuses(tmp_path)
         bills = next(s for s in statuses if s.connector_id == "bills")
@@ -317,31 +298,17 @@ class TestEvaluateConnectorStatuses:
 # build_connector_prompts tests
 # ---------------------------------------------------------------------------
 
-
 class TestBuildConnectorPrompts:
     def test_ready_connector_skipped(self):
         statuses = [
-            ConnectorStatus(
-                "test", "Test", "http://x", False, True, True, True, [], [], "Ready"
-            ),
+            ConnectorStatus("test", "Test", "http://x", False, True, True, True, [], [], "Ready"),
         ]
         prompts = build_connector_prompts(statuses)
         assert len(prompts) == 0
 
     def test_permission_missing_prompt(self):
         statuses = [
-            ConnectorStatus(
-                "cal",
-                "Calendar",
-                "http://x",
-                True,
-                False,
-                False,
-                False,
-                [],
-                [],
-                "Perm needed",
-            ),
+            ConnectorStatus("cal", "Calendar", "http://x", True, False, False, False, [], [], "Perm needed"),
         ]
         prompts = build_connector_prompts(statuses)
         assert len(prompts) == 1
@@ -352,18 +319,7 @@ class TestBuildConnectorPrompts:
 
     def test_config_missing_prompt(self):
         statuses = [
-            ConnectorStatus(
-                "tasks",
-                "Tasks",
-                "http://x",
-                False,
-                True,
-                False,
-                False,
-                ["JARVIS_TASKS_JSON"],
-                [],
-                "Setup needed",
-            ),
+            ConnectorStatus("tasks", "Tasks", "http://x", False, True, False, False, ["JARVIS_TASKS_JSON"], [], "Setup needed"),
         ]
         prompts = build_connector_prompts(statuses)
         assert len(prompts) == 1
@@ -389,13 +345,10 @@ class TestBuildConnectorPrompts:
 # serialize_statuses tests
 # ---------------------------------------------------------------------------
 
-
 class TestSerializeStatuses:
     def test_returns_list_of_dicts(self):
         statuses = [
-            ConnectorStatus(
-                "test", "Test", "http://x", False, True, True, True, [], [], "Ready"
-            ),
+            ConnectorStatus("test", "Test", "http://x", False, True, True, True, [], [], "Ready"),
         ]
         result = serialize_statuses(statuses)
         assert isinstance(result, list)

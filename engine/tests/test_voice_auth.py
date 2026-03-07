@@ -3,7 +3,6 @@
 Covers enrollment, verification, WAV reading, normalization, edge cases,
 multi-sample averaging, resampling, and profile persistence.
 """
-
 from __future__ import annotations
 
 import json
@@ -30,7 +29,6 @@ from jarvis_engine.voice_auth import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _write_tone(
     path: Path,
@@ -77,7 +75,6 @@ def _write_tone(
 # _normalize_user_id tests
 # ---------------------------------------------------------------------------
 
-
 class TestNormalizeUserId:
     def test_simple_lowercases(self):
         assert _normalize_user_id("Conner") == "conner"
@@ -115,7 +112,6 @@ class TestNormalizeUserId:
 # _profile_path tests
 # ---------------------------------------------------------------------------
 
-
 class TestProfilePath:
     def test_returns_correct_path(self, tmp_path):
         result = _profile_path(tmp_path, "conner")
@@ -127,13 +123,10 @@ class TestProfilePath:
 # _read_profile tests
 # ---------------------------------------------------------------------------
 
-
 class TestReadProfile:
     def test_valid_json_dict(self, tmp_path):
         profile_file = tmp_path / "test.json"
-        profile_file.write_text(
-            json.dumps({"user_id": "test", "samples": 1}), encoding="utf-8"
-        )
+        profile_file.write_text(json.dumps({"user_id": "test", "samples": 1}), encoding="utf-8")
         result = _read_profile(profile_file)
         assert result == {"user_id": "test", "samples": 1}
 
@@ -154,7 +147,6 @@ class TestReadProfile:
 # ---------------------------------------------------------------------------
 # _read_wav_mono tests
 # ---------------------------------------------------------------------------
-
 
 class TestReadWavMono:
     def test_reads_16bit_mono(self, tmp_path):
@@ -196,7 +188,6 @@ class TestReadWavMono:
         _write_tone(wav, 440.0, duration_s=0.1)
         # Monkey-patch stat to return huge size
         from unittest.mock import patch, MagicMock
-
         original_stat = wav.stat
         mock_stat = MagicMock()
         mock_stat.st_size = 60 * 1024 * 1024  # 60 MB
@@ -208,7 +199,6 @@ class TestReadWavMono:
 # ---------------------------------------------------------------------------
 # _resample tests
 # ---------------------------------------------------------------------------
-
 
 class TestResample:
     def test_same_rate_returns_original(self):
@@ -230,7 +220,6 @@ class TestResample:
 # ---------------------------------------------------------------------------
 # _extract_embedding tests
 # ---------------------------------------------------------------------------
-
 
 class TestExtractEmbedding:
     def test_returns_normalized_vector(self, tmp_path):
@@ -266,14 +255,11 @@ class TestExtractEmbedding:
 # enroll_voiceprint tests
 # ---------------------------------------------------------------------------
 
-
 class TestEnrollVoiceprint:
     def test_first_enrollment(self, tmp_path):
         wav = tmp_path / "sample.wav"
         _write_tone(wav, 300.0)
-        result = enroll_voiceprint(
-            tmp_path, user_id="Conner", wav_path=str(wav), replace=True
-        )
+        result = enroll_voiceprint(tmp_path, user_id="Conner", wav_path=str(wav), replace=True)
         assert isinstance(result, VoiceEnrollResult)
         assert result.samples == 1
         assert result.user_id == "conner"
@@ -285,13 +271,9 @@ class TestEnrollVoiceprint:
         _write_tone(wav1, 300.0, phase=0.0)
         _write_tone(wav2, 300.0, phase=0.5)
 
-        r1 = enroll_voiceprint(
-            tmp_path, user_id="alice", wav_path=str(wav1), replace=True
-        )
+        r1 = enroll_voiceprint(tmp_path, user_id="alice", wav_path=str(wav1), replace=True)
         assert r1.samples == 1
-        r2 = enroll_voiceprint(
-            tmp_path, user_id="alice", wav_path=str(wav2), replace=False
-        )
+        r2 = enroll_voiceprint(tmp_path, user_id="alice", wav_path=str(wav2), replace=False)
         assert r2.samples == 2
 
     def test_replace_flag_resets_samples(self, tmp_path):
@@ -325,7 +307,6 @@ class TestEnrollVoiceprint:
 # verify_voiceprint tests
 # ---------------------------------------------------------------------------
 
-
 class TestVerifyVoiceprint:
     def test_no_profile_returns_no_match(self, tmp_path):
         wav = tmp_path / "test.wav"
@@ -342,10 +323,7 @@ class TestVerifyVoiceprint:
         # Write an empty profile
         profile = _profile_path(tmp_path, "empty-user")
         profile.parent.mkdir(parents=True, exist_ok=True)
-        profile.write_text(
-            json.dumps({"user_id": "empty-user", "samples": 0, "embedding": []}),
-            encoding="utf-8",
-        )
+        profile.write_text(json.dumps({"user_id": "empty-user", "samples": 0, "embedding": []}), encoding="utf-8")
         result = verify_voiceprint(tmp_path, user_id="empty-user", wav_path=str(wav))
         assert result.matched is False
         assert "empty" in result.message.lower()
@@ -356,9 +334,7 @@ class TestVerifyVoiceprint:
         _write_tone(wav_a, 300.0, phase=0.0)
         _write_tone(wav_b, 300.0, phase=0.2)
         enroll_voiceprint(tmp_path, user_id="same", wav_path=str(wav_a))
-        result = verify_voiceprint(
-            tmp_path, user_id="same", wav_path=str(wav_b), threshold=0.0
-        )
+        result = verify_voiceprint(tmp_path, user_id="same", wav_path=str(wav_b), threshold=0.0)
         assert result.score > 0.5
 
     def test_different_voice_scores_lower(self, tmp_path):
@@ -367,9 +343,7 @@ class TestVerifyVoiceprint:
         _write_tone(wav_enroll, 190.0)
         _write_tone(wav_verify, 720.0)
         enroll_voiceprint(tmp_path, user_id="diff", wav_path=str(wav_enroll))
-        result = verify_voiceprint(
-            tmp_path, user_id="diff", wav_path=str(wav_verify), threshold=0.0
-        )
+        result = verify_voiceprint(tmp_path, user_id="diff", wav_path=str(wav_verify), threshold=0.0)
         # Different frequencies should score lower than same
         assert result.score < 0.95
 
@@ -377,12 +351,8 @@ class TestVerifyVoiceprint:
         wav = tmp_path / "tone.wav"
         _write_tone(wav, 300.0)
         enroll_voiceprint(tmp_path, user_id="threshold-test", wav_path=str(wav))
-        high = verify_voiceprint(
-            tmp_path, user_id="threshold-test", wav_path=str(wav), threshold=0.99999
-        )
-        low = verify_voiceprint(
-            tmp_path, user_id="threshold-test", wav_path=str(wav), threshold=0.0
-        )
+        high = verify_voiceprint(tmp_path, user_id="threshold-test", wav_path=str(wav), threshold=0.99999)
+        low = verify_voiceprint(tmp_path, user_id="threshold-test", wav_path=str(wav), threshold=0.0)
         assert low.matched is True
         # Very high threshold may or may not match depending on exact cosine sim
 
@@ -390,18 +360,14 @@ class TestVerifyVoiceprint:
         wav = tmp_path / "tone.wav"
         _write_tone(wav, 300.0)
         enroll_voiceprint(tmp_path, user_id="ct", wav_path=str(wav))
-        result = verify_voiceprint(
-            tmp_path, user_id="ct", wav_path=str(wav), threshold=0.5
-        )
+        result = verify_voiceprint(tmp_path, user_id="ct", wav_path=str(wav), threshold=0.5)
         assert result.threshold == 0.5
 
     def test_score_rounded_to_4_decimals(self, tmp_path):
         wav = tmp_path / "tone.wav"
         _write_tone(wav, 300.0)
         enroll_voiceprint(tmp_path, user_id="rnd", wav_path=str(wav))
-        result = verify_voiceprint(
-            tmp_path, user_id="rnd", wav_path=str(wav), threshold=0.0
-        )
+        result = verify_voiceprint(tmp_path, user_id="rnd", wav_path=str(wav), threshold=0.0)
         score_str = str(result.score)
         if "." in score_str:
             decimals = len(score_str.split(".")[1])
@@ -416,13 +382,7 @@ class TestVerifyVoiceprint:
         _write_tone(same_b, 190.0, phase=0.25)
         _write_tone(diff, 720.0, phase=0.0)
 
-        enroll_voiceprint(
-            tmp_path, user_id="Conner", wav_path=str(same_a), replace=True
-        )
-        same_result = verify_voiceprint(
-            tmp_path, user_id="Conner", wav_path=str(same_b), threshold=0.0
-        )
-        diff_result = verify_voiceprint(
-            tmp_path, user_id="Conner", wav_path=str(diff), threshold=0.0
-        )
+        enroll_voiceprint(tmp_path, user_id="Conner", wav_path=str(same_a), replace=True)
+        same_result = verify_voiceprint(tmp_path, user_id="Conner", wav_path=str(same_b), threshold=0.0)
+        diff_result = verify_voiceprint(tmp_path, user_id="Conner", wav_path=str(diff), threshold=0.0)
         assert same_result.score > diff_result.score

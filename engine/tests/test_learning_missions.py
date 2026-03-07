@@ -22,10 +22,7 @@ from jarvis_engine.learning_missions import (
 
 # ── existing test ─────────────────────────────────────────────────────────
 
-
-def test_learning_mission_create_and_run_with_verification(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_learning_mission_create_and_run_with_verification(tmp_path: Path, monkeypatch) -> None:
     mission = learning_missions.create_learning_mission(
         tmp_path,
         topic="Unity 6.3 game architecture",
@@ -56,9 +53,7 @@ def test_learning_mission_create_and_run_with_verification(
     monkeypatch.setattr(learning_missions, "_search_web", fake_search)
     monkeypatch.setattr(learning_missions, "_fetch_page_text", fake_fetch)
 
-    report = learning_missions.run_learning_mission(
-        tmp_path, mission_id=mission_id, max_search_results=4, max_pages=4
-    )
+    report = learning_missions.run_learning_mission(tmp_path, mission_id=mission_id, max_search_results=4, max_pages=4)
     assert report["mission_id"] == mission_id
     assert report["verified_count"] >= 1
     assert (tmp_path / ".planning" / "missions" / f"{mission_id}.report.json").exists()
@@ -69,7 +64,6 @@ def test_learning_mission_create_and_run_with_verification(
 
 
 # ── create_learning_mission tests ─────────────────────────────────────────
-
 
 def test_create_mission_empty_topic_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="topic is required"):
@@ -82,9 +76,7 @@ def test_create_mission_whitespace_topic_raises(tmp_path: Path) -> None:
 
 
 def test_create_mission_defaults_sources(tmp_path: Path) -> None:
-    mission = create_learning_mission(
-        tmp_path, topic="Rust async", objective="understand async"
-    )
+    mission = create_learning_mission(tmp_path, topic="Rust async", objective="understand async")
     assert mission["sources"] == ["google", "reddit", "official_docs"]
 
 
@@ -108,9 +100,7 @@ def test_create_mission_truncates_long_objective(tmp_path: Path) -> None:
 
 
 def test_create_mission_persists_to_disk(tmp_path: Path) -> None:
-    create_learning_mission(
-        tmp_path, topic="Go concurrency", objective="learn goroutines"
-    )
+    create_learning_mission(tmp_path, topic="Go concurrency", objective="learn goroutines")
     missions = load_missions(tmp_path)
     assert len(missions) == 1
     assert missions[0]["topic"] == "Go concurrency"
@@ -127,7 +117,6 @@ def test_create_multiple_missions(tmp_path: Path) -> None:
 
 
 # ── load_missions tests ──────────────────────────────────────────────────
-
 
 def test_load_missions_no_file(tmp_path: Path) -> None:
     result = load_missions(tmp_path)
@@ -164,7 +153,6 @@ def test_load_missions_filters_non_dict_items(tmp_path: Path) -> None:
 
 # ── _mission_queries tests ───────────────────────────────────────────────
 
-
 def test_mission_queries_basic() -> None:
     queries = _mission_queries("Python async", ["google", "reddit", "official_docs"])
     assert "Python async" in queries
@@ -188,7 +176,6 @@ def test_mission_queries_deduplicates() -> None:
 
 # ── _topic_keywords / _keywords tests ────────────────────────────────────
 
-
 def test_topic_keywords_filters_stopwords() -> None:
     kw = _topic_keywords("what does python have")
     assert "python" in kw
@@ -204,7 +191,6 @@ def test_keywords_basic() -> None:
 
 
 # ── _extract_candidates tests ─────────────────────────────────────────────
-
 
 def test_extract_candidates_filters_short() -> None:
     text = "No. Yes. Python coroutines enable efficient asynchronous code execution patterns."
@@ -229,22 +215,15 @@ def test_extract_candidates_max_limit() -> None:
         f"Python framework number {i} provides useful tools for building applications."
         for i in range(20)
     )
-    candidates = _extract_candidates(
-        sentences, topic="python framework", max_candidates=3
-    )
+    candidates = _extract_candidates(sentences, topic="python framework", max_candidates=3)
     assert len(candidates) <= 3
 
 
 # ── _verify_candidates tests ─────────────────────────────────────────────
 
-
 def test_verify_candidates_single_domain_low_confidence() -> None:
     candidates = [
-        {
-            "statement": "Python async programming uses coroutines efficiently and effectively",
-            "url": "https://a.com/1",
-            "domain": "a.com",
-        },
+        {"statement": "Python async programming uses coroutines efficiently and effectively", "url": "https://a.com/1", "domain": "a.com"},
     ]
     # Single domain with 4+ keywords → accepted at low confidence (0.30)
     verified = _verify_candidates(candidates)
@@ -254,11 +233,7 @@ def test_verify_candidates_single_domain_low_confidence() -> None:
 
 def test_verify_candidates_single_domain_too_few_keywords() -> None:
     candidates = [
-        {
-            "statement": "A new app is ok to use now",
-            "url": "https://a.com/1",
-            "domain": "a.com",
-        },
+        {"statement": "A new app is ok to use now", "url": "https://a.com/1", "domain": "a.com"},
     ]
     # Single domain with < 4 keywords (most words are < 4 chars) → rejected
     verified = _verify_candidates(candidates)
@@ -267,16 +242,8 @@ def test_verify_candidates_single_domain_too_few_keywords() -> None:
 
 def test_verify_candidates_cross_domain_verification() -> None:
     candidates = [
-        {
-            "statement": "Python async programming uses coroutines efficiently and effectively",
-            "url": "https://a.com/1",
-            "domain": "a.com",
-        },
-        {
-            "statement": "Python async programming with coroutines efficiently simplifies code paths",
-            "url": "https://b.com/2",
-            "domain": "b.com",
-        },
+        {"statement": "Python async programming uses coroutines efficiently and effectively", "url": "https://a.com/1", "domain": "a.com"},
+        {"statement": "Python async programming with coroutines efficiently simplifies code paths", "url": "https://b.com/2", "domain": "b.com"},
     ]
     verified = _verify_candidates(candidates)
     assert len(verified) >= 1
@@ -299,20 +266,15 @@ def test_verify_candidates_skips_empty_statements() -> None:
 
 # ── run_learning_mission edge cases ──────────────────────────────────────
 
-
 def test_run_mission_not_found(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="mission not found"):
         run_learning_mission(tmp_path, mission_id="m-nonexistent")
 
 
 def test_run_mission_empty_search_results(tmp_path: Path, monkeypatch) -> None:
-    mission = create_learning_mission(
-        tmp_path, topic="Obscure topic", objective="learn"
-    )
+    mission = create_learning_mission(tmp_path, topic="Obscure topic", objective="learn")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(
-        learning_missions, "_fetch_page_text", lambda url, max_bytes: ""
-    )
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     assert report["verified_count"] == 0
     assert report["candidate_count"] == 0
@@ -321,25 +283,18 @@ def test_run_mission_empty_search_results(tmp_path: Path, monkeypatch) -> None:
 def test_run_mission_fetch_returns_empty(tmp_path: Path, monkeypatch) -> None:
     mission = create_learning_mission(tmp_path, topic="Some topic", objective="learn")
     monkeypatch.setattr(
-        learning_missions,
-        "_search_web",
+        learning_missions, "_search_web",
         lambda query, limit: ["https://example.com/page"],
     )
-    monkeypatch.setattr(
-        learning_missions, "_fetch_page_text", lambda url, max_bytes: ""
-    )
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     assert report["candidate_count"] == 0
 
 
 def test_run_mission_zero_results_marks_failed(tmp_path: Path, monkeypatch) -> None:
-    mission = create_learning_mission(
-        tmp_path, topic="Quick topic", objective="learn fast"
-    )
+    mission = create_learning_mission(tmp_path, topic="Quick topic", objective="learn fast")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(
-        learning_missions, "_fetch_page_text", lambda url, max_bytes: ""
-    )
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     missions = load_missions(tmp_path)
     target = [m for m in missions if m["mission_id"] == mission["mission_id"]][0]
@@ -348,13 +303,9 @@ def test_run_mission_zero_results_marks_failed(tmp_path: Path, monkeypatch) -> N
 
 
 def test_run_mission_writes_report_file(tmp_path: Path, monkeypatch) -> None:
-    mission = create_learning_mission(
-        tmp_path, topic="Report test", objective="verify file"
-    )
+    mission = create_learning_mission(tmp_path, topic="Report test", objective="verify file")
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(
-        learning_missions, "_fetch_page_text", lambda url, max_bytes: ""
-    )
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
     report = run_learning_mission(tmp_path, mission_id=mission["mission_id"])
     mid = mission["mission_id"]
     report_path = tmp_path / ".planning" / "missions" / f"{mid}.report.json"
@@ -365,12 +316,9 @@ def test_run_mission_writes_report_file(tmp_path: Path, monkeypatch) -> None:
 
 # ── retry_failed_missions tests ──────────────────────────────────────────
 
-
 def test_retry_failed_missions_requeues(tmp_path: Path, monkeypatch) -> None:
     """Failed missions get re-queued as pending with incremented retry count."""
-    mission = create_learning_mission(
-        tmp_path, topic="Retry topic", objective="test retry"
-    )
+    mission = create_learning_mission(tmp_path, topic="Retry topic", objective="test retry")
     # Manually mark as failed
     missions = load_missions(tmp_path)
     missions[0]["status"] = "failed"
@@ -389,9 +337,7 @@ def test_retry_failed_missions_requeues(tmp_path: Path, monkeypatch) -> None:
 
 def test_retry_failed_missions_exhausts_after_two(tmp_path: Path) -> None:
     """Missions with 2+ retries get marked exhausted, not re-queued."""
-    mission = create_learning_mission(
-        tmp_path, topic="Exhausted topic", objective="test"
-    )
+    mission = create_learning_mission(tmp_path, topic="Exhausted topic", objective="test")
     missions = load_missions(tmp_path)
     missions[0]["status"] = "failed"
     missions[0]["retries"] = 2
@@ -414,7 +360,6 @@ def test_retry_skips_non_failed(tmp_path: Path) -> None:
 
 # ── auto_generate_missions tests ──────────────────────────────────────────
 
-
 def test_auto_generate_skips_when_pending_exist(tmp_path: Path) -> None:
     """Auto-generate does nothing if pending missions already exist."""
     create_learning_mission(tmp_path, topic="Existing pending", objective="test")
@@ -433,7 +378,6 @@ def test_auto_generate_creates_from_db(tmp_path: Path) -> None:
     )""")
     from datetime import datetime, timedelta
     from jarvis_engine._compat import UTC
-
     recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     conn.execute(
         "INSERT INTO records (summary, ts, source) VALUES (?, ?, ?)",
@@ -473,9 +417,7 @@ def test_auto_generate_deduplicates_existing(tmp_path: Path) -> None:
     # Create DB with a single topic phrase
     db_path = tmp_path / "test_memory.db"
     conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        "CREATE TABLE records (id INTEGER PRIMARY KEY, summary TEXT, ts TEXT, source TEXT)"
-    )
+    conn.execute("CREATE TABLE records (id INTEGER PRIMARY KEY, summary TEXT, ts TEXT, source TEXT)")
     recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     conn.execute(
         "INSERT INTO records (summary, ts, source) VALUES (?, ?, ?)",
@@ -503,7 +445,6 @@ def test_auto_generate_deduplicates_existing(tmp_path: Path) -> None:
 
 # ── _mission_queries with wikipedia ──────────────────────────────────────
 
-
 def test_mission_queries_wikipedia_source() -> None:
     queries = _mission_queries("Neural networks", ["wikipedia"])
     assert any("site:en.wikipedia.org" in q for q in queries)
@@ -512,20 +453,11 @@ def test_mission_queries_wikipedia_source() -> None:
 
 # ── Verification tier confidence levels ──────────────────────────────────
 
-
 def test_verify_cross_domain_higher_confidence() -> None:
     """Cross-domain verified candidates get higher confidence than single-source."""
     candidates = [
-        {
-            "statement": "Python async programming uses coroutines efficiently and effectively",
-            "url": "https://a.com/1",
-            "domain": "a.com",
-        },
-        {
-            "statement": "Python async programming with coroutines efficiently simplifies code paths",
-            "url": "https://b.com/2",
-            "domain": "b.com",
-        },
+        {"statement": "Python async programming uses coroutines efficiently and effectively", "url": "https://a.com/1", "domain": "a.com"},
+        {"statement": "Python async programming with coroutines efficiently simplifies code paths", "url": "https://b.com/2", "domain": "b.com"},
     ]
     verified = _verify_candidates(candidates)
     assert len(verified) >= 1
@@ -535,13 +467,10 @@ def test_verify_cross_domain_higher_confidence() -> None:
 
 # ── Full retry cycle integration ──────────────────────────────────────────
 
-
 def test_full_retry_cycle(tmp_path: Path, monkeypatch) -> None:
     """Mission fails → retry → fails again → retry → fails → exhausted."""
     monkeypatch.setattr(learning_missions, "_search_web", lambda query, limit: [])
-    monkeypatch.setattr(
-        learning_missions, "_fetch_page_text", lambda url, max_bytes: ""
-    )
+    monkeypatch.setattr(learning_missions, "_fetch_page_text", lambda url, max_bytes: "")
 
     mission = create_learning_mission(tmp_path, topic="Hard topic", objective="learn")
     mid = mission["mission_id"]

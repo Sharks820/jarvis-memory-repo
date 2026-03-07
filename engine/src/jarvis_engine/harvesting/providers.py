@@ -57,9 +57,7 @@ class HarvesterProvider:
                     "Install with: pip install openai>=1.0.0"
                 )
 
-            self._client = OpenAI(
-                api_key=self._api_key, base_url=self.base_url, timeout=60.0
-            )
+            self._client = OpenAI(api_key=self._api_key, base_url=self.base_url, timeout=60.0)
         return self._client
 
     def query(
@@ -238,7 +236,6 @@ class GeminiProvider:
         prompt = f"{system_prompt}\n\n{topic}"
         try:
             from google.genai import types as genai_types
-
             gen_config = genai_types.GenerateContentConfig(
                 max_output_tokens=max_tokens,
             )
@@ -264,7 +261,7 @@ class GeminiProvider:
             if usage:
                 input_tokens = getattr(usage, "prompt_token_count", 0) or 0
                 output_tokens = getattr(usage, "candidates_token_count", 0) or 0
-        except Exception as exc:
+        except (AttributeError, TypeError) as exc:
             logger.debug("Failed to extract Gemini usage metadata: %s", exc)
 
         if output_tokens == 0 and text:

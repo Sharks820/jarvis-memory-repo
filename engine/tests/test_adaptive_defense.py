@@ -34,9 +34,7 @@ class TestRecordDetection:
         engine.record_detection("traversal", "h2", "10.0.0.2")
         assert engine._total_attacks == 2
 
-    def test_blocked_increments_total_blocked(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_blocked_increments_total_blocked(self, engine: AdaptiveDefenseEngine) -> None:
         engine.record_detection("injection", "h1", "10.0.0.1", blocked=True)
         engine.record_detection("traversal", "h2", "10.0.0.2", blocked=False)
         assert engine._total_blocked == 1
@@ -89,9 +87,7 @@ class TestCheckAutoRule:
     def test_unknown_category_returns_none(self, engine: AdaptiveDefenseEngine) -> None:
         assert engine.check_auto_rule("nonexistent") is None
 
-    def test_multiple_categories_independent(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_multiple_categories_independent(self, engine: AdaptiveDefenseEngine) -> None:
         for i in range(3):
             engine.record_detection("injection", f"inj{i}", f"10.0.0.{i}")
         for i in range(3):
@@ -120,9 +116,7 @@ class TestGetDefenseDashboard:
         assert d["effectiveness_pct"] == 100.0
         assert d["top_categories"] == []
 
-    def test_correct_metrics_after_detections(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_correct_metrics_after_detections(self, engine: AdaptiveDefenseEngine) -> None:
         engine.record_detection("injection", "h1", "10.0.0.1", blocked=True)
         engine.record_detection("injection", "h2", "10.0.0.2", blocked=True)
         engine.record_detection("traversal", "h3", "10.0.0.3", blocked=False)
@@ -133,17 +127,13 @@ class TestGetDefenseDashboard:
         assert d["unique_ips"] == 3
         assert d["effectiveness_pct"] == pytest.approx(66.67, abs=0.01)
 
-    def test_effectiveness_100_when_all_blocked(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_effectiveness_100_when_all_blocked(self, engine: AdaptiveDefenseEngine) -> None:
         engine.record_detection("a", "h1", "1.1.1.1", blocked=True)
         engine.record_detection("b", "h2", "2.2.2.2", blocked=True)
         d = engine.get_defense_dashboard()
         assert d["effectiveness_pct"] == 100.0
 
-    def test_effectiveness_0_when_none_blocked(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_effectiveness_0_when_none_blocked(self, engine: AdaptiveDefenseEngine) -> None:
         engine.record_detection("a", "h1", "1.1.1.1", blocked=False)
         engine.record_detection("b", "h2", "2.2.2.2", blocked=False)
         d = engine.get_defense_dashboard()
@@ -156,9 +146,7 @@ class TestGetDefenseDashboard:
         d = engine.get_defense_dashboard()
         assert d["rules_generated"] == 1
 
-    def test_top_categories_sorted_descending(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_top_categories_sorted_descending(self, engine: AdaptiveDefenseEngine) -> None:
         for i in range(5):
             engine.record_detection("injection", f"inj{i}", f"10.0.0.{i}")
         for i in range(2):
@@ -184,9 +172,7 @@ class TestGenerateBriefing:
         assert isinstance(text, str)
         assert len(text) > 0
 
-    def test_contains_nominal_when_no_attacks(
-        self, engine: AdaptiveDefenseEngine
-    ) -> None:
+    def test_contains_nominal_when_no_attacks(self, engine: AdaptiveDefenseEngine) -> None:
         text = engine.generate_briefing()
         assert "nominal" in text.lower()
 

@@ -30,3 +30,4 @@ class ModelRouter:
             provider="local_primary",
             reason="Default local-first routing.",
         )
+

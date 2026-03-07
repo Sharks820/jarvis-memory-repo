@@ -54,12 +54,8 @@ class FakeProvider:
     def is_available(self) -> bool:
         return self._available
 
-    def query(
-        self, topic: str, system_prompt: str, max_tokens: int = 2048
-    ) -> HarvestResult:
-        self.query_calls.append(
-            {"topic": topic, "system_prompt": system_prompt, "max_tokens": max_tokens}
-        )
+    def query(self, topic: str, system_prompt: str, max_tokens: int = 2048) -> HarvestResult:
+        self.query_calls.append({"topic": topic, "system_prompt": system_prompt, "max_tokens": max_tokens})
         if self._raise_on_query is not None:
             raise self._raise_on_query
         return HarvestResult(
@@ -89,6 +85,7 @@ def _make_providers(*specs) -> list[FakeProvider]:
 
 
 class TestHarvestDataclasses:
+
     def test_harvest_result_defaults(self) -> None:
         """HarvestResult has sensible defaults for numeric fields."""
         r = HarvestResult(provider="test", text="data", model="m")
@@ -121,6 +118,7 @@ class TestHarvestDataclasses:
 
 
 class TestHarvesterInit:
+
     def test_init_stores_providers_by_name(self) -> None:
         """Providers are accessible by name after init."""
         providers = _make_providers("alpha", "beta")
@@ -147,6 +145,7 @@ class TestHarvesterInit:
 
 
 class TestAvailableProviders:
+
     def test_returns_only_available(self) -> None:
         """available_providers filters out unavailable providers."""
         providers = [
@@ -174,6 +173,7 @@ class TestAvailableProviders:
 
 
 class TestHarvestFlow:
+
     def test_harvest_single_provider_ok(self) -> None:
         """Harvest from a single specified provider succeeds."""
         providers = _make_providers("alpha")
@@ -235,9 +235,7 @@ class TestHarvestFlow:
 
     def test_harvest_topic_tag_truncation(self) -> None:
         """Topic tags are lowercased, spaces replaced, truncated to 50 chars."""
-        long_topic = (
-            "a very very very very long topic name that exceeds fifty characters"
-        )
+        long_topic = "a very very very very long topic name that exceeds fifty characters"
         providers = _make_providers("alpha")
         pipeline = MagicMock()
         pipeline.ingest.return_value = ["rec1"]
@@ -247,11 +245,7 @@ class TestHarvestFlow:
 
         # The tags list passed to pipeline.ingest includes the truncated topic_tag
         call_args = pipeline.ingest.call_args
-        tags = (
-            call_args[1].get("tags") or call_args[0][-1]
-            if call_args[0]
-            else call_args[1]["tags"]
-        )
+        tags = call_args[1].get("tags") or call_args[0][-1] if call_args[0] else call_args[1]["tags"]
         topic_tag = [t for t in tags if t not in ["harvested", "alpha"]]
         assert len(topic_tag[0]) <= 50
 
@@ -262,6 +256,7 @@ class TestHarvestFlow:
 
 
 class TestBudgetEnforcement:
+
     def test_budget_exceeded_skips_provider(self) -> None:
         """When budget.can_spend returns False, provider is skipped."""
         providers = _make_providers("alpha")
@@ -318,6 +313,7 @@ class TestBudgetEnforcement:
 
 
 class TestCostTracking:
+
     def test_cost_tracker_log_called(self) -> None:
         """When cost_tracker is provided, log() is called with correct args."""
         providers = [FakeProvider("p", cost_usd=0.03)]
@@ -347,6 +343,7 @@ class TestCostTracking:
 
 
 class TestPipelineIntegration:
+
     def test_pipeline_ingest_called_with_content(self) -> None:
         """Pipeline.ingest is called with enriched content and correct args."""
         providers = [FakeProvider("alpha", result_text="fact about AI")]
@@ -396,6 +393,7 @@ class TestPipelineIntegration:
 
 
 class TestHarvestErrorHandling:
+
     def test_provider_exception_caught(self) -> None:
         """Provider query exception is caught and reported as 'error' status."""
         providers = [FakeProvider("bad", raise_on_query=RuntimeError("API down"))]
@@ -436,6 +434,7 @@ class TestHarvestErrorHandling:
 
 
 class TestDeduplication:
+
     def test_exact_hash_dedup_across_providers(self) -> None:
         """Two providers returning identical text: second is deduplicated."""
         same_text = "identical knowledge about physics"
@@ -544,6 +543,7 @@ class TestDeduplication:
 
 
 class TestMultiProviderOrdering:
+
     def test_providers_queried_in_order(self) -> None:
         """Providers are queried in the order specified in cmd.providers."""
         p1 = FakeProvider("first")

@@ -167,12 +167,7 @@ class TestBlockExpiry:
                  threat_score, blocked_until)
             VALUES (?, ?, ?, 5, '["scan"]', 5.0, ?)
             """,
-            (
-                "5.5.5.5",
-                datetime.now(UTC).isoformat(),
-                datetime.now(UTC).isoformat(),
-                past,
-            ),
+            ("5.5.5.5", datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat(), past),
         )
         tracker._db.commit()
         assert not tracker.is_blocked("5.5.5.5")
@@ -186,12 +181,7 @@ class TestBlockExpiry:
                  threat_score, blocked_until)
             VALUES (?, ?, ?, 5, '["scan"]', 5.0, ?)
             """,
-            (
-                "6.6.6.6",
-                datetime.now(UTC).isoformat(),
-                datetime.now(UTC).isoformat(),
-                future,
-            ),
+            ("6.6.6.6", datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat(), future),
         )
         tracker._db.commit()
         assert tracker.is_blocked("6.6.6.6")

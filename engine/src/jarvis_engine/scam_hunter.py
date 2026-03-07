@@ -8,7 +8,6 @@ Goes beyond individual number scoring to detect coordinated scam campaigns:
 - Temporal burst analysis
 - Campaign fingerprinting — link numbers to campaigns for group blocking
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -88,7 +87,6 @@ class CarrierIntel:
 # ---------------------------------------------------------------------------
 #  Campaign Detection
 # ---------------------------------------------------------------------------
-
 
 def detect_campaigns(
     call_reports: list[dict[str, Any]],
@@ -170,8 +168,7 @@ def detect_campaigns(
         if len(last4_values) >= 2:
             last4_sorted = sorted(last4_values)
             sequential_count = sum(
-                1
-                for i in range(len(last4_sorted) - 1)
+                1 for i in range(len(last4_sorted) - 1)
                 if last4_sorted[i + 1] - last4_sorted[i] <= 5
             )
             if sequential_count >= 1:
@@ -180,9 +177,7 @@ def detect_campaigns(
 
         # Signal: STIR/SHAKEN failures
         stir_failed = sum(1 for r in reports if r.get("stir_status") == "failed")
-        stir_not_verified = sum(
-            1 for r in reports if r.get("stir_status") == "not_verified"
-        )
+        stir_not_verified = sum(1 for r in reports if r.get("stir_status") == "not_verified")
         if stir_failed >= 1:
             confidence += 0.25
             signals.append(f"stir_failed_{stir_failed}")
@@ -194,8 +189,7 @@ def detect_campaigns(
         total = len(reports)
         unanswered = sum(1 for r in reports if not r.get("answered", False))
         short_calls = sum(
-            1
-            for r in reports
+            1 for r in reports
             if _safe_float(r.get("duration_sec", 0)) < 5 and r.get("answered", False)
         )
         if total > 0 and unanswered / total >= 0.8:
@@ -224,7 +218,8 @@ def detect_campaigns(
 
         # Signal: restricted/unknown presentation
         restricted = sum(
-            1 for r in reports if r.get("presentation") in ("restricted", "unknown")
+            1 for r in reports
+            if r.get("presentation") in ("restricted", "unknown")
         )
         if restricted >= 1:
             confidence += 0.10
@@ -253,22 +248,20 @@ def detect_campaigns(
         )
 
         campaign_id = _generate_campaign_id(prefix, sorted(distinct_numbers))
-        campaigns.append(
-            ScamCampaign(
-                campaign_id=campaign_id,
-                prefix=prefix,
-                numbers=sorted(distinct_numbers),
-                total_calls=total_calls,
-                first_seen_utc=first_seen,
-                last_seen_utc=last_seen,
-                confidence=round(confidence, 4),
-                signals=signals,
-                carrier=carrier,
-                line_type=line_type,
-                stir_failed_count=stir_failed,
-                stir_not_verified_count=stir_not_verified,
-            )
-        )
+        campaigns.append(ScamCampaign(
+            campaign_id=campaign_id,
+            prefix=prefix,
+            numbers=sorted(distinct_numbers),
+            total_calls=total_calls,
+            first_seen_utc=first_seen,
+            last_seen_utc=last_seen,
+            confidence=round(confidence, 4),
+            signals=signals,
+            carrier=carrier,
+            line_type=line_type,
+            stir_failed_count=stir_failed,
+            stir_not_verified_count=stir_not_verified,
+        ))
 
     campaigns.sort(key=lambda c: c.confidence, reverse=True)
     return campaigns
@@ -341,37 +334,17 @@ def compute_enhanced_spam_score(
 
 
 # Known VoIP wholesale/gateway domains
-_KNOWN_VOIP_DOMAINS = frozenset(
-    {
-        "bandwidth.com",
-        "twilio.com",
-        "vonage.com",
-        "lingo.com",
-        "telnyx.com",
-        "sinch.com",
-        "peerless.com",
-        "intelepeer.com",
-        "magicjack.com",
-        "level3.com",
-        "commio.com",
-    }
-)
+_KNOWN_VOIP_DOMAINS = frozenset({
+    "bandwidth.com", "twilio.com", "vonage.com", "lingo.com",
+    "telnyx.com", "sinch.com", "peerless.com", "intelepeer.com",
+    "magicjack.com", "level3.com", "commio.com",
+})
 
 # Carrier-applied scam labels (checked via substring match — avoid broad terms)
-_SCAM_LABELS = frozenset(
-    {
-        "SCAM LIKELY",
-        "SPAM RISK",
-        "POTENTIAL SPAM",
-        "SUSPECTED SPAM",
-        "FRAUD RISK",
-        "TELEMARKETER",
-        "ROBOCALL",
-        "SPAM",
-        "SCAM",
-        "FRAUD",
-    }
-)
+_SCAM_LABELS = frozenset({
+    "SCAM LIKELY", "SPAM RISK", "POTENTIAL SPAM", "SUSPECTED SPAM",
+    "FRAUD RISK", "TELEMARKETER", "ROBOCALL", "SPAM", "SCAM", "FRAUD",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -381,218 +354,52 @@ _SCAM_LABELS = frozenset(
 # US area code → timezone mapping (major codes, covers >80% of US numbers)
 _AREA_CODE_TZ: dict[str, str] = {
     # Eastern
-    "201": "ET",
-    "202": "ET",
-    "203": "ET",
-    "212": "ET",
-    "215": "ET",
-    "216": "ET",
-    "240": "ET",
-    "267": "ET",
-    "301": "ET",
-    "302": "ET",
-    "305": "ET",
-    "313": "ET",
-    "315": "ET",
-    "321": "ET",
-    "336": "ET",
-    "347": "ET",
-    "352": "ET",
-    "386": "ET",
-    "401": "ET",
-    "404": "ET",
-    "407": "ET",
-    "410": "ET",
-    "412": "ET",
-    "413": "ET",
-    "443": "ET",
-    "484": "ET",
-    "508": "ET",
-    "516": "ET",
-    "518": "ET",
-    "540": "ET",
-    "551": "ET",
-    "561": "ET",
-    "571": "ET",
-    "585": "ET",
-    "586": "ET",
-    "601": "ET",
-    "603": "ET",
-    "609": "ET",
-    "610": "ET",
-    "614": "ET",
-    "616": "ET",
-    "617": "ET",
-    "631": "ET",
-    "646": "ET",
-    "678": "ET",
-    "703": "ET",
-    "704": "ET",
-    "706": "ET",
-    "716": "ET",
-    "717": "ET",
-    "718": "ET",
-    "732": "ET",
-    "757": "ET",
-    "770": "ET",
-    "772": "ET",
-    "774": "ET",
-    "781": "ET",
-    "786": "ET",
-    "802": "ET",
-    "803": "ET",
-    "804": "ET",
-    "813": "ET",
-    "828": "ET",
-    "843": "ET",
-    "845": "ET",
-    "848": "ET",
-    "856": "ET",
-    "860": "ET",
-    "862": "ET",
-    "863": "ET",
-    "904": "ET",
-    "908": "ET",
-    "910": "ET",
-    "914": "ET",
-    "917": "ET",
-    "919": "ET",
-    "929": "ET",
-    "941": "ET",
-    "954": "ET",
-    "973": "ET",
+    "201": "ET", "202": "ET", "203": "ET", "212": "ET", "215": "ET",
+    "216": "ET", "240": "ET", "267": "ET", "301": "ET", "302": "ET",
+    "305": "ET", "313": "ET", "315": "ET", "321": "ET", "336": "ET",
+    "347": "ET", "352": "ET", "386": "ET", "401": "ET", "404": "ET",
+    "407": "ET", "410": "ET", "412": "ET", "413": "ET", "443": "ET",
+    "484": "ET", "508": "ET", "516": "ET", "518": "ET", "540": "ET",
+    "551": "ET", "561": "ET", "571": "ET", "585": "ET", "586": "ET",
+    "601": "ET", "603": "ET", "609": "ET", "610": "ET", "614": "ET",
+    "616": "ET", "617": "ET", "631": "ET", "646": "ET", "678": "ET",
+    "703": "ET", "704": "ET", "706": "ET", "716": "ET", "717": "ET",
+    "718": "ET", "732": "ET", "757": "ET", "770": "ET", "772": "ET",
+    "774": "ET", "781": "ET", "786": "ET", "802": "ET", "803": "ET",
+    "804": "ET", "813": "ET", "828": "ET", "843": "ET", "845": "ET",
+    "848": "ET", "856": "ET", "860": "ET", "862": "ET", "863": "ET",
+    "904": "ET", "908": "ET", "910": "ET", "914": "ET", "917": "ET",
+    "919": "ET", "929": "ET", "941": "ET", "954": "ET", "973": "ET",
     # Central
-    "205": "CT",
-    "210": "CT",
-    "214": "CT",
-    "225": "CT",
-    "228": "CT",
-    "254": "CT",
-    "262": "CT",
-    "281": "CT",
-    "309": "CT",
-    "312": "CT",
-    "314": "CT",
-    "316": "CT",
-    "318": "CT",
-    "319": "CT",
-    "320": "CT",
-    "325": "CT",
-    "331": "CT",
-    "334": "CT",
-    "346": "CT",
-    "361": "CT",
-    "402": "CT",
-    "405": "CT",
-    "409": "CT",
-    "414": "CT",
-    "417": "CT",
-    "430": "CT",
-    "432": "CT",
-    "469": "CT",
-    "479": "CT",
-    "501": "CT",
-    "502": "CT",
-    "504": "CT",
-    "507": "CT",
-    "512": "CT",
-    "515": "CT",
-    "563": "CT",
-    "573": "CT",
-    "612": "CT",
-    "615": "CT",
-    "618": "CT",
-    "630": "CT",
-    "636": "CT",
-    "641": "CT",
-    "651": "CT",
-    "682": "CT",
-    "708": "CT",
-    "713": "CT",
-    "715": "CT",
-    "731": "CT",
-    "737": "CT",
-    "763": "CT",
-    "769": "CT",
-    "773": "CT",
-    "779": "CT",
-    "806": "CT",
-    "808": "HT",
-    "815": "CT",
-    "816": "CT",
-    "817": "CT",
-    "830": "CT",
-    "832": "CT",
-    "847": "CT",
-    "850": "CT",
-    "870": "CT",
-    "901": "CT",
-    "903": "CT",
-    "913": "CT",
-    "915": "CT",
-    "918": "CT",
-    "920": "CT",
-    "936": "CT",
-    "940": "CT",
-    "952": "CT",
-    "956": "CT",
-    "972": "CT",
+    "205": "CT", "210": "CT", "214": "CT", "225": "CT", "228": "CT",
+    "254": "CT", "262": "CT", "281": "CT", "309": "CT", "312": "CT",
+    "314": "CT", "316": "CT", "318": "CT", "319": "CT", "320": "CT",
+    "325": "CT", "331": "CT", "334": "CT", "346": "CT", "361": "CT",
+    "402": "CT", "405": "CT", "409": "CT", "414": "CT", "417": "CT",
+    "430": "CT", "432": "CT", "469": "CT", "479": "CT", "501": "CT",
+    "502": "CT", "504": "CT", "507": "CT", "512": "CT", "515": "CT",
+    "563": "CT", "573": "CT", "612": "CT", "615": "CT", "618": "CT",
+    "630": "CT", "636": "CT", "641": "CT", "651": "CT", "682": "CT",
+    "708": "CT", "713": "CT", "715": "CT", "731": "CT", "737": "CT",
+    "763": "CT", "769": "CT", "773": "CT", "779": "CT", "806": "CT",
+    "808": "HT", "815": "CT", "816": "CT", "817": "CT", "830": "CT",
+    "832": "CT", "847": "CT", "850": "CT", "870": "CT", "901": "CT",
+    "903": "CT", "913": "CT", "915": "CT", "918": "CT", "920": "CT",
+    "936": "CT", "940": "CT", "952": "CT", "956": "CT", "972": "CT",
     "979": "CT",
     # Mountain
-    "303": "MT",
-    "307": "MT",
-    "385": "MT",
-    "406": "MT",
-    "435": "MT",
-    "480": "MT",
-    "505": "MT",
-    "520": "MT",
-    "575": "MT",
-    "602": "MT",
-    "623": "MT",
-    "719": "MT",
-    "720": "MT",
-    "801": "MT",
+    "303": "MT", "307": "MT", "385": "MT", "406": "MT", "435": "MT",
+    "480": "MT", "505": "MT", "520": "MT", "575": "MT", "602": "MT",
+    "623": "MT", "719": "MT", "720": "MT", "801": "MT",
     # Pacific
-    "206": "PT",
-    "209": "PT",
-    "213": "PT",
-    "253": "PT",
-    "310": "PT",
-    "323": "PT",
-    "360": "PT",
-    "408": "PT",
-    "415": "PT",
-    "424": "PT",
-    "425": "PT",
-    "442": "PT",
-    "503": "PT",
-    "509": "PT",
-    "510": "PT",
-    "530": "PT",
-    "541": "PT",
-    "559": "PT",
-    "562": "PT",
-    "619": "PT",
-    "626": "PT",
-    "650": "PT",
-    "657": "PT",
-    "661": "PT",
-    "669": "PT",
-    "707": "PT",
-    "714": "PT",
-    "747": "PT",
-    "760": "PT",
-    "805": "PT",
-    "818": "PT",
-    "831": "PT",
-    "858": "PT",
-    "909": "PT",
-    "916": "PT",
-    "925": "PT",
-    "949": "PT",
-    "951": "PT",
-    "971": "PT",
+    "206": "PT", "209": "PT", "213": "PT", "253": "PT", "310": "PT",
+    "323": "PT", "360": "PT", "408": "PT", "415": "PT", "424": "PT",
+    "425": "PT", "442": "PT", "503": "PT", "509": "PT", "510": "PT",
+    "530": "PT", "541": "PT", "559": "PT", "562": "PT", "619": "PT",
+    "626": "PT", "650": "PT", "657": "PT", "661": "PT", "669": "PT",
+    "707": "PT", "714": "PT", "747": "PT", "760": "PT", "805": "PT",
+    "818": "PT", "831": "PT", "858": "PT", "909": "PT", "916": "PT",
+    "925": "PT", "949": "PT", "951": "PT", "971": "PT",
 }
 
 # UTC offsets for time zone abbreviations (standard time)
@@ -640,7 +447,6 @@ def score_time_of_day(number: str, call_utc: datetime | None = None) -> float:
 #  Call Intel Reporting
 # ---------------------------------------------------------------------------
 
-
 def create_call_intel_report(
     number: str,
     stir_status: str = "",
@@ -671,7 +477,6 @@ def create_call_intel_report(
 #  Campaign Persistence
 # ---------------------------------------------------------------------------
 
-
 def save_campaigns(path: Path, campaigns: list[ScamCampaign]) -> None:
     """Save detected campaigns to a JSON file (thread-safe, atomic write)."""
     from jarvis_engine._shared import atomic_write_json as _atomic_write_json
@@ -693,15 +498,10 @@ def load_campaigns(path: Path) -> list[ScamCampaign]:
         data = json.loads(path.read_text(encoding="utf-8"))
         campaigns = []
         for c in data.get("campaigns", []):
-            campaigns.append(
-                ScamCampaign(
-                    **{
-                        k: v
-                        for k, v in c.items()
-                        if k in ScamCampaign.__dataclass_fields__
-                    }
-                )
-            )
+            campaigns.append(ScamCampaign(**{
+                k: v for k, v in c.items()
+                if k in ScamCampaign.__dataclass_fields__
+            }))
         return campaigns
     except (json.JSONDecodeError, OSError, TypeError):
         return []
@@ -746,11 +546,9 @@ def load_call_intel(path: Path, *, limit: int = 500) -> list[dict[str, Any]]:
 #  Carrier Lookup Cache
 # ---------------------------------------------------------------------------
 
-
 def save_carrier_intel(path: Path, intel: CarrierIntel) -> None:
     """Cache carrier lookup result."""
     from jarvis_engine._shared import atomic_write_json
-
     with _CAMPAIGNS_LOCK:
         cache = _load_carrier_cache(path)
         cache[intel.number] = asdict(intel)
@@ -764,9 +562,10 @@ def lookup_carrier_cached(path: Path, number: str) -> CarrierIntel | None:
         cache = _load_carrier_cache(path)
     if number in cache:
         entry = cache[number]
-        return CarrierIntel(
-            **{k: v for k, v in entry.items() if k in CarrierIntel.__dataclass_fields__}
-        )
+        return CarrierIntel(**{
+            k: v for k, v in entry.items()
+            if k in CarrierIntel.__dataclass_fields__
+        })
     return None
 
 
@@ -783,7 +582,6 @@ def _load_carrier_cache(path: Path) -> dict[str, Any]:
 #  Prefix Blocking
 # ---------------------------------------------------------------------------
 
-
 def build_prefix_block_actions(
     campaigns: list[ScamCampaign],
     *,
@@ -796,36 +594,31 @@ def build_prefix_block_actions(
             continue
         # Block all known numbers in the campaign
         for number in campaign.numbers:
-            actions.append(
-                {
-                    "action": "block_number",
-                    "number": number,
-                    "reason": f"scam_campaign_{campaign.campaign_id}",
-                    "campaign_id": campaign.campaign_id,
-                    "prefix": campaign.prefix,
-                    "confidence": campaign.confidence,
-                    "created_utc": _now_iso(),
-                }
-            )
+            actions.append({
+                "action": "block_number",
+                "number": number,
+                "reason": f"scam_campaign_{campaign.campaign_id}",
+                "campaign_id": campaign.campaign_id,
+                "prefix": campaign.prefix,
+                "confidence": campaign.confidence,
+                "created_utc": _now_iso(),
+            })
         # If high confidence, recommend prefix-level silencing
         if campaign.confidence >= 0.75 and len(campaign.numbers) >= 3:
-            actions.append(
-                {
-                    "action": "silence_prefix",
-                    "prefix": campaign.prefix,
-                    "reason": f"high_confidence_scam_campaign_{campaign.campaign_id}",
-                    "campaign_id": campaign.campaign_id,
-                    "confidence": campaign.confidence,
-                    "created_utc": _now_iso(),
-                }
-            )
+            actions.append({
+                "action": "silence_prefix",
+                "prefix": campaign.prefix,
+                "reason": f"high_confidence_scam_campaign_{campaign.campaign_id}",
+                "campaign_id": campaign.campaign_id,
+                "confidence": campaign.confidence,
+                "created_utc": _now_iso(),
+            })
     return actions
 
 
 # ---------------------------------------------------------------------------
 #  Helpers
 # ---------------------------------------------------------------------------
-
 
 def _generate_campaign_id(prefix: str, numbers: list[str]) -> str:
     """Generate a stable campaign ID from prefix and number set."""

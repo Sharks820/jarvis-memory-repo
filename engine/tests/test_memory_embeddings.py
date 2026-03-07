@@ -36,9 +36,7 @@ class FakeModel:
         self._calls.append((texts, normalize_embeddings))
         vecs = []
         for t in texts:
-            vec = np.array(
-                [float(hash(t) % 100 + j) for j in range(self._dim)], dtype=float
-            )
+            vec = np.array([float(hash(t) % 100 + j) for j in range(self._dim)], dtype=float)
             if normalize_embeddings:
                 norm = np.linalg.norm(vec)
                 if norm > 0:
@@ -53,6 +51,7 @@ class FakeModel:
 
 
 class TestEmbeddingServiceInit:
+
     def test_model_none_on_init(self):
         """Model is not loaded at construction time."""
         svc = EmbeddingService()
@@ -66,6 +65,7 @@ class TestEmbeddingServiceInit:
 
 
 class TestEnsureModel:
+
     @patch("jarvis_engine.memory.embeddings.EmbeddingService._ensure_model")
     def test_ensure_model_called_on_embed(self, mock_ensure):
         """embed() calls _ensure_model before encoding."""
@@ -80,10 +80,7 @@ class TestEnsureModel:
         svc = EmbeddingService()
         fake_cls = MagicMock(return_value=FakeModel())
 
-        with patch.dict(
-            "sys.modules",
-            {"sentence_transformers": MagicMock(SentenceTransformer=fake_cls)},
-        ):
+        with patch.dict("sys.modules", {"sentence_transformers": MagicMock(SentenceTransformer=fake_cls)}):
             with patch(
                 "jarvis_engine.memory.embeddings.EmbeddingService._ensure_model"
             ) as mock_ensure:
@@ -101,6 +98,7 @@ class TestEnsureModel:
 
 
 class TestEmbed:
+
     def test_embed_returns_list_of_floats(self):
         """embed() returns a list of Python floats."""
         svc = EmbeddingService()
@@ -139,6 +137,7 @@ class TestEmbed:
 
 
 class TestEmbedQuery:
+
     def test_embed_query_uses_search_query_prefix(self):
         """embed_query uses 'search_query' prefix."""
         svc = EmbeddingService()
@@ -159,6 +158,7 @@ class TestEmbedQuery:
 
 
 class TestEmbedBatch:
+
     def test_batch_returns_correct_count(self):
         """embed_batch returns one vector per input text."""
         svc = EmbeddingService()

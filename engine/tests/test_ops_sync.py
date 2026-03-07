@@ -87,7 +87,6 @@ END:VCALENDAR
 # _read_json_list
 # ===========================================================================
 
-
 class TestReadJsonList:
     def test_missing_file(self, tmp_path: Path) -> None:
         assert _read_json_list(tmp_path / "nope.json") == []
@@ -99,10 +98,7 @@ class TestReadJsonList:
 
     def test_filters_non_dict_entries(self, tmp_path: Path) -> None:
         p = tmp_path / "mixed.json"
-        p.write_text(
-            json.dumps([{"ok": True}, "string", 42, None, {"ok": False}]),
-            encoding="utf-8",
-        )
+        p.write_text(json.dumps([{"ok": True}, "string", 42, None, {"ok": False}]), encoding="utf-8")
         result = _read_json_list(p)
         assert result == [{"ok": True}, {"ok": False}]
 
@@ -131,11 +127,8 @@ class TestReadJsonList:
 # _load_feed_json_list
 # ===========================================================================
 
-
 class TestLoadFeedJsonList:
-    def test_default_path_created_when_missing(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_default_path_created_when_missing(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.delenv("JARVIS_MEDICATIONS_JSON", raising=False)
         default = tmp_path / ".planning" / "medications.json"
         result = _load_feed_json_list(tmp_path, "JARVIS_MEDICATIONS_JSON", default)
@@ -156,33 +149,23 @@ class TestLoadFeedJsonList:
         feed_file.write_text(json.dumps([{"item": 1}]), encoding="utf-8")
         monkeypatch.setenv("JARVIS_SCHOOL_JSON", str(feed_file))
         monkeypatch.delenv("JARVIS_ALLOW_EXTERNAL_FEEDS", raising=False)
-        result = _load_feed_json_list(
-            tmp_path, "JARVIS_SCHOOL_JSON", tmp_path / "default.json"
-        )
+        result = _load_feed_json_list(tmp_path, "JARVIS_SCHOOL_JSON", tmp_path / "default.json")
         assert result == [{"item": 1}]
 
-    def test_env_path_is_directory_returns_empty(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_env_path_is_directory_returns_empty(self, tmp_path: Path, monkeypatch) -> None:
         d = tmp_path / "adir"
         d.mkdir()
         monkeypatch.setenv("JARVIS_FAMILY_JSON", str(d))
-        result = _load_feed_json_list(
-            tmp_path, "JARVIS_FAMILY_JSON", tmp_path / "default.json"
-        )
+        result = _load_feed_json_list(tmp_path, "JARVIS_FAMILY_JSON", tmp_path / "default.json")
         assert result == []
 
     def test_env_unc_forward_slash_blocked(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setenv("JARVIS_ALLOW_EXTERNAL_FEEDS", "true")
         monkeypatch.setenv("JARVIS_SCHOOL_JSON", "//evil/share/feed.json")
-        result = _load_feed_json_list(
-            tmp_path, "JARVIS_SCHOOL_JSON", tmp_path / "default.json"
-        )
+        result = _load_feed_json_list(tmp_path, "JARVIS_SCHOOL_JSON", tmp_path / "default.json")
         assert result == []
 
-    def test_external_allowed_reads_outside_repo(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_external_allowed_reads_outside_repo(self, tmp_path: Path, monkeypatch) -> None:
         external = tmp_path / "outside" / "ext.json"
         external.parent.mkdir()
         external.write_text(json.dumps([{"ext": True}]), encoding="utf-8")
@@ -190,16 +173,13 @@ class TestLoadFeedJsonList:
         repo.mkdir()
         monkeypatch.setenv("JARVIS_ALLOW_EXTERNAL_FEEDS", "1")
         monkeypatch.setenv("JARVIS_PROJECTS_JSON", str(external))
-        result = _load_feed_json_list(
-            repo, "JARVIS_PROJECTS_JSON", repo / "default.json"
-        )
+        result = _load_feed_json_list(repo, "JARVIS_PROJECTS_JSON", repo / "default.json")
         assert result == [{"ext": True}]
 
 
 # ===========================================================================
 # _parse_ics_fallback
 # ===========================================================================
-
 
 class TestParseIcsFallback:
     def test_empty_string(self) -> None:
@@ -289,7 +269,6 @@ class TestParseIcsFallback:
 # _parse_ics (icalendar-based parser with fallback)
 # ===========================================================================
 
-
 class TestParseIcs:
     def test_empty_text_returns_empty(self) -> None:
         assert _parse_ics("", None) == []
@@ -298,19 +277,13 @@ class TestParseIcs:
         assert _parse_ics("   \n  \t  ", None) == []
 
     def test_falls_back_when_icalendar_not_installed(self) -> None:
-        with patch.dict(
-            "sys.modules", {"icalendar": None, "recurring_ical_events": None}
-        ):
+        with patch.dict("sys.modules", {"icalendar": None, "recurring_ical_events": None}):
             # Force ImportError by removing modules from cache
             import sys
-
             saved_ical = sys.modules.pop("icalendar", None)
             saved_rie = sys.modules.pop("recurring_ical_events", None)
             try:
-                with patch(
-                    "jarvis_engine.ops_sync._parse_ics_fallback",
-                    return_value=[{"title": "fb"}],
-                ) as fb:
+                with patch("jarvis_engine.ops_sync._parse_ics_fallback", return_value=[{"title": "fb"}]) as fb:
                     result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
                     # Either calls fallback or parses via icalendar; both are valid
                     # We just verify no crash and we get a list
@@ -326,14 +299,8 @@ class TestParseIcs:
         mock_cal_module = MagicMock()
         mock_cal_module.Calendar.from_ical.side_effect = ValueError("bad ics")
         mock_rie = MagicMock()
-        with patch.dict(
-            "sys.modules",
-            {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie},
-        ):
-            with patch(
-                "jarvis_engine.ops_sync._parse_ics_fallback",
-                return_value=[{"title": "fb"}],
-            ) as fb:
+        with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
+            with patch("jarvis_engine.ops_sync._parse_ics_fallback", return_value=[{"title": "fb"}]) as fb:
                 result = _parse_ics("INVALID ICS", date(2026, 3, 1))
                 fb.assert_called_once()
                 assert result == [{"title": "fb"}]
@@ -343,13 +310,8 @@ class TestParseIcs:
         mock_cal_module = MagicMock()
         mock_rie = MagicMock()
         mock_rie.of.return_value.between.side_effect = RuntimeError("expand fail")
-        with patch.dict(
-            "sys.modules",
-            {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie},
-        ):
-            with patch(
-                "jarvis_engine.ops_sync._parse_ics_fallback", return_value=[]
-            ) as fb:
+        with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
+            with patch("jarvis_engine.ops_sync._parse_ics_fallback", return_value=[]) as fb:
                 result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
                 fb.assert_called_once()
 
@@ -367,10 +329,7 @@ class TestParseIcs:
         mock_rie = MagicMock()
         mock_rie.of.return_value.between.return_value = [mock_event]
 
-        with patch.dict(
-            "sys.modules",
-            {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie},
-        ):
+        with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
             result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
             assert len(result) == 1
             assert result[0]["title"] == "Mocked event"
@@ -393,10 +352,7 @@ class TestParseIcs:
         mock_rie = MagicMock()
         mock_rie.of.return_value.between.return_value = [mock_event]
 
-        with patch.dict(
-            "sys.modules",
-            {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie},
-        ):
+        with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
             result = _parse_ics(_ALL_DAY_ICS, date(2026, 3, 1))
             assert len(result) == 1
             assert result[0]["time"] == "all-day"
@@ -415,10 +371,7 @@ class TestParseIcs:
         mock_rie = MagicMock()
         mock_rie.of.return_value.between.return_value = [mock_event]
 
-        with patch.dict(
-            "sys.modules",
-            {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie},
-        ):
+        with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
             result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
             assert result[0]["time"] == "all-day"
 
@@ -436,10 +389,7 @@ class TestParseIcs:
         mock_rie = MagicMock()
         mock_rie.of.return_value.between.return_value = [mock_event]
 
-        with patch.dict(
-            "sys.modules",
-            {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie},
-        ):
+        with patch.dict("sys.modules", {"icalendar": mock_cal_module, "recurring_ical_events": mock_rie}):
             result = _parse_ics(_BASIC_ICS, date(2026, 3, 1))
             assert len(result[0]["description"]) == 200
 
@@ -447,7 +397,6 @@ class TestParseIcs:
 # ===========================================================================
 # load_calendar_events
 # ===========================================================================
-
 
 class TestLoadCalendarEvents:
     def test_json_path_from_env(self, monkeypatch, tmp_path: Path) -> None:
@@ -495,9 +444,7 @@ class TestLoadCalendarEvents:
     def test_remote_url_success(self, monkeypatch) -> None:
         monkeypatch.setenv("JARVIS_CALENDAR_JSON", "")
         monkeypatch.setenv("JARVIS_CALENDAR_ICS_FILE", "")
-        monkeypatch.setenv(
-            "JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/cal.ics"
-        )
+        monkeypatch.setenv("JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/cal.ics")
         monkeypatch.setenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "true")
 
         mock_resp = MagicMock()
@@ -508,11 +455,7 @@ class TestLoadCalendarEvents:
         mock_opener = MagicMock()
         mock_opener.open.return_value = mock_resp
 
-        monkeypatch.setattr(
-            ops_sync,
-            "_is_safe_calendar_url",
-            lambda url: ("93.184.216.34", "safe.example.com"),
-        )
+        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
         monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", lambda: mock_opener)
 
         events = load_calendar_events(target_date=date(2026, 3, 1))
@@ -521,9 +464,7 @@ class TestLoadCalendarEvents:
     def test_remote_url_oversized_payload(self, monkeypatch) -> None:
         monkeypatch.setenv("JARVIS_CALENDAR_JSON", "")
         monkeypatch.setenv("JARVIS_CALENDAR_ICS_FILE", "")
-        monkeypatch.setenv(
-            "JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/huge.ics"
-        )
+        monkeypatch.setenv("JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/huge.ics")
         monkeypatch.setenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "1")
 
         payload = b"X" * (ops_sync.MAX_ICS_BYTES + 2)
@@ -535,11 +476,7 @@ class TestLoadCalendarEvents:
         mock_opener = MagicMock()
         mock_opener.open.return_value = mock_resp
 
-        monkeypatch.setattr(
-            ops_sync,
-            "_is_safe_calendar_url",
-            lambda url: ("93.184.216.34", "safe.example.com"),
-        )
+        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
         monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", lambda: mock_opener)
 
         assert load_calendar_events() == []
@@ -549,19 +486,13 @@ class TestLoadCalendarEvents:
 
         monkeypatch.setenv("JARVIS_CALENDAR_JSON", "")
         monkeypatch.setenv("JARVIS_CALENDAR_ICS_FILE", "")
-        monkeypatch.setenv(
-            "JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/cal.ics"
-        )
+        monkeypatch.setenv("JARVIS_CALENDAR_ICS_URL", "https://safe.example.com/cal.ics")
         monkeypatch.setenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "1")
 
         mock_opener = MagicMock()
         mock_opener.open.side_effect = URLError("connection refused")
 
-        monkeypatch.setattr(
-            ops_sync,
-            "_is_safe_calendar_url",
-            lambda url: ("93.184.216.34", "safe.example.com"),
-        )
+        monkeypatch.setattr(ops_sync, "_is_safe_calendar_url", lambda url: ("93.184.216.34", "safe.example.com"))
         monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", lambda: mock_opener)
 
         assert load_calendar_events() == []
@@ -576,7 +507,6 @@ class TestLoadCalendarEvents:
 # ===========================================================================
 # _is_safe_calendar_url
 # ===========================================================================
-
 
 class TestIsSafeCalendarUrl:
     def test_http_rejected(self) -> None:
@@ -616,13 +546,10 @@ class TestIsSafeCalendarUrl:
     def test_dns_failure(self, mock_dns) -> None:
         assert _is_safe_calendar_url("https://doesnotresolve.invalid/cal.ics") is None
 
-    @patch(
-        "socket.getaddrinfo",
-        return_value=[
-            (2, 1, 6, "", ("93.184.216.34", 443)),
-            (2, 1, 6, "", ("192.168.0.1", 443)),
-        ],
-    )
+    @patch("socket.getaddrinfo", return_value=[
+        (2, 1, 6, "", ("93.184.216.34", 443)),
+        (2, 1, 6, "", ("192.168.0.1", 443)),
+    ])
     def test_mixed_public_private_rejected(self, mock_dns) -> None:
         """If any resolved IP is private, the URL is unsafe."""
         assert _is_safe_calendar_url("https://dual-homed.example.com/cal.ics") is None
@@ -631,7 +558,6 @@ class TestIsSafeCalendarUrl:
 # ===========================================================================
 # load_task_items
 # ===========================================================================
-
 
 class TestLoadTaskItems:
     def test_default_json_source(self, tmp_path: Path, monkeypatch) -> None:
@@ -667,13 +593,7 @@ class TestLoadTaskItems:
         mock_api_cls = MagicMock()
         mock_api_cls.return_value.get_tasks.side_effect = RuntimeError("API down")
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "todoist_api_python": MagicMock(),
-                "todoist_api_python.api": MagicMock(TodoistAPI=mock_api_cls),
-            },
-        ):
+        with patch.dict("sys.modules", {"todoist_api_python": MagicMock(), "todoist_api_python.api": MagicMock(TodoistAPI=mock_api_cls)}):
             result = load_task_items(tmp_path)
             assert result == []
 
@@ -681,9 +601,7 @@ class TestLoadTaskItems:
         monkeypatch.setenv("JARVIS_TASK_SOURCE", "todoist")
         monkeypatch.setenv("JARVIS_TODOIST_TOKEN", "real-token")
 
-        task1 = SimpleNamespace(
-            content="Write tests", priority=4, due=SimpleNamespace(date="2026-03-01")
-        )
+        task1 = SimpleNamespace(content="Write tests", priority=4, due=SimpleNamespace(date="2026-03-01"))
         task2 = SimpleNamespace(content="Review PR", priority=1, due=None)
 
         mock_api_cls = MagicMock()
@@ -691,10 +609,7 @@ class TestLoadTaskItems:
         mock_mod = MagicMock()
         mock_mod.TodoistAPI = mock_api_cls
 
-        with patch.dict(
-            "sys.modules",
-            {"todoist_api_python": MagicMock(), "todoist_api_python.api": mock_mod},
-        ):
+        with patch.dict("sys.modules", {"todoist_api_python": MagicMock(), "todoist_api_python.api": mock_mod}):
             result = load_task_items(tmp_path)
             assert len(result) == 2
             assert result[0]["title"] == "Write tests"
@@ -714,7 +629,6 @@ class TestLoadTaskItems:
 # _triage_email
 # ===========================================================================
 
-
 class TestTriageEmail:
     def test_urgent_subject(self) -> None:
         assert _triage_email("alice@work.com", "URGENT: server down") == "high"
@@ -723,17 +637,13 @@ class TestTriageEmail:
         assert _triage_email("boss@corp.com", "Action Required: review doc") == "high"
 
     def test_payment_due_subject(self) -> None:
-        assert (
-            _triage_email("billing@example.com", "Your payment due by Friday") == "high"
-        )
+        assert _triage_email("billing@example.com", "Your payment due by Friday") == "high"
 
     def test_invoice_subject(self) -> None:
         assert _triage_email("vendor@shop.com", "Invoice #12345 attached") == "high"
 
     def test_security_subject(self) -> None:
-        assert (
-            _triage_email("admin@corp.com", "Security alert on your account") == "high"
-        )
+        assert _triage_email("admin@corp.com", "Security alert on your account") == "high"
 
     def test_deadline_subject(self) -> None:
         assert _triage_email("pm@corp.com", "Project deadline approaching") == "high"
@@ -745,9 +655,7 @@ class TestTriageEmail:
         assert _triage_email("Service <noreply@company.com>", "Weekly digest") == "high"
 
     def test_alert_sender(self) -> None:
-        assert (
-            _triage_email("Monitoring <alert@infra.io>", "CPU spike detected") == "high"
-        )
+        assert _triage_email("Monitoring <alert@infra.io>", "CPU spike detected") == "high"
 
     def test_billing_sender(self) -> None:
         assert _triage_email("billing@provider.com", "Statement ready") == "high"
@@ -773,7 +681,6 @@ class TestTriageEmail:
 # _decode_email_header
 # ===========================================================================
 
-
 class TestDecodeEmailHeader:
     def test_plain_ascii(self) -> None:
         assert _decode_email_header("Hello world") == "Hello world"
@@ -790,18 +697,13 @@ class TestDecodeEmailHeader:
 
     def test_malformed_header_returns_raw(self) -> None:
         """Malformed headers that cause decode_header to error should return raw."""
-        with patch(
-            "jarvis_engine.ops_sync.decode_header", side_effect=ValueError("bad")
-        ):
+        with patch("jarvis_engine.ops_sync.decode_header", side_effect=ValueError("bad")):
             result = _decode_email_header("=?bad?encoding?=")
             assert "bad" in result
 
     def test_unknown_charset_falls_back_to_utf8(self) -> None:
         """Unknown charset should fallback to utf-8 decode."""
-        with patch(
-            "jarvis_engine.ops_sync.decode_header",
-            return_value=[(b"test", "nonexistent-charset")],
-        ):
+        with patch("jarvis_engine.ops_sync.decode_header", return_value=[(b"test", "nonexistent-charset")]):
             result = _decode_email_header("anything")
             assert result == "test"
 
@@ -809,7 +711,6 @@ class TestDecodeEmailHeader:
 # ===========================================================================
 # load_email_items
 # ===========================================================================
-
 
 class TestLoadEmailItems:
     def test_json_path_from_env(self, monkeypatch, tmp_path: Path) -> None:
@@ -911,10 +812,7 @@ class TestLoadEmailItems:
         mock_client.login.return_value = ("OK", [])
         mock_client.select.return_value = ("OK", [b"5"])
         mock_client.search.return_value = ("OK", [b"1 2"])
-        mock_client.fetch.return_value = (
-            "OK",
-            [(b"1 (RFC822.HEADER {100}", raw_header)],
-        )
+        mock_client.fetch.return_value = ("OK", [(b"1 (RFC822.HEADER {100}", raw_header)])
 
         with patch("imaplib.IMAP4_SSL", return_value=mock_client):
             result = load_email_items()
@@ -968,20 +866,14 @@ class TestLoadEmailItems:
 # _NoRedirectHandler and _build_no_redirect_opener
 # ===========================================================================
 
-
 class TestNoRedirectHandler:
     def test_redirect_raises_http_error(self) -> None:
         from urllib.error import HTTPError
-
         handler = ops_sync._NoRedirectHandler()
         with pytest.raises(HTTPError) as exc_info:
             handler.redirect_request(
-                MagicMock(),
-                MagicMock(),
-                302,
-                "Found",
-                {},
-                "https://evil.internal/redirect",
+                MagicMock(), MagicMock(), 302, "Found",
+                {}, "https://evil.internal/redirect"
             )
         assert "Redirects are not allowed" in str(exc_info.value)
 
@@ -994,23 +886,14 @@ class TestNoRedirectHandler:
 # SyncSummary dataclass
 # ===========================================================================
 
-
 class TestSyncSummary:
     def test_fields(self) -> None:
         s = SyncSummary(
             snapshot_path="/tmp/test.json",
-            tasks=5,
-            calendar_events=2,
-            emails=10,
-            bills=1,
-            subscriptions=3,
-            medications=0,
-            school_items=2,
-            family_items=1,
-            projects=4,
-            connectors_ready=3,
-            connectors_pending=2,
-            connector_prompts=1,
+            tasks=5, calendar_events=2, emails=10,
+            bills=1, subscriptions=3, medications=0,
+            school_items=2, family_items=1, projects=4,
+            connectors_ready=3, connectors_pending=2, connector_prompts=1,
         )
         assert s.tasks == 5
         assert s.connectors_ready == 3
@@ -1021,7 +904,6 @@ class TestSyncSummary:
 # build_live_snapshot (integration-level, all sub-functions mocked)
 # ===========================================================================
 
-
 class TestBuildLiveSnapshot:
     def test_full_snapshot_happy_path(self, tmp_path: Path, monkeypatch) -> None:
         root = tmp_path / "repo"
@@ -1030,45 +912,24 @@ class TestBuildLiveSnapshot:
         planning.mkdir()
 
         # Create feed files
-        (planning / "bills.json").write_text(
-            json.dumps([{"bill": "electric"}]), encoding="utf-8"
-        )
-        (planning / "subscriptions.json").write_text(
-            json.dumps([{"sub": "netflix"}, {"sub": "spotify"}]), encoding="utf-8"
-        )
-        (planning / "tasks.json").write_text(
-            json.dumps([{"title": "task1"}]), encoding="utf-8"
-        )
+        (planning / "bills.json").write_text(json.dumps([{"bill": "electric"}]), encoding="utf-8")
+        (planning / "subscriptions.json").write_text(json.dumps([{"sub": "netflix"}, {"sub": "spotify"}]), encoding="utf-8")
+        (planning / "tasks.json").write_text(json.dumps([{"title": "task1"}]), encoding="utf-8")
 
         # Ensure no env overrides for feeds
-        for key in [
-            "JARVIS_MEDICATIONS_JSON",
-            "JARVIS_SCHOOL_JSON",
-            "JARVIS_FAMILY_JSON",
-            "JARVIS_PROJECTS_JSON",
-            "JARVIS_TASK_SOURCE",
-            "JARVIS_TASKS_JSON",
-            "JARVIS_CALENDAR_JSON",
-            "JARVIS_CALENDAR_ICS_FILE",
-            "JARVIS_CALENDAR_ICS_URL",
-            "JARVIS_EMAIL_JSON",
-            "JARVIS_IMAP_HOST",
-            "JARVIS_ALLOW_EXTERNAL_FEEDS",
-        ]:
+        for key in ["JARVIS_MEDICATIONS_JSON", "JARVIS_SCHOOL_JSON", "JARVIS_FAMILY_JSON",
+                     "JARVIS_PROJECTS_JSON", "JARVIS_TASK_SOURCE", "JARVIS_TASKS_JSON",
+                     "JARVIS_CALENDAR_JSON", "JARVIS_CALENDAR_ICS_FILE",
+                     "JARVIS_CALENDAR_ICS_URL", "JARVIS_EMAIL_JSON",
+                     "JARVIS_IMAP_HOST", "JARVIS_ALLOW_EXTERNAL_FEEDS"]:
             monkeypatch.delenv(key, raising=False)
 
         # Mock connectors
         mock_status = MagicMock()
         mock_status.ready = True
-        monkeypatch.setattr(
-            ops_sync, "evaluate_connector_statuses", lambda root: [mock_status]
-        )
-        monkeypatch.setattr(
-            ops_sync, "build_connector_prompts", lambda statuses: [{"p": "test"}]
-        )
-        monkeypatch.setattr(
-            ops_sync, "serialize_statuses", lambda statuses: [{"s": "ok"}]
-        )
+        monkeypatch.setattr(ops_sync, "evaluate_connector_statuses", lambda root: [mock_status])
+        monkeypatch.setattr(ops_sync, "build_connector_prompts", lambda statuses: [{"p": "test"}])
+        monkeypatch.setattr(ops_sync, "serialize_statuses", lambda statuses: [{"s": "ok"}])
 
         output = tmp_path / "snapshot.json"
         summary = build_live_snapshot(root, output)
@@ -1093,20 +954,11 @@ class TestBuildLiveSnapshot:
         root = tmp_path / "fresh"
         # Don't create planning dir - let build_live_snapshot do it
 
-        for key in [
-            "JARVIS_MEDICATIONS_JSON",
-            "JARVIS_SCHOOL_JSON",
-            "JARVIS_FAMILY_JSON",
-            "JARVIS_PROJECTS_JSON",
-            "JARVIS_TASK_SOURCE",
-            "JARVIS_TASKS_JSON",
-            "JARVIS_CALENDAR_JSON",
-            "JARVIS_CALENDAR_ICS_FILE",
-            "JARVIS_CALENDAR_ICS_URL",
-            "JARVIS_EMAIL_JSON",
-            "JARVIS_IMAP_HOST",
-            "JARVIS_ALLOW_EXTERNAL_FEEDS",
-        ]:
+        for key in ["JARVIS_MEDICATIONS_JSON", "JARVIS_SCHOOL_JSON", "JARVIS_FAMILY_JSON",
+                     "JARVIS_PROJECTS_JSON", "JARVIS_TASK_SOURCE", "JARVIS_TASKS_JSON",
+                     "JARVIS_CALENDAR_JSON", "JARVIS_CALENDAR_ICS_FILE",
+                     "JARVIS_CALENDAR_ICS_URL", "JARVIS_EMAIL_JSON",
+                     "JARVIS_IMAP_HOST", "JARVIS_ALLOW_EXTERNAL_FEEDS"]:
             monkeypatch.delenv(key, raising=False)
 
         monkeypatch.setattr(ops_sync, "evaluate_connector_statuses", lambda root: [])
@@ -1124,20 +976,11 @@ class TestBuildLiveSnapshot:
         root.mkdir()
         (root / ".planning").mkdir()
 
-        for key in [
-            "JARVIS_MEDICATIONS_JSON",
-            "JARVIS_SCHOOL_JSON",
-            "JARVIS_FAMILY_JSON",
-            "JARVIS_PROJECTS_JSON",
-            "JARVIS_TASK_SOURCE",
-            "JARVIS_TASKS_JSON",
-            "JARVIS_CALENDAR_JSON",
-            "JARVIS_CALENDAR_ICS_FILE",
-            "JARVIS_CALENDAR_ICS_URL",
-            "JARVIS_EMAIL_JSON",
-            "JARVIS_IMAP_HOST",
-            "JARVIS_ALLOW_EXTERNAL_FEEDS",
-        ]:
+        for key in ["JARVIS_MEDICATIONS_JSON", "JARVIS_SCHOOL_JSON", "JARVIS_FAMILY_JSON",
+                     "JARVIS_PROJECTS_JSON", "JARVIS_TASK_SOURCE", "JARVIS_TASKS_JSON",
+                     "JARVIS_CALENDAR_JSON", "JARVIS_CALENDAR_ICS_FILE",
+                     "JARVIS_CALENDAR_ICS_URL", "JARVIS_EMAIL_JSON",
+                     "JARVIS_IMAP_HOST", "JARVIS_ALLOW_EXTERNAL_FEEDS"]:
             monkeypatch.delenv(key, raising=False)
 
         monkeypatch.setattr(ops_sync, "evaluate_connector_statuses", lambda root: [])
@@ -1158,36 +1001,19 @@ class TestBuildLiveSnapshot:
         root.mkdir()
         (root / ".planning").mkdir()
 
-        for key in [
-            "JARVIS_MEDICATIONS_JSON",
-            "JARVIS_SCHOOL_JSON",
-            "JARVIS_FAMILY_JSON",
-            "JARVIS_PROJECTS_JSON",
-            "JARVIS_TASK_SOURCE",
-            "JARVIS_TASKS_JSON",
-            "JARVIS_CALENDAR_JSON",
-            "JARVIS_CALENDAR_ICS_FILE",
-            "JARVIS_CALENDAR_ICS_URL",
-            "JARVIS_EMAIL_JSON",
-            "JARVIS_IMAP_HOST",
-            "JARVIS_ALLOW_EXTERNAL_FEEDS",
-        ]:
+        for key in ["JARVIS_MEDICATIONS_JSON", "JARVIS_SCHOOL_JSON", "JARVIS_FAMILY_JSON",
+                     "JARVIS_PROJECTS_JSON", "JARVIS_TASK_SOURCE", "JARVIS_TASKS_JSON",
+                     "JARVIS_CALENDAR_JSON", "JARVIS_CALENDAR_ICS_FILE",
+                     "JARVIS_CALENDAR_ICS_URL", "JARVIS_EMAIL_JSON",
+                     "JARVIS_IMAP_HOST", "JARVIS_ALLOW_EXTERNAL_FEEDS"]:
             monkeypatch.delenv(key, raising=False)
 
         ready_status = MagicMock()
         ready_status.ready = True
         pending_status = MagicMock()
         pending_status.ready = False
-        monkeypatch.setattr(
-            ops_sync,
-            "evaluate_connector_statuses",
-            lambda root: [ready_status, pending_status, ready_status],
-        )
-        monkeypatch.setattr(
-            ops_sync,
-            "build_connector_prompts",
-            lambda statuses: [{"p": "1"}, {"p": "2"}],
-        )
+        monkeypatch.setattr(ops_sync, "evaluate_connector_statuses", lambda root: [ready_status, pending_status, ready_status])
+        monkeypatch.setattr(ops_sync, "build_connector_prompts", lambda statuses: [{"p": "1"}, {"p": "2"}])
         monkeypatch.setattr(ops_sync, "serialize_statuses", lambda statuses: [])
 
         output = tmp_path / "snap.json"
@@ -1201,16 +1027,11 @@ class TestBuildLiveSnapshot:
 # Google Tasks comment verification
 # ---------------------------------------------------------------------------
 
-
 def test_google_tasks_comment_is_note_not_todo() -> None:
     """The Google Tasks branch should have a NOTE comment, not a TODO."""
     import inspect
-
     source = inspect.getsource(ops_sync.load_task_items)
-    assert (
-        "NOTE: Google Tasks integration requires OAuth2 with tasks.readonly scope."
-        in source
-    )
+    assert "NOTE: Google Tasks integration requires OAuth2 with tasks.readonly scope." in source
     assert "ROADMAP.md" in source
     # The old TODO should be gone
     assert "TODO: Google Tasks requires OAuth2" not in source

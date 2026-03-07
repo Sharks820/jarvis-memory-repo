@@ -35,9 +35,7 @@ class AdapterBase:
     def plan(self, prompt: str) -> str:
         raise NotImplementedError
 
-    def execute(
-        self, prompt: str, output_path: str | None, quality_profile: str
-    ) -> AdapterResult:
+    def execute(self, prompt: str, output_path: str | None, quality_profile: str) -> AdapterResult:
         raise NotImplementedError
 
 
@@ -50,14 +48,7 @@ class ImageAdapter(AdapterBase):
         self.script = Path(
             os.getenv(
                 "JARVIS_IMAGE_SCRIPT",
-                str(
-                    Path.home()
-                    / ".codex"
-                    / "skills"
-                    / "imagegen"
-                    / "scripts"
-                    / "image_gen.py"
-                ),
+                str(Path.home() / ".codex" / "skills" / "imagegen" / "scripts" / "image_gen.py"),
             )
         )
 
@@ -67,9 +58,7 @@ class ImageAdapter(AdapterBase):
             f"({self.script.name}) using prompt: {prompt}"
         )
 
-    def execute(
-        self, prompt: str, output_path: str | None, quality_profile: str
-    ) -> AdapterResult:
+    def execute(self, prompt: str, output_path: str | None, quality_profile: str) -> AdapterResult:
         if not self.script.exists():
             return AdapterResult(
                 ok=False,
@@ -85,9 +74,7 @@ class ImageAdapter(AdapterBase):
                 reason="OPENAI_API_KEY not set.",
             )
 
-        out = output_path or str(
-            self.repo_root / "output" / "imagegen" / _timestamped_name("image", ".png")
-        )
+        out = output_path or str(self.repo_root / "output" / "imagegen" / _timestamped_name("image", ".png"))
         out_path = Path(out)
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,9 +107,7 @@ class ImageAdapter(AdapterBase):
         ]
         timeout_s = 600 if quality_profile == "max_quality" else 300
         try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False, timeout=timeout_s
-            )
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout_s)
         except subprocess.TimeoutExpired:
             return AdapterResult(
                 ok=False,
@@ -166,9 +151,7 @@ class VideoAdapter(AdapterBase):
             f"({self.script.name}) using prompt: {prompt}"
         )
 
-    def execute(
-        self, prompt: str, output_path: str | None, quality_profile: str
-    ) -> AdapterResult:
+    def execute(self, prompt: str, output_path: str | None, quality_profile: str) -> AdapterResult:
         if not self.script.exists():
             return AdapterResult(
                 ok=False,
@@ -184,9 +167,7 @@ class VideoAdapter(AdapterBase):
                 reason="OPENAI_API_KEY not set.",
             )
 
-        out = output_path or str(
-            self.repo_root / "output" / "video" / _timestamped_name("video", ".mp4")
-        )
+        out = output_path or str(self.repo_root / "output" / "video" / _timestamped_name("video", ".mp4"))
         out_path = Path(out)
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -222,9 +203,7 @@ class VideoAdapter(AdapterBase):
         ]
         timeout_s = 2100 if quality_profile == "max_quality" else 1200
         try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, check=False, timeout=timeout_s
-            )
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout_s)
         except subprocess.TimeoutExpired:
             return AdapterResult(
                 ok=False,
@@ -259,12 +238,8 @@ class Model3DAdapter(AdapterBase):
     def plan(self, prompt: str) -> str:
         return f"Generate a local starter OBJ mesh and metadata from prompt: {prompt}"
 
-    def execute(
-        self, prompt: str, output_path: str | None, quality_profile: str
-    ) -> AdapterResult:
-        out = output_path or str(
-            self.repo_root / "output" / "model3d" / _timestamped_name("model", ".obj")
-        )
+    def execute(self, prompt: str, output_path: str | None, quality_profile: str) -> AdapterResult:
+        out = output_path or str(self.repo_root / "output" / "model3d" / _timestamped_name("model", ".obj"))
         out_path = Path(out)
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -298,9 +273,7 @@ class Model3DAdapter(AdapterBase):
         }
         meta_note = f"metadata={meta_path.resolve()}"
         try:
-            meta_path.write_text(
-                json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8"
-            )
+            meta_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
         except OSError as exc:
             logger.warning("Failed to write mesh metadata to %s: %s", meta_path, exc)
             meta_note = f"metadata_write_failed={exc}"
@@ -321,14 +294,7 @@ def _timestamped_name(prefix: str, suffix: str) -> str:
 
 def _is_portrait_prompt(prompt: str) -> bool:
     lowered = prompt.lower()
-    portrait_terms = [
-        "portrait",
-        "phone wallpaper",
-        "vertical",
-        "tiktok",
-        "reel",
-        "story",
-    ]
+    portrait_terms = ["portrait", "phone wallpaper", "vertical", "tiktok", "reel", "story"]
     return any(term in lowered for term in portrait_terms)
 
 
@@ -354,16 +320,12 @@ def _mesh_kind(prompt: str) -> str:
     lowered = prompt.lower()
     if any(term in lowered for term in ["sphere", "planet", "orb", "ball"]):
         return "sphere"
-    if any(
-        term in lowered for term in ["cylinder", "pipe", "barrel", "tower", "column"]
-    ):
+    if any(term in lowered for term in ["cylinder", "pipe", "barrel", "tower", "column"]):
         return "cylinder"
     return "cube"
 
 
-def _build_mesh_obj(
-    prompt: str, quality_profile: str, mesh_kind: str
-) -> tuple[str, int, int]:
+def _build_mesh_obj(prompt: str, quality_profile: str, mesh_kind: str) -> tuple[str, int, int]:
     if mesh_kind == "sphere":
         if quality_profile == "max_quality":
             return _build_sphere_obj(prompt, rings=24, segments=48)
@@ -454,11 +416,7 @@ def _build_sphere_obj(prompt: str, rings: int, segments: int) -> tuple[str, int,
         c = last_ring + seg
         faces.append((a, b, c))
 
-    lines = [
-        "# Generated by Jarvis local 3D adapter",
-        f"# prompt: {comment}",
-        "o jarvis_sphere",
-    ]
+    lines = ["# Generated by Jarvis local 3D adapter", f"# prompt: {comment}", "o jarvis_sphere"]
     lines.extend([f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in vertices])
     lines.extend([f"f {a} {b} {c}" for a, b, c in faces])
     return "\n".join(lines) + "\n", len(vertices), len(faces)
@@ -496,11 +454,7 @@ def _build_cylinder_obj(prompt: str, segments: int) -> tuple[str, int, int]:
         faces.append((top_a, bottom_a, bottom_b))
         faces.append((top_a, bottom_b, top_b))
 
-    lines = [
-        "# Generated by Jarvis local 3D adapter",
-        f"# prompt: {comment}",
-        "o jarvis_cylinder",
-    ]
+    lines = ["# Generated by Jarvis local 3D adapter", f"# prompt: {comment}", "o jarvis_cylinder"]
     lines.extend([f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in vertices])
     lines.extend([f"f {a} {b} {c}" for a, b, c in faces])
     return "\n".join(lines) + "\n", len(vertices), len(faces)

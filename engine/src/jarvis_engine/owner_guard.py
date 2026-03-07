@@ -29,14 +29,11 @@ def owner_guard_path(root: Path) -> Path:
 
 
 def read_owner_guard(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = owner_guard_path(root)
-    if not path.exists():
-        return dict(DEFAULT_OWNER_GUARD)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return dict(DEFAULT_OWNER_GUARD)
-    if not isinstance(raw, dict):
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return dict(DEFAULT_OWNER_GUARD)
     devices = raw.get("trusted_mobile_devices", [])
     if not isinstance(devices, list):
@@ -44,16 +41,10 @@ def read_owner_guard(root: Path) -> dict[str, Any]:
     return {
         "enabled": bool(raw.get("enabled", False)),
         "owner_user_id": str(raw.get("owner_user_id", "")).strip()[:64],
-        "trusted_mobile_devices": [
-            str(d).strip()[:128] for d in devices if str(d).strip()
-        ],
+        "trusted_mobile_devices": [str(d).strip()[:128] for d in devices if str(d).strip()],
         "master_password_hash": str(raw.get("master_password_hash", "")).strip(),
-        "master_password_salt_b64": str(
-            raw.get("master_password_salt_b64", "")
-        ).strip(),
-        "master_password_iterations": _safe_int(
-            raw.get("master_password_iterations", 200000), 200000
-        ),
+        "master_password_salt_b64": str(raw.get("master_password_salt_b64", "")).strip(),
+        "master_password_iterations": _safe_int(raw.get("master_password_iterations", 200000), 200000),
         "updated_utc": str(raw.get("updated_utc", "")),
     }
 
@@ -84,9 +75,7 @@ def _hash_master_password(password: str, *, salt: bytes, iterations: int) -> str
     return digest.hex()
 
 
-def set_master_password(
-    root: Path, password: str, *, iterations: int = 200000
-) -> dict[str, Any]:
+def set_master_password(root: Path, password: str, *, iterations: int = 200000) -> dict[str, Any]:
     cleaned = password.strip()
     if len(cleaned) < 10:
         raise ValueError("master password must be at least 10 characters")
@@ -124,9 +113,7 @@ def verify_master_password(root: Path, password: str) -> bool:
         salt = base64.b64decode(salt_b64.encode("ascii"), validate=True)
     except ValueError:
         return False
-    actual = _hash_master_password(
-        password.strip(), salt=salt, iterations=max(100000, iterations)
-    )
+    actual = _hash_master_password(password.strip(), salt=salt, iterations=max(100000, iterations))
     return hmac.compare_digest(actual, expected)
 
 
@@ -135,11 +122,7 @@ def trust_mobile_device(root: Path, device_id: str) -> dict[str, Any]:
     cleaned = device_id.strip()[:128]
     if not cleaned:
         raise ValueError("device_id is required")
-    trusted = {
-        str(d).strip()[:128]
-        for d in state.get("trusted_mobile_devices", [])
-        if str(d).strip()
-    }
+    trusted = {str(d).strip()[:128] for d in state.get("trusted_mobile_devices", []) if str(d).strip()}
     trusted.add(cleaned)
     return write_owner_guard(root, trusted_mobile_devices=sorted(trusted))
 

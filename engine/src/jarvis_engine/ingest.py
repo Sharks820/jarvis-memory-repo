@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import threading
 from dataclasses import dataclass, asdict
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso as _now_iso, sha256_short
 from typing import Literal
 
 from jarvis_engine.memory_store import MemoryStore
@@ -45,16 +44,12 @@ class IngestionPipeline:
         identical submissions produce the same hash regardless of timing.
         """
         material = f"{source}|{kind}|{task_id}|{content}".encode("utf-8")
-        return hashlib.sha256(material).hexdigest()[:32]
+        return sha256_short(material)
 
-    def ingest(
-        self, source: SourceType, kind: MemoryKind, task_id: str, content: str
-    ) -> IngestRecord:
+    def ingest(self, source: SourceType, kind: MemoryKind, task_id: str, content: str) -> IngestRecord:
         # Validate source and kind against allowed literals
         if source not in _VALID_SOURCES:
-            raise ValueError(
-                f"Invalid source: {source!r}. Must be one of {_VALID_SOURCES}"
-            )
+            raise ValueError(f"Invalid source: {source!r}. Must be one of {_VALID_SOURCES}")
         if kind not in _VALID_KINDS:
             raise ValueError(f"Invalid kind: {kind!r}. Must be one of {_VALID_KINDS}")
 
@@ -63,11 +58,7 @@ class IngestionPipeline:
         with self._seen_lock:
             if content_hash in self._seen_hashes:
                 existing_id = self._seen_hashes[content_hash]
-                logger.debug(
-                    "Deduplicated ingest: content_hash=%s existing_id=%s",
-                    content_hash,
-                    existing_id,
-                )
+                logger.debug("Deduplicated ingest: content_hash=%s existing_id=%s", content_hash, existing_id)
                 return IngestRecord(
                     record_id=existing_id,
                     ts=_now_iso(),

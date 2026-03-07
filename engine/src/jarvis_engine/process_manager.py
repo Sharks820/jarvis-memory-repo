@@ -38,10 +38,8 @@ _GRACEFUL_TIMEOUT_S = 5.0
 # PID directory helpers
 # ---------------------------------------------------------------------------
 
-
 def _pids_dir(root: Path) -> Path:
     from jarvis_engine._constants import runtime_dir
-
     return runtime_dir(root) / "pids"
 
 
@@ -52,7 +50,6 @@ def _pid_path(service: str, root: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Process alive check (no psutil dependency)
 # ---------------------------------------------------------------------------
-
 
 def _check_pid_alive(pid: int) -> bool:
     """Return True if *pid* refers to a running process."""
@@ -154,7 +151,6 @@ def _verify_pid_identity(pid: int, stored_create_ts: float | None) -> bool:
 # PID file CRUD
 # ---------------------------------------------------------------------------
 
-
 def _lock_pid_file(service: str, root: Path):
     """Acquire an exclusive lock file for PID operations on *service*.
 
@@ -173,16 +169,14 @@ def _lock_pid_file(service: str, root: Path):
             fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
             if sys.platform == "win32":
                 import msvcrt
-
                 # Write a sentinel byte so the file is non-empty before locking;
                 # msvcrt.locking on an empty file may not enforce mutual exclusion.
-                os.write(fd, b"\x00")
+                os.write(fd, b'\x00')
                 os.lseek(fd, 0, os.SEEK_SET)
                 # Non-blocking would use LK_NBLCK; blocking uses LK_LOCK
                 msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
             else:
                 import fcntl
-
                 fcntl.flock(fd, fcntl.LOCK_EX)
             yield
         finally:
@@ -190,7 +184,6 @@ def _lock_pid_file(service: str, root: Path):
                 if sys.platform == "win32":
                     try:
                         import msvcrt
-
                         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
                     except OSError as exc:
                         logger.debug("Failed to unlock file: %s", exc)
@@ -251,9 +244,7 @@ def read_pid_file(service: str, root: Path) -> dict[str, Any] | None:
         logger.warning(
             "PID %d for %s exists but creation time does not match stored "
             "process_create_ts=%s — likely PID reuse. Cleaning up stale PID file.",
-            pid,
-            service,
-            stored_create_ts,
+            pid, service, stored_create_ts,
         )
         _remove_pid_file_path(path)
         return None
@@ -275,7 +266,6 @@ def _remove_pid_file_path(path: Path) -> None:
 # ---------------------------------------------------------------------------
 # High-level queries
 # ---------------------------------------------------------------------------
-
 
 def is_service_running(service: str, root: Path) -> bool:
     """Return True if *service* has a live PID file."""
@@ -354,8 +344,7 @@ def kill_service(service: str, root: Path, *, force: bool = False) -> bool:
         logger.warning(
             "PID %d for %s no longer matches stored start time — "
             "refusing to kill (possible PID reuse). Removing stale PID file.",
-            pid,
-            service,
+            pid, service,
         )
         remove_pid_file(service, root)
         return False
@@ -367,8 +356,7 @@ def kill_service(service: str, root: Path, *, force: bool = False) -> bool:
             if not exited:
                 logger.info(
                     "Graceful shutdown of %s (pid=%d) timed out, escalating to hard kill.",
-                    service,
-                    pid,
+                    service, pid,
                 )
                 _hard_kill(pid)
     except (OSError, PermissionError) as exc:
@@ -390,41 +378,32 @@ def list_services(root: Path) -> list[dict[str, Any]]:
             if started:
                 try:
                     start_dt = datetime.fromisoformat(started)
-                    uptime_s = int(
-                        (datetime.now(timezone.utc) - start_dt).total_seconds()
-                    )
+                    uptime_s = int((datetime.now(timezone.utc) - start_dt).total_seconds())
                 except (ValueError, TypeError):
-                    logger.debug(
-                        "Invalid started_utc format for service %s: %s", svc, started
-                    )
-            results.append(
-                {
-                    "service": svc,
-                    "running": True,
-                    "pid": info["pid"],
-                    "started_utc": started,
-                    "uptime_seconds": uptime_s,
-                    "python": info.get("python", ""),
-                }
-            )
+                    logger.debug("Invalid started_utc format for service %s: %s", svc, started)
+            results.append({
+                "service": svc,
+                "running": True,
+                "pid": info["pid"],
+                "started_utc": started,
+                "uptime_seconds": uptime_s,
+                "python": info.get("python", ""),
+            })
         else:
-            results.append(
-                {
-                    "service": svc,
-                    "running": False,
-                    "pid": None,
-                    "started_utc": None,
-                    "uptime_seconds": 0,
-                    "python": "",
-                }
-            )
+            results.append({
+                "service": svc,
+                "running": False,
+                "pid": None,
+                "started_utc": None,
+                "uptime_seconds": 0,
+                "python": "",
+            })
     return results
 
 
 # ---------------------------------------------------------------------------
 # Service watchdog
 # ---------------------------------------------------------------------------
-
 
 def check_and_restart_services(
     root: Path,
@@ -460,9 +439,7 @@ def check_and_restart_services(
                 try:
                     restart_callback(svc)
                 except (OSError, RuntimeError, ValueError):  # noqa: BLE001
-                    logger.warning(
-                        "Watchdog: restart callback failed for %s", svc, exc_info=True
-                    )
+                    logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
             continue
 
         pid = data.get("pid")
@@ -474,9 +451,7 @@ def check_and_restart_services(
                 try:
                     restart_callback(svc)
                 except (OSError, RuntimeError, ValueError):  # noqa: BLE001
-                    logger.warning(
-                        "Watchdog: restart callback failed for %s", svc, exc_info=True
-                    )
+                    logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
             continue
 
         if _check_pid_alive(pid):
@@ -487,23 +462,17 @@ def check_and_restart_services(
             # PID was reused by another process — treat as dead.
             logger.warning(
                 "Watchdog: PID %d for %s is alive but identity mismatch (PID reuse). "
-                "Cleaning stale PID file.",
-                pid,
-                svc,
+                "Cleaning stale PID file.", pid, svc,
             )
 
         # Process is dead or PID was reused — clean up and notify.
         _remove_pid_file_path(path)
         dead_services.append(svc)
-        logger.warning(
-            "Watchdog: %s (pid=%s) found dead, cleaned stale PID file.", svc, pid
-        )
+        logger.warning("Watchdog: %s (pid=%s) found dead, cleaned stale PID file.", svc, pid)
         if restart_callback is not None:
             try:
                 restart_callback(svc)
             except (OSError, RuntimeError, ValueError):  # noqa: BLE001
-                logger.warning(
-                    "Watchdog: restart callback failed for %s", svc, exc_info=True
-                )
+                logger.warning("Watchdog: restart callback failed for %s", svc, exc_info=True)
 
     return dead_services

@@ -19,6 +19,7 @@ from jarvis_engine.knowledge.facts import FactExtractor, FactTriple, _normalize
 
 
 class TestNormalize:
+
     def test_lowercase(self):
         assert _normalize("HelloWorld") == "helloworld"
 
@@ -50,6 +51,7 @@ class TestNormalize:
 
 
 class TestFactTriple:
+
     def test_named_tuple_fields(self):
         ft = FactTriple(
             subject="health.aspirin",
@@ -77,19 +79,16 @@ class TestFactTriple:
 
 
 class TestFactExtractorHealth:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
     def test_takes_medication_daily(self):
         facts = self.extractor.extract("He takes aspirin for headaches daily")
-        assert any(
-            f.predicate == "takes" and "aspirin" in f.object_val.lower() for f in facts
-        )
+        assert any(f.predicate == "takes" and "aspirin" in f.object_val.lower() for f in facts)
 
     def test_prescribed_medication(self):
-        facts = self.extractor.extract(
-            "She was prescribed lisinopril for blood pressure daily"
-        )
+        facts = self.extractor.extract("She was prescribed lisinopril for blood pressure daily")
         assert any(f.predicate == "takes" for f in facts)
 
     def test_on_medication_morning(self):
@@ -108,6 +107,7 @@ class TestFactExtractorHealth:
 
 
 class TestFactExtractorSchedule:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
@@ -132,6 +132,7 @@ class TestFactExtractorSchedule:
 
 
 class TestFactExtractorPreference:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
@@ -155,6 +156,7 @@ class TestFactExtractorPreference:
 
 
 class TestFactExtractorFamily:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
@@ -180,6 +182,7 @@ class TestFactExtractorFamily:
 
 
 class TestFactExtractorLocation:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
@@ -199,6 +202,7 @@ class TestFactExtractorLocation:
 
 
 class TestFactExtractorFinance:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
@@ -218,6 +222,7 @@ class TestFactExtractorFinance:
 
 
 class TestFactExtractorEdgeCases:
+
     def setup_method(self):
         self.extractor = FactExtractor()
 
