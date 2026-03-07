@@ -24,9 +24,6 @@ from jarvis_engine._constants import (
     KG_METRICS_LOG as _KG_METRICS_LOG,
     SELF_TEST_HISTORY as _SELF_TEST_HISTORY,
     runtime_dir as _runtime_dir,
-    ACTIONS_FILENAME as _ACTIONS_FILENAME,
-    OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME,
-    make_task_id as _make_task_id,
 )
 from jarvis_engine._shared import set_process_title as _set_process_title
 from jarvis_engine.command_bus import CommandBus

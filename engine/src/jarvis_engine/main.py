@@ -42,8 +42,6 @@ from jarvis_engine.commands.system_commands import (
     WeatherCommand,
 )
 from jarvis_engine.commands.task_commands import (
-    QueryCommand,
-    QueryResult,
     RouteCommand,
     RunTaskCommand,
     WebResearchCommand,

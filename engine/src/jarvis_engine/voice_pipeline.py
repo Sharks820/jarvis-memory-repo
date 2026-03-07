@@ -25,7 +25,6 @@ from jarvis_engine._constants import (
     ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY,
     STOP_WORDS as _HARVEST_STOP_WORDS,
     OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME,
-    ACTIONS_FILENAME as _ACTIONS_FILENAME,
     get_local_model as _get_local_model,
     is_privacy_sensitive as _is_privacy_sensitive,
     make_task_id as _make_task_id,
