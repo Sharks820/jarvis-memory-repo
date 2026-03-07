@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/relevance.py
-# hypothesis_version: 6.151.9
-
-[-0.693, 0.0, 0.15, 0.2, 0.4, 0.7, 1.0, 5.0, 'archive', 'cold', 'hot', 'warm']

@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/metrics.py
-# hypothesis_version: 6.151.9
-
-['branch_distribution', 'branches_populated', 'captured_at', 'locked_facts', 'total_edges', 'total_facts', 'total_records']

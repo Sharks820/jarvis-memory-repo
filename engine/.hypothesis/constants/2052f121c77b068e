@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/adaptive_defense.py
-# hypothesis_version: 6.151.9
-
-[100.0, 100, 1000, 10000, 'blocked', 'category', 'count', 'created_at', 'detection_count', 'effectiveness_pct', 'pattern', 'payload_hash', 'rules_generated', 'source_ip', 'timestamp', 'top_categories', 'total_attacks', 'total_blocked', 'triggered_by', 'unique_ips']

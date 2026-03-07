@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/memory/migration.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.5, 0.6, 0.72, 1.0, 100, 200, 280, 2000, '.planning', 'BranchClassifier', 'EmbeddingService', 'MemoryEngine', '[]', 'access_count', 'brain', 'branch', 'confidence', 'content', 'content_hash', 'db_path', 'episodic', 'error', 'error_details', 'errors', 'event_log', 'event_type', 'events', 'events.jsonl', 'facts', 'facts.json', 'file', 'history', 'inserted', 'kind', 'last_accessed', 'line_offset', 'locked', 'message', 'migration', 'ok', 'partial', 'record_id', 'records.jsonl', 'records_hash', 'replace', 'search_document', 'skipped', 'source', 'source_count', 'sources', 'status', 'summary', 'tags', 'task_id', 'tier', 'totals', 'ts', 'updated_utc', 'utf-8', 'value', 'warm']

@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/auto_ingest.py
-# hypothesis_version: 6.151.9
-
-[0.68, 0.74, -400, 128, 2000, 100000, '"\\1": "[redacted]"', '(?i)(bearer)\\s+\\S+', '1', 'MemoryStore', 'MemoryStore | None', '\\1 [redacted]', '\\1=[redacted]', 'claude', 'conversation', 'episodic', 'gemini', 'hashes', 'opus', 'procedural', 'semantic', 'task_outcome', 'true', 'updated_utc', 'user', 'utf-8', 'yes']

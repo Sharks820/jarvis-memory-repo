@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/knowledge/regression.py
-# hypothesis_version: 6.151.9
-
-[b'empty_knowledge_graph', '%Y%m%dT%H%M%S', '*.db', '.db-restore-tmp', '.db-shm', '.db-wal', 'KnowledgeGraph', 'added', 'baseline', 'captured_at', 'critical', 'current', 'current_hash', 'discrepancies', 'edge_count', 'edge_loss', 'fail', 'graph_hash', 'graph_hash_change', 'kg_backups', 'label', 'locked_count', 'locked_fact_loss', 'lost', 'message', 'modified', 'node_count', 'node_diff', 'node_labels', 'node_loss', 'pass', 'previous', 'previous_hash', 'relation', 'removed', 'severity', 'status', 'type', 'warn']

@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/sync/auto_sync.py
-# hypothesis_version: 6.151.9
-
-[120, 168, 300, 500, 900, 1800, '.tmp', 'conflict_strategy', 'device_id', 'enabled', 'lan_url', 'last_seen', 'most_recent', 'online', 'r', 'relay_url', 'seconds_ago', 'server_time', 'sync_feedback', 'sync_knowledge_graph', 'sync_on_reconnect', 'sync_patterns', 'sync_preferences', 'w']

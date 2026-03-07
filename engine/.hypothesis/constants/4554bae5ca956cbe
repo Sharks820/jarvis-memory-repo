@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/life_ops.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.3, 1.0, 20.0, 512, 2000, '1', 'Bills Due:', 'Calendar Events:', 'JARVIS_LOCAL_MODEL', 'Medications Due:', 'No subject', 'Pay bill now:', 'Tasks:', 'Top actions:', 'Unnamed', 'Unread Emails:', 'Untitled', 'action_class', 'amount', 'bills', 'bounded_write', 'calendar_events', 'command', 'content', 'critical', 'date', 'dosage', 'dose', 'due', 'due_date', 'due_time', 'due_today', 'emails', 'family_items', 'from', 'high', 'importance', 'low', 'medications', 'monthly_cost', 'name', 'normal', 'overdue', 'prep_needed', 'priority', 'privileged', 'projects', 'qwen3:14b', 'read', 'reason', 'role', 'school_items', 'status', 'subject', 'subscriptions', 'tasks', 'text', 'time', 'title', 'true', 'urgent', 'usage_score', 'user', 'utf-8', 'y', 'yes']

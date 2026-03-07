@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/harvesting/budget.py
-# hypothesis_version: 6.151.9
-
-[0.0, 1.0, 10.0, 100, 'BudgetManager', 'cnt', 'daily', 'gemini', 'kimi', 'kimi_nvidia', 'limit_requests', 'limit_usd', 'minimax', 'monthly', 'period', 'period_days', 'provider', 'providers', 'total_cost', 'total_cost_usd', 'total_requests']

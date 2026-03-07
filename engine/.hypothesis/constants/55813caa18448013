@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/output_scanner.py
-# hypothesis_version: 6.151.9
-
-[0.1, 0.15, 1.0, 'AKIA[0-9A-Z]{16}', '[/\\\\]\\.env\\b', 'aws_access_key', 'aws_secret_key', 'bearer_token', 'competing_persona', 'curl_exfiltration', 'dangerous_powershell', 'dangerous_shell_rm', 'dangerous_shell_sudo', 'env_file_path', 'generic_api_key', 'generic_secret', 'github_token', 'identity_claim', 'identity_rejection', 'name_override', 'password_assignment', 'pipe_to_shell', 'private_key', 'send_to_email', 'send_to_url', 'slack_token', 'ssh_key_path', 'unix_absolute_path', 'unix_sensitive_path']

@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/web_fetch.py
-# hypothesis_version: 6.151.9
-
-[443, 250000, 400000, 500000, '(?s)<[^>]+>', 'Accept', 'Accept-Encoding', 'BRAVE_SEARCH_API_KEY', 'Content-Type', 'User-Agent', 'X-Subscription-Token', '\\s+', 'application/json', 'application/xhtml', 'application/xml', 'duckduckgo.com', 'http', 'https', 'identity', 'localhost', 'replace', 'results', 'text/', 'uddg=([^&"]+)', 'url', 'utf-8', 'web']

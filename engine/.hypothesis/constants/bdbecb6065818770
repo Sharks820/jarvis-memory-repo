@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/gateway/classifier.py
-# hypothesis_version: 6.151.9
-
-[0.0, 1e-09, 0.35, 0.5, 1.0, ')\\b', '.planning', '\\b(?:', 'cache', 'claude-cli', 'codex-cli', 'complex', 'creative', 'gemini-cli', 'kimi-cli', 'math_logic', 'np.ndarray', 'routine', 'satisfaction_rate', 'search_query', 'simple_private', 'total', 'web_research', '|']

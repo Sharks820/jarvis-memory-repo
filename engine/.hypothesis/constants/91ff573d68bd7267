@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/consolidator.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.75, 0.85, 1.0, 365.0, 86400.0, 200, 256, 500, ' AND branch = ?', ' | ', '+00:00', 'MemoryEngine', 'ModelGateway | None', 'Z', '[]', 'access_count', 'branch', 'confidence', 'consolidated', 'consolidation', 'content', 'content_hash', 'created_at', 'general', 'kind', 'last_accessed', 'record_id', 'role', 'search_document', 'semantic', 'source', 'summary', 'system', 'tags', 'task_id', 'tier', 'ts', 'user', 'warm']

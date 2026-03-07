@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/mobile_routes/sync.py
-# hypothesis_version: 6.151.9
-
-[128, 500, 10000, 2000000, '.planning', '/sync/pull', '/sync/push', '/sync/status', 'Heartbeat failed.', 'Invalid device_id.', 'Sync not available.', 'Sync pull failed.', 'Sync push failed.', 'X-Jarvis-Device-Id', '_sync_transport', 'applied', 'ascii', 'changes', 'config', 'conflicts_resolved', 'cursors', 'device_id', 'encrypted_payload', 'endpoints', 'error', 'errors', 'has_more', 'new_cursors', 'ok', 'server_time', 'sync', 'sync/pull failed: %s', 'sync/push failed: %s', 'sync_status', 'unknown']

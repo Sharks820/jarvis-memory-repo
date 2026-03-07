@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/proactive/kg_metrics.py
-# hypothesis_version: 6.151.9
-
-[0.0, 100, 'BEGIN DEFERRED', 'COMMIT', 'ROLLBACK', 'a', 'avg_confidence', 'branch_counts', 'confidence_change', 'cross_branch_edges', 'cross_branch_growth', 'declining', 'edge_count', 'edge_growth', 'expired', 'expired_facts', 'first_snapshot', 'growing', 'high', 'insufficient_data', 'last_snapshot', 'locked_facts', 'low', 'medium', 'node_count', 'node_growth', 'permanent', 'snapshots_analyzed', 'stable', 'temporal_breakdown', 'time_sensitive', 'trend', 'ts', 'unknown', 'utf-8']

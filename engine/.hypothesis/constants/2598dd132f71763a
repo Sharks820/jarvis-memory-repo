@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/voice_auth.py
-# hypothesis_version: 6.151.9
-
-[0.0, 1e-08, 0.01, 0.025, 0.82, 128.0, 32768.0, 2147483648.0, 800, 1024, 16000, '-', '-{2,}', '.planning', 'Invalid user_id.', 'Voice match failed.', '[^a-z0-9._-]+', 'created_utc', 'embedding', 'rb', 'samples', 'security', 'user_id', 'utf-8', 'voiceprints']

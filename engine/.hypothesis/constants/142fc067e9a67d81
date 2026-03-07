@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/memory_provenance.py
-# hypothesis_version: 6.151.9
-
-[10000, 50000, 'OWNER_INPUT', 'QUARANTINED', 'UNVERIFIED_EXTERNAL', 'VERIFIED_EXTERNAL', 'ingestion_timestamp', 'pending', 'quarantine_reason', 'record_hash', 'source', 'trust_level', 'verification_status', 'verified']

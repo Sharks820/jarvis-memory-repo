@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/network_defense.py
-# hypothesis_version: 6.151.9
-
-[0.0, 3.5, 1337, 4444, 5555, 6666, 6667, 8443, 9001, 9050, 9051, 12345, 31337, 54321, '"([^"]+)"', '-', '-a', '-ano', '-tupn', '.', '/displaydns', '00:00:00:00:00:00', ':', 'ARP scan failed: %s', 'Internet Address', 'Netid', 'Physical Address', 'TCP', 'UDP', '\\bdev\\s+(\\S+)', 'arp', 'arp_poisoning', 'connections', 'device_type', 'dga_candidates', 'dns', 'domain', 'entropy', 'entropy_alerts', 'ff:ff:ff:ff:ff:ff', 'interface', 'interface:', 'ip', 'ipconfig', 'ips', 'last_scan_time', 'local_addr', 'mac', 'macs', 'message', 'name', 'neigh', 'netstat', 'pid', 'pid=(\\d+)', 'process', 'reason', 'record name', 'registered_at', 'remote_addr', 'scan_time', 'ss', 'state', 'suspicious', 'suspicious_domains', 'tasklist', 'timestamp', 'total_entries', 'type', 'unknown', 'unknown_device', 'unknown_devices', 'utf-8', 'win32']

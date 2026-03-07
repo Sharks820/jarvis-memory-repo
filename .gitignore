@@ -34,3 +34,4 @@ ops_snapshot.live.json
 scorecard.png
 engine/__test_no_cache__/
 nul
+engine/.hypothesis/

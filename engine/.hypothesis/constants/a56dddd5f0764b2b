@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/feedback.py
-# hypothesis_version: 6.151.9
-
-[0.0, 200, 'awesome', 'exactly', 'good job', 'great', 'i said', 'incorrect', 'let me rephrase', 'negative', 'negative_count', 'neutral', 'nice', 'no, i meant', 'not quite', 'perfect', 'positive', 'positive_count', 'satisfaction_rate', 'thanks', 'that works', "that's not right", 'total', 'try again', 'well done', 'wrong']

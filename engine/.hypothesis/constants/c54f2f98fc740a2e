@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/identity_monitor.py
-# hypothesis_version: 6.151.9
-
-['CRITICAL', 'HIGH', 'LOW', 'MEDIUM', '\\basap\\b', '\\bbeg(ging)?\\s+you\\b', '\\bby\\s+order\\s+of\\b', '\\bdesperate(ly)?\\b', '\\bdo\\s+it\\s+now\\b', '\\bemergency\\b', '\\bimmediately\\b', '\\bplease\\s+help\\b', '\\bright\\s+now\\b', '\\burgent(ly)?\\b', '\\bwithout\\s+delay\\b', 'email', 'handles', 'identity_extraction', 'impersonation', 'matched', 'name', 'pattern', 'phone', 'urgency_manipulation']

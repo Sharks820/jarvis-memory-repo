@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/handlers/security_handlers.py
-# hypothesis_version: 6.151.9
-
-['^https?://', 'call_log_path', 'daemon_paused', 'error', 'option_tap_url', 'queue_path', 'report_path', 'safe_mode']

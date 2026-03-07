@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/proactive/cost_tracking.py
-# hypothesis_version: 6.151.9
-
-[-2.0, 0.0, 2.0, '%Y-%m-%d', '30d_cloud_cost_usd', '30d_failed_cost_usd', '30d_failed_count', '30d_local_pct', '30d_total_queries', '7d_cloud_cost_usd', '7d_failed_cost_usd', '7d_failed_count', '7d_local_pct', '7d_total_queries', 'a', 'change_pct', 'cloud_cost_usd', 'date', 'declining', 'failed_cost_usd', 'failed_count', 'first_date', 'first_local_pct', 'improving', 'last_date', 'last_local_pct', 'local_pct', 'stable', 'total_count', 'trend', 'utf-8']

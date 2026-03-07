@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/harvesting/harvester.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.92, 1.0, 2.0, 2048, 'BudgetManager | None', 'CostTracker | None', '_', '_embed_service', '_engine', 'budget_exceeded', 'cost_usd', 'error', 'harvested', 'ok', 'provider', 'records_created', 'results', 'search_document', 'semantic', 'skipped_dedup', 'status', 'topic', 'unavailable']

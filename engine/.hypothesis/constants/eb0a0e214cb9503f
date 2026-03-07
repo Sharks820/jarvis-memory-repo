@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/memory_snapshots.py
-# hypothesis_version: 6.151.9
-
-[384, 400, 1800, '%Y%m%d-%H%M%S', '*', '.json', '.planning', '.sig', '/', '\\', 'archived_files', 'brain', 'compact', 'created_utc', 'events.jsonl', 'file_count', 'hmac_alg', 'keep_recent', 'kg_metrics', 'kg_regression', 'maintenance', 'metadata', 'nightly', 'note', 'pass', 'path', 'regression', 'report_path', 'security', 'sha256', 'sha256_mismatch', 'signature', 'signature_file', 'signature_mismatch', 'snapshot', 'snapshot_file', 'snapshot_not_found', 'snapshot_signing.key', 'snapshots', 'status', 'ts', 'utf-8', 'verified', 'w', 'warn']
