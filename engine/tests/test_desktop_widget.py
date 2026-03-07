@@ -1211,8 +1211,14 @@ class TestChatDisplay:
     @pytest.fixture(autouse=True)
     def _tk_text(self):
         """Create a minimal tkinter root + Text widget for each test."""
+        import os
+        import sys
         import tkinter as _tk
 
+        # On headless Linux (no DISPLAY), Tk() may segfault rather than raising
+        # TclError.  Skip early to avoid a process-killing crash on CI.
+        if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+            pytest.skip("No DISPLAY available (headless CI)")
         try:
             self._root = _tk.Tk()
         except _tk.TclError:
@@ -1229,7 +1235,6 @@ class TestChatDisplay:
 
         try:
             self._root.quit()
-            self._root.update()
             self._root.destroy()
         except (RuntimeError, AttributeError, _tk_mod.TclError):
             pass

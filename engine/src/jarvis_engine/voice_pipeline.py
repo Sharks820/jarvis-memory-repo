@@ -2113,7 +2113,7 @@ def cmd_voice_run_impl(
                 ) -> None:
                     try:
                         _bus.dispatch(_cmd)
-                    except (OSError, RuntimeError, ValueError) as exc:
+                    except Exception as exc:
                         logger.warning("Background enriched learning failed: %s", exc)
 
                 threading.Thread(target=_bg_learn, daemon=True).start()

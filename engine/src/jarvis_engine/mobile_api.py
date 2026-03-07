@@ -1562,6 +1562,15 @@ class MobileIngestHandler(
         {"/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"}
     )
 
+    # Credential endpoints whose request bodies must NOT be scanned for injection:
+    # they contain passwords/tokens/encrypted-blobs that are legitimate high-entropy
+    # strings and would trigger false positives in the base64-block pattern matcher.
+    # These endpoints have their own security (IP check, HMAC auth, rate limiting,
+    # password verification) so body-injection scanning adds no protection here.
+    _BODY_SCAN_EXEMPT_PATHS = frozenset(
+        {"/bootstrap", "/auth/login", "/auth/logout", "/auth/lock", "/sync/push"}
+    )
+
     def _run_security_check(self, path: str, body: str = "") -> bool:
         """Run the security orchestrator pipeline and write error responses.
 
@@ -1571,11 +1580,14 @@ class MobileIngestHandler(
         _security = getattr(self.server, "security", None)
         if _security is not None:
             _client_ip = str(self.client_address[0])
+            # Credential endpoints contain passwords/tokens that look like base64
+            # — skip body injection scan for them (they have their own auth checks).
+            _scan_body = "" if path in self._BODY_SCAN_EXEMPT_PATHS else body
             _sec_check = _security.check_request(
                 path=path,
                 source_ip=_client_ip,
                 headers=dict(self.headers),
-                body=body,
+                body=_scan_body,
                 user_agent=self.headers.get("User-Agent", ""),
             )
             if not _sec_check["allowed"]:
