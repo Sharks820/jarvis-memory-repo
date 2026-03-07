@@ -183,7 +183,7 @@ class JarvisDesktopWidget(tk.Tk):
                     if info is not None:
                         kill_service(service, root)
                         logger.info("Killed %s (pid=%s) on widget shutdown.", service, info.get("pid"))
-                except Exception as exc:  # boundary: catch-all justified
+                except (OSError, ValueError) as exc:
                     logger.debug("Failed to kill %s on shutdown: %s", service, exc)
         except ImportError:
             # Fallback: kill by command line pattern
@@ -197,7 +197,7 @@ class JarvisDesktopWidget(tk.Tk):
                      "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
                     capture_output=True, timeout=10,
                 )
-            except Exception as exc:  # boundary: catch-all justified
+            except (OSError, subprocess.SubprocessError) as exc:
                 logger.debug("Fallback process kill failed: %s", exc)
 
     def _confirm_exit(self) -> None:
@@ -238,12 +238,12 @@ class JarvisDesktopWidget(tk.Tk):
         if self._orb_after_id is not None:
             try:
                 self.after_cancel(self._orb_after_id)
-            except Exception as exc:  # boundary: catch-all justified
+            except (tk.TclError, RuntimeError) as exc:
                 logger.debug("Failed to cancel orb animation callback: %s", exc)
         if self._launcher_after_id is not None:
             try:
                 self.after_cancel(self._launcher_after_id)
-            except Exception as exc:  # boundary: catch-all justified
+            except (tk.TclError, RuntimeError) as exc:
                 logger.debug("Failed to cancel launcher animation callback: %s", exc)
         # Wait briefly for background threads to finish
         for t in threading.enumerate():
@@ -301,7 +301,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._position_save_id is not None:
             try:
                 self.after_cancel(self._position_save_id)
-            except Exception:  # Widget may be destroyed
+            except (tk.TclError, RuntimeError):  # Widget may be destroyed
                 logger.debug("Failed to cancel position save timer (widget may be destroyed)")
         self._position_save_id = self.after(300, self._save_panel_position)
 
@@ -310,14 +310,14 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             x = self.winfo_x()
             y = self.winfo_y()
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Cannot read panel position (widget may be destroyed)")
             return
         x, y = _snap_to_edge(x, y, self.winfo_width(), self.winfo_height(), self)
         # Apply snapped position
         try:
             self.geometry(f"+{x}+{y}")
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Failed to apply snapped panel geometry (widget may be destroyed)")
         self.cfg.panel_x = x
         self.cfg.panel_y = y
@@ -333,13 +333,13 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             x = self.launcher_win.winfo_x()
             y = self.launcher_win.winfo_y()
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Cannot read launcher position (widget may be destroyed)")
             return
         x, y = _snap_to_edge(x, y, self._launcher_size, self._launcher_size, self)
         try:
             self.launcher_win.geometry(f"+{x}+{y}")
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Failed to apply snapped launcher geometry (widget may be destroyed)")
         self.cfg.launcher_x = x
         self.cfg.launcher_y = y
@@ -479,7 +479,7 @@ class JarvisDesktopWidget(tk.Tk):
         """Tray menu: Show Widget (also handles double-click)."""
         try:
             self.after(0, self._show_panel)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray show-widget failed (widget may be destroyed)")
 
     def _tray_voice_dictate(self, icon: Any = None, item: Any = None) -> None:
@@ -487,7 +487,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._show_panel)
             self.after(100, self._voice_dictate)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray voice-dictate failed (widget may be destroyed)")
 
     def _tray_ops_brief(self, icon: Any = None, item: Any = None) -> None:
@@ -495,14 +495,14 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             self.after(0, self._show_panel)
             self.after(100, lambda: self._send_text("ops brief"))
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray ops-brief failed (widget may be destroyed)")
 
     def _tray_quit(self, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Quit."""
         try:
             self.after(0, self._confirm_exit)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Tray quit failed (widget may be destroyed)")
 
     def _stop_tray_icon(self) -> None:
@@ -1250,7 +1250,7 @@ class JarvisDesktopWidget(tk.Tk):
             return
         try:
             self.after(0, self._log, message, role)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("_log_async failed (widget may be destroyed)")
 
     def _show_thinking(self) -> None:
@@ -1282,7 +1282,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._thinking_after_id is not None:
             try:
                 self.after_cancel(self._thinking_after_id)
-            except Exception:  # Widget may be destroyed
+            except (tk.TclError, RuntimeError):  # Widget may be destroyed
                 logger.debug("Failed to cancel thinking animation timer")
             self._thinking_after_id = None
         try:
@@ -1426,7 +1426,7 @@ class JarvisDesktopWidget(tk.Tk):
         try:
             if self.notify_var.get():
                 _show_toast(title, message, icon)
-        except Exception:  # Widget may be destroyed; toast is best-effort
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed; toast is best-effort
             logger.debug("Toast notification failed (widget may be destroyed)")
 
     def _set_command_text(self, value: str) -> None:
@@ -1649,7 +1649,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._processing_timeout_id is not None:
             try:
                 self.after_cancel(self._processing_timeout_id)
-            except Exception:  # Widget may be destroyed
+            except (tk.TclError, RuntimeError):  # Widget may be destroyed
                 logger.debug("Failed to cancel processing timeout timer")
             self._processing_timeout_id = None
 
@@ -1751,7 +1751,7 @@ class JarvisDesktopWidget(tk.Tk):
                 if not self._cancel_event.is_set():
                     try:
                         self.after(0, _cleanup)
-                    except Exception:  # Widget may be destroyed
+                    except (tk.TclError, RuntimeError):  # Widget may be destroyed
                         logger.debug("Failed to schedule post-command cleanup (widget may be destroyed)")
 
         self._thread(worker)
@@ -2041,13 +2041,13 @@ class JarvisDesktopWidget(tk.Tk):
             def _read() -> None:
                 try:
                     result[0] = bool(self.hotword_var.get())
-                except Exception:  # Widget may be destroyed
+                except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     result[0] = False
                 ready.set()
 
             try:
                 self.after(0, _read)
-            except Exception:  # Widget may be destroyed
+            except (tk.TclError, RuntimeError):  # Widget may be destroyed
                 logger.debug("Cannot schedule hotword state read (widget may be destroyed)")
                 return False
             ready.wait(timeout=2.0)
@@ -2061,7 +2061,7 @@ class JarvisDesktopWidget(tk.Tk):
                         self.after(0, self._show_panel)
                         self._log_async("Wake word detected.")
                         self.after(0, self._dictate_async)
-                    except Exception:  # Widget may be destroyed
+                    except (tk.TclError, RuntimeError):  # Widget may be destroyed
                         logger.debug("Cannot schedule wake word actions (widget may be destroyed)")
                         return
             except Exception as exc:  # boundary: catch-all justified
@@ -2087,7 +2087,7 @@ class JarvisDesktopWidget(tk.Tk):
 
             try:
                 self.after(0, _read_cfg)
-            except Exception:  # Widget may be destroyed
+            except (tk.TclError, RuntimeError):  # Widget may be destroyed
                 logger.debug("Cannot schedule config read for health loop (widget may be destroyed)")
                 return
             ready.wait(timeout=5.0)
@@ -2101,7 +2101,7 @@ class JarvisDesktopWidget(tk.Tk):
             if not _is_safe_widget_base_url(cfg.base_url):
                 try:
                     self.after(0, self._set_online, False)
-                except Exception:  # Widget may be destroyed
+                except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     logger.debug("Cannot schedule offline state (widget may be destroyed)")
                     return
                 for _ in range(16):
@@ -2173,7 +2173,7 @@ class JarvisDesktopWidget(tk.Tk):
             if not self.stop_event.is_set():
                 try:
                     self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
-                except Exception:  # Widget may be destroyed
+                except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     logger.debug("Cannot schedule online state update (widget may be destroyed)")
                     return
             for _ in range(16):
@@ -2324,7 +2324,7 @@ class JarvisDesktopWidget(tk.Tk):
             return
         try:
             self.after(0, self._set_state, state)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Failed to schedule state change to %r (widget may be destroyed)", state)
 
     def _set_error_briefly(self) -> None:
@@ -2334,7 +2334,7 @@ class JarvisDesktopWidget(tk.Tk):
         if self._error_clear_id is not None:
             try:
                 self.after_cancel(self._error_clear_id)
-            except Exception:  # Widget may be destroyed
+            except (tk.TclError, RuntimeError):  # Widget may be destroyed
                 logger.debug("Failed to cancel previous error-clear timer")
         self._error_clear_id = self.after(2000, self._set_state, "idle")
 
@@ -2344,7 +2344,7 @@ class JarvisDesktopWidget(tk.Tk):
             return
         try:
             self.after(0, self._set_error_briefly)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Failed to schedule error-briefly state (widget may be destroyed)")
 
     def _refresh_status_view(self) -> None:
@@ -2395,7 +2395,7 @@ class JarvisDesktopWidget(tk.Tk):
             if self._orb_sweep is not None:
                 self.orb_canvas.itemconfig(self._orb_sweep, start=sweep_angle, outline=color)
             self._orb_after_id = self.after(33, self._animate_orb)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Orb animation stopped (widget may be destroyed)")
             return
 
@@ -2510,7 +2510,7 @@ class JarvisDesktopWidget(tk.Tk):
             self._apply_launcher_colors(self._launcher_state_colors())
 
             self._launcher_after_id = self.after(33, self._animate_launcher)
-        except Exception:  # Widget may be destroyed
+        except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Launcher animation stopped (widget may be destroyed)")
             return
 

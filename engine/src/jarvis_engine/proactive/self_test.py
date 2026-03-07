@@ -11,12 +11,38 @@ import logging
 import os
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class TaskScore(TypedDict):
+    """Per-task score in a memory quiz result."""
+
+    task_id: str
+    score: float
+
+
+class QuizResult(TypedDict):
+    """Result from :meth:`AdversarialSelfTest.run_memory_quiz`."""
+
+    tasks_run: int
+    average_score: float
+    below_threshold: bool
+    per_task_scores: list[TaskScore]
+    timestamp: str
+
+
+class RegressionResult(TypedDict):
+    """Result from :meth:`AdversarialSelfTest.check_regression`."""
+
+    regression_detected: bool
+    current_score: float
+    baseline_score: float
+    drop_pct: float
 
 
 class AdversarialSelfTest:
@@ -34,7 +60,7 @@ class AdversarialSelfTest:
         self._notifier = notifier
         self._score_threshold = score_threshold
 
-    def run_memory_quiz(self, tasks: list | None = None) -> dict:
+    def run_memory_quiz(self, tasks: list | None = None) -> QuizResult:
         """Run memory-recall golden tasks and return aggregated scores.
 
         If tasks is None, uses DEFAULT_MEMORY_TASKS from growth_tracker.
@@ -92,7 +118,7 @@ class AdversarialSelfTest:
         finally:
             os.close(fd)
 
-    def check_regression(self, history_path: Path, window: int = 5) -> dict:
+    def check_regression(self, history_path: Path, window: int = 5) -> RegressionResult:
         """Check for score regression against recent history.
 
         Loads the last `window` quiz results. If the latest score is less than

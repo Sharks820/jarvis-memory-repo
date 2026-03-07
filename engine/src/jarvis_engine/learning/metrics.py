@@ -9,12 +9,25 @@ from __future__ import annotations
 import logging
 import sqlite3
 from jarvis_engine._shared import now_iso as _now_iso
-from typing import Any
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
 
-def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
+class KnowledgeMetrics(TypedDict):
+    """Snapshot of knowledge growth metrics."""
+
+    total_records: int
+    total_facts: int
+    total_edges: int
+    locked_facts: int
+    branches_populated: int
+    branch_distribution: dict[str, int]
+    temporal_distribution: dict[str, int]
+    captured_at: str
+
+
+def capture_knowledge_metrics(kg: Any, engine: Any) -> KnowledgeMetrics:
     """Capture a snapshot of knowledge growth metrics.
 
     Args:

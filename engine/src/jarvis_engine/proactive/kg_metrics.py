@@ -5,13 +5,59 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
 
 
-def collect_kg_metrics(kg) -> dict:
+class ConfidenceDistribution(TypedDict):
+    """Breakdown of KG node confidence levels."""
+
+    high: int
+    medium: int
+    low: int
+
+
+class TemporalBreakdown(TypedDict):
+    """Breakdown of KG node temporal types."""
+
+    permanent: int
+    time_sensitive: int
+    expired: int
+    unknown: int
+
+
+class KGMetrics(TypedDict, total=False):
+    """Quantitative metrics snapshot from the knowledge graph."""
+
+    ts: str
+    node_count: int
+    edge_count: int
+    branch_counts: dict[str, int]
+    cross_branch_edges: int
+    avg_confidence: float
+    confidence_distribution: ConfidenceDistribution
+    locked_facts: int
+    expired_facts: int
+    temporal_breakdown: TemporalBreakdown
+
+
+class KGGrowthTrend(TypedDict):
+    """Growth trend analysis across KG metric snapshots."""
+
+    trend: str
+    node_growth: int
+    edge_growth: int
+    cross_branch_growth: int
+    confidence_change: float
+    first_snapshot: str
+    last_snapshot: str
+    snapshots_analyzed: int
+
+
+def collect_kg_metrics(kg: Any) -> KGMetrics:
     """Collect quantitative metrics from the knowledge graph.
 
     Args:
@@ -133,7 +179,7 @@ def load_kg_history(history_path: Path, limit: int = 100) -> list[dict]:
     return load_jsonl_tail(history_path, limit=limit)
 
 
-def kg_growth_trend(history: list[dict]) -> dict:
+def kg_growth_trend(history: list[dict]) -> KGGrowthTrend:
     """Analyze KG growth trend from history snapshots.
 
     Returns dict with trend direction and deltas across the history window.

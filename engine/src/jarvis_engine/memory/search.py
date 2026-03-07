@@ -20,7 +20,7 @@ import math
 import sqlite3
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from jarvis_engine._constants import recency_weight as _recency_weight_core
 
@@ -28,6 +28,31 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+
+class MemoryRecord(TypedDict, total=False):
+    """Shape of a memory record dict returned from the records table."""
+
+    record_id: str
+    ts: str
+    source: str
+    kind: str
+    task_id: str
+    branch: str
+    tags: str
+    summary: str
+    content_hash: str
+    confidence: float
+    tier: str
+    access_count: int
+    last_accessed: str
+    created_at: str
+
+
+__all__ = [
+    "MemoryRecord",
+    "hybrid_search",
+]
 
 # ---------------------------------------------------------------------------
 #  Debounced access-count updater — avoids a DB write on every search call.
@@ -78,7 +103,7 @@ def hybrid_search(
     k: int = 10,
     rrf_k: int = 60,
     recency_weight: float = 0.3,
-) -> list[dict]:
+) -> list[MemoryRecord]:
     """Combine FTS5 keyword + sqlite-vec semantic search with recency decay.
 
     Args:

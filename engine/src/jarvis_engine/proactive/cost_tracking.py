@@ -12,12 +12,41 @@ import sqlite3
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
 
 
-def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
+class CostSnapshot(TypedDict):
+    """Snapshot of local-vs-cloud cost metrics for a single time point."""
+
+    date: str
+    # 7-day window
+    _7d_local_pct: float
+    _7d_cloud_cost_usd: float
+    _7d_failed_count: int
+    _7d_failed_cost_usd: float
+    _7d_total_queries: int
+    # 30-day window
+    _30d_local_pct: float
+    _30d_cloud_cost_usd: float
+    _30d_failed_count: int
+    _30d_failed_cost_usd: float
+    _30d_total_queries: int
+
+
+class CostTrend(TypedDict):
+    """Trend analysis across cost history snapshots."""
+
+    first_date: str
+    last_date: str
+    first_local_pct: float
+    last_local_pct: float
+    change_pct: float
+    trend: str
+
+
+def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict[str, Any]:
     """Compute 7d and 30d local-vs-cloud summaries and append to JSONL history.
 
     Returns a snapshot dict with date, local_pct, cloud_cost_usd, failed metrics,
@@ -71,7 +100,7 @@ def load_cost_history(history_path: Path, limit: int = 90) -> list[dict]:
     return load_jsonl_tail(history_path, limit=limit)
 
 
-def cost_reduction_trend(history: list[dict]) -> dict:
+def cost_reduction_trend(history: list[dict]) -> CostTrend:
     """Compute trend from cost history snapshots.
 
     Compares first and last entry's 30d_local_pct to determine if cost reduction

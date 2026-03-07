@@ -12,11 +12,25 @@ import os
 import threading
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
+
+
+class AuditSummary(TypedDict):
+    """Summary of gateway routing decisions over a time window."""
+
+    period_hours: int
+    total_decisions: int
+    provider_breakdown: dict[str, int]
+    total_cost_usd: float
+    avg_latency_ms: float
+    failure_count: int
+    failure_rate_pct: float
+    privacy_routed_count: int
 
 # Maximum audit log size before rotation (5 MB)
 _MAX_AUDIT_LOG_BYTES = 5 * 1024 * 1024
@@ -127,7 +141,7 @@ class GatewayAudit:
                 continue
         return result
 
-    def summary(self, hours: int = 24) -> dict:
+    def summary(self, hours: int = 24) -> AuditSummary:
         """Summarize routing decisions over the last *hours* hours."""
         hours = max(1, hours)
         # Scale read size with time window — ~20 calls/hr baseline, 2x headroom

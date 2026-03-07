@@ -17,24 +17,25 @@ Consolidates duplicated helpers to a single source of truth:
 from __future__ import annotations
 
 __all__ = [
-    "now_iso",
-    "make_thread_aware_repo_root",
+    "OllamaResponse",
     "atomic_write_json",
-    "load_json_file",
+    "call_ollama_generate",
+    "check_path_within_root",
     "env_int",
+    "FTS5_KEYWORDS",
+    "FTS5_SPECIAL_RE",
+    "load_json_file",
+    "load_jsonl_tail",
+    "load_personal_vocab_lines",
+    "make_thread_aware_repo_root",
+    "now_iso",
     "safe_float",
     "safe_int",
-    "check_path_within_root",
-    "win_hidden_subprocess_kwargs",
+    "sanitize_fts_query",
+    "set_process_title",
     "sha256_hex",
     "sha256_short",
-    "call_ollama_generate",
-    "set_process_title",
-    "load_personal_vocab_lines",
-    "FTS5_SPECIAL_RE",
-    "FTS5_KEYWORDS",
-    "load_jsonl_tail",
-    "sanitize_fts_query",
+    "win_hidden_subprocess_kwargs",
 ]
 
 import json
@@ -45,12 +46,27 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypedDict, TypeVar
 from urllib.request import urlopen
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+
+class OllamaResponse(TypedDict, total=False):
+    """Shape returned by Ollama's ``/api/generate`` endpoint."""
+
+    model: str
+    response: str
+    done: bool
+    context: list[int]
+    total_duration: int
+    load_duration: int
+    prompt_eval_count: int
+    prompt_eval_duration: int
+    eval_count: int
+    eval_duration: int
 
 
 def now_iso() -> str:
@@ -237,7 +253,7 @@ def call_ollama_generate(
     options: dict[str, Any],
     *,
     timeout_s: int = 120,
-) -> dict[str, Any]:
+) -> OllamaResponse:
     """Send a non-streaming generate request to Ollama's ``/api/generate``.
 
     Args:
