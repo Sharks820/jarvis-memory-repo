@@ -112,7 +112,7 @@ class AlertChain:
                     "source_ip": source_ip,
                     "deduped": False,
                 })
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
                 logger.warning("Failed to write forensic log for alert dispatch: %s", exc)
 
         # Invoke registered dispatch callbacks (defensive copy for thread safety)
@@ -121,7 +121,7 @@ class AlertChain:
         for cb in callbacks:
             try:
                 cb(level, summary, evidence)
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
                 logger.warning("Alert dispatch callback failed: %s", exc)
 
         logger.info(

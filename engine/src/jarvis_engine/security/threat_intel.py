@@ -215,8 +215,9 @@ class ThreatIntelFeed:
         Re-downloads only if the cached copy is older than the cache TTL.
         """
         now = time.time()
-        if self._feodo_ips and (now - self._feodo_last_update < self._cache_ttl):
-            return  # still fresh
+        with self._lock:
+            if self._feodo_ips and (now - self._feodo_last_update < self._cache_ttl):
+                return  # still fresh
 
         try:
             req = urllib.request.Request(_FEODO_BLOCKLIST_URL)

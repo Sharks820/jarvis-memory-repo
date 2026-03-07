@@ -71,7 +71,7 @@ class TestHelperFunctions:
         pytest.param("runtime status", True, False, False, id="execute_flag_forces_non_readonly"),
         pytest.param("jarvis", False, False, True, id="bare_wake_word"),
         pytest.param("hey jarvis", False, False, True, id="hey_wake_word"),
-        pytest.param("what is the meaning of life", False, False, True, id="conversational_fallthrough"),
+        pytest.param("what is the meaning of life", False, False, False, id="conversational_fallthrough"),
     ])
     def test_is_read_only_voice_request(self, text, execute, approve, expected):
         assert voice_pipeline_mod._is_read_only_voice_request(

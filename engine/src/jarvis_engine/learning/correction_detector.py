@@ -197,7 +197,7 @@ class CorrectionDetector:
                 new_keywords, min_confidence=0.0, limit=1,
             )
 
-        with self._kg._write_lock:
+        with self._kg.write_lock:
             try:
                 # Read current confidence and lock state
                 row = self._kg._db.execute(

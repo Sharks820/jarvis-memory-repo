@@ -19,7 +19,6 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-
 from jarvis_engine._compat import UTC
 from jarvis_engine.commands.defense_commands import (
     BlockIPCommand,
@@ -42,24 +41,52 @@ from jarvis_engine.commands.defense_commands import (
 
 logger = logging.getLogger(__name__)
 
+# Module-level singleton for shared SecurityOrchestrator and MemoryProvenance.
+# Keyed by (id(db), id(write_lock), log_dir) so a different db/lock combo gets
+# its own orchestrator (important for tests), but repeated calls with the same
+# arguments reuse the existing instance.
+_shared_orchestrator: "SecurityOrchestrator | None" = None
+_shared_orchestrator_key: tuple | None = None
+_shared_provenance: "MemoryProvenance | None" = None
+_shared_orchestrator_lock = threading.Lock()
+
 
 def _get_or_create_orchestrator(
     db: sqlite3.Connection,
     write_lock: threading.Lock,
     log_dir: Path,
 ) -> "SecurityOrchestrator | None":
-    """Create a ``SecurityOrchestrator`` with graceful degradation."""
-    try:
-        from jarvis_engine.security.orchestrator import SecurityOrchestrator
+    """Return the singleton ``SecurityOrchestrator``, creating it on first call.
 
-        return SecurityOrchestrator(
-            db=db,
-            write_lock=write_lock,
-            log_dir=log_dir,
-        )
-    except Exception as exc:
-        logger.warning("SecurityOrchestrator init failed: %s", exc)
-        return None
+    If called with different *db*/*write_lock*/*log_dir* arguments than the
+    cached instance, creates a new one (handles test isolation).
+    """
+    global _shared_orchestrator, _shared_orchestrator_key, _shared_provenance
+    key = (id(db), id(write_lock), str(log_dir))
+    if _shared_orchestrator is not None and _shared_orchestrator_key == key:
+        return _shared_orchestrator
+    with _shared_orchestrator_lock:
+        # Double-checked locking
+        if _shared_orchestrator is not None and _shared_orchestrator_key == key:
+            return _shared_orchestrator
+        try:
+            from jarvis_engine.security.orchestrator import SecurityOrchestrator
+
+            orch = SecurityOrchestrator(
+                db=db,
+                write_lock=write_lock,
+                log_dir=log_dir,
+            )
+            # Also create the shared MemoryProvenance
+            if _shared_provenance is None:
+                from jarvis_engine.security.memory_provenance import MemoryProvenance
+                _shared_provenance = MemoryProvenance()
+            _shared_orchestrator = orch
+            _shared_orchestrator_key = key
+            return orch
+        except (OSError, ValueError, RuntimeError, TypeError, ImportError) as exc:
+            logger.warning("SecurityOrchestrator init failed: %s", exc)
+            return None
 
 
 class _DefenseHandlerBase:
@@ -123,7 +150,7 @@ class SecurityStatusHandler(_DefenseHandlerBase):
                 dashboard=dashboard,
                 message="Security status retrieved successfully.",
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("SecurityStatusHandler failed: %s", exc)
             return SecurityStatusResult(
                 dashboard={"error": "internal_error"},
@@ -160,7 +187,7 @@ class ThreatReportHandler(_DefenseHandlerBase):
                 else f"Found {report.get('total_tracked', 0)} tracked IP(s)."
             )
             return ThreatReportResult(report=report, message=msg)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("ThreatReportHandler failed: %s", exc)
             return ThreatReportResult(
                 report={"error": "internal_error"},
@@ -195,7 +222,7 @@ class ExportForensicsHandler(_DefenseHandlerBase):
                 export_path=str(output_path),
                 message=f"Forensic logs exported to {output_path}.",
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("ExportForensicsHandler failed: %s", exc)
             return ExportForensicsResult(
                 export_path="",
@@ -250,7 +277,7 @@ class ContainmentOverrideHandler(_DefenseHandlerBase):
                     success=False,
                     message=f"Unknown action: {cmd.action!r}. Use 'recover' or 'contain'.",
                 )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("ContainmentOverrideHandler failed: %s", exc)
             return ContainmentOverrideResult(
                 success=False,
@@ -286,7 +313,7 @@ class BlockIPHandler(_DefenseHandlerBase):
                 success=True,
                 message=f"IP {cmd.ip} blocked for {duration_str}.",
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("BlockIPHandler failed: %s", exc)
             return BlockIPResult(
                 success=False,
@@ -320,7 +347,7 @@ class UnblockIPHandler(_DefenseHandlerBase):
                 success=True,
                 message=f"IP {cmd.ip} unblocked.",
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("UnblockIPHandler failed: %s", exc)
             return UnblockIPResult(
                 success=False,
@@ -336,34 +363,32 @@ class UnblockIPHandler(_DefenseHandlerBase):
 class ReviewQuarantineHandler(_DefenseHandlerBase):
     """Return quarantined memory records from MemoryProvenance.
 
-    Uses the shared ``MemoryProvenance`` instance from the bus/engine rather
+    Uses the module-level shared ``MemoryProvenance`` singleton rather
     than creating a fresh (empty) one each call.
     """
 
-    _shared_provenance: "MemoryProvenance | None" = None
-
     def handle(self, cmd: ReviewQuarantineCommand) -> ReviewQuarantineResult:
         try:
-            provenance = self._shared_provenance
+            global _shared_provenance
+            provenance = _shared_provenance
             if provenance is None:
                 # Fallback: try to get it from the orchestrator
                 orch = self._ensure_orchestrator()
                 if orch is not None and hasattr(orch, "memory_provenance"):
                     provenance = orch.memory_provenance
             if provenance is None:
-                # Last resort: create one, but warn that it will be empty
+                # Last resort: create one via the singleton path
                 from jarvis_engine.security.memory_provenance import MemoryProvenance
-                logger.warning(
-                    "ReviewQuarantineHandler: no shared MemoryProvenance available, "
-                    "creating empty instance (quarantine data will not be visible)"
-                )
-                provenance = MemoryProvenance()
+                with _shared_orchestrator_lock:
+                    if _shared_provenance is None:
+                        _shared_provenance = MemoryProvenance()
+                    provenance = _shared_provenance
             records = provenance.get_quarantined(limit=50)
             return ReviewQuarantineResult(
                 records=records,
                 message=f"{len(records)} quarantined record(s) found.",
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("ReviewQuarantineHandler failed: %s", exc)
             return ReviewQuarantineResult(
                 records=[],
@@ -397,7 +422,7 @@ class SecurityBriefingHandler(_DefenseHandlerBase):
                 briefing=briefing,
                 message="Security briefing generated.",
             )
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("SecurityBriefingHandler failed: %s", exc)
             return SecurityBriefingResult(
                 briefing="",

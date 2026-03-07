@@ -283,7 +283,7 @@ class HoneypotEngine:
                     "headers": headers or {},
                     "timestamp": record.timestamp,
                 })
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
                 logger.debug("Failed to forward hit to forensic logger: %s", exc)
 
         return {

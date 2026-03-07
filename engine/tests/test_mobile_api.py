@@ -1079,6 +1079,7 @@ def _make_handler_stub(server):
     stub._read_gaming_state = mobile_api.MobileIngestHandler._read_gaming_state.__get__(stub)
     stub._write_gaming_state = mobile_api.MobileIngestHandler._write_gaming_state.__get__(stub)
     stub._cleanup_nonces = mobile_api.MobileIngestHandler._cleanup_nonces.__get__(stub)
+    stub._cleanup_nonces_unlocked = mobile_api.MobileIngestHandler._cleanup_nonces_unlocked.__get__(stub)
     stub._run_main_cli = mobile_api.MobileIngestHandler._run_main_cli.__get__(stub)
     return stub
 
@@ -1636,12 +1637,12 @@ def test_processes_endpoint_rejects_invalid_bearer(mobile_server) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Security Fix 4: master password via env var (not CLI arg)
+# Security Fix 4: master password never leaked via CLI arg or env var
 # ---------------------------------------------------------------------------
 
 
-def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobile_server) -> None:
-    """The subprocess fallback path should NOT put master_password in cmd args."""
+def test_voice_command_subprocess_does_not_leak_master_password(mobile_server) -> None:
+    """The subprocess fallback must NOT expose master_password via CLI args or env vars."""
     from unittest.mock import patch, MagicMock
 
     captured_cmds: list[list[str]] = []
@@ -1677,9 +1678,9 @@ def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobil
         assert "--master-password" not in cmd
         assert "SuperSecret123!" not in cmd
         assert "--skip-voice-auth-guard" in cmd
-        # But the env var SHOULD be set
+        # master_password must NOT be in env vars (C2 fix — visible to all local processes)
         env = captured_envs[0]
-        assert env.get("JARVIS_MASTER_PASSWORD") == "SuperSecret123!"
+        assert "JARVIS_MASTER_PASSWORD" not in env
 
 
 def test_run_voice_command_in_process_sets_skip_voice_auth_guard(mobile_server, monkeypatch) -> None:

@@ -125,9 +125,8 @@ class CommandRoutesMixin:
         try:
             import jarvis_engine.voice_pipeline as _vp_mod
 
-            with _vp_mod._conversation_history_lock:
-                _vp_mod._conversation_history.clear()
-                _vp_mod._conversation_history_loaded = True
+            _vp_mod._state.clear_history()
+            _vp_mod._conversation_history_loaded = True
             try:
                 _vp_mod.save_conversation_history()
             except (OSError, ValueError, TypeError) as save_exc:

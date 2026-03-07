@@ -21,7 +21,10 @@ from typing import TYPE_CHECKING
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore[assignment]
 
 from jarvis_engine._compat import UTC
 
@@ -260,6 +263,10 @@ class MemoryConsolidator:
         if n == 0:
             return []
 
+        if np is None:
+            logger.warning("Consolidation clustering skipped: numpy is not installed")
+            return []
+
         # Build cosine similarity matrix using numpy
         mat = np.array(embeddings, dtype=np.float64)
         norms = np.linalg.norm(mat, axis=1, keepdims=True)
@@ -384,14 +391,12 @@ class MemoryConsolidator:
             group_records[0].get("branch", "general") if group_records else "general"
         )
 
-        # Use the highest confidence from input records, floored at 0.85
+        # Use the highest confidence from input records (no artificial floor)
         input_confidences = [
             r.get("confidence", 0.0) for r in group_records
             if isinstance(r.get("confidence"), (int, float))
         ]
-        confidence = max(input_confidences, default=0.85)
-        if confidence < 0.85:
-            confidence = 0.85
+        confidence = max(input_confidences, default=0.72)
 
         record = {
             "record_id": record_id,
@@ -427,35 +432,36 @@ class MemoryConsolidator:
         tag_value = f"consolidated_into:{new_record_id}"
 
         with self._engine.write_lock:
-            for rec in records:
-                rid = rec.get("record_id")
-                if not rid:
-                    continue
+            with self._engine.db_lock:
+                for rec in records:
+                    rid = rec.get("record_id")
+                    if not rid:
+                        continue
 
-                # Read current tags from DB (not the stale snapshot)
-                row = self._engine.db.execute(
-                    "SELECT tags FROM records WHERE record_id = ?",
-                    (rid,),
-                ).fetchone()
-                if row is None:
-                    continue
+                    # Read current tags from DB (not the stale snapshot)
+                    row = self._engine.db.execute(
+                        "SELECT tags FROM records WHERE record_id = ?",
+                        (rid,),
+                    ).fetchone()
+                    if row is None:
+                        continue
 
-                existing_tags_raw = row[0] if row else "[]"
-                try:
-                    parsed = (
-                        json.loads(existing_tags_raw)
-                        if isinstance(existing_tags_raw, str)
-                        else existing_tags_raw
+                    existing_tags_raw = row[0] if row else "[]"
+                    try:
+                        parsed = (
+                            json.loads(existing_tags_raw)
+                            if isinstance(existing_tags_raw, str)
+                            else existing_tags_raw
+                        )
+                        existing_tags = parsed if isinstance(parsed, list) else []
+                    except (json.JSONDecodeError, TypeError):
+                        existing_tags = []
+
+                    if tag_value not in existing_tags:
+                        existing_tags.append(tag_value)
+
+                    self._engine.db.execute(
+                        "UPDATE records SET tags = ? WHERE record_id = ?",
+                        (json.dumps(existing_tags), rid),
                     )
-                    existing_tags = parsed if isinstance(parsed, list) else []
-                except (json.JSONDecodeError, TypeError):
-                    existing_tags = []
-
-                if tag_value not in existing_tags:
-                    existing_tags.append(tag_value)
-
-                self._engine.db.execute(
-                    "UPDATE records SET tags = ? WHERE record_id = ?",
-                    (json.dumps(existing_tags), rid),
-                )
-            self._engine.db.commit()
+                self._engine.db.commit()

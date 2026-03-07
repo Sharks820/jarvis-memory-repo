@@ -187,7 +187,7 @@ class SecurityOrchestrator:
             return
         try:
             setattr(self, attr_name, cls(*args, **kwargs))
-        except (ImportError, AttributeError, TypeError) as exc:
+        except (ImportError, AttributeError, TypeError, OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
             setattr(self, attr_name, None)
             logger.warning("Failed to init %s: %s", cls.__name__, exc)
 

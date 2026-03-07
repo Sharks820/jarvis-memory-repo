@@ -216,7 +216,7 @@ class TestConsolidateCreatesNewRecord:
         record_dict = call_args[0][0] if call_args[0] else call_args[1].get("record")
         assert record_dict["kind"] == "semantic"
         assert record_dict["source"] == "consolidation"
-        assert record_dict["confidence"] == 0.85
+        assert record_dict["confidence"] == 0.72
         tags = json.loads(record_dict["tags"])
         assert "consolidated" in tags
 

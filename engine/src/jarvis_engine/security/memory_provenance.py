@@ -7,6 +7,7 @@ verification status.
 
 from __future__ import annotations
 
+import heapq
 import threading
 from typing import Any
 
@@ -97,7 +98,6 @@ class MemoryProvenance:
             # Evict oldest entries if capacity exceeded
             if len(self._records) > 50000:
                 # Use heapq.nsmallest for O(n) eviction instead of O(n log n) full sort
-                import heapq
                 oldest_keys = heapq.nsmallest(
                     10000,
                     self._records,

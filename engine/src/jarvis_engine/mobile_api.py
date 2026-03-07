@@ -6,7 +6,6 @@ import hmac
 import io
 import json
 import logging
-import math
 import os
 import re
 import socket
@@ -603,7 +602,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                         conflict_strategy = self._auto_sync_config.get(
                             "conflict_strategy", "most_recent",
                         )
-                    self._sync_engine = SyncEngine(
+                    engine = SyncEngine(
                         sync_db, sync_lock, device_id="desktop",
                         conflict_strategy=conflict_strategy,
                     )
@@ -611,13 +610,21 @@ class MobileIngestServer(ThreadingHTTPServer):
                     logger.debug("Sync engine init failed, closing DB: %s", exc)
                     sync_db.close()
                     raise
+                # Build transport BEFORE committing to self._sync_engine so
+                # a transport failure doesn't leave a half-initialized state.
+                transport = None
                 if self.signing_key:
                     salt_path = self.repo_root / ".planning" / "brain" / "sync_salt.bin"
-                    self._sync_transport = SyncTransport(self.signing_key, salt_path)
-                    logger.info("Sync engine lazy-initialized for mobile API")
+                    transport = SyncTransport(self.signing_key, salt_path)
+                # Both succeeded — commit.
+                self._sync_engine = engine
+                if transport is not None:
+                    self._sync_transport = transport
+                self._sync_init_attempted = True
+                logger.info("Sync engine lazy-initialized for mobile API")
             except Exception as exc:
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
-                self._sync_init_attempted = True  # Only prevent retry on failure
+                # Do NOT set _sync_init_attempted so future calls can retry.
             return self._sync_engine
 
     def ensure_memory_engine(self) -> MemoryEngine | None:
@@ -940,6 +947,7 @@ class MobileIngestHandler(
         except ImportError:
             _can_import_in_process = False
         if _can_import_in_process:
+            import sqlite3 as _voice_sqlite3
             try:
                 import jarvis_engine.main as main_mod
 
@@ -975,7 +983,7 @@ class MobileIngestHandler(
                     )
                 finally:
                     _thread_local.repo_root_override = None
-            except (RuntimeError, OSError, ValueError, TimeoutError) as exc:
+            except (RuntimeError, OSError, ValueError, TimeoutError, KeyError, TypeError, AttributeError, _voice_sqlite3.Error) as exc:
                 logger.error("Voice command execution failed: %s", exc)
                 _ThreadCapturingStdout.stop_capture()  # discard
                 return self._command_failure_result(
@@ -1061,8 +1069,10 @@ class MobileIngestHandler(
         engine_dir = root / "engine"
         env = os.environ.copy()
         env["PYTHONPATH"] = "src"
-        if master_password:
-            env["JARVIS_MASTER_PASSWORD"] = master_password
+        # NOTE: master_password is intentionally NOT passed via env var
+        # (visible to any local process via /proc/*/environ).  The in-process
+        # path above is the primary execution method; this subprocess fallback
+        # is deprecated and does not support master_password.
         try:
             result = subprocess.run(
                 cmd,
@@ -1232,20 +1242,26 @@ class MobileIngestHandler(
             return None, None
         return payload, body
 
+    def _cleanup_nonces_unlocked(self, now: float, *, force: bool = False) -> bool:
+        """Purge expired nonces.  Caller MUST hold ``nonce_lock``.
+
+        Returns *True* if nonces were actually cleaned (caller should persist).
+        """
+        interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
+        next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
+        if not force and now < next_cleanup:
+            return False
+        nonce_seen: dict[str, float] = self.server.nonce_seen
+        cutoff = now - REPLAY_WINDOW_SECONDS
+        valid_nonces = {k: v for k, v in nonce_seen.items() if v >= cutoff}
+        nonce_seen.clear()
+        nonce_seen.update(valid_nonces)
+        self.server.next_nonce_cleanup_ts = now + interval
+        return True
+
     def _cleanup_nonces(self, now: float, *, force: bool = False) -> None:
-        should_persist = False
         with self.server.nonce_lock:
-            interval = float(getattr(self.server, "nonce_cleanup_interval_s", 30.0))  # type: ignore[attr-defined]
-            next_cleanup = float(getattr(self.server, "next_nonce_cleanup_ts", 0.0))  # type: ignore[attr-defined]
-            if not force and now < next_cleanup:
-                return
-            nonce_seen: dict[str, float] = self.server.nonce_seen
-            cutoff = now - REPLAY_WINDOW_SECONDS
-            valid_nonces = {k: v for k, v in nonce_seen.items() if v >= cutoff}
-            nonce_seen.clear()
-            nonce_seen.update(valid_nonces)
-            self.server.next_nonce_cleanup_ts = now + interval
-            should_persist = True
+            should_persist = self._cleanup_nonces_unlocked(now, force=force)
         if should_persist:
             self.server._persist_nonces()
 
@@ -1267,12 +1283,14 @@ class MobileIngestHandler(
         if len(nonce) < 8 or len(nonce) > 128 or (not nonce.isascii()):
             self._unauthorized("Invalid nonce.")
             return False
-        try:
-            ts = float(ts_raw)
-        except ValueError:
-            self._unauthorized("Invalid timestamp.")
+        # Timestamps MUST be integers (no decimal point).  Float timestamps
+        # leak sub-second precision and violate the HMAC signing contract.
+        if "." in ts_raw:
+            self._unauthorized("Timestamp must be an integer (no decimal point).")
             return False
-        if not math.isfinite(ts):
+        try:
+            ts = int(ts_raw)
+        except (ValueError, OverflowError):
             self._unauthorized("Invalid timestamp.")
             return False
         now = time.time()
@@ -1295,23 +1313,23 @@ class MobileIngestHandler(
             self._unauthorized("Invalid request signature.")
             return False
 
+        # Check nonce for replay but do NOT record it yet.  The nonce is
+        # only committed after the owner_guard check succeeds so that a
+        # rejected request does not consume the nonce (Handoff-M1 fix).
         with self.server.nonce_lock:
             nonce_seen: dict[str, float] = self.server.nonce_seen
-            self._cleanup_nonces(now)
+            # Use _cleanup_nonces_unlocked to avoid nested lock acquisition (M2 fix).
+            self._cleanup_nonces_unlocked(now)
             if len(nonce_seen) >= MAX_NONCES:
-                # Last-resort cleanup pass if we are at capacity.
-                self._cleanup_nonces(now, force=True)
+                self._cleanup_nonces_unlocked(now, force=True)
             if len(nonce_seen) >= MAX_NONCES:
                 self._unauthorized("Replay cache saturated.")
                 return False
             if nonce in nonce_seen:
                 self._unauthorized("Replay detected.")
                 return False
-            # Temporarily record the nonce to block concurrent replays.
-            # If a downstream check (owner_guard) fails, we remove it so
-            # the client can retry with the same nonce or a fallback URL.
-            nonce_seen[nonce] = now
 
+        # --- owner_guard check (nonce not yet recorded) ---
         owner_guard = read_owner_guard(self._root)
         if bool(owner_guard.get("enabled", False)):
             trusted = {
@@ -1321,9 +1339,6 @@ class MobileIngestHandler(
             }
             device_id = self.headers.get("X-Jarvis-Device-Id", "").strip()
             if not device_id or len(device_id) > 128 or (not device_id.isascii()):
-                # Remove nonce so client can retry (e.g. fallback URL)
-                with self.server.nonce_lock:
-                    self.server.nonce_seen.pop(nonce, None)
                 self._unauthorized("Missing trusted mobile device id.")
                 return False
             if device_id not in trusted:
@@ -1332,8 +1347,6 @@ class MobileIngestHandler(
                     client_ip = str(self.client_address[0]).strip()
                     server = self.server
                     if server.check_master_pw_rate(client_ip):
-                        with self.server.nonce_lock:
-                            self.server.nonce_seen.pop(nonce, None)
                         self._write_json(
                             HTTPStatus.TOO_MANY_REQUESTS,
                             {"ok": False, "error": "Too many master password attempts. Try again later."},
@@ -1343,15 +1356,15 @@ class MobileIngestHandler(
                     if verify_master_password(self._root, master_password):
                         trust_mobile_device(self._root, device_id)
                     else:
-                        with self.server.nonce_lock:
-                            self.server.nonce_seen.pop(nonce, None)
                         self._unauthorized("Untrusted mobile device.")
                         return False
                 else:
-                    with self.server.nonce_lock:
-                        self.server.nonce_seen.pop(nonce, None)
                     self._unauthorized("Untrusted mobile device.")
                     return False
+
+        # All checks passed — now record the nonce to prevent replays.
+        with self.server.nonce_lock:
+            self.server.nonce_seen[nonce] = now
 
         return True
 
@@ -1575,8 +1588,13 @@ class MobileIngestHandler(
                 logger.debug("Failed to set connection timeout: %s", exc)
             try:
                 self._cached_post_body = self.rfile.read(cl)
-            except (OSError, ConnectionError):
-                self._cached_post_body = None
+            except (OSError, ConnectionError) as exc:
+                logger.warning("POST body read failed: %s", exc)
+                self._write_json(HTTPStatus.BAD_REQUEST, {
+                    "ok": False,
+                    "error": "Failed to read request body.",
+                })
+                return
         # Security orchestrator pipeline check (with actual body)
         _body_text = ""
         if self._cached_post_body:

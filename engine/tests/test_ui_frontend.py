@@ -73,8 +73,8 @@ class TestActivityEventDedup:
             {"event_id": "evt-new", "timestamp": "2026-03-02T10:00:00", "category": "llm_routing", "summary": "Test"},
         ]
         JarvisDesktopWidget._update_activity_events(stub, events)
-        # After cap, should have been trimmed to ~200 + 1 new
-        assert len(stub._seen_event_ids) <= 250
+        # After cap, should have been trimmed to ~400 + 1 new
+        assert len(stub._seen_event_ids) <= 450
 
     def test_error_category_uses_error_role(self):
         """Events with error/security category use error role."""

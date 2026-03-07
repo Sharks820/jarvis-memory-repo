@@ -268,8 +268,6 @@ class ThreatNeutralizer:
                     "Rate limited: already reported %s within the last hour", ip,
                 )
                 return False
-            # Reserve the slot (set now so concurrent calls also see it)
-            self._report_cooldowns[ip] = now
 
         # Build POST request
         try:
@@ -292,15 +290,15 @@ class ThreatNeutralizer:
             with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
                 resp.read()  # consume response
 
+            # Set cooldown AFTER successful report to avoid blocking retries on failure
+            with self._lock:
+                self._report_cooldowns[ip] = time.time()
+
             logger.info("AbuseIPDB report submitted for %s (categories: %s)", ip, categories_str)
             return True
 
         except (OSError, ConnectionError, TimeoutError) as exc:
             logger.warning("AbuseIPDB report failed for %s: %s", ip, exc)
-            # Revert cooldown on failure so retry is possible
-            with self._lock:
-                if self._report_cooldowns.get(ip) == now:
-                    del self._report_cooldowns[ip]
             return False
 
     # ------------------------------------------------------------------

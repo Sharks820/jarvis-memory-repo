@@ -5,6 +5,7 @@ and cross-branch edge creation.
 """
 from __future__ import annotations
 
+import sqlite3
 from unittest.mock import MagicMock
 
 
@@ -289,7 +290,7 @@ class TestCreateCrossBranchEdges:
     def test_handles_db_exception_gracefully(self):
         kg = MagicMock()
         kg.get_node.return_value = {"label": "family doctor appointment"}
-        kg.db.execute.side_effect = Exception("DB error")
+        kg.db.execute.side_effect = sqlite3.OperationalError("DB error")
 
         # Should not raise, just return 0
         result = create_cross_branch_edges(kg, "family.test", "rec_1")

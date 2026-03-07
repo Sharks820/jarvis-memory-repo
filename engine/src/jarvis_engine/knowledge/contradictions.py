@@ -27,24 +27,23 @@ class ContradictionManager(KGManagerBase):
     def _update_fts_index(self, node_id: str, label: str) -> None:
         """Update fts_kg_nodes for a node. Silently no-ops if table missing.
 
-        Acquires ``_db_lock`` to prevent cursor interleaving on the shared
-        SQLite connection.  Safe to call whether or not the caller already
-        holds ``_write_lock`` (the two locks are independent).
+        Contract: caller MUST hold ``_write_lock``.  This method does NOT
+        acquire any lock itself to avoid deadlock from nested lock ordering
+        (``_write_lock`` -> ``_db_lock``).
         """
-        with self._db_lock:
-            try:
-                self._db.execute(
-                    "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-                )
-                self._db.execute(
-                    "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                    (node_id, label),
-                )
-            except sqlite3.OperationalError as exc:
-                if "no such table" in str(exc):
-                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
-                else:
-                    raise
+        try:
+            self._db.execute(
+                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
+            )
+            self._db.execute(
+                "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
+                (node_id, label),
+            )
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+            else:
+                raise
 
     def _precompute_vec_embedding(self, label: str) -> bytes | None:
         """Pre-compute a vec embedding blob for *label* WITHOUT holding any lock.
@@ -72,20 +71,21 @@ class ContradictionManager(KGManagerBase):
     def _write_vec_embedding(self, node_id: str, blob: bytes | None) -> None:
         """Write a pre-computed vec embedding blob to the DB.
 
-        Acquires ``_db_lock`` for the DB write.  *blob* should come from
-        :meth:`_precompute_vec_embedding`.  No-ops when *blob* is ``None``.
+        Contract: caller MUST hold ``_write_lock``.  This method does NOT
+        acquire any lock itself to avoid deadlock from nested lock ordering.
+        *blob* should come from :meth:`_precompute_vec_embedding`.
+        No-ops when *blob* is ``None``.
         """
         if blob is None:
             return
         try:
-            with self._db_lock:
-                self._db.execute(
-                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
-                )
-                self._db.execute(
-                    "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
-                    (node_id, blob),
-                )
+            self._db.execute(
+                "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
+            )
+            self._db.execute(
+                "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
+                (node_id, blob),
+            )
         except Exception as exc:
             logger.debug("Vec embedding write for node %s failed: %s", node_id, exc)
 

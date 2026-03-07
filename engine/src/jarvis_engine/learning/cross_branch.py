@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -164,7 +165,7 @@ def create_cross_branch_edges(
                     (f"%{safe_keyword}%", f"{safe_branch}.%" if source_branch else new_fact_id),
                 )
                 matches = cursor.fetchall()
-        except Exception as exc:
+        except (sqlite3.Error, OSError, ValueError) as exc:
             logger.warning("Cross-branch keyword search failed for %r: %s", keyword, exc)
             continue
 

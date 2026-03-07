@@ -96,6 +96,8 @@ class ConversationState:
         ``<repo>/.planning/brain/conversation_history.json`` is used.
     """
 
+    _SAVE_DEBOUNCE_SECONDS = 5.0
+
     def __init__(self, history_file: "Path | None" = None) -> None:
         self._conversation_history: list[dict[str, str]] = []
         self._conversation_history_lock = threading.RLock()
@@ -103,14 +105,19 @@ class ConversationState:
         self._conversation_history_loaded = False
         self._last_routed_model: str | None = None
         self._last_routed_model_lock = threading.Lock()
+        self._last_save_time: float = 0.0
+        self._dirty: bool = False
 
     # -- history file path ---------------------------------------------------
 
     def _conversation_history_path(self) -> Path:
-        """Return the path for persisted conversation history."""
+        """Return the path for persisted conversation history.
+
+        This is a pure getter — no directory creation side effects.
+        Directories are created only in ``save_conversation_history()``.
+        """
         if self._history_file is None:
             self._history_file = repo_root() / ".planning" / "brain" / "conversation_history.json"
-            self._history_file.parent.mkdir(parents=True, exist_ok=True)
         return self._history_file
 
     # -- load / save ---------------------------------------------------------
@@ -134,20 +141,35 @@ class ConversationState:
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 logger.debug("Could not load conversation history: %s", exc)
 
-    def save_conversation_history(self) -> None:
+    def save_conversation_history(self, *, force: bool = False) -> None:
         """Persist current conversation history to disk (atomic write).
 
-        The entire temp-write + replace is performed while holding the lock
-        so concurrent callers cannot clobber the shared temp file.
+        When *force* is False (default), the write is debounced: it only
+        happens if at least ``_SAVE_DEBOUNCE_SECONDS`` have elapsed since
+        the last successful write **and** the history is dirty.  Pass
+        ``force=True`` to bypass the debounce (used by the atexit handler
+        and explicit ``save_conversation_history()`` module-level calls).
         """
+        import time as _time
+
+        now = _time.monotonic()
+        if not force:
+            if not self._dirty:
+                return
+            if (now - self._last_save_time) < self._SAVE_DEBOUNCE_SECONDS:
+                return
+
         try:
             import json as _json
             path = self._conversation_history_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
             with self._conversation_history_lock:
                 snapshot = list(self._conversation_history)
                 tmp = path.with_suffix(f".tmp.{os.getpid()}")
                 tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
                 os.replace(str(tmp), str(path))
+            self._last_save_time = now
+            self._dirty = False
         except OSError as exc:
             logger.debug("Could not save conversation history: %s", exc)
 
@@ -162,7 +184,8 @@ class ConversationState:
             # Keep only the last N user/assistant pairs
             while len(self._conversation_history) > _CONVERSATION_MAX_TURNS * 2:
                 self._conversation_history.pop(0)
-        self.save_conversation_history()
+            self._dirty = True
+        self.save_conversation_history()  # respects debounce unless forced
 
     def get_history_messages(self) -> list[dict[str, str]]:
         """Return conversation history as message list for LLM context."""
@@ -171,6 +194,11 @@ class ConversationState:
                 self.load_conversation_history()
                 self._conversation_history_loaded = True
             return list(self._conversation_history)
+
+    def clear_history(self) -> None:
+        """Clear conversation history (thread-safe)."""
+        with self._conversation_history_lock:
+            self._conversation_history.clear()
 
     # -- routed model tracking -----------------------------------------------
 
@@ -220,6 +248,20 @@ class ConversationState:
 # Module-level singleton
 _state = ConversationState()
 
+# Flush dirty conversation history on interpreter shutdown
+import atexit as _atexit
+
+
+def _flush_history_atexit() -> None:
+    """Flush any unsaved conversation history on process exit."""
+    try:
+        _state.save_conversation_history(force=True)
+    except Exception:  # noqa: BLE001 — best-effort at shutdown
+        pass
+
+
+_atexit.register(_flush_history_atexit)
+
 # ---------------------------------------------------------------------------
 # Backward-compatible module-level aliases for external consumers
 # (mobile_api.py, tests, etc.)
@@ -230,9 +272,41 @@ _state = ConversationState()
 # AND writes (e.g. monkeypatch.setattr in tests, or direct assignment in
 # mobile_api.py) are forwarded to the _state singleton.
 # ---------------------------------------------------------------------------
-_conversation_history = _state._conversation_history
 _conversation_history_lock = _state._conversation_history_lock
 _last_routed_model_lock = _state._last_routed_model_lock
+
+
+class _ConversationHistoryProxy:
+    """Proxy that routes attribute access through the _state lock.
+
+    External code previously held a direct reference to the internal list,
+    which allowed lock-free mutation.  This proxy forces all operations
+    through thread-safe ConversationState methods while keeping the same
+    API surface (``len()``, ``clear()``, iteration, subscript).
+    """
+
+    def clear(self) -> None:  # noqa: D401
+        _state.clear_history()
+
+    def append(self, item: dict) -> None:
+        raise RuntimeError("Use _add_to_history() instead of direct append")
+
+    def __len__(self) -> int:
+        with _state._conversation_history_lock:
+            return len(_state._conversation_history)
+
+    def __iter__(self):
+        return iter(_state.get_history_messages())
+
+    def __getitem__(self, idx):
+        return _state.get_history_messages()[idx]
+
+    def __bool__(self) -> bool:
+        with _state._conversation_history_lock:
+            return bool(_state._conversation_history)
+
+
+_conversation_history = _ConversationHistoryProxy()
 
 import sys as _sys
 import types as _types
@@ -267,8 +341,12 @@ def _conversation_history_path() -> Path:
 
 
 def save_conversation_history() -> None:
-    """Persist current conversation history to disk (atomic write)."""
-    _state.save_conversation_history()
+    """Persist current conversation history to disk (atomic write).
+
+    This is an explicit save request, so it always forces a write
+    regardless of debounce timing.
+    """
+    _state.save_conversation_history(force=True)
 
 
 def _add_to_history(role: str, content: str) -> None:
@@ -809,11 +887,9 @@ def _is_read_only_voice_request(lowered: str, *, execute: bool, approve_privileg
     stripped = lowered.strip()
     if stripped in ("jarvis", "hey jarvis", "hi jarvis", "hello jarvis", "ok jarvis", "a jarvis", "ay jarvis", "jarvis activate"):
         return True
-    # Commands that don't match any mutation marker are conversational queries
-    # routed to the LLM. These are read-only (no state changes) and should
-    # not be blocked by owner guard. Only explicit mutation commands above
-    # require authentication.
-    return True
+    # Default-deny: unrecognised commands may be mutations not listed above.
+    # Owner guard must authenticate them to prevent privilege bypass.
+    return False
 
 
 # ---------------------------------------------------------------------------

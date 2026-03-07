@@ -410,17 +410,18 @@ class MemoryEngine:
         self._check_open()
         now = _now_iso()
         with self._write_lock:
-            cur = self._db.execute(
-                """
-                UPDATE records
-                SET access_count = access_count + 1,
-                    last_accessed = ?
-                WHERE record_id = ?
-                """,
-                (now, record_id),
-            )
-            self._db.commit()
-            return cur.rowcount > 0
+            with self._db_lock:
+                cur = self._db.execute(
+                    """
+                    UPDATE records
+                    SET access_count = access_count + 1,
+                        last_accessed = ?
+                    WHERE record_id = ?
+                    """,
+                    (now, record_id),
+                )
+                self._db.commit()
+                return cur.rowcount > 0
 
     def update_access_batch(self, record_ids: list[str]) -> None:
         """Batch-increment access_count for multiple records in one transaction."""
@@ -429,26 +430,28 @@ class MemoryEngine:
             return
         now = _now_iso()
         with self._write_lock:
-            self._db.executemany(
-                """
-                UPDATE records
-                SET access_count = access_count + 1,
-                    last_accessed = ?
-                WHERE record_id = ?
-                """,
-                [(now, rid) for rid in record_ids],
-            )
-            self._db.commit()
+            with self._db_lock:
+                self._db.executemany(
+                    """
+                    UPDATE records
+                    SET access_count = access_count + 1,
+                        last_accessed = ?
+                    WHERE record_id = ?
+                    """,
+                    [(now, rid) for rid in record_ids],
+                )
+                self._db.commit()
 
     def update_tier(self, record_id: str, tier: str) -> None:
         """Update the tier column for a record."""
         self._check_open()
         with self._write_lock:
-            self._db.execute(
-                "UPDATE records SET tier = ? WHERE record_id = ?",
-                (tier, record_id),
-            )
-            self._db.commit()
+            with self._db_lock:
+                self._db.execute(
+                    "UPDATE records SET tier = ? WHERE record_id = ?",
+                    (tier, record_id),
+                )
+                self._db.commit()
 
     def update_tiers_batch(self, updates: list[tuple[str, str]]) -> None:
         """Batch-update tiers: [(record_id, new_tier), ...] in one transaction.
@@ -460,11 +463,12 @@ class MemoryEngine:
         if not updates:
             return
         with self._write_lock:
-            self._db.executemany(
-                "UPDATE records SET tier = ? WHERE record_id = ?",
-                [(new_tier, record_id) for record_id, new_tier in updates],
-            )
-            self._db.commit()
+            with self._db_lock:
+                self._db.executemany(
+                    "UPDATE records SET tier = ? WHERE record_id = ?",
+                    [(new_tier, record_id) for record_id, new_tier in updates],
+                )
+                self._db.commit()
 
     def get_records_batch(self, record_ids: list[str]) -> list[dict]:
         """Fetch multiple records by ID, batching to stay under SQLite's variable limit."""
@@ -510,11 +514,12 @@ class MemoryEngine:
         """Run a passive WAL checkpoint to prevent unbounded WAL growth.
 
         Safe to call periodically from the daemon loop.  PASSIVE mode
-        does not block concurrent readers.
+        does not block concurrent readers or writers, so no write lock
+        is needed.
         """
         self._check_open()
         try:
-            with self._write_lock:
+            with self._db_lock:
                 self._db.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 logger.debug("WAL checkpoint completed")
         except sqlite3.Error as exc:

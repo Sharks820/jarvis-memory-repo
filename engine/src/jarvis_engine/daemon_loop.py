@@ -60,6 +60,7 @@ def _get_daemon_bus() -> CommandBus:
 # Daemon cycle state for KG regression tracking
 # ---------------------------------------------------------------------------
 _daemon_kg_prev_metrics: dict | None = None
+_daemon_kg_prev_metrics_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -455,11 +456,24 @@ def load_gaming_processes() -> list[str]:
     return processes or list(DEFAULT_GAMING_PROCESSES)
 
 
+_game_detect_cache: tuple[float, bool, str] = (0.0, False, "")
+_GAME_DETECT_CACHE_TTL = 30.0  # seconds
+
+
 def detect_active_game_process() -> tuple[bool, str]:
+    global _game_detect_cache
+
+    # Return cached result if still fresh
+    cached_time, cached_found, cached_name = _game_detect_cache
+    if (time.monotonic() - cached_time) < _GAME_DETECT_CACHE_TTL:
+        return cached_found, cached_name
+
     if os.name != "nt":
+        _game_detect_cache = (time.monotonic(), False, "")
         return False, ""
     patterns = [name.lower() for name in load_gaming_processes()]
     if not patterns:
+        _game_detect_cache = (time.monotonic(), False, "")
         return False, ""
     try:
         result = subprocess.run(
@@ -471,8 +485,10 @@ def detect_active_game_process() -> tuple[bool, str]:
             timeout=6,
         )
     except (OSError, subprocess.TimeoutExpired):
+        _game_detect_cache = (time.monotonic(), False, "")
         return False, ""
     if result.returncode != 0:
+        _game_detect_cache = (time.monotonic(), False, "")
         return False, ""
 
     running: list[str] = []
@@ -492,7 +508,9 @@ def detect_active_game_process() -> tuple[bool, str]:
     for proc_name in running:
         for pattern in patterns:
             if proc_name == pattern or pattern in proc_name:
+                _game_detect_cache = (time.monotonic(), True, proc_name)
                 return True, proc_name
+    _game_detect_cache = (time.monotonic(), False, "")
     return False, ""
 
 
@@ -919,9 +937,11 @@ def cmd_daemon_run_impl(
                         current_metrics = rc_checker.capture_metrics()
                         # Compare against previous snapshot stored in module state
                         global _daemon_kg_prev_metrics
-                        prev_metrics = _daemon_kg_prev_metrics
+                        with _daemon_kg_prev_metrics_lock:
+                            prev_metrics = _daemon_kg_prev_metrics
                         comparison = rc_checker.compare(prev_metrics, current_metrics)
-                        _daemon_kg_prev_metrics = current_metrics
+                        with _daemon_kg_prev_metrics_lock:
+                            _daemon_kg_prev_metrics = current_metrics
                         print(f"kg_regression_status={comparison.get('status', 'unknown')}")
                         if comparison.get("status") in ("fail", "warn"):
                             discrepancies = comparison.get("discrepancies", [])
