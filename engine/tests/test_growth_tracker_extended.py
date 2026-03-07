@@ -446,8 +446,8 @@ class TestChainIntegrity:
 
     def test_validate_empty_chain(self) -> None:
         """Empty list should pass validation without error."""
-        validate_history_chain([])
-        assert True  # validation completed without raising
+        result = validate_history_chain([])
+        assert result is None  # validation completed without raising
 
     def test_validate_legacy_rows_without_hash(self) -> None:
         """Rows without run_sha256 (legacy) are tolerated."""

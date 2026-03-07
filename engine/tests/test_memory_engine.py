@@ -453,7 +453,8 @@ class TestMemoryEngineUpdate:
     def test_update_access_batch_empty(self, engine: MemoryEngine) -> None:
         """Batch access update with empty list is a no-op."""
         engine.update_access_batch([])  # should not raise
-        assert True  # completed without error
+        # Verify the engine is still functional after empty batch
+        assert engine.count_records() >= 0
 
     def test_update_tier(self, engine: MemoryEngine) -> None:
         """update_tier changes the tier of a record."""
@@ -476,7 +477,8 @@ class TestMemoryEngineUpdate:
     def test_update_tiers_batch_empty(self, engine: MemoryEngine) -> None:
         """Batch tier update with empty list is a no-op."""
         engine.update_tiers_batch([])  # should not raise
-        assert True  # completed without error
+        # Verify the engine is still functional after empty batch
+        assert engine.count_records() >= 0
 
 
 class TestMemoryEngineFTS:

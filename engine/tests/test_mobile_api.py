@@ -1737,22 +1737,20 @@ def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch)
 
 
 def test_best_effort_learning_skips_success_with_response(mobile_server, monkeypatch) -> None:
+    from unittest.mock import MagicMock
     import jarvis_engine._bus as bus_mod
 
-    class _FakeBus:
-        def dispatch(self, cmd):  # noqa: ANN001, ANN202
-            raise AssertionError("dispatch should not be called for successful response")
-
-    monkeypatch.setattr(bus_mod, "get_bus", lambda: _FakeBus())
+    mock_bus = MagicMock()
+    monkeypatch.setattr(bus_mod, "get_bus", lambda: mock_bus)
 
     handler = MobileIngestHandler.__new__(MobileIngestHandler)
     handler.server = mobile_server.server
-    # Should complete without calling dispatch (which would raise AssertionError)
+    # Should complete without calling dispatch for successful responses
     handler._best_effort_learn_command_result(
         payload={"text": "runtime status"},
         result={"ok": True, "response": "All systems normal.", "intent": "runtime_status"},
     )
-    assert True  # dispatch was not called (no AssertionError raised)
+    mock_bus.dispatch.assert_not_called()  # dispatch should be skipped
 
 
 # ---------------------------------------------------------------------------

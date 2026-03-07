@@ -250,9 +250,9 @@ class TestClose:
         tracker = _make_tracker(tmp_path)
         tracker.close()
         tracker.close()  # should not raise
-        assert tracker._db is None or True  # verify no crash on double close
+        assert tracker._closed is True  # closed flag set after close
 
     def test_del_no_error(self, tmp_path: Path) -> None:
         tracker = _make_tracker(tmp_path)
         tracker.__del__()  # explicit call — should not raise
-        assert True  # reached without exception
+        assert tracker._closed is True  # closed flag set after __del__

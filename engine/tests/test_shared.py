@@ -120,12 +120,12 @@ class TestCheckPathWithinRoot:
     def test_valid_path_within_root(self, tmp_path: Path):
         child = tmp_path / "subdir" / "file.json"
         # Should not raise for valid path within root
-        check_path_within_root(child, tmp_path, "test")
-        assert True  # path accepted without error
+        result = check_path_within_root(child, tmp_path, "test")
+        assert result is None  # path accepted without error
 
     def test_root_itself_is_accepted(self, tmp_path: Path):
-        check_path_within_root(tmp_path, tmp_path, "test")
-        assert True  # root path accepted without error
+        result = check_path_within_root(tmp_path, tmp_path, "test")
+        assert result is None  # root path accepted without error
 
     def test_traversal_with_dotdot(self, tmp_path: Path):
         evil = tmp_path / "subdir" / ".." / ".." / "etc" / "passwd"
@@ -158,8 +158,8 @@ class TestCheckPathWithinRoot:
 
     def test_deeply_nested_valid(self, tmp_path: Path):
         deep = tmp_path / "a" / "b" / "c" / "d" / "e.txt"
-        check_path_within_root(deep, tmp_path, "deep")
-        assert True  # deeply nested path accepted without error
+        result = check_path_within_root(deep, tmp_path, "deep")
+        assert result is None  # deeply nested path accepted without error
 
     def test_sibling_directory_rejected(self, tmp_path: Path):
         sibling = tmp_path.parent / "sibling_dir" / "file.txt"

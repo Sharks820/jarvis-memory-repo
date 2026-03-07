@@ -347,12 +347,12 @@ class TestCloseCleanup:
         bm.close()
         # Double close should not raise
         bm.close()
-        assert True  # reached without exception
+        assert bm._closed is True  # closed flag set after close
 
     def test_del_calls_close(self, tmp_path: Path) -> None:
         bm = BudgetManager(tmp_path / "del_test.db")
         bm.__del__()
-        assert True  # destructor completed without error
+        assert bm._closed is True  # closed flag set after __del__
 
 
 class TestThreadSafety:
