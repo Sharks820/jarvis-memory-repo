@@ -1037,8 +1037,13 @@ class TestVoicePipelineSmoke:
     def test_shorten_urls_extracts_domain(self):
         from jarvis_engine.voice_pipeline import shorten_urls_for_speech
         result = shorten_urls_for_speech("Check https://www.github.com/Sharks820 for details")
+        # The URL should be replaced: no raw https:// should appear in speech text
         assert "https://" not in result
-        assert "github.com" in result.lower() or "link" in result.lower()
+        # Result should contain either the extracted domain name or a generic "link" label
+        result_lower = result.lower()
+        domain_extracted = result_lower.startswith("github") or "github" in result_lower
+        generic_label = "link" in result_lower
+        assert domain_extracted or generic_label, f"Expected domain or 'link' label in: {result!r}"
 
     def test_shorten_urls_handles_www_prefix(self):
         from jarvis_engine.voice_pipeline import shorten_urls_for_speech

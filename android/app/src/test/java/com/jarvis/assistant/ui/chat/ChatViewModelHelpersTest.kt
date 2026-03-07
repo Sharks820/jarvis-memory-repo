@@ -99,8 +99,8 @@ class ChatViewModelHelpersTest {
     }
 
     @Test
-    fun restoreFailedInput_noOp_whenCurrentInputIsWhitespaceOnly() {
-        // Whitespace is considered "blank", so the failed draft should be restored.
+    fun restoreFailedInput_restoresOriginal_whenCurrentInputIsWhitespaceOnly() {
+        // isBlank() == true for whitespace, so the failed draft should be restored.
         val inputText = MutableStateFlow("   ")
 
         restoreFailedInput(inputText, "original draft")
