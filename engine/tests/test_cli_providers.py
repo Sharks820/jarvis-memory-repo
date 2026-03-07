@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from unittest.mock import MagicMock, patch
 
 
+from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.gateway.cli_providers import (
     CLIProviderInfo,
     _build_claude_cli_prompt,
@@ -112,7 +114,7 @@ class TestDetectProviders:
 class TestCallClaudeCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_success_json_output(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout=json.dumps({"result": "Hello from Claude!", "cost_usd": 0.01}),
             stderr="",
@@ -129,7 +131,7 @@ class TestCallClaudeCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_non_json_output(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout="Plain text response",
             stderr="",
@@ -153,7 +155,7 @@ class TestCallClaudeCli:
                 "total_cost_usd": 0.123,
             },
         ]
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout=json.dumps(payload),
             stderr="",
@@ -173,7 +175,7 @@ class TestCallClaudeCli:
                 },
             },
         ]
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout=json.dumps(payload),
             stderr="",
@@ -184,7 +186,7 @@ class TestCallClaudeCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure_exit_code(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=1,
             stdout="",
             stderr="auth error",
@@ -218,7 +220,7 @@ class TestCallClaudeCli:
     @patch.dict("os.environ", {"JARVIS_CLAUDE_CLI_MAX_BUDGET_USD": ""}, clear=False)
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_budget_flag_omitted_when_env_not_set(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout=json.dumps({"result": "ok", "cost_usd": 0.0}),
             stderr="",
@@ -231,7 +233,7 @@ class TestCallClaudeCli:
     @patch.dict("os.environ", {"JARVIS_CLAUDE_CLI_MAX_BUDGET_USD": "0.25"}, clear=False)
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_budget_flag_added_when_env_set(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout=json.dumps({"result": "ok", "cost_usd": 0.0}),
             stderr="",
@@ -259,7 +261,7 @@ class TestCallCodexCli:
             out_path = cmd[out_idx]
             with open(out_path, "w") as f:
                 f.write("Codex response here")
-            return MagicMock(returncode=0, stdout="", stderr="")
+            return MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="", stderr="")
 
         mock_run.side_effect = side_effect
         result = call_codex_cli([{"role": "user", "content": "hi"}])
@@ -277,7 +279,7 @@ class TestCallCodexCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure_exit_code(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=1, stdout="", stderr="codex error"
         )
         result = call_codex_cli([{"role": "user", "content": "hi"}])
@@ -300,7 +302,7 @@ class TestCallCodexCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_success_but_empty_response(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="", stderr=""
         )
         result = call_codex_cli([{"role": "user", "content": "hi"}])
@@ -315,7 +317,7 @@ class TestCallCodexCli:
 class TestCallGeminiCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_success(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout="Gemini says hello!",
             stderr="",
@@ -327,7 +329,7 @@ class TestCallGeminiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=1,
             stdout="",
             stderr="rate limited",
@@ -359,7 +361,7 @@ class TestCallGeminiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_empty_response(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="", stderr=""
         )
         result = call_gemini_cli([{"role": "user", "content": "hi"}])
@@ -374,7 +376,7 @@ class TestCallGeminiCli:
 class TestCallKimiCli:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_success(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0,
             stdout="Kimi response",
             stderr="",
@@ -386,7 +388,7 @@ class TestCallKimiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_failure(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=1, stdout="", stderr="kimi error"
         )
         result = call_kimi_cli([{"role": "user", "content": "hi"}])
@@ -417,7 +419,7 @@ class TestCallKimiCli:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_empty_response(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="", stderr=""
         )
         result = call_kimi_cli([{"role": "user", "content": "hi"}])
@@ -432,7 +434,7 @@ class TestCallKimiCli:
 class TestCallCliProvider:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_dispatches_to_claude(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="ok", stderr=""
         )
         result = call_cli_provider("claude-cli", [{"role": "user", "content": "hi"}])
@@ -445,7 +447,7 @@ class TestCallCliProvider:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_model_override_forwarded_to_claude(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="ok", stderr=""
         )
         call_cli_provider("claude-cli", [{"role": "user", "content": "hi"}], model="sonnet")
@@ -457,7 +459,7 @@ class TestCallCliProvider:
 
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_model_override_forwarded_to_codex(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="", stderr=""
         )
         call_cli_provider("codex-cli", [{"role": "user", "content": "hi"}], model="gpt-4o")
@@ -469,7 +471,7 @@ class TestCallCliProvider:
     @patch("jarvis_engine.gateway.cli_providers.subprocess.run")
     def test_model_override_ignored_for_gemini(self, mock_run: MagicMock) -> None:
         """Model override should NOT be forwarded to gemini/kimi (they don't accept it)."""
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess,
             returncode=0, stdout="hello", stderr=""
         )
         result = call_cli_provider("gemini-cli", [{"role": "user", "content": "hi"}], model="custom-model")
@@ -617,7 +619,7 @@ class TestClassifierModelResolution:
         available = {"codex-cli", "kimi-k2", "gemini-cli"}
         # _resolve_model_for_route is a method; test via class access
         # We need an instance — use a mock embed service
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 
@@ -628,7 +630,7 @@ class TestClassifierModelResolution:
     def test_resolve_model_falls_back_when_primary_unavailable(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
         available = {"kimi-k2", "gemini-cli"}  # No codex-cli
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 
@@ -641,7 +643,7 @@ class TestClassifierModelResolution:
     def test_resolve_model_ultimate_fallback(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
         available: set[str] = set()  # Nothing available
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 
@@ -654,7 +656,7 @@ class TestClassifierModelResolution:
     def test_resolve_model_respects_available_set(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
         available = {"gemini-cli"}  # Only gemini available
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 
@@ -680,7 +682,7 @@ class TestClassifierModelResolution:
 
     def test_resolve_model_no_available_set_uses_primary(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 

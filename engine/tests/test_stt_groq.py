@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import numpy as np
 import pytest
 
@@ -77,7 +78,7 @@ def test_groq_confidence_calculation(response_json, expected_confidence) -> None
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = response_json
 
@@ -161,7 +162,7 @@ def test_groq_transcription_file_path_input() -> None:
     """transcribe_groq can accept a file path string."""
     from jarvis_engine.stt import transcribe_groq
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "text": "hello from file",
@@ -202,7 +203,7 @@ def test_groq_transcription_api_error_raises() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 429
     mock_response.text = "Rate limited"
 
@@ -242,7 +243,7 @@ def test_groq_transcription_custom_prompt() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "text": "custom", "language": "en", "segments": []
@@ -290,7 +291,7 @@ def test_groq_transcription_detected_language() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "text": "bonjour",
@@ -321,11 +322,11 @@ def test_groq_retry_on_500_response() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_500_response = MagicMock()
+    mock_500_response = MagicMock(spec=httpx.Response)
     mock_500_response.status_code = 500
     mock_500_response.text = "Internal Server Error"
 
-    mock_ok_response = MagicMock()
+    mock_ok_response = MagicMock(spec=httpx.Response)
     mock_ok_response.status_code = 200
     mock_ok_response.json.return_value = {
         "text": "hello after retry",
@@ -420,7 +421,7 @@ def test_groq_connection_error_recovers_on_retry() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_ok_response = MagicMock()
+    mock_ok_response = MagicMock(spec=httpx.Response)
     mock_ok_response.status_code = 200
     mock_ok_response.json.return_value = {
         "text": "recovered",
@@ -456,7 +457,7 @@ def test_groq_api_uses_model_constant() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "text": "test", "language": "en", "segments": []
@@ -505,7 +506,7 @@ def test_groq_transcription_exact_threshold_passes() -> None:
 
     audio = np.zeros(1600, dtype=np.float32)
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "text": "short but valid", "language": "en", "segments": []
@@ -533,7 +534,7 @@ def test_groq_transcription_file_path_bypasses_duration_check() -> None:
     """File path input is not subject to minimum duration check."""
     from jarvis_engine.stt import transcribe_groq
 
-    mock_response = MagicMock()
+    mock_response = MagicMock(spec=httpx.Response)
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "text": "from file", "language": "en", "segments": []

@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
+from jarvis_engine.gateway.models import ModelGateway
 from jarvis_engine.commands.voice_commands import (
     PersonaComposeCommand,
     VoiceEnrollCommand,
@@ -479,14 +480,14 @@ class TestPersonaComposeHandler:
         assert "not available" in result.message.lower()
 
     def test_import_error_returns_error(self, tmp_path: Path) -> None:
-        handler = PersonaComposeHandler(root=tmp_path, gateway=MagicMock())
+        handler = PersonaComposeHandler(root=tmp_path, gateway=MagicMock(spec=ModelGateway))
         with patch.dict("sys.modules", {"jarvis_engine.persona": None}):
             result = handler.handle(PersonaComposeCommand(query="hello"))
         assert "not available" in result.message.lower()
 
     def test_successful_compose(self, tmp_path: Path) -> None:
         """Full happy path: persona config loaded, gateway called."""
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_resp = SimpleNamespace(text="Hello, Conner. How can I help?")
         mock_gateway.complete.return_value = mock_resp
 
@@ -517,7 +518,7 @@ class TestPersonaComposeHandler:
 
     def test_default_model_used(self, tmp_path: Path) -> None:
         """When cmd.model is empty, default model is used."""
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = SimpleNamespace(text="response")
 
         mock_persona = MagicMock()
@@ -543,7 +544,7 @@ class TestPersonaComposeHandler:
             call_kwargs[1].get("model") == "kimi-k2"
 
     def test_custom_model_used(self, tmp_path: Path) -> None:
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = SimpleNamespace(text="response")
 
         mock_persona = MagicMock()
@@ -568,7 +569,7 @@ class TestPersonaComposeHandler:
             call_kwargs[1].get("model") == "gpt-4"
 
     def test_gateway_connection_error(self, tmp_path: Path) -> None:
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.side_effect = ConnectionError("timeout")
 
         mock_persona = MagicMock()
@@ -593,7 +594,7 @@ class TestPersonaComposeHandler:
         assert result.tone == "formal"
 
     def test_gateway_runtime_error(self, tmp_path: Path) -> None:
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.side_effect = RuntimeError("model unavailable")
 
         mock_persona = MagicMock()
@@ -617,7 +618,7 @@ class TestPersonaComposeHandler:
 
     def test_system_prompt_included_when_present(self, tmp_path: Path) -> None:
         """When compose_persona_system_prompt returns content, it's in messages."""
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = SimpleNamespace(text="ok")
 
         mock_persona = MagicMock()
@@ -648,7 +649,7 @@ class TestPersonaComposeHandler:
 
     def test_system_prompt_omitted_when_empty(self, tmp_path: Path) -> None:
         """When compose_persona_system_prompt returns empty, datetime-only system message."""
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = SimpleNamespace(text="ok")
 
         mock_persona = MagicMock()
