@@ -2337,7 +2337,7 @@ def test_scam_report_call_handles_internal_error(mobile_server) -> None:
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
-    with patch("jarvis_engine.scam_hunter.create_call_intel_report", side_effect=RuntimeError("boom")):
+    with patch("jarvis_engine.scam_hunter.create_call_intel_report", side_effect=OSError("boom")):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/report-call", raw, headers)
 
     assert code == 500
@@ -2396,7 +2396,7 @@ def test_scam_lookup_handles_internal_error(mobile_server) -> None:
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
 
-    with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", side_effect=RuntimeError("boom")), \
+    with patch("jarvis_engine.scam_hunter.lookup_carrier_cached", side_effect=OSError("boom")), \
          patch("jarvis_engine.phone_guard._normalize_number", return_value="+15551234567"):
         code, body = http_request("POST", f"{mobile_server.base_url}/scam/lookup", raw, headers)
 

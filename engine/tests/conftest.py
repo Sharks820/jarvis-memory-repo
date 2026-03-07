@@ -23,8 +23,8 @@ if str(SRC) not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_activity_feed(tmp_path):
-    """Redirect the ActivityFeed singleton to a temp DB for every test.
+def _isolate_activity_feed():
+    """Redirect the ActivityFeed singleton to an in-memory DB for every test.
 
     Without this, tests that call log_activity() or get_activity_feed()
     pollute the production activity_feed.db because the singleton resolves
@@ -33,9 +33,9 @@ def _isolate_activity_feed(tmp_path):
     try:
         import jarvis_engine.activity_feed as _af
         _af._reset_feed()
-        # Pre-seed the singleton with a temp-path feed so any test that
-        # calls log_activity() / get_activity_feed() writes to tmp, not prod.
-        _af._feed = _af.ActivityFeed(db_path=tmp_path / "test_activity.db")
+        # Pre-seed the singleton with an in-memory feed so any test that
+        # calls log_activity() / get_activity_feed() writes to RAM, not disk.
+        _af._feed = _af.ActivityFeed(db_path=":memory:")
     except (ImportError, OSError, AttributeError):
         pass
     yield

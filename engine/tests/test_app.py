@@ -248,33 +248,45 @@ def _make_root(tmp_path: Path, *, with_db: bool = False) -> Path:
     return tmp_path
 
 
+# ---------------------------------------------------------------------------
+# Module-level shared bus for read-only tests (created once, reused by many)
+# ---------------------------------------------------------------------------
+import tempfile as _tempfile
+
+_shared_root = None
+_shared_bus = None
+
+
+def _get_shared_bus():
+    """Lazily create a single shared bus for read-only tests."""
+    global _shared_root, _shared_bus
+    if _shared_bus is None:
+        from jarvis_engine.app import create_app
+
+        _shared_root = Path(_tempfile.mkdtemp(prefix="test_app_shared_"))
+        _shared_root_made = _make_root(_shared_root)
+        _shared_bus = create_app(_shared_root_made)
+    return _shared_bus
+
+
 # ===================================================================
-# Happy-path tests
+# Happy-path tests (read-only — share a single bus)
 # ===================================================================
 
 class TestCreateAppHappyPath:
     """create_app(root) should return a fully wired CommandBus."""
 
-    def test_returns_command_bus_instance(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+    def test_returns_command_bus_instance(self) -> None:
+        bus = _get_shared_bus()
         assert isinstance(bus, CommandBus)
 
-    def test_registered_count_at_least_40(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+    def test_registered_count_at_least_40(self) -> None:
+        bus = _get_shared_bus()
         assert bus.registered_count >= 40
 
-    def test_all_expected_commands_registered(self, tmp_path: Path) -> None:
+    def test_all_expected_commands_registered(self) -> None:
         """Every known command type should have a handler after create_app."""
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+        bus = _get_shared_bus()
 
         missing = []
         for cmd_type in ALL_EXPECTED_COMMANDS:
@@ -284,12 +296,9 @@ class TestCreateAppHappyPath:
 
         assert missing == [], f"Missing registrations: {missing}"
 
-    def test_bus_is_dispatchable_for_core_commands(self, tmp_path: Path) -> None:
+    def test_bus_is_dispatchable_for_core_commands(self) -> None:
         """Dispatching a status command should not raise ValueError."""
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+        bus = _get_shared_bus()
 
         # StatusCommand is always registered; should not raise ValueError
         # (It may raise other errors from the handler, but not ValueError for missing handler)
@@ -297,28 +306,22 @@ class TestCreateAppHappyPath:
 
 
 # ===================================================================
-# No-DB path (adapter shim path)
+# No-DB path (adapter shim path) — also read-only, shares bus
 # ===================================================================
 
 class TestCreateAppNoDatabase:
     """When no jarvis_memory.db exists, memory handlers fall back to shims."""
 
-    def test_no_db_still_registers_all_commands(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path, with_db=False)
-        bus = create_app(root)
+    def test_no_db_still_registers_all_commands(self) -> None:
+        bus = _get_shared_bus()
 
         # All commands should still be registered
         for cmd_type in ALL_EXPECTED_COMMANDS:
             assert cmd_type in bus._handlers, f"{cmd_type.__name__} missing when no DB"
 
-    def test_no_db_query_command_is_dispatchable(self, tmp_path: Path) -> None:
+    def test_no_db_query_command_is_dispatchable(self) -> None:
         """Without a DB, QueryCommand should still be registered and dispatchable."""
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path, with_db=False)
-        bus = create_app(root)
+        bus = _get_shared_bus()
         # QueryCommand always registered (either with real gateway or fallback)
         assert QueryCommand in bus._handlers
 
@@ -670,13 +673,10 @@ class TestMultipleDegradations:
 # ===================================================================
 
 class TestHandlerRegistrationDetails:
-    """Verify specific handler-to-command mappings."""
+    """Verify specific handler-to-command mappings (read-only, shared bus)."""
 
-    def test_memory_commands_count(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+    def test_memory_commands_count(self) -> None:
+        bus = _get_shared_bus()
 
         memory_cmds = [
             BrainStatusCommand, BrainContextCommand, BrainCompactCommand,
@@ -686,11 +686,8 @@ class TestHandlerRegistrationDetails:
         for cmd in memory_cmds:
             assert cmd in bus._handlers
 
-    def test_voice_commands_count(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+    def test_voice_commands_count(self) -> None:
+        bus = _get_shared_bus()
 
         voice_cmds = [
             VoiceListCommand, VoiceSayCommand, VoiceEnrollCommand,
@@ -699,11 +696,8 @@ class TestHandlerRegistrationDetails:
         for cmd in voice_cmds:
             assert cmd in bus._handlers
 
-    def test_security_commands_count(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+    def test_security_commands_count(self) -> None:
+        bus = _get_shared_bus()
 
         security_cmds = [
             RuntimeControlCommand, OwnerGuardCommand, ConnectStatusCommand,
@@ -713,11 +707,8 @@ class TestHandlerRegistrationDetails:
         for cmd in security_cmds:
             assert cmd in bus._handlers
 
-    def test_knowledge_commands_registered(self, tmp_path: Path) -> None:
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+    def test_knowledge_commands_registered(self) -> None:
+        bus = _get_shared_bus()
 
         knowledge_cmds = [
             KnowledgeStatusCommand, ContradictionListCommand,
@@ -727,12 +718,9 @@ class TestHandlerRegistrationDetails:
         for cmd in knowledge_cmds:
             assert cmd in bus._handlers
 
-    def test_cost_reduction_and_self_test_always_registered(self, tmp_path: Path) -> None:
+    def test_cost_reduction_and_self_test_always_registered(self) -> None:
         """CostReductionCommand and SelfTestCommand are outside try blocks."""
-        from jarvis_engine.app import create_app
-
-        root = _make_root(tmp_path)
-        bus = create_app(root)
+        bus = _get_shared_bus()
 
         assert CostReductionCommand in bus._handlers
         assert SelfTestCommand in bus._handlers

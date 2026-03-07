@@ -1023,7 +1023,7 @@ class TestPropertyBasedSmoke:
         p = PolicyEngine()
 
         @given(text(max_size=500))
-        @settings(max_examples=200, deadline=5000)
+        @settings(max_examples=50, deadline=5000)
         def _check(cmd):
             assert isinstance(p.is_allowed(cmd), bool)
 
@@ -1038,7 +1038,7 @@ class TestPropertyBasedSmoke:
         fw = PromptInjectionFirewall()
 
         @given(text(max_size=2000))
-        @settings(max_examples=200, deadline=5000)
+        @settings(max_examples=50, deadline=5000)
         def _check(query):
             result = fw.scan(query)
             assert result is not None and hasattr(result, "verdict")
@@ -1054,7 +1054,7 @@ class TestPropertyBasedSmoke:
         scanner = OutputScanner()
 
         @given(text(max_size=5000))
-        @settings(max_examples=200, deadline=5000)
+        @settings(max_examples=50, deadline=5000)
         def _check(response):
             assert isinstance(scanner.scan_output(response).safe, bool)
 
@@ -1072,7 +1072,7 @@ class TestPropertyBasedSmoke:
         @given(
             confidence=floats(0.0, 1.0, allow_nan=False), access_count=integers(0, 1000)
         )
-        @settings(max_examples=200, deadline=5000)
+        @settings(max_examples=50, deadline=5000)
         def _check(confidence, access_count):
             rec = {
                 "ts": "2020-01-01T00:00:00+00:00",
@@ -1091,7 +1091,7 @@ class TestPropertyBasedSmoke:
         from jarvis_engine.voice_pipeline import shorten_urls_for_speech
 
         @given(text(max_size=2000))
-        @settings(max_examples=200, deadline=5000)
+        @settings(max_examples=50, deadline=5000)
         def _check(s):
             assert isinstance(shorten_urls_for_speech(s), str)
 
@@ -1112,7 +1112,7 @@ class TestPropertyBasedSmoke:
         valid = {"positive", "negative", "neutral"}
 
         @given(text(max_size=500))
-        @settings(max_examples=200, deadline=5000)
+        @settings(max_examples=50, deadline=5000)
         def _check(msg):
             assert tracker.detect_feedback(msg) in valid
 

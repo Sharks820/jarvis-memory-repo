@@ -1812,7 +1812,8 @@ class TestTrayMenuCallbacks:
         widget.launcher_win.deiconify.assert_called_once()
         widget.launcher_win.lift.assert_called_once()
 
-    def test_shutdown_stops_tray_icon(self):
+    @patch("threading.enumerate", return_value=[])
+    def test_shutdown_stops_tray_icon(self, _mock_enum):
         """_shutdown should stop the tray icon."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
         widget = MagicMock(spec=JarvisDesktopWidget)

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jarvis_engine import desktop_widget
+from jarvis_engine import desktop_widget, widget_helpers
 from jarvis_engine.desktop_widget import JarvisDesktopWidget
 
 
@@ -94,7 +94,7 @@ class TestWidgetResourceManagement:
             mock_resp.read = lambda: b'{"ok": true}'
             return mock_resp
 
-        monkeypatch.setattr(desktop_widget, "urlopen", mock_urlopen)
+        monkeypatch.setattr(widget_helpers, "urlopen", mock_urlopen)
 
         # Create minimal widget mock
         widget = MagicMock(spec=JarvisDesktopWidget)
@@ -194,11 +194,11 @@ class TestWidgetNetworkResilience:
     def test_http_json_handles_timeout(self, monkeypatch) -> None:
         """Network: HTTP JSON should handle timeout gracefully."""
         import socket
-        
+
         def mock_urlopen(*args, **kwargs):
             raise socket.timeout("Connection timed out")
-        
-        monkeypatch.setattr(desktop_widget, "urlopen", mock_urlopen)
+
+        monkeypatch.setattr(widget_helpers, "urlopen", mock_urlopen)
         
         cfg = desktop_widget.WidgetConfig(
             base_url="http://localhost:8787",
@@ -214,7 +214,7 @@ class TestWidgetNetworkResilience:
     def test_http_json_handles_http_error(self, monkeypatch) -> None:
         """Network: HTTP JSON should handle HTTP errors."""
         from urllib.error import HTTPError
-        
+
         def mock_urlopen(*args, **kwargs):
             raise HTTPError(
                 url="http://localhost:8787/test",
@@ -223,8 +223,8 @@ class TestWidgetNetworkResilience:
                 hdrs={},
                 fp=None
             )
-        
-        monkeypatch.setattr(desktop_widget, "urlopen", mock_urlopen)
+
+        monkeypatch.setattr(widget_helpers, "urlopen", mock_urlopen)
         
         cfg = desktop_widget.WidgetConfig(
             base_url="http://localhost:8787",
