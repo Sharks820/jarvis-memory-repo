@@ -186,7 +186,7 @@ def _safe_learning_metrics(
     if feedback_tracker is not None:
         try:
             result["route_quality"] = feedback_tracker.get_all_route_quality()
-        except Exception as exc:
+        except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
             logger.debug("Failed to collect route quality metrics: %s", exc)
             result["route_quality"] = {}
 
@@ -195,7 +195,7 @@ def _safe_learning_metrics(
         try:
             result["preferences"] = pref_tracker.get_preferences()
             result["all_preferences"] = pref_tracker.get_all_preferences()
-        except Exception as exc:
+        except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
             logger.debug("Failed to collect preference metrics: %s", exc)
             result["preferences"] = {}
             result["all_preferences"] = []
@@ -205,7 +205,7 @@ def _safe_learning_metrics(
         try:
             result["peak_hours"] = usage_tracker.get_peak_hours(top_n=5)
             result["hourly_distribution"] = usage_tracker.get_hourly_distribution()
-        except Exception as exc:
+        except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
             logger.debug("Failed to collect usage metrics: %s", exc)
             result["peak_hours"] = []
             result["hourly_distribution"] = {}
@@ -220,7 +220,7 @@ def _safe_knowledge_snapshot(kg: Any = None, engine: Any = None) -> dict[str, An
     try:
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
         return capture_knowledge_metrics(kg, engine)
-    except Exception as exc:
+    except (ImportError, AttributeError, OSError, ValueError) as exc:
         logger.debug("Knowledge snapshot capture failed: %s", exc)
         return {}
 

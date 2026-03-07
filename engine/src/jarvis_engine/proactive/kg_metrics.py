@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from pathlib import Path
 
 from jarvis_engine._shared import now_iso as _now_iso
@@ -101,16 +102,16 @@ def collect_kg_metrics(kg) -> dict:
                 tb[key] += r[1]
             metrics["temporal_breakdown"] = tb
             metrics["expired_facts"] = tb.get("expired", 0)
-        except Exception as exc:
+        except sqlite3.OperationalError as exc:
             # Column may not exist if temporal migration has not run
             logger.debug("Temporal query failed: %s", exc)
 
         db.execute("COMMIT")
 
-    except Exception as exc:
+    except (sqlite3.Error, AttributeError) as exc:
         try:
             db.execute("ROLLBACK")
-        except Exception as rollback_exc:
+        except sqlite3.Error as rollback_exc:
             logger.debug("ROLLBACK failed during KG metrics collection: %s", rollback_exc)
         logger.warning("Failed to collect KG metrics: %s", exc)
 

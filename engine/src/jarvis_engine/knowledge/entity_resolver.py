@@ -188,7 +188,7 @@ class EntityResolver:
                 # Fallback to individual calls if embed_batch unavailable
                 for node_id, label in members:
                     embed_cache[node_id] = self._embed_service.embed(label)
-        except Exception as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
             logger.debug("Batch embedding failed, falling back to individual calls: %s", exc)
             # Batch failed — fall back to individual calls
             embed_cache.clear()
@@ -365,7 +365,7 @@ class EntityResolver:
             embedding = self._embed_service.embed(label, prefix="search_document")
             if len(embedding) == 768:
                 return struct.pack(f"{len(embedding)}f", *embedding)
-        except Exception as exc:
+        except (RuntimeError, TypeError, ValueError, OSError) as exc:
             logger.debug("Vec embedding pre-compute for merge label failed: %s", exc)
         return None
 
@@ -549,7 +549,7 @@ class EntityResolver:
                     "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
                     (keep_id, _embedding_blob),
                 )
-            except Exception as exc:
+            except (sqlite3.Error, ValueError) as exc:
                 logger.debug("Vec embedding update for merged node %s failed: %s", keep_id, exc)
 
         # Delete edges referencing remove_id, then the node itself
@@ -571,7 +571,7 @@ class EntityResolver:
                 self._kg.db.execute(
                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (remove_id,)
                 )
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 logger.debug("Vec embedding delete for removed node %s failed: %s", remove_id, exc)
 
         self._kg.db.execute(
@@ -678,7 +678,7 @@ class EntityResolver:
                     result.errors.append(
                         f"Merge failed (missing node): {keep_id} <- {remove_id}"
                     )
-            except Exception as exc:
+            except (sqlite3.Error, ValueError, OSError) as exc:
                 result.errors.append(
                     f"Merge error ({cand.node_a_id} <- {cand.node_b_id}): {exc}"
                 )

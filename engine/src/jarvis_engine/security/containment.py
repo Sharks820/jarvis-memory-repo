@@ -296,7 +296,7 @@ class ContainmentEngine:
             for _unblock_ip in _ips_to_unblock:
                 try:
                     self._ip_tracker.unblock_ip(_unblock_ip)
-                except Exception as exc:
+                except (OSError, ValueError, AttributeError) as exc:
                     logger.debug("IP unblock during recovery failed: %s", exc)
 
         self._log_forensic(
@@ -330,7 +330,7 @@ class ContainmentEngine:
         if callable(self._on_credential_rotate):
             try:
                 self._on_credential_rotate(new_key)
-            except Exception as exc:
+            except (RuntimeError, OSError, ValueError) as exc:
                 logger.error("Credential rotate callback failed: %s", exc)
         self._log_forensic(
             "credential_rotation",
@@ -377,5 +377,5 @@ class ContainmentEngine:
         event = {"event_type": event_type, **kwargs}
         try:
             self._forensic_logger.log_event(event)
-        except Exception as exc:
+        except (OSError, ValueError, TypeError) as exc:
             logger.warning("Failed to write forensic log for %s: %s", event_type, exc)

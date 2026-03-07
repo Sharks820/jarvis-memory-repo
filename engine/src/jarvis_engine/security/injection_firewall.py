@@ -238,7 +238,7 @@ def _detect_encoded_payloads(text: str) -> list[str]:
             # Check if decoded text contains injection keywords
             if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override", "instructions")):
                 findings.append(f"base64_decoded_injection:{segment[:30]}...")
-        except Exception as exc:
+        except (ValueError, UnicodeDecodeError) as exc:
             logger.debug("Failed to decode base64 segment: %s", exc)
 
     # URL-encoded blocks
@@ -248,7 +248,7 @@ def _detect_encoded_payloads(text: str) -> list[str]:
             decoded = _url_unquote(segment)
             if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override")):
                 findings.append(f"url_decoded_injection:{segment[:30]}...")
-        except Exception as exc:
+        except (ValueError, UnicodeDecodeError) as exc:
             logger.debug("Failed to decode URL segment: %s", exc)
 
     return findings
@@ -398,7 +398,7 @@ class PromptInjectionFirewall:
                     "Cached %d injection template embeddings",
                     len(self._template_embeddings),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (RuntimeError, ValueError, OSError) as exc:
                 logger.warning(
                     "Failed to embed injection templates — semantic layer disabled: %s",
                     exc,
@@ -442,7 +442,7 @@ class PromptInjectionFirewall:
                 )
                 return InjectionVerdict.SUSPICIOUS
 
-        except Exception as exc:  # noqa: BLE001
+        except (RuntimeError, ValueError, OSError) as exc:
             logger.warning(
                 "Semantic injection check failed — returning CLEAN: %s", exc,
             )

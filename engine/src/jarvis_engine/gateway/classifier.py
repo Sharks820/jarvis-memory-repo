@@ -246,7 +246,7 @@ class IntentClassifier:
                         "Centroid cache incomplete (cached=%s, expected=%s), recomputing",
                         sorted(centroids.keys()), sorted(self.ROUTES.keys()),
                     )
-        except Exception as exc:
+        except (OSError, ValueError, KeyError) as exc:
             logger.debug("Failed to load centroid cache, recomputing: %s", exc)
 
         centroids: dict[str, np.ndarray] = {}
@@ -256,7 +256,7 @@ class IntentClassifier:
                 try:
                     vec = self._embed.embed(text, prefix="search_query")
                     embeddings.append(np.array(vec))
-                except Exception as exc:
+                except (RuntimeError, ValueError, OSError) as exc:
                     logger.warning("Failed to embed exemplar for route %r: %s (%s)", route_name, text[:80], exc)
             if embeddings:
                 centroid = np.mean(embeddings, axis=0)
@@ -269,7 +269,7 @@ class IntentClassifier:
             os.makedirs(cache_dir, exist_ok=True)
             np.savez(cache_path, **centroids)
             logger.debug("Saved centroid cache to %s", cache_path)
-        except Exception as exc:
+        except OSError as exc:
             logger.debug("Failed to save centroid cache: %s", exc)
 
         return centroids
@@ -332,7 +332,7 @@ class IntentClassifier:
         # Embed the query and find best route by cosine similarity
         try:
             query_vec = np.array(self._embed.embed_query(query))
-        except Exception as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
             logger.warning("Embedding service failed for classify(), falling back to local model: %s", exc)
             return ("simple_private", local_model, 0.0)
 
@@ -353,7 +353,7 @@ class IntentClassifier:
                     if quality["total"] >= 5:  # Minimum sample threshold
                         # Scale similarity by 0.5-1.0 based on satisfaction rate
                         sim *= (0.5 + 0.5 * quality["satisfaction_rate"])
-                except Exception as exc:
+                except (KeyError, ValueError, AttributeError, RuntimeError) as exc:
                     logger.debug("Route quality penalty lookup failed: %s", exc)
             if sim > best_sim:
                 best_sim = sim

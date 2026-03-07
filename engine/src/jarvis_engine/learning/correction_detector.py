@@ -252,7 +252,7 @@ class CorrectionDetector:
                             self._kg._db.execute(
                                 "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
                             )
-                        except Exception as exc:
+                        except sqlite3.OperationalError as exc:
                             if "no such table" not in str(exc):
                                 raise
                             logger.debug("FTS5 table not available, skipping cleanup for retracted node %s", node_id)
@@ -262,7 +262,7 @@ class CorrectionDetector:
                                 self._kg._db.execute(
                                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
                                 )
-                            except Exception as exc:
+                            except sqlite3.Error as exc:
                                 logger.debug("Vec cleanup for retracted node %s failed: %s", node_id, exc)
                         self._kg._db.commit()
                         self._kg._mutation_counter += 1
@@ -277,7 +277,7 @@ class CorrectionDetector:
                                 target_id=existing_new_id,
                                 relation="superseded",
                             )
-                        except Exception as exc:
+                        except (sqlite3.Error, ValueError) as exc:
                             logger.debug("KG audit edge failed: %s", exc)
                         return True
 
@@ -298,7 +298,7 @@ class CorrectionDetector:
                         "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
                         (node_id, correction.new_claim),
                     )
-                except Exception as exc:
+                except sqlite3.OperationalError as exc:
                     if "no such table" not in str(exc):
                         raise
                     logger.debug("FTS5 table not available, skipping index update for node %s", node_id)

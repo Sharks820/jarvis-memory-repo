@@ -104,7 +104,7 @@ class ProactiveEngine:
                                 "group_key": f"jarvis_{alert.rule_id}",
                                 "priority": alert.priority,
                             })
-                    except Exception as exc:
+                    except (ImportError, OSError, ValueError, TypeError) as exc:
                         logger.debug("Alert queue enqueue failed: %s", exc)
             else:
                 # No alerts after dedup — undo reservation
@@ -121,7 +121,7 @@ class ProactiveEngine:
                 })
             except ImportError:
                 logger.debug("activity_feed module not available for proactive logging")
-            except Exception as exc:
+            except (OSError, ValueError, TypeError) as exc:
                 logger.debug("Proactive activity feed logging failed: %s", exc)
 
         return alerts

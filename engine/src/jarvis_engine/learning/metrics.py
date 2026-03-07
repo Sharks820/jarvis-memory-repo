@@ -7,6 +7,7 @@ branch distribution, and temporal distribution from the knowledge graph.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from jarvis_engine._shared import now_iso as _now_iso
 from typing import Any
 
@@ -42,7 +43,7 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
                 ).fetchall()
             for row in rows:
                 branch_distribution[row[0]] = row[1]
-        except Exception as exc:
+        except (sqlite3.Error, AttributeError) as exc:
             logger.warning("Failed to query records for metrics: %s", exc)
 
     # -- KG counts --
@@ -53,15 +54,15 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
     if kg is not None:
         try:
             total_facts = kg.count_nodes()
-        except Exception as exc:
+        except (sqlite3.Error, AttributeError) as exc:
             logger.warning("Failed to count KG nodes: %s", exc)
         try:
             total_edges = kg.count_edges()
-        except Exception as exc:
+        except (sqlite3.Error, AttributeError) as exc:
             logger.warning("Failed to count KG edges: %s", exc)
         try:
             locked_facts = kg.count_locked()
-        except Exception as exc:
+        except (sqlite3.Error, AttributeError) as exc:
             logger.warning("Failed to count locked facts: %s", exc)
 
     # -- Temporal distribution from kg_nodes (graceful for missing columns) --
@@ -77,7 +78,7 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
                 ).fetchall()
             for row in rows:
                 temporal_distribution[row[0]] = row[1]
-        except Exception as exc:
+        except (sqlite3.Error, AttributeError) as exc:
             logger.debug("Temporal distribution query failed (migration may not have run): %s", exc)
 
     return {
