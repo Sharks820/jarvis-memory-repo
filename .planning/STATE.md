@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-05 (v5 planning expansion + mission transparency tranche: continuity/voice/mission/telemetry/autofix and structured active-count/status-detail mission status output)
+Last activity: 2026-03-07 (Android chat send hardening: atomic send lock, draft restore on submit failure, and composer disable while sending)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -88,6 +88,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: added model-switch continuity guardrails: system-prompt continuity contract is now injected when routed model changes with existing history, and model-switch events are logged to activity feed (`conversation_model_switch`) for observability and anti-reset diagnosis.
 - 2026-03-05: upgraded learning mission status surfaces with explicit active/inactive flags, active-count and per-status counters, mission status-detail emission, and richer response summaries to improve UI/voice mission transparency and operator trust.
 - 2026-03-06: **User engagement checkpoint** — owner (Conner) acknowledged positive signal and confirmed acceptance of the current main-branch state. Reliability, innovation, and optimization tracking continues as planned. No blocking issues raised; feedback is: the system is on the right trajectory and the workflow heartbeat is healthy. Workflow cadence continues under v5.0 Phase 1 with next focus on continuity, voice robustness, and desloppify burn-down.
+- 2026-03-07: hardened Android chat submission UX so failed sends no longer eat the drafted message; send start now uses an atomic lock, the composer is disabled while sending, and focused helper tests cover draft restore behavior.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second

@@ -35,17 +35,15 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendMessage() {
-        val text = inputText.value.trim()
-        if (text.isBlank() || isSending.value) return
-        inputText.value = ""
-        isSending.value = true
+        val text = beginSend(inputText, isSending) ?: return
         _errorMessage.value = null
         viewModelScope.launch {
             try {
                 processor.queueCommand(text)
             } catch (e: Exception) {
                 Log.e(TAG, "sendMessage failed", e)
-                _errorMessage.value = e.message ?: "Failed to send command"
+                restoreFailedInput(inputText, text)
+                _errorMessage.value = e.message ?: "Failed to submit message"
             } finally {
                 isSending.value = false
             }
@@ -54,5 +52,23 @@ class ChatViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "ChatViewModel"
+    }
+}
+
+internal fun beginSend(
+    inputText: MutableStateFlow<String>,
+    isSending: MutableStateFlow<Boolean>,
+): String? {
+    val text = inputText.value.trim()
+    if (text.isBlank() || !isSending.compareAndSet(expect = false, update = true)) {
+        return null
+    }
+    inputText.value = ""
+    return text
+}
+
+internal fun restoreFailedInput(inputText: MutableStateFlow<String>, text: String) {
+    if (inputText.value.isBlank()) {
+        inputText.value = text
     }
 }
