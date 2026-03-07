@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Categories
 # ---------------------------------------------------------------------------
 
+
 class ActivityCategory:
     """String constants for activity event categories."""
 
@@ -56,6 +57,7 @@ class ActivityCategory:
 # Event dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ActivityEvent:
     """Single activity event."""
@@ -70,6 +72,7 @@ class ActivityEvent:
 # ---------------------------------------------------------------------------
 # Feed (SQLite-backed)
 # ---------------------------------------------------------------------------
+
 
 class ActivityFeed:
     """SQLite-backed activity feed with thread-safe reads and writes."""
@@ -88,6 +91,7 @@ class ActivityFeed:
         self._closed = False
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(self._db_path, check_same_thread=False)
         self._init_schema()
 
@@ -228,7 +232,9 @@ class ActivityFeed:
             try:
                 self._db.close()
             except (OSError, sqlite3.Error) as exc:
-                logger.warning("Failed to close activity feed database connection: %s", exc)
+                logger.warning(
+                    "Failed to close activity feed database connection: %s", exc
+                )
 
     # ------------------------------------------------------------------
     # Internals
@@ -298,5 +304,7 @@ def _reset_feed() -> None:
             try:
                 _feed.close()
             except (OSError, sqlite3.Error) as exc:
-                logger.warning("Failed to close activity feed singleton during reset: %s", exc)
+                logger.warning(
+                    "Failed to close activity feed singleton during reset: %s", exc
+                )
             _feed = None

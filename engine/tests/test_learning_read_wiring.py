@@ -12,6 +12,7 @@ from jarvis_engine.command_bus import AppContext
 # LEARN-01: Preference injection in _build_smart_context
 # ---------------------------------------------------------------------------
 
+
 class TestPreferenceInjection:
     """Test that _build_smart_context returns preference data."""
 
@@ -74,6 +75,7 @@ class TestPreferenceInjection:
 # LEARN-02: Route quality penalty in IntentClassifier
 # ---------------------------------------------------------------------------
 
+
 class TestRouteQualityPenalty:
     """Test that IntentClassifier applies quality penalty from feedback tracker."""
 
@@ -93,7 +95,9 @@ class TestRouteQualityPenalty:
         mock_embed.embed_query.side_effect = random_embed
 
         # Force recomputation by using a unique cache dir
-        with patch.object(IntentClassifier, '_cache_dir', return_value='__test_no_cache__'):
+        with patch.object(
+            IntentClassifier, "_cache_dir", return_value="__test_no_cache__"
+        ):
             classifier = IntentClassifier(mock_embed, feedback_tracker=feedback_tracker)
         return classifier
 
@@ -145,6 +149,7 @@ class TestRouteQualityPenalty:
 # LEARN-03: Usage prediction
 # ---------------------------------------------------------------------------
 
+
 class TestUsagePrediction:
     """Test UsagePatternTracker predict_context with real data."""
 
@@ -187,12 +192,14 @@ class TestUsagePrediction:
         # March 4, 2026 is Wednesday = day 2
         for _ in range(7):
             tracker.record_interaction(
-                route="routine", topic="afternoon",
+                route="routine",
+                topic="afternoon",
                 timestamp=datetime(2026, 3, 4, 14, 0, 0, tzinfo=UTC),
             )
         for _ in range(3):
             tracker.record_interaction(
-                route="complex", topic="coding",
+                route="complex",
+                topic="coding",
                 timestamp=datetime(2026, 3, 4, 14, 0, 0, tzinfo=UTC),
             )
         prediction = tracker.predict_context(14, 2)  # Wednesday=2

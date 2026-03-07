@@ -68,7 +68,8 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
         pem_data = Path(cert_path).read_text(encoding="utf-8")
         # Strip PEM header/footer and decode base64
         lines = [
-            line for line in pem_data.splitlines()
+            line
+            for line in pem_data.splitlines()
             if line and not line.startswith("-----")
         ]
         der_bytes = base64.b64decode("".join(lines))
@@ -137,11 +138,14 @@ def _compute_command_reliability() -> dict[str, Any]:
                 for e in events
                 if isinstance(getattr(e, "details", None), dict) and e.details.get("ok")
             )
-            result["command_success_rate_pct"] = round(100.0 * ok_count / len(events), 1) if events else 0.0
+            result["command_success_rate_pct"] = (
+                round(100.0 * ok_count / len(events), 1) if events else 0.0
+            )
             result["retry_count"] = sum(
                 1
                 for e in events
-                if isinstance(getattr(e, "details", None), dict) and e.details.get("retryable")
+                if isinstance(getattr(e, "details", None), dict)
+                and e.details.get("retryable")
             )
             result["timeout_count"] = sum(
                 1
@@ -150,7 +154,9 @@ def _compute_command_reliability() -> dict[str, Any]:
                 and str(e.details.get("error_code", "")).startswith("timeout")
             )
         # Pressure events
-        pressure_events = feed.query(limit=50, category=ActivityCategory.RESOURCE_PRESSURE)
+        pressure_events = feed.query(
+            limit=50, category=ActivityCategory.RESOURCE_PRESSURE
+        )
         result["memory_pressure_incidents"] = len(pressure_events)
         if pressure_events:
             latest_details = getattr(pressure_events[0], "details", {})

@@ -1,4 +1,5 @@
 """Tests for ScopeEnforcer — AI operational boundary enforcement."""
+
 from __future__ import annotations
 
 import threading
@@ -192,7 +193,9 @@ class TestAllAllowedScopes:
         for scope, actions in ScopeEnforcer.ALLOWED_SCOPES.items():
             for action in actions:
                 allowed, msg = enforcer.check(scope, action)
-                assert allowed is True, f"{scope}.{action} should be allowed but got: {msg}"
+                assert allowed is True, (
+                    f"{scope}.{action} should be allowed but got: {msg}"
+                )
                 assert msg == "ok"
 
 

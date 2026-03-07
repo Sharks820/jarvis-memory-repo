@@ -76,14 +76,17 @@ class PreferenceTracker(LearningTrackerBase):
     def _update_preference(self, category: str, preference: str) -> None:
         now = _now_iso()
         with self._write_lock:
-            self._db.execute("""
+            self._db.execute(
+                """
                 INSERT INTO user_preferences (category, preference, score, evidence_count, last_observed)
                 VALUES (?, ?, 1.0, 1, ?)
                 ON CONFLICT(category, preference) DO UPDATE SET
                     score = MIN(score + 0.1, ?),
                     evidence_count = evidence_count + 1,
                     last_observed = ?
-            """, (category, preference, now, self._MAX_SCORE, now))
+            """,
+                (category, preference, now, self._MAX_SCORE, now),
+            )
             self._db.commit()
 
     def get_preferences(self) -> dict[str, str]:

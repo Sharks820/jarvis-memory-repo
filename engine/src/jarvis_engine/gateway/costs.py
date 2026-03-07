@@ -30,6 +30,7 @@ class CostTracker:
         self._write_lock = threading.Lock()
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(db_path, check_same_thread=False)
 
         self._init_schema()
@@ -134,13 +135,15 @@ class CostTracker:
         total_cost = 0.0
         for row in rows:
             row_cost = row["total_cost"] or 0.0
-            models.append({
-                "model": row["model"],
-                "count": row["count"],
-                "input_tokens": row["total_input_tokens"] or 0,
-                "output_tokens": row["total_output_tokens"] or 0,
-                "cost_usd": row_cost,
-            })
+            models.append(
+                {
+                    "model": row["model"],
+                    "count": row["count"],
+                    "input_tokens": row["total_input_tokens"] or 0,
+                    "output_tokens": row["total_output_tokens"] or 0,
+                    "cost_usd": row_cost,
+                }
+            )
             total_cost += row_cost
 
         return {

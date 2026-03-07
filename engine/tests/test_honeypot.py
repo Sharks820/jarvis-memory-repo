@@ -1,4 +1,5 @@
 """Tests for HoneypotEngine — fake endpoint deployment and attacker tracking."""
+
 from __future__ import annotations
 
 import json

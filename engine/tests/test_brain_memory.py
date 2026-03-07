@@ -73,7 +73,9 @@ def test_build_context_packet_returns_relevant_rows(tmp_path: Path) -> None:
         content="Schedule pharmacy refill reminders and family school tasks.",
     )
 
-    packet = build_context_packet(tmp_path, query="How do I pause for gaming?", max_items=5, max_chars=800)
+    packet = build_context_packet(
+        tmp_path, query="How do I pause for gaming?", max_items=5, max_chars=800
+    )
     assert packet["selected_count"] >= 1
     summaries = " ".join(item["summary"] for item in packet["selected"])
     assert "gaming" in summaries.lower()
@@ -87,10 +89,16 @@ def test_build_context_packet_includes_canonical_facts(tmp_path: Path) -> None:
         task_id="f1",
         content="Enable safe mode before risky automation runs.",
     )
-    packet = build_context_packet(tmp_path, query="safe mode", max_items=5, max_chars=800)
+    packet = build_context_packet(
+        tmp_path, query="safe mode", max_items=5, max_chars=800
+    )
     facts = packet.get("canonical_facts", [])
     assert isinstance(facts, list)
-    assert any(str(item.get("key", "")) == "runtime.safe_mode" for item in facts if isinstance(item, dict))
+    assert any(
+        str(item.get("key", "")) == "runtime.safe_mode"
+        for item in facts
+        if isinstance(item, dict)
+    )
 
 
 def test_brain_compact_reduces_record_count(tmp_path: Path) -> None:
@@ -145,7 +153,13 @@ class TestBrainRegressionReport:
 
     def test_valid_history_single_record(self, tmp_path: Path) -> None:
         """Single record -> no duplicates, 1 unique hash."""
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t1", content="Test record alpha")
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t1",
+            content="Test record alpha",
+        )
         report = brain_regression_report(tmp_path)
         assert report["total_records"] == 1
         assert report["unique_hashes"] == 1
@@ -155,9 +169,27 @@ class TestBrainRegressionReport:
 
     def test_valid_history_multiple_records(self, tmp_path: Path) -> None:
         """Multiple unique records: status pass, positive entropy."""
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t1", content="Plan calendar meeting for tomorrow")
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t2", content="Write python code for the api endpoint")
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t3", content="Review prescription refill schedule")
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t1",
+            content="Plan calendar meeting for tomorrow",
+        )
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t2",
+            content="Write python code for the api endpoint",
+        )
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t3",
+            content="Review prescription refill schedule",
+        )
         report = brain_regression_report(tmp_path)
         assert report["total_records"] == 3
         assert report["unique_hashes"] == 3
@@ -201,17 +233,31 @@ class TestBrainRegressionReport:
         brain_dir.mkdir(parents=True, exist_ok=True)
         # Create minimal records file
         records_path = brain_dir / "records.jsonl"
-        records_path.write_text(json.dumps({
-            "record_id": "r1", "ts": "2026-01-01", "source": "user",
-            "kind": "ep", "task_id": "t", "branch": "general",
-            "tags": [], "summary": "test", "confidence": 0.7,
-            "content_hash": "unique1",
-        }) + "\n", encoding="utf-8")
+        records_path.write_text(
+            json.dumps(
+                {
+                    "record_id": "r1",
+                    "ts": "2026-01-01",
+                    "source": "user",
+                    "kind": "ep",
+                    "task_id": "t",
+                    "branch": "general",
+                    "tags": [],
+                    "summary": "test",
+                    "confidence": 0.7,
+                    "content_hash": "unique1",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         # Create facts.json with 25 unresolved conflicts
         facts_path = brain_dir / "facts.json"
         conflicts = [{"key": f"k{i}", "resolved": False} for i in range(25)]
-        facts_path.write_text(json.dumps({"facts": {}, "conflicts": conflicts}), encoding="utf-8")
+        facts_path.write_text(
+            json.dumps({"facts": {}, "conflicts": conflicts}), encoding="utf-8"
+        )
 
         report = brain_regression_report(tmp_path)
         assert report["unresolved_conflicts"] == 25
@@ -222,15 +268,29 @@ class TestBrainRegressionReport:
         brain_dir = tmp_path / ".planning" / "brain"
         brain_dir.mkdir(parents=True, exist_ok=True)
         records_path = brain_dir / "records.jsonl"
-        records_path.write_text(json.dumps({
-            "record_id": "r1", "ts": "2026-01-01", "source": "user",
-            "kind": "ep", "task_id": "t", "branch": "general",
-            "tags": [], "summary": "test", "confidence": 0.7,
-            "content_hash": "unique1",
-        }) + "\n", encoding="utf-8")
+        records_path.write_text(
+            json.dumps(
+                {
+                    "record_id": "r1",
+                    "ts": "2026-01-01",
+                    "source": "user",
+                    "kind": "ep",
+                    "task_id": "t",
+                    "branch": "general",
+                    "tags": [],
+                    "summary": "test",
+                    "confidence": 0.7,
+                    "content_hash": "unique1",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         facts_path = brain_dir / "facts.json"
         conflicts = [{"key": f"k{i}", "resolved": False} for i in range(65)]
-        facts_path.write_text(json.dumps({"facts": {}, "conflicts": conflicts}), encoding="utf-8")
+        facts_path.write_text(
+            json.dumps({"facts": {}, "conflicts": conflicts}), encoding="utf-8"
+        )
 
         report = brain_regression_report(tmp_path)
         assert report["unresolved_conflicts"] == 65
@@ -241,12 +301,20 @@ class TestBrainRegressionReport:
         brain_dir = tmp_path / ".planning" / "brain"
         brain_dir.mkdir(parents=True, exist_ok=True)
         records_path = brain_dir / "records.jsonl"
-        good_record = json.dumps({
-            "record_id": "r1", "ts": "2026-01-01", "source": "user",
-            "kind": "ep", "task_id": "t", "branch": "general",
-            "tags": [], "summary": "test", "confidence": 0.7,
-            "content_hash": "uniq",
-        })
+        good_record = json.dumps(
+            {
+                "record_id": "r1",
+                "ts": "2026-01-01",
+                "source": "user",
+                "kind": "ep",
+                "task_id": "t",
+                "branch": "general",
+                "tags": [],
+                "summary": "test",
+                "confidence": 0.7,
+                "content_hash": "uniq",
+            }
+        )
         records_path.write_text(
             good_record + "\n" + "NOT_JSON\n" + "{bad json\n",
             encoding="utf-8",
@@ -270,7 +338,9 @@ class TestBrainRegressionReport:
         (brain_dir / "records.jsonl").write_text("", encoding="utf-8")
         facts_path = brain_dir / "facts.json"
         conflicts = [{"key": f"k{i}", "resolved": True} for i in range(50)]
-        facts_path.write_text(json.dumps({"facts": {}, "conflicts": conflicts}), encoding="utf-8")
+        facts_path.write_text(
+            json.dumps({"facts": {}, "conflicts": conflicts}), encoding="utf-8"
+        )
         report = brain_regression_report(tmp_path)
         assert report["unresolved_conflicts"] == 0
         assert report["conflict_total"] == 50
@@ -483,7 +553,9 @@ class TestExtractFactCandidates:
 
     def test_confidence_clamped(self) -> None:
         """All confidence values should be in [0.0, 1.0]."""
-        facts = _extract_fact_candidates("Enable safe mode and gaming mode auto on", "general")
+        facts = _extract_fact_candidates(
+            "Enable safe mode and gaming mode auto on", "general"
+        )
         for f in facts:
             assert 0.0 <= f["confidence"] <= 1.0
 
@@ -516,7 +588,10 @@ class TestLoadRecords:
         brain_dir.mkdir(parents=True, exist_ok=True)
         records_path = brain_dir / "records.jsonl"
         records_path.write_text(
-            json.dumps({"record_id": "r1"}) + "\n\n\n" + json.dumps({"record_id": "r2"}) + "\n",
+            json.dumps({"record_id": "r1"})
+            + "\n\n\n"
+            + json.dumps({"record_id": "r2"})
+            + "\n",
             encoding="utf-8",
         )
         result = _load_records(tmp_path)
@@ -544,36 +619,65 @@ class TestLoadRecords:
 class TestIngestEdgeCases:
     def test_empty_content_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="Empty content"):
-            ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t", content="")
+            ingest_brain_record(
+                tmp_path, source="user", kind="ep", task_id="t", content=""
+            )
 
     def test_whitespace_only_content_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="Empty content"):
-            ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t", content="   \n\t  ")
+            ingest_brain_record(
+                tmp_path, source="user", kind="ep", task_id="t", content="   \n\t  "
+            )
 
     def test_confidence_clamped_low(self, tmp_path: Path) -> None:
-        rec = ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t", content="Some content here", confidence=-0.5)
+        rec = ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t",
+            content="Some content here",
+            confidence=-0.5,
+        )
         assert rec.confidence == 0.0
 
     def test_confidence_clamped_high(self, tmp_path: Path) -> None:
-        rec = ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t", content="Some content here", confidence=1.5)
+        rec = ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t",
+            content="Some content here",
+            confidence=1.5,
+        )
         assert rec.confidence == 1.0
 
     def test_task_id_truncated(self, tmp_path: Path) -> None:
         long_id = "x" * 200
-        rec = ingest_brain_record(tmp_path, source="user", kind="ep", task_id=long_id, content="Content for truncation test")
+        rec = ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id=long_id,
+            content="Content for truncation test",
+        )
         assert len(rec.task_id) <= 128
 
     def test_content_truncated_at_4000(self, tmp_path: Path) -> None:
         """Content is cleaned and truncated to 4000 chars."""
         long_content = "a" * 5000
-        rec = ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t", content=long_content)
+        rec = ingest_brain_record(
+            tmp_path, source="user", kind="ep", task_id="t", content=long_content
+        )
         # Summary uses _summarize which caps around 280 chars (with off-by-one in suffix)
         assert len(rec.summary) < 300
         assert rec.summary.endswith("...(trimmed)")
 
     def test_tags_deduplicated_and_sorted(self, tmp_path: Path) -> None:
         rec = ingest_brain_record(
-            tmp_path, source="user", kind="ep", task_id="t",
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t",
             content="Tag test content here",
             tags=["Zulu", "Alpha", "alpha", "ALPHA", "Zulu"],
         )
@@ -582,14 +686,19 @@ class TestIngestEdgeCases:
     def test_tags_limited_to_10(self, tmp_path: Path) -> None:
         tags = [f"tag{i}" for i in range(20)]
         rec = ingest_brain_record(
-            tmp_path, source="user", kind="ep", task_id="t",
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t",
             content="Many tags test content",
             tags=tags,
         )
         assert len(rec.tags) <= 10
 
     def test_returns_brain_record_dataclass(self, tmp_path: Path) -> None:
-        rec = ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t", content="Dataclass test")
+        rec = ingest_brain_record(
+            tmp_path, source="user", kind="ep", task_id="t", content="Dataclass test"
+        )
         assert isinstance(rec, BrainRecord)
         assert rec.record_id
         assert rec.ts
@@ -603,7 +712,9 @@ class TestIngestEdgeCases:
 
 class TestBuildContextPacketEdgeCases:
     def test_empty_dir(self, tmp_path: Path) -> None:
-        packet = build_context_packet(tmp_path, query="anything", max_items=5, max_chars=500)
+        packet = build_context_packet(
+            tmp_path, query="anything", max_items=5, max_chars=500
+        )
         assert packet["selected_count"] == 0
         assert packet["total_records_scanned"] == 0
 
@@ -611,11 +722,18 @@ class TestBuildContextPacketEdgeCases:
         """No more than 3 results per branch are included."""
         for i in range(10):
             ingest_brain_record(
-                tmp_path, source="task_outcome", kind="semantic",
+                tmp_path,
+                source="task_outcome",
+                kind="semantic",
                 task_id=f"t{i}",
                 content=f"Calendar meeting reminder number {i} for tomorrow email schedule",
             )
-        packet = build_context_packet(tmp_path, query="calendar meeting email schedule", max_items=40, max_chars=12000)
+        packet = build_context_packet(
+            tmp_path,
+            query="calendar meeting email schedule",
+            max_items=40,
+            max_chars=12000,
+        )
         branch_counts = {}
         for item in packet["selected"]:
             b = item["branch"]
@@ -626,18 +744,38 @@ class TestBuildContextPacketEdgeCases:
     def test_max_chars_budget_respected(self, tmp_path: Path) -> None:
         for i in range(20):
             ingest_brain_record(
-                tmp_path, source="user", kind="ep", task_id=f"t{i}",
-                content=f"Calendar meeting item {i} with a long description " + ("x" * 100),
+                tmp_path,
+                source="user",
+                kind="ep",
+                task_id=f"t{i}",
+                content=f"Calendar meeting item {i} with a long description "
+                + ("x" * 100),
             )
-        packet = build_context_packet(tmp_path, query="calendar meeting", max_items=40, max_chars=500)
+        packet = build_context_packet(
+            tmp_path, query="calendar meeting", max_items=40, max_chars=500
+        )
         total_chars = sum(len(item["summary"]) for item in packet["selected"])
         assert total_chars <= 500
 
     def test_source_bonus_for_task_outcome(self, tmp_path: Path) -> None:
         """task_outcome records get a 0.08 bonus in scoring."""
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t1", content="Python test code review")
-        ingest_brain_record(tmp_path, source="task_outcome", kind="semantic", task_id="t2", content="Python test code review results")
-        packet = build_context_packet(tmp_path, query="python test code review", max_items=10, max_chars=2000)
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t1",
+            content="Python test code review",
+        )
+        ingest_brain_record(
+            tmp_path,
+            source="task_outcome",
+            kind="semantic",
+            task_id="t2",
+            content="Python test code review results",
+        )
+        packet = build_context_packet(
+            tmp_path, query="python test code review", max_items=10, max_chars=2000
+        )
         # Both should appear; task_outcome one should score higher
         assert packet["selected_count"] >= 1
 
@@ -657,8 +795,20 @@ class TestBrainStatus:
         assert isinstance(status["regression"], dict)
 
     def test_with_data(self, tmp_path: Path) -> None:
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t1", content="Calendar meeting setup")
-        ingest_brain_record(tmp_path, source="user", kind="ep", task_id="t2", content="Python code bug fix deploy")
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t1",
+            content="Calendar meeting setup",
+        )
+        ingest_brain_record(
+            tmp_path,
+            source="user",
+            kind="ep",
+            task_id="t2",
+            content="Python code bug fix deploy",
+        )
         status = brain_status(tmp_path)
         assert status["branch_count"] >= 2
         assert status["updated_utc"] != ""
@@ -693,7 +843,13 @@ class TestBrainStatus:
 class TestBrainCompact:
     def test_below_threshold(self, tmp_path: Path) -> None:
         for i in range(5):
-            ingest_brain_record(tmp_path, source="user", kind="ep", task_id=f"t{i}", content=f"Record number {i}")
+            ingest_brain_record(
+                tmp_path,
+                source="user",
+                kind="ep",
+                task_id=f"t{i}",
+                content=f"Record number {i}",
+            )
         result = brain_compact(tmp_path, keep_recent=100)
         assert result["compacted"] is False
         assert result["reason"] == "below_threshold"
@@ -702,7 +858,13 @@ class TestBrainCompact:
 
     def test_compact_creates_summaries(self, tmp_path: Path) -> None:
         for i in range(25):
-            ingest_brain_record(tmp_path, source="user", kind="ep", task_id=f"t{i}", content=f"Calendar event {i}")
+            ingest_brain_record(
+                tmp_path,
+                source="user",
+                kind="ep",
+                task_id=f"t{i}",
+                content=f"Calendar event {i}",
+            )
         result = brain_compact(tmp_path, keep_recent=5)
         assert result["compacted"] is True
         assert result["kept_records"] == 5
@@ -710,13 +872,23 @@ class TestBrainCompact:
         # Summaries file should exist
         summaries_path = tmp_path / ".planning" / "brain" / "summaries.jsonl"
         assert summaries_path.exists()
-        lines = [l for l in summaries_path.read_text(encoding="utf-8").strip().split("\n") if l]
+        lines = [
+            l
+            for l in summaries_path.read_text(encoding="utf-8").strip().split("\n")
+            if l
+        ]
         assert len(lines) >= 1  # at least one summary group
 
     def test_compact_rebuilds_index(self, tmp_path: Path) -> None:
         """After compaction, index should only contain kept records."""
         for i in range(20):
-            ingest_brain_record(tmp_path, source="user", kind="ep", task_id=f"t{i}", content=f"Unique content {i}")
+            ingest_brain_record(
+                tmp_path,
+                source="user",
+                kind="ep",
+                task_id=f"t{i}",
+                content=f"Unique content {i}",
+            )
         brain_compact(tmp_path, keep_recent=5)
         # Verify the records file has only 5 records
         records = _load_records(tmp_path, limit=100)

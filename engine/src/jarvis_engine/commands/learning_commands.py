@@ -12,8 +12,10 @@ class LearnInteractionCommand:
     user_message: str = ""
     assistant_response: str = ""
     task_id: str = ""
-    route: str = ""      # IntentClassifier route name (e.g., "routine", "complex", "math_logic")
-    topic: str = ""      # Topic hint for usage pattern mining (first 100 chars of query)
+    route: str = (
+        ""  # IntentClassifier route name (e.g., "routine", "complex", "math_logic")
+    )
+    topic: str = ""  # Topic hint for usage pattern mining (first 100 chars of query)
 
 
 @dataclass
@@ -55,9 +57,9 @@ class FlagExpiredFactsResult:
 class ConsolidateMemoryCommand:
     """Trigger memory consolidation of episodic records into semantic facts."""
 
-    branch: str = ""          # Restrict to specific branch (empty = all)
-    max_groups: int = 20      # Max groups to process
-    dry_run: bool = False     # Compute clusters but don't write
+    branch: str = ""  # Restrict to specific branch (empty = all)
+    max_groups: int = 20  # Max groups to process
+    dry_run: bool = False  # Compute clusters but don't write
 
 
 @dataclass

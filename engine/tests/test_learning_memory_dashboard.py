@@ -91,6 +91,7 @@ class TestConsolidatorTierUpdate:
 
     def _make_consolidator(self, engine=None):
         from jarvis_engine.learning.consolidator import MemoryConsolidator
+
         return MemoryConsolidator(engine or MagicMock())
 
     def test_update_tiers_hot(self):
@@ -188,7 +189,9 @@ class TestDashboardLearningMetrics:
         }
         mock_pref = MagicMock()
         mock_pref.get_preferences.return_value = {"style": "concise"}
-        mock_pref.get_all_preferences.return_value = [{"key": "style", "value": "concise"}]
+        mock_pref.get_all_preferences.return_value = [
+            {"key": "style", "value": "concise"}
+        ]
         mock_usage = MagicMock()
         mock_usage.get_peak_hours.return_value = [(9, 15), (14, 10)]
         mock_usage.get_hourly_distribution.return_value = {9: 15, 14: 10}
@@ -231,7 +234,10 @@ class TestDashboardLearningMetrics:
         mock_engine.db_lock.__enter__ = MagicMock(return_value=None)
         mock_engine.db_lock.__exit__ = MagicMock(return_value=False)
         mock_engine.db.execute.return_value.fetchone.return_value = [42]
-        mock_engine.db.execute.return_value.fetchall.return_value = [("general", 30), ("health", 12)]
+        mock_engine.db.execute.return_value.fetchall.return_value = [
+            ("general", 30),
+            ("health", 12),
+        ]
 
         root = self._make_tmp_root()
         dashboard = build_intelligence_dashboard(root, kg=mock_kg, engine=mock_engine)

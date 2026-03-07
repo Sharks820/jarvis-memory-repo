@@ -16,6 +16,7 @@ _HAS_JELLYFISH = bool(importlib.util.find_spec("jellyfish"))
 # 1. preprocess_audio
 # ---------------------------------------------------------------------------
 
+
 def test_preprocess_audio_returns_float32_array() -> None:
     """preprocess_audio returns a float32 numpy array."""
     from jarvis_engine.stt_postprocess import preprocess_audio
@@ -72,6 +73,7 @@ def test_preprocess_audio_preserves_length_for_speech() -> None:
 # ---------------------------------------------------------------------------
 # 2. detect_hallucination
 # ---------------------------------------------------------------------------
+
 
 def test_detect_hallucination_known_phrases() -> None:
     """Known hallucination phrases are detected."""
@@ -145,11 +147,15 @@ def test_detect_hallucination_empty_text() -> None:
 # 3. remove_fillers
 # ---------------------------------------------------------------------------
 
+
 def test_remove_fillers_basic() -> None:
     """Basic filler words are removed."""
     from jarvis_engine.stt_postprocess import remove_fillers
 
-    assert remove_fillers("um I need to uh check my calendar") == "I need to check my calendar"
+    assert (
+        remove_fillers("um I need to uh check my calendar")
+        == "I need to check my calendar"
+    )
 
 
 def test_remove_fillers_multi_word() -> None:
@@ -189,6 +195,7 @@ def test_remove_fillers_normalizes_whitespace() -> None:
 # 4. correct_with_llm
 # ---------------------------------------------------------------------------
 
+
 def test_correct_with_llm_calls_gateway() -> None:
     """correct_with_llm calls ModelGateway.complete with the right prompt."""
     from jarvis_engine.stt_postprocess import correct_with_llm
@@ -196,7 +203,9 @@ def test_correct_with_llm_calls_gateway() -> None:
     mock_gateway = MagicMock()
     mock_gateway.complete.return_value = MagicMock(text="Corrected text here.")
 
-    result = correct_with_llm("corrected text here", mock_gateway, vocab_lines=["Conner"])
+    result = correct_with_llm(
+        "corrected text here", mock_gateway, vocab_lines=["Conner"]
+    )
     mock_gateway.complete.assert_called_once()
     call_args = mock_gateway.complete.call_args
     assert call_args[1]["model"] == "kimi-k2"
@@ -236,6 +245,7 @@ def test_correct_with_llm_skips_when_no_gateway() -> None:
 # ---------------------------------------------------------------------------
 # 5. correct_entities
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.skipif(not _HAS_JELLYFISH, reason="jellyfish not installed")
 def test_correct_entities_exact_match() -> None:
@@ -285,6 +295,7 @@ def test_correct_entities_empty_list() -> None:
 # ---------------------------------------------------------------------------
 # 6. postprocess_transcription (full pipeline)
 # ---------------------------------------------------------------------------
+
 
 def test_postprocess_full_pipeline() -> None:
     """Full pipeline runs all stages in order."""
@@ -352,9 +363,13 @@ def test_postprocess_no_gateway_still_cleans() -> None:
 # 7. Integration: full pipeline end-to-end
 # ---------------------------------------------------------------------------
 
+
 def test_end_to_end_pipeline_with_noisy_input() -> None:
     """Full pipeline: preprocess noisy audio -> postprocess transcription."""
-    from jarvis_engine.stt_postprocess import postprocess_transcription, preprocess_audio
+    from jarvis_engine.stt_postprocess import (
+        postprocess_transcription,
+        preprocess_audio,
+    )
 
     # Simulate noisy audio
     speech = np.random.randn(16000).astype(np.float32) * 0.3

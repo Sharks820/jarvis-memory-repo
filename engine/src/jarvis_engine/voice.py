@@ -24,7 +24,9 @@ class VoiceSpeakResult:
     message: str
 
 
-from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs
+from jarvis_engine._shared import (
+    win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs,
+)
 
 
 def _run_ps(script: str, timeout_s: int = 30) -> subprocess.CompletedProcess[str]:
@@ -234,7 +236,11 @@ def _speak_text_edge(
             try:
                 Path(out_path).unlink(missing_ok=True)
             except OSError as exc:
-                logger.debug("Failed to clean up TTS temp file after playback %s: %s", out_path, exc)
+                logger.debug(
+                    "Failed to clean up TTS temp file after playback %s: %s",
+                    out_path,
+                    exc,
+                )
         # Temp file was deleted after playback -- don't return the stale path
         return VoiceSpeakResult(
             voice_name=voice,
@@ -253,7 +259,9 @@ def _chunk_text_for_streaming(text: str, *, sentences_per_chunk: int = 3) -> lis
     stripped = text.strip()
     if not stripped:
         return []
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", stripped) if part.strip()]
+    sentences = [
+        part.strip() for part in re.split(r"(?<=[.!?])\s+", stripped) if part.strip()
+    ]
     if len(sentences) <= sentences_per_chunk:
         return [stripped]
     chunks: list[str] = []
@@ -320,7 +328,9 @@ def _speak_text_edge_streamed(
                     **_win_hidden_subprocess_kwargs(),
                 )
                 if proc.returncode != 0:
-                    raise RuntimeError(proc.stderr.strip() or "edge-tts synthesis failed.")
+                    raise RuntimeError(
+                        proc.stderr.strip() or "edge-tts synthesis failed."
+                    )
                 q.put(str(media_path))
         except (OSError, subprocess.SubprocessError, RuntimeError) as exc:  # noqa: BLE001
             had_error = True
@@ -378,6 +388,7 @@ def choose_voice(voices: list[str], profile: str, custom_pattern: str = "") -> s
 def _strip_markdown_for_speech(text: str) -> str:
     """Remove markdown formatting so TTS doesn't read 'asterisk' etc."""
     import re as _re
+
     # Remove bold/italic markers: **text** → text, *text* → text
     text = _re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", text)
     # Remove underscores used for emphasis: __text__ → text, _text_ → text

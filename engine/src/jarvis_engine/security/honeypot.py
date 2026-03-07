@@ -276,13 +276,15 @@ class HoneypotEngine:
 
         if self._forensic_logger is not None:
             try:
-                self._forensic_logger.log_event({
-                    "event_type": "honeypot_hit",
-                    "path": normalised,
-                    "source_ip": source_ip,
-                    "headers": headers or {},
-                    "timestamp": record.timestamp,
-                })
+                self._forensic_logger.log_event(
+                    {
+                        "event_type": "honeypot_hit",
+                        "path": normalised,
+                        "source_ip": source_ip,
+                        "headers": headers or {},
+                        "timestamp": record.timestamp,
+                    }
+                )
             except Exception as exc:
                 logger.debug("Failed to forward hit to forensic logger: %s", exc)
 
@@ -309,15 +311,11 @@ class HoneypotEngine:
             unique_count = len(self._unique_ips)
 
         # Top attackers — sorted descending by hit count
-        top_attackers = sorted(ip_counts.items(), key=lambda x: x[1], reverse=True)[
-            :10
-        ]
+        top_attackers = sorted(ip_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
         return {
             "total_hits": total_hits,
             "hits_per_path": hits_per_path,
             "unique_ips": unique_count,
-            "top_attackers": [
-                {"ip": ip, "hits": count} for ip, count in top_attackers
-            ],
+            "top_attackers": [{"ip": ip, "hits": count} for ip, count in top_attackers],
         }

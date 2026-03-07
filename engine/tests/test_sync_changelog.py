@@ -27,6 +27,7 @@ from jarvis_engine.sync.changelog import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite database with a minimal 'records' table."""
     db = sqlite3.connect(":memory:")
@@ -125,6 +126,7 @@ def write_lock():
 # Device ID validation
 # ---------------------------------------------------------------------------
 
+
 class TestDeviceIdValidation:
     def test_valid_device_ids(self) -> None:
         assert _DEVICE_ID_RE.match("desktop")
@@ -149,26 +151,38 @@ class TestDeviceIdValidation:
 # Schema installation
 # ---------------------------------------------------------------------------
 
+
 class TestInstallTriggers:
     def test_creates_changelog_table(self, db: sqlite3.Connection) -> None:
-        tables = {row[0] for row in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         assert "_sync_changelog" in tables
         assert "_sync_cursor" in tables
         assert "_sync_version_seq" in tables
 
     def test_creates_indexes(self, db: sqlite3.Connection) -> None:
-        indexes = {row[0] for row in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='index'"
-        ).fetchall()}
+        indexes = {
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
         assert "idx_changelog_version" in indexes
         assert "idx_changelog_device" in indexes
 
-    def test_creates_triggers_for_all_tracked_tables(self, db: sqlite3.Connection) -> None:
-        triggers = {row[0] for row in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger'"
-        ).fetchall()}
+    def test_creates_triggers_for_all_tracked_tables(
+        self, db: sqlite3.Connection
+    ) -> None:
+        triggers = {
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            ).fetchall()
+        }
         for table in _TRACKED_TABLES:
             assert f"_sync_trg_{table}_insert" in triggers
             assert f"_sync_trg_{table}_update" in triggers
@@ -177,9 +191,12 @@ class TestInstallTriggers:
     def test_idempotent_install(self, db: sqlite3.Connection) -> None:
         """Calling install_changelog_triggers twice should not error."""
         install_changelog_triggers(db, "desktop")  # second call
-        triggers = {row[0] for row in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger'"
-        ).fetchall()}
+        triggers = {
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            ).fetchall()
+        }
         assert len(triggers) == 3 * len(_TRACKED_TABLES)
 
     def test_version_sequence_seeded(self, db: sqlite3.Connection) -> None:
@@ -195,6 +212,7 @@ class TestInstallTriggers:
 # ---------------------------------------------------------------------------
 # INSERT trigger
 # ---------------------------------------------------------------------------
+
 
 class TestInsertTrigger:
     def test_insert_creates_changelog_entry(self, db: sqlite3.Connection) -> None:
@@ -223,9 +241,7 @@ class TestInsertTrigger:
         assert nv["summary"] == "test summary"
 
     def test_insert_old_values_empty(self, db: sqlite3.Connection) -> None:
-        db.execute(
-            "INSERT INTO records (record_id) VALUES ('r3')"
-        )
+        db.execute("INSERT INTO records (record_id) VALUES ('r3')")
         db.commit()
         entries = compute_diff(db, "records", 0)
         assert entries[0]["old_values"] == {}
@@ -242,6 +258,7 @@ class TestInsertTrigger:
 # ---------------------------------------------------------------------------
 # UPDATE trigger
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateTrigger:
     def test_update_creates_changelog_entry(self, db: sqlite3.Connection) -> None:
@@ -271,7 +288,9 @@ class TestUpdateTrigger:
         db.execute("INSERT INTO records (record_id, access_count) VALUES ('n1', 0)")
         db.commit()
         initial_count = len(compute_diff(db, "records", 0))
-        db.execute("UPDATE records SET access_count = 5, last_accessed = 'now' WHERE record_id = 'n1'")
+        db.execute(
+            "UPDATE records SET access_count = 5, last_accessed = 'now' WHERE record_id = 'n1'"
+        )
         db.commit()
         after_count = len(compute_diff(db, "records", 0))
         # No new changelog entry for noise-only changes
@@ -279,9 +298,13 @@ class TestUpdateTrigger:
 
     def test_mixed_noise_and_real_update(self, db: sqlite3.Connection) -> None:
         """Updating noise + real fields should fire the trigger."""
-        db.execute("INSERT INTO records (record_id, summary, access_count) VALUES ('m1', 'old', 0)")
+        db.execute(
+            "INSERT INTO records (record_id, summary, access_count) VALUES ('m1', 'old', 0)"
+        )
         db.commit()
-        db.execute("UPDATE records SET summary = 'new', access_count = 99 WHERE record_id = 'm1'")
+        db.execute(
+            "UPDATE records SET summary = 'new', access_count = 99 WHERE record_id = 'm1'"
+        )
         db.commit()
         entries = compute_diff(db, "records", 0)
         # INSERT + UPDATE = 2
@@ -292,6 +315,7 @@ class TestUpdateTrigger:
 # ---------------------------------------------------------------------------
 # DELETE trigger
 # ---------------------------------------------------------------------------
+
 
 class TestDeleteTrigger:
     def test_delete_creates_changelog_entry(self, db: sqlite3.Connection) -> None:
@@ -319,6 +343,7 @@ class TestDeleteTrigger:
 # ---------------------------------------------------------------------------
 # compute_diff
 # ---------------------------------------------------------------------------
+
 
 class TestComputeDiff:
     def test_since_version_filters(self, db: sqlite3.Connection) -> None:
@@ -358,20 +383,27 @@ class TestComputeDiff:
 # Sync cursors
 # ---------------------------------------------------------------------------
 
+
 class TestSyncCursor:
     def test_get_cursor_default_zero(self, db: sqlite3.Connection) -> None:
         assert get_sync_cursor(db, "phone", "records") == 0
 
-    def test_update_and_get_cursor(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_update_and_get_cursor(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         update_sync_cursor(db, "phone", "records", 42, write_lock)
         assert get_sync_cursor(db, "phone", "records") == 42
 
-    def test_cursor_upsert(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_cursor_upsert(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         update_sync_cursor(db, "phone", "records", 10, write_lock)
         update_sync_cursor(db, "phone", "records", 20, write_lock)
         assert get_sync_cursor(db, "phone", "records") == 20
 
-    def test_cursor_per_device_table(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_cursor_per_device_table(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         update_sync_cursor(db, "phone", "records", 10, write_lock)
         update_sync_cursor(db, "phone", "kg_nodes", 5, write_lock)
         update_sync_cursor(db, "tablet", "records", 3, write_lock)
@@ -384,12 +416,17 @@ class TestSyncCursor:
 # Changelog compaction
 # ---------------------------------------------------------------------------
 
+
 class TestCompactChangelog:
-    def test_compact_no_entries(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_compact_no_entries(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         deleted = compact_changelog(db, write_lock, retention_days=0)
         assert deleted == 0
 
-    def test_compact_respects_cursor(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_compact_respects_cursor(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         """Entries synced by all devices and older than retention should be deleted."""
         # Insert a record to generate a changelog entry
         db.execute("INSERT INTO records (record_id) VALUES ('c1')")
@@ -405,7 +442,9 @@ class TestCompactChangelog:
         deleted = compact_changelog(db, write_lock, retention_days=7)
         assert deleted == 1
 
-    def test_compact_keeps_recent(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_compact_keeps_recent(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         """Recent entries within retention period should NOT be deleted."""
         db.execute("INSERT INTO records (record_id) VALUES ('keep1')")
         db.commit()
@@ -414,7 +453,9 @@ class TestCompactChangelog:
         deleted = compact_changelog(db, write_lock, retention_days=7)
         assert deleted == 0
 
-    def test_compact_negative_retention_clamped(self, db: sqlite3.Connection, write_lock: threading.Lock) -> None:
+    def test_compact_negative_retention_clamped(
+        self, db: sqlite3.Connection, write_lock: threading.Lock
+    ) -> None:
         """Negative retention_days should be clamped to 0."""
         db.execute("INSERT INTO records (record_id) VALUES ('neg1')")
         db.commit()
@@ -430,6 +471,7 @@ class TestCompactChangelog:
 # Trigger SQL generation helpers
 # ---------------------------------------------------------------------------
 
+
 class TestTriggerBuilders:
     def test_build_insert_trigger_sql(self) -> None:
         sql = _build_insert_trigger("records", "record_id", ["ts", "source"], "desktop")
@@ -438,7 +480,9 @@ class TestTriggerBuilders:
         assert "_sync_trg_records_insert" in sql
 
     def test_build_update_trigger_sql(self) -> None:
-        sql = _build_update_trigger("records", "record_id", ["ts", "source"], [], "desktop")
+        sql = _build_update_trigger(
+            "records", "record_id", ["ts", "source"], [], "desktop"
+        )
         assert "AFTER UPDATE ON records" in sql
         assert "'UPDATE'" in sql
         assert "WHEN" in sql
@@ -472,6 +516,7 @@ class TestTriggerBuilders:
 # ---------------------------------------------------------------------------
 # Cross-table version independence
 # ---------------------------------------------------------------------------
+
 
 class TestCrossTableVersions:
     def test_versions_independent_per_table(self, db: sqlite3.Connection) -> None:

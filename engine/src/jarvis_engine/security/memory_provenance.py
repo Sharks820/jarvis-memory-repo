@@ -24,7 +24,6 @@ QUARANTINED = "QUARANTINED"
 _VALID_TRUST_LEVELS = {OWNER_INPUT, VERIFIED_EXTERNAL, UNVERIFIED_EXTERNAL, QUARANTINED}
 
 
-
 class MemoryProvenance:
     """In-memory provenance tracker for memory records.
 
@@ -79,9 +78,7 @@ class MemoryProvenance:
             )
 
         verification = (
-            "verified"
-            if trust_level in (OWNER_INPUT, VERIFIED_EXTERNAL)
-            else "pending"
+            "verified" if trust_level in (OWNER_INPUT, VERIFIED_EXTERNAL) else "pending"
         )
 
         prov: dict[str, Any] = {
@@ -98,6 +95,7 @@ class MemoryProvenance:
             if len(self._records) > 50000:
                 # Use heapq.nsmallest for O(n) eviction instead of O(n log n) full sort
                 import heapq
+
                 oldest_keys = heapq.nsmallest(
                     10000,
                     self._records,

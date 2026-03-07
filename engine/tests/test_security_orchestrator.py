@@ -1,4 +1,5 @@
 """Tests for SecurityOrchestrator — unified security pipeline."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -118,7 +119,10 @@ class TestCheckRequest:
             user_agent="JarvisApp/2.0",
         )
         assert result["allowed"] is False
-        assert "blocked" in result["reason"].lower() or "threat" in result["reason"].lower()
+        assert (
+            "blocked" in result["reason"].lower()
+            or "threat" in result["reason"].lower()
+        )
 
     def test_sql_injection_triggers_threat(self, orchestrator):
         result = orchestrator.check_request(
@@ -223,6 +227,7 @@ class TestStatus:
     def test_status_owner_session_present_when_set(self, orchestrator):
         """Owner session key present when session manager is set externally."""
         from unittest.mock import MagicMock
+
         mock_session = MagicMock()
         mock_session.session_status.return_value = {"active": False, "session_count": 0}
         orchestrator.owner_session = mock_session
@@ -254,7 +259,9 @@ class TestActionAuditIntegration:
             headers={},
             body="",
         )
-        within_cap, current = orchestrator.resource_monitor.check_cap("api_calls_per_hour")
+        within_cap, current = orchestrator.resource_monitor.check_cap(
+            "api_calls_per_hour"
+        )
         assert current >= 1.0
 
     def test_multiple_requests_accumulate(self, orchestrator):
@@ -277,15 +284,17 @@ class TestThreatIntelIntegration:
     def test_known_bad_ip_blocked(self, orchestrator):
         """If threat_intel marks IP as known_bad, check_request should block it."""
         # Mock the enrich_ip to return known_bad=True
-        orchestrator.threat_intel.enrich_ip = MagicMock(return_value={
-            "ip": "203.0.113.50",
-            "is_known_bad": True,
-            "abuseipdb_score": 95,
-            "otx_pulses": 3,
-            "feodo_listed": False,
-            "cache_hit": False,
-            "sources_checked": ["abuseipdb"],
-        })
+        orchestrator.threat_intel.enrich_ip = MagicMock(
+            return_value={
+                "ip": "203.0.113.50",
+                "is_known_bad": True,
+                "abuseipdb_score": 95,
+                "otx_pulses": 3,
+                "feodo_listed": False,
+                "cache_hit": False,
+                "sources_checked": ["abuseipdb"],
+            }
+        )
         result = orchestrator.check_request(
             path="/command",
             source_ip="203.0.113.50",
@@ -298,15 +307,17 @@ class TestThreatIntelIntegration:
 
     def test_clean_ip_passes_intel(self, orchestrator):
         """If threat_intel marks IP as clean, request should continue."""
-        orchestrator.threat_intel.enrich_ip = MagicMock(return_value={
-            "ip": "192.168.1.100",
-            "is_known_bad": False,
-            "abuseipdb_score": 0,
-            "otx_pulses": 0,
-            "feodo_listed": False,
-            "cache_hit": False,
-            "sources_checked": ["feodo"],
-        })
+        orchestrator.threat_intel.enrich_ip = MagicMock(
+            return_value={
+                "ip": "192.168.1.100",
+                "is_known_bad": False,
+                "abuseipdb_score": 0,
+                "otx_pulses": 0,
+                "feodo_listed": False,
+                "cache_hit": False,
+                "sources_checked": ["feodo"],
+            }
+        )
         result = orchestrator.check_request(
             path="/health",
             source_ip="192.168.1.100",
@@ -321,13 +332,15 @@ class TestThreatNeutralizerIntegration:
 
     def test_handle_threat_calls_neutralizer(self, orchestrator):
         """_handle_threat with level >= 2 should call neutralize."""
-        orchestrator.threat_neutralizer.neutralize = MagicMock(return_value={
-            "ip": "10.0.0.1",
-            "actions_taken": ["evidence_preserved"],
-            "evidence_id": "abc123",
-            "reported_to": [],
-            "blocked": True,
-        })
+        orchestrator.threat_neutralizer.neutralize = MagicMock(
+            return_value={
+                "ip": "10.0.0.1",
+                "actions_taken": ["evidence_preserved"],
+                "evidence_id": "abc123",
+                "reported_to": [],
+                "blocked": True,
+            }
+        )
         orchestrator._handle_threat(
             source_ip="10.0.0.1",
             category="test_threat",
@@ -335,7 +348,9 @@ class TestThreatNeutralizerIntegration:
             level=2,
         )
         orchestrator.threat_neutralizer.neutralize.assert_called_once_with(
-            "10.0.0.1", "test_threat", {"detail": "test payload"},
+            "10.0.0.1",
+            "test_threat",
+            {"detail": "test payload"},
         )
 
 

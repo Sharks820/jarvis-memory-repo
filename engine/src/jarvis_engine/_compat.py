@@ -1,4 +1,5 @@
 """Python 3.10+ compatibility shim."""
+
 from __future__ import annotations
 
 import sys

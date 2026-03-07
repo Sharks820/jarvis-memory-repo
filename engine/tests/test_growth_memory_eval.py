@@ -21,7 +21,11 @@ from jarvis_engine.learning.metrics import capture_knowledge_metrics
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_engine_mock(records: list[dict] | None = None, vec_results: list[tuple[str, float]] | None = None):
+
+def _make_engine_mock(
+    records: list[dict] | None = None,
+    vec_results: list[tuple[str, float]] | None = None,
+):
     """Create a mock MemoryEngine with search_vec and get_records_batch."""
     engine = MagicMock()
     engine.search_vec.return_value = vec_results or []
@@ -36,7 +40,12 @@ def _make_embed_service_mock():
     return svc
 
 
-def _make_kg_mock(nodes: int = 0, edges: int = 0, locked: int = 0, db: sqlite3.Connection | None = None):
+def _make_kg_mock(
+    nodes: int = 0,
+    edges: int = 0,
+    locked: int = 0,
+    db: sqlite3.Connection | None = None,
+):
     """Create a mock KnowledgeGraph."""
     kg = MagicMock()
     kg.count_nodes.return_value = nodes
@@ -49,6 +58,7 @@ def _make_kg_mock(nodes: int = 0, edges: int = 0, locked: int = 0, db: sqlite3.C
 # ---------------------------------------------------------------------------
 # MemoryRecallTask dataclass tests
 # ---------------------------------------------------------------------------
+
 
 def test_memory_recall_task_defaults():
     t = MemoryRecallTask()
@@ -72,6 +82,7 @@ def test_default_memory_tasks_has_eighteen():
 # ---------------------------------------------------------------------------
 # evaluate_memory_recall tests
 # ---------------------------------------------------------------------------
+
 
 def test_evaluate_memory_recall_has_results():
     task = MemoryRecallTask("test", "query", ["health"], 1, ["medication"])
@@ -154,6 +165,7 @@ def test_memory_recall_perfect_score():
 # run_memory_eval tests
 # ---------------------------------------------------------------------------
 
+
 def test_run_memory_eval_returns_list():
     tasks = [
         MemoryRecallTask("t1", "q1", [], 1, []),
@@ -182,6 +194,7 @@ def test_run_memory_eval_no_embed_raises():
 # ---------------------------------------------------------------------------
 # capture_knowledge_metrics tests
 # ---------------------------------------------------------------------------
+
 
 def test_capture_knowledge_metrics_structure():
     db = sqlite3.connect(":memory:")

@@ -45,9 +45,7 @@ class TestCorrectionDetector:
         """'that's wrong, X' is detected as a correction."""
         detector = CorrectionDetector()
 
-        result = detector.detect_correction(
-            "that's wrong, the meeting is on Thursday"
-        )
+        result = detector.detect_correction("that's wrong, the meeting is on Thursday")
         assert result is not None
         assert "meeting is on Thursday" in result.new_claim
 
@@ -55,9 +53,7 @@ class TestCorrectionDetector:
         """'that's not right, X' is detected as a correction."""
         detector = CorrectionDetector()
 
-        result = detector.detect_correction(
-            "that's not right, it should be 42"
-        )
+        result = detector.detect_correction("that's not right, it should be 42")
         assert result is not None
         assert "42" in result.new_claim
 
@@ -261,7 +257,11 @@ class TestCorrectionDetector:
         mock_kg._db = db
         mock_kg._write_lock = write_lock
         mock_kg.query_relevant_facts.return_value = [
-            {"node_id": "pref.color", "label": "Favorite color is blue", "confidence": 0.95}
+            {
+                "node_id": "pref.color",
+                "label": "Favorite color is blue",
+                "confidence": 0.95,
+            }
         ]
 
         detector = CorrectionDetector(kg=mock_kg)

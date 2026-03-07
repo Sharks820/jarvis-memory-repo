@@ -13,11 +13,13 @@ from jarvis_engine.gateway.costs import CostTracker
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+
 def _make_tracker(tmp_path: Path) -> CostTracker:
     return CostTracker(tmp_path / "costs.db")
 
 
 # ── initialisation ──────────────────────────────────────────────────────────
+
 
 class TestInit:
     def test_creates_db_file(self, tmp_path: Path) -> None:
@@ -57,6 +59,7 @@ class TestInit:
 
 # ── log() ───────────────────────────────────────────────────────────────────
 
+
 class TestLog:
     def test_log_explicit_cost(self, tmp_path: Path) -> None:
         tracker = _make_tracker(tmp_path)
@@ -68,7 +71,9 @@ class TestLog:
     def test_log_auto_cost(self, tmp_path: Path) -> None:
         """When cost_usd is None, calculate_cost is used."""
         tracker = _make_tracker(tmp_path)
-        with patch("jarvis_engine.gateway.costs.calculate_cost", return_value=0.042) as mock_cc:
+        with patch(
+            "jarvis_engine.gateway.costs.calculate_cost", return_value=0.042
+        ) as mock_cc:
             tracker.log("claude-haiku", "anthropic", 200, 100)
             mock_cc.assert_called_once_with("claude-haiku", 200, 100)
         cur = tracker._db.execute("SELECT cost_usd FROM query_costs")
@@ -109,6 +114,7 @@ class TestLog:
 
 
 # ── summary() ───────────────────────────────────────────────────────────────
+
 
 class TestSummary:
     def test_empty_db(self, tmp_path: Path) -> None:
@@ -157,6 +163,7 @@ class TestSummary:
 
 
 # ── local_vs_cloud_summary() ───────────────────────────────────────────────
+
 
 class TestLocalVsCloud:
     def test_empty(self, tmp_path: Path) -> None:
@@ -213,6 +220,7 @@ class TestLocalVsCloud:
 
 # ── thread safety ───────────────────────────────────────────────────────────
 
+
 class TestThreadSafety:
     def test_concurrent_logs(self, tmp_path: Path) -> None:
         """Multiple threads logging concurrently must not raise."""
@@ -239,6 +247,7 @@ class TestThreadSafety:
 
 
 # ── close / cleanup ─────────────────────────────────────────────────────────
+
 
 class TestClose:
     def test_double_close_no_error(self, tmp_path: Path) -> None:

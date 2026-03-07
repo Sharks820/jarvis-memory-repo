@@ -189,14 +189,18 @@ class EntityResolver:
                 for node_id, label in members:
                     embed_cache[node_id] = self._embed_service.embed(label)
         except (RuntimeError, ValueError, OSError) as exc:
-            logger.debug("Batch embedding failed, falling back to individual calls: %s", exc)
+            logger.debug(
+                "Batch embedding failed, falling back to individual calls: %s", exc
+            )
             # Batch failed — fall back to individual calls
             embed_cache.clear()
             for node_id, label in members:
                 try:
                     embed_cache[node_id] = self._embed_service.embed(label)
                 except (RuntimeError, ValueError, OSError) as exc:
-                    logger.debug("Embedding failed for node %s (%r): %s", node_id, label, exc)
+                    logger.debug(
+                        "Embedding failed for node %s (%r): %s", node_id, label, exc
+                    )
 
         if not embed_cache:
             # All embeddings failed — fall back to string-only for this group
@@ -220,6 +224,7 @@ class EntityResolver:
         # Batch vectorized cosine similarity using numpy when available
         try:
             import numpy as _np
+
             mat = _np.array(embedded_vecs, dtype=_np.float32)
             norms = _np.linalg.norm(mat, axis=1, keepdims=True)
             norms = _np.where(norms == 0, 1.0, norms)
@@ -358,10 +363,13 @@ class EntityResolver:
         Returns packed blob ready for DB insertion, or ``None`` when the
         embedding service is unavailable or the computation fails.
         """
-        if self._embed_service is None or not getattr(self._kg, "_vec_available", False):
+        if self._embed_service is None or not getattr(
+            self._kg, "_vec_available", False
+        ):
             return None
         try:
             import struct
+
             embedding = self._embed_service.embed(label, prefix="search_document")
             if len(embedding) == 768:
                 return struct.pack(f"{len(embedding)}f", *embedding)
@@ -415,7 +423,8 @@ class EntityResolver:
             embedding_blob = self._precompute_merge_embedding(embed_label)
 
         return self._merge_nodes_impl(
-            keep_id, remove_id,
+            keep_id,
+            remove_id,
             canonical_label=canonical_label,
             _lock_held=_lock_held,
             _embedding_blob=embedding_blob,
@@ -432,9 +441,19 @@ class EntityResolver:
     ) -> bool:
         """Internal merge implementation. Acquires _write_lock unless _lock_held."""
         if _lock_held:
-            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label, _embedding_blob=_embedding_blob)
+            return self._merge_nodes_core(
+                keep_id,
+                remove_id,
+                canonical_label=canonical_label,
+                _embedding_blob=_embedding_blob,
+            )
         with self._kg.write_lock:
-            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label, _embedding_blob=_embedding_blob)
+            return self._merge_nodes_core(
+                keep_id,
+                remove_id,
+                canonical_label=canonical_label,
+                _embedding_blob=_embedding_blob,
+            )
 
     def _merge_nodes_core(
         self,
@@ -469,7 +488,10 @@ class EntityResolver:
         if keep_row[2] or remove_row[2]:
             logger.warning(
                 "Refusing to merge locked nodes: keep=%s (locked=%s), remove=%s (locked=%s)",
-                keep_id, bool(keep_row[2]), remove_id, bool(remove_row[2]),
+                keep_id,
+                bool(keep_row[2]),
+                remove_id,
+                bool(remove_row[2]),
             )
             return False
 
@@ -550,7 +572,9 @@ class EntityResolver:
                     (keep_id, _embedding_blob),
                 )
             except (sqlite3.Error, ValueError) as exc:
-                logger.debug("Vec embedding update for merged node %s failed: %s", keep_id, exc)
+                logger.debug(
+                    "Vec embedding update for merged node %s failed: %s", keep_id, exc
+                )
 
         # Delete edges referencing remove_id, then the node itself
         self._kg.db.execute(
@@ -572,11 +596,13 @@ class EntityResolver:
                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (remove_id,)
                 )
             except sqlite3.Error as exc:
-                logger.debug("Vec embedding delete for removed node %s failed: %s", remove_id, exc)
+                logger.debug(
+                    "Vec embedding delete for removed node %s failed: %s",
+                    remove_id,
+                    exc,
+                )
 
-        self._kg.db.execute(
-            "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)
-        )
+        self._kg.db.execute("DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,))
 
         # Record in merge history
         self._kg.db.execute(
@@ -665,11 +691,15 @@ class EntityResolver:
                 # TOCTOU race where node data changes between selection and merge.
                 with self._kg.write_lock:
                     keep_id, remove_id = self._pick_keeper_unlocked(
-                        cand.node_a_id, cand.node_b_id,
+                        cand.node_a_id,
+                        cand.node_b_id,
                     )
                     ok = self._merge_nodes_core(
-                        keep_id, remove_id,
-                        _embedding_blob=embedding_blob if keep_id == keeper_id else None,
+                        keep_id,
+                        remove_id,
+                        _embedding_blob=embedding_blob
+                        if keep_id == keeper_id
+                        else None,
                     )
                 if ok:
                     result.merges_applied += 1
@@ -739,6 +769,7 @@ class EntityResolver:
             return 0.0
         try:
             import numpy as np
+
             a_arr = np.array(a, dtype=np.float32)
             b_arr = np.array(b, dtype=np.float32)
             norm_a = np.linalg.norm(a_arr)

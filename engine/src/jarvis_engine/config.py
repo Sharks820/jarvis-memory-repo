@@ -81,7 +81,9 @@ def load_config() -> EngineConfig:
     try:
         data: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
-        logger.warning("Failed to load config from %s: %s; using defaults", config_path, exc)
+        logger.warning(
+            "Failed to load config from %s: %s; using defaults", config_path, exc
+        )
         cfg = EngineConfig()
         env_profile = os.getenv("JARVIS_ENGINE_PROFILE", "").strip()
         if env_profile:

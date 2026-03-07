@@ -35,8 +35,8 @@ def configure_sqlite(
     if full:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-64000")       # 64 MB
-        conn.execute("PRAGMA mmap_size=268435456")     # 256 MB
+        conn.execute("PRAGMA cache_size=-64000")  # 64 MB
+        conn.execute("PRAGMA mmap_size=268435456")  # 256 MB
 
 
 def connect_db(
@@ -59,8 +59,9 @@ def connect_db(
     timeout:
         Busy-wait timeout for ``sqlite3.connect``.
     """
-    conn = sqlite3.connect(str(db_path), timeout=timeout,
-                           check_same_thread=check_same_thread)
+    conn = sqlite3.connect(
+        str(db_path), timeout=timeout, check_same_thread=check_same_thread
+    )
     conn.row_factory = sqlite3.Row
     configure_sqlite(conn, full=full)
     return conn

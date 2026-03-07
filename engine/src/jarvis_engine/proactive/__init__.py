@@ -32,7 +32,9 @@ __all__ = [
 class ProactiveEngine:
     """Evaluate trigger rules against snapshot data and fire notifications."""
 
-    def __init__(self, rules: list[TriggerRule], notifier: Notifier, root: Path | None = None) -> None:
+    def __init__(
+        self, rules: list[TriggerRule], notifier: Notifier, root: Path | None = None
+    ) -> None:
         self._rules = rules
         self._notifier = notifier
         self._root = root
@@ -96,14 +98,18 @@ class ProactiveEngine:
                 if self._root is not None:
                     try:
                         from jarvis_engine.proactive.alert_queue import enqueue_alert
+
                         for alert in new_alerts:
-                            enqueue_alert(self._root, {
-                                "type": alert.rule_id,
-                                "title": f"Jarvis: {alert.rule_id.replace('_', ' ').title()}",
-                                "body": alert.message,
-                                "group_key": f"jarvis_{alert.rule_id}",
-                                "priority": alert.priority,
-                            })
+                            enqueue_alert(
+                                self._root,
+                                {
+                                    "type": alert.rule_id,
+                                    "title": f"Jarvis: {alert.rule_id.replace('_', ' ').title()}",
+                                    "body": alert.message,
+                                    "group_key": f"jarvis_{alert.rule_id}",
+                                    "priority": alert.priority,
+                                },
+                            )
                     except (ImportError, OSError, ValueError, TypeError) as exc:
                         logger.debug("Alert queue enqueue failed: %s", exc)
             else:
@@ -116,9 +122,14 @@ class ProactiveEngine:
         if alerts:
             try:
                 from jarvis_engine.activity_feed import log_activity
-                log_activity("proactive_trigger", f"Fired {len(alerts)} alerts", {
-                    "alerts": [a.rule_id for a in alerts],
-                })
+
+                log_activity(
+                    "proactive_trigger",
+                    f"Fired {len(alerts)} alerts",
+                    {
+                        "alerts": [a.rule_id for a in alerts],
+                    },
+                )
             except ImportError:
                 logger.debug("activity_feed module not available for proactive logging")
             except (OSError, ValueError, TypeError) as exc:

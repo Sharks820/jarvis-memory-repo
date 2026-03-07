@@ -29,7 +29,9 @@ class TriggerAlert:
     timestamp: str = ""
 
 
-def check_medication_reminders(snapshot_data: dict, _now: datetime | None = None) -> list[str]:
+def check_medication_reminders(
+    snapshot_data: dict, _now: datetime | None = None
+) -> list[str]:
     """Check medications list for items with due_time within 30 minutes of now."""
     alerts: list[str] = []
     medications = snapshot_data.get("medications", [])

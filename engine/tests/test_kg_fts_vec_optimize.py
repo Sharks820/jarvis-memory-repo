@@ -49,7 +49,9 @@ def kg(engine: MemoryEngine) -> KnowledgeGraph:
 
 
 @pytest.fixture
-def kg_with_embed(engine: MemoryEngine, mock_embed: MockEmbeddingService) -> KnowledgeGraph:
+def kg_with_embed(
+    engine: MemoryEngine, mock_embed: MockEmbeddingService
+) -> KnowledgeGraph:
     """Create a KnowledgeGraph with mock embed_service."""
     return KnowledgeGraph(engine, embed_service=mock_embed)
 
@@ -62,7 +64,9 @@ def kg_with_embed(engine: MemoryEngine, mock_embed: MockEmbeddingService) -> Kno
 class TestKGFTS5Schema:
     """Tests for fts_kg_nodes virtual table creation."""
 
-    def test_fts_kg_nodes_table_created(self, engine: MemoryEngine, kg: KnowledgeGraph) -> None:
+    def test_fts_kg_nodes_table_created(
+        self, engine: MemoryEngine, kg: KnowledgeGraph
+    ) -> None:
         """fts_kg_nodes virtual table is created during schema init."""
         cur = engine._db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -70,7 +74,9 @@ class TestKGFTS5Schema:
         table_names = {row[0] for row in cur.fetchall()}
         assert "fts_kg_nodes" in table_names
 
-    def test_fts_kg_nodes_has_correct_columns(self, engine: MemoryEngine, kg: KnowledgeGraph) -> None:
+    def test_fts_kg_nodes_has_correct_columns(
+        self, engine: MemoryEngine, kg: KnowledgeGraph
+    ) -> None:
         """fts_kg_nodes has node_id and label columns."""
         # Insert a test row to verify schema
         kg.add_fact("test_node", "test label", 0.8)
@@ -84,7 +90,9 @@ class TestKGFTS5Schema:
 class TestKGFTS5Insert:
     """Tests for FTS5 index maintenance on add_fact."""
 
-    def test_add_fact_inserts_into_fts(self, kg: KnowledgeGraph, engine: MemoryEngine) -> None:
+    def test_add_fact_inserts_into_fts(
+        self, kg: KnowledgeGraph, engine: MemoryEngine
+    ) -> None:
         """add_fact inserts the node into fts_kg_nodes."""
         kg.add_fact("med.aspirin", "aspirin for heart health", 0.75)
 
@@ -97,7 +105,9 @@ class TestKGFTS5Insert:
         assert row[0] == "med.aspirin"
         assert row[1] == "aspirin for heart health"
 
-    def test_add_fact_update_updates_fts(self, kg: KnowledgeGraph, engine: MemoryEngine) -> None:
+    def test_add_fact_update_updates_fts(
+        self, kg: KnowledgeGraph, engine: MemoryEngine
+    ) -> None:
         """Updating an existing fact updates the FTS5 index."""
         kg.add_fact("pref.color", "blue", 0.5)
         kg.add_fact("pref.color", "dark blue", 0.8)
@@ -111,7 +121,9 @@ class TestKGFTS5Insert:
         assert len(rows) == 1
         assert rows[0][0] == "dark blue"
 
-    def test_multiple_facts_all_indexed(self, kg: KnowledgeGraph, engine: MemoryEngine) -> None:
+    def test_multiple_facts_all_indexed(
+        self, kg: KnowledgeGraph, engine: MemoryEngine
+    ) -> None:
         """Multiple facts are all inserted into FTS5."""
         kg.add_fact("n1", "python programming", 0.8)
         kg.add_fact("n2", "java development", 0.7)
@@ -124,7 +136,9 @@ class TestKGFTS5Insert:
 class TestKGFTS5Retract:
     """Tests for FTS5 index cleanup on retract_facts."""
 
-    def test_retract_removes_from_fts(self, kg: KnowledgeGraph, engine: MemoryEngine) -> None:
+    def test_retract_removes_from_fts(
+        self, kg: KnowledgeGraph, engine: MemoryEngine
+    ) -> None:
         """retract_facts removes retracted nodes from fts_kg_nodes."""
         kg.add_fact("temp.note", "temporary note about meeting", 0.6)
         assert kg.retract_facts(["temporary"]) == 1
@@ -135,7 +149,9 @@ class TestKGFTS5Retract:
         )
         assert cur.fetchone()[0] == 0
 
-    def test_retract_locked_preserves_fts(self, kg: KnowledgeGraph, engine: MemoryEngine) -> None:
+    def test_retract_locked_preserves_fts(
+        self, kg: KnowledgeGraph, engine: MemoryEngine
+    ) -> None:
         """Locked facts are not retracted and remain in FTS5."""
         kg.add_fact("locked.fact", "important locked fact", 0.9)
         engine._db.execute(
@@ -306,9 +322,7 @@ class TestKGVecInsert:
         )
         assert cur.fetchone()[0] == 1
 
-    def test_add_fact_without_embed_service_no_vec(
-        self, engine: MemoryEngine
-    ) -> None:
+    def test_add_fact_without_embed_service_no_vec(self, engine: MemoryEngine) -> None:
         """add_fact without embed_service skips vec insertion."""
         kg = KnowledgeGraph(engine)
         kg.add_fact("n1", "some label", 0.8)
@@ -414,7 +428,9 @@ class TestKGSemanticSearch:
         kg.add_fact("low", "low confidence item", 0.2)
         kg.add_fact("high", "high confidence item", 0.9)
 
-        results = kg.query_relevant_facts_semantic("confidence item", min_confidence=0.5)
+        results = kg.query_relevant_facts_semantic(
+            "confidence item", min_confidence=0.5
+        )
         node_ids = {r["node_id"] for r in results}
         assert "high" in node_ids
         assert "low" not in node_ids
@@ -461,14 +477,16 @@ class TestMemoryEngineOptimize:
         """optimize() with default params runs ANALYZE and reports success."""
         # Insert some data for ANALYZE to work on
         for i in range(5):
-            engine.insert_record({
-                "record_id": f"opt_{i}",
-                "ts": "2026-01-01T00:00:00",
-                "source": "test",
-                "kind": "note",
-                "summary": f"test record {i}",
-                "content_hash": hashlib.sha256(f"opt_{i}".encode()).hexdigest(),
-            })
+            engine.insert_record(
+                {
+                    "record_id": f"opt_{i}",
+                    "ts": "2026-01-01T00:00:00",
+                    "source": "test",
+                    "kind": "note",
+                    "summary": f"test record {i}",
+                    "content_hash": hashlib.sha256(f"opt_{i}".encode()).hexdigest(),
+                }
+            )
 
         result = engine.optimize()
         assert result["analyzed"] is True
@@ -492,14 +510,16 @@ class TestMemoryEngineOptimize:
 
     def test_optimize_preserves_data(self, engine: MemoryEngine) -> None:
         """Data survives ANALYZE + VACUUM operations."""
-        engine.insert_record({
-            "record_id": "survive",
-            "ts": "2026-01-01T00:00:00",
-            "source": "test",
-            "kind": "note",
-            "summary": "this should survive optimize",
-            "content_hash": hashlib.sha256(b"survive_opt").hexdigest(),
-        })
+        engine.insert_record(
+            {
+                "record_id": "survive",
+                "ts": "2026-01-01T00:00:00",
+                "source": "test",
+                "kind": "note",
+                "summary": "this should survive optimize",
+                "content_hash": hashlib.sha256(b"survive_opt").hexdigest(),
+            }
+        )
 
         engine.optimize(vacuum=True)
 
@@ -517,14 +537,16 @@ class TestMemoryEngineOptimize:
     def test_optimize_after_deletes(self, engine: MemoryEngine) -> None:
         """VACUUM after deletes reclaims space (no errors)."""
         for i in range(20):
-            engine.insert_record({
-                "record_id": f"del_{i}",
-                "ts": "2026-01-01T00:00:00",
-                "source": "test",
-                "kind": "note",
-                "summary": f"record to delete {i}",
-                "content_hash": hashlib.sha256(f"del_{i}".encode()).hexdigest(),
-            })
+            engine.insert_record(
+                {
+                    "record_id": f"del_{i}",
+                    "ts": "2026-01-01T00:00:00",
+                    "source": "test",
+                    "kind": "note",
+                    "summary": f"record to delete {i}",
+                    "content_hash": hashlib.sha256(f"del_{i}".encode()).hexdigest(),
+                }
+            )
         engine.delete_records_batch([f"del_{i}" for i in range(20)])
 
         result = engine.optimize(vacuum=True)

@@ -20,7 +20,10 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
+from jarvis_engine._constants import (
+    DEFAULT_CLOUD_MODEL,
+    PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,11 +144,11 @@ class IntentClassifier:
     # Primary model for each route — chosen for best performance per task type.
     # Gateway falls back through the chain if primary is unavailable.
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "codex-cli",    # GPT-5.3 excels at math and logic reasoning
-        "complex": "claude-cli",      # Opus excels at coding, architecture, debugging
+        "math_logic": "codex-cli",  # GPT-5.3 excels at math and logic reasoning
+        "complex": "claude-cli",  # Opus excels at coding, architecture, debugging
         "routine": DEFAULT_CLOUD_MODEL,  # Fast API (Groq) for summarization, formatting
-        "creative": "gemini-cli",     # Gemini strong at creative writing, brainstorming
-        "web_research": "gemini-cli", # Gemini has built-in grounding and search
+        "creative": "gemini-cli",  # Gemini strong at creative writing, brainstorming
+        "web_research": "gemini-cli",  # Gemini has built-in grounding and search
         # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
     }
 
@@ -200,17 +203,27 @@ class IntentClassifier:
         """
         # Prefer .planning/cache under the repo root (two levels up from gateway/)
         repo_cache = os.path.join(
-            os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
-            os.pardir, ".planning", "cache",
+            os.path.dirname(__file__),
+            os.pardir,
+            os.pardir,
+            os.pardir,
+            os.pardir,
+            ".planning",
+            "cache",
         )
         repo_cache = os.path.normpath(repo_cache)
         try:
             os.makedirs(repo_cache, exist_ok=True)
             return repo_cache
         except OSError as exc:
-            logger.debug("Cannot create repo cache dir %s, falling back to temp: %s", repo_cache, exc)
+            logger.debug(
+                "Cannot create repo cache dir %s, falling back to temp: %s",
+                repo_cache,
+                exc,
+            )
         # Fallback: system temp directory
         import tempfile
+
         return os.path.join(tempfile.gettempdir(), "jarvis_classifier_cache")
 
     def _precompute_routes(self) -> "dict[str, np.ndarray]":
@@ -244,7 +257,8 @@ class IntentClassifier:
                 else:
                     logger.warning(
                         "Centroid cache incomplete (cached=%s, expected=%s), recomputing",
-                        sorted(centroids.keys()), sorted(self.ROUTES.keys()),
+                        sorted(centroids.keys()),
+                        sorted(self.ROUTES.keys()),
                     )
         except (OSError, ValueError, KeyError) as exc:
             logger.debug("Failed to load centroid cache, recomputing: %s", exc)
@@ -257,12 +271,20 @@ class IntentClassifier:
                     vec = self._embed.embed(text, prefix="search_query")
                     embeddings.append(np.array(vec))
                 except (RuntimeError, ValueError, OSError) as exc:
-                    logger.warning("Failed to embed exemplar for route %r: %s (%s)", route_name, text[:80], exc)
+                    logger.warning(
+                        "Failed to embed exemplar for route %r: %s (%s)",
+                        route_name,
+                        text[:80],
+                        exc,
+                    )
             if embeddings:
                 centroid = np.mean(embeddings, axis=0)
                 centroids[route_name] = centroid
             else:
-                logger.error("All embeddings failed for route %r — route will be unreachable", route_name)
+                logger.error(
+                    "All embeddings failed for route %r — route will be unreachable",
+                    route_name,
+                )
 
         # Save to disk cache
         try:
@@ -279,7 +301,9 @@ class IntentClassifier:
         return bool(self._privacy_re.search(query.lower()))
 
     def _resolve_model_for_route(
-        self, route: str, available_models: set[str] | None = None,
+        self,
+        route: str,
+        available_models: set[str] | None = None,
     ) -> str:
         """Pick the best available model for a route.
 
@@ -323,6 +347,7 @@ class IntentClassifier:
         import numpy as np
 
         from jarvis_engine._constants import get_local_model as _get_local_model
+
         local_model = _get_local_model()
 
         # Privacy check first -- always trumps embedding similarity
@@ -333,7 +358,10 @@ class IntentClassifier:
         try:
             query_vec = np.array(self._embed.embed_query(query))
         except (RuntimeError, ValueError, OSError) as exc:
-            logger.warning("Embedding service failed for classify(), falling back to local model: %s", exc)
+            logger.warning(
+                "Embedding service failed for classify(), falling back to local model: %s",
+                exc,
+            )
             return ("simple_private", local_model, 0.0)
 
         best_route = "simple_private"
@@ -352,7 +380,7 @@ class IntentClassifier:
                     quality = self._feedback_tracker.get_route_quality(route_name)
                     if quality["total"] >= 5:  # Minimum sample threshold
                         # Scale similarity by 0.5-1.0 based on satisfaction rate
-                        sim *= (0.5 + 0.5 * quality["satisfaction_rate"])
+                        sim *= 0.5 + 0.5 * quality["satisfaction_rate"]
                 except (KeyError, ValueError, AttributeError, RuntimeError) as exc:
                     logger.debug("Route quality penalty lookup failed: %s", exc)
             if sim > best_sim:

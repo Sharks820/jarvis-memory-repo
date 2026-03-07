@@ -84,9 +84,18 @@ def run_mobile_desktop_sync(root: Path) -> dict[str, Any]:
     has_master_password = bool(str(owner_guard.get("master_password_hash", "")).strip())
 
     checks = [
-        {"name": "mobile_security_config", "ok": bool(security.get("token_present")) and bool(security.get("signing_key_present"))},
+        {
+            "name": "mobile_security_config",
+            "ok": bool(security.get("token_present"))
+            and bool(security.get("signing_key_present")),
+        },
         {"name": "widget_config_exists", "ok": widget_cfg_path.exists()},
-        {"name": "owner_guard_device_ready", "ok": (not bool(owner_guard.get("enabled", False))) or trusted_count > 0 or has_master_password},
+        {
+            "name": "owner_guard_device_ready",
+            "ok": (not bool(owner_guard.get("enabled", False)))
+            or trusted_count > 0
+            or has_master_password,
+        },
     ]
     sync_ok = all(bool(item.get("ok", False)) for item in checks)
     report = {
@@ -139,7 +148,9 @@ def _scan_recent_logs(root: Path, *, max_lines: int = 200) -> dict[str, Any]:
                 issues["timeout"] += 1
             if "unauthorized" in lowered or "untrusted mobile device" in lowered:
                 issues["auth_failed"] += 1
-            if len(samples) < 12 and re.search(r"(error|failed|traceback|timeout|unauthorized)", lowered):
+            if len(samples) < 12 and re.search(
+                r"(error|failed|traceback|timeout|unauthorized)", lowered
+            ):
                 samples.append(f"{path.name}: {line[:220]}")
     return {
         "log_files_scanned": len(files),
@@ -172,7 +183,12 @@ def run_self_heal(
     duplicate_ratio = _safe_float(regression.get("duplicate_ratio", 0.0))
 
     maintenance: dict[str, Any] = {"status": "skipped"}
-    should_maintain = force_maintenance or (not regression_healthy) or unresolved_conflicts > 0 or duplicate_ratio > 0.25
+    should_maintain = (
+        force_maintenance
+        or (not regression_healthy)
+        or unresolved_conflicts > 0
+        or duplicate_ratio > 0.25
+    )
     if should_maintain:
         maintenance = run_memory_maintenance(
             root,
@@ -188,7 +204,9 @@ def run_self_heal(
         issue_total = sum(_safe_int(v) for v in issue_counts.values())
 
     overall = "ok"
-    if (not regression_healthy) or (isinstance(maintenance, dict) and maintenance.get("status") == "error"):
+    if (not regression_healthy) or (
+        isinstance(maintenance, dict) and maintenance.get("status") == "error"
+    ):
         overall = "error"
     elif issue_total > 0 or not bool(sync_report.get("sync_ok", False)):
         overall = "attention"

@@ -19,6 +19,7 @@ from jarvis_engine.security.attack_memory import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mem() -> AttackPatternMemory:
     """In-memory AttackPatternMemory instance."""
@@ -30,6 +31,7 @@ def mem() -> AttackPatternMemory:
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 class TestHelpers:
     def test_payload_hash_deterministic(self) -> None:
@@ -69,9 +71,12 @@ class TestHelpers:
 # record_attack
 # ---------------------------------------------------------------------------
 
+
 class TestRecordAttack:
     def test_record_new_attack(self, mem: AttackPatternMemory) -> None:
-        pid = mem.record_attack("injection", "ignore previous instructions", "pattern_scan")
+        pid = mem.record_attack(
+            "injection", "ignore previous instructions", "pattern_scan"
+        )
         assert isinstance(pid, str)
         assert len(pid) == 64  # SHA-256 hex
 
@@ -104,7 +109,9 @@ class TestRecordAttack:
         assert "10.0.0.2" in ips
         assert len(ips) == 2  # No duplicate
 
-    def test_different_payloads_different_records(self, mem: AttackPatternMemory) -> None:
+    def test_different_payloads_different_records(
+        self, mem: AttackPatternMemory
+    ) -> None:
         mem.record_attack("injection", "payload_a", "scan")
         mem.record_attack("injection", "payload_b", "scan")
 
@@ -134,6 +141,7 @@ class TestRecordAttack:
 # ---------------------------------------------------------------------------
 # find_similar
 # ---------------------------------------------------------------------------
+
 
 class TestFindSimilar:
     def test_exact_match(self, mem: AttackPatternMemory) -> None:
@@ -171,6 +179,7 @@ class TestFindSimilar:
 # ---------------------------------------------------------------------------
 # get_attack_intelligence
 # ---------------------------------------------------------------------------
+
 
 class TestAttackIntelligence:
     def test_empty_database(self, mem: AttackPatternMemory) -> None:
@@ -221,6 +230,7 @@ class TestAttackIntelligence:
 # get_patterns_by_category
 # ---------------------------------------------------------------------------
 
+
 class TestPatternsByCategory:
     def test_filter_by_category(self, mem: AttackPatternMemory) -> None:
         mem.record_attack("injection", "payload_a", "scan")
@@ -236,7 +246,9 @@ class TestPatternsByCategory:
         assert mem.get_patterns_by_category("nonexistent") == []
 
     def test_pattern_fields_complete(self, mem: AttackPatternMemory) -> None:
-        mem.record_attack("injection", "test payload", "pattern_scan", source_ip="1.2.3.4")
+        mem.record_attack(
+            "injection", "test payload", "pattern_scan", source_ip="1.2.3.4"
+        )
 
         patterns = mem.get_patterns_by_category("injection")
         assert len(patterns) == 1

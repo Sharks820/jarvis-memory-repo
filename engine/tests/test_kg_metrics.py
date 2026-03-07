@@ -1,4 +1,5 @@
 """Tests for KG integrity and growth metrics (proactive/kg_metrics.py)."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -18,6 +19,7 @@ from jarvis_engine.proactive.kg_metrics import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_db(
     *,
@@ -54,7 +56,9 @@ def _make_db(
         ")"
     )
     if with_temporal:
-        db.execute("ALTER TABLE kg_nodes ADD COLUMN temporal_type TEXT DEFAULT 'unknown'")
+        db.execute(
+            "ALTER TABLE kg_nodes ADD COLUMN temporal_type TEXT DEFAULT 'unknown'"
+        )
 
     if nodes:
         for n in nodes:
@@ -93,6 +97,7 @@ def _make_kg_mock(db: sqlite3.Connection) -> MagicMock:
 # ---------------------------------------------------------------------------
 # collect_kg_metrics
 # ---------------------------------------------------------------------------
+
 
 class TestCollectKgMetrics:
     """Tests for collect_kg_metrics()."""
@@ -137,10 +142,10 @@ class TestCollectKgMetrics:
     def test_confidence_distribution(self):
         """Confidence buckets are computed correctly (high >0.8, medium 0.5-0.8, low <0.5)."""
         nodes = [
-            ("a.1", "A", 0.95, 0),   # high
-            ("b.1", "B", 0.85, 0),   # high
-            ("c.1", "C", 0.65, 0),   # medium
-            ("d.1", "D", 0.3, 0),    # low
+            ("a.1", "A", 0.95, 0),  # high
+            ("b.1", "B", 0.85, 0),  # high
+            ("c.1", "C", 0.65, 0),  # medium
+            ("d.1", "D", 0.3, 0),  # low
         ]
         db = _make_db(nodes=nodes)
         kg = _make_kg_mock(db)
@@ -150,7 +155,9 @@ class TestCollectKgMetrics:
         assert m["confidence_distribution"]["high"] == 2
         assert m["confidence_distribution"]["medium"] == 1
         assert m["confidence_distribution"]["low"] == 1
-        assert m["avg_confidence"] == pytest.approx((0.95 + 0.85 + 0.65 + 0.3) / 4, abs=0.002)
+        assert m["avg_confidence"] == pytest.approx(
+            (0.95 + 0.85 + 0.65 + 0.3) / 4, abs=0.002
+        )
         db.close()
 
     def test_empty_db(self):
@@ -220,7 +227,10 @@ class TestCollectKgMetrics:
 
         # Should be default zeros -- column doesn't exist so try/except catches it
         assert m["temporal_breakdown"] == {
-            "permanent": 0, "time_sensitive": 0, "expired": 0, "unknown": 0
+            "permanent": 0,
+            "time_sensitive": 0,
+            "expired": 0,
+            "unknown": 0,
         }
         db.close()
 
@@ -241,6 +251,7 @@ class TestCollectKgMetrics:
 # ---------------------------------------------------------------------------
 # append_kg_metrics / load_kg_history
 # ---------------------------------------------------------------------------
+
 
 class TestKgHistory:
     """Tests for JSONL persistence functions."""
@@ -265,7 +276,9 @@ class TestKgHistory:
         history_path = tmp_path / "kg_history.jsonl"
 
         for i in range(10):
-            append_kg_metrics({"ts": f"2026-01-{i+1:02d}", "node_count": i}, history_path)
+            append_kg_metrics(
+                {"ts": f"2026-01-{i + 1:02d}", "node_count": i}, history_path
+            )
 
         loaded = load_kg_history(history_path, limit=3)
         assert len(loaded) == 3
@@ -306,6 +319,7 @@ class TestKgHistory:
 # kg_growth_trend
 # ---------------------------------------------------------------------------
 
+
 class TestKgGrowthTrend:
     """Tests for trend analysis across history snapshots."""
 
@@ -322,8 +336,20 @@ class TestKgGrowthTrend:
     def test_growing_trend(self):
         """Positive node and edge growth returns 'growing'."""
         history = [
-            {"ts": "t1", "node_count": 10, "edge_count": 5, "avg_confidence": 0.6, "cross_branch_edges": 1},
-            {"ts": "t2", "node_count": 15, "edge_count": 8, "avg_confidence": 0.7, "cross_branch_edges": 3},
+            {
+                "ts": "t1",
+                "node_count": 10,
+                "edge_count": 5,
+                "avg_confidence": 0.6,
+                "cross_branch_edges": 1,
+            },
+            {
+                "ts": "t2",
+                "node_count": 15,
+                "edge_count": 8,
+                "avg_confidence": 0.7,
+                "cross_branch_edges": 3,
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "growing"
@@ -336,8 +362,20 @@ class TestKgGrowthTrend:
     def test_stable_trend(self):
         """No change in nodes or edges returns 'stable'."""
         history = [
-            {"ts": "t1", "node_count": 10, "edge_count": 5, "avg_confidence": 0.7, "cross_branch_edges": 2},
-            {"ts": "t2", "node_count": 10, "edge_count": 5, "avg_confidence": 0.7, "cross_branch_edges": 2},
+            {
+                "ts": "t1",
+                "node_count": 10,
+                "edge_count": 5,
+                "avg_confidence": 0.7,
+                "cross_branch_edges": 2,
+            },
+            {
+                "ts": "t2",
+                "node_count": 10,
+                "edge_count": 5,
+                "avg_confidence": 0.7,
+                "cross_branch_edges": 2,
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "stable"
@@ -347,8 +385,20 @@ class TestKgGrowthTrend:
     def test_declining_trend(self):
         """Negative growth returns 'declining'."""
         history = [
-            {"ts": "t1", "node_count": 20, "edge_count": 10, "avg_confidence": 0.8, "cross_branch_edges": 5},
-            {"ts": "t2", "node_count": 15, "edge_count": 7, "avg_confidence": 0.6, "cross_branch_edges": 3},
+            {
+                "ts": "t1",
+                "node_count": 20,
+                "edge_count": 10,
+                "avg_confidence": 0.8,
+                "cross_branch_edges": 5,
+            },
+            {
+                "ts": "t2",
+                "node_count": 15,
+                "edge_count": 7,
+                "avg_confidence": 0.6,
+                "cross_branch_edges": 3,
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "declining"
@@ -368,9 +418,27 @@ class TestKgGrowthTrend:
     def test_multi_snapshot_uses_first_and_last(self):
         """Trend is computed from first and last snapshot, not adjacent pairs."""
         history = [
-            {"ts": "t1", "node_count": 10, "edge_count": 5, "avg_confidence": 0.5, "cross_branch_edges": 0},
-            {"ts": "t2", "node_count": 8, "edge_count": 3, "avg_confidence": 0.4, "cross_branch_edges": 0},
-            {"ts": "t3", "node_count": 20, "edge_count": 12, "avg_confidence": 0.8, "cross_branch_edges": 4},
+            {
+                "ts": "t1",
+                "node_count": 10,
+                "edge_count": 5,
+                "avg_confidence": 0.5,
+                "cross_branch_edges": 0,
+            },
+            {
+                "ts": "t2",
+                "node_count": 8,
+                "edge_count": 3,
+                "avg_confidence": 0.4,
+                "cross_branch_edges": 0,
+            },
+            {
+                "ts": "t3",
+                "node_count": 20,
+                "edge_count": 12,
+                "avg_confidence": 0.8,
+                "cross_branch_edges": 4,
+            },
         ]
         result = kg_growth_trend(history)
         assert result["trend"] == "growing"
