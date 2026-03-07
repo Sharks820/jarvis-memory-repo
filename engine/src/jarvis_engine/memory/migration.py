@@ -13,7 +13,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.classify import BranchClassifier
@@ -161,7 +161,7 @@ def migrate_brain_records(
             original_id = str(record_data.get("record_id", ""))
             if len(original_id) < 32:
                 id_material = f"{original_id}|{content_hash}".encode("utf-8")
-                record_id = hashlib.sha256(id_material).hexdigest()[:32]
+                record_id = sha256_short(id_material)
             else:
                 record_id = original_id[:32]
 
@@ -200,7 +200,7 @@ def migrate_brain_records(
             else:
                 skipped += 1
 
-        except Exception as exc:
+        except (sqlite3.Error, ValueError, TypeError, KeyError) as exc:
             errors += 1
             if len(error_details) < _MAX_ERROR_DETAILS:
                 error_details.append(f"Line {line_num + 1}: {type(exc).__name__}: {exc}")
@@ -310,7 +310,7 @@ def migrate_facts(
                         ),
                     )
                     inserted += 1
-                except Exception as exc:
+                except (sqlite3.Error, ValueError, TypeError) as exc:
                     errors += 1
                     logger.warning("Failed to migrate fact '%s': %s", key, exc)
 
@@ -387,7 +387,7 @@ def migrate_events(
             content_hash = sha256_hex(summary)
             ts = str(event.get("ts", _now_iso()))
             id_material = f"event_log|episodic|{ts}|{content_hash}".encode("utf-8")
-            record_id = hashlib.sha256(id_material).hexdigest()[:32]
+            record_id = sha256_short(id_material)
 
             record = {
                 "record_id": record_id,
@@ -411,7 +411,7 @@ def migrate_events(
             else:
                 skipped += 1
 
-        except Exception as exc:
+        except (sqlite3.Error, ValueError, TypeError) as exc:
             errors += 1
             logger.warning("Failed to migrate event at line %d: %s", line_num + 1, exc)
 

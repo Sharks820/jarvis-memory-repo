@@ -168,7 +168,7 @@ class SyncEngine:
                     )
 
                 self._db.commit()
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 self._db.rollback()
                 applied = 0
                 conflicts_resolved = 0

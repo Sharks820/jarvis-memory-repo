@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -70,7 +71,7 @@ class OpsBriefHandler:
         if self._gateway is not None:
             try:
                 brief = build_narrative_brief(snapshot, gateway=self._gateway)
-            except Exception as exc:
+            except (ConnectionError, TimeoutError, ValueError) as exc:
                 logger.warning("Narrative brief generation failed in handler: %s", exc)
                 brief = ""
         if not brief:
@@ -290,7 +291,7 @@ class MissionRunHandler:
                         ingested_ids.extend(result)
                     elif hasattr(result, "record_id"):
                         ingested_ids.append(result.record_id)
-                except Exception as exc:
+                except (sqlite3.Error, OSError, ValueError, RuntimeError) as exc:
                     logger.warning("Mission auto-ingest failed for finding: %s", exc)
         return MissionRunResult(
             report=report, return_code=0,

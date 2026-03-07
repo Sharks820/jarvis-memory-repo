@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -52,7 +53,7 @@ class BrainStatusHandler:
                     edge_count = self._kg.count_edges()
                     locked_count = self._kg.count_locked()
                     pending_contradictions = self._kg.count_pending_contradictions()
-                except Exception as exc:
+                except sqlite3.Error as exc:
                     logger.warning("Failed to query KnowledgeGraph stats: %s", exc)
 
             # Query distinct branches from records table
@@ -63,7 +64,7 @@ class BrainStatusHandler:
                         "SELECT DISTINCT branch FROM records ORDER BY branch"
                     ).fetchall()
                 branches = [row[0] for row in rows]
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 logger.warning("Failed to query branches: %s", exc)
 
             return BrainStatusResult(status={

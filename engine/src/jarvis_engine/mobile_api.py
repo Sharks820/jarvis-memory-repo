@@ -969,7 +969,7 @@ class MobileIngestHandler(
                     )
                 finally:
                     _thread_local.repo_root_override = None
-            except Exception as exc:
+            except (RuntimeError, OSError, ValueError, TimeoutError) as exc:
                 logger.error("Voice command execution failed: %s", exc)
                 _ThreadCapturingStdout.stop_capture()  # discard
                 return self._command_failure_result(

@@ -78,7 +78,7 @@ class AutoSyncConfig:
             merged = dict(DEFAULT_SYNC_CONFIG)
             merged.update(saved)
             self._config = merged
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError, ValueError) as exc:
             logger.warning("Failed to load auto-sync config: %s", exc)
 
     def _save(self) -> None:
@@ -91,7 +91,7 @@ class AutoSyncConfig:
             with open(tmp, "w") as f:
                 json.dump(self._config, f, indent=2)
             os.replace(str(tmp), str(self._config_path))
-        except Exception as exc:
+        except OSError as exc:
             logger.warning("Failed to save auto-sync config: %s", exc)
 
     def get(self, key: str, default: Any = None) -> Any:

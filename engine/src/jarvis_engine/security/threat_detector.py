@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 import threading
 import time
 from collections import defaultdict, deque
@@ -402,7 +403,7 @@ class ThreatDetector:
             return None
         try:
             report = self._ip_tracker.get_threat_report(ip)
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             logger.debug("IP tracker threat report failed for %s: %s", ip, exc)
             return None
         if report is None:
@@ -439,7 +440,7 @@ class ThreatDetector:
                     confidence=1.0,
                     evidence={"ip": ip, "status": "blocked"},
                 )
-        except Exception as exc:
+        except (sqlite3.Error, OSError) as exc:
             logger.debug("IP tracker blocked check failed for %s: %s", ip, exc)
             return None
         return None

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -42,14 +43,11 @@ def _reports_dir(root: Path) -> Path:
 
 
 def load_missions(root: Path) -> list[dict[str, Any]]:
+    from jarvis_engine._shared import load_json_file
+
     path = _missions_path(root)
-    if not path.exists():
-        return []
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if not isinstance(raw, list):
+    raw = load_json_file(path, None, expected_type=list)
+    if raw is None:
         return []
     return [item for item in raw if isinstance(item, dict)]
 
@@ -364,7 +362,7 @@ def run_learning_mission(
             url, domain = future_map[future]
             try:
                 text = future.result(timeout=30)
-            except Exception as exc:
+            except (TimeoutError, OSError, ValueError, ConnectionError) as exc:
                 logger.warning("Failed to fetch %s: %s", url, exc)
                 text = ""
             if not text:
@@ -422,7 +420,7 @@ def run_learning_mission(
                     "group_key": "jarvis_missions",
                     "priority": "important",
                 })
-            except Exception as exc:
+            except (OSError, ImportError) as exc:
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
             # No verified findings — mark as failed for retry.
@@ -631,7 +629,7 @@ def auto_generate_missions(
                             break
                     if len(candidates) >= max_new:
                         break
-            except Exception as exc:
+            except (sqlite3.Error, OSError, ValueError) as exc:
                 logger.debug("Topic extraction from recent queries failed: %s", exc)
 
         # Source 2: KG nodes with low edge count (knowledge gaps)
@@ -654,7 +652,7 @@ def auto_generate_missions(
                         phrase = " ".join(filtered[:4])
                         if _add(phrase):
                             break
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 logger.debug("KG gap analysis for mission topics failed: %s", exc)
 
         # Source 3: Strong KG areas that could be deepened
@@ -680,7 +678,7 @@ def auto_generate_missions(
                         phrase = f"{base} {suffixes[i % len(suffixes)]}"
                         if _add(phrase):
                             break
-            except Exception as exc:
+            except sqlite3.Error as exc:
                 logger.debug("KG strength analysis for mission topics failed: %s", exc)
 
     finally:
@@ -700,7 +698,7 @@ def auto_generate_missions(
             )
             created.append(mission)
             logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
-        except Exception as exc:
+        except (OSError, ValueError, sqlite3.Error) as exc:
             logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
 
     return created

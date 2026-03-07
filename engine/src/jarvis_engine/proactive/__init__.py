@@ -59,7 +59,7 @@ class ProactiveEngine:
             # Run the check function
             try:
                 messages = rule.check_fn(snapshot_data)
-            except Exception as exc:
+            except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
                 logger.warning("Trigger rule %s failed: %s", rule.rule_id, exc)
                 # Undo reservation since the rule didn't actually fire
                 with self._lock:

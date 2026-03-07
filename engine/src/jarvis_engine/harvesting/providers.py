@@ -261,7 +261,7 @@ class GeminiProvider:
             if usage:
                 input_tokens = getattr(usage, "prompt_token_count", 0) or 0
                 output_tokens = getattr(usage, "candidates_token_count", 0) or 0
-        except Exception as exc:
+        except (AttributeError, TypeError) as exc:
             logger.debug("Failed to extract Gemini usage metadata: %s", exc)
 
         if output_tokens == 0 and text:

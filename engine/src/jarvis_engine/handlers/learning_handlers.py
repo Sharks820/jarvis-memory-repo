@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -161,7 +162,7 @@ class ConsolidateMemoryHandler:
                 from jarvis_engine.knowledge.regression import RegressionChecker
                 rc_checker = RegressionChecker(self._kg)
                 rc_checker.backup_graph(tag="pre-consolidation")
-            except Exception as exc:
+            except (sqlite3.Error, OSError) as exc:
                 logger.warning("KG backup before consolidation failed: %s", exc)
 
         consolidator = MemoryConsolidator(
@@ -187,7 +188,7 @@ class ConsolidateMemoryHandler:
                     "new_facts_created": result.new_facts_created,
                 },
             )
-        except Exception as exc:
+        except (ImportError, OSError) as exc:
             logger.debug("Activity feed logging for consolidation failed: %s", exc)
 
         return ConsolidateMemoryResult(

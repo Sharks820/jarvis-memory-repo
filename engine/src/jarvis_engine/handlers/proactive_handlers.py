@@ -204,11 +204,11 @@ class WakeWordStartHandler:
                         voice_threshold=0.82,
                         master_password="",
                     )
-                except Exception as exc:
+                except (RuntimeError, OSError, ValueError) as exc:
                     logger.error("Voice command dispatch failed: %s", exc)
                 # Enter conversation mode for 20 seconds
                 self._conversation_until = _time_mod.time() + 20.0
-            except Exception as exc:
+            except (RuntimeError, OSError) as exc:
                 logger.error("Wake word callback error: %s", exc)
 
         self._stop_event = threading.Event()

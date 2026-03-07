@@ -12,6 +12,7 @@ from multiple providers polluting the knowledge base.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -205,7 +206,7 @@ class KnowledgeHarvester:
                     "skipped_dedup": False,
                 })
 
-            except Exception as exc:
+            except (ConnectionError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
                 logger.warning(
                     "Harvest from %s failed: %s", name, exc,
                 )
@@ -258,7 +259,7 @@ class KnowledgeHarvester:
                         similarity = 1.0 - (distance * distance) / 2.0
                         if similarity > _DEDUP_COSINE_THRESHOLD:
                             return True
-            except Exception as exc:
+            except (sqlite3.Error, ValueError, RuntimeError) as exc:
                 logger.debug(
                     "Semantic dedup check failed, falling back to hash only: %s",
                     exc,

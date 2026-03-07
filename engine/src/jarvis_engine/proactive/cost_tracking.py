@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
@@ -25,7 +26,7 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> dict:
     try:
         summary_7d = cost_tracker.local_vs_cloud_summary(days=7)
         summary_30d = cost_tracker.local_vs_cloud_summary(days=30)
-    except Exception as exc:
+    except (sqlite3.Error, OSError) as exc:
         logger.warning("Cost tracker summary failed: %s", exc)
         summary_7d = {
             "local_pct": 0.0,

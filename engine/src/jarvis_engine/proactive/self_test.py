@@ -68,7 +68,7 @@ class AdversarialSelfTest:
                     f"Average score {avg_score:.2f} "
                     f"below threshold {self._score_threshold:.2f}",
                 )
-            except Exception as exc:
+            except (RuntimeError, OSError) as exc:
                 logger.warning("Failed to send self-test alert: %s", exc)
 
         return {

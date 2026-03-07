@@ -189,7 +189,7 @@ def test_ingest_session_pipeline_error_continues(mock_ingestor_cls: MagicMock) -
     mock_pipeline = MagicMock()
     mock_pipeline.ingest.side_effect = [
         [{"id": 1}],
-        Exception("db error"),
+        OSError("db error"),
         [{"id": 2}, {"id": 3}],
     ]
 
