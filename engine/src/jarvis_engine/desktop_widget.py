@@ -146,17 +146,11 @@ def _load_mobile_api_cfg(root: Path) -> dict[str, str]:
 
 
 def _load_widget_cfg(root: Path) -> WidgetConfig:
+    from jarvis_engine._shared import load_json_file
+
     mobile = _load_mobile_api_cfg(root)
     path = _widget_cfg_path(root)
-    raw: dict[str, Any] = {}
-    if path.exists():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                raw = loaded
-        except (json.JSONDecodeError, OSError):
-            logger.debug("Failed to read widget config from %s", path)
-            raw = {}
+    raw: dict[str, Any] = load_json_file(path, {}, expected_type=dict)
 
     # Normalize optional keys so legacy configs share one read path.
     raw.setdefault("master_password_protected", "")

@@ -78,13 +78,10 @@ def sanitize_memory_content(content: str) -> str:
 
 
 def _load_auto_ingest_hashes(path: Path) -> list[str]:
-    if not path.exists():
-        return []
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if not isinstance(raw, dict):
+    from jarvis_engine._shared import load_json_file
+
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return []
     values = raw.get("hashes", [])
     if not isinstance(values, list):

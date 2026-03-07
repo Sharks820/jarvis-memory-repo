@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -131,6 +130,8 @@ def _persona_path(root: Path) -> Path:
 
 
 def load_persona_config(root: Path) -> PersonaConfig:
+    from jarvis_engine._shared import load_json_file
+
     path = _persona_path(root)
     if not path.exists():
         return PersonaConfig(
@@ -140,12 +141,7 @@ def load_persona_config(root: Path) -> PersonaConfig:
             style="historically_witty_secret_agent",
             updated_utc="",
         )
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
+    raw = load_json_file(path, {}, expected_type=dict)
     raw = {
         "mode": raw.get("mode", "jarvis_british"),
         "enabled": raw.get("enabled", True),

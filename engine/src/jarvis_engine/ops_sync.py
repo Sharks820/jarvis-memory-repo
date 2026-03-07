@@ -96,15 +96,12 @@ def build_live_snapshot(root: Path, output_path: Path) -> SyncSummary:
 
 
 def _read_json_list(path: Path) -> list[dict]:
-    if not path.exists():
+    from jarvis_engine._shared import load_json_file
+
+    raw = load_json_file(path, None, expected_type=list)
+    if raw is None:
         return []
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if isinstance(raw, list):
-        return [x for x in raw if isinstance(x, dict)]
-    return []
+    return [x for x in raw if isinstance(x, dict)]
 
 
 def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> list[dict]:

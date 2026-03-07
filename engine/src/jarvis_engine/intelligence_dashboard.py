@@ -75,12 +75,11 @@ def _history_path(root: Path) -> Path:
 
 
 def _load_targets(root: Path) -> list[dict[str, Any]]:
+    from jarvis_engine._shared import load_json_file
+
     path = _targets_path(root)
-    if not path.exists():
-        return list(DEFAULT_TARGETS)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    raw = load_json_file(path, None, expected_type=list)
+    if raw is None:
         return list(DEFAULT_TARGETS)
 
     values: list[dict[str, Any]] = []
@@ -103,15 +102,13 @@ def _load_targets(root: Path) -> list[dict[str, Any]]:
 
 
 def _load_achievements(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = _achievements_path(root)
-    if not path.exists():
-        return {"unlocked": []}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"unlocked": []}
-    if not isinstance(raw, dict):
-        return {"unlocked": []}
+    default: dict[str, Any] = {"unlocked": []}
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
+        return default
     unlocked = raw.get("unlocked", [])
     if not isinstance(unlocked, list):
         unlocked = []
