@@ -15,7 +15,6 @@ from jarvis_engine.resilience import (
 
 # ── existing tests ────────────────────────────────────────────────────────
 
-
 def test_run_mobile_desktop_sync_writes_report(tmp_path: Path) -> None:
     widget_cfg = tmp_path / ".planning" / "security" / "desktop_widget.json"
     widget_cfg.parent.mkdir(parents=True, exist_ok=True)
@@ -41,7 +40,6 @@ def test_run_self_heal_generates_report(tmp_path: Path) -> None:
 
 
 # ── _tail_lines tests ─────────────────────────────────────────────────────
-
 
 def test_tail_lines_returns_empty_for_missing_file(tmp_path: Path) -> None:
     result = _tail_lines(tmp_path / "nonexistent.log", max_lines=10)
@@ -78,7 +76,6 @@ def test_tail_lines_handles_os_error(tmp_path: Path) -> None:
 
 
 # ── _ensure_mobile_security_config tests ──────────────────────────────────
-
 
 def test_ensure_mobile_security_config_creates_from_scratch(tmp_path: Path) -> None:
     result = _ensure_mobile_security_config(tmp_path)
@@ -120,9 +117,7 @@ def test_ensure_mobile_security_config_repairs_missing_token(tmp_path: Path) -> 
     assert len(raw["token"]) > 10
 
 
-def test_ensure_mobile_security_config_repairs_missing_signing_key(
-    tmp_path: Path,
-) -> None:
+def test_ensure_mobile_security_config_repairs_missing_signing_key(tmp_path: Path) -> None:
     config_path = tmp_path / ".planning" / "security" / "mobile_api.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
@@ -156,7 +151,6 @@ def test_ensure_mobile_security_config_handles_non_dict_json(tmp_path: Path) -> 
 
 # ── run_mobile_desktop_sync extended tests ────────────────────────────────
 
-
 def test_run_mobile_desktop_sync_no_widget_config(tmp_path: Path) -> None:
     """Missing widget config should cause widget_config_exists check to fail."""
     report = run_mobile_desktop_sync(tmp_path)
@@ -182,9 +176,7 @@ def test_run_mobile_desktop_sync_owner_guard_enabled_no_devices(tmp_path: Path) 
     widget_cfg.write_text("{}", encoding="utf-8")
     og_path = tmp_path / ".planning" / "security" / "owner_guard.json"
     og_path.write_text(
-        json.dumps(
-            {"enabled": True, "trusted_mobile_devices": [], "master_password_hash": ""}
-        ),
+        json.dumps({"enabled": True, "trusted_mobile_devices": [], "master_password_hash": ""}),
         encoding="utf-8",
     )
     report = run_mobile_desktop_sync(tmp_path)
@@ -194,7 +186,6 @@ def test_run_mobile_desktop_sync_owner_guard_enabled_no_devices(tmp_path: Path) 
 
 
 # ── _scan_recent_logs tests ───────────────────────────────────────────────
-
 
 def test_scan_recent_logs_empty_dir(tmp_path: Path) -> None:
     result = _scan_recent_logs(tmp_path)
@@ -241,7 +232,6 @@ def test_scan_recent_logs_scans_err_log_files(tmp_path: Path) -> None:
 
 
 # ── run_self_heal extended tests ──────────────────────────────────────────
-
 
 def test_run_self_heal_status_ok_when_healthy(tmp_path: Path) -> None:
     widget_cfg = tmp_path / ".planning" / "security" / "desktop_widget.json"

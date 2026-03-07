@@ -5,7 +5,6 @@ Every action attempt is checked against an allow-list; violations are
 logged and counted for audit.  Certain high-impact actions require an
 active owner session (escalation).
 """
-
 from __future__ import annotations
 
 import collections

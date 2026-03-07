@@ -101,9 +101,7 @@ class TestPreferenceTracker:
 
     def test_multiple_categories_detected(self, tracker):
         """A message can trigger preferences in multiple categories."""
-        detected = tracker.observe(
-            "first thing in the morning give me bullet points for today"
-        )
+        detected = tracker.observe("first thing in the morning give me bullet points for today")
         categories = [cat for cat, _ in detected]
         assert "time_preferences" in categories
         assert "format_preferences" in categories

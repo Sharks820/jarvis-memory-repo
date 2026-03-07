@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 from unittest.mock import MagicMock
 
@@ -13,7 +14,6 @@ from jarvis_engine.learning.consolidator import MemoryConsolidator
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_engine() -> MagicMock:
     """Build a mock MemoryEngine with an in-memory SQLite DB."""
@@ -76,19 +76,10 @@ def _seed_records(engine: MagicMock, count: int, branch: str = "general") -> lis
                 summary, content_hash, confidence, tier, access_count, last_accessed)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                rec["record_id"],
-                rec["ts"],
-                rec["source"],
-                rec["kind"],
-                rec["task_id"],
-                rec["branch"],
-                rec["tags"],
-                rec["summary"],
-                rec["content_hash"],
-                rec["confidence"],
-                rec["tier"],
-                rec["access_count"],
-                rec["last_accessed"],
+                rec["record_id"], rec["ts"], rec["source"], rec["kind"],
+                rec["task_id"], rec["branch"], rec["tags"], rec["summary"],
+                rec["content_hash"], rec["confidence"], rec["tier"],
+                rec["access_count"], rec["last_accessed"],
             ),
         )
         records.append(rec)
@@ -99,7 +90,6 @@ def _seed_records(engine: MagicMock, count: int, branch: str = "general") -> lis
 def _similar_embeddings(n: int, dim: int = 768) -> list[list[float]]:
     """Return ``n`` near-identical normalised vectors (cosine sim ~1.0)."""
     import numpy as np
-
     base = np.random.default_rng(42).random(dim).astype(np.float64)
     base /= np.linalg.norm(base)
     vecs = []
@@ -114,7 +104,6 @@ def _similar_embeddings(n: int, dim: int = 768) -> list[list[float]]:
 def _dissimilar_embeddings(n: int, dim: int = 768) -> list[list[float]]:
     """Return ``n`` orthogonal-ish vectors (cosine sim ~0)."""
     import numpy as np
-
     vecs = []
     for i in range(n):
         v = np.zeros(dim, dtype=np.float64)
@@ -262,7 +251,9 @@ class TestConsolidateMarksOriginals:
         assert result.new_facts_created >= 1
 
         # Check that original records were tagged in the DB
-        cur = engine._db.execute("SELECT tags FROM records WHERE kind = 'episodic'")
+        cur = engine._db.execute(
+            "SELECT tags FROM records WHERE kind = 'episodic'"
+        )
         rows = cur.fetchall()
         tagged_count = 0
         for row in rows:

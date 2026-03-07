@@ -90,9 +90,7 @@ class GatewayAudit:
         try:
             # Atomic replace — avoids TOCTOU race of exists()+unlink()+rename()
             self._path.replace(rotated)
-            logger.info(
-                "Rotated audit log %s -> %s (%d bytes)", self._path, rotated, size
-            )
+            logger.info("Rotated audit log %s -> %s (%d bytes)", self._path, rotated, size)
         except OSError as exc:
             logger.warning("Failed to rotate audit log: %s", exc)
 

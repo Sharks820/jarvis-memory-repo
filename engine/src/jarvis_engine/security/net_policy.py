@@ -23,3 +23,4 @@ def is_safe_ollama_endpoint(endpoint: str) -> bool:
         return True
 
     return host in {"127.0.0.1", "localhost", "::1"}
+

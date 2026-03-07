@@ -8,7 +8,6 @@ from jarvis_engine.memory_store import MemoryEvent, MemoryStore
 
 # ── existing tests ────────────────────────────────────────────────────────
 
-
 def test_tail_returns_recent_events(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     for i in range(10):
@@ -48,7 +47,6 @@ def test_tail_zero_or_negative_limit_returns_empty(tmp_path) -> None:
 
 # ── append tests ──────────────────────────────────────────────────────────
 
-
 def test_append_creates_file_on_first_write(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     events_path = tmp_path / ".planning" / "events.jsonl"
@@ -75,11 +73,7 @@ def test_append_writes_valid_json_lines(tmp_path) -> None:
     store.append(event_type="a", message="msg-a")
     store.append(event_type="b", message="msg-b")
     events_path = tmp_path / ".planning" / "events.jsonl"
-    lines = [
-        line
-        for line in events_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [line for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 2
     for line in lines:
         parsed = json.loads(line)
@@ -90,10 +84,7 @@ def test_append_writes_valid_json_lines(tmp_path) -> None:
 
 def test_append_handles_unicode_and_special_chars(tmp_path) -> None:
     store = MemoryStore(tmp_path)
-    store.append(
-        event_type="unicode",
-        message="Emoji: \u2615 CJK: \u4e16\u754c Newline: \\n Tab: \\t",
-    )
+    store.append(event_type="unicode", message="Emoji: \u2615 CJK: \u4e16\u754c Newline: \\n Tab: \\t")
     tail = list(store.tail(1))
     assert len(tail) == 1
     assert "Emoji" in tail[0].message
@@ -118,11 +109,7 @@ def test_append_concurrent_writes_are_serialized(tmp_path) -> None:
 
     assert errors == []
     events_path = tmp_path / ".planning" / "events.jsonl"
-    lines = [
-        line
-        for line in events_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [line for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 80  # 4 threads * 20 writes each
     for line in lines:
         json.loads(line)  # All should be valid JSON
@@ -135,16 +122,11 @@ def test_append_multiple_stores_on_same_root(tmp_path) -> None:
     store2.append(event_type="s2", message="from store2")
     # Both instances operate on the same file
     events_path = tmp_path / ".planning" / "events.jsonl"
-    lines = [
-        line
-        for line in events_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [line for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 2
 
 
 # ── tail edge case tests ─────────────────────────────────────────────────
-
 
 def test_tail_empty_file(tmp_path) -> None:
     store = MemoryStore(tmp_path)

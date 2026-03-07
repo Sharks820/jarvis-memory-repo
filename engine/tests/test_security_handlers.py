@@ -37,10 +37,7 @@ ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 
 
-@patch(
-    "jarvis_engine.runtime_control.read_control_state",
-    return_value={"daemon_paused": False},
-)
+@patch("jarvis_engine.runtime_control.read_control_state", return_value={"daemon_paused": False})
 def test_runtime_control_read_only(mock_read: MagicMock) -> None:
     """No flags set => read current state."""
     handler = RuntimeControlHandler(ROOT)
@@ -49,9 +46,7 @@ def test_runtime_control_read_only(mock_read: MagicMock) -> None:
     mock_read.assert_called_once_with(ROOT)
 
 
-@patch(
-    "jarvis_engine.runtime_control.reset_control_state", return_value={"reset": True}
-)
+@patch("jarvis_engine.runtime_control.reset_control_state", return_value={"reset": True})
 def test_runtime_control_reset(mock_reset: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(reset=True))
@@ -59,62 +54,40 @@ def test_runtime_control_reset(mock_reset: MagicMock) -> None:
     mock_reset.assert_called_once_with(ROOT)
 
 
-@patch(
-    "jarvis_engine.runtime_control.write_control_state",
-    return_value={"daemon_paused": True},
-)
+@patch("jarvis_engine.runtime_control.write_control_state", return_value={"daemon_paused": True})
 def test_runtime_control_pause(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(pause=True, reason="maintenance"))
     assert result.state == {"daemon_paused": True}
-    mock_write.assert_called_once_with(
-        ROOT, daemon_paused=True, safe_mode=None, reason="maintenance"
-    )
+    mock_write.assert_called_once_with(ROOT, daemon_paused=True, safe_mode=None, reason="maintenance")
 
 
-@patch(
-    "jarvis_engine.runtime_control.write_control_state",
-    return_value={"daemon_paused": False},
-)
+@patch("jarvis_engine.runtime_control.write_control_state", return_value={"daemon_paused": False})
 def test_runtime_control_resume(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(resume=True))
-    mock_write.assert_called_once_with(
-        ROOT, daemon_paused=False, safe_mode=None, reason=""
-    )
+    mock_write.assert_called_once_with(ROOT, daemon_paused=False, safe_mode=None, reason="")
 
 
-@patch(
-    "jarvis_engine.runtime_control.write_control_state",
-    return_value={"safe_mode": True},
-)
+@patch("jarvis_engine.runtime_control.write_control_state", return_value={"safe_mode": True})
 def test_runtime_control_safe_on(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(safe_on=True))
-    mock_write.assert_called_once_with(
-        ROOT, daemon_paused=None, safe_mode=True, reason=""
-    )
+    mock_write.assert_called_once_with(ROOT, daemon_paused=None, safe_mode=True, reason="")
 
 
-@patch(
-    "jarvis_engine.runtime_control.write_control_state",
-    return_value={"safe_mode": False},
-)
+@patch("jarvis_engine.runtime_control.write_control_state", return_value={"safe_mode": False})
 def test_runtime_control_safe_off(mock_write: MagicMock) -> None:
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(safe_off=True))
-    mock_write.assert_called_once_with(
-        ROOT, daemon_paused=None, safe_mode=False, reason=""
-    )
+    mock_write.assert_called_once_with(ROOT, daemon_paused=None, safe_mode=False, reason="")
 
 
 def test_runtime_control_conflicting_pause_resume() -> None:
     """Conflicting pause+resume returns error without calling any module."""
     handler = RuntimeControlHandler(ROOT)
     result = handler.handle(RuntimeControlCommand(pause=True, resume=True))
-    assert "error" in result.state.get(
-        "error", ""
-    ).lower() or "Cannot" in result.state.get("error", "")
+    assert "error" in result.state.get("error", "").lower() or "Cannot" in result.state.get("error", "")
 
 
 def test_runtime_control_conflicting_safe() -> None:
@@ -145,9 +118,7 @@ def test_owner_guard_set_master_password(mock_set: MagicMock) -> None:
     mock_set.assert_called_once_with(ROOT, "hunter2")
 
 
-@patch(
-    "jarvis_engine.owner_guard.clear_master_password", return_value={"pw_set": False}
-)
+@patch("jarvis_engine.owner_guard.clear_master_password", return_value={"pw_set": False})
 def test_owner_guard_clear_master_password(mock_clear: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(clear_master_password_value=True))
@@ -155,9 +126,7 @@ def test_owner_guard_clear_master_password(mock_clear: MagicMock) -> None:
     mock_clear.assert_called_once_with(ROOT)
 
 
-@patch(
-    "jarvis_engine.owner_guard.trust_mobile_device", return_value={"devices": ["phone"]}
-)
+@patch("jarvis_engine.owner_guard.trust_mobile_device", return_value={"devices": ["phone"]})
 def test_owner_guard_trust_device(mock_trust: MagicMock) -> None:
     handler = OwnerGuardHandler(ROOT)
     result = handler.handle(OwnerGuardCommand(trust_device="phone"))
@@ -238,17 +207,12 @@ def test_connect_status(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
 @patch("jarvis_engine.connectors.grant_connector_permission", return_value={"ok": True})
 def test_connect_grant_success(mock_grant: MagicMock) -> None:
     handler = ConnectGrantHandler(ROOT)
-    result = handler.handle(
-        ConnectGrantCommand(connector_id="spotify", scopes=["read"])
-    )
+    result = handler.handle(ConnectGrantCommand(connector_id="spotify", scopes=["read"]))
     assert result.return_code == 0
     assert result.granted == {"ok": True}
 
 
-@patch(
-    "jarvis_engine.connectors.grant_connector_permission",
-    side_effect=ValueError("bad id"),
-)
+@patch("jarvis_engine.connectors.grant_connector_permission", side_effect=ValueError("bad id"))
 def test_connect_grant_value_error(mock_grant: MagicMock) -> None:
     handler = ConnectGrantHandler(ROOT)
     result = handler.handle(ConnectGrantCommand(connector_id="nope"))
@@ -262,9 +226,7 @@ def test_connect_grant_value_error(mock_grant: MagicMock) -> None:
 
 @patch("jarvis_engine.connectors.build_connector_prompts", return_value=[])
 @patch("jarvis_engine.connectors.evaluate_connector_statuses", return_value=[])
-def test_connect_bootstrap_all_ready(
-    mock_eval: MagicMock, mock_prompts: MagicMock
-) -> None:
+def test_connect_bootstrap_all_ready(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
     handler = ConnectBootstrapHandler(ROOT)
     result = handler.handle(ConnectBootstrapCommand())
     assert result.ready is True
@@ -273,9 +235,7 @@ def test_connect_bootstrap_all_ready(
 
 @patch("jarvis_engine.connectors.build_connector_prompts")
 @patch("jarvis_engine.connectors.evaluate_connector_statuses", return_value=[])
-def test_connect_bootstrap_with_prompts_no_auto(
-    mock_eval: MagicMock, mock_prompts: MagicMock
-) -> None:
+def test_connect_bootstrap_with_prompts_no_auto(mock_eval: MagicMock, mock_prompts: MagicMock) -> None:
     mock_prompts.return_value = [{"option_tap_url": "https://example.com/auth"}]
     handler = ConnectBootstrapHandler(ROOT)
     result = handler.handle(ConnectBootstrapCommand(auto_open=False))
@@ -286,9 +246,7 @@ def test_connect_bootstrap_with_prompts_no_auto(
 @patch("webbrowser.open")
 @patch("jarvis_engine.connectors.build_connector_prompts")
 @patch("jarvis_engine.connectors.evaluate_connector_statuses", return_value=[])
-def test_connect_bootstrap_auto_open(
-    mock_eval: MagicMock, mock_prompts: MagicMock, mock_browser: MagicMock
-) -> None:
+def test_connect_bootstrap_auto_open(mock_eval: MagicMock, mock_prompts: MagicMock, mock_browser: MagicMock) -> None:
     mock_prompts.return_value = [
         {"option_tap_url": "https://example.com/auth"},
         {"option_tap_url": "ftp://bad"},  # non-http should be ignored
@@ -307,16 +265,11 @@ def test_connect_bootstrap_auto_open(
 
 
 @patch("jarvis_engine.phone_guard.append_phone_actions")
-@patch(
-    "jarvis_engine.phone_guard.build_phone_action",
-    return_value={"action": "block", "number": "555"},
-)
+@patch("jarvis_engine.phone_guard.build_phone_action", return_value={"action": "block", "number": "555"})
 def test_phone_action_queue(mock_build: MagicMock, mock_append: MagicMock) -> None:
     queue_path = ROOT / "phone_actions.jsonl"
     handler = PhoneActionHandler(ROOT)
-    cmd = PhoneActionCommand(
-        action="block", number="555", queue_path=queue_path, queue_action=True
-    )
+    cmd = PhoneActionCommand(action="block", number="555", queue_path=queue_path, queue_action=True)
     result = handler.handle(cmd)
     assert result.return_code == 0
     assert result.record == {"action": "block", "number": "555"}
@@ -331,9 +284,7 @@ def test_phone_action_no_queue(mock_build: MagicMock) -> None:
     assert result.return_code == 0
 
 
-@patch(
-    "jarvis_engine.phone_guard.build_phone_action", side_effect=ValueError("bad action")
-)
+@patch("jarvis_engine.phone_guard.build_phone_action", side_effect=ValueError("bad action"))
 def test_phone_action_build_error(mock_build: MagicMock) -> None:
     handler = PhoneActionHandler(ROOT)
     cmd = PhoneActionCommand(action="invalid")
@@ -342,16 +293,11 @@ def test_phone_action_build_error(mock_build: MagicMock) -> None:
 
 
 @patch("jarvis_engine.phone_guard.build_phone_action", return_value={"action": "block"})
-@patch(
-    "jarvis_engine._shared.check_path_within_root",
-    side_effect=ValueError("outside root"),
-)
+@patch("jarvis_engine._shared.check_path_within_root", side_effect=ValueError("outside root"))
 def test_phone_action_path_escape(mock_check: MagicMock, mock_build: MagicMock) -> None:
     """Queue path outside root is rejected."""
     handler = PhoneActionHandler(ROOT)
-    cmd = PhoneActionCommand(
-        action="block", queue_path=Path("/etc/passwd"), queue_action=True
-    )
+    cmd = PhoneActionCommand(action="block", queue_path=Path("/etc/passwd"), queue_action=True)
     result = handler.handle(cmd)
     assert result.return_code == 2
 
@@ -388,13 +334,8 @@ def test_spam_guard_missing_call_log(mock_check: MagicMock, tmp_path: Path) -> N
 
 @patch("jarvis_engine.phone_guard.append_phone_actions")
 @patch("jarvis_engine.phone_guard.write_spam_report")
-@patch(
-    "jarvis_engine.phone_guard.build_spam_block_actions",
-    return_value=[{"action": "block"}],
-)
-@patch(
-    "jarvis_engine.phone_guard.detect_spam_candidates", return_value=[{"number": "555"}]
-)
+@patch("jarvis_engine.phone_guard.build_spam_block_actions", return_value=[{"action": "block"}])
+@patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[{"number": "555"}])
 @patch("jarvis_engine.phone_guard.load_call_log", return_value=[{"num": "555"}])
 @patch("jarvis_engine._shared.check_path_within_root")
 def test_spam_guard_success_queue(
@@ -424,10 +365,7 @@ def test_spam_guard_success_queue(
 
 
 @patch("jarvis_engine.phone_guard.write_spam_report")
-@patch(
-    "jarvis_engine.phone_guard.build_spam_block_actions",
-    return_value=[{"action": "block"}],
-)
+@patch("jarvis_engine.phone_guard.build_spam_block_actions", return_value=[{"action": "block"}])
 @patch("jarvis_engine.phone_guard.detect_spam_candidates", return_value=[{"n": "x"}])
 @patch("jarvis_engine.phone_guard.load_call_log", return_value=[])
 @patch("jarvis_engine._shared.check_path_within_root")
@@ -454,14 +392,9 @@ def test_spam_guard_no_queue(
     assert result.queued_actions_count == 0
 
 
-@patch(
-    "jarvis_engine.phone_guard.load_call_log",
-    side_effect=json.JSONDecodeError("err", "", 0),
-)
+@patch("jarvis_engine.phone_guard.load_call_log", side_effect=json.JSONDecodeError("err", "", 0))
 @patch("jarvis_engine._shared.check_path_within_root")
-def test_spam_guard_bad_json(
-    mock_check: MagicMock, mock_load: MagicMock, tmp_path: Path
-) -> None:
+def test_spam_guard_bad_json(mock_check: MagicMock, mock_load: MagicMock, tmp_path: Path) -> None:
     log_file = tmp_path / "call_log.json"
     log_file.write_text("{bad")
     handler = PhoneSpamGuardHandler(tmp_path)
@@ -479,10 +412,7 @@ def test_spam_guard_bad_json(
 # ---------------------------------------------------------------------------
 
 
-@patch(
-    "jarvis_engine.persona.load_persona_config",
-    return_value={"enabled": True, "humor_level": 5},
-)
+@patch("jarvis_engine.persona.load_persona_config", return_value={"enabled": True, "humor_level": 5})
 def test_persona_config_read(mock_load: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand())
@@ -495,9 +425,7 @@ def test_persona_config_enable(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(enable=True))
     assert result.config == {"enabled": True}
-    mock_save.assert_called_once_with(
-        ROOT, enabled=True, humor_level=None, mode=None, style=None
-    )
+    mock_save.assert_called_once_with(ROOT, enabled=True, humor_level=None, mode=None, style=None)
 
 
 @patch("jarvis_engine.persona.save_persona_config", return_value={"enabled": False})
@@ -505,24 +433,18 @@ def test_persona_config_disable(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(disable=True))
     # When both enable=False disable=True, enabled_opt should be False
-    mock_save.assert_called_once_with(
-        ROOT, enabled=False, humor_level=None, mode=None, style=None
-    )
+    mock_save.assert_called_once_with(ROOT, enabled=False, humor_level=None, mode=None, style=None)
 
 
 @patch("jarvis_engine.persona.save_persona_config", return_value={"humor_level": 8})
 def test_persona_config_set_humor(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(humor_level=8))
-    mock_save.assert_called_once_with(
-        ROOT, enabled=None, humor_level=8, mode=None, style=None
-    )
+    mock_save.assert_called_once_with(ROOT, enabled=None, humor_level=8, mode=None, style=None)
 
 
 @patch("jarvis_engine.persona.save_persona_config", return_value={"mode": "formal"})
 def test_persona_config_set_mode_and_style(mock_save: MagicMock) -> None:
     handler = PersonaConfigHandler(ROOT)
     result = handler.handle(PersonaConfigCommand(mode="formal", style="concise"))
-    mock_save.assert_called_once_with(
-        ROOT, enabled=None, humor_level=None, mode="formal", style="concise"
-    )
+    mock_save.assert_called_once_with(ROOT, enabled=None, humor_level=None, mode="formal", style="concise")

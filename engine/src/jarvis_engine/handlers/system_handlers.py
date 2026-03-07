@@ -71,9 +71,7 @@ class LogHandler:
 
         store = MemoryStore(self._root)
         event = store.append(event_type=cmd.event_type, message=cmd.message)
-        return LogResult(
-            ts=event.ts, event_type=event.event_type, message=event.message
-        )
+        return LogResult(ts=event.ts, event_type=event.event_type, message=event.message)
 
 
 class ServeMobileHandler:
@@ -84,9 +82,7 @@ class ServeMobileHandler:
         from jarvis_engine.mobile_api import run_mobile_server
 
         effective_token = cmd.token or os.getenv("JARVIS_MOBILE_TOKEN", "").strip()
-        effective_signing_key = (
-            cmd.signing_key or os.getenv("JARVIS_MOBILE_SIGNING_KEY", "").strip()
-        )
+        effective_signing_key = cmd.signing_key or os.getenv("JARVIS_MOBILE_SIGNING_KEY", "").strip()
         if not effective_token:
             return ServeMobileResult(return_code=2)
         if not effective_signing_key:
@@ -254,11 +250,7 @@ class WeatherHandler:
         self._root = root
 
     def handle(self, cmd: WeatherCommand) -> WeatherResult:
-        target = (
-            cmd.location.strip()
-            or os.getenv("JARVIS_DEFAULT_LOCATION", "").strip()
-            or "New York, NY"
-        )[:200]
+        target = (cmd.location.strip() or os.getenv("JARVIS_DEFAULT_LOCATION", "").strip() or "New York, NY")[:200]
         encoded_location = quote(target, safe="")
         url = f"https://wttr.in/{encoded_location}?format=j1"
         try:
@@ -281,9 +273,7 @@ class WeatherHandler:
         if isinstance(desc_raw, list) and desc_raw and isinstance(desc_raw[0], dict):
             desc = str(desc_raw[0].get("value", "")).strip()
 
-        return WeatherResult(
-            return_code=0, location=target, current=current, description=desc
-        )
+        return WeatherResult(return_code=0, location=target, current=current, description=desc)
 
 
 class MigrateMemoryHandler:
@@ -296,7 +286,6 @@ class MigrateMemoryHandler:
 
         embed_service = EmbeddingService()
         from jarvis_engine._constants import memory_db_path as _memory_db_path
-
         db_path = _memory_db_path(self._root)
         summary = run_full_migration(self._root, db_path, embed_service)
         rc = 0 if summary.get("status") == "ok" else 2

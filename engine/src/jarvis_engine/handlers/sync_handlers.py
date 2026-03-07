@@ -25,10 +25,7 @@ class SyncPullHandler:
     """Compute outgoing changes, encrypt, and return."""
 
     def __init__(
-        self,
-        root: Path,
-        sync_engine: Any = None,
-        transport: Any = None,
+        self, root: Path, sync_engine: Any = None, transport: Any = None,
     ) -> None:
         self._root = root
         self._sync_engine = sync_engine
@@ -49,7 +46,8 @@ class SyncPullHandler:
             return SyncPullResult(message="error: sync pull failed")
 
         has_more = any(
-            len(entries) >= 500 for entries in outgoing.get("changes", {}).values()
+            len(entries) >= 500
+            for entries in outgoing.get("changes", {}).values()
         )
 
         try:
@@ -76,10 +74,7 @@ class SyncPushHandler:
     """Decrypt incoming payload and apply changes."""
 
     def __init__(
-        self,
-        root: Path,
-        sync_engine: Any = None,
-        transport: Any = None,
+        self, root: Path, sync_engine: Any = None, transport: Any = None,
     ) -> None:
         self._root = root
         self._sync_engine = sync_engine

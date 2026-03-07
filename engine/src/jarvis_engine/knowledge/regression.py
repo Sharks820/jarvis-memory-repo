@@ -59,9 +59,7 @@ class RegressionChecker:
             try:
                 import networkx as nx
             except ImportError as exc:
-                logger.warning(
-                    "WL hash computation failed (networkx unavailable): %s", exc
-                )
+                logger.warning("WL hash computation failed (networkx unavailable): %s", exc)
                 graph_hash = _EMPTY_GRAPH_HASH
             else:
                 try:
@@ -108,6 +106,7 @@ class RegressionChecker:
 
         # Use sqlite3 backup API instead of shutil.copy2 so that
         # in-flight WAL data is included in the backup atomically.
+        import sqlite3
 
         dst_db = sqlite3.connect(str(backup_path))
         try:
@@ -150,7 +149,6 @@ class RegressionChecker:
                     # Copy backup to a temp location first (before closing DB)
                     # so if the copy fails, the live DB is untouched.
                     import sqlite3
-
                     tmp_dst = dst_path.with_suffix(".db-restore-tmp")
                     try:
                         shutil.copy2(str(backup_path), str(tmp_dst))
@@ -160,11 +158,7 @@ class RegressionChecker:
                         try:
                             tmp_dst.unlink(missing_ok=True)
                         except OSError as cleanup_exc:
-                            logger.debug(
-                                "Failed to remove temp file %s: %s",
-                                tmp_dst,
-                                cleanup_exc,
-                            )
+                            logger.debug("Failed to remove temp file %s: %s", tmp_dst, cleanup_exc)
                         raise
 
                     # Copy succeeded -- now close the live connection and swap
@@ -194,14 +188,9 @@ class RegressionChecker:
                         try:
                             tmp_dst.unlink(missing_ok=True)
                         except OSError as cleanup_exc:
-                            logger.debug(
-                                "Failed to remove temp file %s during swap recovery: %s",
-                                tmp_dst,
-                                cleanup_exc,
-                            )
+                            logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
                         reopen_db = sqlite3.connect(
-                            str(dst_path),
-                            check_same_thread=False,
+                            str(dst_path), check_same_thread=False,
                         )
                         reopen_db.row_factory = sqlite3.Row
                         self._kg._engine._db = reopen_db
@@ -211,18 +200,15 @@ class RegressionChecker:
 
                     # Reopen the DB connection on the restored file
                     new_db = sqlite3.connect(
-                        str(dst_path),
-                        check_same_thread=False,
+                        str(dst_path), check_same_thread=False,
                     )
                     new_db.row_factory = sqlite3.Row
                     # Re-apply PRAGMAs (match MemoryEngine.__init__)
                     from jarvis_engine._db_pragmas import configure_sqlite
-
                     configure_sqlite(new_db, full=True)
                     # Reload sqlite-vec
                     try:
                         import sqlite_vec
-
                         new_db.enable_load_extension(True)
                         try:
                             sqlite_vec.load(new_db)
@@ -264,7 +250,9 @@ class RegressionChecker:
         before_ids = set(before_labels.keys())
         after_ids = set(after_labels.keys())
 
-        added = sorted(f"{nid}:{after_labels[nid]}" for nid in (after_ids - before_ids))
+        added = sorted(
+            f"{nid}:{after_labels[nid]}" for nid in (after_ids - before_ids)
+        )
         removed = sorted(
             f"{nid}:{before_labels[nid]}" for nid in (before_ids - after_ids)
         )
@@ -301,59 +289,51 @@ class RegressionChecker:
         prev_nodes = _safe_int(previous.get("node_count", 0))
         curr_nodes = _safe_int(current.get("node_count", 0))
         if curr_nodes < prev_nodes:
-            discrepancies.append(
-                {
-                    "type": "node_loss",
-                    "severity": "fail",
-                    "previous": prev_nodes,
-                    "current": curr_nodes,
-                    "lost": prev_nodes - curr_nodes,
-                    "message": f"Node count decreased from {prev_nodes} to {curr_nodes} (lost {prev_nodes - curr_nodes})",
-                }
-            )
+            discrepancies.append({
+                "type": "node_loss",
+                "severity": "fail",
+                "previous": prev_nodes,
+                "current": curr_nodes,
+                "lost": prev_nodes - curr_nodes,
+                "message": f"Node count decreased from {prev_nodes} to {curr_nodes} (lost {prev_nodes - curr_nodes})",
+            })
 
         prev_edges = _safe_int(previous.get("edge_count", 0))
         curr_edges = _safe_int(current.get("edge_count", 0))
         if curr_edges < prev_edges:
-            discrepancies.append(
-                {
-                    "type": "edge_loss",
-                    "severity": "fail",
-                    "previous": prev_edges,
-                    "current": curr_edges,
-                    "lost": prev_edges - curr_edges,
-                    "message": f"Edge count decreased from {prev_edges} to {curr_edges} (lost {prev_edges - curr_edges})",
-                }
-            )
+            discrepancies.append({
+                "type": "edge_loss",
+                "severity": "fail",
+                "previous": prev_edges,
+                "current": curr_edges,
+                "lost": prev_edges - curr_edges,
+                "message": f"Edge count decreased from {prev_edges} to {curr_edges} (lost {prev_edges - curr_edges})",
+            })
 
         prev_locked = _safe_int(previous.get("locked_count", 0))
         curr_locked = _safe_int(current.get("locked_count", 0))
         if curr_locked < prev_locked:
-            discrepancies.append(
-                {
-                    "type": "locked_fact_loss",
-                    "severity": "critical",
-                    "previous": prev_locked,
-                    "current": curr_locked,
-                    "lost": prev_locked - curr_locked,
-                    "message": f"Locked fact count decreased from {prev_locked} to {curr_locked} (CRITICAL: lost {prev_locked - curr_locked} locked facts)",
-                }
-            )
+            discrepancies.append({
+                "type": "locked_fact_loss",
+                "severity": "critical",
+                "previous": prev_locked,
+                "current": curr_locked,
+                "lost": prev_locked - curr_locked,
+                "message": f"Locked fact count decreased from {prev_locked} to {curr_locked} (CRITICAL: lost {prev_locked - curr_locked} locked facts)",
+            })
 
         prev_hash = previous.get("graph_hash", "")
         curr_hash = current.get("graph_hash", "")
         if prev_hash and curr_hash and prev_hash != curr_hash:
             # Hash changed -- check if counts also increased (expected growth)
             if curr_nodes <= prev_nodes and curr_edges <= prev_edges:
-                discrepancies.append(
-                    {
-                        "type": "graph_hash_change",
-                        "severity": "warn",
-                        "previous_hash": prev_hash,
-                        "current_hash": curr_hash,
-                        "message": "Graph hash changed without count increase -- possible modification of existing data",
-                    }
-                )
+                discrepancies.append({
+                    "type": "graph_hash_change",
+                    "severity": "warn",
+                    "previous_hash": prev_hash,
+                    "current_hash": curr_hash,
+                    "message": "Graph hash changed without count increase -- possible modification of existing data",
+                })
 
         # Determine overall status
         if not discrepancies:

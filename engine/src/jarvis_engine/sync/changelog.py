@@ -26,19 +26,9 @@ _TRACKED_TABLES: dict[str, dict[str, Any]] = {
     "records": {
         "pk": "record_id",
         "fields": [
-            "ts",
-            "source",
-            "kind",
-            "task_id",
-            "branch",
-            "tags",
-            "summary",
-            "content_hash",
-            "confidence",
-            "tier",
-            "access_count",
-            "last_accessed",
-            "created_at",
+            "ts", "source", "kind", "task_id", "branch", "tags",
+            "summary", "content_hash", "confidence", "tier",
+            "access_count", "last_accessed", "created_at",
         ],
         # Fields that should NOT trigger an UPDATE changelog entry on their own
         # (reduce noise from access_count bumps), but are still logged if other
@@ -48,38 +38,24 @@ _TRACKED_TABLES: dict[str, dict[str, Any]] = {
     "kg_nodes": {
         "pk": "node_id",
         "fields": [
-            "label",
-            "node_type",
-            "confidence",
-            "locked",
-            "locked_at",
-            "locked_by",
-            "sources",
-            "history",
-            "created_at",
-            "updated_at",
+            "label", "node_type", "confidence", "locked",
+            "locked_at", "locked_by", "sources", "history",
+            "created_at", "updated_at",
         ],
         "noise_fields": [],
     },
     "kg_edges": {
         "pk": "edge_id",
         "fields": [
-            "source_id",
-            "target_id",
-            "relation",
-            "confidence",
-            "source_record",
-            "created_at",
+            "source_id", "target_id", "relation", "confidence",
+            "source_record", "created_at",
         ],
         "noise_fields": [],
     },
     "user_preferences": {
         "pk": ["category", "preference"],
         "fields": [
-            "category",
-            "preference",
-            "score",
-            "evidence_count",
+            "category", "preference", "score", "evidence_count",
             "last_observed",
         ],
         "noise_fields": [],
@@ -87,21 +63,14 @@ _TRACKED_TABLES: dict[str, dict[str, Any]] = {
     "response_feedback": {
         "pk": "id",
         "fields": [
-            "route",
-            "feedback",
-            "user_message_snippet",
-            "recorded_at",
+            "route", "feedback", "user_message_snippet", "recorded_at",
         ],
         "noise_fields": [],
     },
     "usage_patterns": {
         "pk": "id",
         "fields": [
-            "hour",
-            "day_of_week",
-            "route",
-            "topic",
-            "recorded_at",
+            "hour", "day_of_week", "route", "topic", "recorded_at",
         ],
         "noise_fields": [],
     },
@@ -165,41 +134,37 @@ def _pk_expr(pk: str | list[str], alias: str) -> str:
     return f"{alias}.{pk}"
 
 
-def _build_insert_trigger(
-    table: str, pk: str | list[str], fields: list[str], device_id: str
-) -> str:
+def _build_insert_trigger(table: str, pk: str | list[str], fields: list[str], device_id: str) -> str:
     """Generate AFTER INSERT trigger SQL for *table*."""
     fields_json = json.dumps(fields)
     new_values_expr = (
         "'{' || "
         + " || ',' || ".join(
-            "'\"" + f + "\":' || json_quote(NEW." + f + ")" for f in fields
+            "'\"" + f + "\":' || json_quote(NEW." + f + ")"
+            for f in fields
         )
         + " || '}'"
     )
     # Atomic version increment via UPDATE on the sequence table, then read
-    version_update = (
-        "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '"
-        + table
-        + "'; "
-    )
-    version_expr = (
-        "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '"
-        + table
-        + "')"
-    )
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
     return (
         "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_insert "
         "AFTER INSERT ON " + table + " "
-        "BEGIN " + version_update + "INSERT INTO _sync_changelog "
+        "BEGIN "
+        + version_update
+        + "INSERT INTO _sync_changelog "
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
         "CAST(" + _pk_expr(pk, "NEW") + " AS TEXT), "
         "'INSERT', "
         "'" + fields_json + "', "
-        "'{}', " + new_values_expr + ", "
-        "'" + device_id + "', " + version_expr + "); END;"
+        "'{}', "
+        + new_values_expr + ", "
+        "'" + device_id + "', "
+        + version_expr
+        + "); END;"
     )
 
 
@@ -216,13 +181,13 @@ def _clean_json_sql(expr: str) -> str:
     return (
         "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
         + expr
-        + ", ',,,,,,,,', ',')"  # 8->1
-        + ", ',,,,', ',')"  # 4->1
-        + ", ',,', ',')"  # 2->1 (pass 1)
-        + ", ',,', ',')"  # 2->1 (pass 2 -- catches residuals)
-        + ", ',,', ',')"  # 2->1 (pass 3 -- final safety)
-        + ", '[,', '[')"  # leading comma after [
-        + ", ',]', ']')"  # trailing comma before ]
+        + ", ',,,,,,,,', ',')"   # 8->1
+        + ", ',,,,', ',')"       # 4->1
+        + ", ',,', ',')"         # 2->1 (pass 1)
+        + ", ',,', ',')"         # 2->1 (pass 2 -- catches residuals)
+        + ", ',,', ',')"         # 2->1 (pass 3 -- final safety)
+        + ", '[,', '[')"         # leading comma after [
+        + ", ',]', ']')"         # trailing comma before ]
     )
 
 
@@ -233,7 +198,12 @@ def _clean_json_obj_sql(expr: str) -> str:
     collapsing is deferred to Python-side ``_safe_json_loads`` to avoid
     corrupting legitimate field values that may contain ``,,``.
     """
-    return "REPLACE(REPLACE(" + expr + ", '{,', '{')" + ", ',}', '}')"
+    return (
+        "REPLACE(REPLACE("
+        + expr
+        + ", '{,', '{')"
+        + ", ',}', '}')"
+    )
 
 
 def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
@@ -265,7 +235,7 @@ def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
             escape = False
             i += 1
             continue
-        if ch == "\\" and in_string:
+        if ch == '\\' and in_string:
             cleaned_parts.append(ch)
             escape = True
             i += 1
@@ -275,22 +245,22 @@ def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
             cleaned_parts.append(ch)
             i += 1
             continue
-        if ch == "," and not in_string:
+        if ch == ',' and not in_string:
             # Skip consecutive commas outside strings
             j = i + 1
-            while j < len(raw) and raw[j] == ",":
+            while j < len(raw) and raw[j] == ',':
                 j += 1
-            cleaned_parts.append(",")
+            cleaned_parts.append(',')
             i = j
             continue
         cleaned_parts.append(ch)
         i += 1
     cleaned = "".join(cleaned_parts)
     # Remove commas adjacent to brackets/braces (outside strings)
-    cleaned = re.sub(r"\[,", "[", cleaned)
-    cleaned = re.sub(r",\]", "]", cleaned)
-    cleaned = re.sub(r"\{,", "{", cleaned)
-    cleaned = re.sub(r",\}", "}", cleaned)
+    cleaned = re.sub(r'\[,', '[', cleaned)
+    cleaned = re.sub(r',\]', ']', cleaned)
+    cleaned = re.sub(r'\{,', '{', cleaned)
+    cleaned = re.sub(r',\}', '}', cleaned)
     try:
         return json.loads(cleaned)
     except (json.JSONDecodeError, ValueError):
@@ -298,11 +268,7 @@ def _safe_json_loads(raw: str, fallback: Any = None) -> Any:
 
 
 def _build_update_trigger(
-    table: str,
-    pk: str | list[str],
-    fields: list[str],
-    noise_fields: list[str],
-    device_id: str,
+    table: str, pk: str | list[str], fields: list[str], noise_fields: list[str], device_id: str,
 ) -> str:
     """Generate AFTER UPDATE trigger SQL for *table*."""
     # WHEN clause: fire only if at least one non-noise field actually changed
@@ -317,13 +283,8 @@ def _build_update_trigger(
     raw_fields_changed = (
         "'[' || "
         + " || ',' || ".join(
-            "CASE WHEN OLD."
-            + f
-            + " IS NOT NEW."
-            + f
-            + " THEN '\""
-            + f
-            + "\"' ELSE '' END"
+            "CASE WHEN OLD." + f + " IS NOT NEW." + f
+            + " THEN '\"" + f + "\"' ELSE '' END"
             for f in fields
         )
         + " || ']'"
@@ -333,15 +294,8 @@ def _build_update_trigger(
     raw_old_values = (
         "'{' || "
         + " || ',' || ".join(
-            "CASE WHEN OLD."
-            + f
-            + " IS NOT NEW."
-            + f
-            + " THEN '\""
-            + f
-            + "\":' || json_quote(OLD."
-            + f
-            + ") ELSE '' END"
+            "CASE WHEN OLD." + f + " IS NOT NEW." + f
+            + " THEN '\"" + f + "\":' || json_quote(OLD." + f + ") ELSE '' END"
             for f in fields
         )
         + " || '}'"
@@ -351,36 +305,19 @@ def _build_update_trigger(
     raw_new_values = (
         "'{' || "
         + " || ',' || ".join(
-            "CASE WHEN OLD."
-            + f
-            + " IS NOT NEW."
-            + f
-            + " THEN '\""
-            + f
-            + "\":' || json_quote(NEW."
-            + f
-            + ") ELSE '' END"
+            "CASE WHEN OLD." + f + " IS NOT NEW." + f
+            + " THEN '\"" + f + "\":' || json_quote(NEW." + f + ") ELSE '' END"
             for f in fields
         )
         + " || '}'"
     )
     new_values_expr = _clean_json_obj_sql(raw_new_values)
     # Atomic version increment via UPDATE on the sequence table, then read
-    version_update = (
-        "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '"
-        + table
-        + "'; "
-    )
-    version_expr = (
-        "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '"
-        + table
-        + "')"
-    )
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
     return (
         "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_update "
-        "AFTER UPDATE ON "
-        + table
-        + " "
+        "AFTER UPDATE ON " + table + " "
         + when_clause
         + "BEGIN "
         + version_update
@@ -390,50 +327,45 @@ def _build_update_trigger(
         "'" + table + "', "
         "CAST(" + _pk_expr(pk, "NEW") + " AS TEXT), "
         "'UPDATE', "
-        + fields_changed_expr
-        + ", "
-        + old_values_expr
-        + ", "
-        + new_values_expr
-        + ", "
-        "'" + device_id + "', " + version_expr + "); END;"
+        + fields_changed_expr + ", "
+        + old_values_expr + ", "
+        + new_values_expr + ", "
+        "'" + device_id + "', "
+        + version_expr
+        + "); END;"
     )
 
 
-def _build_delete_trigger(
-    table: str, pk: str | list[str], fields: list[str], device_id: str
-) -> str:
+def _build_delete_trigger(table: str, pk: str | list[str], fields: list[str], device_id: str) -> str:
     """Generate AFTER DELETE trigger SQL for *table*."""
     old_values_expr = (
         "'{' || "
         + " || ',' || ".join(
-            "'\"" + f + "\":' || json_quote(OLD." + f + ")" for f in fields
+            "'\"" + f + "\":' || json_quote(OLD." + f + ")"
+            for f in fields
         )
         + " || '}'"
     )
     # Atomic version increment via UPDATE on the sequence table, then read
-    version_update = (
-        "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '"
-        + table
-        + "'; "
-    )
-    version_expr = (
-        "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '"
-        + table
-        + "')"
-    )
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
     return (
         "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_delete "
         "AFTER DELETE ON " + table + " "
-        "BEGIN " + version_update + "INSERT INTO _sync_changelog "
+        "BEGIN "
+        + version_update
+        + "INSERT INTO _sync_changelog "
         "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
         "VALUES ("
         "'" + table + "', "
         "CAST(" + _pk_expr(pk, "OLD") + " AS TEXT), "
         "'DELETE', "
-        "'[]', " + old_values_expr + ", "
+        "'[]', "
+        + old_values_expr + ", "
         "'{}', "
-        "'" + device_id + "', " + version_expr + "); END;"
+        "'" + device_id + "', "
+        + version_expr
+        + "); END;"
     )
 
 
@@ -442,17 +374,13 @@ def _build_delete_trigger(
 # ---------------------------------------------------------------------------
 
 
-def install_changelog_triggers(
-    db: sqlite3.Connection, device_id: str = "desktop"
-) -> None:
+def install_changelog_triggers(db: sqlite3.Connection, device_id: str = "desktop") -> None:
     """Idempotently create changelog/cursor tables and per-table triggers.
 
     Safe to call multiple times -- uses CREATE TABLE/TRIGGER IF NOT EXISTS.
     """
     if not _DEVICE_ID_RE.match(device_id):
-        raise ValueError(
-            f"Invalid device_id: must be 1-64 alphanumeric/dash/underscore chars, got {device_id!r}"
-        )
+        raise ValueError(f"Invalid device_id: must be 1-64 alphanumeric/dash/underscore chars, got {device_id!r}")
     cur = db.cursor()
     cur.execute(_CHANGELOG_DDL)
     cur.execute(_CURSOR_DDL)
@@ -470,9 +398,7 @@ def install_changelog_triggers(
 
     for table, spec in _TRACKED_TABLES.items():
         if table not in existing_tables:
-            logger.debug(
-                "Sync: skipping triggers for %s (table not created yet)", table
-            )
+            logger.debug("Sync: skipping triggers for %s (table not created yet)", table)
             continue
 
         pk = spec["pk"]
@@ -513,20 +439,18 @@ def compute_diff(
     rows = cur.fetchall()
     results: list[dict[str, Any]] = []
     for row in rows:
-        results.append(
-            {
-                "changelog_id": row[0],
-                "table_name": row[1],
-                "row_id": row[2],
-                "operation": row[3],
-                "fields_changed": _safe_json_loads(row[4], []),
-                "old_values": _safe_json_loads(row[5], {}),
-                "new_values": _safe_json_loads(row[6], {}),
-                "device_id": row[7],
-                "ts": row[8],
-                "__version": row[9],
-            }
-        )
+        results.append({
+            "changelog_id": row[0],
+            "table_name": row[1],
+            "row_id": row[2],
+            "operation": row[3],
+            "fields_changed": _safe_json_loads(row[4], []),
+            "old_values": _safe_json_loads(row[5], {}),
+            "new_values": _safe_json_loads(row[6], {}),
+            "device_id": row[7],
+            "ts": row[8],
+            "__version": row[9],
+        })
     return results
 
 

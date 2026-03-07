@@ -55,13 +55,13 @@ def kg(engine: MemoryEngine) -> KnowledgeGraph:
 
 
 @pytest.fixture
-def pipeline_with_kg(
-    engine: MemoryEngine, kg: KnowledgeGraph
-) -> EnrichedIngestPipeline:
+def pipeline_with_kg(engine: MemoryEngine, kg: KnowledgeGraph) -> EnrichedIngestPipeline:
     """Create a pipeline with fact extraction enabled."""
     embed_service = MockEmbeddingService()
     classifier = MockClassifier()
-    return EnrichedIngestPipeline(engine, embed_service, classifier, knowledge_graph=kg)
+    return EnrichedIngestPipeline(
+        engine, embed_service, classifier, knowledge_graph=kg
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +70,7 @@ def pipeline_with_kg(
 
 
 class TestKnowledgeGraphSchema:
+
     def test_kg_schema_created(self, engine: MemoryEngine, kg: KnowledgeGraph) -> None:
         """KnowledgeGraph creates kg_nodes, kg_edges, kg_contradictions tables."""
         cur = engine._db.execute(
@@ -80,11 +81,11 @@ class TestKnowledgeGraphSchema:
         assert "kg_edges" in table_names
         assert "kg_contradictions" in table_names
 
-    def test_schema_version_bumped(
-        self, engine: MemoryEngine, kg: KnowledgeGraph
-    ) -> None:
+    def test_schema_version_bumped(self, engine: MemoryEngine, kg: KnowledgeGraph) -> None:
         """Schema version includes version 2 after KG init."""
-        cur = engine._db.execute("SELECT version FROM schema_version ORDER BY version")
+        cur = engine._db.execute(
+            "SELECT version FROM schema_version ORDER BY version"
+        )
         versions = [row[0] for row in cur.fetchall()]
         assert 2 in versions
 
@@ -95,6 +96,7 @@ class TestKnowledgeGraphSchema:
 
 
 class TestKnowledgeGraphNodes:
+
     def test_add_fact_new_node(self, kg: KnowledgeGraph) -> None:
         """add_fact creates a new node with correct fields."""
         result = kg.add_fact(
@@ -173,6 +175,7 @@ class TestKnowledgeGraphNodes:
 
 
 class TestKnowledgeGraphEdges:
+
     def test_add_edge(self, kg: KnowledgeGraph) -> None:
         """add_edge creates edge with correct fields."""
         # Add nodes first (for FK, though SQLite doesn't enforce FK by default unless PRAGMA)
@@ -180,11 +183,7 @@ class TestKnowledgeGraphEdges:
         kg.add_fact("cond.diabetes", "diabetes", 0.80)
 
         result = kg.add_edge(
-            "med.metformin",
-            "cond.diabetes",
-            "treats",
-            confidence=0.85,
-            source_record="rec001",
+            "med.metformin", "cond.diabetes", "treats", confidence=0.85, source_record="rec001"
         )
         assert result is True
 
@@ -200,9 +199,7 @@ class TestKnowledgeGraphEdges:
         kg.add_fact("b", "node_b", 0.5)
 
         result1 = kg.add_edge("a", "b", "related_to", 0.5)
-        result2 = kg.add_edge(
-            "a", "b", "related_to", 0.8
-        )  # Same triple, different confidence
+        result2 = kg.add_edge("a", "b", "related_to", 0.8)  # Same triple, different confidence
 
         assert result1 is True
         assert result2 is False  # UNIQUE constraint, not inserted
@@ -229,6 +226,7 @@ class TestKnowledgeGraphEdges:
 
 
 class TestNetworkXBridge:
+
     def test_to_networkx(self, kg: KnowledgeGraph) -> None:
         """to_networkx returns DiGraph with correct node/edge counts and attributes."""
         kg.add_fact("n1", "label_1", 0.8, node_type="type_a")
@@ -264,6 +262,7 @@ class TestNetworkXBridge:
 
 
 class TestFactExtractor:
+
     def test_fact_extractor_health(self) -> None:
         """FactExtractor extracts medication facts from health text."""
         extractor = FactExtractor()
@@ -355,6 +354,7 @@ class TestFactExtractor:
 
 
 class TestAggregateQueries:
+
     def test_count_nodes(self, kg: KnowledgeGraph) -> None:
         """count_nodes returns correct count."""
         assert kg.count_nodes() == 0
@@ -376,7 +376,9 @@ class TestAggregateQueries:
         kg.add_fact("b", "b", 0.9)
         assert kg.count_locked() == 0
 
-        kg._db.execute("UPDATE kg_nodes SET locked = 1 WHERE node_id = 'a'")
+        kg._db.execute(
+            "UPDATE kg_nodes SET locked = 1 WHERE node_id = 'a'"
+        )
         kg._db.commit()
         assert kg.count_locked() == 1
 
@@ -387,11 +389,9 @@ class TestAggregateQueries:
 
 
 class TestPipelineIntegration:
+
     def test_pipeline_extracts_facts(
-        self,
-        pipeline_with_kg: EnrichedIngestPipeline,
-        engine: MemoryEngine,
-        kg: KnowledgeGraph,
+        self, pipeline_with_kg: EnrichedIngestPipeline, engine: MemoryEngine, kg: KnowledgeGraph
     ) -> None:
         """End-to-end: ingest health content through pipeline, verify facts appear in kg_nodes."""
         ids = pipeline_with_kg.ingest(
@@ -411,7 +411,9 @@ class TestPipelineIntegration:
         assert metformin_node is not None
         assert "metformin" in metformin_node["label"].lower()
 
-    def test_pipeline_without_kg_still_works(self, engine: MemoryEngine) -> None:
+    def test_pipeline_without_kg_still_works(
+        self, engine: MemoryEngine
+    ) -> None:
         """Pipeline with no knowledge_graph still ingests records normally."""
         embed_service = MockEmbeddingService()
         classifier = MockClassifier()
@@ -438,7 +440,6 @@ class TestPipelineIntegration:
         class BrokenKG:
             def add_fact(self, *args, **kwargs):
                 raise RuntimeError("Simulated KG failure")
-
             def add_edge(self, *args, **kwargs):
                 raise RuntimeError("Simulated KG failure")
 

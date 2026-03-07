@@ -192,7 +192,6 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
 def sha256_hex(text: str) -> str:
     """Return the SHA-256 hex digest of *text* (UTF-8 encoded)."""
     import hashlib
-
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -207,7 +206,6 @@ def sha256_short(data: bytes, length: int = 32) -> str:
         The first *length* characters of the full SHA-256 hex digest.
     """
     import hashlib
-
     return hashlib.sha256(data).hexdigest()[:length]
 
 
@@ -266,7 +264,6 @@ def set_process_title(name: str) -> None:
     """Set the OS process title (requires ``setproctitle``; no-op if absent)."""
     try:
         import setproctitle
-
         setproctitle.setproctitle(name)
     except ImportError:
         logger.debug("setproctitle not available; process title unchanged")
@@ -414,7 +411,7 @@ def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
     if file_size > chunk_size:
         newline_pos = text.find("\n")
         if newline_pos >= 0:
-            text = text[newline_pos + 1 :]
+            text = text[newline_pos + 1:]
 
     entries = _parse_lines(text)
 

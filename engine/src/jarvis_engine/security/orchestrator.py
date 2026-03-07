@@ -45,7 +45,6 @@ def _try_import(module_path: str, class_name: str) -> type | None:
     """Import *class_name* from *module_path*, returning ``None`` on failure."""
     try:
         import importlib
-
         mod = importlib.import_module(module_path)
         return getattr(mod, class_name)
     except (ImportError, AttributeError):  # pragma: no cover
@@ -55,30 +54,16 @@ def _try_import(module_path: str, class_name: str) -> type | None:
 ActionAuditor = _try_import("jarvis_engine.security.action_auditor", "ActionAuditor")
 ScopeEnforcer = _try_import("jarvis_engine.security.scope_enforcer", "ScopeEnforcer")
 HeartbeatMonitor = _try_import("jarvis_engine.security.heartbeat", "HeartbeatMonitor")
-ResourceMonitor = _try_import(
-    "jarvis_engine.security.resource_monitor", "ResourceMonitor"
-)
+ResourceMonitor = _try_import("jarvis_engine.security.resource_monitor", "ResourceMonitor")
 ThreatIntelFeed = _try_import("jarvis_engine.security.threat_intel", "ThreatIntelFeed")
-ThreatNeutralizer = _try_import(
-    "jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer"
-)
-HomeNetworkMonitor = _try_import(
-    "jarvis_engine.security.network_defense", "HomeNetworkMonitor"
-)
-KnownDeviceRegistry = _try_import(
-    "jarvis_engine.security.network_defense", "KnownDeviceRegistry"
-)
+ThreatNeutralizer = _try_import("jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer")
+HomeNetworkMonitor = _try_import("jarvis_engine.security.network_defense", "HomeNetworkMonitor")
+KnownDeviceRegistry = _try_import("jarvis_engine.security.network_defense", "KnownDeviceRegistry")
 BreachMonitor = _try_import("jarvis_engine.security.identity_shield", "BreachMonitor")
 FamilyShield = _try_import("jarvis_engine.security.identity_shield", "FamilyShield")
-ImpersonationDetector = _try_import(
-    "jarvis_engine.security.identity_shield", "ImpersonationDetector"
-)
-TyposquatMonitor = _try_import(
-    "jarvis_engine.security.identity_shield", "TyposquatMonitor"
-)
-OwnerSessionManager = _try_import(
-    "jarvis_engine.security.owner_session", "OwnerSessionManager"
-)
+ImpersonationDetector = _try_import("jarvis_engine.security.identity_shield", "ImpersonationDetector")
+TyposquatMonitor = _try_import("jarvis_engine.security.identity_shield", "TyposquatMonitor")
+OwnerSessionManager = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +72,8 @@ _ESCALATION_LEVELS = frozenset({"HIGH", "CRITICAL"})
 
 # Map threat level -> containment severity (ContainmentEngine level)
 _THREAT_TO_CONTAINMENT: dict[str, int] = {
-    "HIGH": 2,  # BLOCK
-    "CRITICAL": 3,  # ISOLATE
+    "HIGH": 2,       # BLOCK
+    "CRITICAL": 3,   # ISOLATE
 }
 
 # Map threat level -> alert chain level
@@ -165,8 +150,7 @@ class SecurityOrchestrator:
         # Threat intelligence & response
         self._init_module("threat_intel", ThreatIntelFeed)
         self._init_module(
-            "threat_neutralizer",
-            ThreatNeutralizer,
+            "threat_neutralizer", ThreatNeutralizer,
             forensic_logger=self._forensic_logger,
             ip_tracker=self._ip_tracker,
             attack_memory=self._attack_memory,
@@ -256,13 +240,11 @@ class SecurityOrchestrator:
         # --- Step 1: Honeypot check ---
         if self._honeypot.is_honeypot_path(path):
             self._honeypot.record_hit(path, source_ip, headers)
-            self._forensic_logger.log_event(
-                {
-                    "event_type": "honeypot_triggered",
-                    "path": path,
-                    "source_ip": source_ip,
-                }
-            )
+            self._forensic_logger.log_event({
+                "event_type": "honeypot_triggered",
+                "path": path,
+                "source_ip": source_ip,
+            })
             # Record in IP tracker as an attack attempt
             self._ip_tracker.record_attempt(source_ip, "honeypot_probe")
             self._adaptive_defense.record_detection(
@@ -284,13 +266,11 @@ class SecurityOrchestrator:
 
         # --- Step 2: IP blocklist check ---
         if self._ip_tracker.is_blocked(source_ip):
-            self._forensic_logger.log_event(
-                {
-                    "event_type": "blocked_ip_rejected",
-                    "source_ip": source_ip,
-                    "path": path,
-                }
-            )
+            self._forensic_logger.log_event({
+                "event_type": "blocked_ip_rejected",
+                "source_ip": source_ip,
+                "path": path,
+            })
             with self._lock:
                 self._total_requests += 1
                 self._total_blocked += 1
@@ -307,14 +287,12 @@ class SecurityOrchestrator:
             try:
                 intel = self.threat_intel.enrich_ip(source_ip)
                 if intel.get("is_known_bad"):
-                    self._forensic_logger.log_event(
-                        {
-                            "event_type": "threat_intel_bad_ip",
-                            "source_ip": source_ip,
-                            "path": path,
-                            "intel": intel,
-                        }
-                    )
+                    self._forensic_logger.log_event({
+                        "event_type": "threat_intel_bad_ip",
+                        "source_ip": source_ip,
+                        "path": path,
+                        "intel": intel,
+                    })
                     self._ip_tracker.record_attempt(source_ip, "threat_intel_bad")
                     with self._lock:
                         self._total_requests += 1
@@ -327,9 +305,7 @@ class SecurityOrchestrator:
                         "containment_actions": [],
                     }
             except (OSError, ValueError, TimeoutError) as exc:
-                logger.debug(
-                    "Threat intel enrichment failed for %s: %s", source_ip, exc
-                )
+                logger.debug("Threat intel enrichment failed for %s: %s", source_ip, exc)
 
         # --- Step 3: Threat detection ---
         request_context = {
@@ -349,16 +325,14 @@ class SecurityOrchestrator:
         injection_verdict = injection_result.verdict.value
 
         # --- Step 5: Forensic log ---
-        self._forensic_logger.log_event(
-            {
-                "event_type": "request_assessed",
-                "path": path,
-                "source_ip": source_ip,
-                "threat_level": threat_level,
-                "injection_verdict": injection_verdict,
-                "signal_count": len(assessment.signals),
-            }
-        )
+        self._forensic_logger.log_event({
+            "event_type": "request_assessed",
+            "path": path,
+            "source_ip": source_ip,
+            "threat_level": threat_level,
+            "injection_verdict": injection_verdict,
+            "signal_count": len(assessment.signals),
+        })
 
         # --- Step 6: Decision logic ---
         allowed = True
@@ -440,14 +414,12 @@ class SecurityOrchestrator:
 
             elif injection_verdict == "suspicious":
                 # Log but allow (may be a false positive)
-                self._forensic_logger.log_event(
-                    {
-                        "event_type": "suspicious_injection",
-                        "source_ip": source_ip,
-                        "path": path,
-                        "patterns": injection_result.matched_patterns[:5],
-                    }
-                )
+                self._forensic_logger.log_event({
+                    "event_type": "suspicious_injection",
+                    "source_ip": source_ip,
+                    "path": path,
+                    "patterns": injection_result.matched_patterns[:5],
+                })
 
         # --- Step 7: Resource monitoring ---
         if self.resource_monitor is not None:
@@ -502,20 +474,16 @@ class SecurityOrchestrator:
         result = self._output_scanner.scan_output(response_text, system_context)
 
         if not result.safe:
-            self._forensic_logger.log_event(
-                {
-                    "event_type": "output_scan_failed",
-                    "issues": result.issues,
-                    "confidence": result.confidence,
-                }
-            )
+            self._forensic_logger.log_event({
+                "event_type": "output_scan_failed",
+                "issues": result.issues,
+                "confidence": result.confidence,
+            })
 
         return {
             "safe": result.safe,
             "findings": result.issues,
-            "filtered_text": response_text
-            if result.safe
-            else "[REDACTED: security issues detected]",
+            "filtered_text": response_text if result.safe else "[REDACTED: security issues detected]",
         }
 
     # ------------------------------------------------------------------
@@ -675,26 +643,20 @@ class SecurityOrchestrator:
         if self.threat_neutralizer is not None and level >= 2:
             try:
                 self.threat_neutralizer.neutralize(
-                    source_ip,
-                    category,
-                    {"detail": detail},
+                    source_ip, category, {"detail": detail},
                 )
             except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
                 logger.debug("ThreatNeutralizer failed for %s: %s", source_ip, exc)
 
         # Log to forensic log
-        self._forensic_logger.log_event(
-            {
-                "event_type": "threat_escalated",
-                "source_ip": source_ip,
-                "category": category,
-                "containment_level": level,
-            }
-        )
+        self._forensic_logger.log_event({
+            "event_type": "threat_escalated",
+            "source_ip": source_ip,
+            "category": category,
+            "containment_level": level,
+        })
 
         logger.warning(
             "Threat escalated: %s from %s (containment level %d)",
-            category,
-            source_ip,
-            level,
+            category, source_ip, level,
         )

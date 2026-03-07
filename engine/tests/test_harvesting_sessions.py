@@ -13,11 +13,7 @@ from unittest.mock import MagicMock, patch
 
 
 from jarvis_engine.harvesting.session_ingestors import ClaudeCodeIngestor, CodexIngestor
-from jarvis_engine.harvesting.harvester import (
-    HarvestCommand,
-    HarvestResult,
-    KnowledgeHarvester,
-)
+from jarvis_engine.harvesting.harvester import HarvestCommand, HarvestResult, KnowledgeHarvester
 from jarvis_engine.handlers.harvest_handlers import IngestSessionHandler
 
 
@@ -69,12 +65,7 @@ class TestClaudeCodeIngestor:
         entries = [
             _make_assistant_entry(long_text),
             _make_assistant_entry(short_text),
-            {
-                "type": "user",
-                "message": {
-                    "content": "This is a user message with more than one hundred characters to test filtering logic"
-                },
-            },
+            {"type": "user", "message": {"content": "This is a user message with more than one hundred characters to test filtering logic"}},
             _make_assistant_entry("B" * 200),
         ]
 
@@ -93,9 +84,7 @@ class TestClaudeCodeIngestor:
 
     def test_handles_missing_dir(self, tmp_path):
         """Point to nonexistent path. Empty list returned, no crash."""
-        with patch.dict(
-            os.environ, {"CLAUDE_CONFIG_DIR": str(tmp_path / "nonexistent")}
-        ):
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(tmp_path / "nonexistent")}):
             ingestor = ClaudeCodeIngestor()
             sessions = ingestor.find_sessions()
             assert sessions == []
@@ -217,16 +206,13 @@ class TestIngestSessionHandler:
         handler = IngestSessionHandler(pipeline=mock_pipeline)
 
         # Patch the ingestor at its source module (lazy-imported in handle())
-        with patch(
-            "jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor"
-        ) as MockIngestor:
+        with patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor") as MockIngestor:
             mock_ingestor = MagicMock()
             mock_ingestor.find_sessions.return_value = [session_file]
             mock_ingestor.ingest_session.return_value = ["H" * 150]
             MockIngestor.return_value = mock_ingestor
 
             from jarvis_engine.commands.harvest_commands import IngestSessionCommand
-
             cmd = IngestSessionCommand(source="claude")
             result = handler.handle(cmd)
 
@@ -238,7 +224,6 @@ class TestIngestSessionHandler:
         """Handler returns error result when pipeline is None."""
         handler = IngestSessionHandler(pipeline=None)
         from jarvis_engine.commands.harvest_commands import IngestSessionCommand
-
         cmd = IngestSessionCommand(source="claude")
         result = handler.handle(cmd)
         assert result.return_code == 2
@@ -362,9 +347,7 @@ class TestSemanticDedup:
 
         # Mock engine that returns high similarity for second query
         mock_engine = MagicMock()
-        mock_engine.search_by_vector.return_value = [
-            {"score": 0.95, "record_id": "existing"}
-        ]
+        mock_engine.search_by_vector.return_value = [{"score": 0.95, "record_id": "existing"}]
 
         mock_pipeline = MagicMock()
         mock_pipeline.ingest.return_value = ["record_1"]

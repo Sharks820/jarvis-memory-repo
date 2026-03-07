@@ -17,72 +17,27 @@ from jarvis_engine._compat import UTC
 # to ensure private queries never leave the local device.
 # ---------------------------------------------------------------------------
 
-PRIVACY_KEYWORDS: frozenset[str] = frozenset(
-    {
-        # Identity / contact
-        "address",
-        "phone number",
-        "social security",
-        "ssn",
-        # Financial
-        "account",
-        "bank",
-        "bank account",
-        "bill",
-        "bills",
-        "credit card",
-        "credential",
-        "income",
-        "insurance",
-        "payment",
-        "pin",
-        "salary",
-        # Medical / health
-        "allergy",
-        "blood type",
-        "diagnosis",
-        "doctor",
-        "health",
-        "medical",
-        "medication",
-        "medications",
-        "medicine",
-        "pill",
-        "prescription",
-        "surgery",
-        "symptom",
-        "therapist",
-        "therapy",
-        "treatment",
-        # Family / personal
-        "appointment",
-        "calendar",
-        "daughter",
-        "family",
-        "husband",
-        "son",
-        "wife",
-        # Auth / secrets
-        "confidential",
-        "password",
-        "personal",
-        "private",
-        "secret",
-        # Sensitive content
-        "affair",
-        "drug",
-        "naked",
-        "nude",
-        "porn",
-        "sex",
-    }
-)
+PRIVACY_KEYWORDS: frozenset[str] = frozenset({
+    # Identity / contact
+    "address", "phone number", "social security", "ssn",
+    # Financial
+    "account", "bank", "bank account", "bill", "bills", "credit card",
+    "credential", "income", "insurance", "payment", "pin", "salary",
+    # Medical / health
+    "allergy", "blood type", "diagnosis", "doctor", "health", "medical",
+    "medication", "medications", "medicine", "pill", "prescription",
+    "surgery", "symptom", "therapist", "therapy", "treatment",
+    # Family / personal
+    "appointment", "calendar", "daughter", "family", "husband", "son", "wife",
+    # Auth / secrets
+    "confidential", "password", "personal", "private", "secret",
+    # Sensitive content
+    "affair", "drug", "naked", "nude", "porn", "sex",
+})
 
 
 _PRIVACY_RE = re.compile(
-    r"\b(?:"
-    + "|".join(re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True))
-    + r")\b",
+    r"\b(?:" + "|".join(re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
 
@@ -115,124 +70,35 @@ def get_local_model() -> str:
 # matching.  Individual modules may extend with ``STOP_WORDS | {...}``.
 # ---------------------------------------------------------------------------
 
-STOP_WORDS: frozenset[str] = frozenset(
-    {
-        # Articles / determiners
-        "the",
-        "a",
-        "an",
-        # Be / auxiliary
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "being",
-        "have",
-        "has",
-        "had",
-        "do",
-        "does",
-        "did",
-        # Modals
-        "will",
-        "would",
-        "could",
-        "should",
-        "may",
-        "might",
-        "shall",
-        "can",
-        "need",
-        "must",
-        # Prepositions
-        "of",
-        "in",
-        "to",
-        "for",
-        "with",
-        "on",
-        "at",
-        "from",
-        "by",
-        "about",
-        "as",
-        "into",
-        "through",
-        "during",
-        "before",
-        "after",
-        "above",
-        "below",
-        "between",
-        # Conjunctions / negation
-        "and",
-        "but",
-        "or",
-        "nor",
-        "not",
-        "no",
-        "so",
-        "if",
-        "then",
-        "than",
-        # Adverbs / misc
-        "too",
-        "very",
-        "just",
-        "also",
-        "only",
-        # Pronouns / possessives
-        "that",
-        "this",
-        "it",
-        "its",
-        "my",
-        "me",
-        "i",
-        "your",
-        "his",
-        "her",
-        "our",
-        "their",
-        "they",
-        "them",
-        "there",
-        "what",
-        "which",
-        "who",
-        "whom",
-        "how",
-        "when",
-        "where",
-        "why",
-        # Quantifiers
-        "all",
-        "each",
-        "every",
-        "both",
-        "few",
-        "more",
-        "most",
-        "other",
-        "some",
-        "such",
-        "own",
-        "same",
-        # Adjectives / misc
-        "new",
-        "old",
-        "true",
-        "false",
-        "none",
-        "null",
-        "yes",
-        # Project-specific
-        "conner",
-        "jarvis",
-    }
-)
+STOP_WORDS: frozenset[str] = frozenset({
+    # Articles / determiners
+    "the", "a", "an",
+    # Be / auxiliary
+    "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did",
+    # Modals
+    "will", "would", "could", "should", "may", "might", "shall", "can",
+    "need", "must",
+    # Prepositions
+    "of", "in", "to", "for", "with", "on", "at", "from", "by", "about",
+    "as", "into", "through", "during", "before", "after", "above", "below",
+    "between",
+    # Conjunctions / negation
+    "and", "but", "or", "nor", "not", "no", "so", "if", "then", "than",
+    # Adverbs / misc
+    "too", "very", "just", "also", "only",
+    # Pronouns / possessives
+    "that", "this", "it", "its", "my", "me", "i", "your", "his", "her",
+    "our", "their", "they", "them", "there", "what", "which", "who", "whom",
+    "how", "when", "where", "why",
+    # Quantifiers
+    "all", "each", "every", "both", "few", "more", "most", "other", "some",
+    "such", "own", "same",
+    # Adjectives / misc
+    "new", "old", "true", "false", "none", "null", "yes",
+    # Project-specific
+    "conner", "jarvis",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +134,6 @@ ACTIONS_FILENAME = "actions.generated.json"
 # Common path helpers
 # ---------------------------------------------------------------------------
 
-
 def memory_db_path(root: Path) -> Path:
     """Return the canonical path to the main Jarvis memory database."""
     return root / ".planning" / "brain" / "jarvis_memory.db"
@@ -282,7 +147,6 @@ def runtime_dir(root: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Task ID generation
 # ---------------------------------------------------------------------------
-
 
 def make_task_id(prefix: str) -> str:
     """Generate a timestamped task ID like ``prefix-20260305143000``."""

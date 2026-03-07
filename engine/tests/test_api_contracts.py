@@ -84,9 +84,7 @@ class TestContractDefinitions:
 
     def test_settings_response_fields(self) -> None:
         """SettingsResponse must include ok, settings."""
-        r = SettingsResponse(
-            ok=True, settings={"runtime_control": {}, "gaming_mode": {}}
-        )
+        r = SettingsResponse(ok=True, settings={"runtime_control": {}, "gaming_mode": {}})
         assert r.ok is True
         assert "runtime_control" in r.settings
         assert "gaming_mode" in r.settings
@@ -273,7 +271,6 @@ class TestServerResponseMatchesContract:
     def test_health_matches_contract(self, mobile_server) -> None:
         """GET /health response must match HealthResponse contract."""
         from conftest import http_request
-
         code, body = http_request("GET", f"{mobile_server.base_url}/health")
         assert code == 200
         response = json.loads(body.decode("utf-8"))
@@ -286,13 +283,8 @@ class TestServerResponseMatchesContract:
     def test_settings_matches_contract(self, mobile_server) -> None:
         """GET /settings response must match SettingsResponse contract."""
         from conftest import http_request, signed_headers
-
-        headers = signed_headers(
-            b"", mobile_server.auth_token, mobile_server.signing_key
-        )
-        code, body = http_request(
-            "GET", f"{mobile_server.base_url}/settings", headers=headers
-        )
+        headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
+        code, body = http_request("GET", f"{mobile_server.base_url}/settings", headers=headers)
         assert code == 200
         response = json.loads(body.decode("utf-8"))
         errors = validate_contract("GET /settings", response)
@@ -309,24 +301,14 @@ class TestServerResponseMatchesContract:
         def _fake_voice_run(**kwargs):
             # Simulate the output format from cmd_voice_run
             import sys
-
-            sys.stdout.write(
-                "intent=general\nreason=ok\nstatus_code=0\nresponse=Test response\n"
-            )
+            sys.stdout.write("intent=general\nreason=ok\nstatus_code=0\nresponse=Test response\n")
             return 0
 
         payload = json.dumps({"text": "what time is it"}).encode("utf-8")
-        headers = signed_headers(
-            payload, mobile_server.auth_token, mobile_server.signing_key
-        )
+        headers = signed_headers(payload, mobile_server.auth_token, mobile_server.signing_key)
 
         with patch("jarvis_engine.main.cmd_voice_run", side_effect=_fake_voice_run):
-            code, body = http_request(
-                "POST",
-                f"{mobile_server.base_url}/command",
-                body=payload,
-                headers=headers,
-            )
+            code, body = http_request("POST", f"{mobile_server.base_url}/command", body=payload, headers=headers)
         assert code == 200
         response = json.loads(body.decode("utf-8"))
         errors = validate_contract("POST /command", response)
@@ -473,7 +455,6 @@ class TestCertFingerprintEndpoint:
     def test_cert_fingerprint_no_cert(self, mobile_server) -> None:
         """GET /cert-fingerprint returns 404 when no TLS cert exists."""
         from conftest import http_request
-
         code, body = http_request("GET", f"{mobile_server.base_url}/cert-fingerprint")
         assert code == 404
         response = json.loads(body.decode("utf-8"))
@@ -485,9 +466,7 @@ class TestCertFingerprintEndpoint:
 
         # Check if openssl is available
         try:
-            result = subprocess.run(
-                ["openssl", "version"], capture_output=True, timeout=5
-            )
+            result = subprocess.run(["openssl", "version"], capture_output=True, timeout=5)
             if result.returncode != 0:
                 pytest.skip("openssl not available")
         except (FileNotFoundError, OSError):
@@ -542,7 +521,6 @@ class TestContractDriftDetection:
         """
         from dataclasses import fields as dc_fields
         from jarvis_engine.api_contracts import BootstrapSession
-
         field_names = {f.name for f in dc_fields(BootstrapSession)}
         assert "device_id" in field_names
         assert "device_name" not in field_names

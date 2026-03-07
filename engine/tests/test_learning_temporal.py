@@ -19,11 +19,12 @@ from jarvis_engine.learning.temporal import (
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
-
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite DB with a minimal kg_nodes table."""
     db = sqlite3.connect(":memory:")
-    db.execute("CREATE TABLE kg_nodes (id TEXT PRIMARY KEY, label TEXT)")
+    db.execute(
+        "CREATE TABLE kg_nodes (id TEXT PRIMARY KEY, label TEXT)"
+    )
     db.commit()
     return db
 
@@ -44,7 +45,6 @@ def _make_db_with_temporal() -> sqlite3.Connection:
 
 
 # ── _extract_date() ─────────────────────────────────────────────────────────
-
 
 class TestExtractDate:
     def test_expires_keyword(self) -> None:
@@ -73,7 +73,6 @@ class TestExtractDate:
 
 
 # ── classify_temporal() ─────────────────────────────────────────────────────
-
 
 class TestClassifyTemporal:
     # -- permanent prefixes --
@@ -147,7 +146,6 @@ class TestClassifyTemporal:
 
 # ── migrate_temporal_metadata() ─────────────────────────────────────────────
 
-
 class TestMigrate:
     def test_adds_columns(self) -> None:
         db = _make_db()
@@ -198,7 +196,6 @@ class TestMigrate:
 
 # ── flag_expired_facts() ───────────────────────────────────────────────────
 
-
 class TestFlagExpired:
     def test_flags_expired(self) -> None:
         db = _make_db_with_temporal()
@@ -222,10 +219,14 @@ class TestFlagExpired:
         count = flag_expired_facts(kg)
         assert count == 1
 
-        row = db.execute("SELECT temporal_type FROM kg_nodes WHERE id='n1'").fetchone()
+        row = db.execute(
+            "SELECT temporal_type FROM kg_nodes WHERE id='n1'"
+        ).fetchone()
         assert row[0] == "expired"
 
-        row2 = db.execute("SELECT temporal_type FROM kg_nodes WHERE id='n2'").fetchone()
+        row2 = db.execute(
+            "SELECT temporal_type FROM kg_nodes WHERE id='n2'"
+        ).fetchone()
         assert row2[0] == "time_sensitive"
 
     def test_already_expired_not_double_counted(self) -> None:

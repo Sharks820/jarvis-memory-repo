@@ -196,9 +196,7 @@ def test_load_cost_history_limit(history_file: Path) -> None:
     history_file.parent.mkdir(parents=True, exist_ok=True)
     lines = []
     for i in range(10):
-        lines.append(
-            json.dumps({"date": f"2026-01-{i + 1:02d}", "30d_local_pct": float(i)})
-        )
+        lines.append(json.dumps({"date": f"2026-01-{i + 1:02d}", "30d_local_pct": float(i)}))
     history_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     result = load_cost_history(history_file, limit=3)

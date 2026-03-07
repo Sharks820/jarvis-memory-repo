@@ -20,7 +20,6 @@ from jarvis_engine.ops_sync import (
 def _has_icalendar() -> bool:
     try:
         import icalendar  # noqa: F401
-
         return True
     except ImportError:
         return False
@@ -29,7 +28,6 @@ def _has_icalendar() -> bool:
 # ---------------------------------------------------------------------------
 # Helpers: ICS test data builders
 # ---------------------------------------------------------------------------
-
 
 def _make_ics(events_block: str) -> str:
     """Wrap VEVENT blocks in a minimal VCALENDAR envelope."""
@@ -64,9 +62,7 @@ def _simple_event_ics(
     return _make_ics(block)
 
 
-def _allday_event_ics(
-    summary: str = "Company Holiday", dtstart: str = "20260301"
-) -> str:
+def _allday_event_ics(summary: str = "Company Holiday", dtstart: str = "20260301") -> str:
     """Build ICS text with an all-day event (DATE, not DATETIME)."""
     block = (
         "BEGIN:VEVENT\r\n"
@@ -98,7 +94,6 @@ def _recurring_event_ics(
 # ---------------------------------------------------------------------------
 # ICS Parsing Tests
 # ---------------------------------------------------------------------------
-
 
 class TestParseIcsSimpleEvent:
     def test_returns_one_event(self) -> None:
@@ -154,11 +149,7 @@ class TestParseIcsFallbackWhenLibraryMissing:
     def test_fallback_on_import_error(self, monkeypatch) -> None:
         """When icalendar is not importable, _parse_ics falls back to line-by-line parser."""
         # Create a fake module that raises ImportError on import
-        original_import = (
-            __builtins__.__import__
-            if hasattr(__builtins__, "__import__")
-            else __import__
-        )
+        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
         def fake_import(name, *args, **kwargs):
             if name in ("icalendar", "recurring_ical_events"):
@@ -189,7 +180,6 @@ class TestParseIcsEmptyString:
 # ---------------------------------------------------------------------------
 # Calendar Loader Tests
 # ---------------------------------------------------------------------------
-
 
 class TestLoadCalendarEventsJsonFeed:
     def test_loads_from_json_env(self, monkeypatch, tmp_path: Path) -> None:
@@ -238,7 +228,6 @@ class TestLoadCalendarEventsNoConfig:
 # Task Source Tests
 # ---------------------------------------------------------------------------
 
-
 class TestLoadTaskItemsDefaultJson:
     def test_loads_from_default_path(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.delenv("JARVIS_TASK_SOURCE", raising=False)
@@ -248,22 +237,10 @@ class TestLoadTaskItemsDefaultJson:
         planning.mkdir()
         tasks_file = planning / "tasks.json"
         tasks_file.write_text(
-            json.dumps(
-                [
-                    {
-                        "title": "Fix bug",
-                        "priority": "high",
-                        "due_date": "2026-03-01",
-                        "status": "pending",
-                    },
-                    {
-                        "title": "Write docs",
-                        "priority": "normal",
-                        "due_date": "2026-03-02",
-                        "status": "pending",
-                    },
-                ]
-            ),
+            json.dumps([
+                {"title": "Fix bug", "priority": "high", "due_date": "2026-03-01", "status": "pending"},
+                {"title": "Write docs", "priority": "normal", "due_date": "2026-03-02", "status": "pending"},
+            ]),
             encoding="utf-8",
         )
 
@@ -279,9 +256,7 @@ class TestLoadTaskItemsEnvPath:
 
         custom_file = tmp_path / "custom_tasks.json"
         custom_file.write_text(
-            json.dumps(
-                [{"title": "Custom Task", "priority": "urgent", "status": "pending"}]
-            ),
+            json.dumps([{"title": "Custom Task", "priority": "urgent", "status": "pending"}]),
             encoding="utf-8",
         )
         monkeypatch.setenv("JARVIS_TASKS_JSON", str(custom_file))
@@ -292,9 +267,7 @@ class TestLoadTaskItemsEnvPath:
 
 
 class TestLoadTaskItemsTodoistNoToken:
-    def test_todoist_without_token_returns_empty(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_todoist_without_token_returns_empty(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setenv("JARVIS_TASK_SOURCE", "todoist")
         monkeypatch.delenv("JARVIS_TODOIST_TOKEN", raising=False)
 
@@ -323,7 +296,6 @@ class TestLoadTaskItemsNoFile:
 # ---------------------------------------------------------------------------
 # Fallback parser standalone test
 # ---------------------------------------------------------------------------
-
 
 class TestParseIcsFallback:
     def test_fallback_parses_simple_vevent(self) -> None:

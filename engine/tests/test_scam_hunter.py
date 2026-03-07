@@ -1,5 +1,4 @@
 """Tests for scam_hunter — scam campaign detection and intelligence."""
-
 from __future__ import annotations
 
 import pytest
@@ -30,10 +29,7 @@ from jarvis_engine.scam_hunter import (
 class TestComputeEnhancedSpamScore:
     def test_contact_override(self):
         """Contacts always score 0 regardless of other signals."""
-        assert (
-            compute_enhanced_spam_score(0.9, stir_status="failed", is_in_contacts=True)
-            == 0.0
-        )
+        assert compute_enhanced_spam_score(0.9, stir_status="failed", is_in_contacts=True) == 0.0
 
     def test_stir_failed_boost(self):
         score = compute_enhanced_spam_score(0.0, stir_status="failed")
@@ -71,21 +67,15 @@ class TestComputeEnhancedSpamScore:
 
     def test_combined_signals(self):
         score = compute_enhanced_spam_score(
-            0.3,
-            stir_status="failed",
-            line_type="non_fixed_voip",
-            presentation="restricted",
-            campaign_confidence=0.9,
+            0.3, stir_status="failed", line_type="non_fixed_voip",
+            presentation="restricted", campaign_confidence=0.9,
         )
         assert score > 0.90
 
     def test_cap_at_099(self):
         score = compute_enhanced_spam_score(
-            0.99,
-            stir_status="failed",
-            line_type="non_fixed_voip",
-            campaign_confidence=1.0,
-            presentation="restricted",
+            0.99, stir_status="failed", line_type="non_fixed_voip",
+            campaign_confidence=1.0, presentation="restricted",
         )
         assert score == pytest.approx(0.99, abs=0.001)
 
@@ -94,15 +84,8 @@ class TestComputeEnhancedSpamScore:
 
 
 class TestDetectCampaigns:
-    def _make_report(
-        self,
-        number,
-        ts_offset_h=0,
-        stir="not_verified",
-        answered=False,
-        contact_name="",
-        now=None,
-    ):
+    def _make_report(self, number, ts_offset_h=0, stir="not_verified",
+                     answered=False, contact_name="", now=None):
         now = now or datetime.now(UTC)
         ts = now - timedelta(hours=ts_offset_h)
         return {
@@ -177,7 +160,10 @@ class TestDetectCampaigns:
 
     def test_five_numbers_high_confidence(self):
         now = datetime.now(UTC)
-        reports = [self._make_report(f"+1555123{i:04d}", now=now) for i in range(5)]
+        reports = [
+            self._make_report(f"+1555123{i:04d}", now=now)
+            for i in range(5)
+        ]
         campaigns = detect_campaigns(reports, now_utc=now)
         assert len(campaigns) == 1
         assert campaigns[0].confidence >= 0.35
@@ -196,24 +182,12 @@ class TestDetectCampaigns:
     def test_restricted_presentation_boost(self):
         now = datetime.now(UTC)
         reports = [
-            {
-                "number": "+15551230001",
-                "timestamp_utc": now.isoformat(),
-                "stir_status": "",
-                "presentation": "restricted",
-                "duration_sec": 0,
-                "answered": False,
-                "contact_name": "",
-            },
-            {
-                "number": "+15551230002",
-                "timestamp_utc": now.isoformat(),
-                "stir_status": "",
-                "presentation": "restricted",
-                "duration_sec": 0,
-                "answered": False,
-                "contact_name": "",
-            },
+            {"number": "+15551230001", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "restricted",
+             "duration_sec": 0, "answered": False, "contact_name": ""},
+            {"number": "+15551230002", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "restricted",
+             "duration_sec": 0, "answered": False, "contact_name": ""},
         ]
         campaigns = detect_campaigns(reports, now_utc=now)
         assert len(campaigns) == 1
@@ -296,27 +270,21 @@ class TestBuildPrefixBlockActions:
         assert build_prefix_block_actions(campaigns) == []
 
     def test_block_numbers_above_threshold(self):
-        campaigns = [
-            ScamCampaign(
-                campaign_id="a",
-                prefix="+1555",
-                numbers=["+15551230001", "+15551230002"],
-                confidence=0.65,
-            )
-        ]
+        campaigns = [ScamCampaign(
+            campaign_id="a", prefix="+1555",
+            numbers=["+15551230001", "+15551230002"],
+            confidence=0.65,
+        )]
         actions = build_prefix_block_actions(campaigns)
         block_actions = [a for a in actions if a["action"] == "block_number"]
         assert len(block_actions) == 2
 
     def test_prefix_silence_at_high_confidence(self):
-        campaigns = [
-            ScamCampaign(
-                campaign_id="a",
-                prefix="+1555",
-                numbers=["+15551230001", "+15551230002", "+15551230003"],
-                confidence=0.80,
-            )
-        ]
+        campaigns = [ScamCampaign(
+            campaign_id="a", prefix="+1555",
+            numbers=["+15551230001", "+15551230002", "+15551230003"],
+            confidence=0.80,
+        )]
         actions = build_prefix_block_actions(campaigns)
         silence_actions = [a for a in actions if a["action"] == "silence_prefix"]
         assert len(silence_actions) == 1
@@ -438,24 +406,12 @@ class TestDetectCampaignsNoMutation:
         """detect_campaigns should not add internal keys to caller's dicts."""
         now = datetime.now(UTC)
         reports = [
-            {
-                "number": "+15551230001",
-                "timestamp_utc": now.isoformat(),
-                "stir_status": "",
-                "presentation": "allowed",
-                "duration_sec": 0,
-                "answered": False,
-                "contact_name": "",
-            },
-            {
-                "number": "+15551230002",
-                "timestamp_utc": now.isoformat(),
-                "stir_status": "",
-                "presentation": "allowed",
-                "duration_sec": 0,
-                "answered": False,
-                "contact_name": "",
-            },
+            {"number": "+15551230001", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "allowed",
+             "duration_sec": 0, "answered": False, "contact_name": ""},
+            {"number": "+15551230002", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "allowed",
+             "duration_sec": 0, "answered": False, "contact_name": ""},
         ]
         detect_campaigns(reports, now_utc=now)
         for r in reports:
@@ -471,15 +427,9 @@ class TestBurstPatternInstant:
         """3+ reports at the exact same second should trigger burst."""
         now = datetime.now(UTC)
         reports = [
-            {
-                "number": f"+1555123000{i}",
-                "timestamp_utc": now.isoformat(),
-                "stir_status": "",
-                "presentation": "allowed",
-                "duration_sec": 0,
-                "answered": False,
-                "contact_name": "",
-            }
+            {"number": f"+1555123000{i}", "timestamp_utc": now.isoformat(),
+             "stir_status": "", "presentation": "allowed",
+             "duration_sec": 0, "answered": False, "contact_name": ""}
             for i in range(3)
         ]
         campaigns = detect_campaigns(reports, now_utc=now)

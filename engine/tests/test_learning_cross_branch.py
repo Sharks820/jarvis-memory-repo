@@ -3,7 +3,6 @@
 Covers keyword extraction, branch extraction, cross-branch querying,
 and cross-branch edge creation.
 """
-
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -20,7 +19,6 @@ from jarvis_engine.learning.cross_branch import (
 # ---------------------------------------------------------------------------
 # _extract_branch tests
 # ---------------------------------------------------------------------------
-
 
 class TestExtractBranch:
     def test_dot_separated_returns_first_part(self):
@@ -46,7 +44,6 @@ class TestExtractBranch:
 # ---------------------------------------------------------------------------
 # _extract_keywords tests
 # ---------------------------------------------------------------------------
-
 
 class TestExtractKeywords:
     def test_empty_label(self):
@@ -100,7 +97,6 @@ class TestExtractKeywords:
 # cross_branch_query tests
 # ---------------------------------------------------------------------------
 
-
 class TestCrossBranchQuery:
     def _setup_mocks(self, vec_results=None, graph_nodes=None, graph_edges=None):
         """Create mock engine, kg, embed_service with configurable returns."""
@@ -138,9 +134,7 @@ class TestCrossBranchQuery:
     def test_embeds_query(self):
         engine, kg, embed_svc, _ = self._setup_mocks()
         cross_branch_query("what is my schedule", engine, kg, embed_svc)
-        embed_svc.embed.assert_called_once_with(
-            "what is my schedule", prefix="search_query"
-        )
+        embed_svc.embed.assert_called_once_with("what is my schedule", prefix="search_query")
 
     def test_searches_with_doubled_limit(self):
         engine, kg, embed_svc, _ = self._setup_mocks()
@@ -206,9 +200,7 @@ class TestCrossBranchQuery:
             vec_results=[("rec_1", 0.05)],
             graph_nodes={"ingest:rec_1", "health.medication.vitd"},
             graph_edges={
-                ("health.medication.vitd", "ingest:rec_1"): {
-                    "relation": "sourced_from"
-                },
+                ("health.medication.vitd", "ingest:rec_1"): {"relation": "sourced_from"},
             },
         )
         mock_G.neighbors.return_value = iter([])
@@ -224,7 +216,6 @@ class TestCrossBranchQuery:
 # ---------------------------------------------------------------------------
 # create_cross_branch_edges tests
 # ---------------------------------------------------------------------------
-
 
 class TestCreateCrossBranchEdges:
     def test_no_node_returns_zero(self):

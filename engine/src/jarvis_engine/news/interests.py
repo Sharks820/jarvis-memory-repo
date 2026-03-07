@@ -6,7 +6,6 @@ of 30 days ensures stale interests fade naturally.
 
 Thread-safe via a module-level lock on the JSON backing store.
 """
-
 import json
 import logging
 import math
@@ -28,7 +27,6 @@ class InterestLearner:
 
     def __init__(self, root: Path) -> None:
         from jarvis_engine._constants import runtime_dir
-
         self._path = runtime_dir(root) / "interests.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
 

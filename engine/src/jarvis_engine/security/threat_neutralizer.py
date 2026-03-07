@@ -130,15 +130,13 @@ class ThreatNeutralizer:
         # 1. Preserve evidence
         if self._forensic_logger is not None:
             try:
-                self._forensic_logger.log_event(
-                    {
-                        "event_type": "threat_neutralization",
-                        "ip": ip,
-                        "category": category,
-                        "evidence": evidence,
-                        "evidence_id": evidence_id,
-                    }
-                )
+                self._forensic_logger.log_event({
+                    "event_type": "threat_neutralization",
+                    "ip": ip,
+                    "category": category,
+                    "evidence": evidence,
+                    "evidence_id": evidence_id,
+                })
                 actions_taken.append("evidence_preserved")
             except (OSError, ValueError, TypeError) as exc:
                 logger.warning("Failed to preserve evidence for %s: %s", ip, exc)
@@ -228,10 +226,7 @@ class ThreatNeutralizer:
 
         logger.info(
             "Neutralized threat from %s (%s): %d actions, blocked=%s",
-            ip,
-            category,
-            len(actions_taken),
-            blocked,
+            ip, category, len(actions_taken), blocked,
         )
 
         return result
@@ -241,10 +236,7 @@ class ThreatNeutralizer:
     # ------------------------------------------------------------------
 
     def report_to_abuseipdb(
-        self,
-        ip: str,
-        categories: list[int],
-        comment: str,
+        self, ip: str, categories: list[int], comment: str,
     ) -> bool:
         """Submit an abuse report to AbuseIPDB.
 
@@ -264,8 +256,7 @@ class ThreatNeutralizer:
             self._report_call_count += 1
             if self._report_call_count % 100 == 0:
                 expired = [
-                    k
-                    for k, v in self._report_cooldowns.items()
+                    k for k, v in self._report_cooldowns.items()
                     if (now - v) >= _REPORT_COOLDOWN_S
                 ]
                 for k in expired:
@@ -274,8 +265,7 @@ class ThreatNeutralizer:
             last_report = self._report_cooldowns.get(ip)
             if last_report is not None and (now - last_report) < _REPORT_COOLDOWN_S:
                 logger.debug(
-                    "Rate limited: already reported %s within the last hour",
-                    ip,
+                    "Rate limited: already reported %s within the last hour", ip,
                 )
                 return False
             # Reserve the slot (set now so concurrent calls also see it)
@@ -284,13 +274,11 @@ class ThreatNeutralizer:
         # Build POST request
         try:
             categories_str = ",".join(str(c) for c in categories)
-            post_data = urllib.parse.urlencode(
-                {
-                    "ip": ip,
-                    "categories": categories_str,
-                    "comment": comment[:1024],  # AbuseIPDB limit
-                }
-            ).encode("utf-8")
+            post_data = urllib.parse.urlencode({
+                "ip": ip,
+                "categories": categories_str,
+                "comment": comment[:1024],  # AbuseIPDB limit
+            }).encode("utf-8")
 
             req = urllib.request.Request(
                 _ABUSEIPDB_REPORT_URL,
@@ -304,9 +292,7 @@ class ThreatNeutralizer:
             with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
                 resp.read()  # consume response
 
-            logger.info(
-                "AbuseIPDB report submitted for %s (categories: %s)", ip, categories_str
-            )
+            logger.info("AbuseIPDB report submitted for %s (categories: %s)", ip, categories_str)
             return True
 
         except (OSError, ConnectionError, TimeoutError) as exc:
@@ -384,9 +370,7 @@ class ThreatNeutralizer:
     # ------------------------------------------------------------------
 
     def generate_law_enforcement_package(
-        self,
-        ip: str,
-        evidence: dict,
+        self, ip: str, evidence: dict,
     ) -> dict:
         """Generate an IC3/FBI-format report package.
 
@@ -403,13 +387,11 @@ class ThreatNeutralizer:
         # Build attack timeline from evidence
         timeline: list[dict] = []
         timestamp = evidence.get("timestamp", _now_iso())
-        timeline.append(
-            {
-                "timestamp": timestamp,
-                "event": f"Attack detected from {ip}",
-                "details": {k: str(v) for k, v in evidence.items()},
-            }
-        )
+        timeline.append({
+            "timestamp": timestamp,
+            "event": f"Attack detected from {ip}",
+            "details": {k: str(v) for k, v in evidence.items()},
+        })
 
         # Compute evidence hashes
         evidence_hashes: dict[str, str] = {}
@@ -503,8 +485,7 @@ class ThreatNeutralizer:
         if len(self._rdap_cache) > self._rdap_cache_max_size:
             # Evict expired entries first
             expired = [
-                k
-                for k, (ts, _) in self._rdap_cache.items()
+                k for k, (ts, _) in self._rdap_cache.items()
                 if (now - ts) >= self._rdap_cache_ttl
             ]
             for k in expired:
@@ -513,15 +494,10 @@ class ThreatNeutralizer:
             # If still over capacity, evict oldest entries
             if len(self._rdap_cache) > self._rdap_cache_max_size:
                 sorted_keys = sorted(
-                    self._rdap_cache,
-                    key=lambda k: self._rdap_cache[k][0],
+                    self._rdap_cache, key=lambda k: self._rdap_cache[k][0],
                 )
                 # Remove the oldest quarter to avoid evicting on every insert
-                evict_count = (
-                    len(self._rdap_cache)
-                    - self._rdap_cache_max_size
-                    + self._rdap_cache_max_size // 4
-                )
+                evict_count = len(self._rdap_cache) - self._rdap_cache_max_size + self._rdap_cache_max_size // 4
                 for k in sorted_keys[:evict_count]:
                     del self._rdap_cache[k]
 
@@ -564,17 +540,12 @@ class ThreatNeutralizer:
         charges: list[str] = []
 
         # 18 U.S.C. section 1030(a)(2) — unauthorized access to obtain information
-        charges.append(
-            "18 U.S.C. 1030(a)(2) — Unauthorized access to obtain information"
-        )
+        charges.append("18 U.S.C. 1030(a)(2) — Unauthorized access to obtain information")
 
         payload = json.dumps(evidence, default=str).lower()
 
         # 18 U.S.C. section 1030(a)(5) — damage to protected computers
-        if any(
-            term in payload
-            for term in ["dos", "ddos", "flood", "damage", "delete", "destroy"]
-        ):
+        if any(term in payload for term in ["dos", "ddos", "flood", "damage", "delete", "destroy"]):
             charges.append("18 U.S.C. 1030(a)(5) — Damage to protected computers")
 
         # 18 U.S.C. section 1030(a)(7) — extortion
@@ -583,9 +554,7 @@ class ThreatNeutralizer:
 
         # 18 U.S.C. section 1030(a)(2)(C) — unauthorized access affecting interstate commerce
         if any(term in payload for term in ["sql", "injection", "rce", "exploit"]):
-            charges.append(
-                "18 U.S.C. 1030(a)(2)(C) — Access affecting interstate commerce"
-            )
+            charges.append("18 U.S.C. 1030(a)(2)(C) — Access affecting interstate commerce")
 
         return charges
 
@@ -620,33 +589,27 @@ class ThreatNeutralizer:
             for k, v in event.get("details", {}).items():
                 lines.append(f"    {k}: {v}")
 
-        lines.extend(
-            [
-                "",
-                "EVIDENCE INTEGRITY (SHA-256 Hashes)",
-                "-" * 40,
-            ]
-        )
+        lines.extend([
+            "",
+            "EVIDENCE INTEGRITY (SHA-256 Hashes)",
+            "-" * 40,
+        ])
         for field, h in evidence_hashes.items():
             lines.append(f"  {field}: {h}")
 
-        lines.extend(
-            [
-                "",
-                "RECOMMENDED CHARGES",
-                "-" * 40,
-            ]
-        )
+        lines.extend([
+            "",
+            "RECOMMENDED CHARGES",
+            "-" * 40,
+        ])
         for charge in charges:
             lines.append(f"  - {charge}")
 
-        lines.extend(
-            [
-                "",
-                "=" * 60,
-                "END OF REPORT",
-                "=" * 60,
-            ]
-        )
+        lines.extend([
+            "",
+            "=" * 60,
+            "END OF REPORT",
+            "=" * 60,
+        ])
 
         return "\n".join(lines)

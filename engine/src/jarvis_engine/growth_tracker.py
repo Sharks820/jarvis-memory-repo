@@ -21,7 +21,6 @@ _logger = logging.getLogger(__name__)
 # Memory-recall golden task dataclasses
 # ---------------------------------------------------------------------------
 
-
 @dataclass(frozen=True)
 class MemoryRecallTask:
     """A golden task that tests memory recall by querying the memory engine."""
@@ -48,128 +47,32 @@ class MemoryRecallResult:
 
 DEFAULT_MEMORY_TASKS = [
     # ops (2)
-    MemoryRecallTask(
-        "ops_recall", "What are the owner's upcoming tasks?", ["ops"], 1, ["task"]
-    ),
-    MemoryRecallTask(
-        "ops_routine_recall",
-        "What does the owner's daily routine look like?",
-        ["ops"],
-        1,
-        ["routine"],
-    ),
+    MemoryRecallTask("ops_recall", "What are the owner's upcoming tasks?", ["ops"], 1, ["task"]),
+    MemoryRecallTask("ops_routine_recall", "What does the owner's daily routine look like?", ["ops"], 1, ["routine"]),
     # coding (2)
-    MemoryRecallTask(
-        "coding_recall",
-        "What programming projects is the owner working on?",
-        ["coding"],
-        1,
-        ["code"],
-    ),
-    MemoryRecallTask(
-        "coding_tools_recall",
-        "What programming languages and tools does the owner use?",
-        ["coding"],
-        1,
-        ["language"],
-    ),
+    MemoryRecallTask("coding_recall", "What programming projects is the owner working on?", ["coding"], 1, ["code"]),
+    MemoryRecallTask("coding_tools_recall", "What programming languages and tools does the owner use?", ["coding"], 1, ["language"]),
     # health (2)
-    MemoryRecallTask(
-        "health_recall",
-        "What medications does the owner take?",
-        ["health"],
-        1,
-        ["medication"],
-    ),
-    MemoryRecallTask(
-        "health_goals_recall",
-        "What are the owner's health and fitness goals?",
-        ["health"],
-        1,
-        ["health"],
-    ),
+    MemoryRecallTask("health_recall", "What medications does the owner take?", ["health"], 1, ["medication"]),
+    MemoryRecallTask("health_goals_recall", "What are the owner's health and fitness goals?", ["health"], 1, ["health"]),
     # finance (2)
-    MemoryRecallTask(
-        "finance_expenses_recall",
-        "What are my monthly expenses?",
-        ["finance"],
-        1,
-        ["expense"],
-    ),
-    MemoryRecallTask(
-        "finance_goals_recall",
-        "What financial goals am I tracking?",
-        ["finance"],
-        1,
-        ["financial"],
-    ),
+    MemoryRecallTask("finance_expenses_recall", "What are my monthly expenses?", ["finance"], 1, ["expense"]),
+    MemoryRecallTask("finance_goals_recall", "What financial goals am I tracking?", ["finance"], 1, ["financial"]),
     # security (2)
-    MemoryRecallTask(
-        "security_practices_recall",
-        "What security practices do I follow?",
-        ["security"],
-        1,
-        ["security"],
-    ),
-    MemoryRecallTask(
-        "security_devices_recall",
-        "What are my trusted devices?",
-        ["security"],
-        1,
-        ["device"],
-    ),
+    MemoryRecallTask("security_practices_recall", "What security practices do I follow?", ["security"], 1, ["security"]),
+    MemoryRecallTask("security_devices_recall", "What are my trusted devices?", ["security"], 1, ["device"]),
     # learning (2)
-    MemoryRecallTask(
-        "learning_topics_recall",
-        "What topics am I currently learning about?",
-        ["learning"],
-        1,
-        ["learning"],
-    ),
-    MemoryRecallTask(
-        "learning_missions_recall",
-        "What learning missions are active?",
-        ["learning"],
-        1,
-        ["mission"],
-    ),
+    MemoryRecallTask("learning_topics_recall", "What topics am I currently learning about?", ["learning"], 1, ["learning"]),
+    MemoryRecallTask("learning_missions_recall", "What learning missions are active?", ["learning"], 1, ["mission"]),
     # family (2)
-    MemoryRecallTask(
-        "family_recall", "Tell me about the owner's family", ["family"], 1, ["family"]
-    ),
-    MemoryRecallTask(
-        "family_events_recall",
-        "What family events are coming up?",
-        ["family"],
-        1,
-        ["event"],
-    ),
+    MemoryRecallTask("family_recall", "Tell me about the owner's family", ["family"], 1, ["family"]),
+    MemoryRecallTask("family_events_recall", "What family events are coming up?", ["family"], 1, ["event"]),
     # communications (2)
-    MemoryRecallTask(
-        "comms_contacts_recall",
-        "Who do I communicate with most?",
-        ["communications"],
-        1,
-        ["communicate"],
-    ),
-    MemoryRecallTask(
-        "comms_channels_recall",
-        "What are my preferred communication channels?",
-        ["communications"],
-        1,
-        ["channel"],
-    ),
+    MemoryRecallTask("comms_contacts_recall", "Who do I communicate with most?", ["communications"], 1, ["communicate"]),
+    MemoryRecallTask("comms_channels_recall", "What are my preferred communication channels?", ["communications"], 1, ["channel"]),
     # gaming (2)
-    MemoryRecallTask(
-        "gaming_recall", "What games does the owner play?", ["gaming"], 1, ["game"]
-    ),
-    MemoryRecallTask(
-        "gaming_progress_recall",
-        "What is my progress in current games?",
-        ["gaming"],
-        1,
-        ["progress"],
-    ),
+    MemoryRecallTask("gaming_recall", "What games does the owner play?", ["gaming"], 1, ["game"]),
+    MemoryRecallTask("gaming_progress_recall", "What is my progress in current games?", ["gaming"], 1, ["progress"]),
 ]
 
 # Maps each branch name to its golden task IDs for per-branch evaluation.
@@ -225,13 +128,17 @@ def evaluate_memory_recall(
 
     # Branch coverage
     if task.must_find_branches:
-        matched_branches = sum(1 for b in task.must_find_branches if b in seen_branches)
+        matched_branches = sum(
+            1 for b in task.must_find_branches if b in seen_branches
+        )
         branch_cov = matched_branches / len(task.must_find_branches)
     else:
         branch_cov = 1.0
 
     # Keyword coverage -- search in combined summary text
-    combined_text = " ".join(rec.get("summary", "").lower() for rec in records)
+    combined_text = " ".join(
+        rec.get("summary", "").lower() for rec in records
+    )
     if task.must_include_in_results:
         matched_kw = sum(
             1 for kw in task.must_include_in_results if kw.lower() in combined_text
@@ -274,14 +181,7 @@ def run_memory_eval(
     for task in tasks:
         try:
             result = evaluate_memory_recall(task, engine, embed_service)
-        except (
-            OSError,
-            RuntimeError,
-            ValueError,
-            TypeError,
-            KeyError,
-            AttributeError,
-        ) as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
             _logger.warning("Memory recall task %s failed: %s", task.task_id, exc)
             result = MemoryRecallResult(task_id=task.task_id, query=task.query)
         results.append(result)
@@ -388,9 +288,7 @@ def load_golden_tasks(path: Path) -> list[GoldenTask]:
     return tasks
 
 
-def score_text(
-    text: str, required_tokens: list[str]
-) -> tuple[int, int, float, list[str]]:
+def score_text(text: str, required_tokens: list[str]) -> tuple[int, int, float, list[str]]:
     lowered = text.lower()
     total = len(required_tokens)
     if total == 0:
@@ -427,11 +325,7 @@ def _generate(
     }
 
     return _call_ollama_generate(
-        endpoint,
-        model,
-        effective_prompt,
-        options,
-        timeout_s=timeout_s,
+        endpoint, model, effective_prompt, options, timeout_s=timeout_s,
     )
 
 
@@ -570,9 +464,7 @@ def summarize_history(rows: list[dict[str, Any]], last: int = 10) -> dict[str, A
     latest_score = float(latest.get("score_pct", 0.0))
     prev_score = float(prev.get("score_pct", latest_score)) if prev else latest_score
     delta = round(latest_score - prev_score, 2)
-    window_avg = round(
-        sum(float(x.get("score_pct", 0.0)) for x in window) / len(window), 2
-    )
+    window_avg = round(sum(float(x.get("score_pct", 0.0)) for x in window) / len(window), 2)
 
     return {
         "runs": len(rows),
@@ -605,9 +497,7 @@ def audit_run(rows: list[dict[str, Any]], run_index: int = -1) -> dict[str, Any]
 def compute_run_sha256(row: dict[str, Any]) -> str:
     canonical = dict(row)
     canonical["run_sha256"] = ""
-    payload = json.dumps(
-        canonical, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    payload = json.dumps(canonical, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -621,12 +511,8 @@ def validate_history_chain(rows: list[dict[str, Any]]) -> None:
             continue
         row_prev = str(row.get("prev_run_sha256", ""))
         if row_prev != prev_hash:
-            raise RuntimeError(
-                f"History chain mismatch at index {idx}: prev hash mismatch."
-            )
+            raise RuntimeError(f"History chain mismatch at index {idx}: prev hash mismatch.")
         expected = compute_run_sha256(row)
         if current != expected:
-            raise RuntimeError(
-                f"History chain mismatch at index {idx}: run hash mismatch."
-            )
+            raise RuntimeError(f"History chain mismatch at index {idx}: run hash mismatch.")
         prev_hash = current

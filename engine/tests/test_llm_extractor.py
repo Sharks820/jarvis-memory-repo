@@ -47,6 +47,7 @@ def _make_gateway(response_text: str) -> MagicMock:
 
 
 class TestExtractedFact:
+
     def test_fields(self):
         fact = ExtractedFact(
             entity="owner",
@@ -70,6 +71,7 @@ class TestExtractedFact:
 
 
 class TestExtractHealthFact:
+
     def test_extract_health_fact(self):
         response_json = (
             '[{"entity": "owner", "relationship": "takes_medication", '
@@ -79,9 +81,7 @@ class TestExtractHealthFact:
         gw = _make_gateway(response_json)
         extractor = LLMFactExtractor(gateway=gw)
 
-        facts = extractor.extract_facts(
-            "I take metformin 500mg every morning for diabetes."
-        )
+        facts = extractor.extract_facts("I take metformin 500mg every morning for diabetes.")
 
         assert len(facts) == 1
         assert facts[0].entity == "owner"
@@ -92,9 +92,7 @@ class TestExtractHealthFact:
 
         # Verify gateway was called with correct model
         call_kwargs = gw.complete.call_args
-        assert (
-            call_kwargs.kwargs.get("model") or call_kwargs[1].get("model") or "kimi-k2"
-        )
+        assert call_kwargs.kwargs.get("model") or call_kwargs[1].get("model") or "kimi-k2"
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +101,7 @@ class TestExtractHealthFact:
 
 
 class TestExtractFamilyFact:
+
     def test_extract_family_fact(self):
         response_json = (
             '[{"entity": "Oliver", "relationship": "child_of", '
@@ -127,6 +126,7 @@ class TestExtractFamilyFact:
 
 
 class TestExtractPreferenceFact:
+
     def test_extract_preference_fact(self):
         response_json = (
             '[{"entity": "owner", "relationship": "prefers", '
@@ -150,6 +150,7 @@ class TestExtractPreferenceFact:
 
 
 class TestPrivacyForcesLocalModel:
+
     @patch.dict("os.environ", {"JARVIS_LOCAL_MODEL": "llama3:8b"})
     def test_privacy_forces_local_model(self):
         response_json = (
@@ -207,6 +208,7 @@ class TestPrivacyForcesLocalModel:
 
 
 class TestEmptyTextReturnsEmpty:
+
     def test_empty_text_returns_empty(self):
         gw = _make_gateway("[]")
         extractor = LLMFactExtractor(gateway=gw)
@@ -225,6 +227,7 @@ class TestEmptyTextReturnsEmpty:
 
 
 class TestMalformedJsonReturnsEmpty:
+
     def test_malformed_json_returns_empty(self):
         gw = _make_gateway("This is not JSON at all!")
         extractor = LLMFactExtractor(gateway=gw)
@@ -277,6 +280,7 @@ class TestMalformedJsonReturnsEmpty:
 
 
 class TestMultipleFactsFromOneMessage:
+
     def test_multiple_facts_from_one_message(self):
         response_json = (
             "["

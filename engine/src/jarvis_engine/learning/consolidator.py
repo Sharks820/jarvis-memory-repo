@@ -26,9 +26,7 @@ import numpy as np
 from jarvis_engine._compat import UTC
 
 
-def _parse_days_since(
-    raw_date_str: str, now: datetime, default: float = 365.0
-) -> float:
+def _parse_days_since(raw_date_str: str, now: datetime, default: float = 365.0) -> float:
     """Parse an ISO-8601 date string and return the number of days since *now*.
 
     Handles the ``Z`` UTC suffix and naive datetimes (assumes UTC).
@@ -192,10 +190,7 @@ class MemoryConsolidator:
             try:
                 tier_changes = self._update_tiers(records)
                 if tier_changes > 0:
-                    logger.info(
-                        "Updated %d record tiers based on relevance scoring",
-                        tier_changes,
-                    )
+                    logger.info("Updated %d record tiers based on relevance scoring", tier_changes)
             except (sqlite3.Error, OSError, ImportError) as exc:
                 logger.warning("Tier update pass failed: %s", exc)
                 result.errors.append(f"tier update failed: {exc}")
@@ -234,9 +229,7 @@ class MemoryConsolidator:
             days_since_access = _parse_days_since(last_accessed_str, now)
             days_since_creation = _parse_days_since(created_str, now)
 
-            relevance = compute_relevance_score(
-                access_count, days_since_access, days_since_creation
-            )
+            relevance = compute_relevance_score(access_count, days_since_access, days_since_creation)
             new_tier = classify_tier_by_relevance(relevance, days_since_creation)
             current_tier = record.get("tier", "warm")
 
@@ -287,7 +280,9 @@ class MemoryConsolidator:
                 if j in assigned:
                     continue
                 # Check similarity with ALL current group members
-                if all(sim_matrix[j, g] >= self._similarity_threshold for g in group):
+                if all(
+                    sim_matrix[j, g] >= self._similarity_threshold for g in group
+                ):
                     group.append(j)
                     assigned.add(j)
             if len(group) >= self._min_group_size:
@@ -343,7 +338,9 @@ class MemoryConsolidator:
         limit: int,
     ) -> list[dict]:
         """Query the most recent episodic records from the engine."""
-        query = "SELECT * FROM records WHERE kind = 'episodic'"
+        query = (
+            "SELECT * FROM records WHERE kind = 'episodic'"
+        )
         params: list[object] = []
         if branch:
             query += " AND branch = ?"
@@ -389,8 +386,7 @@ class MemoryConsolidator:
 
         # Use the highest confidence from input records, floored at 0.85
         input_confidences = [
-            r.get("confidence", 0.0)
-            for r in group_records
+            r.get("confidence", 0.0) for r in group_records
             if isinstance(r.get("confidence"), (int, float))
         ]
         confidence = max(input_confidences, default=0.85)

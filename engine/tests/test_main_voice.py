@@ -5,9 +5,9 @@ voice-run (routing), wake-word, conversation history, conversation continuity,
 model switch logging, URL shortening, datetime prompt, _build_smart_context,
 _MAX_TOKENS_BY_ROUTE, QueryCommand.history, QueryHandler history injection.
 """
-
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +15,8 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
+from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext
 
 
@@ -49,31 +51,17 @@ def testshorten_urls_for_speech_replaces_raw_url_with_domain_link() -> None:
 
 
 def test_conversation_continuity_instruction_on_model_switch(monkeypatch) -> None:
-    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model", "kimi-k2")
-    line = voice_pipeline_mod._conversation_continuity_instruction(
-        "gemma3:4b", history_len=3
-    )
+    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model","kimi-k2")
+    line = voice_pipeline_mod._conversation_continuity_instruction("gemma3:4b", history_len=3)
     assert line is not None
     assert "previous turn used model 'kimi-k2'" in line
     assert "uses 'gemma3:4b'" in line
 
 
-def test_conversation_continuity_instruction_no_history_or_same_model(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model", "gemma3:4b")
-    assert (
-        voice_pipeline_mod._conversation_continuity_instruction(
-            "gemma3:4b", history_len=3
-        )
-        is None
-    )
-    assert (
-        voice_pipeline_mod._conversation_continuity_instruction(
-            "kimi-k2", history_len=0
-        )
-        is None
-    )
+def test_conversation_continuity_instruction_no_history_or_same_model(monkeypatch) -> None:
+    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model","gemma3:4b")
+    assert voice_pipeline_mod._conversation_continuity_instruction("gemma3:4b", history_len=3) is None
+    assert voice_pipeline_mod._conversation_continuity_instruction("kimi-k2", history_len=0) is None
 
 
 def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
@@ -87,15 +75,10 @@ def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
         LLM_ROUTING = "llm_routing"
 
     import types
+    fake_mod = types.SimpleNamespace(ActivityCategory=_Cat, log_activity=_fake_log_activity)
+    monkeypatch.setitem(__import__("sys").modules, "jarvis_engine.activity_feed", fake_mod)
 
-    fake_mod = types.SimpleNamespace(
-        ActivityCategory=_Cat, log_activity=_fake_log_activity
-    )
-    monkeypatch.setitem(
-        __import__("sys").modules, "jarvis_engine.activity_feed", fake_mod
-    )
-
-    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model", None)
+    monkeypatch.setattr(voice_pipeline_mod, "_last_routed_model",None)
     voice_pipeline_mod._mark_routed_model("kimi-k2", "groq")
     voice_pipeline_mod._mark_routed_model("gemma3:4b", "ollama")
 
@@ -133,9 +116,7 @@ def test_cmd_voice_listen_emits_state_transitions(monkeypatch, capsys) -> None:
 
     class _Bus:
         def dispatch(self, _cmd):
-            return VoiceListenResult(
-                text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok"
-            )
+            return VoiceListenResult(text="hello jarvis", confidence=0.91, duration_seconds=1.2, message="ok")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
 
@@ -155,12 +136,7 @@ def test_cmd_voice_listen_emits_error_state(monkeypatch, capsys) -> None:
 
     class _Bus:
         def dispatch(self, _cmd):
-            return VoiceListenResult(
-                text="",
-                confidence=0.0,
-                duration_seconds=0.0,
-                message="error: microphone unavailable",
-            )
+            return VoiceListenResult(text="", confidence=0.0, duration_seconds=0.0, message="error: microphone unavailable")
 
     monkeypatch.setattr(main_mod, "_get_bus", lambda: _Bus())
 
@@ -200,10 +176,7 @@ class TestVoiceList:
 
     def test_voice_list_with_voices(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceListResult
-
-        result = VoiceListResult(
-            windows_voices=["David", "Zira"], edge_voices=["en-GB-RyanNeural"]
-        )
+        result = VoiceListResult(windows_voices=["David", "Zira"], edge_voices=["en-GB-RyanNeural"])
         bus = mock_bus(result)
         rc = main_mod.cmd_voice_list()
         assert rc == 0
@@ -213,7 +186,6 @@ class TestVoiceList:
 
     def test_voice_list_empty(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceListResult
-
         result = VoiceListResult(windows_voices=[], edge_voices=[])
         bus = mock_bus(result)
         rc = main_mod.cmd_voice_list()
@@ -225,34 +197,20 @@ class TestVoiceSay:
 
     def test_voice_say(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceSayResult
-
         result = VoiceSayResult(voice_name="David", output_wav="", message="Spoken.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_say(
-            text="Hello",
-            profile="jarvis_like",
-            voice_pattern="",
-            output_wav="",
-            rate=-1,
-        )
+        rc = main_mod.cmd_voice_say(text="Hello", profile="jarvis_like",
+                                     voice_pattern="", output_wav="", rate=-1)
         assert rc == 0
         out = capsys.readouterr().out
         assert "voice=David" in out
 
     def test_voice_say_with_wav(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceSayResult
-
-        result = VoiceSayResult(
-            voice_name="Zira", output_wav="/tmp/out.wav", message="Saved."
-        )
+        result = VoiceSayResult(voice_name="Zira", output_wav="/tmp/out.wav", message="Saved.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_say(
-            text="Test",
-            profile="default",
-            voice_pattern="",
-            output_wav="/tmp/out.wav",
-            rate=150,
-        )
+        rc = main_mod.cmd_voice_say(text="Test", profile="default",
+                                     voice_pattern="", output_wav="/tmp/out.wav", rate=150)
         assert rc == 0
         out = capsys.readouterr().out
         assert "wav=/tmp/out.wav" in out
@@ -263,17 +221,10 @@ class TestVoiceEnroll:
 
     def test_enroll_success(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceEnrollResult
-
-        result = VoiceEnrollResult(
-            user_id="conner",
-            profile_path="/tmp/profile",
-            samples=3,
-            message="Enrolled successfully.",
-        )
+        result = VoiceEnrollResult(user_id="conner", profile_path="/tmp/profile",
+                                   samples=3, message="Enrolled successfully.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_enroll(
-            user_id="conner", wav_path="/tmp/voice.wav", replace=False
-        )
+        rc = main_mod.cmd_voice_enroll(user_id="conner", wav_path="/tmp/voice.wav", replace=False)
         assert rc == 0
         out = capsys.readouterr().out
         assert "user_id=conner" in out
@@ -281,12 +232,9 @@ class TestVoiceEnroll:
 
     def test_enroll_error(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceEnrollResult
-
         result = VoiceEnrollResult(message="error: WAV file not found.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_enroll(
-            user_id="conner", wav_path="/bad/path.wav", replace=False
-        )
+        rc = main_mod.cmd_voice_enroll(user_id="conner", wav_path="/bad/path.wav", replace=False)
         assert rc == 2
 
 
@@ -295,46 +243,27 @@ class TestVoiceVerify:
 
     def test_verify_matched(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceVerifyResult
-
-        result = VoiceVerifyResult(
-            user_id="conner",
-            score=0.95,
-            threshold=0.82,
-            matched=True,
-            message="Match confirmed.",
-        )
+        result = VoiceVerifyResult(user_id="conner", score=0.95, threshold=0.82,
+                                   matched=True, message="Match confirmed.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_verify(
-            user_id="conner", wav_path="/tmp/v.wav", threshold=0.82
-        )
+        rc = main_mod.cmd_voice_verify(user_id="conner", wav_path="/tmp/v.wav", threshold=0.82)
         assert rc == 0
         out = capsys.readouterr().out
         assert "matched=True" in out
 
     def test_verify_not_matched(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceVerifyResult
-
-        result = VoiceVerifyResult(
-            user_id="conner",
-            score=0.5,
-            threshold=0.82,
-            matched=False,
-            message="No match.",
-        )
+        result = VoiceVerifyResult(user_id="conner", score=0.5, threshold=0.82,
+                                   matched=False, message="No match.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_verify(
-            user_id="conner", wav_path="/tmp/v.wav", threshold=0.82
-        )
+        rc = main_mod.cmd_voice_verify(user_id="conner", wav_path="/tmp/v.wav", threshold=0.82)
         assert rc == 2
 
     def test_verify_error(self, capsys, mock_bus):
         from jarvis_engine.commands.voice_commands import VoiceVerifyResult
-
         result = VoiceVerifyResult(message="error: No enrolled profile.")
         bus = mock_bus(result)
-        rc = main_mod.cmd_voice_verify(
-            user_id="nobody", wav_path="/tmp/v.wav", threshold=0.82
-        )
+        rc = main_mod.cmd_voice_verify(user_id="nobody", wav_path="/tmp/v.wav", threshold=0.82)
         assert rc == 2
 
 
@@ -343,7 +272,6 @@ class TestWakeWord:
 
     def test_wake_word_not_started(self, capsys, mock_bus):
         from jarvis_engine.commands.proactive_commands import WakeWordStartResult
-
         result = WakeWordStartResult(started=False, message="pyaudio not installed.")
         bus = mock_bus(result)
         rc = main_mod.cmd_wake_word(threshold=0.5)
@@ -424,15 +352,12 @@ class TestConversationHistory:
 class TestMaxTokensByRoute:
     """Tests for _MAX_TOKENS_BY_ROUTE configuration."""
 
-    @pytest.mark.parametrize(
-        "route,expected",
-        [
-            pytest.param("math_logic", 1024, id="math_logic"),
-            pytest.param("complex", 1024, id="complex"),
-            pytest.param("routine", 512, id="routine"),
-            pytest.param("simple_private", 1024, id="simple_private"),
-        ],
-    )
+    @pytest.mark.parametrize("route,expected", [
+        pytest.param("math_logic", 1024, id="math_logic"),
+        pytest.param("complex", 1024, id="complex"),
+        pytest.param("routine", 512, id="routine"),
+        pytest.param("simple_private", 1024, id="simple_private"),
+    ])
     def test_max_tokens_by_route(self, route, expected):
         assert voice_pipeline_mod._MAX_TOKENS_BY_ROUTE[route] == expected
 
@@ -461,19 +386,13 @@ class TestBuildSmartContext:
             {"summary": "User takes metformin daily"},
         ]
 
-        with patch(
-            "jarvis_engine.voice_pipeline.hybrid_search", create=True
-        ) as mock_hs:
+        with patch("jarvis_engine.voice_pipeline.hybrid_search", create=True) as mock_hs:
             # hybrid_search is imported inside _build_smart_context, so patch the import target
             with patch.dict("sys.modules", {}):
                 pass
             # Patch at the location where it's imported inside the function
-            with patch(
-                "jarvis_engine.memory.search.hybrid_search", return_value=fake_records
-            ):
-                memory_lines, fact_lines, _cb, _prefs = (
-                    voice_pipeline_mod._build_smart_context(bus, "health")
-                )
+            with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_records):
+                memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"health")
 
         # Memory lines come from hybrid_search results
         assert "User likes hiking on weekends" in memory_lines
@@ -495,9 +414,7 @@ class TestBuildSmartContext:
             voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
-        memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(
-            bus, "anything"
-        )
+        memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"anything")
         assert "Legacy memory entry 1" in memory_lines
         assert "Legacy memory entry 2" in memory_lines
 
@@ -508,14 +425,14 @@ class TestBuildSmartContext:
         bus = MagicMock()
         bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
 
-        fake_packet = {"selected": [{"summary": "Fallback memory"}]}
+        fake_packet = {
+            "selected": [{"summary": "Fallback memory"}]
+        }
         monkeypatch.setattr(
             voice_pipeline_mod, "build_context_packet", lambda *a, **kw: fake_packet
         )
 
-        memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(
-            bus, "test query"
-        )
+        memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"test query")
         assert "Fallback memory" in memory_lines
 
     def test_kg_facts_injected_when_engine_available(self, monkeypatch, tmp_path):
@@ -525,8 +442,7 @@ class TestBuildSmartContext:
 
         # Legacy path returns empty for memory
         monkeypatch.setattr(
-            voice_pipeline_mod,
-            "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
@@ -537,13 +453,8 @@ class TestBuildSmartContext:
             {"label": "User prefers window seat", "confidence": 0.7},
         ]
 
-        with patch(
-            "jarvis_engine.knowledge.graph.KnowledgeGraph",
-            return_value=mock_kg_instance,
-        ):
-            memory_lines, fact_lines, _cb, _prefs = (
-                voice_pipeline_mod._build_smart_context(bus, "tell me about allergies")
-            )
+        with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
+            memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"tell me about allergies")
 
         assert "User is allergic to peanuts" in fact_lines
 
@@ -553,8 +464,7 @@ class TestBuildSmartContext:
         bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
 
         monkeypatch.setattr(
-            voice_pipeline_mod,
-            "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             lambda *a, **kw: {"selected": []},
         )
 
@@ -564,13 +474,8 @@ class TestBuildSmartContext:
             {"label": "Low confidence fact", "confidence": 0.3},
         ]
 
-        with patch(
-            "jarvis_engine.knowledge.graph.KnowledgeGraph",
-            return_value=mock_kg_instance,
-        ):
-            memory_lines, fact_lines, _cb, _prefs = (
-                voice_pipeline_mod._build_smart_context(bus, "some query")
-            )
+        with patch("jarvis_engine.knowledge.graph.KnowledgeGraph", return_value=mock_kg_instance):
+            memory_lines, fact_lines, _cb, _prefs = voice_pipeline_mod._build_smart_context(bus,"some query")
 
         assert "High confidence fact" in fact_lines
         assert "Low confidence fact" not in fact_lines
@@ -581,14 +486,11 @@ class TestBuildSmartContext:
         bus.ctx = AppContext()  # all None defaults
 
         monkeypatch.setattr(
-            voice_pipeline_mod,
-            "build_context_packet",
+            voice_pipeline_mod, "build_context_packet",
             MagicMock(side_effect=RuntimeError("DB broken")),
         )
 
-        memory_lines, fact_lines, cross_branch_lines, pref_lines = (
-            voice_pipeline_mod._build_smart_context(bus, "broken query")
-        )
+        memory_lines, fact_lines, cross_branch_lines, pref_lines = voice_pipeline_mod._build_smart_context(bus, "broken query")
         assert memory_lines == []
         assert fact_lines == []
         assert cross_branch_lines == []
@@ -606,7 +508,6 @@ class TestQueryCommandHistory:
     def test_query_command_has_history_field(self):
         """QueryCommand has a history field defaulting to empty tuple."""
         from jarvis_engine.commands.task_commands import QueryCommand
-
         cmd = QueryCommand(query="test")
         assert hasattr(cmd, "history")
         assert cmd.history == ()
@@ -614,7 +515,6 @@ class TestQueryCommandHistory:
     def test_query_command_history_accepts_tuples(self):
         """QueryCommand.history can hold conversation turn tuples."""
         from jarvis_engine.commands.task_commands import QueryCommand
-
         history = (("user", "Hello"), ("assistant", "Hi there"))
         cmd = QueryCommand(query="follow up", history=history)
         assert cmd.history == history
@@ -623,7 +523,6 @@ class TestQueryCommandHistory:
     def test_query_command_is_frozen(self):
         """QueryCommand is a frozen dataclass (immutable)."""
         from jarvis_engine.commands.task_commands import QueryCommand
-
         cmd = QueryCommand(query="test")
         with pytest.raises(AttributeError):
             cmd.query = "changed"
@@ -637,9 +536,7 @@ class TestQueryCommandHistory:
 class TestQueryHandlerHistory:
     """Tests for QueryHandler injecting history into LLM messages."""
 
-    @patch.dict(
-        "os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""}
-    )
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_handler_injects_history_before_query(self):
         """QueryHandler places history messages between system prompt and user query."""
         from jarvis_engine.commands.task_commands import QueryCommand
@@ -665,11 +562,7 @@ class TestQueryHandlerHistory:
 
         # Inspect the messages passed to gateway.complete
         call_kwargs = mock_gateway.complete.call_args
-        messages = (
-            call_kwargs.kwargs.get("messages")
-            or call_kwargs[1].get("messages")
-            or call_kwargs[0][0]
-        )
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages") or call_kwargs[0][0]
         # If passed as positional, it'll be messages=...
         if not isinstance(messages, list):
             messages = call_kwargs.kwargs["messages"]
@@ -677,15 +570,10 @@ class TestQueryHandlerHistory:
         # Expected order: system, history user, history assistant, current user
         assert messages[0] == {"role": "system", "content": "You are Jarvis."}
         assert messages[1] == {"role": "user", "content": "Tell me about my health"}
-        assert messages[2] == {
-            "role": "assistant",
-            "content": "You take metformin daily.",
-        }
+        assert messages[2] == {"role": "assistant", "content": "You take metformin daily."}
         assert messages[3] == {"role": "user", "content": "What about my diet?"}
 
-    @patch.dict(
-        "os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""}
-    )
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_handler_works_without_history(self):
         """QueryHandler works correctly when history is empty (default)."""
         from jarvis_engine.commands.task_commands import QueryCommand
@@ -714,9 +602,7 @@ class TestQueryHandlerHistory:
         assert messages[1]["role"] == "user"
         assert messages[1]["content"] == "What time is it?"
 
-    @patch.dict(
-        "os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""}
-    )
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_handler_filters_invalid_history_roles(self):
         """QueryHandler only injects 'user' and 'assistant' roles from history."""
         from jarvis_engine.commands.task_commands import QueryCommand
@@ -751,9 +637,7 @@ class TestQueryHandlerHistory:
         system_contents = [m["content"] for m in messages if m["role"] == "system"]
         assert "injected system msg" not in system_contents
 
-    @patch.dict(
-        "os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""}
-    )
+    @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_handler_skips_empty_content_in_history(self):
         """QueryHandler skips history entries with empty content."""
         from jarvis_engine.commands.task_commands import QueryCommand

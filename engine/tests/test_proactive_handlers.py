@@ -74,9 +74,7 @@ class TestProactiveCheckHandler:
 
     def test_snapshot_outside_project_root(self, tmp_path: Path) -> None:
         """Path traversal protection: snapshot path outside root is rejected."""
-        handler = ProactiveCheckHandler(
-            root=tmp_path / "sub", proactive_engine=MagicMock()
-        )
+        handler = ProactiveCheckHandler(root=tmp_path / "sub", proactive_engine=MagicMock())
         (tmp_path / "sub").mkdir()
         result = handler.handle(ProactiveCheckCommand(snapshot_path="/etc/passwd"))
         assert "outside project root" in result.message.lower()
@@ -123,9 +121,7 @@ class TestProactiveCheckHandler:
         snap.write_text(json.dumps({}), encoding="utf-8")
 
         alerts = [
-            SimpleNamespace(
-                rule_id=f"r{i}", message=f"m{i}", priority="low", timestamp="t"
-            )
+            SimpleNamespace(rule_id=f"r{i}", message=f"m{i}", priority="low", timestamp="t")
             for i in range(3)
         ]
         engine = MagicMock()
@@ -155,9 +151,7 @@ class TestWakeWordStartHandler:
         assert "not available" in result.message.lower()
 
     @patch("jarvis_engine.handlers.proactive_handlers.threading")
-    def test_start_creates_daemon_thread(
-        self, mock_threading: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_start_creates_daemon_thread(self, mock_threading: MagicMock, tmp_path: Path) -> None:
         """Handler creates a daemon thread and starts detection."""
         mock_thread = MagicMock()
         mock_thread.is_alive.return_value = False
@@ -166,15 +160,11 @@ class TestWakeWordStartHandler:
         mock_threading.Lock.return_value = MagicMock()
 
         mock_detector = MagicMock()
-        with patch(
-            "jarvis_engine.handlers.proactive_handlers.threading", mock_threading
-        ):
+        with patch("jarvis_engine.handlers.proactive_handlers.threading", mock_threading):
             # We also need to mock the lazy import of WakeWordDetector
             mock_wakeword_module = MagicMock()
             mock_wakeword_module.WakeWordDetector.return_value = mock_detector
-            with patch.dict(
-                "sys.modules", {"jarvis_engine.wakeword": mock_wakeword_module}
-            ):
+            with patch.dict("sys.modules", {"jarvis_engine.wakeword": mock_wakeword_module}):
                 handler = WakeWordStartHandler(root=tmp_path)
                 result = handler.handle(WakeWordStartCommand(threshold=0.6))
 
@@ -263,9 +253,7 @@ class TestCostReductionHandler:
         mock_cost_mod.load_cost_history.return_value = []
         mock_cost_mod.cost_reduction_trend.return_value = {"trend": "improving"}
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.proactive.cost_tracking": mock_cost_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.proactive.cost_tracking": mock_cost_mod}):
             handler = CostReductionHandler(root=tmp_path, cost_tracker=tracker)
             handler.handle(CostReductionCommand(days=7))
 
@@ -286,9 +274,7 @@ class TestCostReductionHandler:
         mock_cost_mod.load_cost_history.return_value = []
         mock_cost_mod.cost_reduction_trend.return_value = {"trend": "stable"}
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.proactive.cost_tracking": mock_cost_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.proactive.cost_tracking": mock_cost_mod}):
             handler = CostReductionHandler(root=tmp_path, cost_tracker=tracker)
             result = handler.handle(CostReductionCommand(days=30))
 
@@ -312,9 +298,7 @@ class TestCostReductionHandler:
         mock_cost_mod.load_cost_history.return_value = [{"ts": 1}]
         mock_cost_mod.cost_reduction_trend.return_value = {"trend": "improving"}
 
-        with patch.dict(
-            "sys.modules", {"jarvis_engine.proactive.cost_tracking": mock_cost_mod}
-        ):
+        with patch.dict("sys.modules", {"jarvis_engine.proactive.cost_tracking": mock_cost_mod}):
             handler = CostReductionHandler(root=tmp_path, cost_tracker=tracker)
             result = handler.handle(CostReductionCommand())
 

@@ -15,9 +15,7 @@ def test_calendar_remote_url_disabled_by_default(monkeypatch) -> None:
 
     def fake_build_opener():  # pragma: no cover - guard only
         called["opener"] = True
-        raise AssertionError(
-            "opener should not be built when remote calendar URLs are disabled"
-        )
+        raise AssertionError("opener should not be built when remote calendar URLs are disabled")
 
     monkeypatch.setattr(ops_sync, "_build_no_redirect_opener", fake_build_opener)
     events = ops_sync.load_calendar_events()
@@ -25,25 +23,17 @@ def test_calendar_remote_url_disabled_by_default(monkeypatch) -> None:
     assert called["opener"] is False
 
 
-def test_feed_loader_blocks_unc_paths_even_when_external_allowed(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_feed_loader_blocks_unc_paths_even_when_external_allowed(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("JARVIS_ALLOW_EXTERNAL_FEEDS", "true")
     monkeypatch.setenv("JARVIS_MEDICATIONS_JSON", r"\\malicious\share\feed.json")
-    result = ops_sync._load_feed_json_list(
-        tmp_path, "JARVIS_MEDICATIONS_JSON", tmp_path / "default.json"
-    )
+    result = ops_sync._load_feed_json_list(tmp_path, "JARVIS_MEDICATIONS_JSON", tmp_path / "default.json")
     assert result == []
 
 
-def test_feed_loader_rejects_external_path_when_not_allowed(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_feed_loader_rejects_external_path_when_not_allowed(monkeypatch, tmp_path: Path) -> None:
     external = tmp_path.parent / "outside.json"
     external.write_text("[]\n", encoding="utf-8")
     monkeypatch.delenv("JARVIS_ALLOW_EXTERNAL_FEEDS", raising=False)
     monkeypatch.setenv("JARVIS_PROJECTS_JSON", str(external))
-    result = ops_sync._load_feed_json_list(
-        tmp_path, "JARVIS_PROJECTS_JSON", tmp_path / "default.json"
-    )
+    result = ops_sync._load_feed_json_list(tmp_path, "JARVIS_PROJECTS_JSON", tmp_path / "default.json")
     assert result == []

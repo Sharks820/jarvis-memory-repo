@@ -25,8 +25,6 @@ from typing import TYPE_CHECKING
 from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import networkx as nx
 
     from jarvis_engine.memory.embeddings import EmbeddingService
@@ -59,9 +57,7 @@ class KnowledgeGraph:
         # Initialize lock manager for auto-lock after fact updates
         from jarvis_engine.knowledge.locks import FactLockManager
 
-        self._lock_manager = FactLockManager(
-            self._db, self._write_lock, self._db_lock, kg=self
-        )
+        self._lock_manager = FactLockManager(self._db, self._write_lock, self._db_lock, kg=self)
 
     # ------------------------------------------------------------------
     # Public accessors (for handlers -- avoids direct access to private attrs)
@@ -105,14 +101,6 @@ class KnowledgeGraph:
     # ------------------------------------------------------------------
     # Schema
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _sanitize_fts_query(query: str) -> str:
-        """Sanitize a user query for FTS5 MATCH to prevent injection.
-
-        Delegates to shared :func:`jarvis_engine._shared.sanitize_fts_query`.
-        """
-        return sanitize_fts_query(query)
 
     def _ensure_schema(self) -> None:
         """Create kg tables if they don't exist (idempotent)."""
@@ -212,7 +200,9 @@ class KnowledgeGraph:
             logger.warning("FTS5 backfill failed (non-fatal): %s", exc)
 
         # Bump schema version to 2
-        self._db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (2)")
+        self._db.execute(
+            "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"
+        )
         self._db.commit()
 
     # ------------------------------------------------------------------
@@ -236,19 +226,13 @@ class KnowledgeGraph:
                 for read-only callers to avoid the O(n) copy overhead.
         """
         # Fast path: check cache without lock (mutation_counter is atomic under GIL)
-        if (
-            self._cached_graph is not None
-            and self._cached_gen == self._mutation_counter
-        ):
+        if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
             return self._cached_graph.copy() if copy else self._cached_graph
 
         # Read data from SQLite under _db_lock (minimal lock scope)
         with self._db_lock:
             # Re-check cache inside lock to prevent thundering herd
-            if (
-                self._cached_graph is not None
-                and self._cached_gen == self._mutation_counter
-            ):
+            if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
                 return self._cached_graph.copy() if copy else self._cached_graph
 
             cur = self._db.execute(
@@ -382,10 +366,7 @@ class KnowledgeGraph:
                     except sqlite3.OperationalError as exc:
                         if "no such table" not in str(exc):
                             raise
-                        logger.debug(
-                            "FTS5 table not available, skipping index update for node %s",
-                            node_id,
-                        )
+                        logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
                 else:
                     # New node
                     sources = [source_record] if source_record else []
@@ -404,10 +385,7 @@ class KnowledgeGraph:
                     except sqlite3.OperationalError as exc:
                         if "no such table" not in str(exc):
                             raise
-                        logger.debug(
-                            "FTS5 table not available, skipping index insert for node %s",
-                            node_id,
-                        )
+                        logger.debug("FTS5 table not available, skipping index insert for node %s", node_id)
 
                 # Insert/update vec embedding using pre-computed blob
                 if embedding_blob is not None:
@@ -421,9 +399,7 @@ class KnowledgeGraph:
                             (node_id, embedding_blob),
                         )
                     except sqlite3.Error as exc:
-                        logger.debug(
-                            "Vec index update for KG node %s failed: %s", node_id, exc
-                        )
+                        logger.debug("Vec index update for KG node %s failed: %s", node_id, exc)
 
                 self._db.commit()
                 self._mutation_counter += 1
@@ -590,7 +566,7 @@ class KnowledgeGraph:
         # --- FTS5 path ---
         fts_query_parts = []
         for kw in keywords[:20]:
-            sanitized = self._sanitize_fts_query(kw)
+            sanitized = sanitize_fts_query(kw)
             if sanitized:
                 fts_query_parts.append(sanitized)
 
@@ -671,8 +647,7 @@ class KnowledgeGraph:
             if len(query_embedding) != _EMBEDDING_DIM:
                 logger.warning(
                     "KG semantic search dimension mismatch: got %d, expected %d",
-                    len(query_embedding),
-                    _EMBEDDING_DIM,
+                    len(query_embedding), _EMBEDDING_DIM,
                 )
                 return []
 

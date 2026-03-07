@@ -45,9 +45,7 @@ def enroll_voiceprint(
         existing_samples = int(raw.get("samples", 0))
         prior = np.asarray(raw.get("embedding", []), dtype=np.float32)
         if prior.size == embedding.size and existing_samples > 0:
-            embedding = ((prior * existing_samples) + embedding) / float(
-                existing_samples + 1
-            )
+            embedding = ((prior * existing_samples) + embedding) / float(existing_samples + 1)
         existing_samples += 1
     else:
         existing_samples = 1
@@ -63,9 +61,7 @@ def enroll_voiceprint(
         "created_utc": _now_iso(),
     }
     profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(
-        json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
-    )
+    profile_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
     return VoiceEnrollResult(
         user_id=safe_user,
         profile_path=str(profile_path),
@@ -202,9 +198,7 @@ def _extract_embedding(path: Path) -> np.ndarray:
         dtype=np.float32,
     )
 
-    embedding = np.concatenate(
-        [mean_bins.astype(np.float32), std_bins.astype(np.float32), global_stats]
-    )
+    embedding = np.concatenate([mean_bins.astype(np.float32), std_bins.astype(np.float32), global_stats])
     norm = float(np.linalg.norm(embedding))
     if norm > 0:
         embedding = embedding / norm

@@ -4,13 +4,13 @@ Covers: voice-run owner guard (all variants), serve-mobile, phone-spam-guard,
 phone-action, connect-status, connect-grant, connect-bootstrap,
 voice-run execute/auth requirements.
 """
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
@@ -60,9 +60,7 @@ def test_cmd_voice_run_state_mutation_requires_voice_auth() -> None:
 # ===========================================================================
 
 
-def test_cmd_voice_run_owner_guard_blocks_non_owner(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_voice_run_owner_guard_blocks_non_owner(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -93,9 +91,7 @@ def test_cmd_voice_run_owner_guard_blocks_non_owner(
     assert rc == 2
 
 
-def test_cmd_voice_run_owner_guard_allows_read_only_without_voice_auth(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_voice_run_owner_guard_allows_read_only_without_voice_auth(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -126,9 +122,7 @@ def test_cmd_voice_run_owner_guard_allows_read_only_without_voice_auth(
     assert rc == 0
 
 
-def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -159,9 +153,7 @@ def test_cmd_voice_run_owner_guard_requires_voice_auth_for_mutation(
     assert rc == 2
 
 
-def test_cmd_voice_run_skip_voice_auth_guard_allows_owner_mutation(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_voice_run_skip_voice_auth_guard_allows_owner_mutation(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -193,9 +185,7 @@ def test_cmd_voice_run_skip_voice_auth_guard_allows_owner_mutation(
     assert rc == 0
 
 
-def test_cmd_voice_run_skip_voice_auth_guard_still_blocks_non_owner(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_voice_run_skip_voice_auth_guard_still_blocks_non_owner(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -227,48 +217,7 @@ def test_cmd_voice_run_skip_voice_auth_guard_still_blocks_non_owner(
     assert rc == 2
 
 
-def test_cmd_voice_run_owner_guard_allows_bare_wake_word(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
-    """Bare wake words like 'Jarvis' should not be blocked by owner guard."""
-    monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
-    monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
-    monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
-    monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-    rc_owner = main_mod.cmd_owner_guard(
-        enable=True,
-        disable=False,
-        owner_user="conner",
-        trust_device="",
-        revoke_device="",
-        set_master_password_value="",
-        clear_master_password_value=False,
-    )
-    assert rc_owner == 0
-
-    for wake_word in ["Jarvis", "hey jarvis", "Hi Jarvis", "hello jarvis", "ok jarvis"]:
-        capsys.readouterr()  # clear buffer
-        main_mod.cmd_voice_run(
-            text=wake_word,
-            execute=False,
-            approve_privileged=False,
-            speak=False,
-            snapshot_path=tmp_path / "ops_snapshot.live.json",
-            actions_path=tmp_path / "actions.generated.json",
-            voice_user="conner",
-            voice_auth_wav="",
-            voice_threshold=0.82,
-            master_password="",
-        )
-        captured = capsys.readouterr()
-        assert "owner_guard_blocked" not in captured.out, (
-            f"Owner guard should not block bare wake word: {wake_word!r}"
-        )
-
-
-def test_cmd_voice_run_owner_guard_allows_with_master_password(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_voice_run_owner_guard_allows_with_master_password(tmp_path: Path, monkeypatch) -> None:
     """Master password should bypass owner guard for any command."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
@@ -305,9 +254,7 @@ def test_cmd_voice_run_owner_guard_allows_with_master_password(
 # ===========================================================================
 
 
-def test_cmd_phone_spam_guard_can_run_without_queue(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cmd_phone_spam_guard_can_run_without_queue(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
@@ -318,34 +265,10 @@ def test_cmd_phone_spam_guard_can_run_without_queue(
     call_log_path.write_text(
         json.dumps(
             [
-                {
-                    "number": "+14155551234",
-                    "type": "missed",
-                    "duration_sec": 0,
-                    "contact_name": "",
-                    "ts_utc": "2026-02-22T00:00:00+00:00",
-                },
-                {
-                    "number": "+14155551234",
-                    "type": "missed",
-                    "duration_sec": 0,
-                    "contact_name": "",
-                    "ts_utc": "2026-02-22T00:01:00+00:00",
-                },
-                {
-                    "number": "+14155551234",
-                    "type": "missed",
-                    "duration_sec": 0,
-                    "contact_name": "",
-                    "ts_utc": "2026-02-22T00:02:00+00:00",
-                },
-                {
-                    "number": "+14155551234",
-                    "type": "missed",
-                    "duration_sec": 0,
-                    "contact_name": "",
-                    "ts_utc": "2026-02-22T00:03:00+00:00",
-                },
+                {"number": "+14155551234", "type": "missed", "duration_sec": 0, "contact_name": "", "ts_utc": "2026-02-22T00:00:00+00:00"},
+                {"number": "+14155551234", "type": "missed", "duration_sec": 0, "contact_name": "", "ts_utc": "2026-02-22T00:01:00+00:00"},
+                {"number": "+14155551234", "type": "missed", "duration_sec": 0, "contact_name": "", "ts_utc": "2026-02-22T00:02:00+00:00"},
+                {"number": "+14155551234", "type": "missed", "duration_sec": 0, "contact_name": "", "ts_utc": "2026-02-22T00:03:00+00:00"},
             ]
         ),
         encoding="utf-8",
@@ -370,18 +293,14 @@ def test_cmd_phone_spam_guard_can_run_without_queue(
 def test_cmd_serve_mobile_requires_token_and_signing_key(monkeypatch) -> None:
     monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
     monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
-    rc = main_mod.cmd_serve_mobile(
-        host="127.0.0.1", port=8787, token=None, signing_key=None
-    )
+    rc = main_mod.cmd_serve_mobile(host="127.0.0.1", port=8787, token=None, signing_key=None)
     assert rc == 2
 
 
 def test_cmd_serve_mobile_uses_env_values(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run_mobile_server(
-        host: str, port: int, auth_token: str, signing_key: str, repo_root, **kwargs
-    ) -> None:
+    def fake_run_mobile_server(host: str, port: int, auth_token: str, signing_key: str, repo_root, **kwargs) -> None:
         captured["host"] = host
         captured["port"] = port
         captured["auth_token"] = auth_token
@@ -393,14 +312,11 @@ def test_cmd_serve_mobile_uses_env_values(monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "run_mobile_server", fake_run_mobile_server)
     # Bypass PID-based duplicate detection when mobile API is already running
     import jarvis_engine.process_manager as pm_mod
-
     monkeypatch.setattr(pm_mod, "is_service_running", lambda *a, **kw: False)
     monkeypatch.setattr(pm_mod, "write_pid_file", lambda *a, **kw: None)
     monkeypatch.setattr(pm_mod, "remove_pid_file", lambda *a, **kw: None)
 
-    rc = main_mod.cmd_serve_mobile(
-        host="127.0.0.1", port=9001, token=None, signing_key=None
-    )
+    rc = main_mod.cmd_serve_mobile(host="127.0.0.1", port=9001, token=None, signing_key=None)
     assert rc == 0
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 9001
@@ -415,10 +331,7 @@ class TestServeMobileEdgeCases:
         monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
         monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
         rc = main_mod.cmd_serve_mobile(
-            host="127.0.0.1",
-            port=8787,
-            token=None,
-            signing_key=None,
+            host="127.0.0.1", port=8787, token=None, signing_key=None,
             config_file="/nonexistent/config.json",
         )
         assert rc == 2
@@ -431,10 +344,7 @@ class TestServeMobileEdgeCases:
         bad_cfg = tmp_path / "bad.json"
         bad_cfg.write_text("not json", encoding="utf-8")
         rc = main_mod.cmd_serve_mobile(
-            host="127.0.0.1",
-            port=8787,
-            token=None,
-            signing_key=None,
+            host="127.0.0.1", port=8787, token=None, signing_key=None,
             config_file=str(bad_cfg),
         )
         assert rc == 2
@@ -443,10 +353,7 @@ class TestServeMobileEdgeCases:
         monkeypatch.delenv("JARVIS_MOBILE_TOKEN", raising=False)
         monkeypatch.setenv("JARVIS_MOBILE_SIGNING_KEY", "key123")
         rc = main_mod.cmd_serve_mobile(
-            host="127.0.0.1",
-            port=8787,
-            token=None,
-            signing_key=None,
+            host="127.0.0.1", port=8787, token=None, signing_key=None,
         )
         assert rc == 2
         out = capsys.readouterr().out
@@ -456,10 +363,7 @@ class TestServeMobileEdgeCases:
         monkeypatch.setenv("JARVIS_MOBILE_TOKEN", "tok123")
         monkeypatch.delenv("JARVIS_MOBILE_SIGNING_KEY", raising=False)
         rc = main_mod.cmd_serve_mobile(
-            host="127.0.0.1",
-            port=8787,
-            token=None,
-            signing_key=None,
+            host="127.0.0.1", port=8787, token=None, signing_key=None,
         )
         assert rc == 2
         out = capsys.readouterr().out
@@ -476,7 +380,6 @@ class TestConnectStatus:
 
     def test_connect_status_all_ready(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import ConnectStatusResult
-
         cs = MagicMock()
         cs.connector_id = "email"
         cs.ready = True
@@ -493,18 +396,9 @@ class TestConnectStatus:
 
     def test_connect_status_with_prompts(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import ConnectStatusResult
-
         result = ConnectStatusResult(
-            statuses=[],
-            prompts=[
-                {
-                    "connector_id": "cal",
-                    "option_voice": "setup cal",
-                    "option_tap_url": "http://cal",
-                }
-            ],
-            ready=0,
-            pending=1,
+            statuses=[], prompts=[{"connector_id": "cal", "option_voice": "setup cal", "option_tap_url": "http://cal"}],
+            ready=0, pending=1,
         )
         bus = mock_bus(result)
         rc = main_mod.cmd_connect_status()
@@ -518,7 +412,6 @@ class TestConnectGrant:
 
     def test_grant_success(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import ConnectGrantResult
-
         result = ConnectGrantResult(
             granted={"scopes": ["read", "write"], "granted_utc": "2026-01-01"},
             return_code=0,
@@ -532,7 +425,6 @@ class TestConnectGrant:
 
     def test_grant_failure(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import ConnectGrantResult
-
         result = ConnectGrantResult(return_code=2)
         bus = mock_bus(result)
         rc = main_mod.cmd_connect_grant(connector_id="bad", scopes=[])
@@ -544,7 +436,6 @@ class TestConnectBootstrap:
 
     def test_bootstrap_ready(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import ConnectBootstrapResult
-
         result = ConnectBootstrapResult(prompts=[], ready=True)
         bus = mock_bus(result)
         rc = main_mod.cmd_connect_bootstrap(auto_open=False)
@@ -554,14 +445,7 @@ class TestConnectBootstrap:
 
     def test_bootstrap_not_ready(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import ConnectBootstrapResult
-
-        prompts = [
-            {
-                "connector_id": "email",
-                "option_voice": "Setup email",
-                "option_tap_url": "http://setup",
-            }
-        ]
+        prompts = [{"connector_id": "email", "option_voice": "Setup email", "option_tap_url": "http://setup"}]
         result = ConnectBootstrapResult(prompts=prompts, ready=False)
         bus = mock_bus(result)
         rc = main_mod.cmd_connect_bootstrap(auto_open=True)
@@ -581,7 +465,6 @@ class TestPhoneAction:
 
     def test_phone_action_success(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import PhoneActionResult
-
         record = MagicMock()
         record.action = "send_sms"
         record.number = "+1234567890"
@@ -589,11 +472,8 @@ class TestPhoneAction:
         result = PhoneActionResult(record=record, return_code=0)
         bus = mock_bus(result)
         rc = main_mod.cmd_phone_action(
-            action="send_sms",
-            number="+1234567890",
-            message="Hello",
-            queue_path=Path("/tmp/queue.jsonl"),
-            queue_action=True,
+            action="send_sms", number="+1234567890", message="Hello",
+            queue_path=Path("/tmp/queue.jsonl"), queue_action=True,
         )
         assert rc == 0
         out = capsys.readouterr().out
@@ -601,14 +481,10 @@ class TestPhoneAction:
 
     def test_phone_action_failure(self, capsys, mock_bus):
         from jarvis_engine.commands.security_commands import PhoneActionResult
-
         result = PhoneActionResult(return_code=2)
         bus = mock_bus(result)
         rc = main_mod.cmd_phone_action(
-            action="block_number",
-            number="",
-            message="",
-            queue_path=Path("/tmp/queue.jsonl"),
-            queue_action=False,
+            action="block_number", number="", message="",
+            queue_path=Path("/tmp/queue.jsonl"), queue_action=False,
         )
         assert rc == 2

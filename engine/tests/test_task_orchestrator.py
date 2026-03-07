@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
-from jarvis_engine.task_orchestrator import (
-    TaskOrchestrator,
-    TaskRequest,
-    run_shell_command,
-)
+from jarvis_engine.task_orchestrator import TaskOrchestrator, TaskRequest, run_shell_command
 
 
 def test_task_orchestrator_code_dry_run(tmp_path) -> None:
@@ -53,15 +49,12 @@ def test_run_shell_command_timeout_returns_124() -> None:
     # Use a script file approach that works with shlex.split(posix=False) on Windows
     import tempfile
     import os
-
     script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
     try:
         script.write("import time\ntime.sleep(30)\n")
         script.close()
         rc, stdout, stderr = run_shell_command(
-            f"python {script.name}",
-            timeout_s=1,
-            has_explicit_approval=True,
+            f"python {script.name}", timeout_s=1, has_explicit_approval=True,
         )
         assert rc == 124
         assert isinstance(stdout, str)
@@ -114,7 +107,6 @@ from jarvis_engine.task_orchestrator import (
 # Helper: create orchestrator with mocked internals
 # ---------------------------------------------------------------------------
 
-
 def _make_orch(tmp_path):
     store = MemoryStore(tmp_path)
     return TaskOrchestrator(store, tmp_path), store
@@ -126,6 +118,7 @@ def _make_orch(tmp_path):
 
 
 class TestTaskDataclasses:
+
     def test_task_request_defaults(self):
         req = TaskRequest(
             task_type="code",
@@ -151,6 +144,7 @@ class TestTaskDataclasses:
 
 
 class TestModelCandidates:
+
     def test_model_candidates_default_fallbacks(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         with patch.dict(os.environ, {"JARVIS_CODE_MODEL_FALLBACKS": ""}):
@@ -167,9 +161,7 @@ class TestModelCandidates:
 
     def test_model_candidates_deduplication(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
-        with patch.dict(
-            os.environ, {"JARVIS_CODE_MODEL_FALLBACKS": "alpha,alpha,beta"}
-        ):
+        with patch.dict(os.environ, {"JARVIS_CODE_MODEL_FALLBACKS": "alpha,alpha,beta"}):
             candidates = orch._model_candidates("alpha")
         assert candidates == ["alpha", "beta"]
 
@@ -196,6 +188,7 @@ class TestModelCandidates:
 
 
 class TestQualityOptions:
+
     def test_max_quality_profile(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         opts = orch._quality_options("max_quality")
@@ -229,6 +222,7 @@ class TestQualityOptions:
 
 
 class TestComposeCodePrompt:
+
     def test_max_quality_adds_system_prefix(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         prompt = orch._compose_code_prompt("Write fibonacci", "max_quality")
@@ -253,6 +247,7 @@ class TestComposeCodePrompt:
 
 
 class TestLooksLikePython:
+
     def test_detects_py_extension(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         assert orch._looks_like_python("generate code", "output.py") is True
@@ -276,6 +271,7 @@ class TestLooksLikePython:
 
 
 class TestPythonSyntaxIssue:
+
     def test_valid_python_returns_empty(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         assert orch._python_syntax_issue("x = 1\nprint(x)") == ""
@@ -293,6 +289,7 @@ class TestPythonSyntaxIssue:
 
 
 class TestExtractOutput:
+
     def test_extracts_response_field(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         assert orch._extract_output({"response": "hello"}) == "hello"
@@ -312,6 +309,7 @@ class TestExtractOutput:
 
 
 class TestSafeOutputPath:
+
     def test_relative_path_inside_root(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         result = orch._safe_output_path("subdir/file.txt")
@@ -341,6 +339,7 @@ class TestSafeOutputPath:
 
 
 class TestIsSafeOllamaEndpoint:
+
     def test_localhost_is_safe(self):
         assert is_safe_ollama_endpoint("http://127.0.0.1:11434") is True
 
@@ -364,6 +363,7 @@ class TestIsSafeOllamaEndpoint:
 
 
 class TestCallOllama:
+
     def test_unsafe_endpoint_returns_error(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         raw, err = orch._call_ollama(
@@ -451,6 +451,7 @@ class TestCallOllama:
 
 
 class TestCodeTaskExecution:
+
     def _mock_ollama_success(self, orch, response_text="print('hello')"):
         """Patch _call_ollama to return a successful response."""
         return patch.object(
@@ -553,11 +554,8 @@ class TestCodeTaskExecution:
         call_count = [0]
         responses = [
             ({"response": "function hello() { return 1; }"}, ""),  # initial
-            ({"response": "- Missing error handling"}, ""),  # critique
-            (
-                {"response": "function hello() { try { return 1; } catch(e) {} }"},
-                "",
-            ),  # revision
+            ({"response": "- Missing error handling"}, ""),         # critique
+            ({"response": "function hello() { try { return 1; } catch(e) {} }"}, ""),  # revision
         ]
 
         def side_effect(**kwargs):
@@ -577,6 +575,7 @@ class TestCodeTaskExecution:
 
 
 class TestAdapterTasks:
+
     def test_image_dry_run(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         req = TaskRequest(
@@ -639,6 +638,7 @@ class TestAdapterTasks:
 
 
 class TestLogging:
+
     def test_run_logs_event(self, tmp_path):
         store = MagicMock()
         orch = TaskOrchestrator(store, tmp_path)
@@ -663,16 +663,15 @@ class TestLogging:
 
 
 class TestRunShellCommand:
+
     def test_allowed_command_succeeds(self):
         import tempfile
-
         script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
         try:
             script.write("print('hello')\n")
             script.close()
             rc, stdout, stderr = run_shell_command(
-                f"python {script.name}",
-                has_explicit_approval=True,
+                f"python {script.name}", has_explicit_approval=True,
             )
             assert rc == 0
             assert "hello" in stdout
@@ -692,12 +691,7 @@ class TestRunShellCommand:
         assert _PRIVILEGED_SHELL_ALLOWLIST == expected_privileged
 
     def test_multiple_unlisted_commands(self):
-        for cmd in [
-            "rm -rf /",
-            "curl http://evil.com",
-            "wget http://evil.com",
-            "bash -c ls",
-        ]:
+        for cmd in ["rm -rf /", "curl http://evil.com", "wget http://evil.com", "bash -c ls"]:
             rc, _, stderr = run_shell_command(cmd)
             assert rc == 2
             assert "not in allowlist" in stderr
@@ -709,11 +703,10 @@ class TestRunShellCommand:
 
 
 class TestSinglePassGenerate:
+
     def test_returns_text_on_success(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
-        with patch.object(
-            orch, "_call_ollama", return_value=({"response": "result"}, "")
-        ):
+        with patch.object(orch, "_call_ollama", return_value=({"response": "result"}, "")):
             text = orch._single_pass_generate(
                 endpoint="http://127.0.0.1:11434",
                 model="test",
@@ -742,6 +735,7 @@ class TestSinglePassGenerate:
 
 
 class TestPromptBuilders:
+
     def test_critique_prompt_contains_code(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
         result = orch._critique_prompt("def foo(): pass")
@@ -802,14 +796,12 @@ class TestPrivilegedShellAllowlist:
     def test_python_allowed_with_approval(self):
         """python command succeeds when has_explicit_approval is True."""
         import tempfile
-
         script = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
         try:
             script.write("print('approved')\n")
             script.close()
             rc, stdout, stderr = run_shell_command(
-                f"python {script.name}",
-                has_explicit_approval=True,
+                f"python {script.name}", has_explicit_approval=True,
             )
             assert rc == 0
             assert "approved" in stdout

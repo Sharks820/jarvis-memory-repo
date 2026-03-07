@@ -215,12 +215,7 @@ class TestProviderAvailability:
             for key in env_overrides:
                 os.environ.pop(key, None)
 
-            providers = [
-                MiniMaxProvider(),
-                KimiProvider(),
-                KimiNvidiaProvider(),
-                GeminiProvider(),
-            ]
+            providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
 
             for p in providers:
                 assert p._available is False, f"{p.name} should be unavailable"
@@ -228,23 +223,15 @@ class TestProviderAvailability:
                 with pytest.raises(RuntimeError, match="not configured"):
                     p.query("test", "prompt")
 
-    @patch.dict(
-        os.environ,
-        {
-            "MINIMAX_API_KEY": "key1",
-            "KIMI_API_KEY": "key2",
-            "NVIDIA_API_KEY": "key3",
-            "GEMINI_API_KEY": "key4",
-        },
-    )
+    @patch.dict(os.environ, {
+        "MINIMAX_API_KEY": "key1",
+        "KIMI_API_KEY": "key2",
+        "NVIDIA_API_KEY": "key3",
+        "GEMINI_API_KEY": "key4",
+    })
     def test_provider_available_with_api_key(self):
         """All providers set _available=True when env var is set."""
-        providers = [
-            MiniMaxProvider(),
-            KimiProvider(),
-            KimiNvidiaProvider(),
-            GeminiProvider(),
-        ]
+        providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
 
         for p in providers:
             assert p._available is True, f"{p.name} should be available"

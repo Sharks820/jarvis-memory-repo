@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 # Stage 1: Audio Preprocessing
 # ---------------------------------------------------------------------------
 
-
 def preprocess_audio(
     audio: np.ndarray,
     *,
@@ -61,9 +60,7 @@ def preprocess_audio(
     # Skip for short voice commands (<5s) — HPSS destroys plosive/fricative
     # consonants (p, t, k, s, f, v) that are critical for short utterances.
     if skip_hpss or duration_s < 5.0:
-        logger.debug(
-            "Skipping HPSS (duration=%.1fs, skip_hpss=%s)", duration_s, skip_hpss
-        )
+        logger.debug("Skipping HPSS (duration=%.1fs, skip_hpss=%s)", duration_s, skip_hpss)
     else:
         try:
             import librosa
@@ -152,27 +149,13 @@ _SUBSTRING_HALLUCINATION_PHRASES: set[str] = {
 # Foreign-language artifacts that Whisper hallucinates from corrupted audio
 # at segment boundaries.  Checked only at the START of a transcription.
 _FOREIGN_HALLUCINATION_PREFIXES: set[str] = {
-    "essen",
-    "untertitel",
-    "untertitelung",
-    "vielen dank",
-    "sous-titres",
-    "sous titres",
-    "merci",
-    "bonjour",
-    "gracias",
-    "hola",
-    "buenos",
-    "arigato",
-    "konichiwa",
-    "konnichiwa",
-    "danke",
-    "bitte",
-    "guten",
-    "spasibo",
-    "privet",
-    "xie xie",
-    "ni hao",
+    "essen", "untertitel", "untertitelung", "vielen dank",
+    "sous-titres", "sous titres", "merci", "bonjour",
+    "gracias", "hola", "buenos",
+    "arigato", "konichiwa", "konnichiwa",
+    "danke", "bitte", "guten",
+    "spasibo", "privet",
+    "xie xie", "ni hao",
 }
 
 
@@ -255,12 +238,9 @@ def strip_foreign_prefix(text: str) -> str:
 
     for prefix in _FOREIGN_HALLUCINATION_PREFIXES:
         if lower.startswith(prefix):
-            rest = text.strip()[len(prefix) :].strip().lstrip(",").strip()
+            rest = text.strip()[len(prefix):].strip().lstrip(",").strip()
             if rest:
-                logger.info(
-                    "Stripped foreign hallucination prefix %r from transcription",
-                    prefix,
-                )
+                logger.info("Stripped foreign hallucination prefix %r from transcription", prefix)
                 return rest
     return text
 
@@ -270,7 +250,9 @@ def strip_foreign_prefix(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 # Simple fillers: always remove
-_SIMPLE_FILLERS = re.compile(r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECASE)
+_SIMPLE_FILLERS = re.compile(
+    r"\b(?:um|uh|er|ah|hmm|hm|mhm|erm)\b", re.IGNORECASE
+)
 
 # Multi-word fillers
 _MULTI_WORD_FILLERS = re.compile(
@@ -290,10 +272,10 @@ def remove_fillers(text: str) -> str:
     result = _SIMPLE_FILLERS.sub("", text)
     result = _MULTI_WORD_FILLERS.sub("", result)
     # Clean up orphaned punctuation left by filler removal
-    result = re.sub(r",\s*,", ",", result)  # doubled commas
-    result = re.sub(r"\.\s*,", ".", result)  # period-comma from removed filler
-    result = re.sub(r",\s*\.", ".", result)  # comma-period from removed filler
-    result = re.sub(r"^\s*[,;]\s*", "", result)  # leading comma/semicolon
+    result = re.sub(r",\s*,", ",", result)        # doubled commas
+    result = re.sub(r"\.\s*,", ".", result)        # period-comma from removed filler
+    result = re.sub(r",\s*\.", ".", result)        # comma-period from removed filler
+    result = re.sub(r"^\s*[,;]\s*", "", result)    # leading comma/semicolon
     # Normalize whitespace
     result = re.sub(r"\s{2,}", " ", result).strip()
     return result
@@ -322,7 +304,6 @@ def _load_personal_vocab() -> list[str]:
     Results are cached in ``_shared.load_personal_vocab_lines``.
     """
     from jarvis_engine._shared import load_personal_vocab_lines
-
     return load_personal_vocab_lines(strip_parens=False)
 
 
@@ -344,9 +325,7 @@ def correct_with_llm(
 
     vocab_section = ""
     if vocab_lines:
-        vocab_section = "Personal vocabulary:\n" + "\n".join(
-            f"- {v}" for v in vocab_lines
-        )
+        vocab_section = "Personal vocabulary:\n" + "\n".join(f"- {v}" for v in vocab_lines)
 
     system_prompt = _LLM_SYSTEM_PROMPT.format(vocab_section=vocab_section)
 
@@ -364,15 +343,7 @@ def correct_with_llm(
         if corrected:
             return corrected
         return text
-    except (
-        RuntimeError,
-        ValueError,
-        TypeError,
-        AttributeError,
-        OSError,
-        TimeoutError,
-        ConnectionError,
-    ) as exc:
+    except (RuntimeError, ValueError, TypeError, AttributeError, OSError, TimeoutError, ConnectionError) as exc:
         logger.warning("LLM post-correction failed: %s", exc)
         return text
 
@@ -380,7 +351,6 @@ def correct_with_llm(
 # ---------------------------------------------------------------------------
 # Stage 5: NER Entity Correction
 # ---------------------------------------------------------------------------
-
 
 def correct_entities(text: str, entity_list: list[str]) -> str:
     """Correct entity names using exact and phonetic matching.
@@ -508,11 +478,7 @@ def postprocess_transcription(
     is_short_command = (word_count < 5 and confidence > 0.95) or is_known_command
 
     if is_short_command:
-        logger.debug(
-            "Skip path: short high-confidence command (%d words, %.2f conf)",
-            word_count,
-            confidence,
-        )
+        logger.debug("Skip path: short high-confidence command (%d words, %.2f conf)", word_count, confidence)
         return text
 
     # Stage 3: LLM post-correction

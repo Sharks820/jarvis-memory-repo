@@ -42,9 +42,7 @@ def test_harvest_success(mock_cmd_cls: MagicMock) -> None:
         "results": [{"provider": "gemini", "text": "QC is..."}],
     }
     handler = HarvestHandler(harvester=mock_harvester)
-    result = handler.handle(
-        HarvestTopicCommand(topic="quantum computing", max_tokens=1024)
-    )
+    result = handler.handle(HarvestTopicCommand(topic="quantum computing", max_tokens=1024))
 
     assert result.return_code == 0
     assert result.topic == "quantum computing"
@@ -62,9 +60,7 @@ def test_harvest_with_providers(mock_cmd_cls: MagicMock) -> None:
     assert result.return_code == 0
     # Verify the HarvestCommand was constructed with providers
     construct_call = mock_cmd_cls.call_args
-    assert construct_call.kwargs.get("providers") == ["gemini"] or construct_call[
-        1
-    ].get("providers") == ["gemini"]
+    assert construct_call.kwargs.get("providers") == ["gemini"] or construct_call[1].get("providers") == ["gemini"]
 
 
 @patch("jarvis_engine.harvesting.harvester.HarvestCommand")
@@ -214,12 +210,10 @@ def test_ingest_session_explicit_path_outside_allowed() -> None:
         outside_path = "C:\\Windows\\System32\\evil.jsonl"
     else:
         outside_path = "/etc/evil.jsonl"
-    result = handler.handle(
-        IngestSessionCommand(
-            source="claude",
-            session_path=outside_path,
-        )
-    )
+    result = handler.handle(IngestSessionCommand(
+        source="claude",
+        session_path=outside_path,
+    ))
     assert result.return_code == 2
 
 
@@ -242,22 +236,18 @@ def test_ingest_session_explicit_path_allowed(mock_ingestor_cls: MagicMock) -> N
     # rejection path above and the logic path here if the dir exists.
     if claude_dir.exists():
         # Even if dir exists, the file won't exist -- ingestor handles that
-        result = handler.handle(
-            IngestSessionCommand(
-                source="claude",
-                session_path=str(allowed_path),
-            )
-        )
+        result = handler.handle(IngestSessionCommand(
+            source="claude",
+            session_path=str(allowed_path),
+        ))
         # If the path resolves under .claude, it should be accepted (rc=0)
         assert result.return_code == 0
     else:
         # Path doesn't start with any allowed root
-        result = handler.handle(
-            IngestSessionCommand(
-                source="claude",
-                session_path=str(allowed_path),
-            )
-        )
+        result = handler.handle(IngestSessionCommand(
+            source="claude",
+            session_path=str(allowed_path),
+        ))
         # Either accepted or rejected depending on path resolution
         assert result.return_code in (0, 2)
 
@@ -304,15 +294,13 @@ def test_budget_set_success() -> None:
     """Set action with all required fields calls set_budget."""
     mock_budget = MagicMock()
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
-    result = handler.handle(
-        HarvestBudgetCommand(
-            action="set",
-            provider="gemini",
-            period="daily",
-            limit_usd=5.0,
-            limit_requests=100,
-        )
-    )
+    result = handler.handle(HarvestBudgetCommand(
+        action="set",
+        provider="gemini",
+        period="daily",
+        limit_usd=5.0,
+        limit_requests=100,
+    ))
 
     assert result.return_code == 0
     assert result.summary["action"] == "set"
@@ -331,24 +319,20 @@ def test_budget_set_missing_fields() -> None:
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
 
     # Missing limit_usd
-    result = handler.handle(
-        HarvestBudgetCommand(
-            action="set",
-            provider="gemini",
-            period="daily",
-        )
-    )
+    result = handler.handle(HarvestBudgetCommand(
+        action="set",
+        provider="gemini",
+        period="daily",
+    ))
     assert result.return_code == 1
     assert "error" in result.summary
 
     # Missing provider
-    result = handler.handle(
-        HarvestBudgetCommand(
-            action="set",
-            period="daily",
-            limit_usd=5.0,
-        )
-    )
+    result = handler.handle(HarvestBudgetCommand(
+        action="set",
+        period="daily",
+        limit_usd=5.0,
+    ))
     assert result.return_code == 1
 
 
@@ -356,15 +340,13 @@ def test_budget_set_no_limit_requests_defaults_zero() -> None:
     """When limit_requests is None, defaults to 0."""
     mock_budget = MagicMock()
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
-    result = handler.handle(
-        HarvestBudgetCommand(
-            action="set",
-            provider="kimi",
-            period="monthly",
-            limit_usd=10.0,
-            limit_requests=None,
-        )
-    )
+    result = handler.handle(HarvestBudgetCommand(
+        action="set",
+        provider="kimi",
+        period="monthly",
+        limit_usd=10.0,
+        limit_requests=None,
+    ))
 
     assert result.return_code == 0
     mock_budget.set_budget.assert_called_once_with(
@@ -379,11 +361,9 @@ def test_budget_set_missing_period() -> None:
     """Set action without period returns rc=1."""
     mock_budget = MagicMock()
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
-    result = handler.handle(
-        HarvestBudgetCommand(
-            action="set",
-            provider="gemini",
-            limit_usd=5.0,
-        )
-    )
+    result = handler.handle(HarvestBudgetCommand(
+        action="set",
+        provider="gemini",
+        limit_usd=5.0,
+    ))
     assert result.return_code == 1

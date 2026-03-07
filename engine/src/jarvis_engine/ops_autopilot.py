@@ -56,31 +56,24 @@ def run_ops_autopilot(
     print(f"connectors_ready={summary.connectors_ready}")
 
     # 3. Build daily brief
-    brief_result = bus.dispatch(
-        OpsBriefCommand(snapshot_path=snapshot_path, output_path=None)
-    )
+    brief_result = bus.dispatch(OpsBriefCommand(snapshot_path=snapshot_path, output_path=None))
     print(brief_result.brief)
     if brief_result.saved_path:
         print(f"brief_saved={brief_result.saved_path}")
 
     # 4. Export suggested actions
-    export_result = bus.dispatch(
-        OpsExportActionsCommand(
-            snapshot_path=snapshot_path,
-            actions_path=actions_path,
-        )
-    )
+    export_result = bus.dispatch(OpsExportActionsCommand(
+        snapshot_path=snapshot_path, actions_path=actions_path,
+    ))
     print(f"actions_exported={export_result.actions_path}")
     print(f"action_count={export_result.action_count}")
 
     # 5. Run automation
-    auto_result = bus.dispatch(
-        AutomationRunCommand(
-            actions_path=actions_path,
-            approve_privileged=approve_privileged,
-            execute=execute,
-        )
-    )
+    auto_result = bus.dispatch(AutomationRunCommand(
+        actions_path=actions_path,
+        approve_privileged=approve_privileged,
+        execute=execute,
+    ))
     for out in auto_result.outcomes:
         print(
             f"title={out.title} allowed={out.allowed} executed={out.executed} "

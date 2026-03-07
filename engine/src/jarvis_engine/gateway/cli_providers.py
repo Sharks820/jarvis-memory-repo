@@ -28,7 +28,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-
 def _default_cli_timeout() -> int:
     """Return CLI timeout seconds from env with safe bounds."""
     raw = os.environ.get("JARVIS_CLI_TIMEOUT_S", "240").strip()
@@ -47,9 +46,7 @@ _CHECKPOINT_LINES = 10
 
 
 def _max_prompt_chars() -> int:
-    raw = os.environ.get(
-        "JARVIS_CLI_PROMPT_MAX_CHARS", str(_MAX_PROMPT_CHARS_DEFAULT)
-    ).strip()
+    raw = os.environ.get("JARVIS_CLI_PROMPT_MAX_CHARS", str(_MAX_PROMPT_CHARS_DEFAULT)).strip()
     try:
         value = int(raw)
     except (TypeError, ValueError):
@@ -158,7 +155,6 @@ def _get_executable(provider_key: str, bare_name: str) -> str:
 # Common result / subprocess helpers
 # ---------------------------------------------------------------------------
 
-
 def _cli_result(
     provider: str,
     model: str,
@@ -226,8 +222,7 @@ def _run_cli_subprocess(
         )
         if proc.returncode != 0:
             return _cli_result(
-                provider,
-                model,
+                provider, model,
                 error=f"exit {proc.returncode}: {proc.stderr[:500]}",
             )
 
@@ -239,8 +234,7 @@ def _run_cli_subprocess(
 
         success = bool(text.strip())
         return _cli_result(
-            provider,
-            model,
+            provider, model,
             text=text,
             success=success,
             error="" if success else "empty response",
@@ -248,20 +242,17 @@ def _run_cli_subprocess(
         )
     except subprocess.TimeoutExpired:
         return _cli_result(
-            provider,
-            model,
+            provider, model,
             error=f"timeout after {timeout}s",
         )
     except FileNotFoundError:
         return _cli_result(
-            provider,
-            model,
+            provider, model,
             error=f"{display} CLI not found on PATH",
         )
     except OSError as exc:
         return _cli_result(
-            provider,
-            model,
+            provider, model,
             error=f"OS error (prompt too long?): {exc}",
         )
 
@@ -269,7 +260,6 @@ def _run_cli_subprocess(
 # ---------------------------------------------------------------------------
 # Invocation helpers
 # ---------------------------------------------------------------------------
-
 
 def _build_messages_text(messages: list[dict[str, str]]) -> str:
     """Convert chat messages to a single text prompt for CLI tools.
@@ -478,9 +468,7 @@ def _extract_claude_text_and_cost(stdout: str) -> tuple[str, float]:
                                 blocks.append(val)
                     text = "\n\n".join(blocks).strip()
         try:
-            cost = float(
-                parsed.get("total_cost_usd", parsed.get("cost_usd", 0.0)) or 0.0
-            )
+            cost = float(parsed.get("total_cost_usd", parsed.get("cost_usd", 0.0)) or 0.0)
         except (TypeError, ValueError):
             cost = 0.0
         return (text, cost)
@@ -508,15 +496,9 @@ def _extract_claude_text_and_cost(stdout: str) -> tuple[str, float]:
                 if candidate:
                     result_text = candidate
                 try:
-                    total_cost = float(
-                        event.get("total_cost_usd", event.get("cost_usd", total_cost))
-                        or total_cost
-                    )
+                    total_cost = float(event.get("total_cost_usd", event.get("cost_usd", total_cost)) or total_cost)
                 except (TypeError, ValueError):
-                    logger.debug(
-                        "Could not parse cost from CLI event: %s",
-                        event.get("total_cost_usd"),
-                    )
+                    logger.debug("Could not parse cost from CLI event: %s", event.get("total_cost_usd"))
 
         text = result_text or "\n\n".join(assistant_text_chunks).strip()
         return (text, total_cost)
@@ -547,24 +529,18 @@ def call_claude_cli(
 
     cmd = [
         _get_executable("claude-cli", "claude"),
-        "-p",
-        prompt,
-        "--model",
-        model,
-        "--output-format",
-        "json",
+        "-p", prompt,
+        "--model", model,
+        "--output-format", "json",
         "--no-session-persistence",
-        "--max-turns",
-        "1",
+        "--max-turns", "1",
     ]
     budget = _claude_cli_max_budget_usd()
     if budget is not None:
         cmd.extend(["--max-budget-usd", budget])
 
     return _run_cli_subprocess(
-        cmd,
-        "claude-cli",
-        "claude-cli",
+        cmd, "claude-cli", "claude-cli",
         timeout=timeout,
         cli_display_name="claude",
         env=env,
@@ -596,18 +572,15 @@ def call_codex_cli(
             out_path = tmp.name
     except OSError as exc:
         return _cli_result(
-            "codex-cli",
-            "codex-cli",
+            "codex-cli", "codex-cli",
             error=f"Failed to create temp file: {exc}",
         )
 
     cmd = [
         _get_executable("codex-cli", "codex"),
         "exec",
-        "-m",
-        model,
-        "-o",
-        out_path,
+        "-m", model,
+        "-o", out_path,
         "--ephemeral",
         "--",  # End of options — prompt follows as positional arg
         prompt,
@@ -635,35 +608,30 @@ def call_codex_cli(
 
         if proc.returncode != 0 and not text:
             return _cli_result(
-                "codex-cli",
-                "codex-cli",
+                "codex-cli", "codex-cli",
                 error=f"exit {proc.returncode}: {proc.stderr[:500]}",
             )
 
         final_text = text or proc.stdout.strip()
         return _cli_result(
-            "codex-cli",
-            "codex-cli",
+            "codex-cli", "codex-cli",
             text=final_text,
             success=bool(final_text),
             error="" if final_text else "empty response",
         )
     except subprocess.TimeoutExpired:
         return _cli_result(
-            "codex-cli",
-            "codex-cli",
+            "codex-cli", "codex-cli",
             error=f"timeout after {timeout}s",
         )
     except FileNotFoundError:
         return _cli_result(
-            "codex-cli",
-            "codex-cli",
+            "codex-cli", "codex-cli",
             error="codex CLI not found on PATH",
         )
     except OSError as exc:
         return _cli_result(
-            "codex-cli",
-            "codex-cli",
+            "codex-cli", "codex-cli",
             error=f"OS error (prompt too long?): {exc}",
         )
     finally:
@@ -688,16 +656,12 @@ def call_gemini_cli(
 
     cmd = [
         _get_executable("gemini-cli", "gemini"),
-        "-p",
-        prompt,
-        "-o",
-        "text",
+        "-p", prompt,
+        "-o", "text",
     ]
 
     return _run_cli_subprocess(
-        cmd,
-        "gemini-cli",
-        "gemini-cli",
+        cmd, "gemini-cli", "gemini-cli",
         timeout=timeout,
         cli_display_name="gemini",
     )
@@ -719,14 +683,11 @@ def call_kimi_cli(
     cmd = [
         _get_executable("kimi-cli", "kimi"),
         "--quiet",
-        "-p",
-        prompt,
+        "-p", prompt,
     ]
 
     return _run_cli_subprocess(
-        cmd,
-        "kimi-cli",
-        "kimi-cli",
+        cmd, "kimi-cli", "kimi-cli",
         timeout=timeout,
         cli_display_name="kimi",
     )
@@ -767,8 +728,7 @@ def call_cli_provider(
     caller = _CLI_CALLERS.get(provider_key)
     if caller is None:
         return _cli_result(
-            provider_key,
-            provider_key,
+            provider_key, provider_key,
             error=f"unknown CLI provider: {provider_key}",
         )
     # Forward model kwarg to providers that accept it (claude, codex)

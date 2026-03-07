@@ -106,10 +106,7 @@ class AdaptiveDefenseEngine:
                 self._total_blocked += 1
             if source_ip and len(self._unique_ips) < self._unique_ips_cap:
                 self._unique_ips.add(source_ip)
-            if (
-                len(self._category_counts) < self._category_counts_cap
-                or category in self._category_counts
-            ):
+            if len(self._category_counts) < self._category_counts_cap or category in self._category_counts:
                 self._category_counts[category] += 1
 
     # ------------------------------------------------------------------
@@ -150,11 +147,7 @@ class AdaptiveDefenseEngine:
             }
             self._rules.append(rule)
             self._ruled_categories.add(category)
-        logger.info(
-            "Auto-generated defense rule for category %r (%d detections)",
-            category,
-            count,
-        )
+        logger.info("Auto-generated defense rule for category %r (%d detections)", category, count)
         return rule
 
     # ------------------------------------------------------------------
@@ -189,7 +182,9 @@ class AdaptiveDefenseEngine:
             "rules_generated": rules_count,
             "unique_ips": unique_count,
             "effectiveness_pct": effectiveness,
-            "top_categories": [{"category": cat, "count": cnt} for cat, cnt in top],
+            "top_categories": [
+                {"category": cat, "count": cnt} for cat, cnt in top
+            ],
         }
 
     # ------------------------------------------------------------------

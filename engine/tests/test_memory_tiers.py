@@ -54,6 +54,7 @@ def _make_record(
 
 
 class TestTierEnum:
+
     def test_hot_value(self):
         assert Tier.HOT.value == "hot"
 
@@ -76,6 +77,7 @@ class TestTierEnum:
 
 
 class TestTierManagerClassify:
+
     def setup_method(self):
         self.mgr = TierManager()
 
@@ -151,6 +153,7 @@ class TestTierManagerClassify:
 
 
 class TestComputeAgeHours:
+
     def test_empty_string_returns_inf(self):
         assert TierManager._compute_age_hours("") == float("inf")
 
@@ -174,6 +177,7 @@ class TestComputeAgeHours:
 
 
 class TestRunTierMaintenance:
+
     def setup_method(self):
         self.mgr = TierManager()
 
@@ -233,12 +237,7 @@ class TestRunTierMaintenance:
         """Records missing record_id are silently skipped."""
         engine = MagicMock()
         engine.get_all_records_for_tier_maintenance.return_value = [
-            {
-                "ts": _ts_hours_ago(1),
-                "access_count": 0,
-                "confidence": 0.5,
-                "tier": "cold",
-            },
+            {"ts": _ts_hours_ago(1), "access_count": 0, "confidence": 0.5, "tier": "cold"},
         ]
         result = self.mgr.run_tier_maintenance(engine)
         # No record_id so it's skipped entirely

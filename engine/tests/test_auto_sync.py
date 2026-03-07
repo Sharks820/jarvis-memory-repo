@@ -12,7 +12,6 @@ from conftest import make_test_db
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite database with core tables."""
     db = make_test_db(check_same_thread=False)
@@ -97,13 +96,11 @@ def _make_db() -> sqlite3.Connection:
 # AutoSyncConfig tests
 # ============================================================================
 
-
 class TestAutoSyncConfig:
     """Tests for sync config management, persistence, and device tracking."""
 
     def test_default_config_values(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
         assert config.get("enabled") is True
         assert config.get("conflict_strategy") == "most_recent"
@@ -114,29 +111,24 @@ class TestAutoSyncConfig:
 
     def test_set_and_get(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
         config.set("relay_url", "https://my-tunnel.example.com")
         assert config.get("relay_url") == "https://my-tunnel.example.com"
 
     def test_bulk_update(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
-        config.update(
-            {
-                "relay_url": "https://relay.example.com",
-                "sync_interval_connected": 30,
-                "conflict_strategy": "desktop_wins",
-            }
-        )
+        config.update({
+            "relay_url": "https://relay.example.com",
+            "sync_interval_connected": 30,
+            "conflict_strategy": "desktop_wins",
+        })
         assert config.get("relay_url") == "https://relay.example.com"
         assert config.get("sync_interval_connected") == 30
         assert config.get("conflict_strategy") == "desktop_wins"
 
     def test_persist_and_reload(self, tmp_path):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config_path = tmp_path / "sync" / "config.json"
 
         config1 = AutoSyncConfig(config_path)
@@ -152,7 +144,6 @@ class TestAutoSyncConfig:
 
     def test_device_config_payload(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
         config.set("relay_url", "https://relay.example.com")
         config.set("lan_url", "https://192.168.1.100:8787")
@@ -166,7 +157,6 @@ class TestAutoSyncConfig:
 
     def test_heartbeat_tracking(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
 
         # No heartbeat yet
@@ -183,7 +173,6 @@ class TestAutoSyncConfig:
 
     def test_all_device_statuses(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
         config.record_heartbeat("device_a")
         config.record_heartbeat("device_b")
@@ -196,7 +185,6 @@ class TestAutoSyncConfig:
 
     def test_get_all_returns_copy(self):
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config = AutoSyncConfig()
         all_config = config.get_all()
         all_config["relay_url"] = "MODIFIED"
@@ -208,20 +196,16 @@ class TestAutoSyncConfig:
 # Most-recent-wins conflict resolution tests
 # ============================================================================
 
-
 class TestMostRecentWinsConflict:
     """Tests for the improved conflict resolution strategy."""
 
     def test_most_recent_wins_remote_newer(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         local_entry = {
             "table_name": "records",
@@ -240,21 +224,16 @@ class TestMostRecentWinsConflict:
             "ts": "2026-03-01 11:00:00",  # Newer
         }
 
-        resolved = engine._resolve_conflict(
-            local_entry, remote_entry, desktop_is_local=True
-        )
+        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
         assert resolved["new_values"]["summary"] == "phone version"
 
     def test_most_recent_wins_local_newer(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         local_entry = {
             "table_name": "records",
@@ -273,21 +252,16 @@ class TestMostRecentWinsConflict:
             "ts": "2026-03-01 10:00:00",
         }
 
-        resolved = engine._resolve_conflict(
-            local_entry, remote_entry, desktop_is_local=True
-        )
+        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
         assert resolved["new_values"]["summary"] == "desktop version"
 
     def test_same_timestamp_desktop_wins_tiebreaker(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         local_entry = {
             "table_name": "records",
@@ -306,22 +280,17 @@ class TestMostRecentWinsConflict:
             "ts": "2026-03-01 10:00:00",  # Same timestamp
         }
 
-        resolved = engine._resolve_conflict(
-            local_entry, remote_entry, desktop_is_local=True
-        )
+        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
         # Desktop wins as tiebreaker when timestamps are equal
         assert resolved["new_values"]["summary"] == "desktop version"
 
     def test_delete_always_wins_regardless_of_strategy(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         local_entry = {
             "table_name": "records",
@@ -338,21 +307,16 @@ class TestMostRecentWinsConflict:
             "ts": "2026-03-01 10:00:00",
         }
 
-        resolved = engine._resolve_conflict(
-            local_entry, remote_entry, desktop_is_local=True
-        )
+        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
         assert resolved["operation"] == "DELETE"
 
     def test_legacy_desktop_wins_strategy(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="desktop_wins"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="desktop_wins")
 
         local_entry = {
             "table_name": "records",
@@ -371,9 +335,7 @@ class TestMostRecentWinsConflict:
             "ts": "2026-03-01 15:00:00",  # Newer but doesn't matter
         }
 
-        resolved = engine._resolve_conflict(
-            local_entry, remote_entry, desktop_is_local=True
-        )
+        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
         # Desktop always wins with legacy strategy, regardless of timestamp
         assert resolved["new_values"]["summary"] == "desktop version"
 
@@ -381,13 +343,10 @@ class TestMostRecentWinsConflict:
         """Non-conflicting fields should be merged from both sides."""
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         local_entry = {
             "table_name": "records",
@@ -406,9 +365,7 @@ class TestMostRecentWinsConflict:
             "ts": "2026-03-01 10:00:00",
         }
 
-        resolved = engine._resolve_conflict(
-            local_entry, remote_entry, desktop_is_local=True
-        )
+        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
         # Both fields should be present — no conflict
         assert resolved["new_values"]["summary"] == "desktop summary"
         assert resolved["new_values"]["tags"] == "phone,context"
@@ -416,17 +373,11 @@ class TestMostRecentWinsConflict:
     def test_bidirectional_sync_phone_data_respected(self):
         """Phone changes should be applied to desktop when no conflict exists."""
         from jarvis_engine.sync.engine import SyncEngine
-        from jarvis_engine.sync.changelog import (
-            install_changelog_triggers,
-            update_sync_cursor,
-        )
-
+        from jarvis_engine.sync.changelog import install_changelog_triggers, update_sync_cursor
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         # Insert a record on desktop
         db.execute(
@@ -442,15 +393,13 @@ class TestMostRecentWinsConflict:
         # Simulate incoming phone update (no local conflict since cursor is advanced)
         incoming = {
             "changes": {
-                "records": [
-                    {
-                        "row_id": "r1",
-                        "operation": "UPDATE",
-                        "fields_changed": ["summary"],
-                        "new_values": {"summary": "updated by phone"},
-                        "__version": 2,
-                    }
-                ],
+                "records": [{
+                    "row_id": "r1",
+                    "operation": "UPDATE",
+                    "fields_changed": ["summary"],
+                    "new_values": {"summary": "updated by phone"},
+                    "__version": 2,
+                }],
             },
             "cursors": {"records": 2},
         }
@@ -460,39 +409,32 @@ class TestMostRecentWinsConflict:
         assert result["errors"] == []
 
         # Verify the phone's change was applied
-        row = db.execute(
-            "SELECT summary FROM records WHERE record_id = 'r1'"
-        ).fetchone()
+        row = db.execute("SELECT summary FROM records WHERE record_id = 'r1'").fetchone()
         assert row[0] == "updated by phone"
 
     def test_phone_insert_synced_to_desktop(self):
         """Phone can INSERT new records that appear on desktop."""
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         # Phone sends an INSERT for a new record
         incoming = {
             "changes": {
-                "records": [
-                    {
-                        "row_id": "phone_r1",
-                        "operation": "INSERT",
-                        "fields_changed": ["summary", "source"],
-                        "new_values": {
-                            "record_id": "phone_r1",
-                            "summary": "learned from phone context",
-                            "source": "user",
-                        },
-                        "__version": 1,
-                    }
-                ],
+                "records": [{
+                    "row_id": "phone_r1",
+                    "operation": "INSERT",
+                    "fields_changed": ["summary", "source"],
+                    "new_values": {
+                        "record_id": "phone_r1",
+                        "summary": "learned from phone context",
+                        "source": "user",
+                    },
+                    "__version": 1,
+                }],
             },
             "cursors": {"records": 1},
         }
@@ -500,9 +442,7 @@ class TestMostRecentWinsConflict:
         result = engine.apply_incoming(incoming, "galaxy_s25_primary")
         assert result["applied"] == 1
 
-        row = db.execute(
-            "SELECT summary FROM records WHERE record_id = 'phone_r1'"
-        ).fetchone()
+        row = db.execute("SELECT summary FROM records WHERE record_id = 'phone_r1'").fetchone()
         assert row is not None
         assert row[0] == "learned from phone context"
 
@@ -511,20 +451,16 @@ class TestMostRecentWinsConflict:
 # SyncEngine with most_recent strategy integration tests
 # ============================================================================
 
-
 class TestSyncEngineIntegration:
     """Full integration tests for compute_outgoing + apply_incoming."""
 
     def test_compute_outgoing_returns_changes(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         # Insert a record — should appear in changelog
         db.execute(
@@ -541,13 +477,10 @@ class TestSyncEngineIntegration:
     def test_sync_status_includes_all_info(self):
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.changelog import install_changelog_triggers
-
         db = _make_db()
         lock = threading.Lock()
         install_changelog_triggers(db, device_id="desktop")
-        engine = SyncEngine(
-            db, lock, device_id="desktop", conflict_strategy="most_recent"
-        )
+        engine = SyncEngine(db, lock, device_id="desktop", conflict_strategy="most_recent")
 
         status = engine.sync_status()
         assert "cursors" in status

@@ -11,10 +11,7 @@ from jarvis_engine.persona import (
     load_persona_config,
     save_persona_config,
 )
-from jarvis_engine.commands.voice_commands import (
-    PersonaComposeCommand,
-    PersonaComposeResult,
-)
+from jarvis_engine.commands.voice_commands import PersonaComposeCommand, PersonaComposeResult
 from jarvis_engine.handlers.voice_handlers import PersonaComposeHandler
 
 
@@ -24,13 +21,7 @@ from jarvis_engine.handlers.voice_handlers import PersonaComposeHandler
 
 
 def test_persona_config_roundtrip(tmp_path: Path) -> None:
-    cfg = save_persona_config(
-        tmp_path,
-        enabled=True,
-        humor_level=3,
-        mode="jarvis_british",
-        style="secret_agent",
-    )
+    cfg = save_persona_config(tmp_path, enabled=True, humor_level=3, mode="jarvis_british", style="secret_agent")
     assert cfg.enabled is True
     assert cfg.humor_level == 3
     loaded = load_persona_config(tmp_path)
@@ -43,15 +34,9 @@ def test_persona_reply_shapes() -> None:
         humor_level = 2
 
     ok_line = compose_persona_reply(Cfg(), intent="runtime_status", success=True)
-    fail_line = compose_persona_reply(
-        Cfg(), intent="runtime_pause", success=False, reason="voice auth required"
-    )
-    assert any(
-        k in ok_line.lower() for k in ("runtime status", "done", "complete", "handled")
-    )
-    assert any(
-        k in fail_line.lower() for k in ("blocked", "couldn't proceed", "not permitted")
-    )
+    fail_line = compose_persona_reply(Cfg(), intent="runtime_pause", success=False, reason="voice auth required")
+    assert any(k in ok_line.lower() for k in ("runtime status", "done", "complete", "handled"))
+    assert any(k in fail_line.lower() for k in ("blocked", "couldn't proceed", "not permitted"))
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +91,6 @@ def test_resolve_tone_unknown_returns_balanced() -> None:
 # ---------------------------------------------------------------------------
 # New tests: compose_persona_system_prompt
 # ---------------------------------------------------------------------------
-
 
 def _make_cfg(enabled: bool = True, humor_level: int = 2) -> PersonaConfig:
     return PersonaConfig(
@@ -189,15 +173,9 @@ def test_persona_compose_handler_success(tmp_path: Path) -> None:
 
     # Verify gateway was called with messages including system prompt
     call_args = mock_gateway.complete.call_args
-    messages = (
-        call_args.kwargs.get("messages")
-        or call_args[1].get("messages")
-        or call_args[0][0]
-    )
+    messages = call_args.kwargs.get("messages") or call_args[1].get("messages") or call_args[0][0]
     assert any(m["role"] == "system" for m in messages)
-    assert any(
-        m["role"] == "user" and "weather" in m["content"].lower() for m in messages
-    )
+    assert any(m["role"] == "user" and "weather" in m["content"].lower() for m in messages)
 
 
 def test_persona_compose_handler_no_gateway(tmp_path: Path) -> None:
@@ -216,9 +194,7 @@ def test_compose_persona_reply_unchanged() -> None:
     ok = compose_persona_reply(cfg, intent="test_op", success=True)
     fail = compose_persona_reply(cfg, intent="test_op", success=False, reason="auth")
     assert "test op" in ok.lower() or "done" in ok.lower() or "complete" in ok.lower()
-    assert any(
-        k in fail.lower() for k in ("blocked", "not permitted", "couldn't proceed")
-    )
+    assert any(k in fail.lower() for k in ("blocked", "not permitted", "couldn't proceed"))
 
 
 def test_compose_persona_reply_disabled() -> None:

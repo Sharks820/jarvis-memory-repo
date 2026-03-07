@@ -8,7 +8,6 @@ import os
 import re
 import threading
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from jarvis_engine._bus import get_bus
@@ -26,6 +25,7 @@ from jarvis_engine._constants import (
     ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY,
     STOP_WORDS as _HARVEST_STOP_WORDS,
     OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME,
+    ACTIONS_FILENAME as _ACTIONS_FILENAME,
     get_local_model as _get_local_model,
     is_privacy_sensitive as _is_privacy_sensitive,
     make_task_id as _make_task_id,
@@ -47,9 +47,7 @@ def shorten_urls_for_speech(text: str) -> str:
 
     def _replacement(match: re.Match[str]) -> str:
         raw = match.group(1).strip()
-        normalized = (
-            raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
-        )
+        normalized = raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
         parsed = urlparse(normalized)
         host = parsed.netloc.lower().strip()
         if host.startswith("www."):
@@ -73,9 +71,7 @@ def escape_response(msg: str) -> str:
 # Conversation history buffer for multi-turn context (persisted to disk)
 # ---------------------------------------------------------------------------
 
-_CONVERSATION_MAX_TURNS = _env_int(
-    "JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40
-)
+_CONVERSATION_MAX_TURNS = _env_int("JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40)
 _CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
     "JARVIS_CONVERSATION_MAX_CHARS",
     2000,
@@ -113,9 +109,7 @@ class ConversationState:
     def _conversation_history_path(self) -> Path:
         """Return the path for persisted conversation history."""
         if self._history_file is None:
-            self._history_file = (
-                repo_root() / ".planning" / "brain" / "conversation_history.json"
-            )
+            self._history_file = repo_root() / ".planning" / "brain" / "conversation_history.json"
             self._history_file.parent.mkdir(parents=True, exist_ok=True)
         return self._history_file
 
@@ -133,13 +127,10 @@ class ConversationState:
                 path = self._conversation_history_path()
                 if path.exists():
                     import json as _json
-
                     data = _json.loads(path.read_text(encoding="utf-8"))
                     if isinstance(data, list):
                         self._conversation_history.clear()
-                        self._conversation_history.extend(
-                            data[-(_CONVERSATION_MAX_TURNS * 2) :]
-                        )
+                        self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 logger.debug("Could not load conversation history: %s", exc)
 
@@ -151,14 +142,11 @@ class ConversationState:
         """
         try:
             import json as _json
-
             path = self._conversation_history_path()
             with self._conversation_history_lock:
                 snapshot = list(self._conversation_history)
                 tmp = path.with_suffix(f".tmp.{os.getpid()}")
-                tmp.write_text(
-                    _json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
-                )
+                tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
                 os.replace(str(tmp), str(path))
         except OSError as exc:
             logger.debug("Could not save conversation history: %s", exc)
@@ -212,9 +200,7 @@ class ConversationState:
             except (ImportError, OSError, ValueError) as exc:
                 logger.debug("Model continuity telemetry logging failed: %s", exc)
 
-    def conversation_continuity_instruction(
-        self, target_model: str, history_len: int
-    ) -> str | None:
+    def conversation_continuity_instruction(self, target_model: str, history_len: int) -> str | None:
         """Return continuity instruction when conversation switches models/providers."""
         if history_len <= 0:
             return None
@@ -304,15 +290,13 @@ def _learn_conversation(
 ) -> None:
     """Dispatch a LearnInteractionCommand with JSONL fallback on failure."""
     try:
-        bus.dispatch(
-            LearnInteractionCommand(
-                user_message=text[:1000],
-                assistant_response=response[:1000],
-                task_id=_make_task_id(f"conv-{route}"),
-                route=route,
-                topic=text[:100],
-            )
-        )
+        bus.dispatch(LearnInteractionCommand(
+            user_message=text[:1000],
+            assistant_response=response[:1000],
+            task_id=_make_task_id(f"conv-{route}"),
+            route=route,
+            topic=text[:100],
+        ))
     except (OSError, RuntimeError, ValueError) as exc_learn:
         logger.warning("Enriched learning failed for conversation: %s", exc_learn)
         try:
@@ -329,9 +313,7 @@ def _learn_conversation(
             logger.warning("Auto-ingest fallback also failed: %s", exc)
 
 
-def _conversation_continuity_instruction(
-    target_model: str, history_len: int
-) -> str | None:
+def _conversation_continuity_instruction(target_model: str, history_len: int) -> str | None:
     """Return continuity instruction when conversation switches models/providers."""
     return _state.conversation_continuity_instruction(target_model, history_len)
 
@@ -358,39 +340,22 @@ _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
 # Web search need detection — identifies queries requiring current information
 # ---------------------------------------------------------------------------
 _WEB_SIGNAL_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(
-        r"\b(?:latest|current|recent|today'?s|tonight'?s|yesterday'?s|this (?:week|month|year)'?s?)\b",
-        re.I,
-    ),
+    re.compile(r"\b(?:latest|current|recent|today'?s|tonight'?s|yesterday'?s|this (?:week|month|year)'?s?)\b", re.I),
     re.compile(r"\b(?:right now|at the moment|as of (?:today|now|2\d{3}))\b", re.I),
     re.compile(r"\b(?:news|headlines|breaking|update|updates|happening)\b", re.I),
-    re.compile(
-        r"\b(?:stock|price|market|cryptocurrency|bitcoin|crypto|eth|btc)\s*(?:price|value|worth|cost|today)?\b",
-        re.I,
-    ),
-    re.compile(
-        r"\b(?:score|scores|game|match|playoff|championship|tournament|standings|results?)\b",
-        re.I,
-    ),
+    re.compile(r"\b(?:stock|price|market|cryptocurrency|bitcoin|crypto|eth|btc)\s*(?:price|value|worth|cost|today)?\b", re.I),
+    re.compile(r"\b(?:score|scores|game|match|playoff|championship|tournament|standings|results?)\b", re.I),
     re.compile(r"\b(?:weather|forecast|temperature|rain|snow|wind)\b", re.I),
     re.compile(r"\bwho (?:won|is winning|leads?|lost)\b", re.I),
     re.compile(r"\b(?:when (?:is|does|did|will)|what time (?:is|does))\b", re.I),
     re.compile(r"\b(?:release date|coming out|launched|announced|premiered)\b", re.I),
     re.compile(r"\b(?:how (?:much|many) (?:does|is|are|do))\b", re.I),
     re.compile(r"\b(?:look up|lookup|find out|check|search for)\b", re.I),
-    re.compile(
-        r"\b(?:what (?:is|are|was|were) the (?:best|top|most|biggest|highest|lowest))\b",
-        re.I,
-    ),
+    re.compile(r"\b(?:what (?:is|are|was|were) the (?:best|top|most|biggest|highest|lowest))\b", re.I),
     re.compile(r"\b(?:compared? to|vs\.?|versus)\b", re.I),
-    re.compile(
-        r"\b(?:2024|2025|2026|2027)\b"
-    ),  # Queries mentioning recent/future years
+    re.compile(r"\b(?:2024|2025|2026|2027)\b"),  # Queries mentioning recent/future years
     re.compile(r"\b(?:search|google|look up|find me|find out about)\b", re.I),
-    re.compile(
-        r"\b(?:what(?:'s| is) (?:the |)(?:status|situation|deal) (?:with|of|about))\b",
-        re.I,
-    ),
+    re.compile(r"\b(?:what(?:'s| is) (?:the |)(?:status|situation|deal) (?:with|of|about))\b", re.I),
     re.compile(r"\b(?:tell me about|info on|information about|details about)\b", re.I),
     re.compile(r"\b(?:where (?:can i|do i|is the|are the))\b", re.I),
     re.compile(r"\b(?:how (?:do i|can i|to))\b", re.I),
@@ -398,10 +363,7 @@ _WEB_SIGNAL_PATTERNS: list[re.Pattern[str]] = [
 
 # Exclusion patterns: queries that match web signals but are actually personal/private
 _WEB_EXCLUSION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(
-        r"\bmy (?:calendar|medication|prescription|bill|password|appointment|meeting|schedule)\b",
-        re.I,
-    ),
+    re.compile(r"\bmy (?:calendar|medication|prescription|bill|password|appointment|meeting|schedule)\b", re.I),
     re.compile(r"\b(?:remind me|set (?:a )?(?:reminder|alarm|timer))\b", re.I),
     re.compile(r"\b(?:what did (?:i|jarvis)|show me my|what'?s on my)\b", re.I),
 ]
@@ -429,18 +391,8 @@ def _requires_fresh_web_confirmation(query: str) -> bool:
     """True when the user explicitly asks for up-to-date/live web confirmation."""
     q = query.lower().strip()
     strict_markers = (
-        "latest",
-        "current",
-        "right now",
-        "today",
-        "tonight",
-        "this week",
-        "live",
-        "breaking",
-        "as of",
-        "up to date",
-        "real-time",
-        "real time",
+        "latest", "current", "right now", "today", "tonight", "this week",
+        "live", "breaking", "as of", "up to date", "real-time", "real time",
     )
     return any(m in q for m in strict_markers)
 
@@ -478,7 +430,9 @@ def _build_smart_context(
             from jarvis_engine.memory.search import hybrid_search
 
             query_embedding = embed_service.embed_query(query)
-            results = hybrid_search(engine, query, query_embedding, k=max_memory_items)
+            results = hybrid_search(
+                engine, query, query_embedding, k=max_memory_items
+            )
             for record in results:
                 summary = str(record.get("summary", "")).strip()
                 if summary:
@@ -509,12 +463,10 @@ def _build_smart_context(
             kg = bus.ctx.kg
             if kg is None:
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
-
                 kg = KnowledgeGraph(engine)
             # Extract keywords from query for fact lookup
             words = [
-                w
-                for w in re.findall(r"[a-zA-Z]{3,}", query.lower())
+                w for w in re.findall(r"[a-zA-Z]{3,}", query.lower())
                 if w not in _HARVEST_STOP_WORDS
             ][:10]
             if words:
@@ -533,10 +485,8 @@ def _build_smart_context(
                 if embed_service is not None:
                     try:
                         sem_facts = kg.query_relevant_facts_semantic(
-                            query,
-                            embed_service=embed_service,
-                            limit=max_fact_items,
-                            min_confidence=0.5,
+                            query, embed_service=embed_service,
+                            limit=max_fact_items, min_confidence=0.5,
                         )
                         for fact in sem_facts:
                             nid = fact.get("node_id", "")
@@ -545,22 +495,12 @@ def _build_smart_context(
                             if not label or conf < 0.5:
                                 continue
                             # Deduplicate: skip if already seen with equal/higher confidence
-                            if (
-                                nid
-                                and nid in seen_node_ids
-                                and seen_node_ids[nid] >= conf
-                            ):
+                            if nid and nid in seen_node_ids and seen_node_ids[nid] >= conf:
                                 continue
                             fact_lines.append(label)
                             if nid:
                                 seen_node_ids[nid] = conf
-                    except (
-                        ImportError,
-                        OSError,
-                        RuntimeError,
-                        ValueError,
-                        KeyError,
-                    ) as sem_exc:
+                    except (ImportError, OSError, RuntimeError, ValueError, KeyError) as sem_exc:
                         logger.debug("KG semantic fact query failed: %s", sem_exc)
         except (ImportError, OSError, RuntimeError, KeyError) as exc:
             logger.debug("KG fact query failed: %s", exc)
@@ -584,7 +524,7 @@ def _build_smart_context(
                 tgt_branch = conn.get("target_branch", "unknown")
                 relation = conn.get("relation", "related")
                 cross_branch_lines.append(
-                    f'[{src_branch}] "{src}" relates to [{tgt_branch}] "{tgt}" via {relation}'
+                    f"[{src_branch}] \"{src}\" relates to [{tgt_branch}] \"{tgt}\" via {relation}"
                 )
         except (ImportError, OSError, RuntimeError, ValueError) as exc:
             logger.debug("Cross-branch query failed: %s", exc)
@@ -612,11 +552,10 @@ def _build_system_parts(
 ) -> list[str]:
     """Assemble the system prompt parts for an LLM conversation.
 
-    Called from both ``_web_augmented_llm_conversation`` and
-    ``cmd_voice_run_impl`` to avoid duplicate prompt construction.
+    Called from ``_web_augmented_llm_conversation`` to assemble
+    the LLM system prompt.
     """
     from jarvis_engine.persona import get_persona_prompt
-
     persona = load_persona_config(repo_root())
     parts = [_current_datetime_prompt_line(), get_persona_prompt(persona)]
     if fact_lines:
@@ -651,8 +590,8 @@ def _classify_and_route(
 ) -> tuple[str, str]:
     """Classify intent and select the target LLM model.
 
-    Shared by ``_web_augmented_llm_conversation`` and ``cmd_voice_run_impl``
-    to avoid duplicating the ~30-line classification + fallback chain.
+    Used by ``_web_augmented_llm_conversation`` for intent classification
+    and LLM model selection.
 
     Returns ``(route, llm_model)``.
     """
@@ -665,12 +604,8 @@ def _classify_and_route(
         avail_models = getattr(gw, "available_model_names", lambda: None)()
     if intent_cls is not None:
         try:
-            route, llm_model, conf = intent_cls.classify(
-                text, available_models=avail_models
-            )
-            logger.debug(
-                "Intent route: %s model=%s confidence=%.2f", route, llm_model, conf
-            )
+            route, llm_model, conf = intent_cls.classify(text, available_models=avail_models)
+            logger.debug("Intent route: %s model=%s confidence=%.2f", route, llm_model, conf)
         except (RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Intent classification failed: %s", exc)
             llm_model = None
@@ -681,24 +616,15 @@ def _classify_and_route(
             embed = bus.ctx.embed_service
             if embed is not None:
                 cls = IntentClassifier(embed)
-                route, llm_model, conf = cls.classify(
-                    text, available_models=avail_models
-                )
-                logger.debug(
-                    "Fallback route: %s model=%s confidence=%.2f",
-                    route,
-                    llm_model,
-                    conf,
-                )
+                route, llm_model, conf = cls.classify(text, available_models=avail_models)
+                logger.debug("Fallback route: %s model=%s confidence=%.2f", route, llm_model, conf)
         except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Fallback IntentClassifier classification failed: %s", exc)
     if llm_model is None:
         if _is_privacy_sensitive(text):
             llm_model = _get_local_model()
             route = "simple_private"
-            logger.debug(
-                "Privacy fallback: classifier failed, forcing local for private query"
-            )
+            logger.debug("Privacy fallback: classifier failed, forcing local for private query")
         else:
             for env_key, model_alias in _ENV_MODEL_PRIORITY:
                 if os.environ.get(env_key, ""):
@@ -713,7 +639,6 @@ def _classify_and_route(
 # Extraction helpers for voice commands
 # ---------------------------------------------------------------------------
 
-
 def _extract_first_phone_number(text: str) -> str:
     if len(text) > 256:
         text = text[:256]
@@ -725,9 +650,7 @@ def _extract_first_phone_number(text: str) -> str:
 
 def _extract_weather_location(text: str) -> str:
     # Try explicit "in/for <location>" first
-    match = re.search(
-        r"(?:weather|forecast)\s+(?:in|for|at)\s+(.+)", text, flags=re.IGNORECASE
-    )
+    match = re.search(r"(?:weather|forecast)\s+(?:in|for|at)\s+(.+)", text, flags=re.IGNORECASE)
     if match:
         location = match.group(1).strip().rstrip("?.!,;:")
         return location[:120]
@@ -736,23 +659,8 @@ def _extract_weather_location(text: str) -> str:
     if not match:
         return ""
     location = match.group(1).strip().rstrip("?.!,;:")
-    noise = {
-        "like",
-        "today",
-        "right",
-        "now",
-        "outside",
-        "currently",
-        "report",
-        "update",
-        "check",
-        "please",
-        "is",
-        "the",
-        "what",
-        "how",
-        "look",
-    }
+    noise = {"like", "today", "right", "now", "outside", "currently", "report",
+             "update", "check", "please", "is", "the", "what", "how", "look"}
     words = [w for w in location.split() if w.lower() not in noise]
     return " ".join(words)[:120]
 
@@ -791,9 +699,7 @@ def _extract_first_url(text: str) -> str:
     return raw[:500]
 
 
-def _is_read_only_voice_request(
-    lowered: str, *, execute: bool, approve_privileged: bool
-) -> bool:
+def _is_read_only_voice_request(lowered: str, *, execute: bool, approve_privileged: bool) -> bool:
     if execute or approve_privileged:
         return False
     mutation_markers = [
@@ -901,16 +807,7 @@ def _is_read_only_voice_request(
     # Bare wake words or very short greetings (e.g. "jarvis", "hey jarvis")
     # are not state-mutating — treat as read-only so owner guard doesn't block them.
     stripped = lowered.strip()
-    if stripped in (
-        "jarvis",
-        "hey jarvis",
-        "hi jarvis",
-        "hello jarvis",
-        "ok jarvis",
-        "a jarvis",
-        "ay jarvis",
-        "jarvis activate",
-    ):
+    if stripped in ("jarvis", "hey jarvis", "hi jarvis", "hello jarvis", "ok jarvis", "a jarvis", "ay jarvis", "jarvis activate"):
         return True
     # Commands that don't match any mutation marker are conversational queries
     # routed to the LLM. These are read-only (no state changes) and should
@@ -923,19 +820,45 @@ def _is_read_only_voice_request(
 # Web-augmented LLM conversation
 # ---------------------------------------------------------------------------
 
-
 def _web_augmented_llm_conversation(
     text: str,
     *,
     speak: bool = False,
     force_web_search: bool = False,
+    model_override: str = "",
+    default_route: str = "web_research",
+    try_fallback_classifier: bool = False,
+    response_callback: "Callable[[str], None] | None" = None,
 ) -> int:
     """Run a web-search-augmented LLM conversation for a single query.
 
     This is the shared implementation used by:
-    - Explicit "search the web for X" voice commands
-    - Weather fallback when the dedicated handler fails
-    - Any keyword branch that needs web-augmented LLM responses
+    - Explicit "search the web for X" voice commands (force_web_search=True)
+    - Weather fallback when the dedicated handler fails (force_web_search=True)
+    - The general LLM conversation fallback in cmd_voice_run_impl
+
+    Parameters
+    ----------
+    text : str
+        The user's query text.
+    speak : bool
+        Whether to speak the response aloud via TTS.
+    force_web_search : bool
+        When True, always attempt web search regardless of route/query signals.
+        When False, only search when the classified route is "web_research" or
+        ``_needs_web_search(text)`` returns True.
+    model_override : str
+        If non-empty, override the classified model with this value (used by
+        widget Tab-cycling).
+    default_route : str
+        Default intent route when classification fails.
+    try_fallback_classifier : bool
+        Whether to attempt a fallback IntentClassifier when the bus classifier
+        is unavailable.
+    response_callback : Callable[[str], None] | None
+        Optional callback invoked with the response text.  Used by
+        ``cmd_voice_run_impl`` to capture ``_last_response`` for the
+        learning pipeline.
 
     Returns 0 on success, 1 on failure.
     """
@@ -944,117 +867,119 @@ def _web_augmented_llm_conversation(
     bus = get_bus()
 
     # --- Smart context + system prompt assembly ---
-    memory_lines, fact_lines, cross_branch_lines, preference_lines = (
-        _build_smart_context(bus, text)
-    )
-    system_parts = _build_system_parts(
-        memory_lines, fact_lines, cross_branch_lines, preference_lines
-    )
+    memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
+    system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
 
     # --- Intent classification + model routing ---
-    _route, _llm_model = _classify_and_route(bus, text, default_route="web_research")
+    _route, _llm_model = _classify_and_route(
+        bus, text, default_route=default_route, try_fallback_classifier=try_fallback_classifier,
+    )
 
-    # --- Web search (always performed for this code path) ---
+    # --- Model override from widget Tab-cycling ---
+    if model_override:
+        _llm_model = model_override
+        logger.debug("Model overridden by user selection: %s", model_override)
+
+    # --- Web search augmentation ---
     _web_searched = False
-    _web_context_text = ""
+    _web_attempted = False
     _web_result: dict[str, object] = {}
-    try:
-        from jarvis_engine.web_research import run_web_research
 
-        _web_result = run_web_research(
-            text, max_results=5, max_pages=3, max_summary_lines=4
-        )
-        _web_lines = _web_result.get("summary_lines", [])
-        if _web_lines:
-            _web_searched = True
-            _web_context_text = (
-                "Web search results (use these to answer with current information):\n"
-                + "\n".join(f"- {line}" for line in _web_lines[:4])
-            )
-            _web_urls = _web_result.get("scanned_urls", [])
-            if _web_urls:
-                _web_context_text += "\nSources: " + ", ".join(_web_urls[:3])
-            system_parts.append(_web_context_text)
-            # Emit source URLs for widget display
-            _findings = _web_result.get("findings", [])
-            if isinstance(_findings, list):
-                for _idx, _row in enumerate(_findings[:4], start=1):
-                    if isinstance(_row, dict):
-                        _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
-                        if _src:
-                            print(f"source_{_idx}={_src}")
-            logger.info(
-                "Web search augmented context for query: %s (%d results)",
-                text[:80],
-                len(_web_lines),
-            )
-        else:
-            logger.warning(
-                "Web search returned no summary lines for query: %s", text[:80]
-            )
-    except (ImportError, OSError, RuntimeError, ValueError) as exc:
-        logger.warning("Web search failed for query %r: %s", text[:80], exc)
+    _should_search = force_web_search or _route == "web_research" or _needs_web_search(text)
+    if _should_search:
+        _web_attempted = True
+        try:
+            from jarvis_engine.web_research import run_web_research
+            _web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
+            _web_lines = _web_result.get("summary_lines", [])
+            if _web_lines:
+                _web_searched = True
+                _web_context_text = (
+                    "Web search results (use these to answer with current information):\n"
+                    + "\n".join(f"- {line}" for line in _web_lines[:4])
+                )
+                _web_urls = _web_result.get("scanned_urls", [])
+                if _web_urls:
+                    _web_context_text += "\nSources: " + ", ".join(_web_urls[:3])
+                system_parts.append(_web_context_text)
+                # Emit source URLs for widget display
+                _findings = _web_result.get("findings", [])
+                if isinstance(_findings, list):
+                    for _idx, _row in enumerate(_findings[:4], start=1):
+                        if isinstance(_row, dict):
+                            _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
+                            if _src:
+                                print(f"source_{_idx}={_src}")
+                logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(_web_lines))
+            else:
+                logger.warning("Web search returned no summary lines for query: %s", text[:80])
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
+            logger.warning("Web search failed for query %r: %s", text[:80], exc)
 
-    # --- Instructions ---
+    # --- Finalize system prompt with context-aware instructions ---
     if _web_searched:
         system_parts.append(
-            "Instructions: You have web search results above. Use them to give a current, accurate answer. "
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "You have web search results above -- use them to give current, accurate answers. "
             "Cite the source when using web search results. "
-            "If the web results don't fully answer the question, say what you found and note what's missing. "
+            "If you don't have relevant information, say so honestly. "
+            "Do not re-introduce yourself unless explicitly asked."
+        )
+    elif _web_attempted:
+        system_parts.append(
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "Answer the question using your knowledge. "
+            "Do NOT say you cannot access the web or that you are not wired for web access. "
+            "Simply provide the best answer you can. "
             "Do not re-introduce yourself unless explicitly asked."
         )
     else:
         system_parts.append(
-            "Instructions: Answer the question using your knowledge. "
-            "Do NOT say you cannot access the web or that you are not wired for web access. "
-            "Simply provide the best answer you can with the information available. "
+            "Instructions: Reference the user's known facts and memories when relevant. "
+            "If the user asks about something you have facts for, use those facts directly. "
+            "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
+            "If you don't have relevant information, say so honestly. "
             "Do not re-introduce yourself unless explicitly asked."
         )
     system_prompt = "\n\n".join(system_parts)
 
-    if not _web_searched and _requires_fresh_web_confirmation(text):
+    if _web_attempted and not _web_searched and _requires_fresh_web_confirmation(text):
         print("intent=web_confirmation_unavailable")
-        print(
-            "reason=Unable to fetch current web results right now. Please retry or check network access."
-        )
+        print("reason=Unable to fetch current web results right now. Please retry or check network access.")
         return 1
 
     # --- Dynamic max_tokens ---
-    _max_tokens = max(_MAX_TOKENS_BY_ROUTE.get(_route, 512), 768)
+    _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
+    if _web_searched or force_web_search:
+        _max_tokens = max(_max_tokens, 768)
 
     # --- Build messages with conversation history ---
     _hist = _get_history_messages()
-    _continuity_instruction = _conversation_continuity_instruction(
-        _llm_model, len(_hist)
-    )
+    _continuity_instruction = _conversation_continuity_instruction(_llm_model, len(_hist))
     if _continuity_instruction:
         system_parts.append(_continuity_instruction)
         system_prompt = "\n\n".join(system_parts)
     _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
     _add_to_history("user", text)
     try:
-        result: QueryResult = bus.dispatch(
-            QueryCommand(
-                query=text,
-                system_prompt=system_prompt,
-                max_tokens=_max_tokens,
-                model=_llm_model,
-                history=_hist_tuples,
-            )
-        )
+        result: QueryResult = bus.dispatch(QueryCommand(
+            query=text,
+            system_prompt=system_prompt,
+            max_tokens=_max_tokens,
+            model=_llm_model,
+            history=_hist_tuples,
+        ))
         _response = result.text.strip()
         if result.return_code != 0:
             if _web_searched:
-                fallback_lines = (
-                    _web_result.get("summary_lines", [])
-                    if isinstance(_web_result, dict)
-                    else []
-                )
+                fallback_lines = _web_result.get("summary_lines", []) if isinstance(_web_result, dict) else []
                 if isinstance(fallback_lines, list) and fallback_lines:
-                    fallback_text = "Based on live web results: " + " ".join(
-                        str(x) for x in fallback_lines[:3]
-                    )
+                    fallback_text = "Based on live web results: " + " ".join(str(x) for x in fallback_lines[:3])
                     print(f"response={escape_response(fallback_text)}")
+                    if response_callback is not None:
+                        response_callback(fallback_text)
                     print("model=web-research-fallback")
                     print("provider=web")
                     print("web_search_used=true")
@@ -1065,6 +990,8 @@ def _web_augmented_llm_conversation(
         elif _response:
             _add_to_history("assistant", _response)
             print(f"response={escape_response(_response)}")
+            if response_callback is not None:
+                response_callback(_response)
             print(f"model={result.model}")
             print(f"provider={result.provider}")
             _mark_routed_model(result.model, result.provider)
@@ -1092,7 +1019,6 @@ def _web_augmented_llm_conversation(
 # Main voice-run implementation
 # ---------------------------------------------------------------------------
 
-
 def cmd_voice_run_impl(
     text: str,
     execute: bool,
@@ -1109,28 +1035,15 @@ def cmd_voice_run_impl(
 ) -> int:
     """Implementation body for voice-run (called by handler via callback)."""
     from jarvis_engine.main import (
-        cmd_voice_say,
-        cmd_voice_verify,
-        cmd_connect_bootstrap,
-        cmd_runtime_control,
-        cmd_gaming_mode,
-        cmd_weather,
-        cmd_open_web,
-        cmd_mobile_desktop_sync,
-        cmd_self_heal,
-        cmd_ops_autopilot,
-        cmd_phone_spam_guard,
-        cmd_phone_action,
-        cmd_ops_sync,
-        cmd_ops_brief,
-        cmd_automation_run,
-        cmd_run_task,
-        cmd_brain_context,
-        cmd_ingest,
-        cmd_brain_status,
-        cmd_mission_cancel,
-        cmd_mission_status,
-        cmd_status,
+        cmd_voice_say, cmd_voice_verify,
+        cmd_connect_bootstrap, cmd_runtime_control,
+        cmd_gaming_mode, cmd_weather, cmd_open_web,
+        cmd_mobile_desktop_sync, cmd_self_heal,
+        cmd_ops_autopilot, cmd_phone_spam_guard,
+        cmd_phone_action, cmd_ops_sync, cmd_ops_brief,
+        cmd_automation_run, cmd_run_task, cmd_brain_context,
+        cmd_ingest, cmd_brain_status, cmd_mission_cancel,
+        cmd_mission_status, cmd_status,
     )
 
     lowered = text.lower().strip()
@@ -1152,24 +1065,18 @@ def cmd_voice_run_impl(
     phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
 
     phone_report = repo_root() / ".planning" / "phone_spam_report.json"
-    phone_call_log = Path(
-        os.getenv(
-            "JARVIS_CALL_LOG_JSON",
-            str(repo_root() / ".planning" / "phone_call_log.json"),
-        )
-    )
+    phone_call_log = Path(os.getenv("JARVIS_CALL_LOG_JSON", str(repo_root() / ".planning" / "phone_call_log.json")))
     owner_guard = read_owner_guard(repo_root())
     master_password_ok = False
     if master_password.strip():
-        master_password_ok = verify_master_password(
-            repo_root(), master_password.strip()
-        )
+        master_password_ok = verify_master_password(repo_root(), master_password.strip())
 
     read_only_request = _is_read_only_voice_request(
         lowered,
         execute=execute,
         approve_privileged=approve_privileged,
     )
+
 
     def _require_state_mutation_voice_auth() -> bool:
         if skip_voice_auth_guard:
@@ -1187,11 +1094,7 @@ def cmd_voice_run_impl(
     if bool(owner_guard.get("enabled", False)):
         expected_owner = str(owner_guard.get("owner_user_id", "")).strip().lower()
         incoming_owner = voice_user.strip().lower()
-        if (
-            expected_owner
-            and incoming_owner != expected_owner
-            and not master_password_ok
-        ):
+        if expected_owner and incoming_owner != expected_owner and not master_password_ok:
             print("intent=owner_guard_blocked")
             print("reason=voice_user_not_owner")
             if speak:
@@ -1242,21 +1145,12 @@ def cmd_voice_run_impl(
                 )
             return 2
 
-    if ("connect" in lowered or "setup" in lowered) and any(
-        k in lowered for k in ["email", "calendar", "all", "everything"]
-    ):
+    if ("connect" in lowered or "setup" in lowered) and any(k in lowered for k in ["email", "calendar", "all", "everything"]):
         intent = "connect_bootstrap"
         rc = cmd_connect_bootstrap(auto_open=execute)
     elif any(
         k in lowered
-        for k in [
-            "pause jarvis",
-            "pause daemon",
-            "pause autopilot",
-            "go idle",
-            "stand down",
-            "pause yourself",
-        ]
+        for k in ["pause jarvis", "pause daemon", "pause autopilot", "go idle", "stand down", "pause yourself"]
     ):
         if not _require_state_mutation_voice_auth():
             return 2
@@ -1271,13 +1165,7 @@ def cmd_voice_run_impl(
         )
     elif any(
         k in lowered
-        for k in [
-            "resume jarvis",
-            "resume daemon",
-            "resume autopilot",
-            "wake up",
-            "start working again",
-        ]
+        for k in ["resume jarvis", "resume daemon", "resume autopilot", "wake up", "start working again"]
     ):
         if not _require_state_mutation_voice_auth():
             return 2
@@ -1314,9 +1202,8 @@ def cmd_voice_run_impl(
             reset=False,
             reason="voice_command",
         )
-    elif any(
-        k in lowered for k in ["runtime status", "control status", "safe mode status"]
-    ):
+    elif any(k in lowered for k in ["runtime status", "control status", "safe mode status"]):
+
         intent = "runtime_status"
         rc = cmd_runtime_control(
             pause=False,
@@ -1326,30 +1213,22 @@ def cmd_voice_run_impl(
             reset=False,
             reason="",
         )
-    elif "auto gaming mode" in lowered and any(
-        k in lowered for k in ["on", "enable", "start"]
-    ):
+    elif "auto gaming mode" in lowered and any(k in lowered for k in ["on", "enable", "start"]):
         if not _require_state_mutation_voice_auth():
             return 2
         intent = "gaming_mode_auto_enable"
         rc = cmd_gaming_mode(enable=None, reason="voice_command", auto_detect="on")
-    elif "auto gaming mode" in lowered and any(
-        k in lowered for k in ["off", "disable", "stop"]
-    ):
+    elif "auto gaming mode" in lowered and any(k in lowered for k in ["off", "disable", "stop"]):
         if not _require_state_mutation_voice_auth():
             return 2
         intent = "gaming_mode_auto_disable"
         rc = cmd_gaming_mode(enable=None, reason="voice_command", auto_detect="off")
-    elif "gaming mode" in lowered and any(
-        k in lowered for k in ["on", "enable", "start"]
-    ):
+    elif "gaming mode" in lowered and any(k in lowered for k in ["on", "enable", "start"]):
         if not _require_state_mutation_voice_auth():
             return 2
         intent = "gaming_mode_enable"
         rc = cmd_gaming_mode(enable=True, reason="voice_command", auto_detect="")
-    elif "gaming mode" in lowered and any(
-        k in lowered for k in ["off", "disable", "stop"]
-    ):
+    elif "gaming mode" in lowered and any(k in lowered for k in ["off", "disable", "stop"]):
         if not _require_state_mutation_voice_auth():
             return 2
         intent = "gaming_mode_disable"
@@ -1357,20 +1236,14 @@ def cmd_voice_run_impl(
     elif "gaming mode" in lowered and any(k in lowered for k in ["status", "state"]):
         intent = "gaming_mode_status"
         rc = cmd_gaming_mode(enable=None, reason="", auto_detect="")
-    elif (
-        "weather" in lowered or "forecast" in lowered
-    ) and "my calendar" not in lowered:
+    elif ("weather" in lowered or "forecast" in lowered) and "my calendar" not in lowered:
         intent = "weather"
         rc = cmd_weather(location=_extract_weather_location(text))
         if rc != 0:
             # Weather handler failed -- fall through to web-augmented LLM conversation
-            logger.info(
-                "Weather handler failed (rc=%d), falling back to web-augmented LLM", rc
-            )
+            logger.info("Weather handler failed (rc=%d), falling back to web-augmented LLM", rc)
             intent = "llm_conversation_weather_fallback"
-            rc = _web_augmented_llm_conversation(
-                text, speak=speak, force_web_search=True
-            )
+            rc = _web_augmented_llm_conversation(text, speak=speak, force_web_search=True)
     elif any(
         key in lowered
         for key in [
@@ -1409,21 +1282,13 @@ def cmd_voice_run_impl(
             return 2
         url = _extract_first_url(text)
         if not url:
-            print(
-                "reason=No valid URL found. Include full URL like https://example.com"
-            )
+            print("reason=No valid URL found. Include full URL like https://example.com")
             return 2
         rc = cmd_open_web(url)
-    elif any(
-        key in lowered
-        for key in ["sync mobile", "sync desktop", "cross-device sync", "sync devices"]
-    ):
+    elif any(key in lowered for key in ["sync mobile", "sync desktop", "cross-device sync", "sync devices"]):
         intent = "mobile_desktop_sync"
         rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
-    elif any(
-        key in lowered
-        for key in ["self heal", "self-heal", "repair yourself", "diagnose yourself"]
-    ):
+    elif any(key in lowered for key in ["self heal", "self-heal", "repair yourself", "diagnose yourself"]):
         if not _require_state_mutation_voice_auth():
             return 2
         intent = "self_heal"
@@ -1468,17 +1333,7 @@ def cmd_voice_run_impl(
             threshold=0.65,
             queue_actions=execute,
         )
-    elif any(
-        k in lowered
-        for k in [
-            "send text",
-            "send message",
-            "send a text",
-            "send a message",
-            "text to ",
-            "message to ",
-        ]
-    ):
+    elif any(k in lowered for k in ["send text", "send message", "send a text", "send a message", "text to ", "message to "]):
         number = _extract_first_phone_number(text)
         intent = "phone_send_sms"
         if not number:
@@ -1487,16 +1342,9 @@ def cmd_voice_run_impl(
             return 2
         # Extract SMS body: strip trigger phrase and number, use remainder
         sms_body = text
-        for _trigger in [
-            "send a text to",
-            "send a message to",
-            "send text to",
-            "send message to",
-            "text to",
-            "message to",
-        ]:
+        for _trigger in ["send a text to", "send a message to", "send text to", "send message to", "text to", "message to"]:
             if _trigger in lowered:
-                sms_body = text[lowered.index(_trigger) + len(_trigger) :].strip()
+                sms_body = text[lowered.index(_trigger) + len(_trigger):].strip()
                 break
         # Remove the phone number from the body if present
         if number in sms_body:
@@ -1531,12 +1379,7 @@ def cmd_voice_run_impl(
             message="",
             queue_path=phone_queue,
         )
-    elif (
-        lowered.startswith("call ")
-        or "place a call" in lowered
-        or "make a call" in lowered
-        or "phone call" in lowered
-    ) and _extract_first_phone_number(text):
+    elif (lowered.startswith("call ") or "place a call" in lowered or "make a call" in lowered or "phone call" in lowered) and _extract_first_phone_number(text):
         number = _extract_first_phone_number(text)
         intent = "phone_place_call"
         if not execute:
@@ -1548,29 +1391,14 @@ def cmd_voice_run_impl(
             message="",
             queue_path=phone_queue,
         )
-    elif ("sync" in lowered) and any(
-        k in lowered for k in ["calendar", "email", "inbox", "ops"]
-    ):
+    elif ("sync" in lowered) and any(k in lowered for k in ["calendar", "email", "inbox", "ops"]):
         intent = "ops_sync"
         live_snapshot = snapshot_path.with_name(_OPS_SNAPSHOT_FILENAME)
         rc = cmd_ops_sync(live_snapshot)
-    elif any(
-        k in lowered
-        for k in [
-            "daily brief",
-            "ops brief",
-            "morning brief",
-            "give me a brief",
-            "my brief",
-            "run brief",
-            "brief me",
-        ]
-    ):
+    elif any(k in lowered for k in ["daily brief", "ops brief", "morning brief", "give me a brief", "my brief", "run brief", "brief me"]):
         intent = "ops_brief"
         rc = cmd_ops_brief(snapshot_path=snapshot_path, output_path=None)
-    elif "automation" in lowered and any(
-        k in lowered for k in ["run", "execute", "start"]
-    ):
+    elif "automation" in lowered and any(k in lowered for k in ["run", "execute", "start"]):
         intent = "automation_run"
         rc = cmd_automation_run(
             actions_path=actions_path,
@@ -1581,9 +1409,7 @@ def cmd_voice_run_impl(
         intent = "generate_code"
         idx = lowered.index("generate code") + len("generate code")
         prompt = text[idx:].strip()
-        prompt = (
-            prompt or "Generate high-quality production code for the requested task."
-        )
+        prompt = prompt or "Generate high-quality production code for the requested task."
         rc = cmd_run_task(
             task_type="code",
             prompt=prompt,
@@ -1624,11 +1450,7 @@ def cmd_voice_run_impl(
             quality_profile="max_quality",
             output_path=None,
         )
-    elif (
-        "generate 3d" in lowered
-        or "generate a 3d model" in lowered
-        or "generate 3d model" in lowered
-    ):
+    elif "generate 3d" in lowered or "generate a 3d model" in lowered or "generate 3d model" in lowered:
         intent = "generate_model3d"
         rc = cmd_run_task(
             task_type="model3d",
@@ -1723,9 +1545,7 @@ def cmd_voice_run_impl(
                 break
         if not query_text:
             query_text = text
-        rc = cmd_brain_context(
-            query=query_text, max_items=5, max_chars=1200, as_json=False
-        )
+        rc = cmd_brain_context(query=query_text, max_items=5, max_chars=1200, as_json=False)
     # --- Forget / unlearn ---
     elif any(
         k in lowered
@@ -1835,33 +1655,19 @@ def cmd_voice_run_impl(
         rc = cmd_brain_status(as_json=False)
         _respond("Here's your brain status \u2014 check the details above.")
     # --- Cancel mission ---
-    elif any(
-        k in lowered
-        for k in [
-            "cancel mission",
-            "cancel the mission",
-            "stop mission",
-            "abort mission",
-        ]
-    ):
+    elif any(k in lowered for k in ["cancel mission", "cancel the mission", "stop mission", "abort mission"]):
         if not _require_state_mutation_voice_auth():
             return 2
         intent = "mission_cancel"
         # Try to extract mission ID; if not specified, cancel the most recent pending one
         mission_id = ""
-        for prefix in [
-            "cancel mission ",
-            "cancel the mission ",
-            "stop mission ",
-            "abort mission ",
-        ]:
+        for prefix in ["cancel mission ", "cancel the mission ", "stop mission ", "abort mission "]:
             if prefix in lowered:
-                mission_id = text[lowered.index(prefix) + len(prefix) :].strip()
+                mission_id = text[lowered.index(prefix) + len(prefix):].strip()
                 break
         if not mission_id:
             # Auto-cancel the most recent pending mission
             from jarvis_engine.learning_missions import load_missions as _load_missions
-
             missions = _load_missions(repo_root())
             for m in reversed(missions):
                 if str(m.get("status", "")).lower() == "pending":
@@ -1903,170 +1709,15 @@ def cmd_voice_run_impl(
     else:
         # No keyword match -- route through LLM for a conversational response.
         intent = "llm_conversation"
-        bus = get_bus()
-
-        # --- Smart context + system prompt assembly ---
-        memory_lines, fact_lines, cross_branch_lines, preference_lines = (
-            _build_smart_context(bus, text)
-        )
-        system_parts = _build_system_parts(
-            memory_lines, fact_lines, cross_branch_lines, preference_lines
-        )
-
-        # --- Intent classification + model routing (reuse bus classifier) ---
-        _route, _llm_model = _classify_and_route(
-            bus,
+        rc = _web_augmented_llm_conversation(
             text,
+            speak=speak,
+            force_web_search=False,
+            model_override=model_override,
             default_route="routine",
             try_fallback_classifier=True,
+            response_callback=_respond,
         )
-
-        # --- Model override from widget Tab-cycling ---
-        if model_override:
-            _llm_model = model_override
-            logger.debug("Model overridden by user selection: %s", model_override)
-
-        # --- Web search augmentation for queries needing current info ---
-        _web_searched = False
-        _web_attempted = False
-        if _route == "web_research" or _needs_web_search(text):
-            _web_attempted = True
-            try:
-                from jarvis_engine.web_research import run_web_research
-
-                _web_result = run_web_research(
-                    text, max_results=5, max_pages=3, max_summary_lines=4
-                )
-                _web_lines = _web_result.get("summary_lines", [])
-                if _web_lines:
-                    _web_searched = True
-                    _web_context = (
-                        "Web search results (use these to answer with current information):\n"
-                        + "\n".join(f"- {line}" for line in _web_lines[:4])
-                    )
-                    _web_urls = _web_result.get("scanned_urls", [])
-                    if _web_urls:
-                        _web_context += "\nSources: " + ", ".join(_web_urls[:3])
-                    system_parts.append(_web_context)
-                    # Emit source URLs for widget display
-                    _findings = _web_result.get("findings", [])
-                    if isinstance(_findings, list):
-                        for _idx, _row in enumerate(_findings[:4], start=1):
-                            if isinstance(_row, dict):
-                                _src = f"{_row.get('domain', '')} {_row.get('url', '')}".strip()
-                                if _src:
-                                    print(f"source_{_idx}={_src}")
-                    logger.info(
-                        "Web search augmented context for query: %s (%d results)",
-                        text[:80],
-                        len(_web_lines),
-                    )
-                else:
-                    logger.warning(
-                        "Web search returned no summary lines for query: %s", text[:80]
-                    )
-            except (ImportError, OSError, RuntimeError, ValueError) as exc:
-                logger.warning(
-                    "Web search augmentation failed for %r: %s", text[:80], exc
-                )
-
-        # --- Finalize system prompt with context-aware instructions ---
-        if _web_searched:
-            system_parts.append(
-                "Instructions: Reference the user's known facts and memories when relevant. "
-                "If the user asks about something you have facts for, use those facts directly. "
-                "You have web search results above -- use them to give current, accurate answers. "
-                "Cite the source when using web search results. "
-                "If you don't have relevant information, say so honestly. "
-                "Do not re-introduce yourself unless explicitly asked."
-            )
-        elif _web_attempted:
-            system_parts.append(
-                "Instructions: Reference the user's known facts and memories when relevant. "
-                "If the user asks about something you have facts for, use those facts directly. "
-                "Answer the question using your knowledge. "
-                "Do NOT say you cannot access the web or that you are not wired for web access. "
-                "Simply provide the best answer you can. "
-                "Do not re-introduce yourself unless explicitly asked."
-            )
-        else:
-            system_parts.append(
-                "Instructions: Reference the user's known facts and memories when relevant. "
-                "If the user asks about something you have facts for, use those facts directly. "
-                "Do NOT say you cannot access the web, the internet, or that it is outside your protocol. "
-                "If you don't have relevant information, say so honestly. "
-                "Do not re-introduce yourself unless explicitly asked."
-            )
-        system_prompt = "\n\n".join(system_parts)
-
-        if (
-            _web_attempted
-            and not _web_searched
-            and _requires_fresh_web_confirmation(text)
-        ):
-            print("intent=web_confirmation_unavailable")
-            print(
-                "reason=Unable to fetch current web results right now. Please retry or check network access."
-            )
-            return 1
-
-        # --- Dynamic max_tokens based on query complexity ---
-        _max_tokens = _MAX_TOKENS_BY_ROUTE.get(_route, 512)
-        if _web_searched:
-            _max_tokens = max(
-                _max_tokens, 768
-            )  # Ensure enough tokens for web-augmented responses
-
-        # --- Build messages with conversation history ---
-        _hist = _get_history_messages()
-        _continuity_instruction = _conversation_continuity_instruction(
-            _llm_model, len(_hist)
-        )
-        if _continuity_instruction:
-            system_parts.append(_continuity_instruction)
-            system_prompt = "\n\n".join(system_parts)
-        # Don't include the current query in history (it goes as the main query)
-        _hist_tuples = tuple((m["role"], m["content"]) for m in _hist)
-        _add_to_history("user", text)
-        try:
-            result: QueryResult = bus.dispatch(
-                QueryCommand(
-                    query=text,
-                    system_prompt=system_prompt,
-                    max_tokens=_max_tokens,
-                    model=_llm_model,
-                    history=_hist_tuples,
-                )
-            )
-            _response = result.text.strip()
-            if result.return_code != 0:
-                print("intent=llm_unavailable")
-                print(f"reason={_response or 'LLM gateway not available.'}")
-                rc = 1
-            elif _response:
-                _add_to_history("assistant", _response)
-                _respond(_response)
-                print(f"model={result.model}")
-                print(f"provider={result.provider}")
-                _mark_routed_model(result.model, result.provider)
-                if _web_searched:
-                    print("web_search_used=true")
-                _learn_conversation(bus, text, _response, _route, result.model)
-                if speak:
-                    cmd_voice_say(text=_response)
-                rc = 0
-            else:
-                print("intent=llm_empty_response")
-                print("reason=LLM returned empty response.")
-                rc = 1
-        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
-            print("intent=llm_error")
-            print(f"reason={exc}")
-            if speak:
-                cmd_voice_say(
-                    text="I'm having trouble connecting to my language model. Please try again.",
-                )
-            rc = 1
 
     print(f"intent={intent}")
     print(f"status_code={rc}")
@@ -2089,9 +1740,7 @@ def cmd_voice_run_impl(
         # Runs in a daemon thread to avoid blocking the HTTP response — the
         # enriched pipeline may lazy-load embedding models on first call.
         if intent != "llm_conversation":
-            learn_response = (
-                _last_response or f"[{intent}] Command executed successfully."
-            )
+            learn_response = _last_response or f"[{intent}] Command executed successfully."
             # Capture bus reference on current thread (where repo_root override is active)
             try:
                 _learn_bus = get_bus()
@@ -2107,13 +1756,10 @@ def cmd_voice_run_impl(
                     topic=text[:100],
                 )
 
-                def _bg_learn(
-                    _bus: "CommandBus" = _learn_bus,
-                    _cmd: "LearnInteractionCommand" = _learn_cmd,
-                ) -> None:
+                def _bg_learn(_bus: "CommandBus" = _learn_bus, _cmd: "LearnInteractionCommand" = _learn_cmd) -> None:
                     try:
                         _bus.dispatch(_cmd)
-                    except Exception as exc:
+                    except (OSError, RuntimeError, ValueError) as exc:
                         logger.warning("Background enriched learning failed: %s", exc)
 
                 threading.Thread(target=_bg_learn, daemon=True).start()

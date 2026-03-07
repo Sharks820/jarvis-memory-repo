@@ -31,26 +31,26 @@ DEFAULT_SYNC_CONFIG = {
     # Whether auto-sync is enabled
     "enabled": True,
     # Sync intervals (seconds) — phone uses these as hints
-    "sync_interval_connected": 60,  # When desktop is reachable: sync every 60s
-    "sync_interval_disconnected": 300,  # When disconnected: try every 5 min
-    "sync_interval_background": 900,  # App in background: every 15 min
+    "sync_interval_connected": 60,       # When desktop is reachable: sync every 60s
+    "sync_interval_disconnected": 300,   # When disconnected: try every 5 min
+    "sync_interval_background": 900,     # App in background: every 15 min
     # Conflict resolution strategy
     # "most_recent" = timestamp-based (fairest), "desktop_wins" = legacy behavior
     "conflict_strategy": "most_recent",
     # Command queue behavior
     "max_offline_queue_age_hours": 168,  # Keep commands for up to 7 days
-    "retry_backoff_base_seconds": 30,  # Exponential backoff base
-    "retry_backoff_max_seconds": 1800,  # Max 30 min between retries
+    "retry_backoff_base_seconds": 30,    # Exponential backoff base
+    "retry_backoff_max_seconds": 1800,   # Max 30 min between retries
     # Data sync behavior
-    "sync_on_reconnect": True,  # Immediate full sync when connection restored
-    "sync_knowledge_graph": True,  # Sync KG nodes/edges
-    "sync_preferences": True,  # Sync user preferences
-    "sync_feedback": True,  # Sync response feedback
-    "sync_patterns": True,  # Sync usage patterns
+    "sync_on_reconnect": True,           # Immediate full sync when connection restored
+    "sync_knowledge_graph": True,        # Sync KG nodes/edges
+    "sync_preferences": True,            # Sync user preferences
+    "sync_feedback": True,               # Sync response feedback
+    "sync_patterns": True,               # Sync usage patterns
     # Phone autonomy settings
-    "phone_cache_responses": True,  # Cache command responses for offline use
-    "phone_cache_max_entries": 500,  # Max cached responses
-    "phone_cache_ttl_hours": 72,  # Cache entries expire after 72 hours
+    "phone_cache_responses": True,       # Cache command responses for offline use
+    "phone_cache_max_entries": 500,      # Max cached responses
+    "phone_cache_ttl_hours": 72,         # Cache entries expire after 72 hours
 }
 
 
@@ -64,9 +64,7 @@ class AutoSyncConfig:
     def __init__(self, config_path: Path | None = None) -> None:
         self._config: dict[str, Any] = dict(DEFAULT_SYNC_CONFIG)
         self._config_path = config_path
-        self._lock = (
-            threading.RLock()
-        )  # Reentrant: get_all_device_statuses calls get_device_status
+        self._lock = threading.RLock()  # Reentrant: get_all_device_statuses calls get_device_status
         self._last_heartbeat: dict[str, float] = {}  # device_id -> timestamp
         if config_path and config_path.exists():
             self._load()
@@ -129,34 +127,16 @@ class AutoSyncConfig:
                 "relay_url": self._config.get("relay_url", ""),
                 "lan_url": self._config.get("lan_url", ""),
                 "enabled": self._config.get("enabled", True),
-                "sync_interval_connected": self._config.get(
-                    "sync_interval_connected", 60
-                ),
-                "sync_interval_disconnected": self._config.get(
-                    "sync_interval_disconnected", 300
-                ),
-                "sync_interval_background": self._config.get(
-                    "sync_interval_background", 900
-                ),
-                "conflict_strategy": self._config.get(
-                    "conflict_strategy", "most_recent"
-                ),
-                "max_offline_queue_age_hours": self._config.get(
-                    "max_offline_queue_age_hours", 168
-                ),
-                "retry_backoff_base_seconds": self._config.get(
-                    "retry_backoff_base_seconds", 30
-                ),
-                "retry_backoff_max_seconds": self._config.get(
-                    "retry_backoff_max_seconds", 1800
-                ),
+                "sync_interval_connected": self._config.get("sync_interval_connected", 60),
+                "sync_interval_disconnected": self._config.get("sync_interval_disconnected", 300),
+                "sync_interval_background": self._config.get("sync_interval_background", 900),
+                "conflict_strategy": self._config.get("conflict_strategy", "most_recent"),
+                "max_offline_queue_age_hours": self._config.get("max_offline_queue_age_hours", 168),
+                "retry_backoff_base_seconds": self._config.get("retry_backoff_base_seconds", 30),
+                "retry_backoff_max_seconds": self._config.get("retry_backoff_max_seconds", 1800),
                 "sync_on_reconnect": self._config.get("sync_on_reconnect", True),
-                "phone_cache_responses": self._config.get(
-                    "phone_cache_responses", True
-                ),
-                "phone_cache_max_entries": self._config.get(
-                    "phone_cache_max_entries", 500
-                ),
+                "phone_cache_responses": self._config.get("phone_cache_responses", True),
+                "phone_cache_max_entries": self._config.get("phone_cache_max_entries", 500),
                 "phone_cache_ttl_hours": self._config.get("phone_cache_ttl_hours", 72),
                 "server_time": int(time.time()),
             }
@@ -183,4 +163,7 @@ class AutoSyncConfig:
     def get_all_device_statuses(self) -> list[dict[str, Any]]:
         """Return status for all known devices."""
         with self._lock:
-            return [self.get_device_status(did) for did in self._last_heartbeat]
+            return [
+                self.get_device_status(did)
+                for did in self._last_heartbeat
+            ]

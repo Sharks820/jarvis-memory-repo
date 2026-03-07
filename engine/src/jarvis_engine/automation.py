@@ -114,9 +114,7 @@ class AutomationExecutor:
                 continue
 
             rc, stdout, stderr = run_shell_command(
-                action.command,
-                timeout_s=90,
-                has_explicit_approval=has_explicit_approval,
+                action.command, timeout_s=90, has_explicit_approval=has_explicit_approval,
             )
             outcome = ActionOutcome(
                 title=action.title,

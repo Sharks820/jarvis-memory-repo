@@ -144,7 +144,9 @@ class TestContainmentOverrideHandler:
         db, lock = _make_db()
         log_dir = tmp_path / "forensic"
         handler = ContainmentOverrideHandler(tmp_path, db, lock, log_dir)
-        result = handler.handle(ContainmentOverrideCommand(level=1, action="recover"))
+        result = handler.handle(
+            ContainmentOverrideCommand(level=1, action="recover")
+        )
         assert isinstance(result, ContainmentOverrideResult)
         # Recovery at level 1 should succeed (no master password needed)
         assert result.success is True
@@ -247,9 +249,5 @@ class TestSecurityBriefingHandler:
         handler = SecurityBriefingHandler(tmp_path, db, lock, log_dir)
         result = handler.handle(SecurityBriefingCommand())
         assert isinstance(result, SecurityBriefingResult)
-        assert (
-            "Jarvis" in result.briefing
-            or "defense" in result.briefing.lower()
-            or result.briefing != ""
-        )
+        assert "Jarvis" in result.briefing or "defense" in result.briefing.lower() or result.briefing != ""
         assert result.message != ""

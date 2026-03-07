@@ -36,16 +36,10 @@ from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
 from jarvis_engine._constants import memory_db_path as _memory_db_path
 from jarvis_engine._constants import runtime_dir as _runtime_dir
-from jarvis_engine._shared import (
-    make_thread_aware_repo_root as _make_thread_aware_repo_root,
-)
+from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
-from jarvis_engine.owner_guard import (
-    read_owner_guard,
-    trust_mobile_device,
-    verify_master_password,
-)
+from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.mobile_routes import (
     AuthRoutesMixin,
     CommandRoutesMixin,
@@ -98,9 +92,7 @@ class _ThreadCapturingStdout:
     def write(self, s: str) -> int:
         buf = getattr(_thread_local, "capture_buf", None)
         if buf is not None:
-            max_chars = int(
-                getattr(_thread_local, "capture_max_chars", THREAD_CAPTURE_MAX_CHARS)
-            )
+            max_chars = int(getattr(_thread_local, "capture_max_chars", THREAD_CAPTURE_MAX_CHARS))
             used = int(getattr(_thread_local, "capture_chars", 0))
             remaining = max_chars - used
             if remaining <= 0:
@@ -164,7 +156,6 @@ _CORS_ALLOWED_ORIGIN_PATTERNS = [
 # Rate-limit configuration
 # ---------------------------------------------------------------------------
 
-
 class _RateLimitConfig:
     """Describes a sliding-window rate-limit bucket."""
 
@@ -183,22 +174,18 @@ class _RateLimitConfig:
         self.window_seconds = window_seconds
 
 
-_BOOTSTRAP_RATE = _RateLimitConfig(
-    "_bootstrap_attempts", "_bootstrap_rate_lock", 5, 60.0
-)
-_MASTER_PW_RATE = _RateLimitConfig(
-    "_master_pw_attempts", "_master_pw_rate_lock", 5, 60.0
-)
+_BOOTSTRAP_RATE = _RateLimitConfig("_bootstrap_attempts", "_bootstrap_rate_lock", 5, 60.0)
+_MASTER_PW_RATE = _RateLimitConfig("_master_pw_attempts", "_master_pw_rate_lock", 5, 60.0)
 _API_RATE_NORMAL = _RateLimitConfig("_api_rate_normal", "_api_rate_lock", 120, 60.0)
-_API_RATE_EXPENSIVE = _RateLimitConfig(
-    "_api_rate_expensive", "_api_rate_lock", 10, 60.0
-)
+_API_RATE_EXPENSIVE = _RateLimitConfig("_api_rate_expensive", "_api_rate_lock", 10, 60.0)
 
 _EXPENSIVE_PATHS = {"/command", "/self-heal", "/auth/login", "/feedback"}
 
 # Public endpoints with no body and no auth — skip the full security pipeline.
 # Rate limiting already protects these from abuse.
 _PUBLIC_SAFE_PATHS = frozenset({"/health", "/cert-fingerprint"})
+
+
 
 
 def _detect_lan_ips() -> list[str]:
@@ -239,9 +226,9 @@ def _build_san_string(extra_ips: list[str] | None = None) -> str:
     return ",".join(entries)
 
 
-def _ensure_tls_cert(
-    security_dir: Path, *, extra_ips: list[str] | None = None
-) -> tuple[str | None, str | None]:
+
+
+def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) -> tuple[str | None, str | None]:
     """Generate a self-signed TLS certificate + key if they don't exist.
 
     Uses ``openssl`` via subprocess.  Returns ``(cert_path, key_path)`` on
@@ -285,33 +272,21 @@ def _ensure_tls_cert(
         ext_file.write_text(ext_content, encoding="utf-8")
         subprocess.run(
             [
-                "openssl",
-                "req",
+                "openssl", "req",
                 "-x509",
-                "-newkey",
-                "rsa:2048",
-                "-keyout",
-                str(key_path),
-                "-out",
-                str(cert_path),
-                "-days",
-                "365",
+                "-newkey", "rsa:2048",
+                "-keyout", str(key_path),
+                "-out", str(cert_path),
+                "-days", "365",
                 "-nodes",
-                "-config",
-                str(ext_file),
-                "-extensions",
-                "v3_req",
+                "-config", str(ext_file),
+                "-extensions", "v3_req",
             ],
             check=True,
             capture_output=True,
             timeout=30,
         )
-    except (
-        FileNotFoundError,
-        subprocess.CalledProcessError,
-        subprocess.TimeoutExpired,
-        OSError,
-    ) as exc:
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("TLS cert generation failed (openssl not available?): %s", exc)
         # Clean up partial files
         for p in (cert_path, key_path, ext_file):
@@ -319,9 +294,7 @@ def _ensure_tls_cert(
                 if p.exists():
                     p.unlink()
             except OSError as cleanup_exc:
-                logger.debug(
-                    "Failed to clean up partial TLS file %s: %s", p, cleanup_exc
-                )
+                logger.debug("Failed to clean up partial TLS file %s: %s", p, cleanup_exc)
         return None, None
     finally:
         # Clean up the temporary extension file
@@ -332,11 +305,7 @@ def _ensure_tls_cert(
             logger.debug("Failed to clean up TLS extension file: %s", cleanup_exc)
 
     if cert_path.exists() and key_path.exists():
-        logger.info(
-            "Generated self-signed TLS certificate with SAN=%s: %s",
-            san_string,
-            cert_path,
-        )
+        logger.info("Generated self-signed TLS certificate with SAN=%s: %s", san_string, cert_path)
         return str(cert_path), str(key_path)
 
     return None, None
@@ -345,6 +314,8 @@ def _ensure_tls_cert(
 def _unescape_response(text: str) -> str:
     """Reverse the ``response=`` line escaping applied by the CLI."""
     return text.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+
+
 
 
 class MobileIngestServer(ThreadingHTTPServer):
@@ -404,17 +375,13 @@ class MobileIngestServer(ThreadingHTTPServer):
         try:
             import sqlite3 as _sec_sqlite3
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
-
             security_db_path = self.repo_root / ".planning" / "brain" / "security.db"
             security_db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._security_db = _sec_sqlite3.connect(
-                str(security_db_path), check_same_thread=False
-            )
+            self._security_db = _sec_sqlite3.connect(str(security_db_path), check_same_thread=False)
             _configure_db(self._security_db)
             self._security_write_lock = threading.Lock()
             forensic_dir = _runtime_dir(self.repo_root) / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
-
             def _rotate_signing_key(new_key: str) -> None:
                 self.signing_key = new_key
                 logger.warning("Server signing key rotated by containment engine")
@@ -427,10 +394,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
         except Exception as exc:
-            logger.error(
-                "SecurityOrchestrator init FAILED — server will reject non-essential requests: %s",
-                exc,
-            )
+            logger.error("SecurityOrchestrator init FAILED — server will reject non-essential requests: %s", exc)
             self.security = None
             self._security_degraded = True
 
@@ -440,7 +404,6 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._session_degraded: bool = False
         try:
             from jarvis_engine.security.owner_session import OwnerSessionManager
-
             self.owner_session = OwnerSessionManager(
                 session_timeout=int(os.environ.get("JARVIS_SESSION_TIMEOUT", "1800")),
             )
@@ -449,10 +412,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             if self.security is not None:
                 self.security.owner_session = self.owner_session
         except Exception as exc:
-            logger.error(
-                "OwnerSessionManager init FAILED — session auth will be unavailable: %s",
-                exc,
-            )
+            logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
             self._session_degraded = True
 
@@ -579,12 +539,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                         ts = float(entry.get("ts", 0.0))
                         if nonce and ts >= cutoff:
                             self.nonce_seen[nonce] = ts
-                    except (
-                        json.JSONDecodeError,
-                        TypeError,
-                        ValueError,
-                        AttributeError,
-                    ):
+                    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
                         logger.debug("Skipping malformed nonce cache entry")
                         continue
         except OSError:
@@ -603,9 +558,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             self._nonce_cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(tmp, "w", encoding="utf-8") as f:
                 for nonce, ts in snapshot.items():
-                    f.write(
-                        json.dumps({"nonce": nonce, "ts": ts}, ensure_ascii=True) + "\n"
-                    )
+                    f.write(json.dumps({"nonce": nonce, "ts": ts}, ensure_ascii=True) + "\n")
             os.replace(str(tmp), str(self._nonce_cache_path))
         except OSError:
             logger.warning("Failed to persist nonce cache to disk")
@@ -648,13 +601,10 @@ class MobileIngestServer(ThreadingHTTPServer):
                     conflict_strategy = "most_recent"
                     if self._auto_sync_config is not None:
                         conflict_strategy = self._auto_sync_config.get(
-                            "conflict_strategy",
-                            "most_recent",
+                            "conflict_strategy", "most_recent",
                         )
                     self._sync_engine = SyncEngine(
-                        sync_db,
-                        sync_lock,
-                        device_id="desktop",
+                        sync_db, sync_lock, device_id="desktop",
                         conflict_strategy=conflict_strategy,
                     )
                 except (_sqlite3.Error, OSError) as exc:
@@ -686,12 +636,12 @@ class MobileIngestServer(ThreadingHTTPServer):
                 return None
             try:
                 from jarvis_engine.memory.engine import MemoryEngine
-
                 self._memory_engine = MemoryEngine(db_path)
                 logger.info("MemoryEngine lazy-initialized for mobile API metrics")
             except Exception as exc:
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
+
 
 
 class MobileIngestHandler(
@@ -707,6 +657,12 @@ class MobileIngestHandler(
 ):
     server: MobileIngestServer  # type: ignore[assignment]  # narrow from HTTPServer
     server_version = "JarvisMobileAPI/0.1"
+
+    # Credential endpoints contain passwords/tokens that look like base64
+    # — skip body injection scan for them (they have their own auth checks).
+    _BODY_SCAN_EXEMPT_PATHS = frozenset(
+        {"/bootstrap", "/auth/login", "/auth/logout", "/auth/lock", "/sync/push"}
+    )
 
     @property
     def _root(self) -> Path:
@@ -752,11 +708,7 @@ class MobileIngestHandler(
 
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:
         raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
-        accept_enc = (
-            self.headers.get("Accept-Encoding", "")
-            if hasattr(self, "headers") and self.headers
-            else ""
-        )
+        accept_enc = self.headers.get("Accept-Encoding", "") if hasattr(self, "headers") and self.headers else ""
         use_gzip = "gzip" in accept_enc and len(raw) > 256
         encoded = _gzip_mod.compress(raw, compresslevel=6) if use_gzip else raw
         self.send_response(status)
@@ -836,7 +788,7 @@ class MobileIngestHandler(
             response_text = response_text[:MAX_COMMAND_RESPONSE_CHARS]
 
         response_chunks = [
-            response_text[i : i + MAX_COMMAND_RESPONSE_CHUNK_CHARS]
+            response_text[i:i + MAX_COMMAND_RESPONSE_CHUNK_CHARS]
             for i in range(0, len(response_text), MAX_COMMAND_RESPONSE_CHUNK_CHARS)
         ][:MAX_COMMAND_RESPONSE_CHUNKS]
 
@@ -1000,9 +952,7 @@ class MobileIngestHandler(
                 # Install thread-aware repo_root if not already done
                 if not getattr(main_mod, "_repo_root_patched", False):
                     _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
-                    main_mod.repo_root = _make_thread_aware_repo_root(
-                        _orig, _thread_local
-                    )  # type: ignore[assignment]
+                    main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
                     main_mod._repo_root_patched = True  # type: ignore[attr-defined]
 
                 # Per-thread stdout capture — concurrent requests run in parallel.
@@ -1081,9 +1031,7 @@ class MobileIngestHandler(
                 "error_code": "" if rc == 0 else "command_failed",
                 "category": "" if rc == 0 else "execution",
                 "retryable": rc != 0,
-                "user_hint": ""
-                if rc == 0
-                else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
+                "user_hint": "" if rc == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
             }
 
         cmd = [
@@ -1140,12 +1088,8 @@ class MobileIngestHandler(
                 status_code="500",
             )
 
-        stdout_lines = [
-            line.strip() for line in result.stdout.splitlines() if line.strip()
-        ]
-        stderr_lines = [
-            line.strip() for line in result.stderr.splitlines() if line.strip()
-        ]
+        stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         intent = ""
         reason = ""
         response_text = ""
@@ -1180,28 +1124,18 @@ class MobileIngestHandler(
             "stdout_tail": normalized["stdout_tail"],
             "stdout_truncated": normalized["stdout_truncated"],
             "stderr_tail": stderr_lines[-20:],
-            "error": ""
-            if result.returncode == 0
-            else (reason or "Command execution failed."),
+            "error": "" if result.returncode == 0 else (reason or "Command execution failed."),
             "error_code": "" if result.returncode == 0 else "command_failed",
             "category": "" if result.returncode == 0 else "execution",
             "retryable": result.returncode != 0,
-            "user_hint": ""
-            if result.returncode == 0
-            else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
+            "user_hint": "" if result.returncode == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
         }
 
     def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
         root: Path = getattr(self, "_root", None) or self.server.repo_root
         engine_dir = root / "engine"
         if not engine_dir.exists():
-            return {
-                "ok": False,
-                "error": "Engine directory not found.",
-                "command_exit_code": 2,
-                "stdout_tail": [],
-                "stderr_tail": [],
-            }
+            return {"ok": False, "error": "Engine directory not found.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": []}
         cmd = [sys.executable, "-m", "jarvis_engine.main", *args]
         env = os.environ.copy()
         env["PYTHONPATH"] = "src"
@@ -1221,24 +1155,12 @@ class MobileIngestHandler(
             stderr_partial = ""
             stdout_partial = ""
             if exc.stderr:
-                stderr_partial = (
-                    exc.stderr
-                    if isinstance(exc.stderr, str)
-                    else exc.stderr.decode("utf-8", errors="replace")
-                )
+                stderr_partial = exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode("utf-8", errors="replace")
             if exc.stdout:
-                stdout_partial = (
-                    exc.stdout
-                    if isinstance(exc.stdout, str)
-                    else exc.stdout.decode("utf-8", errors="replace")
-                )
+                stdout_partial = exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode("utf-8", errors="replace")
             logger.error("CLI subprocess timed out after %ss: %s", timeout_s, exc)
-            stderr_lines = [
-                line.strip() for line in stderr_partial.splitlines() if line.strip()
-            ]
-            stdout_lines = [
-                line.strip() for line in stdout_partial.splitlines() if line.strip()
-            ]
+            stderr_lines = [line.strip() for line in stderr_partial.splitlines() if line.strip()]
+            stdout_lines = [line.strip() for line in stdout_partial.splitlines() if line.strip()]
             return {
                 "ok": False,
                 "error": f"Command timed out after {timeout_s}s.",
@@ -1248,19 +1170,9 @@ class MobileIngestHandler(
             }
         except OSError as exc:
             logger.error("CLI subprocess failed: %s", exc)
-            return {
-                "ok": False,
-                "error": "Command execution failed.",
-                "command_exit_code": 2,
-                "stdout_tail": [],
-                "stderr_tail": [],
-            }
-        stdout_lines = [
-            line.strip() for line in result.stdout.splitlines() if line.strip()
-        ]
-        stderr_lines = [
-            line.strip() for line in result.stderr.splitlines() if line.strip()
-        ]
+            return {"ok": False, "error": "Command execution failed.", "command_exit_code": 2, "stdout_tail": [], "stderr_tail": []}
+        stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
         return {
             "ok": result.returncode == 0,
             "command_exit_code": result.returncode,
@@ -1272,10 +1184,7 @@ class MobileIngestHandler(
         self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": message})
 
     def _read_json_body(
-        self,
-        *,
-        max_content_length: int,
-        auth: bool = True,
+        self, *, max_content_length: int, auth: bool = True,
     ) -> tuple[dict[str, Any] | None, bytes | None]:
         # Use cached body from do_POST if available (already read for security scan)
         cached = getattr(self, "_cached_post_body", None)
@@ -1288,34 +1197,23 @@ class MobileIngestHandler(
             try:
                 content_length = int(raw_content_length)
             except (TypeError, ValueError):
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Invalid content length."},
-                )
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
                 return None, None
 
             try:
                 self.connection.settimeout(15.0)
             except OSError:
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."}
-                )
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."})
                 return None, None
             try:
                 body = self.rfile.read(content_length) if content_length > 0 else b"{}"
             except (OSError, ConnectionError):
-                self._write_json(
-                    HTTPStatus.BAD_REQUEST,
-                    {"ok": False, "error": "Connection reset during read."},
-                )
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection reset during read."})
                 return None, None
 
         min_length = 1 if auth else 0
         if content_length < min_length or content_length > max_content_length:
-            self._write_json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "Invalid content length."},
-            )
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
             return None, None
 
         if auth and not self._validate_auth(body):
@@ -1324,19 +1222,13 @@ class MobileIngestHandler(
         try:
             payload = json.loads(body.decode("utf-8"))
         except UnicodeDecodeError:
-            self._write_json(
-                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."}
-            )
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."})
             return None, None
         except json.JSONDecodeError:
-            self._write_json(
-                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."}
-            )
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."})
             return None, None
         if not isinstance(payload, dict):
-            self._write_json(
-                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."}
-            )
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."})
             return None, None
         return payload, body
 
@@ -1393,9 +1285,7 @@ class MobileIngestHandler(
         # All clients (mobile, desktop widget, tests) MUST produce the same
         # byte sequence: timestamp as UTF-8 string, newline, nonce as UTF-8,
         # newline, then the raw request body bytes (no trailing newline).
-        signing_material = (
-            ts_raw.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
-        )
+        signing_material = ts_raw.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
         expected_sig = hmac.new(
             self.server.signing_key.encode("utf-8"),
             signing_material,
@@ -1437,9 +1327,7 @@ class MobileIngestHandler(
                 self._unauthorized("Missing trusted mobile device id.")
                 return False
             if device_id not in trusted:
-                master_password = self.headers.get(
-                    "X-Jarvis-Master-Password", ""
-                ).strip()
+                master_password = self.headers.get("X-Jarvis-Master-Password", "").strip()
                 if master_password:
                     client_ip = str(self.client_address[0]).strip()
                     server = self.server
@@ -1448,10 +1336,7 @@ class MobileIngestHandler(
                             self.server.nonce_seen.pop(nonce, None)
                         self._write_json(
                             HTTPStatus.TOO_MANY_REQUESTS,
-                            {
-                                "ok": False,
-                                "error": "Too many master password attempts. Try again later.",
-                            },
+                            {"ok": False, "error": "Too many master password attempts. Try again later."},
                         )
                         return False
                     server.record_master_pw_attempt(client_ip)
@@ -1487,24 +1372,17 @@ class MobileIngestHandler(
             session_token = self.headers.get("X-Jarvis-Session", "").strip()
             if session_token:
                 # Session was explicitly provided but subsystem is down
-                self._write_json(
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                    {
-                        "ok": False,
-                        "error": "Service unavailable: session subsystem failed to initialize",
-                    },
-                )
+                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "Service unavailable: session subsystem failed to initialize",
+                })
                 return False
             # No session token — fall through to HMAC auth
             return self._validate_auth(body)
 
         session_token = self.headers.get("X-Jarvis-Session", "").strip()
         owner_session = getattr(self.server, "owner_session", None)
-        if (
-            session_token
-            and owner_session
-            and owner_session.validate_session(session_token)
-        ):
+        if session_token and owner_session and owner_session.validate_session(session_token):
             # Session token is valid — now enforce device trust
             owner_guard = read_owner_guard(self._root)
             if bool(owner_guard.get("enabled", False)):
@@ -1558,18 +1436,7 @@ class MobileIngestHandler(
     }
 
     # Paths exempt from rate limiting (public/unauthenticated GET endpoints)
-    _GET_RATE_LIMIT_EXEMPT = frozenset(
-        {"/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"}
-    )
-
-    # Credential endpoints whose request bodies must NOT be scanned for injection:
-    # they contain passwords/tokens/encrypted-blobs that are legitimate high-entropy
-    # strings and would trigger false positives in the base64-block pattern matcher.
-    # These endpoints have their own security (IP check, HMAC auth, rate limiting,
-    # password verification) so body-injection scanning adds no protection here.
-    _BODY_SCAN_EXEMPT_PATHS = frozenset(
-        {"/bootstrap", "/auth/login", "/auth/logout", "/auth/lock", "/sync/push"}
-    )
+    _GET_RATE_LIMIT_EXEMPT = frozenset({"/", "/quick", "/health", "/cert-fingerprint", "/auth/status", "/favicon.ico"})
 
     def _run_security_check(self, path: str, body: str = "") -> bool:
         """Run the security orchestrator pipeline and write error responses.
@@ -1580,8 +1447,6 @@ class MobileIngestHandler(
         _security = getattr(self.server, "security", None)
         if _security is not None:
             _client_ip = str(self.client_address[0])
-            # Credential endpoints contain passwords/tokens that look like base64
-            # — skip body injection scan for them (they have their own auth checks).
             _scan_body = "" if path in self._BODY_SCAN_EXEMPT_PATHS else body
             _sec_check = _security.check_request(
                 path=path,
@@ -1591,30 +1456,17 @@ class MobileIngestHandler(
                 user_agent=self.headers.get("User-Agent", ""),
             )
             if not _sec_check["allowed"]:
-                logger.warning(
-                    "Security pipeline blocked %s: %s",
-                    path,
-                    _sec_check.get("reason", "unknown"),
-                )
-                self._write_json(
-                    HTTPStatus.FORBIDDEN,
-                    {
-                        "ok": False,
-                        "error": "Request blocked by security policy",
-                    },
-                )
-                return False
-        elif getattr(self.server, "_security_degraded", False) and path not in (
-            "/health",
-            "/auth/login",
-        ):
-            self._write_json(
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                {
+                logger.warning("Security pipeline blocked %s: %s", path, _sec_check.get("reason", "unknown"))
+                self._write_json(HTTPStatus.FORBIDDEN, {
                     "ok": False,
-                    "error": "Service unavailable: security subsystem failed to initialize",
-                },
-            )
+                    "error": "Request blocked by security policy",
+                })
+                return False
+        elif getattr(self.server, "_security_degraded", False) and path not in ("/health", "/auth/login"):
+            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False,
+                "error": "Service unavailable: security subsystem failed to initialize",
+            })
             return False
         return True
 
@@ -1711,13 +1563,10 @@ class MobileIngestHandler(
         except (TypeError, ValueError):
             cl = 0
         if cl > _MAX_POST_BODY:
-            self._write_json(
-                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                {
-                    "ok": False,
-                    "error": "Request body too large.",
-                },
-            )
+            self._write_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {
+                "ok": False,
+                "error": "Request body too large.",
+            })
             return
         if cl > 0:
             try:
@@ -1784,18 +1633,12 @@ def run_mobile_server(
     tls_active = tls_cert is not None and tls_key is not None
 
     # --- Non-loopback bind guard --------------------------------------------------
-    allow_insecure_non_loopback = os.getenv(
-        "JARVIS_ALLOW_INSECURE_MOBILE_BIND", ""
-    ).strip().lower() in {
+    allow_insecure_non_loopback = os.getenv("JARVIS_ALLOW_INSECURE_MOBILE_BIND", "").strip().lower() in {
         "1",
         "true",
         "yes",
     }
-    if (
-        host not in {"127.0.0.1", "localhost", "::1"}
-        and not tls_active
-        and not allow_insecure_non_loopback
-    ):
+    if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active and not allow_insecure_non_loopback:
         raise RuntimeError(
             "Refusing non-loopback mobile bind without TLS. "
             "Set JARVIS_ALLOW_INSECURE_MOBILE_BIND=true only for trusted local testing."
@@ -1815,7 +1658,6 @@ def run_mobile_server(
     # Initialize auto-sync config (relay URLs, sync scheduling, phone autonomy)
     try:
         from jarvis_engine.sync.auto_sync import AutoSyncConfig
-
         config_path = repo_root / ".planning" / "sync" / "auto_sync_config.json"
         server._auto_sync_config = AutoSyncConfig(config_path)
         # Auto-detect and store LAN URL
@@ -1851,19 +1693,14 @@ def run_mobile_server(
                 conflict_strategy = "most_recent"
                 if server._auto_sync_config is not None:
                     conflict_strategy = server._auto_sync_config.get(
-                        "conflict_strategy",
-                        "most_recent",
+                        "conflict_strategy", "most_recent",
                     )
                 server._sync_engine = SyncEngine(
-                    sync_db,
-                    sync_lock,
-                    device_id="desktop",
+                    sync_db, sync_lock, device_id="desktop",
                     conflict_strategy=conflict_strategy,
                 )
             except (_sqlite3.Error, OSError) as exc:
-                logger.debug(
-                    "Sync engine init failed in create_app, closing DB: %s", exc
-                )
+                logger.debug("Sync engine init failed in create_app, closing DB: %s", exc)
                 sync_db.close()
                 raise
 
@@ -1902,15 +1739,11 @@ def run_mobile_server(
     logger.info("tls=%s", "enabled" if tls_active else "disabled")
     if host not in {"127.0.0.1", "localhost", "::1"} and not tls_active:
         logger.warning("mobile_api_non_loopback_without_tls")
-    logger.info(
-        "endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /auth/status, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /security/dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /auth/login, POST /auth/logout, POST /auth/lock, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal"
-    )
-
+    logger.info("endpoints: GET /, GET /quick, GET /health, GET /cert-fingerprint, GET /auth/status, GET /settings, GET /dashboard, GET /audit, GET /security/status, GET /security/dashboard, GET /activity, GET /intelligence/growth, POST /bootstrap, POST /auth/login, POST /auth/logout, POST /auth/lock, POST /ingest, POST /settings, POST /command, POST /sync/pull, POST /sync/push, GET /sync/status, POST /self-heal")
     # Pre-warm the CommandBus so the first user request doesn't pay cold start cost
     def _prewarm() -> None:
         try:
             import jarvis_engine.main as main_mod
-
             # Use thread-local override for prewarm thread
             _thread_local.repo_root_override = repo_root
             # Install thread-aware repo_root once
@@ -1921,7 +1754,6 @@ def run_mobile_server(
                 main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 from jarvis_engine._bus import get_bus
-
                 get_bus()
             finally:
                 _thread_local.repo_root_override = None
@@ -1929,12 +1761,9 @@ def run_mobile_server(
             _ThreadCapturingStdout.install()
             logger.info("CommandBus pre-warmed successfully")
         except Exception as exc:
-            logger.warning(
-                "CommandBus pre-warm failed (will warm on first request): %s", exc
-            )
+            logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
 
     import threading as _threading
-
     _threading.Thread(target=_prewarm, daemon=True, name="bus-prewarm").start()
 
     try:

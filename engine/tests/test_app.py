@@ -252,7 +252,6 @@ def _make_root(tmp_path: Path, *, with_db: bool = False) -> Path:
 # Happy-path tests
 # ===================================================================
 
-
 class TestCreateAppHappyPath:
     """create_app(root) should return a fully wired CommandBus."""
 
@@ -301,7 +300,6 @@ class TestCreateAppHappyPath:
 # No-DB path (adapter shim path)
 # ===================================================================
 
-
 class TestCreateAppNoDatabase:
     """When no jarvis_memory.db exists, memory handlers fall back to shims."""
 
@@ -329,7 +327,6 @@ class TestCreateAppNoDatabase:
 # MemoryEngine degradation branch
 # ===================================================================
 
-
 class TestMemoryEngineDegradation:
     """When MemoryEngine fails to initialize, the bus should still work."""
 
@@ -350,33 +347,25 @@ class TestMemoryEngineDegradation:
         assert bus.registered_count >= 40
         assert BrainStatusCommand in bus._handlers
 
-    def test_memory_engine_fallback_engine_is_none(
-        self, tmp_path: Path, caplog
-    ) -> None:
+    def test_memory_engine_fallback_engine_is_none(self, tmp_path: Path, caplog) -> None:
         """When MemoryEngine init fails, engine should be None; warning logged."""
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path, with_db=True)
 
-        with (
-            patch(
-                "jarvis_engine.memory.engine.MemoryEngine.__init__",
-                side_effect=RuntimeError("bad db"),
-            ),
-            caplog.at_level(logging.WARNING),
-        ):
+        with patch(
+            "jarvis_engine.memory.engine.MemoryEngine.__init__",
+            side_effect=RuntimeError("bad db"),
+        ), caplog.at_level(logging.WARNING):
             bus = create_app(root)
 
         # Should have logged a fallback warning
-        assert any(
-            "Failed to initialize MemoryEngine" in msg for msg in caplog.messages
-        )
+        assert any("Failed to initialize MemoryEngine" in msg for msg in caplog.messages)
 
 
 # ===================================================================
 # Gateway degradation branch
 # ===================================================================
-
 
 class TestGatewayDegradation:
     """When the Intelligence Gateway fails to initialize."""
@@ -386,23 +375,16 @@ class TestGatewayDegradation:
 
         root = _make_root(tmp_path)
 
-        with (
-            patch(
-                "jarvis_engine.gateway.models.ModelGateway.__init__",
-                side_effect=RuntimeError("gateway crash"),
-            ),
-            caplog.at_level(logging.WARNING),
-        ):
+        with patch(
+            "jarvis_engine.gateway.models.ModelGateway.__init__",
+            side_effect=RuntimeError("gateway crash"),
+        ), caplog.at_level(logging.WARNING):
             bus = create_app(root)
 
-        assert any(
-            "Failed to initialize Intelligence Gateway" in m for m in caplog.messages
-        )
+        assert any("Failed to initialize Intelligence Gateway" in m for m in caplog.messages)
         assert isinstance(bus, CommandBus)
 
-    def test_gateway_failure_registers_fallback_query_handler(
-        self, tmp_path: Path
-    ) -> None:
+    def test_gateway_failure_registers_fallback_query_handler(self, tmp_path: Path) -> None:
         """Without a gateway, QueryCommand still has a handler that returns error."""
         from jarvis_engine.app import create_app
         from jarvis_engine.commands.task_commands import QueryResult
@@ -421,9 +403,7 @@ class TestGatewayDegradation:
         assert result.return_code == 2
         assert "not initialized" in result.text.lower()
 
-    def test_gateway_failure_registers_fallback_persona_handler(
-        self, tmp_path: Path
-    ) -> None:
+    def test_gateway_failure_registers_fallback_persona_handler(self, tmp_path: Path) -> None:
         """Without a gateway, PersonaComposeCommand still has a fallback handler."""
         from jarvis_engine.app import create_app
         from jarvis_engine.commands.voice_commands import PersonaComposeResult
@@ -441,9 +421,7 @@ class TestGatewayDegradation:
         assert isinstance(result, PersonaComposeResult)
         assert "gateway not available" in result.message.lower()
 
-    def test_gateway_failure_does_not_break_other_registrations(
-        self, tmp_path: Path
-    ) -> None:
+    def test_gateway_failure_does_not_break_other_registrations(self, tmp_path: Path) -> None:
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path)
@@ -455,21 +433,13 @@ class TestGatewayDegradation:
             bus = create_app(root)
 
         # Non-gateway commands should all be present
-        for cmd_type in [
-            StatusCommand,
-            RunTaskCommand,
-            OpsBriefCommand,
-            RuntimeControlCommand,
-        ]:
-            assert cmd_type in bus._handlers, (
-                f"{cmd_type.__name__} missing after gateway failure"
-            )
+        for cmd_type in [StatusCommand, RunTaskCommand, OpsBriefCommand, RuntimeControlCommand]:
+            assert cmd_type in bus._handlers, f"{cmd_type.__name__} missing after gateway failure"
 
 
 # ===================================================================
 # Learning subsystem degradation branch
 # ===================================================================
-
 
 class TestLearningDegradation:
     """When ConversationLearningEngine fails to initialize."""
@@ -479,22 +449,15 @@ class TestLearningDegradation:
 
         root = _make_root(tmp_path)
 
-        with (
-            patch(
-                "jarvis_engine.learning.engine.ConversationLearningEngine.__init__",
-                side_effect=RuntimeError("learning crash"),
-            ),
-            caplog.at_level(logging.WARNING),
-        ):
+        with patch(
+            "jarvis_engine.learning.engine.ConversationLearningEngine.__init__",
+            side_effect=RuntimeError("learning crash"),
+        ), caplog.at_level(logging.WARNING):
             bus = create_app(root)
 
-        assert any(
-            "Failed to initialize Learning subsystem" in m for m in caplog.messages
-        )
+        assert any("Failed to initialize Learning subsystem" in m for m in caplog.messages)
 
-    def test_learning_failure_still_registers_learning_commands(
-        self, tmp_path: Path
-    ) -> None:
+    def test_learning_failure_still_registers_learning_commands(self, tmp_path: Path) -> None:
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path)
@@ -531,7 +494,6 @@ class TestLearningDegradation:
 # Sync subsystem degradation branch
 # ===================================================================
 
-
 class TestSyncDegradation:
     """When the Sync subsystem fails to initialize."""
 
@@ -549,10 +511,8 @@ class TestSyncDegradation:
 
         root = _make_root(tmp_path)
 
-        with (
-            patch.dict("sys.modules", self._remove_sync_modules()),
-            caplog.at_level(logging.WARNING),
-        ):
+        with patch.dict("sys.modules", self._remove_sync_modules()), \
+             caplog.at_level(logging.WARNING):
             bus = create_app(root)
 
         assert any("Failed to initialize Sync subsystem" in m for m in caplog.messages)
@@ -585,7 +545,6 @@ class TestSyncDegradation:
 # Harvesting subsystem degradation branch
 # ===================================================================
 
-
 class TestHarvestingDegradation:
     """When the Harvesting subsystem fails to initialize."""
 
@@ -594,22 +553,15 @@ class TestHarvestingDegradation:
 
         root = _make_root(tmp_path)
 
-        with (
-            patch(
-                "jarvis_engine.harvesting.harvester.KnowledgeHarvester.__init__",
-                side_effect=RuntimeError("harvest crash"),
-            ),
-            caplog.at_level(logging.WARNING),
-        ):
+        with patch(
+            "jarvis_engine.harvesting.harvester.KnowledgeHarvester.__init__",
+            side_effect=RuntimeError("harvest crash"),
+        ), caplog.at_level(logging.WARNING):
             bus = create_app(root)
 
-        assert any(
-            "Failed to initialize Harvesting subsystem" in m for m in caplog.messages
-        )
+        assert any("Failed to initialize Harvesting subsystem" in m for m in caplog.messages)
 
-    def test_harvesting_failure_still_registers_harvest_commands(
-        self, tmp_path: Path
-    ) -> None:
+    def test_harvesting_failure_still_registers_harvest_commands(self, tmp_path: Path) -> None:
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path)
@@ -629,7 +581,6 @@ class TestHarvestingDegradation:
 # Proactive subsystem degradation branch
 # ===================================================================
 
-
 class TestProactiveDegradation:
     """When the Proactive Intelligence subsystem fails to initialize."""
 
@@ -642,13 +593,9 @@ class TestProactiveDegradation:
             with caplog.at_level(logging.WARNING):
                 bus = create_app(root)
 
-        assert any(
-            "Failed to initialize Proactive subsystem" in m for m in caplog.messages
-        )
+        assert any("Failed to initialize Proactive subsystem" in m for m in caplog.messages)
 
-    def test_proactive_failure_still_registers_proactive_check(
-        self, tmp_path: Path
-    ) -> None:
+    def test_proactive_failure_still_registers_proactive_check(self, tmp_path: Path) -> None:
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path)
@@ -673,7 +620,6 @@ class TestProactiveDegradation:
 # ===================================================================
 # Multiple simultaneous degradations
 # ===================================================================
-
 
 class TestMultipleDegradations:
     """Multiple subsystems failing should still yield a functional bus."""
@@ -723,7 +669,6 @@ class TestMultipleDegradations:
 # Handler registration detail tests
 # ===================================================================
 
-
 class TestHandlerRegistrationDetails:
     """Verify specific handler-to-command mappings."""
 
@@ -734,12 +679,8 @@ class TestHandlerRegistrationDetails:
         bus = create_app(root)
 
         memory_cmds = [
-            BrainStatusCommand,
-            BrainContextCommand,
-            BrainCompactCommand,
-            BrainRegressionCommand,
-            IngestCommand,
-            MemorySnapshotCommand,
+            BrainStatusCommand, BrainContextCommand, BrainCompactCommand,
+            BrainRegressionCommand, IngestCommand, MemorySnapshotCommand,
             MemoryMaintenanceCommand,
         ]
         for cmd in memory_cmds:
@@ -752,12 +693,8 @@ class TestHandlerRegistrationDetails:
         bus = create_app(root)
 
         voice_cmds = [
-            VoiceListCommand,
-            VoiceSayCommand,
-            VoiceEnrollCommand,
-            VoiceVerifyCommand,
-            VoiceRunCommand,
-            VoiceListenCommand,
+            VoiceListCommand, VoiceSayCommand, VoiceEnrollCommand,
+            VoiceVerifyCommand, VoiceRunCommand, VoiceListenCommand,
         ]
         for cmd in voice_cmds:
             assert cmd in bus._handlers
@@ -769,14 +706,9 @@ class TestHandlerRegistrationDetails:
         bus = create_app(root)
 
         security_cmds = [
-            RuntimeControlCommand,
-            OwnerGuardCommand,
-            ConnectStatusCommand,
-            ConnectGrantCommand,
-            ConnectBootstrapCommand,
-            PhoneActionCommand,
-            PhoneSpamGuardCommand,
-            PersonaConfigCommand,
+            RuntimeControlCommand, OwnerGuardCommand, ConnectStatusCommand,
+            ConnectGrantCommand, ConnectBootstrapCommand, PhoneActionCommand,
+            PhoneSpamGuardCommand, PersonaConfigCommand,
         ]
         for cmd in security_cmds:
             assert cmd in bus._handlers
@@ -788,18 +720,14 @@ class TestHandlerRegistrationDetails:
         bus = create_app(root)
 
         knowledge_cmds = [
-            KnowledgeStatusCommand,
-            ContradictionListCommand,
-            ContradictionResolveCommand,
-            FactLockCommand,
+            KnowledgeStatusCommand, ContradictionListCommand,
+            ContradictionResolveCommand, FactLockCommand,
             KnowledgeRegressionCommand,
         ]
         for cmd in knowledge_cmds:
             assert cmd in bus._handlers
 
-    def test_cost_reduction_and_self_test_always_registered(
-        self, tmp_path: Path
-    ) -> None:
+    def test_cost_reduction_and_self_test_always_registered(self, tmp_path: Path) -> None:
         """CostReductionCommand and SelfTestCommand are outside try blocks."""
         from jarvis_engine.app import create_app
 
@@ -813,7 +741,6 @@ class TestHandlerRegistrationDetails:
 # ===================================================================
 # Edge cases
 # ===================================================================
-
 
 class TestCreateAppEdgeCases:
     """Edge cases and unusual inputs."""
@@ -834,9 +761,7 @@ class TestCreateAppEdgeCases:
         bus = create_app(root)
         assert isinstance(bus, CommandBus)
 
-    def test_create_app_called_twice_yields_independent_buses(
-        self, tmp_path: Path
-    ) -> None:
+    def test_create_app_called_twice_yields_independent_buses(self, tmp_path: Path) -> None:
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path)
@@ -845,9 +770,7 @@ class TestCreateAppEdgeCases:
         assert bus1 is not bus2
         assert bus1.registered_count == bus2.registered_count
 
-    def test_empty_db_file_triggers_memory_init_and_degrades(
-        self, tmp_path: Path, caplog
-    ) -> None:
+    def test_empty_db_file_triggers_memory_init_and_degrades(self, tmp_path: Path, caplog) -> None:
         """An empty .db file triggers the MemoryEngine path, which will fail gracefully."""
         from jarvis_engine.app import create_app
 
@@ -866,13 +789,10 @@ class TestCreateAppEdgeCases:
         from jarvis_engine.app import create_app
 
         root = _make_root(tmp_path)
-        with patch.dict(
-            os.environ,
-            {
-                "ANTHROPIC_API_KEY": "secret-key-123",
-                "GROQ_API_KEY": "",
-            },
-        ):
+        with patch.dict(os.environ, {
+            "ANTHROPIC_API_KEY": "secret-key-123",
+            "GROQ_API_KEY": "",
+        }):
             bus = create_app(root)
 
         # The bus should not expose API keys

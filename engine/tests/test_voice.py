@@ -21,7 +21,6 @@ from jarvis_engine.voice import (
 # choose_voice
 # ---------------------------------------------------------------------------
 
-
 def test_choose_voice_prefers_jarvis_like_patterns() -> None:
     voices = [
         "Microsoft Zira Desktop",
@@ -72,7 +71,6 @@ def test_choose_voice_default_profile() -> None:
 # _preferred_voice_patterns
 # ---------------------------------------------------------------------------
 
-
 def test_jarvis_like_prefers_british() -> None:
     patterns = _preferred_voice_patterns("jarvis_like")
     assert patterns[0] == "en-GB-RyanNeural"
@@ -87,7 +85,6 @@ def test_default_profile_patterns() -> None:
 # ---------------------------------------------------------------------------
 # _chunk_text_for_streaming
 # ---------------------------------------------------------------------------
-
 
 def test_chunk_empty_text() -> None:
     assert _chunk_text_for_streaming("") == []
@@ -138,7 +135,6 @@ def test_chunk_custom_sentences_per_chunk() -> None:
 # VoiceSpeakResult dataclass
 # ---------------------------------------------------------------------------
 
-
 def test_voice_speak_result() -> None:
     r = VoiceSpeakResult(voice_name="test", output_wav="/tmp/out.wav", message="done")
     assert r.voice_name == "test"
@@ -154,7 +150,6 @@ def test_voice_speak_result() -> None:
 # ---------------------------------------------------------------------------
 # _run_ps helper
 # ---------------------------------------------------------------------------
-
 
 class TestRunPs:
     """Tests for the _run_ps PowerShell helper."""
@@ -173,10 +168,7 @@ class TestRunPs:
         assert "powershell" in args[0][0][0]
         assert result.returncode == 0
 
-    @patch(
-        "jarvis_engine.voice.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(cmd="ps", timeout=30),
-    )
+    @patch("jarvis_engine.voice.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ps", timeout=30))
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
     def test_run_ps_timeout_raises(self, mock_kwargs, mock_run) -> None:
         from jarvis_engine.voice import _run_ps
@@ -188,7 +180,6 @@ class TestRunPs:
 # ---------------------------------------------------------------------------
 # _run_ps_encoded helper
 # ---------------------------------------------------------------------------
-
 
 class TestRunPsEncoded:
     """Tests for the encoded PowerShell helper."""
@@ -222,7 +213,6 @@ class TestRunPsEncoded:
 # list_windows_voices
 # ---------------------------------------------------------------------------
 
-
 class TestListWindowsVoices:
     """Tests for list_windows_voices with caching."""
 
@@ -232,10 +222,9 @@ class TestListWindowsVoices:
 
         _list_windows_voices_cached.cache_clear()
         mock_ps.return_value = subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
+            args=[], returncode=0,
             stdout="Microsoft David Desktop\nMicrosoft Zira Desktop\n",
-            stderr="",
+            stderr=""
         )
         voices = list_windows_voices(refresh=True)
         assert voices == ["Microsoft David Desktop", "Microsoft Zira Desktop"]
@@ -284,7 +273,6 @@ class TestListWindowsVoices:
 # list_edge_voices / _edge_tts_executable
 # ---------------------------------------------------------------------------
 
-
 class TestEdgeTts:
     """Tests for edge TTS voice listing and executable discovery."""
 
@@ -309,17 +297,14 @@ class TestEdgeTts:
     @patch("jarvis_engine.voice.subprocess.run")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
-    def test_list_edge_voices_parses_output(
-        self, mock_kwargs, mock_exe, mock_run
-    ) -> None:
+    def test_list_edge_voices_parses_output(self, mock_kwargs, mock_exe, mock_run) -> None:
         from jarvis_engine.voice import list_edge_voices, _list_edge_voices_cached
 
         _list_edge_voices_cached.cache_clear()
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
+            args=[], returncode=0,
             stdout="  en-GB-RyanNeural  Male\n  en-US-GuyNeural  Male\n  fr-FR-HenriNeural  Male\n",
-            stderr="",
+            stderr=""
         )
         voices = list_edge_voices(refresh=True)
         assert "en-GB-RyanNeural" in voices
@@ -329,9 +314,7 @@ class TestEdgeTts:
     @patch("jarvis_engine.voice.subprocess.run")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
-    def test_list_edge_voices_returns_empty_on_failure(
-        self, mock_kwargs, mock_exe, mock_run
-    ) -> None:
+    def test_list_edge_voices_returns_empty_on_failure(self, mock_kwargs, mock_exe, mock_run) -> None:
         from jarvis_engine.voice import list_edge_voices, _list_edge_voices_cached
 
         _list_edge_voices_cached.cache_clear()
@@ -346,14 +329,10 @@ class TestEdgeTts:
 # _choose_edge_voice
 # ---------------------------------------------------------------------------
 
-
 class TestChooseEdgeVoice:
     """Tests for _choose_edge_voice with voice selection logic."""
 
-    @patch(
-        "jarvis_engine.voice.list_edge_voices",
-        return_value=["en-GB-RyanNeural", "en-US-GuyNeural"],
-    )
+    @patch("jarvis_engine.voice.list_edge_voices", return_value=["en-GB-RyanNeural", "en-US-GuyNeural"])
     def test_choose_edge_voice_selects_british(self, mock_list) -> None:
         from jarvis_engine.voice import _choose_edge_voice
 
@@ -367,10 +346,7 @@ class TestChooseEdgeVoice:
         result = _choose_edge_voice(profile="jarvis_like")
         assert result == ""
 
-    @patch(
-        "jarvis_engine.voice.list_edge_voices",
-        return_value=["en-US-JennyNeural", "en-US-GuyNeural"],
-    )
+    @patch("jarvis_engine.voice.list_edge_voices", return_value=["en-US-JennyNeural", "en-US-GuyNeural"])
     def test_choose_edge_voice_custom_pattern(self, mock_list) -> None:
         from jarvis_engine.voice import _choose_edge_voice
 
@@ -382,7 +358,6 @@ class TestChooseEdgeVoice:
 # _speak_text_edge
 # ---------------------------------------------------------------------------
 
-
 class TestSpeakTextEdge:
     """Tests for edge TTS synthesis."""
 
@@ -391,9 +366,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
-    def test_speak_text_edge_no_output_wav(
-        self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
-    ) -> None:
+    def test_speak_text_edge_no_output_wav(self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play) -> None:
         from jarvis_engine.voice import _speak_text_edge
 
         mock_run.return_value = subprocess.CompletedProcess(
@@ -414,9 +387,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
-    def test_speak_text_edge_with_output_wav(
-        self, mock_kwargs, mock_exe, mock_voice, mock_run
-    ) -> None:
+    def test_speak_text_edge_with_output_wav(self, mock_kwargs, mock_exe, mock_voice, mock_run) -> None:
         from jarvis_engine.voice import _speak_text_edge
 
         mock_run.return_value = subprocess.CompletedProcess(
@@ -466,9 +437,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
-    def test_speak_text_edge_synthesis_failure(
-        self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
-    ) -> None:
+    def test_speak_text_edge_synthesis_failure(self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play) -> None:
         from jarvis_engine.voice import _speak_text_edge
 
         mock_run.return_value = subprocess.CompletedProcess(
@@ -488,9 +457,7 @@ class TestSpeakTextEdge:
     @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
     @patch("jarvis_engine.voice._win_hidden_subprocess_kwargs", return_value={})
-    def test_speak_text_edge_rate_clamping(
-        self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play
-    ) -> None:
+    def test_speak_text_edge_rate_clamping(self, mock_kwargs, mock_exe, mock_voice, mock_run, mock_play) -> None:
         """Rate values are clamped to +-50 percent."""
         from jarvis_engine.voice import _speak_text_edge
 
@@ -515,16 +482,11 @@ class TestSpeakTextEdge:
 # speak_text (top-level function)
 # ---------------------------------------------------------------------------
 
-
 class TestSpeakText:
     """Tests for the speak_text top-level function with engine selection."""
 
     @patch("jarvis_engine.voice._speak_text_edge")
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_speak_text_selects_edge_engine(self, mock_edge) -> None:
         from jarvis_engine.voice import speak_text
 
@@ -535,22 +497,11 @@ class TestSpeakText:
         mock_edge.assert_called_once()
         assert result.voice_name == "en-GB-RyanNeural"
 
-    @patch(
-        "jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("edge failed")
-    )
+    @patch("jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("edge failed"))
     @patch("jarvis_engine.voice._run_ps_encoded")
-    @patch(
-        "jarvis_engine.voice.list_windows_voices",
-        return_value=["Microsoft David Desktop"],
-    )
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
-    def test_speak_text_auto_falls_back_to_sapi(
-        self, mock_voices, mock_ps, mock_edge
-    ) -> None:
+    @patch("jarvis_engine.voice.list_windows_voices", return_value=["Microsoft David Desktop"])
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""}, clear=False)
+    def test_speak_text_auto_falls_back_to_sapi(self, mock_voices, mock_ps, mock_edge) -> None:
         from jarvis_engine.voice import speak_text
 
         mock_ps.return_value = subprocess.CompletedProcess(
@@ -560,14 +511,8 @@ class TestSpeakText:
         assert result.voice_name == "Microsoft David Desktop"
         assert result.message == "Voice output completed."
 
-    @patch(
-        "jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("edge failed")
-    )
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch("jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("edge failed"))
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_speak_text_edge_explicit_reraises(self, mock_edge) -> None:
         """When engine is explicitly 'edge', failures are not caught."""
         from jarvis_engine.voice import speak_text
@@ -578,11 +523,7 @@ class TestSpeakText:
     @patch("jarvis_engine.voice._run_ps_encoded")
     @patch("jarvis_engine.voice.list_windows_voices", return_value=[])
     @patch("jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("no edge"))
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_speak_text_no_voices_raises(self, mock_edge, mock_list, mock_ps) -> None:
         from jarvis_engine.voice import speak_text
 
@@ -590,11 +531,7 @@ class TestSpeakText:
             speak_text("Hello")
 
     @patch("jarvis_engine.voice._speak_text_edge_streamed")
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_speak_text_long_text_uses_streaming(self, mock_streamed) -> None:
         """Text > 180 chars without output_wav triggers streaming."""
         from jarvis_engine.voice import speak_text
@@ -608,11 +545,7 @@ class TestSpeakText:
         assert result.message == "streamed"
 
     @patch("jarvis_engine.voice._speak_text_edge")
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_speak_text_short_text_uses_non_streaming(self, mock_edge) -> None:
         """Text <= 180 chars uses regular (non-streaming) synthesis."""
         from jarvis_engine.voice import speak_text
@@ -625,11 +558,7 @@ class TestSpeakText:
         mock_edge.assert_called_once()
 
     @patch("jarvis_engine.voice._speak_text_edge")
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": "Jenny"},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": "Jenny"}, clear=False)
     def test_speak_text_env_voice_pattern(self, mock_edge) -> None:
         """JARVIS_VOICE_PATTERN env var is used when no custom pattern given."""
         from jarvis_engine.voice import speak_text
@@ -642,11 +571,7 @@ class TestSpeakText:
         assert call_kwargs["custom_voice_pattern"] == "Jenny"
 
     @patch("jarvis_engine.voice._speak_text_edge")
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": "Jenny"},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "edge", "JARVIS_VOICE_PATTERN": "Jenny"}, clear=False)
     def test_speak_text_custom_pattern_overrides_env(self, mock_edge) -> None:
         """Explicit custom_voice_pattern overrides JARVIS_VOICE_PATTERN env."""
         from jarvis_engine.voice import speak_text
@@ -663,59 +588,40 @@ class TestSpeakText:
 # _strip_markdown_for_speech
 # ---------------------------------------------------------------------------
 
-
 class TestStripMarkdownForSpeech:
     """Tests for markdown stripping before TTS."""
 
     def test_strips_bold(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
-        assert (
-            _strip_markdown_for_speech("This is **bold** text") == "This is bold text"
-        )
+        assert _strip_markdown_for_speech("This is **bold** text") == "This is bold text"
 
     def test_strips_italic(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
-        assert (
-            _strip_markdown_for_speech("This is *italic* text") == "This is italic text"
-        )
+        assert _strip_markdown_for_speech("This is *italic* text") == "This is italic text"
 
     def test_strips_bold_italic(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
         assert _strip_markdown_for_speech("***emphasis***") == "emphasis"
 
     def test_strips_headers(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
         assert _strip_markdown_for_speech("### My Header") == "My Header"
 
     def test_strips_markdown_links(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
-        assert (
-            _strip_markdown_for_speech("[click here](https://example.com)")
-            == "click here"
-        )
+        assert _strip_markdown_for_speech("[click here](https://example.com)") == "click here"
 
     def test_strips_bullets(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
         result = _strip_markdown_for_speech("- item one\n- item two")
         assert result == "item one\nitem two"
 
     def test_strips_backticks(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
-        assert (
-            _strip_markdown_for_speech("Use `print()` function")
-            == "Use print() function"
-        )
+        assert _strip_markdown_for_speech("Use `print()` function") == "Use print() function"
 
     def test_plain_text_unchanged(self) -> None:
         from jarvis_engine.voice import _strip_markdown_for_speech
-
         assert _strip_markdown_for_speech("Hello world") == "Hello world"
 
 
@@ -723,16 +629,13 @@ class TestStripMarkdownForSpeech:
 # _speak_text_edge_streamed
 # ---------------------------------------------------------------------------
 
-
 class TestSpeakTextEdgeStreamed:
     """Tests for streaming edge TTS synthesis."""
 
     @patch("jarvis_engine.voice._speak_text_edge")
     @patch("jarvis_engine.voice._choose_edge_voice", return_value="en-GB-RyanNeural")
     @patch("jarvis_engine.voice._edge_tts_executable", return_value="/usr/bin/edge-tts")
-    def test_short_text_delegates_to_non_streaming(
-        self, mock_exe, mock_voice, mock_edge
-    ) -> None:
+    def test_short_text_delegates_to_non_streaming(self, mock_exe, mock_voice, mock_edge) -> None:
         """When text has <= 1 chunk, streaming delegates to _speak_text_edge."""
         from jarvis_engine.voice import _speak_text_edge_streamed
 
@@ -777,7 +680,6 @@ class TestSpeakTextEdgeStreamed:
 # _play_audio_file
 # ---------------------------------------------------------------------------
 
-
 class TestPlayAudioFile:
     """Tests for the _play_audio_file helper."""
 
@@ -798,21 +700,13 @@ class TestPlayAudioFile:
 # SAPI speak_text (Windows TTS fallback)
 # ---------------------------------------------------------------------------
 
-
 class TestSpeakTextSapi:
     """Tests for the SAPI (System.Speech) fallback TTS path."""
 
     @patch("jarvis_engine.voice._run_ps_encoded")
-    @patch(
-        "jarvis_engine.voice.list_windows_voices",
-        return_value=["Microsoft David Desktop"],
-    )
+    @patch("jarvis_engine.voice.list_windows_voices", return_value=["Microsoft David Desktop"])
     @patch("jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("no edge"))
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_sapi_rate_clamping(self, mock_edge, mock_voices, mock_ps) -> None:
         """SAPI rate is clamped to [-10, 10]."""
         from jarvis_engine.voice import speak_text
@@ -826,19 +720,10 @@ class TestSpeakTextSapi:
         assert call_kwargs["env"]["JARVIS_VOICE_RATE"] == "10"
 
     @patch("jarvis_engine.voice._run_ps_encoded")
-    @patch(
-        "jarvis_engine.voice.list_windows_voices",
-        return_value=["Microsoft David Desktop"],
-    )
+    @patch("jarvis_engine.voice.list_windows_voices", return_value=["Microsoft David Desktop"])
     @patch("jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("no edge"))
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
-    def test_sapi_synthesis_failure_raises(
-        self, mock_edge, mock_voices, mock_ps
-    ) -> None:
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""}, clear=False)
+    def test_sapi_synthesis_failure_raises(self, mock_edge, mock_voices, mock_ps) -> None:
         from jarvis_engine.voice import speak_text
 
         mock_ps.return_value = subprocess.CompletedProcess(
@@ -848,16 +733,9 @@ class TestSpeakTextSapi:
             speak_text("Hello")
 
     @patch("jarvis_engine.voice._run_ps_encoded")
-    @patch(
-        "jarvis_engine.voice.list_windows_voices",
-        return_value=["Microsoft David Desktop"],
-    )
+    @patch("jarvis_engine.voice.list_windows_voices", return_value=["Microsoft David Desktop"])
     @patch("jarvis_engine.voice._speak_text_edge", side_effect=RuntimeError("no edge"))
-    @patch.dict(
-        "os.environ",
-        {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""},
-        clear=False,
-    )
+    @patch.dict("os.environ", {"JARVIS_TTS_ENGINE": "auto", "JARVIS_VOICE_PATTERN": ""}, clear=False)
     def test_sapi_output_wav(self, mock_edge, mock_voices, mock_ps) -> None:
         """When output_wav is specified, SAPI sets it in the env."""
         from jarvis_engine.voice import speak_text
@@ -876,7 +754,6 @@ class TestSpeakTextSapi:
 # ---------------------------------------------------------------------------
 # Additional choose_voice edge cases
 # ---------------------------------------------------------------------------
-
 
 class TestChooseVoiceExtended:
     """Additional edge cases for choose_voice."""
@@ -914,7 +791,6 @@ class TestChooseVoiceExtended:
 # Additional chunk_text edge cases
 # ---------------------------------------------------------------------------
 
-
 class TestChunkTextExtended:
     """Additional edge cases for _chunk_text_for_streaming."""
 
@@ -950,7 +826,6 @@ class TestChunkTextExtended:
 # Streaming error sentinel fix: only _ERROR_SENTINEL on error, not both
 # ---------------------------------------------------------------------------
 
-
 class TestStreamingErrorSentinel:
     """Tests for the streaming error sentinel fix in _speak_text_edge_streamed."""
 
@@ -968,9 +843,7 @@ class TestStreamingErrorSentinel:
         # First chunk succeeds, second fails
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
-            subprocess.CompletedProcess(
-                args=[], returncode=1, stdout="", stderr="synthesis error"
-            ),
+            subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="synthesis error"),
         ]
 
         # We need to intercept queue operations to verify
@@ -995,12 +868,8 @@ class TestStreamingErrorSentinel:
         # Verify _ERROR_SENTINEL was put but None was NOT put after error
         sentinel_count = sum(1 for item in items_put if item == "__ERROR__")
         none_count = sum(1 for item in items_put if item is None)
-        assert sentinel_count == 1, (
-            f"Expected exactly 1 error sentinel, got {sentinel_count}"
-        )
-        assert none_count == 0, (
-            f"Expected 0 None sentinels after error, got {none_count}"
-        )
+        assert sentinel_count == 1, f"Expected exactly 1 error sentinel, got {sentinel_count}"
+        assert none_count == 0, f"Expected 0 None sentinels after error, got {none_count}"
 
     @patch("jarvis_engine.voice._play_audio_file")
     @patch("jarvis_engine.voice.subprocess.run")
@@ -1047,7 +916,6 @@ class TestStreamingErrorSentinel:
 # _play_audio_file return code check
 # ---------------------------------------------------------------------------
 
-
 class TestPlayAudioFileReturnCode:
     """Tests for the _play_audio_file return code logging."""
 
@@ -1093,3 +961,4 @@ class TestPlayAudioFileReturnCode:
             warning_args = mock_logger.warning.call_args[0]
             # The stderr arg should be truncated to 200 chars
             assert len(warning_args[2]) == 200
+

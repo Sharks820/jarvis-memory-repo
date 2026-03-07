@@ -35,7 +35,9 @@ class TestOpsAutopilotHandler:
     """Tests for OpsAutopilotHandler."""
 
     @patch("jarvis_engine.ops_autopilot.run_ops_autopilot", return_value=0)
-    def test_handle_successful(self, mock_impl: MagicMock, tmp_path: Path) -> None:
+    def test_handle_successful(
+        self, mock_impl: MagicMock, tmp_path: Path
+    ) -> None:
         """OpsAutopilotHandler delegates to run_ops_autopilot and returns rc=0."""
         snap = tmp_path / ".planning" / "snapshot.json"
         snap.parent.mkdir(parents=True, exist_ok=True)
@@ -206,11 +208,7 @@ class TestGrowthEvalHandler:
         )
         history_path.write_text("", encoding="utf-8")
 
-        fake_run = {
-            "model": "test-model",
-            "score_pct": 75.0,
-            "ts": "2026-02-20T00:00:00+00:00",
-        }
+        fake_run = {"model": "test-model", "score_pct": 75.0, "ts": "2026-02-20T00:00:00+00:00"}
 
         handler = GrowthEvalHandler(root=tmp_path)
         cmd = GrowthEvalCommand(
@@ -219,17 +217,15 @@ class TestGrowthEvalHandler:
             history_path=history_path,
         )
 
-        with (
-            patch(
-                "jarvis_engine.growth_tracker.load_golden_tasks",
-                return_value=[{"task_id": "t1"}],
-            ) as mock_load,
-            patch(
-                "jarvis_engine.growth_tracker.run_eval",
-                return_value=fake_run,
-            ) as mock_run_eval,
-            patch("jarvis_engine.growth_tracker.append_history") as mock_append,
-        ):
+        with patch(
+            "jarvis_engine.growth_tracker.load_golden_tasks",
+            return_value=[{"task_id": "t1"}],
+        ) as mock_load, patch(
+            "jarvis_engine.growth_tracker.run_eval",
+            return_value=fake_run,
+        ) as mock_run_eval, patch(
+            "jarvis_engine.growth_tracker.append_history"
+        ) as mock_append:
             result = handler.handle(cmd)
 
         assert result.run == fake_run
@@ -281,12 +277,11 @@ class TestGrowthEvalHandler:
             history_path=history_path,
         )
 
-        with (
-            patch("jarvis_engine.growth_tracker.load_golden_tasks", return_value=[]),
-            patch(
-                "jarvis_engine.growth_tracker.run_eval",
-                side_effect=RuntimeError("connection refused"),
-            ),
+        with patch(
+            "jarvis_engine.growth_tracker.load_golden_tasks", return_value=[]
+        ), patch(
+            "jarvis_engine.growth_tracker.run_eval",
+            side_effect=RuntimeError("connection refused"),
         ):
             result = handler.handle(cmd)
 
@@ -320,13 +315,9 @@ class TestIntelligenceDashboardHandler:
 
         assert result.dashboard == fake_dashboard
         mock_build.assert_called_once_with(
-            tmp_path,
-            last_runs=10,
-            pref_tracker=None,
-            feedback_tracker=None,
-            usage_tracker=None,
-            kg=None,
-            engine=None,
+            tmp_path, last_runs=10,
+            pref_tracker=None, feedback_tracker=None, usage_tracker=None,
+            kg=None, engine=None,
         )
 
     @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
@@ -341,13 +332,9 @@ class TestIntelligenceDashboardHandler:
         handler.handle(cmd)
 
         mock_build.assert_called_once_with(
-            tmp_path,
-            last_runs=20,
-            pref_tracker=None,
-            feedback_tracker=None,
-            usage_tracker=None,
-            kg=None,
-            engine=None,
+            tmp_path, last_runs=20,
+            pref_tracker=None, feedback_tracker=None, usage_tracker=None,
+            kg=None, engine=None,
         )
 
     @patch("jarvis_engine.intelligence_dashboard.build_intelligence_dashboard")
@@ -507,9 +494,10 @@ class TestMissionRunHandler:
         handler = MissionRunHandler(root=tmp_path)
         cmd = MissionRunCommand(mission_id="m-456", auto_ingest=True)
 
-        with (
-            patch("jarvis_engine.memory_store.MemoryStore"),
-            patch("jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline),
+        with patch(
+            "jarvis_engine.memory_store.MemoryStore"
+        ), patch(
+            "jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline
         ):
             result = handler.handle(cmd)
 
@@ -559,9 +547,10 @@ class TestMissionRunHandler:
         handler = MissionRunHandler(root=tmp_path)
         cmd = MissionRunCommand(mission_id="m-err", auto_ingest=True)
 
-        with (
-            patch("jarvis_engine.memory_store.MemoryStore"),
-            patch("jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline),
+        with patch(
+            "jarvis_engine.memory_store.MemoryStore"
+        ), patch(
+            "jarvis_engine.ingest.IngestionPipeline", return_value=mock_pipeline
         ):
             result = handler.handle(cmd)
 

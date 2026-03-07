@@ -11,7 +11,6 @@ import pytest
 def _reset_parakeet_global():
     """Reset the _parakeet_model singleton so each test starts clean."""
     import jarvis_engine.stt as stt_mod
-
     stt_mod._parakeet_model = None
 
 
@@ -19,20 +18,12 @@ def _reset_parakeet_global():
 # P1/P4/P8. test_try_parakeet result assertions (parametrized)
 # ---------------------------------------------------------------------------
 
-
 @pytest.mark.parametrize(
     "mock_text, expected_text, expected_confidence",
     [
-        pytest.param(
-            "Hello world", "Hello world", 0.94, id="success_baseline_confidence"
-        ),
+        pytest.param("Hello world", "Hello world", 0.94, id="success_baseline_confidence"),
         pytest.param("", "", 0.0, id="empty_text_zero_confidence"),
-        pytest.param(
-            "some transcription",
-            "some transcription",
-            0.94,
-            id="non_empty_baseline_confidence",
-        ),
+        pytest.param("some transcription", "some transcription", 0.94, id="non_empty_baseline_confidence"),
     ],
 )
 def test_try_parakeet_result(mock_text, expected_text, expected_confidence):
@@ -66,7 +57,6 @@ def test_try_parakeet_result(mock_text, expected_text, expected_confidence):
 # P2. test_try_parakeet_import_error
 # ---------------------------------------------------------------------------
 
-
 def test_try_parakeet_import_error():
     """When onnx_asr is not installed, _try_parakeet returns None gracefully."""
     _reset_parakeet_global()
@@ -74,9 +64,7 @@ def test_try_parakeet_import_error():
     import jarvis_engine.stt as stt_mod
 
     # Remove onnx_asr from sys.modules if present, and make import fail
-    original_import = (
-        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
-    )
+    original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
     def failing_import(name, *args, **kwargs):
         if name == "onnx_asr":
@@ -92,7 +80,6 @@ def test_try_parakeet_import_error():
 # ---------------------------------------------------------------------------
 # P3. test_try_parakeet_model_error
 # ---------------------------------------------------------------------------
-
 
 def test_try_parakeet_model_error():
     """When load_model raises RuntimeError, _try_parakeet returns None."""
@@ -112,7 +99,6 @@ def test_try_parakeet_model_error():
 # ---------------------------------------------------------------------------
 # P5. test_try_parakeet_with_numpy_array
 # ---------------------------------------------------------------------------
-
 
 def test_try_parakeet_with_numpy_array():
     """Numpy array input should call recognize(audio, sample_rate=16000)."""
@@ -146,7 +132,6 @@ def test_try_parakeet_with_numpy_array():
 # P6. test_try_parakeet_with_file_path
 # ---------------------------------------------------------------------------
 
-
 def test_try_parakeet_with_file_path():
     """String file path input should call recognize(path) without sample_rate."""
     _reset_parakeet_global()
@@ -174,7 +159,6 @@ def test_try_parakeet_with_file_path():
 # ---------------------------------------------------------------------------
 # P7. test_try_parakeet_lazy_model_load
 # ---------------------------------------------------------------------------
-
 
 def test_try_parakeet_lazy_model_load():
     """Calling _try_parakeet twice should only call load_model once (singleton)."""

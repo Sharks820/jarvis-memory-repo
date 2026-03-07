@@ -43,112 +43,40 @@ _WEB_RESEARCH_DIR[5] = 1.0
 _NEUTRAL_DIR = np.ones(_DIM) / np.sqrt(_DIM)
 
 _MATH_KEYWORDS = {
-    "differential equation",
-    "eigenvalues",
-    "irrational",
-    "probability",
-    "logical proof",
-    "incompleteness",
-    "expected value",
-    "linear programming",
-    "compound interest",
-    "time complexity",
-    "gravitational",
-    "standard deviation",
-    "derivative",
-    "fourier transform",
-    "gaussian elimination",
-    "integral",
+    "differential equation", "eigenvalues", "irrational", "probability", "logical proof",
+    "incompleteness", "expected value", "linear programming", "compound interest",
+    "time complexity", "gravitational", "standard deviation", "derivative",
+    "fourier transform", "gaussian elimination", "integral",
 }
 _COMPLEX_KEYWORDS = {
-    "debug",
-    "binary search",
-    "architectural",
-    "race condition",
-    "cqrs",
-    "vulnerabilities",
-    "threading code",
-    "microservices",
-    "memory leak",
-    "redis vs memcached",
-    "refactor",
-    "unit tests",
-    "ci/cd",
-    "rate limiter",
-    "distributed caching",
+    "debug", "binary search", "architectural", "race condition", "cqrs", "vulnerabilities",
+    "threading code", "microservices", "memory leak", "redis vs memcached",
+    "refactor", "unit tests", "ci/cd", "rate limiter", "distributed caching",
     "authentication flow",
 }
 _ROUTINE_KEYWORDS = {
-    "summarize",
-    "rewrite",
-    "translate",
-    "format",
-    "key points",
-    "concise",
-    "markdown table",
-    "transcript",
-    "draft a professional email",
-    "grocery list",
-    "capital of",
-    "json to yaml",
-    "grammar",
-    "thank you note",
-    "csv",
+    "summarize", "rewrite", "translate", "format", "key points", "concise",
+    "markdown table", "transcript", "draft a professional email", "grocery list",
+    "capital of", "json to yaml", "grammar", "thank you note", "csv",
     "bullet point",
 }
 _PRIVATE_KEYWORDS = {
-    "calendar",
-    "medication",
-    "bill",
-    "dinner",
-    "appointment",
-    "medications",
-    "bills",
-    "doctor",
-    "next meeting",
-    "groceries last month",
-    "birthday",
-    "wifi password",
-    "tasks due",
-    "parking",
-    "oil change",
-    "morning routine",
-    "prescription refill",
-    "jarvis learn",
+    "calendar", "medication", "bill", "dinner", "appointment", "medications",
+    "bills", "doctor", "next meeting", "groceries last month", "birthday",
+    "wifi password", "tasks due", "parking", "oil change", "morning routine",
+    "prescription refill", "jarvis learn",
 }
 _CREATIVE_KEYWORDS = {
-    "short story",
-    "brainstorm",
-    "toast for",
-    "creative names",
-    "poem",
-    "fictional dialogue",
-    "product description",
-    "science fiction",
-    "motivational speech",
-    "metaphors",
-    "song lyrics",
-    "comedy sketch",
-    "gift ideas",
-    "blog post",
-    "mission statement",
+    "short story", "brainstorm", "toast for", "creative names", "poem",
+    "fictional dialogue", "product description", "science fiction",
+    "motivational speech", "metaphors", "song lyrics", "comedy sketch",
+    "gift ideas", "blog post", "mission statement",
 }
 _WEB_RESEARCH_KEYWORDS = {
-    "latest news",
-    "current price",
-    "super bowl",
-    "top headlines",
-    "weather forecast",
-    "stock market",
-    "iphone come out",
-    "news today",
-    "tesla model",
-    "presidential election",
-    "gas prices",
-    "score of the",
-    "best restaurants",
-    "coming out",
-    "exchange rate",
+    "latest news", "current price", "super bowl", "top headlines",
+    "weather forecast", "stock market", "iphone come out", "news today",
+    "tesla model", "presidential election", "gas prices", "score of the",
+    "best restaurants", "coming out", "exchange rate",
     # Ensure ALL 15 exemplars have keyword coverage (prevents neutral centroid drift)
 }
 
@@ -192,7 +120,6 @@ class MockEmbedService:
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture
 def mock_embed():
     return MockEmbedService()
@@ -201,18 +128,13 @@ def mock_embed():
 @pytest.fixture
 def classifier(mock_embed, tmp_path, monkeypatch):
     # Use a temp cache directory to avoid stale centroid caches from previous runs
-    monkeypatch.setattr(
-        IntentClassifier,
-        "_cache_dir",
-        staticmethod(lambda: str(tmp_path / "centroids")),
-    )
+    monkeypatch.setattr(IntentClassifier, "_cache_dir", staticmethod(lambda: str(tmp_path / "centroids")))
     return IntentClassifier(mock_embed)
 
 
 # ---------------------------------------------------------------------------
 # IntentClassifier routing tests
 # ---------------------------------------------------------------------------
-
 
 class TestIntentClassifierRouting:
     def test_classify_math_logic_query(self, classifier):
@@ -237,7 +159,9 @@ class TestIntentClassifierRouting:
         assert model == "kimi-k2"  # Fast API for simple tasks
 
     def test_classify_simple_private_query(self, classifier):
-        route, model, confidence = classifier.classify("what medications do I take")
+        route, model, confidence = classifier.classify(
+            "what medications do I take"
+        )
         # Privacy keyword triggers, so route is simple_private
         assert route == "simple_private"
 
@@ -267,7 +191,6 @@ class TestIntentClassifierRouting:
 # Privacy keyword tests
 # ---------------------------------------------------------------------------
 
-
 class TestPrivacyKeywords:
     def test_privacy_keyword_forces_local(self, classifier):
         """Even a complex-sounding query with a privacy keyword routes to local."""
@@ -282,17 +205,13 @@ class TestPrivacyKeywords:
         keywords_to_test = ["calendar", "password", "salary", "bank", "doctor"]
         for kw in keywords_to_test:
             route, model, confidence = classifier.classify(f"tell me about my {kw}")
-            assert route == "simple_private", (
-                f"Keyword '{kw}' did not force simple_private"
-            )
+            assert route == "simple_private", f"Keyword '{kw}' did not force simple_private"
             assert confidence == 1.0, f"Keyword '{kw}' did not return confidence 1.0"
 
     def test_privacy_keyword_word_boundary(self, classifier):
         """Words containing privacy keywords as substrings should NOT trigger privacy."""
         # "accountant" contains "account" but should NOT trigger privacy
-        route, model, confidence = classifier.classify(
-            "I need to hire an accountant for taxes"
-        )
+        route, model, confidence = classifier.classify("I need to hire an accountant for taxes")
         assert route != "simple_private" or confidence != 1.0, (
             "Substring 'account' inside 'accountant' should not trigger privacy keyword"
         )
@@ -313,15 +232,12 @@ class TestPrivacyKeywords:
 # Edge case tests
 # ---------------------------------------------------------------------------
 
-
 class TestEdgeCases:
     def test_ambiguous_query_defaults_to_local(self, classifier):
         """Nonsensical query produces low similarity, defaults to local."""
         route, model, confidence = classifier.classify("xyzzy plugh")
         assert route == "simple_private"
-        assert confidence < 0.5, (
-            f"Nonsensical query should have low confidence, got {confidence}"
-        )
+        assert confidence < 0.5, f"Nonsensical query should have low confidence, got {confidence}"
 
     def test_classify_returns_confidence(self, classifier):
         """Third tuple element is a float between 0 and 1."""
@@ -344,7 +260,6 @@ class TestEdgeCases:
 # RouteCommand backward compatibility tests
 # ---------------------------------------------------------------------------
 
-
 class TestRouteCommandCompat:
     def test_route_command_default_query_empty(self):
         cmd = RouteCommand()
@@ -362,7 +277,6 @@ class TestRouteCommandCompat:
 # ---------------------------------------------------------------------------
 # QueryCommand tests
 # ---------------------------------------------------------------------------
-
 
 class TestQueryCommand:
     def test_query_command_creation(self):

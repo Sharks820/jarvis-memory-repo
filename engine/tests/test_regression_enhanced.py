@@ -15,15 +15,12 @@ from jarvis_engine.knowledge.regression import RegressionChecker, _MAX_BACKUPS
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _make_mock_kg(tmp_path: Path) -> MagicMock:
     """Build a mock KnowledgeGraph with a real SQLite DB for backup tests."""
     db_path = tmp_path / "test_memory.db"
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS kg_nodes (node_id TEXT PRIMARY KEY, label TEXT)"
-    )
+    conn.execute("CREATE TABLE IF NOT EXISTS kg_nodes (node_id TEXT PRIMARY KEY, label TEXT)")
     conn.commit()
 
     engine_mock = MagicMock()
@@ -48,7 +45,6 @@ def _make_mock_kg(tmp_path: Path) -> MagicMock:
     kg.ensure_schema = MagicMock()
 
     import networkx as nx
-
     empty_g = nx.DiGraph()
     kg.to_networkx.return_value = empty_g
     kg._ensure_schema = MagicMock()
@@ -73,7 +69,6 @@ def _snapshot_with_labels(node_labels: dict[str, str], **overrides) -> dict:
 # ===================================================================
 # Backup tests
 # ===================================================================
-
 
 class TestBackupGraph:
     """Tests for RegressionChecker.backup_graph()."""
@@ -123,7 +118,6 @@ class TestBackupGraph:
 # ===================================================================
 # Node diff tests
 # ===================================================================
-
 
 class TestNodeDiff:
     """Tests for RegressionChecker.node_diff()."""
@@ -187,7 +181,6 @@ class TestNodeDiff:
 # ===================================================================
 # Compare with diff tests
 # ===================================================================
-
 
 class TestCompareIncludesDiff:
     """Tests for compare() including node_diff on regression."""

@@ -139,27 +139,15 @@ class TaskOrchestrator:
                 endpoint=request.endpoint,
                 model=chosen_model,
                 prompt=self._critique_prompt(output),
-                options={
-                    "num_ctx": 32768,
-                    "num_predict": 1200,
-                    "temperature": 0.0,
-                    "top_p": 0.9,
-                },
+                options={"num_ctx": 32768, "num_predict": 1200, "temperature": 0.0, "top_p": 0.9},
                 timeout_s=240,
             )
             if critique:
                 revised = self._single_pass_generate(
                     endpoint=request.endpoint,
                     model=chosen_model,
-                    prompt=self._revision_prompt(
-                        original=request.prompt, draft_code=output, critique=critique
-                    ),
-                    options={
-                        "num_ctx": 32768,
-                        "num_predict": 3072,
-                        "temperature": 0.03,
-                        "top_p": 0.9,
-                    },
+                    prompt=self._revision_prompt(original=request.prompt, draft_code=output, critique=critique),
+                    options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.03, "top_p": 0.9},
                     timeout_s=360,
                 )
                 if revised:
@@ -172,12 +160,7 @@ class TaskOrchestrator:
                         endpoint=request.endpoint,
                         model=chosen_model,
                         prompt=self._python_fix_prompt(output, syntax_issue),
-                        options={
-                            "num_ctx": 32768,
-                            "num_predict": 3072,
-                            "temperature": 0.0,
-                            "top_p": 0.85,
-                        },
+                        options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.0, "top_p": 0.85},
                         timeout_s=240,
                     )
                     if fixed and not self._python_syntax_issue(fixed):
@@ -238,9 +221,7 @@ class TaskOrchestrator:
                     reason=str(exc),
                 )
 
-        result = adapter.execute(
-            request.prompt, safe_output_path, request.quality_profile
-        )
+        result = adapter.execute(request.prompt, safe_output_path, request.quality_profile)
         return TaskResult(
             allowed=result.ok,
             provider=result.provider,
@@ -253,9 +234,7 @@ class TaskOrchestrator:
     def _model_candidates(self, primary: str) -> list[str]:
         raw_fallbacks = os.getenv("JARVIS_CODE_MODEL_FALLBACKS", "")
         env_fallbacks = [x.strip() for x in raw_fallbacks.split(",") if x.strip()]
-        candidates = [primary.strip()] + (
-            env_fallbacks if env_fallbacks else DEFAULT_FALLBACK_MODELS
-        )
+        candidates = [primary.strip()] + (env_fallbacks if env_fallbacks else DEFAULT_FALLBACK_MODELS)
         seen: set[str] = set()
         out: list[str] = []
         for candidate in candidates:
@@ -344,7 +323,6 @@ class TaskOrchestrator:
 
     def _python_syntax_issue(self, code: str) -> str:
         import ast
-
         try:
             ast.parse(code, filename="<jarvis_generated>")
             return ""
@@ -386,11 +364,7 @@ class TaskOrchestrator:
     ) -> tuple[dict[str, Any] | None, str]:
         try:
             data = call_ollama_generate(
-                endpoint,
-                model,
-                prompt,
-                options,
-                timeout_s=timeout_s,
+                endpoint, model, prompt, options, timeout_s=timeout_s,
             )
             return data, ""
         except json.JSONDecodeError:
@@ -417,9 +391,7 @@ class TaskOrchestrator:
         try:
             resolved.relative_to(self._root)
         except ValueError:
-            raise ValueError(
-                "Security policy: output path must remain inside the repository root."
-            )
+            raise ValueError("Security policy: output path must remain inside the repository root.")
         return resolved
 
     def _log(self, request: TaskRequest, result: TaskResult) -> None:
@@ -435,10 +407,7 @@ _PRIVILEGED_SHELL_ALLOWLIST = {"python", "python3", "pip", "pip3"}
 
 
 def run_shell_command(
-    command: str,
-    timeout_s: int = 60,
-    *,
-    has_explicit_approval: bool = False,
+    command: str, timeout_s: int = 60, *, has_explicit_approval: bool = False,
 ) -> tuple[int, str, str]:
     try:
         args = shlex.split(command, posix=False)
@@ -449,20 +418,12 @@ def run_shell_command(
     executable = Path(args[0]).stem.lower()
     if executable in _PRIVILEGED_SHELL_ALLOWLIST:
         if not has_explicit_approval:
-            return (
-                2,
-                "",
-                (
-                    f"Command '{args[0]}' requires explicit approval "
-                    f"(privileged allowlist: {sorted(_PRIVILEGED_SHELL_ALLOWLIST)})"
-                ),
+            return 2, "", (
+                f"Command '{args[0]}' requires explicit approval "
+                f"(privileged allowlist: {sorted(_PRIVILEGED_SHELL_ALLOWLIST)})"
             )
     elif executable not in _SHELL_COMMAND_ALLOWLIST:
-        return (
-            2,
-            "",
-            f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST | _PRIVILEGED_SHELL_ALLOWLIST)}",
-        )
+        return 2, "", f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST | _PRIVILEGED_SHELL_ALLOWLIST)}"
     try:
         proc = subprocess.run(
             args,

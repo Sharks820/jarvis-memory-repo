@@ -22,9 +22,7 @@ from jarvis_engine.intelligence_dashboard import (
 # ---------------------------------------------------------------------------
 
 
-def test_build_intelligence_dashboard_returns_expected_structure(
-    tmp_path: Path,
-) -> None:
+def test_build_intelligence_dashboard_returns_expected_structure(tmp_path: Path) -> None:
     """Dashboard output has all required top-level keys with correct types."""
     payload = build_intelligence_dashboard(tmp_path)
 
@@ -61,27 +59,9 @@ def test_build_intelligence_dashboard_with_history(tmp_path: Path) -> None:
     history_path = tmp_path / ".planning" / "capability_history.jsonl"
     history_path.parent.mkdir(parents=True, exist_ok=True)
     rows = [
-        {
-            "ts": "2026-02-20T00:00:00+00:00",
-            "model": "m1",
-            "score_pct": 62.0,
-            "run_sha256": "",
-            "prev_run_sha256": "",
-        },
-        {
-            "ts": "2026-02-21T00:00:00+00:00",
-            "model": "m1",
-            "score_pct": 66.0,
-            "run_sha256": "",
-            "prev_run_sha256": "",
-        },
-        {
-            "ts": "2026-02-22T00:00:00+00:00",
-            "model": "m1",
-            "score_pct": 70.0,
-            "run_sha256": "",
-            "prev_run_sha256": "",
-        },
+        {"ts": "2026-02-20T00:00:00+00:00", "model": "m1", "score_pct": 62.0, "run_sha256": "", "prev_run_sha256": ""},
+        {"ts": "2026-02-21T00:00:00+00:00", "model": "m1", "score_pct": 66.0, "run_sha256": "", "prev_run_sha256": ""},
+        {"ts": "2026-02-22T00:00:00+00:00", "model": "m1", "score_pct": 70.0, "run_sha256": "", "prev_run_sha256": ""},
     ]
     history_path.write_text(
         "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
@@ -162,12 +142,7 @@ def test_build_intelligence_dashboard_no_duplicate_unlocks(tmp_path: Path) -> No
     # Pre-existing achievements
     achievements = {
         "unlocked": [
-            {
-                "id": "score_50",
-                "label": "Reached 50%",
-                "score": 50.0,
-                "ts": "2026-01-01T00:00:00+00:00",
-            },
+            {"id": "score_50", "label": "Reached 50%", "score": 50.0, "ts": "2026-01-01T00:00:00+00:00"},
         ]
     }
     (planning / "intelligence_achievements.json").write_text(
@@ -177,10 +152,7 @@ def test_build_intelligence_dashboard_no_duplicate_unlocks(tmp_path: Path) -> No
     # History with score 55 (above 50 but below 60)
     history_path = planning / "capability_history.jsonl"
     history_path.write_text(
-        json.dumps(
-            {"ts": "2026-02-20T00:00:00+00:00", "model": "m1", "score_pct": 55.0}
-        )
-        + "\n",
+        json.dumps({"ts": "2026-02-20T00:00:00+00:00", "model": "m1", "score_pct": 55.0}) + "\n",
         encoding="utf-8",
     )
 
@@ -377,12 +349,7 @@ def test_load_achievements_valid_file(tmp_path: Path) -> None:
     planning.mkdir(parents=True, exist_ok=True)
     data = {
         "unlocked": [
-            {
-                "id": "score_50",
-                "label": "Reached 50%",
-                "score": 50.0,
-                "ts": "2026-01-01T00:00:00",
-            },
+            {"id": "score_50", "label": "Reached 50%", "score": 50.0, "ts": "2026-01-01T00:00:00"},
         ]
     }
     (planning / "intelligence_achievements.json").write_text(
