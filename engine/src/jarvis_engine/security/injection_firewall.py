@@ -105,12 +105,15 @@ _FAKE_HEADER_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 _ENCODING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    # Base64 blocks over 50 chars (likely encoded instructions)
-    ("base64_long_block", re.compile(r"[A-Za-z0-9+/]{50,}={0,2}")),
+    # Base64 blocks over 16 chars (lower threshold catches short attack payloads;
+    # 16 chars of base64 encodes ~12 bytes, enough for keywords like "ignore")
+    ("base64_block", re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")),
     # Hex sequences (e.g. \x41\x42 style)
     ("hex_escape_sequence", re.compile(r"(\\x[0-9a-fA-F]{2}){4,}")),
     # URL-encoded sequences (e.g. %69%67%6E%6F%72%65)
     ("url_encoded_sequence", re.compile(r"(%[0-9a-fA-F]{2}){4,}")),
+    # Hex blob sequences (e.g. 69676e6f7265...)
+    ("hex_blob", re.compile(r"\b(?:[0-9a-fA-F]{2}){8,}\b")),
 ]
 
 _DELIMITER_INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -227,26 +230,55 @@ def _detect_imperative_instructions(text: str) -> bool:
 
 
 def _detect_encoded_payloads(text: str) -> list[str]:
-    """Detect base64, hex, and URL-encoded payloads that decode to suspicious content."""
+    """Detect base64, hex, and URL-encoded payloads that decode to suspicious content.
+
+    The base64 threshold is intentionally low (16 chars) because real attack payloads
+    can be short — e.g. base64("ignore all previous instructions") is only 44 chars.
+    Using 50+ missed an entire class of injection vectors.  We decode all candidate
+    segments and check the *decoded* content, so false-positive rate stays low.
+    """
     findings: list[str] = []
 
-    # Try to decode base64 segments and check for instruction-like text
-    for match in re.finditer(r"[A-Za-z0-9+/]{50,}={0,2}", text):
+    # --- Base64 decode-and-check ---
+    # Minimum 16 chars of base64 to avoid noise from ordinary alphanumeric tokens.
+    for match in re.finditer(r"[A-Za-z0-9+/]{16,}={0,2}", text):
         segment = match.group()
+        # Add padding to ensure valid base64 format before decode attempt.
+        # base64 must be a multiple of 4 bytes; (-len % 4) gives the needed padding.
+        padded = segment + "=" * ((-len(segment)) % 4)
         try:
-            decoded = base64.b64decode(segment).decode("utf-8", errors="ignore")
+            decoded = base64.b64decode(padded).decode("utf-8", errors="ignore")
             # Check if decoded text contains injection keywords
-            if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override", "instructions")):
+            if any(
+                kw in decoded.lower()
+                for kw in (
+                    "ignore", "system", "admin", "override",
+                    "instructions", "jailbreak", "prompt",
+                )
+            ):
                 findings.append(f"base64_decoded_injection:{segment[:30]}...")
         except (ValueError, UnicodeDecodeError) as exc:
             logger.debug("Failed to decode base64 segment: %s", exc)
 
-    # URL-encoded blocks
+    # --- Hex blob decode-and-check (e.g. 69676e6f7265...) ---
+    for match in re.finditer(r"\b(?:[0-9a-fA-F]{2}){8,}\b", text):
+        segment = match.group()
+        try:
+            decoded = bytes.fromhex(segment).decode("utf-8", errors="ignore")
+            if any(
+                kw in decoded.lower()
+                for kw in ("ignore", "system", "admin", "override", "instructions")
+            ):
+                findings.append(f"hex_decoded_injection:{segment[:30]}...")
+        except (ValueError, UnicodeDecodeError) as exc:
+            logger.debug("Failed to decode hex segment: %s", exc)
+
+    # --- URL-encoded blocks (e.g. %69%67%6E%6F%72%65) ---
     for match in re.finditer(r"((%[0-9a-fA-F]{2}){4,})", text):
         segment = match.group(1)
         try:
             decoded = _url_unquote(segment)
-            if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override")):
+            if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override", "instructions")):
                 findings.append(f"url_decoded_injection:{segment[:30]}...")
         except (ValueError, UnicodeDecodeError) as exc:
             logger.debug("Failed to decode URL segment: %s", exc)
