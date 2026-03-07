@@ -17,6 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -1005,7 +1006,7 @@ class JarvisDesktopWidget(tk.Tk):
             self.launcher_win.deiconify()
             self.launcher_win.lift()
 
-    def _on_panel_configure(self, event) -> None:  # type: ignore[no-untyped-def]
+    def _on_panel_configure(self, event: tk.Event[Any]) -> None:
         """Handle panel move/resize -- debounce position save and snap to edge."""
         # Only process events from the root window itself, not child widgets
         if event.widget is not self:
@@ -1140,12 +1141,12 @@ class JarvisDesktopWidget(tk.Tk):
         self.launcher_win = launcher
         self.launcher_canvas = canvas
 
-    def _launcher_start_drag(self, event):  # type: ignore[no-untyped-def]
+    def _launcher_start_drag(self, event: tk.Event[Any]) -> None:
         self._drag_offset_x = int(event.x)
         self._drag_offset_y = int(event.y)
         self._launcher_dragged = False
 
-    def _launcher_drag(self, event):  # type: ignore[no-untyped-def]
+    def _launcher_drag(self, event: tk.Event[Any]) -> None:
         if self.launcher_win is None:
             return
         self._launcher_dragged = True
@@ -1153,7 +1154,7 @@ class JarvisDesktopWidget(tk.Tk):
         y = int(self.launcher_win.winfo_y() + event.y - self._drag_offset_y)
         self.launcher_win.geometry(f"+{x}+{y}")
 
-    def _launcher_release(self, _event):  # type: ignore[no-untyped-def]
+    def _launcher_release(self, _event: tk.Event[Any]) -> None:
         if self._launcher_dragged:
             self._save_launcher_position()
         else:
@@ -1188,14 +1189,14 @@ class JarvisDesktopWidget(tk.Tk):
         tray_thread = threading.Thread(target=icon.run, daemon=True)
         tray_thread.start()
 
-    def _tray_show_widget(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+    def _tray_show_widget(self, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Show Widget (also handles double-click)."""
         try:
             self.after(0, self._show_panel)
         except Exception:  # Widget may be destroyed
             logger.debug("Tray show-widget failed (widget may be destroyed)")
 
-    def _tray_voice_dictate(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+    def _tray_voice_dictate(self, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Voice Dictate."""
         try:
             self.after(0, self._show_panel)
@@ -1203,7 +1204,7 @@ class JarvisDesktopWidget(tk.Tk):
         except Exception:  # Widget may be destroyed
             logger.debug("Tray voice-dictate failed (widget may be destroyed)")
 
-    def _tray_ops_brief(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+    def _tray_ops_brief(self, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Ops Brief."""
         try:
             self.after(0, self._show_panel)
@@ -1211,7 +1212,7 @@ class JarvisDesktopWidget(tk.Tk):
         except Exception:  # Widget may be destroyed
             logger.debug("Tray ops-brief failed (widget may be destroyed)")
 
-    def _tray_quit(self, icon=None, item=None) -> None:  # type: ignore[no-untyped-def]
+    def _tray_quit(self, icon: Any = None, item: Any = None) -> None:
         """Tray menu: Quit."""
         try:
             self.after(0, self._confirm_exit)
@@ -1823,7 +1824,7 @@ class JarvisDesktopWidget(tk.Tk):
             highlightthickness=1,
         ).pack(fill=tk.X, padx=6, pady=(2, 0))
 
-    def _check(self, parent: tk.Widget, text: str, variable: tk.BooleanVar, cmd=None):  # type: ignore[no-untyped-def]
+    def _check(self, parent: tk.Widget, text: str, variable: tk.BooleanVar, cmd: Any = None) -> tk.Checkbutton:
         return tk.Checkbutton(
             parent,
             text=text,
@@ -1838,7 +1839,7 @@ class JarvisDesktopWidget(tk.Tk):
             font=("Segoe UI", 9),
         )
 
-    def _btn(self, parent: tk.Widget, text: str, command, color: str):  # type: ignore[no-untyped-def]
+    def _btn(self, parent: tk.Widget, text: str, command: Any, color: str) -> tk.Button:
         return tk.Button(
             parent,
             text=text,
@@ -1854,7 +1855,7 @@ class JarvisDesktopWidget(tk.Tk):
             cursor="hand2",
         )
 
-    def _btn_lg(self, parent: tk.Widget, text: str, command, color: str):  # type: ignore[no-untyped-def]
+    def _btn_lg(self, parent: tk.Widget, text: str, command: Any, color: str) -> tk.Button:
         """Larger variant of _btn for primary action buttons."""
         return tk.Button(
             parent,
@@ -1871,7 +1872,7 @@ class JarvisDesktopWidget(tk.Tk):
             cursor="hand2",
         )
 
-    def _on_command_enter(self, event):  # type: ignore[no-untyped-def]
+    def _on_command_enter(self, event: tk.Event[Any]) -> str | None:
         if event.state & 0x0001:  # Shift key pressed
             return None
         self._send_command_async()
@@ -2271,7 +2272,7 @@ class JarvisDesktopWidget(tk.Tk):
 
         self._thread(worker)
 
-    def _thread(self, fn) -> None:  # type: ignore[no-untyped-def]
+    def _thread(self, fn: Callable[..., Any]) -> None:
         threading.Thread(target=fn, daemon=True).start()
 
     def _on_tab_cycle_model(self, event: tk.Event[Any] | None = None) -> str:
