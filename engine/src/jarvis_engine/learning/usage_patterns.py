@@ -7,11 +7,21 @@ import sqlite3
 import threading
 from collections import Counter
 from datetime import datetime
+from typing import TypedDict
+
 from jarvis_engine._compat import UTC
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
 
 logger = logging.getLogger(__name__)
+
+
+class ContextPrediction(TypedDict):
+    """Result from :meth:`UsagePatternTracker.predict_context`."""
+
+    likely_route: str
+    common_topics: list[str]
+    interaction_count: int
 
 
 class UsagePatternTracker(LearningTrackerBase):
@@ -61,7 +71,7 @@ class UsagePatternTracker(LearningTrackerBase):
             )
             self._db.commit()
 
-    def predict_context(self, hour: int, day_of_week: int) -> dict:
+    def predict_context(self, hour: int, day_of_week: int) -> ContextPrediction:
         """Predict likely user context based on historical patterns.
 
         Returns dict with:

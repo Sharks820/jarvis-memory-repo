@@ -14,10 +14,42 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
+from typing import TypedDict
 
 from jarvis_engine.gateway.pricing import calculate_cost
 
 logger = logging.getLogger(__name__)
+
+
+class ModelCostEntry(TypedDict):
+    """Per-model cost breakdown entry."""
+
+    model: str
+    count: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
+class CostSummary(TypedDict):
+    """Result from :meth:`CostTracker.summary`."""
+
+    period_days: int
+    models: list[ModelCostEntry]
+    total_cost_usd: float
+
+
+class LocalCloudSummary(TypedDict):
+    """Result from :meth:`CostTracker.local_vs_cloud_summary`."""
+
+    period_days: int
+    local_count: int
+    cloud_count: int
+    failed_count: int
+    total_count: int
+    local_pct: float
+    cloud_cost_usd: float
+    failed_cost_usd: float
 
 _BATCH_SIZE = 10
 _FLUSH_INTERVAL_S = 30.0
@@ -150,7 +182,7 @@ class CostTracker:
             if len(self._buffer) >= _BATCH_SIZE:
                 self._flush_locked()
 
-    def summary(self, days: int = 30) -> dict:
+    def summary(self, days: int = 30) -> CostSummary:
         """Return per-model cost breakdown for the last N days.
 
         Returns dict with:
@@ -201,7 +233,7 @@ class CostTracker:
             "total_cost_usd": total_cost,
         }
 
-    def local_vs_cloud_summary(self, days: int = 30) -> dict:
+    def local_vs_cloud_summary(self, days: int = 30) -> LocalCloudSummary:
         """Return local (ollama) vs cloud query ratio for the last N days.
 
         Returns dict with:

@@ -202,7 +202,7 @@ class ActivityFeed:
             self._db.commit()
             return cur.rowcount
 
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, int]:
         """Return event count per category for the last 24 hours."""
         cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
         with self._lock:

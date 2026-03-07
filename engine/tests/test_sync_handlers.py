@@ -17,6 +17,8 @@ from jarvis_engine.handlers.sync_handlers import (
     SyncPushHandler,
     SyncStatusHandler,
 )
+from jarvis_engine.sync.engine import SyncEngine
+from jarvis_engine.sync.transport import SyncTransport
 
 ROOT = Path(".")
 
@@ -28,30 +30,30 @@ ROOT = Path(".")
 
 def test_pull_no_sync_engine() -> None:
     """Returns unavailable message when sync_engine is None."""
-    handler = SyncPullHandler(ROOT, sync_engine=None, transport=MagicMock())
+    handler = SyncPullHandler(ROOT, sync_engine=None, transport=MagicMock(spec=SyncTransport))
     result = handler.handle(SyncPullCommand(device_id="phone"))
     assert "not available" in result.message
 
 
 def test_pull_no_transport() -> None:
     """Returns unavailable message when transport is None."""
-    handler = SyncPullHandler(ROOT, sync_engine=MagicMock(), transport=None)
+    handler = SyncPullHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=None)
     result = handler.handle(SyncPullCommand(device_id="phone"))
     assert "not available" in result.message
 
 
 def test_pull_missing_device_id() -> None:
     """Returns error when device_id is empty."""
-    handler = SyncPullHandler(ROOT, sync_engine=MagicMock(), transport=MagicMock())
+    handler = SyncPullHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=MagicMock(spec=SyncTransport))
     result = handler.handle(SyncPullCommand(device_id=""))
     assert "device_id is required" in result.message
 
 
 def test_pull_compute_outgoing_failure() -> None:
     """Returns error when compute_outgoing raises."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.compute_outgoing.side_effect = RuntimeError("db locked")
-    handler = SyncPullHandler(ROOT, sync_engine=engine, transport=MagicMock())
+    handler = SyncPullHandler(ROOT, sync_engine=engine, transport=MagicMock(spec=SyncTransport))
     result = handler.handle(SyncPullCommand(device_id="phone"))
     assert "error" in result.message
     assert "sync pull failed" in result.message
@@ -59,9 +61,9 @@ def test_pull_compute_outgoing_failure() -> None:
 
 def test_pull_encryption_failure() -> None:
     """Returns error when transport.encrypt raises."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.compute_outgoing.return_value = {"changes": {}, "cursors": {}}
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.encrypt.side_effect = ValueError("bad key")
     handler = SyncPullHandler(ROOT, sync_engine=engine, transport=transport)
     result = handler.handle(SyncPullCommand(device_id="phone"))
@@ -71,12 +73,12 @@ def test_pull_encryption_failure() -> None:
 
 def test_pull_success_no_more() -> None:
     """Successful pull with fewer than 500 entries -- has_more is False."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.compute_outgoing.return_value = {
         "changes": {"memories": [{"id": 1}]},
         "cursors": {"memories": 42},
     }
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.encrypt.return_value = b"encrypted_bytes"
     handler = SyncPullHandler(ROOT, sync_engine=engine, transport=transport)
     result = handler.handle(SyncPullCommand(device_id="phone"))
@@ -90,12 +92,12 @@ def test_pull_success_no_more() -> None:
 
 def test_pull_success_has_more() -> None:
     """has_more is True when a changes category has >= 500 entries."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.compute_outgoing.return_value = {
         "changes": {"memories": list(range(500))},
         "cursors": {},
     }
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.encrypt.return_value = b"x"
     handler = SyncPullHandler(ROOT, sync_engine=engine, transport=transport)
     result = handler.handle(SyncPullCommand(device_id="phone"))
@@ -106,9 +108,9 @@ def test_pull_success_has_more() -> None:
 
 def test_pull_empty_changes() -> None:
     """Successful pull with empty changes dict."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.compute_outgoing.return_value = {"changes": {}, "cursors": {}}
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.encrypt.return_value = b""
     handler = SyncPullHandler(ROOT, sync_engine=engine, transport=transport)
     result = handler.handle(SyncPullCommand(device_id="d"))
@@ -119,9 +121,9 @@ def test_pull_empty_changes() -> None:
 
 def test_pull_missing_cursors_key() -> None:
     """When outgoing has no 'cursors' key, defaults to empty dict."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.compute_outgoing.return_value = {"changes": {}}
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.encrypt.return_value = b"data"
     handler = SyncPullHandler(ROOT, sync_engine=engine, transport=transport)
     result = handler.handle(SyncPullCommand(device_id="d"))
@@ -135,34 +137,34 @@ def test_pull_missing_cursors_key() -> None:
 
 
 def test_push_no_sync_engine() -> None:
-    handler = SyncPushHandler(ROOT, sync_engine=None, transport=MagicMock())
+    handler = SyncPushHandler(ROOT, sync_engine=None, transport=MagicMock(spec=SyncTransport))
     result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload="x"))
     assert "not available" in result.message
 
 
 def test_push_no_transport() -> None:
-    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=None)
+    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=None)
     result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload="x"))
     assert "not available" in result.message
 
 
 def test_push_missing_device_id() -> None:
-    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=MagicMock())
+    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=MagicMock(spec=SyncTransport))
     result = handler.handle(SyncPushCommand(device_id="", encrypted_payload="x"))
     assert "device_id is required" in result.message
 
 
 def test_push_missing_payload() -> None:
-    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=MagicMock())
+    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=MagicMock(spec=SyncTransport))
     result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload=""))
     assert "encrypted_payload is required" in result.message
 
 
 def test_push_decryption_failure() -> None:
     """Returns error when base64 decode or transport.decrypt fails."""
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.decrypt.side_effect = ValueError("bad token")
-    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=transport)
+    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=transport)
     payload = base64.b64encode(b"garbage").decode("ascii")
     result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload=payload))
     assert "decryption failed" in result.message
@@ -170,9 +172,9 @@ def test_push_decryption_failure() -> None:
 
 def test_push_apply_incoming_failure() -> None:
     """Returns error when apply_incoming raises."""
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.decrypt.return_value = {"changes": []}
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.apply_incoming.side_effect = RuntimeError("conflict")
     handler = SyncPushHandler(ROOT, sync_engine=engine, transport=transport)
     payload = base64.b64encode(b"data").decode("ascii")
@@ -182,9 +184,9 @@ def test_push_apply_incoming_failure() -> None:
 
 def test_push_success_no_errors() -> None:
     """Successful push with no errors."""
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.decrypt.return_value = {"changes": []}
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.apply_incoming.return_value = {
         "applied": 5,
         "conflicts_resolved": 1,
@@ -201,9 +203,9 @@ def test_push_success_no_errors() -> None:
 
 def test_push_success_with_errors() -> None:
     """Successful push that reports partial errors."""
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     transport.decrypt.return_value = {}
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.apply_incoming.return_value = {
         "applied": 3,
         "conflicts_resolved": 0,
@@ -220,9 +222,9 @@ def test_push_success_with_errors() -> None:
 
 def test_push_invalid_base64() -> None:
     """Non-base64 payload triggers decryption error."""
-    transport = MagicMock()
+    transport = MagicMock(spec=SyncTransport)
     # base64.b64decode on invalid chars will raise
-    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(), transport=transport)
+    handler = SyncPushHandler(ROOT, sync_engine=MagicMock(spec=SyncEngine), transport=transport)
     result = handler.handle(SyncPushCommand(device_id="phone", encrypted_payload="!!!invalid!!!"))
     assert "decryption failed" in result.message
 
@@ -239,7 +241,7 @@ def test_status_no_sync_engine() -> None:
 
 
 def test_status_exception() -> None:
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.sync_status.side_effect = RuntimeError("oops")
     handler = SyncStatusHandler(ROOT, sync_engine=engine)
     result = handler.handle(SyncStatusCommand())
@@ -247,7 +249,7 @@ def test_status_exception() -> None:
 
 
 def test_status_success() -> None:
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.sync_status.return_value = {
         "changelog_size": 42,
         "cursors": [{"device": "phone", "pos": 100}],
@@ -263,7 +265,7 @@ def test_status_success() -> None:
 
 def test_status_missing_keys() -> None:
     """When sync_status returns empty dict, defaults are used."""
-    engine = MagicMock()
+    engine = MagicMock(spec=SyncEngine)
     engine.sync_status.return_value = {}
     handler = SyncStatusHandler(ROOT, sync_engine=engine)
     result = handler.handle(SyncStatusCommand())

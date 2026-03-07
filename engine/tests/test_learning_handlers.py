@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
 from jarvis_engine.commands.learning_commands import (
     CrossBranchQueryCommand,
     FlagExpiredFactsCommand,
@@ -21,6 +20,10 @@ from jarvis_engine.handlers.learning_handlers import (
     FlagExpiredFactsHandler,
     LearnInteractionHandler,
 )
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.learning.engine import ConversationLearningEngine
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +41,7 @@ class TestLearnInteractionHandler:
         assert result.records_created == 0
 
     def test_successful_learning(self, tmp_path: Path) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=ConversationLearningEngine)
         engine.learn_from_interaction.return_value = {
             "records_created": 3,
         }
@@ -61,7 +64,7 @@ class TestLearnInteractionHandler:
         )
 
     def test_learning_returns_error(self, tmp_path: Path) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=ConversationLearningEngine)
         engine.learn_from_interaction.return_value = {
             "error": "failed to extract facts",
         }
@@ -72,7 +75,7 @@ class TestLearnInteractionHandler:
 
     def test_empty_interaction(self, tmp_path: Path) -> None:
         """Handler processes empty strings without crashing."""
-        engine = MagicMock()
+        engine = MagicMock(spec=ConversationLearningEngine)
         engine.learn_from_interaction.return_value = {"records_created": 0}
         handler = LearnInteractionHandler(root=tmp_path, learning_engine=engine)
         result = handler.handle(LearnInteractionCommand())
@@ -81,14 +84,14 @@ class TestLearnInteractionHandler:
 
     def test_records_created_defaults_to_zero(self, tmp_path: Path) -> None:
         """When the engine returns no 'records_created' key, default is 0."""
-        engine = MagicMock()
+        engine = MagicMock(spec=ConversationLearningEngine)
         engine.learn_from_interaction.return_value = {}
         handler = LearnInteractionHandler(root=tmp_path, learning_engine=engine)
         result = handler.handle(LearnInteractionCommand(user_message="hi"))
         assert result.records_created == 0
 
     def test_task_id_forwarded(self, tmp_path: Path) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=ConversationLearningEngine)
         engine.learn_from_interaction.return_value = {"records_created": 1}
         handler = LearnInteractionHandler(root=tmp_path, learning_engine=engine)
         handler.handle(
@@ -108,7 +111,7 @@ class TestLearnInteractionHandler:
 
     def test_large_records_created(self, tmp_path: Path) -> None:
         """Handler correctly passes through large record counts."""
-        engine = MagicMock()
+        engine = MagicMock(spec=ConversationLearningEngine)
         engine.learn_from_interaction.return_value = {"records_created": 100}
         handler = LearnInteractionHandler(root=tmp_path, learning_engine=engine)
         result = handler.handle(LearnInteractionCommand(user_message="batch"))
@@ -124,17 +127,17 @@ class TestCrossBranchQueryHandler:
     """Tests for CrossBranchQueryHandler."""
 
     def test_no_engine_returns_error(self, tmp_path: Path) -> None:
-        handler = CrossBranchQueryHandler(root=tmp_path, engine=None, kg=MagicMock(), embed_service=MagicMock())
+        handler = CrossBranchQueryHandler(root=tmp_path, engine=None, kg=MagicMock(spec=KnowledgeGraph), embed_service=MagicMock(spec=EmbeddingService))
         result = handler.handle(CrossBranchQueryCommand(query="test"))
         assert "requires engine" in result.message.lower()
 
     def test_no_kg_returns_error(self, tmp_path: Path) -> None:
-        handler = CrossBranchQueryHandler(root=tmp_path, engine=MagicMock(), kg=None, embed_service=MagicMock())
+        handler = CrossBranchQueryHandler(root=tmp_path, engine=MagicMock(spec=MemoryEngine), kg=None, embed_service=MagicMock(spec=EmbeddingService))
         result = handler.handle(CrossBranchQueryCommand(query="test"))
         assert "requires" in result.message.lower()
 
     def test_no_embed_returns_error(self, tmp_path: Path) -> None:
-        handler = CrossBranchQueryHandler(root=tmp_path, engine=MagicMock(), kg=MagicMock(), embed_service=None)
+        handler = CrossBranchQueryHandler(root=tmp_path, engine=MagicMock(spec=MemoryEngine), kg=MagicMock(spec=KnowledgeGraph), embed_service=None)
         result = handler.handle(CrossBranchQueryCommand(query="test"))
         assert "requires" in result.message.lower()
 
@@ -149,9 +152,9 @@ class TestCrossBranchQueryHandler:
     def test_import_error_returns_not_available(self, tmp_path: Path) -> None:
         handler = CrossBranchQueryHandler(
             root=tmp_path,
-            engine=MagicMock(),
-            kg=MagicMock(),
-            embed_service=MagicMock(),
+            engine=MagicMock(spec=MemoryEngine),
+            kg=MagicMock(spec=KnowledgeGraph),
+            embed_service=MagicMock(spec=EmbeddingService),
         )
         with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": None}):
             result = handler.handle(CrossBranchQueryCommand(query="test"))
@@ -166,9 +169,9 @@ class TestCrossBranchQueryHandler:
             "branches_involved": ["memory", "knowledge"],
         }
 
-        engine = MagicMock()
-        kg = MagicMock()
-        embed = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        kg = MagicMock(spec=KnowledgeGraph)
+        embed = MagicMock(spec=EmbeddingService)
 
         with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}):
             handler = CrossBranchQueryHandler(
@@ -200,9 +203,9 @@ class TestCrossBranchQueryHandler:
         with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}):
             handler = CrossBranchQueryHandler(
                 root=tmp_path,
-                engine=MagicMock(),
-                kg=MagicMock(),
-                embed_service=MagicMock(),
+                engine=MagicMock(spec=MemoryEngine),
+                kg=MagicMock(spec=KnowledgeGraph),
+                embed_service=MagicMock(spec=EmbeddingService),
             )
             handler.handle(CrossBranchQueryCommand(query="test", k=20))
 
@@ -217,9 +220,9 @@ class TestCrossBranchQueryHandler:
         with patch.dict("sys.modules", {"jarvis_engine.learning.cross_branch": mock_module}):
             handler = CrossBranchQueryHandler(
                 root=tmp_path,
-                engine=MagicMock(),
-                kg=MagicMock(),
-                embed_service=MagicMock(),
+                engine=MagicMock(spec=MemoryEngine),
+                kg=MagicMock(spec=KnowledgeGraph),
+                embed_service=MagicMock(spec=EmbeddingService),
             )
             result = handler.handle(CrossBranchQueryCommand(query="nothing"))
 
@@ -249,7 +252,7 @@ class TestFlagExpiredFactsHandler:
         assert result.expired_count == 0
 
     def test_import_error_returns_not_available(self, tmp_path: Path) -> None:
-        handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock())
+        handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock(spec=KnowledgeGraph))
         with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": None}):
             result = handler.handle(FlagExpiredFactsCommand())
         assert "not available" in result.message.lower()
@@ -260,7 +263,7 @@ class TestFlagExpiredFactsHandler:
         mock_module.flag_expired_facts.return_value = 7
 
         with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
-            kg = MagicMock()
+            kg = MagicMock(spec=KnowledgeGraph)
             handler = FlagExpiredFactsHandler(root=tmp_path, kg=kg)
             result = handler.handle(FlagExpiredFactsCommand())
 
@@ -273,7 +276,7 @@ class TestFlagExpiredFactsHandler:
         mock_module.flag_expired_facts.return_value = 0
 
         with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
-            handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock())
+            handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock(spec=KnowledgeGraph))
             result = handler.handle(FlagExpiredFactsCommand())
 
         assert result.expired_count == 0
@@ -284,7 +287,7 @@ class TestFlagExpiredFactsHandler:
         mock_module.flag_expired_facts.return_value = 500
 
         with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
-            handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock())
+            handler = FlagExpiredFactsHandler(root=tmp_path, kg=MagicMock(spec=KnowledgeGraph))
             result = handler.handle(FlagExpiredFactsCommand())
 
         assert result.expired_count == 500
@@ -295,7 +298,7 @@ class TestFlagExpiredFactsHandler:
         mock_module = MagicMock()
         mock_module.flag_expired_facts.return_value = 1
 
-        kg = MagicMock(name="my_kg")
+        kg = MagicMock(spec=KnowledgeGraph, name="my_kg")
 
         with patch.dict("sys.modules", {"jarvis_engine.learning.temporal": mock_module}):
             handler = FlagExpiredFactsHandler(root=tmp_path, kg=kg)

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine import ops_sync
+from jarvis_engine.connectors import ConnectorStatus
 from jarvis_engine.ops_sync import (
     SyncSummary,
     _decode_email_header,
@@ -753,7 +754,7 @@ class TestLoadEmailItems:
         monkeypatch.setenv("JARVIS_IMAP_USER", "user@example.com")
         monkeypatch.setenv("JARVIS_IMAP_PASS", "wrong")
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=imaplib.IMAP4_SSL)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.login.side_effect = imaplib.IMAP4.error("auth fail")
@@ -767,7 +768,7 @@ class TestLoadEmailItems:
         monkeypatch.setenv("JARVIS_IMAP_USER", "user@example.com")
         monkeypatch.setenv("JARVIS_IMAP_PASS", "pass")
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=imaplib.IMAP4_SSL)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.login.return_value = ("OK", [])
@@ -783,7 +784,7 @@ class TestLoadEmailItems:
         monkeypatch.setenv("JARVIS_IMAP_USER", "user@example.com")
         monkeypatch.setenv("JARVIS_IMAP_PASS", "pass")
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=imaplib.IMAP4_SSL)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.login.return_value = ("OK", [])
@@ -806,7 +807,7 @@ class TestLoadEmailItems:
             b"\r\n"
         )
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=imaplib.IMAP4_SSL)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.login.return_value = ("OK", [])
@@ -828,7 +829,7 @@ class TestLoadEmailItems:
         monkeypatch.setenv("JARVIS_IMAP_USER", "user@example.com")
         monkeypatch.setenv("JARVIS_IMAP_PASS", "pass")
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=imaplib.IMAP4_SSL)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.login.return_value = ("OK", [])
@@ -847,7 +848,7 @@ class TestLoadEmailItems:
 
         raw_header = b"Subject: msg\r\nFrom: x@y.com\r\nDate: now\r\n\r\n"
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=imaplib.IMAP4_SSL)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.login.return_value = ("OK", [])
@@ -925,7 +926,7 @@ class TestBuildLiveSnapshot:
             monkeypatch.delenv(key, raising=False)
 
         # Mock connectors
-        mock_status = MagicMock()
+        mock_status = MagicMock(spec=ConnectorStatus)
         mock_status.ready = True
         monkeypatch.setattr(ops_sync, "evaluate_connector_statuses", lambda root: [mock_status])
         monkeypatch.setattr(ops_sync, "build_connector_prompts", lambda statuses: [{"p": "test"}])
@@ -1008,9 +1009,9 @@ class TestBuildLiveSnapshot:
                      "JARVIS_IMAP_HOST", "JARVIS_ALLOW_EXTERNAL_FEEDS"]:
             monkeypatch.delenv(key, raising=False)
 
-        ready_status = MagicMock()
+        ready_status = MagicMock(spec=ConnectorStatus)
         ready_status.ready = True
-        pending_status = MagicMock()
+        pending_status = MagicMock(spec=ConnectorStatus)
         pending_status.ready = False
         monkeypatch.setattr(ops_sync, "evaluate_connector_statuses", lambda root: [ready_status, pending_status, ready_status])
         monkeypatch.setattr(ops_sync, "build_connector_prompts", lambda statuses: [{"p": "1"}, {"p": "2"}])

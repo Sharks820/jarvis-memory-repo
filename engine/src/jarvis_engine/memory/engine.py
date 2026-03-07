@@ -17,7 +17,7 @@ import sqlite3
 import struct
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
 from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
@@ -26,6 +26,14 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
+
+
+class OptimizeResult(TypedDict):
+    """Result from :meth:`MemoryEngine.optimize`."""
+
+    analyzed: bool
+    vacuumed: bool
+    errors: list[str]
 
 __all__ = [
     "MemoryEngine",
@@ -528,7 +536,7 @@ class MemoryEngine:
         except sqlite3.Error as exc:
             logger.warning("WAL checkpoint failed: %s", exc)
 
-    def optimize(self, *, vacuum: bool = False) -> dict:
+    def optimize(self, *, vacuum: bool = False) -> OptimizeResult:
         """Run ANALYZE (and optionally VACUUM) to keep query planner stats fresh.
 
         Args:

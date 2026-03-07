@@ -5,11 +5,22 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+from typing import TypedDict
+
 from jarvis_engine._shared import now_iso as _now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
 
 logger = logging.getLogger(__name__)
+
+
+class RouteQuality(TypedDict):
+    """Quality metrics for a specific route."""
+
+    positive_count: int
+    negative_count: int
+    total: int
+    satisfaction_rate: float
 
 
 class ResponseFeedbackTracker(LearningTrackerBase):
@@ -119,7 +130,7 @@ class ResponseFeedbackTracker(LearningTrackerBase):
             )
             self._db.commit()
 
-    def get_route_quality(self, route: str, last_n: int = 20) -> dict:
+    def get_route_quality(self, route: str, last_n: int = 20) -> RouteQuality:
         """Get quality metrics for a specific route.
 
         Returns dict with positive_count, negative_count, total, satisfaction_rate.

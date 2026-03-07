@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import safe_int as _safe_int
@@ -23,6 +23,15 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+
+class TierMaintenanceResult(TypedDict):
+    """Result from :meth:`TierManager.run_tier_maintenance`."""
+
+    total: int
+    promoted: int
+    demoted: int
+    unchanged: int
 
 
 class Tier(Enum):
@@ -81,7 +90,7 @@ class TierManager:
         # Default: WARM
         return Tier.WARM
 
-    def run_tier_maintenance(self, engine: "MemoryEngine") -> dict:
+    def run_tier_maintenance(self, engine: "MemoryEngine") -> TierMaintenanceResult:
         """Classify all records and batch-update changed tiers.
 
         Uses a single bulk query to fetch all records, classifies in-memory,

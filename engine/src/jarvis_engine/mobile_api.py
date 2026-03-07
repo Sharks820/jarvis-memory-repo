@@ -868,15 +868,20 @@ class MobileIngestHandler(
             # Activity feed must never break command execution.
             logger.debug("Activity feed logging failed: %s", exc)
 
-    def _run_voice_command(
+    # ------------------------------------------------------------------
+    # Voice command helpers (decomposed from _run_voice_command)
+    # ------------------------------------------------------------------
+
+    def _validate_voice_text(
         self,
         payload: dict[str, Any],
-        *,
-        correlation_id: str | None = None,
-    ) -> dict[str, Any]:
-        if not correlation_id:
-            correlation_id = uuid.uuid4().hex
-        # Validate required field: text (string, non-empty, <= 2000 chars)
+        correlation_id: str,
+    ) -> str | dict[str, Any]:
+        """Validate the ``text`` field in a voice command payload.
+
+        Returns the cleaned text string on success, or an error-result dict
+        that the caller should return immediately.
+        """
         if "text" not in payload:
             return self._command_failure_result(
                 correlation_id=correlation_id,
@@ -904,12 +909,24 @@ class MobileIngestHandler(
                 reason="invalid text command",
                 status_code="400",
             )
+        return text
 
+    def _validate_voice_payload(
+        self,
+        payload: dict[str, Any],
+        correlation_id: str,
+    ) -> dict[str, Any] | None:
+        """Validate and parse the voice command payload.
+
+        Returns ``None`` on success (fields stored on ``self._voice_params``)
+        or an error-result dict that the caller should return immediately.
+        """
+        text_or_err = self._validate_voice_text(payload, correlation_id)
+        if isinstance(text_or_err, dict):
+            return text_or_err
+        text: str = text_or_err
         root = self._root
 
-        execute = _parse_bool(payload.get("execute", False))
-        approve_privileged = _parse_bool(payload.get("approve_privileged", False))
-        speak = _parse_bool(payload.get("speak", False))
         voice_user = str(payload.get("voice_user", "conner")).strip() or "conner"
         if not re.fullmatch(r"[a-zA-Z0-9._-]{1,64}", voice_user):
             return self._command_failure_result(
@@ -942,139 +959,195 @@ class MobileIngestHandler(
                     reason="voice_auth_wav path outside project root",
                     status_code="400",
                 )
-        master_password = str(payload.get("master_password", "")).strip()
-        model_override = str(payload.get("model_override", "")).strip()
+
         voice_threshold_raw = payload.get("voice_threshold", 0.82)
         try:
             voice_threshold = float(voice_threshold_raw)
         except (TypeError, ValueError):
             voice_threshold = 0.82
         voice_threshold = min(0.99, max(0.1, voice_threshold))
-        # Always prefer in-process execution for speed and stdout capture.
-        # Fall back to subprocess only if the in-process import fails.
-        _can_import_in_process = True
+
+        # Stash parsed params so the caller can access them without re-parsing.
+        self._voice_params: dict[str, Any] = {  # type: ignore[attr-defined]
+            "text": text,
+            "execute": _parse_bool(payload.get("execute", False)),
+            "approve_privileged": _parse_bool(payload.get("approve_privileged", False)),
+            "speak": _parse_bool(payload.get("speak", False)),
+            "voice_user": voice_user,
+            "voice_auth_wav": voice_auth_wav,
+            "master_password": str(payload.get("master_password", "")).strip(),
+            "model_override": str(payload.get("model_override", "")).strip(),
+            "voice_threshold": voice_threshold,
+        }
+        return None  # validation passed
+
+    @staticmethod
+    def _parse_voice_stdout(
+        stdout_lines: list[str],
+        default_status_code: str = "",
+    ) -> dict[str, str]:
+        """Extract intent/reason/status_code/response from voice command stdout."""
+        intent = ""
+        reason = ""
+        response_text = ""
+        status_code = default_status_code
+        for line in stdout_lines:
+            if line.startswith("intent="):
+                intent = line.split("=", 1)[1]
+            elif line.startswith("reason="):
+                reason = line.split("=", 1)[1]
+            elif line.startswith("status_code="):
+                status_code = line.split("=", 1)[1]
+            elif line.startswith("response="):
+                raw = line.split("=", 1)[1]
+                response_text = _unescape_response(raw)
+        return {
+            "intent": intent,
+            "reason": reason,
+            "status_code": status_code,
+            "response_text": response_text,
+        }
+
+    def _build_voice_result(
+        self,
+        *,
+        rc: int,
+        correlation_id: str,
+        parsed: dict[str, str],
+        stdout_lines: list[str],
+        stderr_lines: list[str] | None = None,
+        stdout_truncated: bool = False,
+    ) -> dict[str, Any]:
+        """Build the final voice command result dict from parsed output."""
+        normalized = self._normalize_command_output(
+            response_text=parsed["response_text"],
+            stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
+        )
+        if stdout_truncated:
+            normalized["stdout_truncated"] = True
+        reason = parsed["reason"]
+        return {
+            "ok": rc == 0,
+            "lifecycle_state": "completed" if rc == 0 else "failed",
+            "correlation_id": correlation_id,
+            "diagnostic_id": correlation_id[:12],
+            "command_exit_code": rc,
+            "intent": parsed["intent"],
+            "response": normalized["response"],
+            "response_chunks": normalized["response_chunks"],
+            "response_truncated": normalized["response_truncated"],
+            "status_code": parsed["status_code"],
+            "reason": reason,
+            "stdout_tail": normalized["stdout_tail"],
+            "stdout_truncated": normalized["stdout_truncated"],
+            "stderr_tail": (stderr_lines or [])[-20:],
+            "error": "" if rc == 0 else (reason or "Command execution failed."),
+            "error_code": "" if rc == 0 else "command_failed",
+            "category": "" if rc == 0 else "execution",
+            "retryable": rc != 0,
+            "user_hint": "" if rc == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
+        }
+
+    def _run_voice_in_process(
+        self,
+        params: dict[str, Any],
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        """Execute voice command in-process via ``cmd_voice_run``."""
+        import sqlite3 as _voice_sqlite3
+
+        root = self._root
         try:
-            import jarvis_engine.main  # noqa: F401 — probe: is the module importable?
-        except ImportError:
-            _can_import_in_process = False
-        if _can_import_in_process:
-            import sqlite3 as _voice_sqlite3
+            import jarvis_engine.main as main_mod
+
+            # Thread-local repo_root override — no global lock needed.
+            _thread_local.repo_root_override = root
+            original_repo_root = main_mod.repo_root
+            if not hasattr(main_mod, "_original_repo_root"):
+                main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
+
+            # Install thread-aware repo_root if not already done
+            if not getattr(main_mod, "_repo_root_patched", False):
+                _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
+                main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
+                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+
+            # Per-thread stdout capture — concurrent requests run in parallel.
+            _ThreadCapturingStdout.install()
+            _ThreadCapturingStdout.start_capture()
             try:
-                import jarvis_engine.main as main_mod
-
-                # Thread-local repo_root override — no global lock needed.
-                _thread_local.repo_root_override = root
-                original_repo_root = main_mod.repo_root
-                if not hasattr(main_mod, "_original_repo_root"):
-                    main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
-
-                # Install thread-aware repo_root if not already done
-                if not getattr(main_mod, "_repo_root_patched", False):
-                    _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
-                    main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
-                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
-
-                # Per-thread stdout capture — concurrent requests run in parallel.
-                _ThreadCapturingStdout.install()
-                _ThreadCapturingStdout.start_capture()
-                try:
-                    rc = main_mod.cmd_voice_run(
-                        text=text,
-                        execute=execute,
-                        approve_privileged=approve_privileged,
-                        speak=speak,
-                        snapshot_path=root / ".planning" / _OPS_SNAPSHOT_FILENAME,
-                        actions_path=root / ".planning" / _ACTIONS_FILENAME,
-                        voice_user=voice_user,
-                        voice_auth_wav=voice_auth_wav,
-                        voice_threshold=voice_threshold,
-                        master_password=master_password,
-                        model_override=model_override,
-                        skip_voice_auth_guard=True,
-                    )
-                finally:
-                    _thread_local.repo_root_override = None
-            except (RuntimeError, OSError, ValueError, TimeoutError, KeyError, TypeError, AttributeError, _voice_sqlite3.Error) as exc:
-                logger.error("Voice command execution failed: %s", exc)
-                _ThreadCapturingStdout.stop_capture()  # discard
-                return self._command_failure_result(
-                    correlation_id=correlation_id,
-                    error="Command execution failed.",
-                    error_code="execution_exception",
-                    category="execution",
-                    user_hint="Retry once. If this keeps failing, inspect diagnostic_id in server logs.",
-                    retryable=True,
-                    intent="execution_error",
-                    reason="internal error",
-                    status_code="500",
+                rc = main_mod.cmd_voice_run(
+                    text=params["text"],
+                    execute=params["execute"],
+                    approve_privileged=params["approve_privileged"],
+                    speak=params["speak"],
+                    snapshot_path=root / ".planning" / _OPS_SNAPSHOT_FILENAME,
+                    actions_path=root / ".planning" / _ACTIONS_FILENAME,
+                    voice_user=params["voice_user"],
+                    voice_auth_wav=params["voice_auth_wav"],
+                    voice_threshold=params["voice_threshold"],
+                    master_password=params["master_password"],
+                    model_override=params["model_override"],
+                    skip_voice_auth_guard=True,
                 )
-            # Parse captured stdout for intent/reason/status (same as subprocess path)
-            stdout_text, capture_truncated = _ThreadCapturingStdout.stop_capture()
-            stdout_lines = stdout_text.splitlines()
-            intent = ""
-            reason = ""
-            response_text = ""
-            status_code = str(rc)
-            for line in stdout_lines:
-                if line.startswith("intent="):
-                    intent = line.split("=", 1)[1]
-                elif line.startswith("reason="):
-                    reason = line.split("=", 1)[1]
-                elif line.startswith("status_code="):
-                    status_code = line.split("=", 1)[1]
-                elif line.startswith("response="):
-                    raw = line.split("=", 1)[1]
-                    response_text = _unescape_response(raw)
-            normalized = self._normalize_command_output(
-                response_text=response_text,
-                stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
+            finally:
+                _thread_local.repo_root_override = None
+        except (RuntimeError, OSError, ValueError, TimeoutError, KeyError, TypeError, AttributeError, _voice_sqlite3.Error) as exc:
+            logger.error("Voice command execution failed: %s", exc)
+            _ThreadCapturingStdout.stop_capture()  # discard
+            return self._command_failure_result(
+                correlation_id=correlation_id,
+                error="Command execution failed.",
+                error_code="execution_exception",
+                category="execution",
+                user_hint="Retry once. If this keeps failing, inspect diagnostic_id in server logs.",
+                retryable=True,
+                intent="execution_error",
+                reason="internal error",
+                status_code="500",
             )
-            if capture_truncated:
-                normalized["stdout_truncated"] = True
-            return {
-                "ok": rc == 0,
-                "lifecycle_state": "completed" if rc == 0 else "failed",
-                "correlation_id": correlation_id,
-                "diagnostic_id": correlation_id[:12],
-                "command_exit_code": rc,
-                "intent": intent,
-                "response": normalized["response"],
-                "response_chunks": normalized["response_chunks"],
-                "response_truncated": normalized["response_truncated"],
-                "status_code": status_code,
-                "reason": reason,
-                "stdout_tail": normalized["stdout_tail"],
-                "stdout_truncated": normalized["stdout_truncated"],
-                "stderr_tail": [],
-                "error": "" if rc == 0 else (reason or "Command execution failed."),
-                "error_code": "" if rc == 0 else "command_failed",
-                "category": "" if rc == 0 else "execution",
-                "retryable": rc != 0,
-                "user_hint": "" if rc == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
-            }
 
+        stdout_text, capture_truncated = _ThreadCapturingStdout.stop_capture()
+        stdout_lines = stdout_text.splitlines()
+        parsed = self._parse_voice_stdout(stdout_lines, default_status_code=str(rc))
+        return self._build_voice_result(
+            rc=rc,
+            correlation_id=correlation_id,
+            parsed=parsed,
+            stdout_lines=stdout_lines,
+            stderr_lines=[],
+            stdout_truncated=capture_truncated,
+        )
+
+    def _run_voice_subprocess(
+        self,
+        params: dict[str, Any],
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        """Execute voice command via subprocess (fallback when in-process import fails)."""
+        root = self._root
         cmd = [
             sys.executable,
             "-m",
             "jarvis_engine.main",
             "voice-run",
             "--text",
-            text,
+            params["text"],
             "--voice-user",
-            voice_user,
+            params["voice_user"],
             "--voice-threshold",
-            str(voice_threshold),
+            str(params["voice_threshold"]),
         ]
-        if execute:
+        if params["execute"]:
             cmd.append("--execute")
-        if approve_privileged:
+        if params["approve_privileged"]:
             cmd.append("--approve-privileged")
-        if speak:
+        if params["speak"]:
             cmd.append("--speak")
-        if voice_auth_wav:
-            cmd.extend(["--voice-auth-wav", voice_auth_wav])
-        if model_override:
-            cmd.extend(["--model-override", model_override])
+        if params["voice_auth_wav"]:
+            cmd.extend(["--voice-auth-wav", params["voice_auth_wav"]])
+        if params["model_override"]:
+            cmd.extend(["--model-override", params["model_override"]])
         cmd.append("--skip-voice-auth-guard")
 
         engine_dir = root / "engine"
@@ -1111,46 +1184,44 @@ class MobileIngestHandler(
 
         stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
-        intent = ""
-        reason = ""
-        response_text = ""
-        status_code = ""
-        for line in stdout_lines:
-            if line.startswith("intent="):
-                intent = line.split("=", 1)[1].strip()
-            elif line.startswith("reason="):
-                reason = line.split("=", 1)[1].strip()
-            elif line.startswith("status_code="):
-                status_code = line.split("=", 1)[1].strip()
-            elif line.startswith("response="):
-                raw = line.split("=", 1)[1].strip()
-                response_text = _unescape_response(raw)
-        normalized = self._normalize_command_output(
-            response_text=response_text,
-            stdout_lines=stdout_lines[-MAX_COMMAND_STDOUT_TAIL_LINES:],
+        parsed = self._parse_voice_stdout(stdout_lines)
+        return self._build_voice_result(
+            rc=result.returncode,
+            correlation_id=correlation_id,
+            parsed=parsed,
+            stdout_lines=stdout_lines,
+            stderr_lines=stderr_lines,
         )
 
-        return {
-            "ok": result.returncode == 0,
-            "lifecycle_state": "completed" if result.returncode == 0 else "failed",
-            "correlation_id": correlation_id,
-            "diagnostic_id": correlation_id[:12],
-            "command_exit_code": result.returncode,
-            "intent": intent,
-            "response": normalized["response"],
-            "response_chunks": normalized["response_chunks"],
-            "response_truncated": normalized["response_truncated"],
-            "status_code": status_code,
-            "reason": reason,
-            "stdout_tail": normalized["stdout_tail"],
-            "stdout_truncated": normalized["stdout_truncated"],
-            "stderr_tail": stderr_lines[-20:],
-            "error": "" if result.returncode == 0 else (reason or "Command execution failed."),
-            "error_code": "" if result.returncode == 0 else "command_failed",
-            "category": "" if result.returncode == 0 else "execution",
-            "retryable": result.returncode != 0,
-            "user_hint": "" if result.returncode == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
-        }
+    # ------------------------------------------------------------------
+    # Main voice command orchestrator
+    # ------------------------------------------------------------------
+
+    def _run_voice_command(
+        self,
+        payload: dict[str, Any],
+        *,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not correlation_id:
+            correlation_id = uuid.uuid4().hex
+
+        # 1. Validate and parse the payload.
+        validation_error = self._validate_voice_payload(payload, correlation_id)
+        if validation_error is not None:
+            return validation_error
+        params = self._voice_params  # type: ignore[attr-defined]
+
+        # 2. Prefer in-process execution; fall back to subprocess.
+        _can_import_in_process = True
+        try:
+            import jarvis_engine.main  # noqa: F401 — probe: is the module importable?
+        except ImportError:
+            _can_import_in_process = False
+
+        if _can_import_in_process:
+            return self._run_voice_in_process(params, correlation_id)
+        return self._run_voice_subprocess(params, correlation_id)
 
     def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> CLIResult:
         root: Path = getattr(self, "_root", None) or self.server.repo_root

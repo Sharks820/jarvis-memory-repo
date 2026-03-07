@@ -13,7 +13,7 @@ import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso, safe_int as _safe_int
@@ -22,6 +22,37 @@ if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
 
 logger = logging.getLogger(__name__)
+
+
+class KGSnapshot(TypedDict):
+    """Metrics snapshot from :meth:`RegressionChecker.capture_metrics`."""
+
+    node_count: int
+    edge_count: int
+    locked_count: int
+    graph_hash: str
+    node_labels: dict[str, str]
+    captured_at: str
+
+
+class KGDiff(TypedDict):
+    """Node-level diff between two snapshots."""
+
+    lost_labels: list[str]
+    gained_labels: list[str]
+    lost_count: int
+    gained_count: int
+
+
+class KGComparison(TypedDict):
+    """Result from :meth:`RegressionChecker.compare`."""
+
+    regression_detected: bool
+    reasons: list[str]
+    current_node_count: int
+    previous_node_count: int
+    current_edge_count: int
+    previous_edge_count: int
 
 _MAX_BACKUPS = 10
 
@@ -35,7 +66,7 @@ class RegressionChecker:
     def __init__(self, kg: "KnowledgeGraph") -> None:
         self._kg = kg
 
-    def capture_metrics(self) -> dict:
+    def capture_metrics(self) -> KGSnapshot:
         """Build a metrics snapshot from the current knowledge graph state.
 
         Returns dict with: node_count, edge_count, locked_count, graph_hash,

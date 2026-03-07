@@ -548,6 +548,138 @@ _MISSION_OBJECTIVES = [
 ]
 
 
+class _TopicCollector:
+    """Accumulates candidate topics while enforcing uniqueness and limits."""
+
+    def __init__(self, max_new: int, existing_topics: set[str]) -> None:
+        self.max_new = max_new
+        self._existing = existing_topics
+        self._seen_lower: set[str] = set()
+        self.candidates: list[str] = []
+
+    @property
+    def full(self) -> bool:
+        return len(self.candidates) >= self.max_new
+
+    def add(self, topic: str) -> bool:
+        """Try to add *topic*. Returns ``True`` when the collector is full."""
+        topic = topic.strip()
+        if not topic or len(topic) < 4:
+            return False
+        tl = topic.lower()
+        if tl in self._seen_lower or tl in self._existing:
+            return False
+        if len(topic.split()) < 2 or len(topic.split()) > 6:
+            return False
+        self._seen_lower.add(tl)
+        self.candidates.append(topic)
+        return self.full
+
+
+def _gather_topics_from_conversations(
+    conn: sqlite3.Connection, collector: _TopicCollector,
+) -> None:
+    """Source 1: Extract topics from recent user conversations (last 14 days)."""
+    try:
+        from datetime import timedelta
+        cutoff = (datetime.now(UTC) - timedelta(days=14)).isoformat()
+        rows = conn.execute(
+            """SELECT summary FROM records
+               WHERE ts >= ? AND source = 'user'
+               ORDER BY ts DESC
+               LIMIT 50""",
+            (cutoff,),
+        ).fetchall()
+        for row in rows:
+            summary = row["summary"] or ""
+            words = re.findall(r"[a-zA-Z0-9]{3,}", summary)
+            filtered = [w for w in words if w.lower() not in STOPWORDS]
+            for i in range(len(filtered) - 1):
+                phrase = " ".join(filtered[i:i + min(3, len(filtered) - i)])
+                if collector.add(phrase):
+                    break
+            if collector.full:
+                break
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        logger.debug("Topic extraction from recent queries failed: %s", exc)
+
+
+def _gather_topics_from_kg_gaps(
+    conn: sqlite3.Connection, collector: _TopicCollector,
+) -> None:
+    """Source 2: KG nodes with low edge count (knowledge gaps)."""
+    try:
+        sparse = conn.execute(
+            """SELECT n.label FROM kg_nodes n
+               LEFT JOIN kg_edges e ON n.node_id = e.source_id
+               WHERE n.confidence >= 0.3
+               GROUP BY n.node_id
+               HAVING COUNT(e.edge_id) BETWEEN 0 AND 1
+               ORDER BY n.updated_at DESC
+               LIMIT 20""",
+        ).fetchall()
+        for row in sparse:
+            label = row["label"] or ""
+            words = re.findall(r"[a-zA-Z0-9]{3,}", label)
+            filtered = [w for w in words if w.lower() not in STOPWORDS]
+            if len(filtered) >= 2:
+                phrase = " ".join(filtered[:4])
+                if collector.add(phrase):
+                    break
+    except sqlite3.Error as exc:
+        logger.debug("KG gap analysis for mission topics failed: %s", exc)
+
+
+def _gather_topics_from_kg_strengths(
+    conn: sqlite3.Connection, collector: _TopicCollector,
+) -> None:
+    """Source 3: Strong KG areas that could be deepened."""
+    try:
+        strong = conn.execute(
+            """SELECT n.label, COUNT(e.edge_id) AS edge_cnt
+               FROM kg_nodes n
+               JOIN kg_edges e ON n.node_id = e.source_id
+               WHERE n.confidence >= 0.5
+               GROUP BY n.node_id
+               HAVING edge_cnt >= 3
+               ORDER BY edge_cnt DESC
+               LIMIT 10""",
+        ).fetchall()
+        suffixes = ["advanced techniques", "real world applications", "recent developments"]
+        for i, row in enumerate(strong):
+            label = row["label"] or ""
+            words = re.findall(r"[a-zA-Z0-9]{3,}", label)
+            filtered = [w for w in words if w.lower() not in STOPWORDS]
+            if filtered:
+                base = " ".join(filtered[:2])
+                phrase = f"{base} {suffixes[i % len(suffixes)]}"
+                if collector.add(phrase):
+                    break
+    except sqlite3.Error as exc:
+        logger.debug("KG strength analysis for mission topics failed: %s", exc)
+
+
+def _create_missions_from_topics(
+    root: Path, candidates: list[str], max_new: int,
+) -> list[dict[str, Any]]:
+    """Create mission records from a list of candidate topic strings."""
+    created: list[dict[str, Any]] = []
+    for i, topic in enumerate(candidates[:max_new]):
+        objective = _MISSION_OBJECTIVES[i % len(_MISSION_OBJECTIVES)]
+        try:
+            mission = create_learning_mission(
+                root,
+                topic=topic,
+                objective=objective,
+                origin="daemon",
+            )
+            created.append(mission)
+            logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
+    return created
+
+
 def auto_generate_missions(
     root: Path,
     *,
@@ -571,29 +703,13 @@ def auto_generate_missions(
         logger.debug("auto_generate_missions: %d pending missions exist, skipping", pending_count)
         return []
 
-    # Collect existing topics to avoid duplicates
     existing_topics = {
         str(m.get("topic", "")).lower().strip()
         for m in missions
         if str(m.get("status", "")).lower() in ("pending", "completed", "running")
     }
 
-    # --- Discover candidate topics using multiple sources ---
-    candidates: list[str] = []
-    seen_lower: set[str] = set()
-
-    def _add(topic: str) -> bool:
-        topic = topic.strip()
-        if not topic or len(topic) < 4:
-            return False
-        tl = topic.lower()
-        if tl in seen_lower or tl in existing_topics:
-            return False
-        if len(topic.split()) < 2 or len(topic.split()) > 6:
-            return False
-        seen_lower.add(tl)
-        candidates.append(topic)
-        return len(candidates) >= max_new
+    collector = _TopicCollector(max_new, existing_topics)
 
     if db_path is None:
         from jarvis_engine._constants import memory_db_path as _memory_db_path
@@ -605,100 +721,16 @@ def auto_generate_missions(
             from jarvis_engine._db_pragmas import connect_db
             conn = connect_db(db_path)
 
-        # Source 1: Recent user conversations (last 14 days)
         if conn is not None:
-            try:
-                from datetime import timedelta
-                cutoff = (datetime.now(UTC) - timedelta(days=14)).isoformat()
-                rows = conn.execute(
-                    """SELECT summary FROM records
-                       WHERE ts >= ? AND source = 'user'
-                       ORDER BY ts DESC
-                       LIMIT 50""",
-                    (cutoff,),
-                ).fetchall()
-                for row in rows:
-                    summary = row["summary"] or ""
-                    # Extract multi-word topic phrases
-                    words = re.findall(r"[a-zA-Z0-9]{3,}", summary)
-                    filtered = [w for w in words if w.lower() not in STOPWORDS]
-                    # Build 2-4 word phrases from consecutive words
-                    for i in range(len(filtered) - 1):
-                        phrase = " ".join(filtered[i:i + min(3, len(filtered) - i)])
-                        if _add(phrase):
-                            break
-                    if len(candidates) >= max_new:
-                        break
-            except (sqlite3.Error, OSError, ValueError) as exc:
-                logger.debug("Topic extraction from recent queries failed: %s", exc)
+            _gather_topics_from_conversations(conn, collector)
 
-        # Source 2: KG nodes with low edge count (knowledge gaps)
-        if conn is not None and len(candidates) < max_new:
-            try:
-                sparse = conn.execute(
-                    """SELECT n.label FROM kg_nodes n
-                       LEFT JOIN kg_edges e ON n.node_id = e.source_id
-                       WHERE n.confidence >= 0.3
-                       GROUP BY n.node_id
-                       HAVING COUNT(e.edge_id) BETWEEN 0 AND 1
-                       ORDER BY n.updated_at DESC
-                       LIMIT 20""",
-                ).fetchall()
-                for row in sparse:
-                    label = row["label"] or ""
-                    words = re.findall(r"[a-zA-Z0-9]{3,}", label)
-                    filtered = [w for w in words if w.lower() not in STOPWORDS]
-                    if len(filtered) >= 2:
-                        phrase = " ".join(filtered[:4])
-                        if _add(phrase):
-                            break
-            except sqlite3.Error as exc:
-                logger.debug("KG gap analysis for mission topics failed: %s", exc)
+        if conn is not None and not collector.full:
+            _gather_topics_from_kg_gaps(conn, collector)
 
-        # Source 3: Strong KG areas that could be deepened
-        if conn is not None and len(candidates) < max_new:
-            try:
-                strong = conn.execute(
-                    """SELECT n.label, COUNT(e.edge_id) AS edge_cnt
-                       FROM kg_nodes n
-                       JOIN kg_edges e ON n.node_id = e.source_id
-                       WHERE n.confidence >= 0.5
-                       GROUP BY n.node_id
-                       HAVING edge_cnt >= 3
-                       ORDER BY edge_cnt DESC
-                       LIMIT 10""",
-                ).fetchall()
-                suffixes = ["advanced techniques", "real world applications", "recent developments"]
-                for i, row in enumerate(strong):
-                    label = row["label"] or ""
-                    words = re.findall(r"[a-zA-Z0-9]{3,}", label)
-                    filtered = [w for w in words if w.lower() not in STOPWORDS]
-                    if filtered:
-                        base = " ".join(filtered[:2])
-                        phrase = f"{base} {suffixes[i % len(suffixes)]}"
-                        if _add(phrase):
-                            break
-            except sqlite3.Error as exc:
-                logger.debug("KG strength analysis for mission topics failed: %s", exc)
-
+        if conn is not None and not collector.full:
+            _gather_topics_from_kg_strengths(conn, collector)
     finally:
         if conn is not None:
             conn.close()
 
-    # --- Create missions from discovered topics ---
-    created: list[dict[str, Any]] = []
-    for i, topic in enumerate(candidates[:max_new]):
-        objective = _MISSION_OBJECTIVES[i % len(_MISSION_OBJECTIVES)]
-        try:
-            mission = create_learning_mission(
-                root,
-                topic=topic,
-                objective=objective,
-                origin="daemon",
-            )
-            created.append(mission)
-            logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
-        except (OSError, ValueError, sqlite3.Error) as exc:
-            logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
-
-    return created
+    return _create_missions_from_topics(root, collector.candidates, max_new)

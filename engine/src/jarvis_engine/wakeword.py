@@ -37,22 +37,17 @@ class WakeWordDetector:
 
         self._model = Model(wakeword_models=[self._model_name], inference_framework="onnx")
 
-    def start(
-        self,
-        on_detected: Callable,
-        stop_event: threading.Event | None = None,
-        mic_lock: threading.Lock | None = None,
-    ) -> None:
-        """Main detection loop using sounddevice.
+    # ------------------------------------------------------------------
+    # Private helpers for start() — setup, listen, process phases
+    # ------------------------------------------------------------------
 
-        Args:
-            on_detected: Callback invoked when wake word is detected.
-            stop_event: External event to signal stop. Uses internal if None.
-            mic_lock: Optional lock shared with STT to prevent mic conflicts.
+    def _setup_dependencies(self) -> bool:
+        """Load model, init VAD, and validate sounddevice is available.
+
+        Returns ``True`` if all required dependencies are ready,
+        ``False`` if detection cannot proceed (caller should return).
+        Sets ``self._sd_module`` on success.
         """
-        if stop_event is not None:
-            self._stop_event = stop_event
-
         try:
             self._load_model()
         except ImportError:
@@ -60,10 +55,10 @@ class WakeWordDetector:
                 "openwakeword not installed. Wake word detection unavailable. "
                 "Install with: pip install openwakeword"
             )
-            return
+            return False
         except (RuntimeError, OSError, ValueError) as exc:
             logger.error("Failed to load wake word model: %s", exc)
-            return
+            return False
 
         # Initialize Silero VAD (lower threshold for wake word sensitivity)
         try:
@@ -84,13 +79,107 @@ class WakeWordDetector:
 
         try:
             import sounddevice as sd  # type: ignore[import-untyped]
+            self._sd_module = sd
         except ImportError:
             logger.warning(
                 "sounddevice not installed. Wake word detection unavailable. "
                 "Install with: pip install sounddevice"
             )
+            return False
+
+        return True
+
+    def _read_audio_chunk(
+        self, stream: object, chunk_size: int, mic_lock: threading.Lock | None,
+    ) -> np.ndarray | None:
+        """Read one audio chunk from *stream*, respecting *mic_lock*.
+
+        Returns the raw audio data array, or ``None`` if the chunk should
+        be skipped (lock timeout, read error, or overflow).
+        """
+        if mic_lock is not None:
+            if not mic_lock.acquire(timeout=60):
+                logger.warning("Mic lock acquisition timed out")
+                return None
+
+        try:
+            try:
+                audio_data, overflowed = stream.read(chunk_size)
+            except (OSError, RuntimeError) as read_exc:
+                logger.debug("Wakeword stream read failed (may be closed): %s", read_exc)
+                return None
+        finally:
+            if mic_lock is not None:
+                mic_lock.release()
+
+        if overflowed:
+            return None
+        return audio_data
+
+    def _is_speech(self, audio_data: np.ndarray) -> bool:
+        """Return ``True`` if the audio chunk contains speech.
+
+        Uses Silero VAD when available, falling back to RMS energy.
+        """
+        audio_float = audio_data[:, 0]  # mono channel, already float32
+        if self._vad_available and self._vad is not None:
+            return self._vad.process_chunk(audio_float)
+        # RMS energy fallback
+        audio_int16 = np.clip(audio_float * 32767, -32768, 32767).astype(np.int16)
+        rms = float(np.sqrt(np.mean(audio_int16.astype(np.float32) ** 2)) / 32767.0)
+        return rms >= 0.005
+
+    def _process_detection(self, on_detected: Callable) -> None:
+        """Handle a confirmed wake word detection: callback, cooldown, drain."""
+        # Reset prediction buffer and VAD state
+        self._model.reset()
+        if self._vad is not None:
+            self._vad.reset()
+
+        try:
+            on_detected()
+        except (RuntimeError, ValueError, TypeError, OSError) as cb_exc:
+            logger.error("Wake word callback error: %s", cb_exc)
+
+        # Cooldown to prevent rapid re-triggers
+        time.sleep(self._cooldown_seconds)
+
+        # Drain stale audio that accumulated during callback + cooldown
+        # to prevent false re-triggers from buffered wake word echo.
+        with self._stream_lock:
+            drain_stream = self._stream
+        if drain_stream is not None:
+            try:
+                avail = drain_stream.read_available
+                if avail > 0:
+                    drain_stream.read(avail)
+            except (OSError, RuntimeError) as drain_exc:
+                logger.debug("Stream drain failed (may be closed): %s", drain_exc)
+
+    # ------------------------------------------------------------------
+    # Public entry point
+    # ------------------------------------------------------------------
+
+    def start(
+        self,
+        on_detected: Callable,
+        stop_event: threading.Event | None = None,
+        mic_lock: threading.Lock | None = None,
+    ) -> None:
+        """Main detection loop using sounddevice.
+
+        Args:
+            on_detected: Callback invoked when wake word is detected.
+            stop_event: External event to signal stop. Uses internal if None.
+            mic_lock: Optional lock shared with STT to prevent mic conflicts.
+        """
+        if stop_event is not None:
+            self._stop_event = stop_event
+
+        if not self._setup_dependencies():
             return
 
+        sd = self._sd_module
         chunk_size = 1280  # frames at 16kHz
 
         try:
@@ -111,91 +200,31 @@ class WakeWordDetector:
                 with self._stream_lock:
                     stream = self._stream
                 if stream is None:
-                    # Stream paused (STT recording in progress) — wait briefly
                     time.sleep(0.1)
                     continue
 
-                if mic_lock is not None:
-                    if not mic_lock.acquire(timeout=60):
-                        logger.warning("Mic lock acquisition timed out")
-                        continue  # Skip this detection cycle
-
-                try:
-                    try:
-                        audio_data, overflowed = stream.read(chunk_size)
-                    except (OSError, RuntimeError) as read_exc:
-                        logger.debug("Wakeword stream read failed (may be closed): %s", read_exc)
-                        continue
-                finally:
-                    if mic_lock is not None:
-                        mic_lock.release()
-
-                if overflowed:
+                audio_data = self._read_audio_chunk(stream, chunk_size, mic_lock)
+                if audio_data is None:
                     continue
 
-                # Convert float32 [-1,1] to int16 for openwakeword
-                audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
+                if not self._is_speech(audio_data):
+                    _was_silent = True
+                    continue
 
-                # Pre-filter: Silero VAD (ML-based) or RMS energy fallback
-                audio_float = audio_data[:, 0]  # mono channel, already float32
-                if self._vad_available and self._vad is not None:
-                    # Silero VAD path: process_chunk handles 1280-sample via sub-windowing
-                    has_speech = self._vad.process_chunk(audio_float)
-                    if not has_speech:
-                        _was_silent = True
-                        continue
-                else:
-                    # RMS energy fallback
-                    rms = float(np.sqrt(np.mean(audio_int16.astype(np.float32) ** 2)) / 32767.0)
-                    if rms < 0.005:
-                        _was_silent = True
-                        continue  # Silence, skip ML inference
-
-                # Reset prediction buffer when transitioning from silence to speech
-                # to prevent stale scores from causing false positives
+                # Reset prediction buffer on silence-to-speech transition
                 if _was_silent:
                     self._model.reset()
                     _was_silent = False
 
+                audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
                 self._model.predict(audio_int16)
 
-                # Only check the configured wake word model
                 target_key = self._model_name
                 if target_key in self._model.prediction_buffer:
                     scores = list(self._model.prediction_buffer[target_key])
-                    # Score smoothing: require at least 3 frames and average
-                    # of last 3 above threshold to reduce false positives
                     if len(scores) >= 3 and sum(scores[-3:]) / 3 > self._threshold:
                         logger.info("Wake word detected! (avg_score=%.3f)", sum(scores[-3:]) / 3)
-
-                        # Reset prediction buffer and VAD state
-                        self._model.reset()
-                        if self._vad is not None:
-                            self._vad.reset()
-
-                        try:
-                            on_detected()
-                        except (RuntimeError, ValueError, TypeError, OSError) as cb_exc:
-                            logger.error("Wake word callback error: %s", cb_exc)
-
-                        # Cooldown to prevent rapid re-triggers
-                        time.sleep(self._cooldown_seconds)
-
-                        # Drain stale audio that accumulated during callback + cooldown
-                        # to prevent false re-triggers from buffered wake word echo.
-                        # Use available frames count to avoid blocking on read().
-                        with self._stream_lock:
-                            drain_stream = self._stream
-                        if drain_stream is not None:
-                            try:
-                                avail = drain_stream.read_available
-                                if avail > 0:
-                                    drain_stream.read(avail)
-                            except (OSError, RuntimeError) as drain_exc:
-                                logger.debug("Stream drain failed (may be closed): %s", drain_exc)
-
-                        # Reset silence state so first chunk after drain
-                        # goes through the silence-to-speech transition path
+                        self._process_detection(on_detected)
                         _was_silent = True
         except (OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.error("Wake word detection error: %s", exc)

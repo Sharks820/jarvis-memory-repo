@@ -205,7 +205,7 @@ class SecurityOrchestrator:
             return None
         try:
             return getattr(instance, method_name)(*args)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — generic delegation to unknown methods
             logger.debug(
                 "%s.%s() failed: %s",
                 type(instance).__name__,

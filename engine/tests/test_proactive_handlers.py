@@ -8,10 +8,10 @@ behaviour when dependencies are unavailable.
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-
 
 from jarvis_engine.commands.proactive_commands import (
     CostReductionCommand,
@@ -19,12 +19,16 @@ from jarvis_engine.commands.proactive_commands import (
     SelfTestCommand,
     WakeWordStartCommand,
 )
+from jarvis_engine.gateway.costs import CostTracker
 from jarvis_engine.handlers.proactive_handlers import (
     CostReductionHandler,
     ProactiveCheckHandler,
     SelfTestHandler,
     WakeWordStartHandler,
 )
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.proactive import ProactiveEngine
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +52,7 @@ class TestProactiveCheckHandler:
         snapshot = planning / "ops_snapshot.live.json"
         snapshot.write_text(json.dumps({"status": "ok"}), encoding="utf-8")
 
-        engine = MagicMock()
+        engine = MagicMock(spec=ProactiveEngine)
         engine.evaluate.return_value = []
 
         handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=engine)
@@ -63,7 +67,7 @@ class TestProactiveCheckHandler:
         custom = tmp_path / "custom_snap.json"
         custom.write_text(json.dumps({"data": 1}), encoding="utf-8")
 
-        engine = MagicMock()
+        engine = MagicMock(spec=ProactiveEngine)
         engine.evaluate.return_value = []
 
         handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=engine)
@@ -74,14 +78,14 @@ class TestProactiveCheckHandler:
 
     def test_snapshot_outside_project_root(self, tmp_path: Path) -> None:
         """Path traversal protection: snapshot path outside root is rejected."""
-        handler = ProactiveCheckHandler(root=tmp_path / "sub", proactive_engine=MagicMock())
+        handler = ProactiveCheckHandler(root=tmp_path / "sub", proactive_engine=MagicMock(spec=ProactiveEngine))
         (tmp_path / "sub").mkdir()
         result = handler.handle(ProactiveCheckCommand(snapshot_path="/etc/passwd"))
         assert "outside project root" in result.message.lower()
 
     def test_snapshot_file_not_found(self, tmp_path: Path) -> None:
         path = str(tmp_path / "nonexistent.json")
-        handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=MagicMock())
+        handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=MagicMock(spec=ProactiveEngine))
         result = handler.handle(ProactiveCheckCommand(snapshot_path=path))
         assert "not found" in result.message.lower()
 
@@ -89,7 +93,7 @@ class TestProactiveCheckHandler:
         bad_file = tmp_path / "bad.json"
         bad_file.write_text("{not valid json", encoding="utf-8")
 
-        handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=MagicMock())
+        handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=MagicMock(spec=ProactiveEngine))
         result = handler.handle(ProactiveCheckCommand(snapshot_path=str(bad_file)))
         assert "invalid json" in result.message.lower()
 
@@ -104,7 +108,7 @@ class TestProactiveCheckHandler:
             priority="high",
             timestamp="2026-02-25T00:00:00",
         )
-        engine = MagicMock()
+        engine = MagicMock(spec=ProactiveEngine)
         engine.evaluate.return_value = [alert]
 
         handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=engine)
@@ -124,7 +128,7 @@ class TestProactiveCheckHandler:
             SimpleNamespace(rule_id=f"r{i}", message=f"m{i}", priority="low", timestamp="t")
             for i in range(3)
         ]
-        engine = MagicMock()
+        engine = MagicMock(spec=ProactiveEngine)
         engine.evaluate.return_value = alerts
 
         handler = ProactiveCheckHandler(root=tmp_path, proactive_engine=engine)
@@ -153,11 +157,11 @@ class TestWakeWordStartHandler:
     @patch("jarvis_engine.handlers.proactive_handlers.threading")
     def test_start_creates_daemon_thread(self, mock_threading: MagicMock, tmp_path: Path) -> None:
         """Handler creates a daemon thread and starts detection."""
-        mock_thread = MagicMock()
+        mock_thread = MagicMock(spec=threading.Thread)
         mock_thread.is_alive.return_value = False
         mock_threading.Thread.return_value = mock_thread
-        mock_threading.Event.return_value = MagicMock()
-        mock_threading.Lock.return_value = MagicMock()
+        mock_threading.Event.return_value = MagicMock(spec=threading.Event)
+        mock_threading.Lock.return_value = MagicMock(spec=threading.Lock)
 
         mock_detector = MagicMock()
         with patch("jarvis_engine.handlers.proactive_handlers.threading", mock_threading):
@@ -174,7 +178,7 @@ class TestWakeWordStartHandler:
     def test_duplicate_thread_prevention(self, tmp_path: Path) -> None:
         """If a thread is already alive, handler returns early."""
         handler = WakeWordStartHandler(root=tmp_path)
-        mock_thread = MagicMock()
+        mock_thread = MagicMock(spec=threading.Thread)
         mock_thread.is_alive.return_value = True
         handler._thread = mock_thread
 
@@ -185,9 +189,9 @@ class TestWakeWordStartHandler:
     def test_stop_sets_event_and_clears(self, tmp_path: Path) -> None:
         """stop() sets the stop event and clears thread references."""
         handler = WakeWordStartHandler(root=tmp_path)
-        stop_event = MagicMock()
+        stop_event = MagicMock(spec=threading.Event)
         handler._stop_event = stop_event
-        handler._thread = MagicMock()
+        handler._thread = MagicMock(spec=threading.Thread)
 
         handler.stop()
 
@@ -231,7 +235,7 @@ class TestCostReductionHandler:
         assert result.message == "Cost tracker not available."
 
     def test_import_error_returns_not_available(self, tmp_path: Path) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
         handler = CostReductionHandler(root=tmp_path, cost_tracker=tracker)
 
         with patch.dict("sys.modules", {"jarvis_engine.proactive.cost_tracking": None}):
@@ -240,7 +244,7 @@ class TestCostReductionHandler:
 
     def test_days_parameter_forwarded(self, tmp_path: Path) -> None:
         """Custom days param is forwarded to cost_tracker.local_vs_cloud_summary."""
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
         tracker.local_vs_cloud_summary.return_value = {
             "local_pct": 80.0,
             "cloud_cost_usd": 0.05,
@@ -261,7 +265,7 @@ class TestCostReductionHandler:
 
     def test_successful_cost_reduction(self, tmp_path: Path) -> None:
         """Full happy path: cost_tracker returns stats, trend computed."""
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
         tracker.local_vs_cloud_summary.return_value = {
             "local_pct": 75.0,
             "cloud_cost_usd": 0.1234,
@@ -285,7 +289,7 @@ class TestCostReductionHandler:
         assert "stable" in result.message
 
     def test_cost_reduction_improving_trend(self, tmp_path: Path) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
         tracker.local_vs_cloud_summary.return_value = {
             "local_pct": 90.0,
             "cloud_cost_usd": 0.01,
@@ -314,12 +318,12 @@ class TestSelfTestHandler:
     """Tests for SelfTestHandler."""
 
     def test_no_engine_returns_not_available(self, tmp_path: Path) -> None:
-        handler = SelfTestHandler(root=tmp_path, engine=None, embed_service=MagicMock())
+        handler = SelfTestHandler(root=tmp_path, engine=None, embed_service=MagicMock(spec=EmbeddingService))
         result = handler.handle(SelfTestCommand())
         assert "not available" in result.message.lower()
 
     def test_no_embed_service_returns_not_available(self, tmp_path: Path) -> None:
-        handler = SelfTestHandler(root=tmp_path, engine=MagicMock(), embed_service=None)
+        handler = SelfTestHandler(root=tmp_path, engine=MagicMock(spec=MemoryEngine), embed_service=None)
         result = handler.handle(SelfTestCommand())
         assert "not available" in result.message.lower()
 
@@ -330,7 +334,7 @@ class TestSelfTestHandler:
 
     def test_import_error_returns_not_available(self, tmp_path: Path) -> None:
         handler = SelfTestHandler(
-            root=tmp_path, engine=MagicMock(), embed_service=MagicMock()
+            root=tmp_path, engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService)
         )
         with patch.dict("sys.modules", {"jarvis_engine.proactive.self_test": None}):
             result = handler.handle(SelfTestCommand())
@@ -355,7 +359,7 @@ class TestSelfTestHandler:
             "sys.modules", {"jarvis_engine.proactive.self_test": mock_self_test_mod}
         ):
             handler = SelfTestHandler(
-                root=tmp_path, engine=MagicMock(), embed_service=MagicMock()
+                root=tmp_path, engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService)
             )
             result = handler.handle(SelfTestCommand(score_threshold=0.6))
 
@@ -384,7 +388,7 @@ class TestSelfTestHandler:
             "sys.modules", {"jarvis_engine.proactive.self_test": mock_self_test_mod}
         ):
             handler = SelfTestHandler(
-                root=tmp_path, engine=MagicMock(), embed_service=MagicMock()
+                root=tmp_path, engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService)
             )
             result = handler.handle(SelfTestCommand())
 
@@ -403,8 +407,8 @@ class TestSelfTestHandler:
         mock_tester.check_regression.return_value = {"regression_detected": False}
         mock_self_test_mod.AdversarialSelfTest.return_value = mock_tester
 
-        engine = MagicMock()
-        embed = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        embed = MagicMock(spec=EmbeddingService)
 
         with patch.dict(
             "sys.modules", {"jarvis_engine.proactive.self_test": mock_self_test_mod}
@@ -432,7 +436,7 @@ class TestSelfTestHandler:
             "sys.modules", {"jarvis_engine.proactive.self_test": mock_self_test_mod}
         ):
             handler = SelfTestHandler(
-                root=tmp_path, engine=MagicMock(), embed_service=MagicMock()
+                root=tmp_path, engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService)
             )
             result = handler.handle(SelfTestCommand())
 

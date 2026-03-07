@@ -709,7 +709,7 @@ def _snap_to_edge(
     try:
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
-    except Exception:  # Widget may be destroyed
+    except (tk.TclError, RuntimeError):  # Widget may be destroyed
         logger.debug("Cannot read screen dimensions for edge snap (widget may be destroyed)")
         return x, y
     # Left edge
@@ -735,7 +735,7 @@ def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
     try:
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
-    except Exception:  # Widget may be destroyed
+    except (tk.TclError, RuntimeError):  # Widget may be destroyed
         logger.debug("Cannot read screen dimensions for position validation (widget may be destroyed)")
         return False
     return -100 <= x <= screen_w and -100 <= y <= screen_h

@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
 from jarvis_engine.commands.harvest_commands import (
     HarvestBudgetCommand,
     HarvestTopicCommand,
@@ -17,6 +16,9 @@ from jarvis_engine.handlers.harvest_handlers import (
     HarvestHandler,
     IngestSessionHandler,
 )
+from jarvis_engine.harvesting.budget import BudgetManager
+from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +38,7 @@ def test_harvest_no_harvester() -> None:
 @patch("jarvis_engine.harvesting.harvester.HarvestCommand")
 def test_harvest_success(mock_cmd_cls: MagicMock) -> None:
     """Successful harvest delegates to harvester.harvest()."""
-    mock_harvester = MagicMock()
+    mock_harvester = MagicMock(spec=KnowledgeHarvester)
     mock_harvester.harvest.return_value = {
         "topic": "quantum computing",
         "results": [{"provider": "gemini", "text": "QC is..."}],
@@ -53,7 +55,7 @@ def test_harvest_success(mock_cmd_cls: MagicMock) -> None:
 @patch("jarvis_engine.harvesting.harvester.HarvestCommand")
 def test_harvest_with_providers(mock_cmd_cls: MagicMock) -> None:
     """Providers list is passed through to HarvestCommand."""
-    mock_harvester = MagicMock()
+    mock_harvester = MagicMock(spec=KnowledgeHarvester)
     mock_harvester.harvest.return_value = {"topic": "t", "results": []}
     handler = HarvestHandler(harvester=mock_harvester)
     result = handler.handle(HarvestTopicCommand(topic="t", providers=["gemini"]))
@@ -66,7 +68,7 @@ def test_harvest_with_providers(mock_cmd_cls: MagicMock) -> None:
 @patch("jarvis_engine.harvesting.harvester.HarvestCommand")
 def test_harvest_missing_topic_in_result(mock_cmd_cls: MagicMock) -> None:
     """When harvester result lacks 'topic', falls back to cmd.topic."""
-    mock_harvester = MagicMock()
+    mock_harvester = MagicMock(spec=KnowledgeHarvester)
     mock_harvester.harvest.return_value = {"results": []}
     handler = HarvestHandler(harvester=mock_harvester)
     result = handler.handle(HarvestTopicCommand(topic="fallback topic"))
@@ -88,7 +90,7 @@ def test_ingest_session_no_pipeline() -> None:
 
 def test_ingest_session_unknown_source() -> None:
     """Returns rc=1 for unknown source type."""
-    handler = IngestSessionHandler(pipeline=MagicMock())
+    handler = IngestSessionHandler(pipeline=MagicMock(spec=EnrichedIngestPipeline))
     result = handler.handle(IngestSessionCommand(source="unknown_tool"))
     assert result.return_code == 1
 
@@ -100,7 +102,7 @@ def test_ingest_session_claude_discover(mock_ingestor_cls: MagicMock) -> None:
     mock_ingestor.find_sessions.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 
-    mock_pipeline = MagicMock()
+    mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
     handler = IngestSessionHandler(pipeline=mock_pipeline)
     result = handler.handle(IngestSessionCommand(source="claude"))
 
@@ -116,7 +118,7 @@ def test_ingest_session_claude_with_project_path(mock_ingestor_cls: MagicMock) -
     mock_ingestor.find_sessions.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 
-    handler = IngestSessionHandler(pipeline=MagicMock())
+    handler = IngestSessionHandler(pipeline=MagicMock(spec=EnrichedIngestPipeline))
     handler.handle(IngestSessionCommand(source="claude", project_path="/some/project"))
     mock_ingestor.find_sessions.assert_called_once_with(project_path="/some/project")
 
@@ -128,7 +130,7 @@ def test_ingest_session_codex_discover(mock_ingestor_cls: MagicMock) -> None:
     mock_ingestor.find_sessions.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 
-    handler = IngestSessionHandler(pipeline=MagicMock())
+    handler = IngestSessionHandler(pipeline=MagicMock(spec=EnrichedIngestPipeline))
     result = handler.handle(IngestSessionCommand(source="codex"))
     assert result.return_code == 0
     mock_ingestor.find_sessions.assert_called_once()
@@ -138,13 +140,13 @@ def test_ingest_session_codex_discover(mock_ingestor_cls: MagicMock) -> None:
 def test_ingest_session_processes_texts(mock_ingestor_cls: MagicMock) -> None:
     """Ingests text chunks from discovered sessions."""
     mock_ingestor = MagicMock()
-    session_path = MagicMock()
+    session_path = MagicMock(spec=Path)
     session_path.name = "session_001.jsonl"
     mock_ingestor.find_sessions.return_value = [session_path]
     mock_ingestor.ingest_session.return_value = ["chunk1", "chunk2"]
     mock_ingestor_cls.return_value = mock_ingestor
 
-    mock_pipeline = MagicMock()
+    mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
     mock_pipeline.ingest.return_value = [{"id": 1}]
 
     handler = IngestSessionHandler(pipeline=mock_pipeline)
@@ -160,14 +162,14 @@ def test_ingest_session_processes_texts(mock_ingestor_cls: MagicMock) -> None:
 def test_ingest_session_empty_texts_skipped(mock_ingestor_cls: MagicMock) -> None:
     """Sessions returning empty texts are not counted."""
     mock_ingestor = MagicMock()
-    s1, s2 = MagicMock(), MagicMock()
+    s1, s2 = MagicMock(spec=Path), MagicMock(spec=Path)
     s1.name = "s1.jsonl"
     s2.name = "s2.jsonl"
     mock_ingestor.find_sessions.return_value = [s1, s2]
     mock_ingestor.ingest_session.side_effect = [[], ["text1"]]
     mock_ingestor_cls.return_value = mock_ingestor
 
-    mock_pipeline = MagicMock()
+    mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
     mock_pipeline.ingest.return_value = [{"id": 1}]
 
     handler = IngestSessionHandler(pipeline=mock_pipeline)
@@ -180,13 +182,13 @@ def test_ingest_session_empty_texts_skipped(mock_ingestor_cls: MagicMock) -> Non
 def test_ingest_session_pipeline_error_continues(mock_ingestor_cls: MagicMock) -> None:
     """Pipeline errors on individual chunks don't abort the session."""
     mock_ingestor = MagicMock()
-    session = MagicMock()
+    session = MagicMock(spec=Path)
     session.name = "s.jsonl"
     mock_ingestor.find_sessions.return_value = [session]
     mock_ingestor.ingest_session.return_value = ["chunk1", "chunk2", "chunk3"]
     mock_ingestor_cls.return_value = mock_ingestor
 
-    mock_pipeline = MagicMock()
+    mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
     mock_pipeline.ingest.side_effect = [
         [{"id": 1}],
         OSError("db error"),
@@ -203,7 +205,7 @@ def test_ingest_session_pipeline_error_continues(mock_ingestor_cls: MagicMock) -
 
 def test_ingest_session_explicit_path_outside_allowed() -> None:
     """Explicit session_path outside allowed roots returns rc=2."""
-    handler = IngestSessionHandler(pipeline=MagicMock())
+    handler = IngestSessionHandler(pipeline=MagicMock(spec=EnrichedIngestPipeline))
     # Use an absolute path that cannot be under ~/.claude, ~/.codex, or ~/AppData
     # On Windows or Unix, the root drive / filesystem root is never under those dirs
     if os.name == "nt":
@@ -230,7 +232,7 @@ def test_ingest_session_explicit_path_allowed(mock_ingestor_cls: MagicMock) -> N
     # Only test if .claude dir exists or simulate
     allowed_path = claude_dir / "sessions" / "test.jsonl"
 
-    handler = IngestSessionHandler(pipeline=MagicMock())
+    handler = IngestSessionHandler(pipeline=MagicMock(spec=EnrichedIngestPipeline))
     # This will check if the resolved path starts with an allowed root.
     # We can't easily create files in ~/.claude in tests, so we test the
     # rejection path above and the logic path here if the dir exists.
@@ -267,7 +269,7 @@ def test_budget_no_manager() -> None:
 
 def test_budget_status_default() -> None:
     """Default action='status' returns spend summary."""
-    mock_budget = MagicMock()
+    mock_budget = MagicMock(spec=BudgetManager)
     mock_budget.get_spend_summary.return_value = {
         "total_usd": 1.50,
         "providers": {"gemini": 0.75, "kimi": 0.75},
@@ -282,7 +284,7 @@ def test_budget_status_default() -> None:
 
 def test_budget_status_filtered_by_provider() -> None:
     """Status action with provider filters the summary."""
-    mock_budget = MagicMock()
+    mock_budget = MagicMock(spec=BudgetManager)
     mock_budget.get_spend_summary.return_value = {"total_usd": 0.5}
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
     result = handler.handle(HarvestBudgetCommand(provider="gemini"))
@@ -292,7 +294,7 @@ def test_budget_status_filtered_by_provider() -> None:
 
 def test_budget_set_success() -> None:
     """Set action with all required fields calls set_budget."""
-    mock_budget = MagicMock()
+    mock_budget = MagicMock(spec=BudgetManager)
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
     result = handler.handle(HarvestBudgetCommand(
         action="set",
@@ -315,7 +317,7 @@ def test_budget_set_success() -> None:
 
 def test_budget_set_missing_fields() -> None:
     """Set action without required fields returns rc=1."""
-    mock_budget = MagicMock()
+    mock_budget = MagicMock(spec=BudgetManager)
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
 
     # Missing limit_usd
@@ -338,7 +340,7 @@ def test_budget_set_missing_fields() -> None:
 
 def test_budget_set_no_limit_requests_defaults_zero() -> None:
     """When limit_requests is None, defaults to 0."""
-    mock_budget = MagicMock()
+    mock_budget = MagicMock(spec=BudgetManager)
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
     result = handler.handle(HarvestBudgetCommand(
         action="set",
@@ -359,7 +361,7 @@ def test_budget_set_no_limit_requests_defaults_zero() -> None:
 
 def test_budget_set_missing_period() -> None:
     """Set action without period returns rc=1."""
-    mock_budget = MagicMock()
+    mock_budget = MagicMock(spec=BudgetManager)
     handler = HarvestBudgetHandler(budget_manager=mock_budget)
     result = handler.handle(HarvestBudgetCommand(
         action="set",

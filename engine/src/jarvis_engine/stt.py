@@ -549,6 +549,162 @@ _BACKEND_FN_MAP: dict[str, str] = {
 }
 
 
+def _preprocess_audio_if_needed(
+    audio: np.ndarray | str, *, language: str,
+) -> tuple[np.ndarray | str, TranscriptionResult | None]:
+    """Apply audio preprocessing when *audio* is a non-empty numpy array.
+
+    Returns ``(processed_audio, None)`` on success, or
+    ``(audio, early_result)`` if audio was pure silence after preprocessing
+    (the caller should return *early_result* immediately).
+    """
+    if not isinstance(audio, np.ndarray) or len(audio) == 0:
+        return audio, None
+    try:
+        from jarvis_engine.stt_postprocess import preprocess_audio
+        audio = preprocess_audio(audio)
+        if len(audio) == 0:
+            logger.info("Audio was pure silence after preprocessing")
+            return audio, TranscriptionResult(
+                text="",
+                language=language,
+                confidence=0.0,
+                duration_seconds=0.0,
+                backend="preprocessed-silence",
+            )
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Audio preprocessing failed, using raw audio: %s", exc)
+    return audio, None
+
+
+def _transcribe_forced(
+    audio: np.ndarray | str,
+    *,
+    backend: str,
+    language: str,
+    prompt: str,
+    root_dir: Path | None,
+) -> TranscriptionResult:
+    """Run a single forced backend and return its result."""
+    _forced_backends: dict[str, object] = {
+        "groq": _try_groq,
+        "local": _try_local,
+        "parakeet": _try_parakeet,
+        "deepgram": _try_deepgram,
+    }
+
+    try_fn = _forced_backends[backend]
+    if backend == "groq":
+        result = transcribe_groq(audio, language=language, prompt=prompt)
+    elif backend == "deepgram":
+        result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+    else:
+        result = try_fn(audio, language=language, prompt=prompt)
+
+    if result is None:
+        logger.warning("%s transcription returned None in forced mode", backend)
+        return TranscriptionResult(
+            text="", language=language or "en",
+            confidence=0.0, duration_seconds=0.0,
+            backend=f"{backend}-failed",
+        )
+    _log_stt_metric(
+        root_dir,
+        backend=result.backend,
+        confidence=result.confidence,
+        latency_ms=result.duration_seconds * 1000,
+        text_length=len(result.text),
+    )
+    return result
+
+
+def _transcribe_auto(
+    audio: np.ndarray | str,
+    *,
+    language: str,
+    prompt: str,
+    root_dir: Path | None,
+) -> TranscriptionResult:
+    """Walk the 4-tier fallback chain and return the best result."""
+    import sys
+    _this_module = sys.modules[__name__]
+    best_so_far: TranscriptionResult | None = None
+
+    for name in FALLBACK_CHAIN:
+        try_fn = getattr(_this_module, _BACKEND_FN_MAP[name])
+        if name == "deepgram":
+            result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+        else:
+            result = try_fn(audio, language=language, prompt=prompt)
+
+        if result is not None and result.text.strip():
+            logger.info(
+                "%s STT: '%s' in %.2fs (confidence: %.3f)",
+                name, result.text[:60], result.duration_seconds,
+                result.confidence,
+            )
+            _log_stt_metric(
+                root_dir,
+                backend=result.backend,
+                confidence=result.confidence,
+                latency_ms=result.duration_seconds * 1000,
+                text_length=len(result.text),
+            )
+
+            if result.confidence >= CONFIDENCE_RETRY_THRESHOLD:
+                return result
+
+            if best_so_far is None or result.confidence > best_so_far.confidence:
+                best_so_far = result
+        else:
+            if result is None:
+                logger.info("%s STT failed, trying next backend", name)
+            else:
+                logger.info("%s STT returned empty text, trying next backend", name)
+
+    if best_so_far is None:
+        logger.error("All STT backends failed")
+        return TranscriptionResult(
+            text="",
+            language=language,
+            confidence=0.0,
+            duration_seconds=0.0,
+            backend="none",
+        )
+    return best_so_far
+
+
+def _apply_postprocessing(
+    result: TranscriptionResult,
+    *,
+    gateway: object | None,
+    entity_list: list[str] | None,
+) -> TranscriptionResult:
+    """Apply post-processing (fillers, LLM, NER) to a transcription result."""
+    if not result.text.strip():
+        return result
+    try:
+        from jarvis_engine.stt_postprocess import postprocess_transcription
+        processed = postprocess_transcription(
+            result.text,
+            result.confidence,
+            gateway=gateway,
+            entity_list=entity_list,
+        )
+        return TranscriptionResult(
+            text=processed,
+            language=result.language,
+            confidence=result.confidence,
+            duration_seconds=result.duration_seconds,
+            backend=result.backend,
+            segments=result.segments,
+            retried=result.retried,
+        )
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Post-processing failed, using raw text: %s", exc)
+        return result
+
+
 def transcribe_smart(
     audio: np.ndarray | str,
     *,
@@ -584,139 +740,23 @@ def transcribe_smart(
     """
     backend = os.environ.get("JARVIS_STT_BACKEND", "auto").lower()
 
-    # Audio preprocessing (only for numpy arrays, not file paths)
-    if isinstance(audio, np.ndarray) and len(audio) > 0:
-        try:
-            from jarvis_engine.stt_postprocess import preprocess_audio
-            audio = preprocess_audio(audio)
-            if len(audio) == 0:
-                logger.info("Audio was pure silence after preprocessing")
-                return TranscriptionResult(
-                    text="",
-                    language=language,
-                    confidence=0.0,
-                    duration_seconds=0.0,
-                    backend="preprocessed-silence",
-                )
-        except (ImportError, OSError, RuntimeError, ValueError) as exc:
-            logger.warning("Audio preprocessing failed, using raw audio: %s", exc)
+    audio, early_result = _preprocess_audio_if_needed(audio, language=language)
+    if early_result is not None:
+        return early_result
 
-    # Map of forced backend modes to their try functions
-    _forced_backends: dict[str, object] = {
-        "groq": _try_groq,
-        "local": _try_local,
-        "parakeet": _try_parakeet,
-        "deepgram": _try_deepgram,
-    }
+    _FORCED_NAMES = {"groq", "local", "parakeet", "deepgram"}
 
-    final: TranscriptionResult | None = None
-
-    if backend in _forced_backends:
-        # Forced single-backend mode
-        try_fn = _forced_backends[backend]
-        if backend == "groq":
-            # Groq forced mode uses transcribe_groq directly (raises on failure)
-            result = transcribe_groq(audio, language=language, prompt=prompt)
-        elif backend == "deepgram":
-            result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
-        else:
-            result = try_fn(audio, language=language, prompt=prompt)
-
-        if result is None:
-            logger.warning("%s transcription returned None in forced mode", backend)
-            return TranscriptionResult(
-                text="", language=language or "en",
-                confidence=0.0, duration_seconds=0.0,
-                backend=f"{backend}-failed",
-            )
-        _log_stt_metric(
-            root_dir,
-            backend=result.backend,
-            confidence=result.confidence,
-            latency_ms=result.duration_seconds * 1000,
-            text_length=len(result.text),
+    if backend in _FORCED_NAMES:
+        final = _transcribe_forced(
+            audio, backend=backend, language=language, prompt=prompt,
+            root_dir=root_dir,
         )
-        final = result
-
     else:
-        # Auto mode: 4-tier fallback chain
-        # Resolve function references at call time (supports mock patching)
-        import sys
-        _this_module = sys.modules[__name__]
-        best_so_far: TranscriptionResult | None = None
+        final = _transcribe_auto(
+            audio, language=language, prompt=prompt, root_dir=root_dir,
+        )
 
-        for name in FALLBACK_CHAIN:
-            try_fn = getattr(_this_module, _BACKEND_FN_MAP[name])
-            # Call the try function with appropriate kwargs
-            if name == "deepgram":
-                result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
-            else:
-                result = try_fn(audio, language=language, prompt=prompt)
-
-            if result is not None and result.text.strip():
-                logger.info(
-                    "%s STT: '%s' in %.2fs (confidence: %.3f)",
-                    name, result.text[:60], result.duration_seconds,
-                    result.confidence,
-                )
-                _log_stt_metric(
-                    root_dir,
-                    backend=result.backend,
-                    confidence=result.confidence,
-                    latency_ms=result.duration_seconds * 1000,
-                    text_length=len(result.text),
-                )
-
-                if result.confidence >= CONFIDENCE_RETRY_THRESHOLD:
-                    # Good enough -- use this result
-                    best_so_far = result
-                    break
-
-                # Low confidence -- keep as best if better than previous
-                if best_so_far is None or result.confidence > best_so_far.confidence:
-                    best_so_far = result
-                # Continue to next backend
-            else:
-                if result is None:
-                    logger.info("%s STT failed, trying next backend", name)
-                else:
-                    logger.info("%s STT returned empty text, trying next backend", name)
-
-        if best_so_far is None:
-            logger.error("All STT backends failed")
-            return TranscriptionResult(
-                text="",
-                language=language,
-                confidence=0.0,
-                duration_seconds=0.0,
-                backend="none",
-            )
-
-        final = best_so_far
-
-    # Post-process transcription text
-    if final.text.strip():
-        try:
-            from jarvis_engine.stt_postprocess import postprocess_transcription
-            processed = postprocess_transcription(
-                final.text,
-                final.confidence,
-                gateway=gateway,
-                entity_list=entity_list,
-            )
-            final = TranscriptionResult(
-                text=processed,
-                language=final.language,
-                confidence=final.confidence,
-                duration_seconds=final.duration_seconds,
-                backend=final.backend,
-                segments=final.segments,
-                retried=final.retried,
-            )
-        except (ImportError, OSError, RuntimeError, ValueError) as exc:
-            logger.warning("Post-processing failed, using raw text: %s", exc)
-
-    return final
+    return _apply_postprocessing(final, gateway=gateway, entity_list=entity_list)
 
 
 def listen_and_transcribe(
