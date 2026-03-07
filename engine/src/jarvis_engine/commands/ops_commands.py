@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from jarvis_engine.commands.base import ResultBase
+
 if TYPE_CHECKING:
     from jarvis_engine.automation import ActionOutcome
     from jarvis_engine.growth_tracker import EvalRun
@@ -59,9 +61,8 @@ class OpsAutopilotCommand:
 
 
 @dataclass
-class OpsAutopilotResult:
-    return_code: int = 0
-    message: str = ""
+class OpsAutopilotResult(ResultBase):
+    pass
 
 
 @dataclass(frozen=True)
@@ -86,10 +87,8 @@ class MissionCreateCommand:
 
 
 @dataclass
-class MissionCreateResult:
+class MissionCreateResult(ResultBase):
     mission: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -113,11 +112,9 @@ class MissionRunCommand:
 
 
 @dataclass
-class MissionRunResult:
+class MissionRunResult(ResultBase):
     report: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
     ingested_record_id: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from http import HTTPStatus
 from jarvis_engine._constants import memory_db_path as _memory_db_path
 from jarvis_engine.mobile_routes._helpers import (
@@ -86,7 +87,7 @@ class DataRoutesMixin:
             tracker = ResponseFeedbackTracker(fb_db)
             tracker.record_explicit_feedback(quality, route, comment)
             self._write_json(HTTPStatus.OK, {"ok": True, "recorded": True, "quality": quality, "route": route})
-        except Exception as exc:  # boundary: catch-all justified
+        except (ValueError, KeyError, TypeError, OSError, ImportError, sqlite3.Error) as exc:  # narrowed from except Exception
             logger.error("Feedback recording failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Feedback recording failed."})
         finally:
@@ -115,7 +116,7 @@ class DataRoutesMixin:
                 "events": [_serialize_activity_event(e) for e in events],
                 "stats": stats,
             })
-        except Exception as exc:  # boundary: catch-all justified
+        except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:  # narrowed from except Exception
             logger.error("activity feed query failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Activity feed query failed."})
 
@@ -127,6 +128,6 @@ class DataRoutesMixin:
             from jarvis_engine.proactive.alert_queue import drain_alerts
             alerts = drain_alerts(self._root, limit=50)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": alerts})
-        except Exception as exc:  # boundary: catch-all justified
+        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
             logger.error("Alert queue drain failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "alerts": []})

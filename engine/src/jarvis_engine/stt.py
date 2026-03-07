@@ -460,11 +460,11 @@ def _try_local(
     """Attempt local faster-whisper transcription, returning *None* on failure."""
     global _local_stt_instance
     try:
-        if _local_stt_instance is None:
-            with _local_stt_lock:
-                if _local_stt_instance is None:
-                    _local_stt_instance = SpeechToText()
-        return _local_stt_instance.transcribe_audio(audio, language=language, prompt=prompt)
+        with _local_stt_lock:
+            if _local_stt_instance is None:
+                _local_stt_instance = SpeechToText()
+            instance = _local_stt_instance
+        return instance.transcribe_audio(audio, language=language, prompt=prompt)
     except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local STT attempt failed: %s", exc)
         return None
@@ -493,27 +493,27 @@ def _try_parakeet(
 
         t0 = time.monotonic()
 
-        # Lazy model load with double-checked locking
-        if _parakeet_model is None:
-            with _parakeet_lock:
-                if _parakeet_model is None:
-                    logger.info("Loading Parakeet TDT 0.6B model via onnx-asr...")
-                    model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2")
-                    # Try to enable timestamps for log probability access
-                    try:
-                        model = model.with_timestamps()
-                        logger.debug("Parakeet timestamps model loaded")
-                    except (AttributeError, RuntimeError, TypeError):
-                        logger.debug(
-                            "Parakeet timestamps not available, using base model"
-                        )
-                    _parakeet_model = model
+        # Lazy model load under lock -- guarantees single initialization.
+        with _parakeet_lock:
+            if _parakeet_model is None:
+                logger.info("Loading Parakeet TDT 0.6B model via onnx-asr...")
+                model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2")
+                # Try to enable timestamps for log probability access
+                try:
+                    model = model.with_timestamps()
+                    logger.debug("Parakeet timestamps model loaded")
+                except (AttributeError, RuntimeError, TypeError):
+                    logger.debug(
+                        "Parakeet timestamps not available, using base model"
+                    )
+                _parakeet_model = model
+            loaded_model = _parakeet_model
 
         # Transcription: numpy arrays need explicit sample_rate, file paths do not
         if isinstance(audio, np.ndarray):
-            result = _parakeet_model.recognize(audio, sample_rate=16000)
+            result = loaded_model.recognize(audio, sample_rate=16000)
         else:
-            result = _parakeet_model.recognize(audio)
+            result = loaded_model.recognize(audio)
 
         text = str(result).strip() if result else ""
         elapsed = time.monotonic() - t0
@@ -570,11 +570,11 @@ def _try_local_emergency(
     """
     global _local_emergency_instance
     try:
-        if _local_emergency_instance is None:
-            with _local_emergency_lock:
-                if _local_emergency_instance is None:
-                    _local_emergency_instance = SpeechToText(model_size="large-v3")
-        return _local_emergency_instance.transcribe_audio(audio, language=language, prompt=prompt)
+        with _local_emergency_lock:
+            if _local_emergency_instance is None:
+                _local_emergency_instance = SpeechToText(model_size="large-v3")
+            instance = _local_emergency_instance
+        return instance.transcribe_audio(audio, language=language, prompt=prompt)
     except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Local emergency STT (large-v3) attempt failed: %s", exc)
         return None

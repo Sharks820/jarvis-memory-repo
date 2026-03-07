@@ -37,11 +37,12 @@ from jarvis_engine.security.ip_tracker import ThreatReport
 from jarvis_engine.security.forensic_logger import ForensicLogger
 from jarvis_engine.security.honeypot import HoneypotEngine
 from jarvis_engine.security.injection_firewall import (
+    InjectionResult,
     PromptInjectionFirewall,
 )
 from jarvis_engine.security.ip_tracker import IPTracker
 from jarvis_engine.security.output_scanner import OutputScanner
-from jarvis_engine.security.threat_detector import ThreatDetector
+from jarvis_engine.security.threat_detector import ThreatAssessment, ThreatDetector
 
 # --- New module imports (graceful degradation if missing) ---
 
@@ -407,7 +408,7 @@ class SecurityOrchestrator:
         body: str,
         user_agent: str,
         headers: dict,
-    ) -> Any:
+    ) -> ThreatAssessment:
         """Run the threat detector and return its assessment."""
         request_context = {
             "ip": source_ip,
@@ -418,7 +419,7 @@ class SecurityOrchestrator:
         }
         return self._threat_detector.assess(request_context)
 
-    def _check_injection(self, body: str) -> Any:
+    def _check_injection(self, body: str) -> InjectionResult:
         """Run the injection firewall on *body* and return the scan result."""
         scan_text = body or ""
         return self._injection_firewall.scan(scan_text)

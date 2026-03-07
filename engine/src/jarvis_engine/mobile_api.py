@@ -1405,12 +1405,14 @@ class MobileIngestHandler(
             return _fail
         return (True, ts_raw, nonce, now)
 
-    def _check_nonce_replay(self, nonce: str, now: float) -> bool:
-        """Check nonce for replay but do NOT record it yet.
+    def _check_and_commit_nonce(self, nonce: str, now: float) -> bool:
+        """Atomically check nonce freshness and commit it in a single lock.
 
-        The nonce is only committed after the owner_guard check succeeds
-        so that a rejected request does not consume the nonce (Handoff-M1
-        fix).  Returns *True* if the nonce is fresh.
+        The nonce is checked and recorded in one critical section to eliminate
+        the TOCTOU race that existed when check and commit were separate lock
+        acquisitions.  A consumed nonce on a subsequently-rejected request
+        (e.g. owner-guard failure) is the correct security behavior -- it
+        prevents attackers from replaying the same nonce to probe other checks.
         """
         with self.server.nonce_lock:
             nonce_seen: dict[str, float] = self.server.nonce_seen
@@ -1424,6 +1426,8 @@ class MobileIngestHandler(
             if nonce in nonce_seen:
                 self._unauthorized("Replay detected.")
                 return False
+            # Commit the nonce atomically -- no window for replay.
+            nonce_seen[nonce] = now
         return True
 
     def _check_owner_guard(self) -> bool:
@@ -1476,15 +1480,13 @@ class MobileIngestHandler(
         if not ok:
             return False
 
-        if not self._check_nonce_replay(nonce, now):
+        # Atomically check and commit the nonce in a single lock acquisition
+        # to eliminate the TOCTOU replay window.
+        if not self._check_and_commit_nonce(nonce, now):
             return False
 
         if not self._check_owner_guard():
             return False
-
-        # All checks passed — now record the nonce to prevent replays.
-        with self.server.nonce_lock:
-            self.server.nonce_seen[nonce] = now
 
         return True
 

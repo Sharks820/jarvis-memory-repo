@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._constants import ACTIONS_FILENAME, DEFAULT_API_PORT, OPS_SNAPSHOT_FILENAME
+from jarvis_engine.commands.base import ResultBase
 
 
 @dataclass(frozen=True)
@@ -49,9 +50,8 @@ class ServeMobileCommand:
 
 
 @dataclass
-class ServeMobileResult:
-    return_code: int = 0
-    message: str = ""
+class ServeMobileResult(ResultBase):
+    pass
 
 
 @dataclass(frozen=True)
@@ -72,9 +72,8 @@ class DaemonRunCommand:
 
 
 @dataclass
-class DaemonRunResult:
-    return_code: int = 0
-    message: str = ""
+class DaemonRunResult(ResultBase):
+    pass
 
 
 @dataclass(frozen=True)
@@ -84,10 +83,8 @@ class MobileDesktopSyncCommand:
 
 
 @dataclass
-class MobileDesktopSyncResult:
+class MobileDesktopSyncResult(ResultBase):
     report: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -99,10 +96,8 @@ class SelfHealCommand:
 
 
 @dataclass
-class SelfHealResult:
+class SelfHealResult(ResultBase):
     report: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -111,9 +106,8 @@ class DesktopWidgetCommand:
 
 
 @dataclass
-class DesktopWidgetResult:
-    return_code: int = 0
-    message: str = ""
+class DesktopWidgetResult(ResultBase):
+    pass
 
 
 @dataclass(frozen=True)
@@ -138,10 +132,8 @@ class OpenWebCommand:
 
 
 @dataclass
-class OpenWebResult:
-    return_code: int = 0
+class OpenWebResult(ResultBase):
     opened_url: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -150,12 +142,10 @@ class WeatherCommand:
 
 
 @dataclass
-class WeatherResult:
-    return_code: int = 0
+class WeatherResult(ResultBase):
     location: str = ""
     current: dict[str, Any] = field(default_factory=dict)
     description: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -164,7 +154,5 @@ class MigrateMemoryCommand:
 
 
 @dataclass
-class MigrateMemoryResult:
+class MigrateMemoryResult(ResultBase):
     summary: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""

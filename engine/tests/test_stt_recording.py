@@ -10,6 +10,27 @@ from jarvis_engine.stt_vad import SileroVADDetector
 
 
 # ---------------------------------------------------------------------------
+# Stub specs for external types not installed in the test environment
+# ---------------------------------------------------------------------------
+
+class _SdInputStreamStub:
+    """Spec stub for sounddevice.InputStream."""
+
+    def read(self, frames: int) -> tuple: ...  # noqa: D102
+    def start(self) -> None: ...  # noqa: D102
+    def stop(self) -> None: ...  # noqa: D102
+    def close(self) -> None: ...  # noqa: D102
+    def __enter__(self): ...  # noqa: D105
+    def __exit__(self, *a): ...  # noqa: D105
+
+
+class _SdModuleStub:
+    """Spec stub for the sounddevice module."""
+
+    def InputStream(self, **kwargs: object) -> _SdInputStreamStub: ...  # noqa: D102, N802
+
+
+# ---------------------------------------------------------------------------
 # 62. VAD: record_from_microphone stops early on silence after speech
 # ---------------------------------------------------------------------------
 
@@ -30,12 +51,12 @@ def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
             chunk = np.zeros((n, 1), dtype=np.float32)
         return chunk, False
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     mock_stream.read = mock_read
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
@@ -64,12 +85,12 @@ def test_record_microphone_vad_no_speech_records_full() -> None:
         chunk = np.zeros((n, 1), dtype=np.float32)
         return chunk, False
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     mock_stream.read = mock_read
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
@@ -101,12 +122,12 @@ def test_record_microphone_vad_minimum_recording() -> None:
             chunk = np.zeros((n, 1), dtype=np.float32)
         return chunk, False
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     mock_stream.read = mock_read
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
@@ -128,11 +149,11 @@ def test_record_microphone_vad_returns_empty_array_on_zero_duration() -> None:
     """record_from_microphone returns empty array when max_duration is 0."""
     from jarvis_engine.stt import record_from_microphone
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
@@ -167,14 +188,14 @@ def test_record_from_microphone_with_silero_vad() -> None:
     mock_vad.process_chunk.side_effect = speech_calls
 
     # Mock sounddevice InputStream
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # Each read returns a 512-sample float32 chunk (32ms at 16kHz)
     fake_chunk = np.random.randn(512, 1).astype(np.float32)
     mock_stream.read.return_value = (fake_chunk, None)
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
@@ -202,7 +223,7 @@ def test_record_from_microphone_rms_fallback() -> None:
     mock_vad.available = False
 
     # Mock sounddevice InputStream
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # Create chunks: some with energy (speech), then silence
     speech_chunk = np.full((1600, 1), 0.5, dtype=np.float32)  # High energy
     silence_chunk = np.full((1600, 1), 0.0001, dtype=np.float32)  # Low energy
@@ -222,7 +243,7 @@ def test_record_from_microphone_rms_fallback() -> None:
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
@@ -249,13 +270,13 @@ def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
     # Only speech for first chunk, then enough silence to stop
     mock_vad.process_chunk.side_effect = [True] + [False] * 2000
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     fake_chunk = np.zeros((512, 1), dtype=np.float32)
     mock_stream.read.return_value = (fake_chunk, None)
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
@@ -278,7 +299,7 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
     mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = False
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     # Create speech + silence pattern
     speech_chunk = np.full((1600, 1), 0.5, dtype=np.float32)
     silence_chunk = np.zeros((1600, 1), dtype=np.float32)
@@ -296,7 +317,7 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
@@ -321,13 +342,13 @@ def test_record_from_microphone_resets_vad_state() -> None:
     # All speech, hit max duration quickly
     mock_vad.process_chunk.return_value = True
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     fake_chunk = np.zeros((512, 1), dtype=np.float32)
     mock_stream.read.return_value = (fake_chunk, None)
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
@@ -345,7 +366,7 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
     """If stt_vad module fails to import, falls back to RMS."""
     from jarvis_engine import stt as stt_mod
 
-    mock_stream = MagicMock()
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
     speech_chunk = np.full((1600, 1), 0.5, dtype=np.float32)
     silence_chunk = np.zeros((1600, 1), dtype=np.float32)
     chunks = [speech_chunk] * 3 + [silence_chunk] * 100
@@ -362,7 +383,7 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
     mock_stream.__enter__ = MagicMock(return_value=mock_stream)
     mock_stream.__exit__ = MagicMock(return_value=False)
 
-    mock_sd = MagicMock()
+    mock_sd = MagicMock(spec=_SdModuleStub)
     mock_sd.InputStream.return_value = mock_stream
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \

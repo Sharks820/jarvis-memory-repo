@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -33,6 +34,47 @@ from jarvis_engine.voice_extractors import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Parameter bundle dataclasses
+# ---------------------------------------------------------------------------
+
+@dataclass
+class VoiceAuthContext:
+    """Bundle of parameters for voice authentication checks."""
+
+    voice_user: str = ""
+    voice_auth_wav: str = ""
+    voice_threshold: float = 0.82
+    master_password: str = ""
+    master_password_ok: bool = False
+    execute: bool = False
+    approve_privileged: bool = False
+    read_only_request: bool = False
+    skip_voice_auth_guard: bool = False
+    speak: bool = True
+    cmd_voice_say: Callable = lambda **kw: None  # noqa: E731
+    cmd_voice_verify: Callable = lambda **kw: 0  # noqa: E731
+    repo_root: Callable = lambda: Path(".")  # noqa: E731
+
+
+@dataclass
+class VoiceRunParams:
+    """Bundle of common voice-run parameters shared across helpers."""
+
+    text: str = ""
+    execute: bool = False
+    approve_privileged: bool = False
+    speak: bool = True
+    snapshot_path: Path = Path(".")
+    actions_path: Path = Path(".")
+    voice_user: str = ""
+    voice_auth_wav: str = ""
+    voice_threshold: float = 0.82
+    master_password: str = ""
+    model_override: str = ""
+    skip_voice_auth_guard: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -637,94 +679,69 @@ _DISPATCH_RULES: list[_IntentRule] = [
 # Main voice-run implementation
 # ---------------------------------------------------------------------------
 
-def _validate_voice_auth(
-    voice_user: str,
-    voice_auth_wav: str,
-    voice_threshold: float,
-    master_password: str,
-    master_password_ok: bool,
-    execute: bool,
-    approve_privileged: bool,
-    read_only_request: bool,
-    skip_voice_auth_guard: bool,
-    speak: bool,
-    cmd_voice_say: Callable,
-    cmd_voice_verify: Callable,
-    repo_root: Callable,
-) -> int | None:
+def _validate_voice_auth(auth: VoiceAuthContext) -> int | None:
     """Check owner-guard, voice-auth, and execution permission.
 
     Returns None if auth passes and the command may proceed, or an int
     return code (2) if the command should be rejected.
     """
-    owner_guard = read_owner_guard(repo_root())
+    owner_guard = read_owner_guard(auth.repo_root())
 
     if bool(owner_guard.get("enabled", False)):
         expected_owner = str(owner_guard.get("owner_user_id", "")).strip().lower()
-        incoming_owner = voice_user.strip().lower()
-        if expected_owner and incoming_owner != expected_owner and not master_password_ok:
+        incoming_owner = auth.voice_user.strip().lower()
+        if expected_owner and incoming_owner != expected_owner and not auth.master_password_ok:
             print("intent=owner_guard_blocked")
             print("reason=voice_user_not_owner")
-            if speak:
-                cmd_voice_say(text="Owner guard blocked this command.")
+            if auth.speak:
+                auth.cmd_voice_say(text="Owner guard blocked this command.")
             return 2
         if (
-            not skip_voice_auth_guard
-            and not voice_auth_wav.strip()
-            and not master_password_ok
-            and not read_only_request
+            not auth.skip_voice_auth_guard
+            and not auth.voice_auth_wav.strip()
+            and not auth.master_password_ok
+            and not auth.read_only_request
         ):
             print("intent=owner_guard_blocked")
             print("reason=voice_auth_required_when_owner_guard_enabled")
-            if speak:
-                cmd_voice_say(
+            if auth.speak:
+                auth.cmd_voice_say(
                     text="Owner guard requires voice authentication for state-changing commands.",
                 )
             return 2
 
     if (
-        (execute or approve_privileged)
-        and not read_only_request
-        and not skip_voice_auth_guard
-        and not voice_auth_wav.strip()
-        and not master_password_ok
+        (auth.execute or auth.approve_privileged)
+        and not auth.read_only_request
+        and not auth.skip_voice_auth_guard
+        and not auth.voice_auth_wav.strip()
+        and not auth.master_password_ok
     ):
         print("intent=voice_auth_required")
         print("reason=execute_or_privileged_voice_actions_require_voice_auth_wav")
-        if speak:
-            cmd_voice_say(text="Voice authentication is required for executable commands.")
+        if auth.speak:
+            auth.cmd_voice_say(text="Voice authentication is required for executable commands.")
         return 2
 
-    if voice_auth_wav.strip():
-        verify_rc = cmd_voice_verify(
-            user_id=voice_user,
-            wav_path=voice_auth_wav,
-            threshold=voice_threshold,
+    if auth.voice_auth_wav.strip():
+        verify_rc = auth.cmd_voice_verify(
+            user_id=auth.voice_user,
+            wav_path=auth.voice_auth_wav,
+            threshold=auth.voice_threshold,
         )
         if verify_rc != 0:
             print("intent=voice_auth_failed")
-            if speak:
-                cmd_voice_say(text="Voice authentication failed. Command blocked.")
+            if auth.speak:
+                auth.cmd_voice_say(text="Voice authentication failed. Command blocked.")
             return 2
 
     return None
 
 
 def _build_dispatch_ctx(
-    text: str,
+    params: VoiceRunParams,
     lowered: str,
     *,
-    execute: bool,
-    approve_privileged: bool,
-    speak: bool,
-    snapshot_path: Path,
-    actions_path: Path,
-    voice_user: str,
-    voice_auth_wav: str,
-    voice_threshold: float,
-    master_password: str,
-    model_override: str,
-    skip_voice_auth_guard: bool,
     master_password_ok: bool,
     repo_root: Callable,
     respond_fn: Callable,
@@ -734,19 +751,19 @@ def _build_dispatch_ctx(
 ) -> _DispatchCtx:
     """Populate a _DispatchCtx with all the values needed by intent handlers."""
     ctx = _DispatchCtx()
-    ctx.text = text
+    ctx.text = params.text
     ctx.lowered = lowered
-    ctx.execute = execute
-    ctx.approve_privileged = approve_privileged
-    ctx.speak = speak
-    ctx.snapshot_path = snapshot_path
-    ctx.actions_path = actions_path
-    ctx.voice_user = voice_user
-    ctx.voice_auth_wav = voice_auth_wav
-    ctx.voice_threshold = voice_threshold
-    ctx.master_password = master_password
-    ctx.model_override = model_override
-    ctx.skip_voice_auth_guard = skip_voice_auth_guard
+    ctx.execute = params.execute
+    ctx.approve_privileged = params.approve_privileged
+    ctx.speak = params.speak
+    ctx.snapshot_path = params.snapshot_path
+    ctx.actions_path = params.actions_path
+    ctx.voice_user = params.voice_user
+    ctx.voice_auth_wav = params.voice_auth_wav
+    ctx.voice_threshold = params.voice_threshold
+    ctx.master_password = params.master_password
+    ctx.model_override = params.model_override
+    ctx.skip_voice_auth_guard = params.skip_voice_auth_guard
     ctx.master_password_ok = master_password_ok
     ctx.phone_queue = repo_root() / ".planning" / "phone_actions.jsonl"
     ctx.phone_report = repo_root() / ".planning" / "phone_spam_report.json"
@@ -908,14 +925,7 @@ def _speak_persona_reply(intent: str, rc: int, repo_root_fn, cmd_voice_say) -> N
 
 def _check_voice_auth(
     lowered: str,
-    execute: bool,
-    approve_privileged: bool,
-    voice_user: str,
-    voice_auth_wav: str,
-    voice_threshold: float,
-    master_password: str,
-    speak: bool,
-    skip_voice_auth_guard: bool,
+    params: VoiceRunParams,
     cmd_fns: dict,
     repo_root,
 ) -> tuple[int | None, bool]:
@@ -925,23 +935,32 @@ def _check_voice_auth(
     when auth passes or an int return code when it fails.
     """
     master_password_ok = False
-    if master_password.strip():
-        master_password_ok = verify_master_password(repo_root(), master_password.strip())
+    if params.master_password.strip():
+        master_password_ok = verify_master_password(
+            repo_root(), params.master_password.strip(),
+        )
 
     read_only_request = _is_read_only_voice_request(
-        lowered, execute=execute, approve_privileged=approve_privileged,
+        lowered, execute=params.execute,
+        approve_privileged=params.approve_privileged,
     )
 
-    auth_rc = _validate_voice_auth(
-        voice_user=voice_user, voice_auth_wav=voice_auth_wav,
-        voice_threshold=voice_threshold, master_password=master_password,
-        master_password_ok=master_password_ok, execute=execute,
-        approve_privileged=approve_privileged, read_only_request=read_only_request,
-        skip_voice_auth_guard=skip_voice_auth_guard, speak=speak,
+    auth_ctx = VoiceAuthContext(
+        voice_user=params.voice_user,
+        voice_auth_wav=params.voice_auth_wav,
+        voice_threshold=params.voice_threshold,
+        master_password=params.master_password,
+        master_password_ok=master_password_ok,
+        execute=params.execute,
+        approve_privileged=params.approve_privileged,
+        read_only_request=read_only_request,
+        skip_voice_auth_guard=params.skip_voice_auth_guard,
+        speak=params.speak,
         cmd_voice_say=cmd_fns["cmd_voice_say"],
         cmd_voice_verify=cmd_fns["cmd_voice_verify"],
         repo_root=repo_root,
     )
+    auth_rc = _validate_voice_auth(auth_ctx)
     return auth_rc, master_password_ok
 
 
@@ -963,10 +982,16 @@ def cmd_voice_run_impl(
     cmd_fns, repo_root, _web_augmented_llm_conversation = _import_voice_commands()
     lowered = text.lower().strip()
 
+    params = VoiceRunParams(
+        text=text, execute=execute, approve_privileged=approve_privileged,
+        speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
+        voice_user=voice_user, voice_auth_wav=voice_auth_wav,
+        voice_threshold=voice_threshold, master_password=master_password,
+        model_override=model_override, skip_voice_auth_guard=skip_voice_auth_guard,
+    )
+
     auth_rc, master_password_ok = _check_voice_auth(
-        lowered, execute, approve_privileged, voice_user,
-        voice_auth_wav, voice_threshold, master_password,
-        speak, skip_voice_auth_guard, cmd_fns, repo_root,
+        lowered, params, cmd_fns, repo_root,
     )
     if auth_rc is not None:
         return auth_rc
@@ -990,12 +1015,7 @@ def cmd_voice_run_impl(
         return False
 
     ctx = _build_dispatch_ctx(
-        text, lowered,
-        execute=execute, approve_privileged=approve_privileged,
-        speak=speak, snapshot_path=snapshot_path, actions_path=actions_path,
-        voice_user=voice_user, voice_auth_wav=voice_auth_wav,
-        voice_threshold=voice_threshold, master_password=master_password,
-        model_override=model_override, skip_voice_auth_guard=skip_voice_auth_guard,
+        params, lowered,
         master_password_ok=master_password_ok, repo_root=repo_root,
         respond_fn=_respond, require_auth_fn=_require_state_mutation_voice_auth,
         web_augmented_fn=_web_augmented_llm_conversation, cmd_fns=cmd_fns,

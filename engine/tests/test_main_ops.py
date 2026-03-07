@@ -684,19 +684,21 @@ class TestDaemonSelfTest:
         # Ensure runtime dir exists for self_test_history.jsonl
         (tmp_path / ".planning" / "runtime").mkdir(parents=True, exist_ok=True)
         return daemon_loop_mod.cmd_daemon_run_impl(
-            interval_s=120,
-            snapshot_path=tmp_path / "ops_snapshot.live.json",
-            actions_path=tmp_path / "actions.generated.json",
-            execute=False,
-            approve_privileged=False,
-            auto_open_connectors=False,
-            max_cycles=max_cycles,
-            idle_interval_s=900,
-            idle_after_s=300,
-            run_missions=False,
-            sync_every_cycles=0,
-            self_heal_every_cycles=0,
-            self_test_every_cycles=self_test_every_cycles,
+            daemon_loop_mod.DaemonConfig(
+                interval_s=120,
+                snapshot_path=tmp_path / "ops_snapshot.live.json",
+                actions_path=tmp_path / "actions.generated.json",
+                execute=False,
+                approve_privileged=False,
+                auto_open_connectors=False,
+                max_cycles=max_cycles,
+                idle_interval_s=900,
+                idle_after_s=300,
+                run_missions=False,
+                sync_every_cycles=0,
+                self_heal_every_cycles=0,
+                self_test_every_cycles=self_test_every_cycles,
+            )
         )
 
     def test_self_test_runs_at_correct_cycle(self, capsys, monkeypatch, tmp_path):

@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +62,31 @@ from jarvis_engine.harvest_discovery import (  # noqa: F401
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Parameter bundle dataclasses
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DaemonConfig:
+    """Configuration bundle for cmd_daemon_run_impl."""
+
+    interval_s: int = 180
+    snapshot_path: Path = field(default_factory=lambda: Path("ops_snapshot.live.json"))
+    actions_path: Path = field(default_factory=lambda: Path("actions.generated.json"))
+    execute: bool = False
+    approve_privileged: bool = False
+    auto_open_connectors: bool = False
+    max_cycles: int = 0
+    idle_interval_s: int = 900
+    idle_after_s: int = 300
+    run_missions: bool = False
+    sync_every_cycles: int = 5
+    self_heal_every_cycles: int = 20
+    self_test_every_cycles: int = 20
+    watchdog_every_cycles: int = 5
+
 
 # ---------------------------------------------------------------------------
 # Daemon-scoped bus cache (avoids recreating MemoryEngine per periodic task)
@@ -151,8 +177,8 @@ def _collect_from_recent_memories(
             summary = row["summary"] or ""
             if _add_phrases(summary, candidates, seen_lower, recently_harvested, max_topics):
                 return
-    except sqlite3.OperationalError:
-        pass  # Memory tables may not exist yet
+    except sqlite3.OperationalError as exc:
+        logger.debug("Memory tables may not exist yet: %s", exc)
 
 
 def _collect_from_kg_gaps(
@@ -183,8 +209,8 @@ def _collect_from_kg_gaps(
                     label = node_row["label"] or ""
                     if _add_phrases(label, candidates, seen_lower, recently_harvested, max_topics):
                         return
-    except sqlite3.OperationalError:
-        pass  # KG tables may not exist yet
+    except sqlite3.OperationalError as exc:
+        logger.debug("KG tables may not exist yet: %s", exc)
 
 
 def _collect_from_strong_kg_areas(
@@ -512,37 +538,24 @@ def _log_cycle_end(cycles: int, rc: int) -> None:
 def _print_cycle_status(
     cycles: int,
     cycle_start_ts: str,
-    *,
-    daemon_paused: bool,
-    safe_mode: bool,
-    gaming_mode_enabled: bool,
-    auto_detect: bool,
-    detected_process: str,
-    gaming_state: dict,
-    control_state: dict,
-    is_active: bool,
-    pressure_level: str,
-    resource_snapshot: dict,
-    sleep_seconds: int,
-    skip_heavy_tasks: bool,
-    idle_seconds: float | None,
+    state: dict,
 ) -> None:
     """Print all per-cycle status lines to stdout."""
     print(f"cycle={cycles} ts={cycle_start_ts}")
-    print(f"daemon_paused={daemon_paused}")
-    print(f"safe_mode={safe_mode}")
-    print(f"gaming_mode={gaming_mode_enabled}")
-    print(f"gaming_mode_auto_detect={auto_detect}")
-    if detected_process:
-        print(f"gaming_mode_detected_process={detected_process}")
-    if gaming_state.get("reason", ""):
-        print(f"gaming_mode_reason={gaming_state.get('reason', '')}")
-    if control_state.get("reason", ""):
-        print(f"runtime_control_reason={control_state.get('reason', '')}")
-    print(f"device_active={is_active}")
-    print(f"resource_pressure_level={pressure_level}")
+    print(f"daemon_paused={state['daemon_paused']}")
+    print(f"safe_mode={state['safe_mode']}")
+    print(f"gaming_mode={state['gaming_mode_enabled']}")
+    print(f"gaming_mode_auto_detect={state['auto_detect']}")
+    if state["detected_process"]:
+        print(f"gaming_mode_detected_process={state['detected_process']}")
+    if state["gaming_state"].get("reason", ""):
+        print(f"gaming_mode_reason={state['gaming_state'].get('reason', '')}")
+    if state["control_state"].get("reason", ""):
+        print(f"runtime_control_reason={state['control_state'].get('reason', '')}")
+    print(f"device_active={state['is_active']}")
+    print(f"resource_pressure_level={state['pressure_level']}")
     try:
-        _m = resource_snapshot.get("metrics", {})
+        _m = state["resource_snapshot"].get("metrics", {})
         _rss = _m.get("process_memory_mb", {}).get("current", 0.0)
         _cpu = _m.get("process_cpu_pct", {}).get("current", 0.0)
         _emb = _m.get("embedding_cache_mb", {}).get("current", 0.0)
@@ -551,12 +564,12 @@ def _print_cycle_status(
         print(f"resource_embedding_cache_mb={_emb}")
     except (AttributeError, KeyError, TypeError) as exc:
         logger.debug("Resource metric print failed: %s", exc)
-    if pressure_level in {"mild", "severe"}:
-        print(f"resource_throttle_sleep_s={sleep_seconds}")
-        if skip_heavy_tasks:
+    if state["pressure_level"] in {"mild", "severe"}:
+        print(f"resource_throttle_sleep_s={state['sleep_seconds']}")
+        if state["skip_heavy_tasks"]:
             print("resource_skip_heavy_tasks=true")
-    if idle_seconds is not None:
-        print(f"idle_seconds={round(idle_seconds, 1)}")
+    if state["idle_seconds"] is not None:
+        print(f"idle_seconds={round(state['idle_seconds'], 1)}")
 
 
 def _log_resource_pressure(
@@ -1119,22 +1132,7 @@ def _emit_cycle_status(
     """Log and print all per-cycle status and resource pressure info."""
     cycle_start_ts = _now_iso()
     _log_cycle_start(cycles, cycle_start_ts)
-    _print_cycle_status(
-        cycles, cycle_start_ts,
-        daemon_paused=state["daemon_paused"],
-        safe_mode=state["safe_mode"],
-        gaming_mode_enabled=state["gaming_mode_enabled"],
-        auto_detect=state["auto_detect"],
-        detected_process=state["detected_process"],
-        gaming_state=state["gaming_state"],
-        control_state=state["control_state"],
-        is_active=state["is_active"],
-        pressure_level=state["pressure_level"],
-        resource_snapshot=state["resource_snapshot"],
-        sleep_seconds=state["sleep_seconds"],
-        skip_heavy_tasks=state["skip_heavy_tasks"],
-        idle_seconds=state["idle_seconds"],
-    )
+    _print_cycle_status(cycles, cycle_start_ts, state)
     _log_resource_pressure(
         cycles, state["pressure_level"], last_pressure_level,
         state["resource_snapshot"], state["sleep_seconds"],
@@ -1156,23 +1154,7 @@ def _should_skip_cycle(state: dict, idle_interval: int) -> str | None:
     return None
 
 
-def cmd_daemon_run_impl(
-    interval_s: int,
-    snapshot_path: Path,
-    actions_path: Path,
-    *,
-    execute: bool,
-    approve_privileged: bool,
-    auto_open_connectors: bool,
-    max_cycles: int,
-    idle_interval_s: int,
-    idle_after_s: int,
-    run_missions: bool,
-    sync_every_cycles: int = 5,
-    self_heal_every_cycles: int = 20,
-    self_test_every_cycles: int = 20,
-    watchdog_every_cycles: int = 5,
-) -> int:
+def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
     from jarvis_engine.main import (
         cmd_mobile_desktop_sync, cmd_self_heal, cmd_ops_autopilot,
@@ -1185,9 +1167,9 @@ def cmd_daemon_run_impl(
     if not _register_daemon_pid(root):
         return 4
 
-    active_interval = max(30, interval_s)
-    idle_interval = max(30, idle_interval_s)
-    idle_after = max(60, idle_after_s)
+    active_interval = max(30, cfg.interval_s)
+    idle_interval = max(30, cfg.idle_interval_s)
+    idle_after = max(60, cfg.idle_after_s)
     consecutive_failures = 0
     cycles = 0
     last_pressure_level = "none"
@@ -1205,27 +1187,28 @@ def cmd_daemon_run_impl(
             skip_reason = _should_skip_cycle(state, idle_interval)
             if skip_reason:
                 print(skip_reason)
-                if max_cycles > 0 and cycles >= max_cycles:
+                if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                     break
                 time.sleep(max(idle_interval, 600))
                 continue
 
             _run_periodic_subsystems(
-                root, cycles, state["skip_heavy_tasks"], run_missions,
+                root, cycles, state["skip_heavy_tasks"], cfg.run_missions,
                 cmd_mobile_desktop_sync, cmd_self_heal,
-                sync_every_cycles, self_heal_every_cycles,
-                self_test_every_cycles, watchdog_every_cycles,
+                cfg.sync_every_cycles, cfg.self_heal_every_cycles,
+                cfg.self_test_every_cycles, cfg.watchdog_every_cycles,
             )
 
             rc = _run_core_autopilot(
-                snapshot_path, actions_path, execute, approve_privileged,
-                auto_open_connectors, state["safe_mode"], cmd_ops_autopilot,
+                cfg.snapshot_path, cfg.actions_path, cfg.execute,
+                cfg.approve_privileged, cfg.auto_open_connectors,
+                state["safe_mode"], cmd_ops_autopilot,
             )
             print(f"cycle_rc={rc}")
             _log_cycle_end(cycles, rc)
             consecutive_failures = _handle_circuit_breaker(rc, consecutive_failures)
 
-            if max_cycles > 0 and cycles >= max_cycles:
+            if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                 break
             print(f"sleep_s={state['sleep_seconds']}")
             time.sleep(state["sleep_seconds"])

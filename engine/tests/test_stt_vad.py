@@ -11,6 +11,24 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
+# Stub specs for external types not installed in the test environment
+# ---------------------------------------------------------------------------
+
+class _TorchModuleStub:
+    """Spec stub for the torch module."""
+
+    def set_num_threads(self, n: int) -> None: ...  # noqa: D102
+    def FloatTensor(self, data) -> object: ...  # noqa: D102, N802
+
+
+class _SileroModelStub:
+    """Spec stub for a Silero VAD model (callable)."""
+
+    def __call__(self, audio_tensor, sample_rate: int) -> object: ...  # noqa: D102
+    def reset_states(self) -> None: ...  # noqa: D102
+
+
+# ---------------------------------------------------------------------------
 # 1. Constructor defaults
 # ---------------------------------------------------------------------------
 
@@ -42,9 +60,9 @@ def test_ensure_model_loads_silero_and_sets_threads() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector()
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_load = MagicMock(return_value=mock_model)
 
     with patch.dict("sys.modules", {"torch": mock_torch, "silero_vad": MagicMock(load_silero_vad=mock_load)}):
@@ -60,7 +78,7 @@ def test_ensure_model_called_once() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector()
-    d._model = MagicMock()  # pretend already loaded
+    d._model = MagicMock(spec=_SileroModelStub)  # pretend already loaded
 
     # Should not attempt to import again
     d._ensure_model()
@@ -76,13 +94,13 @@ def test_is_speech_high_confidence_returns_true() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.5)
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     mock_model.return_value.item.return_value = 0.85
     d._model = mock_model
 
     chunk = np.random.randn(512).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -102,13 +120,13 @@ def test_is_speech_low_confidence_returns_false() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.5)
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     mock_model.return_value.item.return_value = 0.2
     d._model = mock_model
 
     chunk = np.random.randn(512).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -126,13 +144,13 @@ def test_get_confidence_returns_raw_value() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector()
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     mock_model.return_value.item.return_value = 0.73
     d._model = mock_model
 
     chunk = np.random.randn(512).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -150,14 +168,14 @@ def test_process_chunk_splits_large_chunk() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.5)
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     # First sub-window: low confidence, second: high confidence
     mock_model.return_value.item.side_effect = [0.2, 0.8]
     d._model = mock_model
 
     chunk = np.random.randn(1280).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -174,13 +192,13 @@ def test_process_chunk_all_low_confidence() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.5)
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     mock_model.return_value.item.side_effect = [0.1, 0.3]
     d._model = mock_model
 
     chunk = np.random.randn(1280).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -194,13 +212,13 @@ def test_process_chunk_small_chunk_delegates_to_is_speech() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.5)
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     mock_model.return_value.item.return_value = 0.9
     d._model = mock_model
 
     chunk = np.random.randn(512).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -220,7 +238,7 @@ def test_reset_calls_model_reset_states() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector()
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     d._model = mock_model
 
     d.reset()
@@ -274,7 +292,7 @@ def test_available_when_both_installed() -> None:
 
     d = stt_vad.SileroVADDetector()
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_silero = MagicMock()
 
     with patch.dict("sys.modules", {"torch": mock_torch, "silero_vad": mock_silero}):
@@ -349,13 +367,13 @@ def test_process_chunk_exact_two_windows() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector(threshold=0.5)
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     mock_model.return_value.item.side_effect = [0.6, 0.4]
     d._model = mock_model
 
     chunk = np.random.randn(1024).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.return_value = "fake_tensor"
 
     with patch.dict("sys.modules", {"torch": mock_torch}):
@@ -374,12 +392,12 @@ def test_get_confidence_handles_model_exception() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector()
-    mock_model = MagicMock()
+    mock_model = MagicMock(spec=_SileroModelStub)
     d._model = mock_model
 
     chunk = np.random.randn(512).astype(np.float32)
 
-    mock_torch = MagicMock()
+    mock_torch = MagicMock(spec=_TorchModuleStub)
     mock_torch.FloatTensor.side_effect = RuntimeError("tensor error")
 
     with patch.dict("sys.modules", {"torch": mock_torch}):

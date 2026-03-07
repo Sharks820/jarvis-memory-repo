@@ -163,8 +163,8 @@ def test_daemon_run_success(mock_impl: MagicMock) -> None:
     result = handler.handle(cmd)
     assert result.return_code == 0
     mock_impl.assert_called_once()
-    kwargs = mock_impl.call_args.kwargs
-    assert kwargs["max_cycles"] == 1
+    cfg = mock_impl.call_args.args[0]
+    assert cfg.max_cycles == 1
 
 
 @patch("jarvis_engine.daemon_loop.cmd_daemon_run_impl", return_value=2)

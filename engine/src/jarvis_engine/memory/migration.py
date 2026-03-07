@@ -44,6 +44,15 @@ class MigrationResult(_MigrationResultBase, total=False):
     error_details: list[str]
 
 
+class ProcessLinesResult(TypedDict):
+    """Result from :func:`_process_lines`."""
+
+    inserted: int
+    skipped: int
+    errors: int
+    error_details: list[str]
+
+
 class _MigrationTotals(TypedDict):
     """Aggregate counts in :class:`FullMigrationResult`."""
 
@@ -228,7 +237,7 @@ def _process_brain_lines(
     checkpoint_path: Path,
     jsonl_name: str,
     source_count: int,
-) -> dict:
+) -> ProcessLinesResult:
     """Process JSONL lines, transforming and inserting each brain record.
 
     Returns a dict with ``inserted``, ``skipped``, ``errors``, and

@@ -31,10 +31,19 @@ from jarvis_engine.commands.security_commands import (
 )
 
 
-class RuntimeControlHandler:
+class _SecurityHandlerBase:
+    """Shared base for security handler classes.
+
+    All security handlers receive a *root* path in their constructor and
+    store it as ``self._root``.  This base class eliminates the repeated
+    ``__init__`` boilerplate.
+    """
+
     def __init__(self, root: Path) -> None:
         self._root = root
 
+
+class RuntimeControlHandler(_SecurityHandlerBase):
     def handle(self, cmd: RuntimeControlCommand) -> RuntimeControlResult:
         from jarvis_engine.runtime_control import read_control_state, reset_control_state, write_control_state
 
@@ -68,10 +77,7 @@ class RuntimeControlHandler:
         return RuntimeControlResult(state=state)
 
 
-class OwnerGuardHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class OwnerGuardHandler(_SecurityHandlerBase):
     def handle(self, cmd: OwnerGuardCommand) -> OwnerGuardResult:
         from jarvis_engine.owner_guard import (
             clear_master_password,
@@ -107,10 +113,7 @@ class OwnerGuardHandler:
         return OwnerGuardResult(state=state, return_code=0)
 
 
-class ConnectStatusHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class ConnectStatusHandler(_SecurityHandlerBase):
     def handle(self, cmd: ConnectStatusCommand) -> ConnectStatusResult:
         from jarvis_engine.connectors import build_connector_prompts, evaluate_connector_statuses
 
@@ -125,10 +128,7 @@ class ConnectStatusHandler:
         )
 
 
-class ConnectGrantHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class ConnectGrantHandler(_SecurityHandlerBase):
     def handle(self, cmd: ConnectGrantCommand) -> ConnectGrantResult:
         from jarvis_engine.connectors import grant_connector_permission
 
@@ -144,10 +144,7 @@ class ConnectGrantHandler:
         return ConnectGrantResult(granted=granted, return_code=0)
 
 
-class ConnectBootstrapHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class ConnectBootstrapHandler(_SecurityHandlerBase):
     def handle(self, cmd: ConnectBootstrapCommand) -> ConnectBootstrapResult:
         import webbrowser
 
@@ -165,10 +162,7 @@ class ConnectBootstrapHandler:
         return ConnectBootstrapResult(prompts=prompts, ready=False)
 
 
-class PhoneActionHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class PhoneActionHandler(_SecurityHandlerBase):
     def handle(self, cmd: PhoneActionCommand) -> PhoneActionResult:
         from jarvis_engine.phone_guard import append_phone_actions, build_phone_action
 
@@ -192,10 +186,7 @@ class PhoneActionHandler:
         return PhoneActionResult(record=record, return_code=0)
 
 
-class PhoneSpamGuardHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class PhoneSpamGuardHandler(_SecurityHandlerBase):
     def handle(self, cmd: PhoneSpamGuardCommand) -> PhoneSpamGuardResult:
         from jarvis_engine.phone_guard import (
             append_phone_actions,
@@ -231,10 +222,7 @@ class PhoneSpamGuardHandler:
         )
 
 
-class PersonaConfigHandler:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
+class PersonaConfigHandler(_SecurityHandlerBase):
     def handle(self, cmd: PersonaConfigCommand) -> PersonaConfigResult:
         from jarvis_engine.persona import load_persona_config, save_persona_config
 

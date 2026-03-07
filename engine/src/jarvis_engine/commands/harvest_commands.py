@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class HarvestTopicCommand:
@@ -15,11 +17,9 @@ class HarvestTopicCommand:
 
 
 @dataclass
-class HarvestTopicResult:
+class HarvestTopicResult(ResultBase):
     topic: str = ""
     results: list[dict] = field(default_factory=list)
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -32,12 +32,10 @@ class IngestSessionCommand:
 
 
 @dataclass
-class IngestSessionResult:
+class IngestSessionResult(ResultBase):
     source: str = ""
     sessions_processed: int = 0
     records_created: int = 0
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -52,7 +50,5 @@ class HarvestBudgetCommand:
 
 
 @dataclass
-class HarvestBudgetResult:
+class HarvestBudgetResult(ResultBase):
     summary: dict = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""

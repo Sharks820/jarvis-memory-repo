@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from jarvis_engine.commands.base import ResultBase
+
 if TYPE_CHECKING:
     from jarvis_engine.connectors import ConnectorStatus
     from jarvis_engine.persona import PersonaConfig
@@ -40,10 +42,8 @@ class OwnerGuardCommand:
 
 
 @dataclass
-class OwnerGuardResult:
+class OwnerGuardResult(ResultBase):
     state: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -67,10 +67,8 @@ class ConnectGrantCommand:
 
 
 @dataclass
-class ConnectGrantResult:
+class ConnectGrantResult(ResultBase):
     granted: dict[str, Any] = field(default_factory=dict)
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -95,10 +93,8 @@ class PhoneActionCommand:
 
 
 @dataclass
-class PhoneActionResult:
+class PhoneActionResult(ResultBase):
     record: PhoneAction | None = None
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -111,11 +107,9 @@ class PhoneSpamGuardCommand:
 
 
 @dataclass
-class PhoneSpamGuardResult:
+class PhoneSpamGuardResult(ResultBase):
     candidates_count: int = 0
     queued_actions_count: int = 0
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)

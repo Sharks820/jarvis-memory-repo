@@ -310,7 +310,7 @@ class TestImageAdapter:
         script.write_text("pass")
         adapter.script = script
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="ok", stderr="")
         out_file = str(tmp_path / "out.png")
         result = adapter.execute("a cat", out_file, "balanced")
         assert result.ok is True
@@ -325,7 +325,7 @@ class TestImageAdapter:
         script.write_text("pass")
         adapter.script = script
 
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="boom")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=1, stdout="", stderr="boom")
         out_file = str(tmp_path / "out.png")
         result = adapter.execute("a cat", out_file, "balanced")
         assert result.ok is False
@@ -352,7 +352,7 @@ class TestImageAdapter:
         script.write_text("pass")
         adapter.script = script
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="ok", stderr="")
         adapter.execute("a cat", str(tmp_path / "out.png"), "max_quality")
         _, kwargs = mock_run.call_args
         assert kwargs["timeout"] == 600
@@ -365,7 +365,7 @@ class TestImageAdapter:
         script = tmp_path / "fake_script.py"
         script.write_text("pass")
         adapter.script = script
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="ok", stderr="")
         result = adapter.execute("cat picture", None, "balanced")
         assert result.ok is True
         assert "imagegen" in result.output_path.replace("\\", "/")
@@ -415,7 +415,7 @@ class TestVideoAdapter:
         script = tmp_path / "sora.py"
         script.write_text("pass")
         adapter.script = script
-        mock_run.return_value = MagicMock(returncode=0, stdout="video done", stderr="")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="video done", stderr="")
         result = adapter.execute("flying car", str(tmp_path / "vid.mp4"), "balanced")
         assert result.ok is True
         assert "completed" in result.reason.lower()
@@ -427,7 +427,7 @@ class TestVideoAdapter:
         script = tmp_path / "sora.py"
         script.write_text("pass")
         adapter.script = script
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="sora error")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=1, stdout="", stderr="sora error")
         result = adapter.execute("car", str(tmp_path / "vid.mp4"), "balanced")
         assert result.ok is False
         assert "sora error" in result.reason
@@ -450,7 +450,7 @@ class TestVideoAdapter:
         script = tmp_path / "sora.py"
         script.write_text("pass")
         adapter.script = script
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="ok", stderr="")
         adapter.execute("car", str(tmp_path / "vid.mp4"), "max_quality")
         _, kwargs = mock_run.call_args
         assert kwargs["timeout"] == 2100
@@ -462,7 +462,7 @@ class TestVideoAdapter:
         script = tmp_path / "sora.py"
         script.write_text("pass")
         adapter.script = script
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        mock_run.return_value = MagicMock(spec=subprocess.CompletedProcess, returncode=0, stdout="ok", stderr="")
         result = adapter.execute("car", None, "balanced")
         assert result.ok is True
         assert "video" in result.output_path.replace("\\", "/")

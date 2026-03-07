@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import sha256_hex
 
@@ -27,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 # Semantic near-duplicate threshold (cosine similarity)
 _DEDUP_COSINE_THRESHOLD = 0.92
+
+
+class ProviderResult(TypedDict):
+    """Per-provider harvest result entry."""
+
+    provider: str
+    status: str
+    records_created: int
+    cost_usd: float
+    error: str
+    skipped_dedup: bool
+
+
+class HarvestResponse(TypedDict):
+    """Top-level response from :meth:`Harvester.harvest`."""
+
+    topic: str
+    results: list[ProviderResult]
 
 
 @dataclass
@@ -138,7 +156,7 @@ class KnowledgeHarvester:
         topic_tag: str,
         topic: str,
         seen_hashes: set[str],
-    ) -> dict:
+    ) -> ProviderResult:
         """Deduplicate and ingest a provider result through the pipeline.
 
         Returns the per-provider result dict for the harvest response.
@@ -186,7 +204,7 @@ class KnowledgeHarvester:
             "skipped_dedup": False,
         }
 
-    def harvest(self, cmd: HarvestCommand) -> dict:
+    def harvest(self, cmd: HarvestCommand) -> HarvestResponse:
         """Harvest knowledge about a topic from multiple providers.
 
         Args:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
+from jarvis_engine.commands.base import ResultBase
 
 
 @dataclass(frozen=True)
@@ -99,11 +100,9 @@ class VoiceRunCommand:
 
 
 @dataclass
-class VoiceRunResult:
-    return_code: int = 0
+class VoiceRunResult(ResultBase):
     intent: str = "unknown"
     extra: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
 
 
 @dataclass(frozen=True)

@@ -132,7 +132,7 @@ class CommandRoutesMixin:
             except (OSError, ValueError, TypeError) as save_exc:
                 logger.debug("Conversation history save-after-clear failed: %s", save_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
-        except Exception as exc:  # boundary: catch-all justified
+        except (ValueError, TypeError, OSError, ImportError, RuntimeError, AttributeError) as exc:  # narrowed from except Exception
             logger.error("Conversation history clear failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
@@ -243,8 +243,9 @@ class CommandRoutesMixin:
             })
         except ValueError as exc:
             logger.warning("Mission create validation failed: %s", exc)
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
-        except Exception as exc:  # boundary: catch-all justified
+            sanitized = str(exc)[:200].replace("\n", " ")
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": sanitized})
+        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
             logger.error("Mission create failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
 
@@ -281,7 +282,7 @@ class CommandRoutesMixin:
                     if isinstance(m, dict)
                 ],
             })
-        except Exception as exc:  # boundary: catch-all justified
+        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
             logger.error("Mission status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
 

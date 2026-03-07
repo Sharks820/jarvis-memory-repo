@@ -1,5 +1,6 @@
 """Typed command dataclasses for the Jarvis Command Bus."""
 
+from jarvis_engine.commands.base import ResultBase
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
     BrainContextCommand,
@@ -132,6 +133,8 @@ from jarvis_engine.commands.defense_commands import (
 )
 
 __all__ = [
+    # Base
+    "ResultBase",
     # Memory
     "BrainCompactCommand",
     "BrainContextCommand",

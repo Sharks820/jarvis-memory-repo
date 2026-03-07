@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from jarvis_engine.commands.base import ResultBase
+
 
 @dataclass(frozen=True)
 class RunTaskCommand:
@@ -19,16 +21,14 @@ class RunTaskCommand:
 
 
 @dataclass
-class RunTaskResult:
+class RunTaskResult(ResultBase):
     allowed: bool = False
     provider: str = ""
     plan: str = ""
     reason: str = ""
     output_path: str | None = None
     output_text: str | None = None
-    return_code: int = 0
     auto_ingest_record_id: str = ""
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class QueryCommand:
 
 
 @dataclass
-class QueryResult:
+class QueryResult(ResultBase):
     text: str = ""
     model: str = ""
     provider: str = ""
@@ -65,8 +65,6 @@ class QueryResult:
     cost_usd: float = 0.0
     fallback_used: bool = False
     fallback_reason: str = ""
-    return_code: int = 0
-    message: str = ""
 
 
 @dataclass(frozen=True)
@@ -78,8 +76,6 @@ class WebResearchCommand:
 
 
 @dataclass
-class WebResearchResult:
-    return_code: int = 0
+class WebResearchResult(ResultBase):
     report: dict[str, Any] = field(default_factory=dict)
     auto_ingest_record_id: str = ""
-    message: str = ""

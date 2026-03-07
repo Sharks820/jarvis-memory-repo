@@ -114,9 +114,9 @@ class DaemonRunHandler:
         self._root = root
 
     def handle(self, cmd: DaemonRunCommand) -> DaemonRunResult:
-        from jarvis_engine import daemon_loop as _daemon_loop_mod
+        from jarvis_engine.daemon_loop import DaemonConfig, cmd_daemon_run_impl
 
-        rc = _daemon_loop_mod.cmd_daemon_run_impl(
+        cfg = DaemonConfig(
             interval_s=cmd.interval_s,
             snapshot_path=cmd.snapshot_path,
             actions_path=cmd.actions_path,
@@ -131,6 +131,7 @@ class DaemonRunHandler:
             self_heal_every_cycles=cmd.self_heal_every_cycles,
             self_test_every_cycles=cmd.self_test_every_cycles,
         )
+        rc = cmd_daemon_run_impl(cfg)
         return DaemonRunResult(return_code=rc)
 
 

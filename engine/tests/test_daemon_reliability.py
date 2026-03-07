@@ -419,7 +419,7 @@ def _run_daemon_impl(tmp_path: Path, **kwargs) -> int:
         self_test_every_cycles=0,
     )
     defaults.update(kwargs)
-    return daemon_loop_mod.cmd_daemon_run_impl(**defaults)
+    return daemon_loop_mod.cmd_daemon_run_impl(daemon_loop_mod.DaemonConfig(**defaults))
 
 
 class TestDaemonActivityLogging:

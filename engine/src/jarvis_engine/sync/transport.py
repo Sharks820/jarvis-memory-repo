@@ -59,8 +59,8 @@ def get_or_create_salt(salt_path: Path) -> bytes:
     tmp.write_bytes(salt)
     try:
         os.chmod(str(tmp), 0o600)
-    except OSError:
-        pass  # Windows may not support chmod
+    except OSError as exc:
+        logger.debug("chmod not supported on this platform: %s", exc)
     try:
         os.replace(str(tmp), str(salt_path))
     except OSError:

@@ -3,9 +3,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import secrets
 from pathlib import Path
 from typing import TypedDict
+
+logger = logging.getLogger(__name__)
 
 
 class OwnerGuardState(TypedDict):
@@ -121,7 +124,8 @@ def verify_master_password(root: Path, password: str) -> bool:
         return False
     try:
         salt = base64.b64decode(salt_b64.encode("ascii"), validate=True)
-    except ValueError:
+    except ValueError as exc:
+        logger.debug("Invalid master password salt encoding: %s", exc)
         return False
     actual = _hash_master_password(password.strip(), salt=salt, iterations=max(100000, iterations))
     return hmac.compare_digest(actual, expected)
