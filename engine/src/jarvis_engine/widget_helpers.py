@@ -9,6 +9,8 @@ Tooltip class.
 
 from __future__ import annotations
 
+__all__ = ["WidgetConfig"]
+
 import base64
 import ctypes
 import ctypes.wintypes

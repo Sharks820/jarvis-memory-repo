@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from jarvis_engine.persona import load_persona_config
 
 from jarvis_engine._constants import (
     STOP_WORDS as _HARVEST_STOP_WORDS,
 )
+
+if TYPE_CHECKING:
+    from jarvis_engine._bus import CommandBus
 
 logger = logging.getLogger(__name__)
 

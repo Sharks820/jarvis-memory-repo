@@ -10,6 +10,8 @@ this module can be imported safely even when they are not installed.
 
 from __future__ import annotations
 
+__all__ = ["SileroVADDetector", "get_vad_detector"]
+
 import logging
 import threading
 

@@ -7,6 +7,15 @@ Functions in this module accept explicit paths rather than calling
 
 from __future__ import annotations
 
+__all__ = [
+    "GamingModeState",
+    "DEFAULT_GAMING_PROCESSES",
+    "read_gaming_mode_state",
+    "write_gaming_mode_state",
+    "load_gaming_processes",
+    "detect_active_game_process",
+]
+
 import csv
 import json
 import logging

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__all__ = ["upsert_fts_kg", "delete_fts_kg", "KGManagerBase"]
+
 import logging
 import sqlite3
 import threading

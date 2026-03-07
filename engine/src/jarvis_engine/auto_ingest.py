@@ -6,6 +6,14 @@ Extracted from ``jarvis_engine.main`` so that handler modules can import
 
 from __future__ import annotations
 
+__all__ = [
+    "VALID_SOURCES",
+    "VALID_KINDS",
+    "sanitize_memory_content",
+    "auto_ingest_memory",
+    "auto_ingest_memory_sync",
+]
+
 import hashlib
 import logging
 import os

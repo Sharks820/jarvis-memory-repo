@@ -27,6 +27,8 @@ from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
 from jarvis_engine.knowledge._base import upsert_fts_kg
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import networkx as nx
 
     from jarvis_engine.memory.embeddings import EmbeddingService

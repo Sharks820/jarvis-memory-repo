@@ -19,6 +19,8 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
 from jarvis_engine._compat import UTC
 from jarvis_engine.commands.defense_commands import (
     BlockIPCommand,
@@ -38,6 +40,11 @@ from jarvis_engine.commands.defense_commands import (
     UnblockIPCommand,
     UnblockIPResult,
 )
+
+if TYPE_CHECKING:
+    from jarvis_engine.security.forensic_logger import ForensicLogger
+    from jarvis_engine.security.orchestrator import SecurityOrchestrator
+    from jarvis_engine.security.memory_provenance import MemoryProvenance
 
 logger = logging.getLogger(__name__)
 

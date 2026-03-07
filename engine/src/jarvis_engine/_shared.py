@@ -16,6 +16,27 @@ Consolidates duplicated helpers to a single source of truth:
 
 from __future__ import annotations
 
+__all__ = [
+    "now_iso",
+    "make_thread_aware_repo_root",
+    "atomic_write_json",
+    "load_json_file",
+    "env_int",
+    "safe_float",
+    "safe_int",
+    "check_path_within_root",
+    "win_hidden_subprocess_kwargs",
+    "sha256_hex",
+    "sha256_short",
+    "call_ollama_generate",
+    "set_process_title",
+    "load_personal_vocab_lines",
+    "FTS5_SPECIAL_RE",
+    "FTS5_KEYWORDS",
+    "load_jsonl_tail",
+    "sanitize_fts_query",
+]
+
 import json
 import logging
 import os

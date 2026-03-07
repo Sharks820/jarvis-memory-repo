@@ -11,13 +11,19 @@ backward-compatible ``from jarvis_engine.stt import ...`` paths.
 
 from __future__ import annotations
 
+__all__ = ["record_from_microphone"]
+
 import io
 import logging
 import os
 import struct
 import time
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from jarvis_engine.stt import TranscriptionResult
 
 logger = logging.getLogger(__name__)
 

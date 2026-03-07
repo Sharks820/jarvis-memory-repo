@@ -6,6 +6,8 @@ duplicated across ``main.py``, ``cli_ops.py``, and ``cli_knowledge.py``.
 
 from __future__ import annotations
 
+__all__ = ["cli_dispatch"]
+
 import json
 from typing import Any
 

@@ -7,6 +7,8 @@ enabling lightweight test doubles.
 
 from __future__ import annotations
 
+__all__ = ["EmbedServiceProtocol", "ForensicLoggerProtocol"]
+
 from typing import Protocol, runtime_checkable
 
 
