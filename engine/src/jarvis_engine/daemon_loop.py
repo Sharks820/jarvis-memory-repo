@@ -403,15 +403,12 @@ DEFAULT_GAMING_PROCESSES = (
 
 
 def read_gaming_mode_state() -> dict[str, object]:
+    from jarvis_engine._shared import load_json_file
+
     path = gaming_mode_state_path()
     default: dict[str, object] = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
-    if not path.exists():
-        return default
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return default
-    if not isinstance(raw, dict):
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return default
     return {
         "enabled": bool(raw.get("enabled", False)),

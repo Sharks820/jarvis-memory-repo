@@ -1,6 +1,7 @@
 """Shared utility functions used across multiple jarvis_engine modules.
 
 Consolidates duplicated helpers to a single source of truth:
+- load_json_file: safe JSON file reads with default-on-failure
 - atomic_write_json: safe JSON file writes with atomic replace
 - env_int: bounded integer env-var reader
 - safe_float / safe_int: type coercion with defaults
@@ -23,7 +24,9 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,31 @@ def atomic_write_json(
                 logger.debug("Failed to clean up temp file %s: %s", tmp, exc)
     if last_error is not None:
         raise last_error
+
+
+def load_json_file(path: Path, default: T, *, expected_type: type | None = None) -> Any:
+    """Load a JSON file, returning *default* on any failure.
+
+    Parameters
+    ----------
+    path : Path
+        File to read.
+    default
+        Value returned when the file is missing, unreadable, or has
+        unexpected structure.
+    expected_type : type, optional
+        If given, the parsed JSON root must be an instance of this type
+        (typically ``dict`` or ``list``); otherwise *default* is returned.
+    """
+    if not path.exists():
+        return default
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return default
+    if expected_type is not None and not isinstance(raw, expected_type):
+        return default
+    return raw
 
 
 def env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:

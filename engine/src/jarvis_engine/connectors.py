@@ -84,14 +84,11 @@ CONNECTORS: tuple[ConnectorDefinition, ...] = (
 
 
 def load_connector_permissions(repo_root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = _permissions_path(repo_root)
-    if not path.exists():
-        return {"connectors": {}}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"connectors": {}}
-    if not isinstance(raw, dict):
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return {"connectors": {}}
     connectors = raw.get("connectors")
     if not isinstance(connectors, dict):

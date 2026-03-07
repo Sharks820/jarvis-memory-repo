@@ -29,14 +29,11 @@ def owner_guard_path(root: Path) -> Path:
 
 
 def read_owner_guard(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = owner_guard_path(root)
-    if not path.exists():
-        return dict(DEFAULT_OWNER_GUARD)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return dict(DEFAULT_OWNER_GUARD)
-    if not isinstance(raw, dict):
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
         return dict(DEFAULT_OWNER_GUARD)
     devices = raw.get("trusted_mobile_devices", [])
     if not isinstance(devices, list):

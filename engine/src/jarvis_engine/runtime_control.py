@@ -101,16 +101,10 @@ def read_resource_budgets(root: Path) -> dict[str, float]:
 
 
 def read_resource_pressure_state(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = resource_pressure_path(root)
-    if not path.exists():
-        return {}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    return raw
+    return load_json_file(path, {}, expected_type=dict)
 
 
 def _file_size_mb(path: Path) -> float:

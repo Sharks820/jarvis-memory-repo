@@ -36,19 +36,12 @@ class PhoneAction:
 
 
 def load_call_log(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
+    from jarvis_engine._shared import load_json_file
+
+    raw = load_json_file(path, None, expected_type=list)
+    if raw is None:
         return []
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if not isinstance(raw, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in raw:
-        if isinstance(item, dict):
-            out.append(item)
-    return out
+    return [item for item in raw if isinstance(item, dict)]
 
 
 def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | None = None) -> list[SpamCandidate]:
