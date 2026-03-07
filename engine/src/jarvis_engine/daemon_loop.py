@@ -96,13 +96,17 @@ _daemon_bus_lock = threading.Lock()
 
 
 def _get_daemon_bus() -> CommandBus:
-    """Return cached daemon bus, creating once on first call (thread-safe)."""
+    """Return cached daemon bus, creating once on first call (thread-safe).
+
+    Always acquires the lock to avoid double-checked locking, which relies
+    on the GIL for correctness and breaks under free-threaded Python 3.13t+.
+    The lock overhead is negligible since daemon cycles run every 30+ seconds.
+    """
     global _daemon_bus
-    if _daemon_bus is None:
-        with _daemon_bus_lock:
-            if _daemon_bus is None:
-                _daemon_bus = get_bus()
-    return _daemon_bus
+    with _daemon_bus_lock:
+        if _daemon_bus is None:
+            _daemon_bus = get_bus()
+        return _daemon_bus
 
 
 # ---------------------------------------------------------------------------
