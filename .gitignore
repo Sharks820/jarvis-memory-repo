@@ -17,6 +17,7 @@ dist/
 build/
 android/.gradle/
 backups/
+engine/.hypothesis/
 tmp/
 .planning/security/
 .planning/brain/

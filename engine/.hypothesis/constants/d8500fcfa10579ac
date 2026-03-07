@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/mobile_routes/auth.py
-# hypothesis_version: 6.151.9
-
-[128, 200, 2000, 6000, 10000, '0.0.0.0', '1', '127.0.0.1', '8.8.8.8', '::', '::1', 'Invalid password.', 'Invalid reset.', 'X-Jarvis-Device-Id', 'X-Jarvis-Session', '_root', 'auto_detect', 'base_url', 'daemon_paused', 'device_id', 'enabled', 'error', 'gaming_auto_detect', 'gaming_enabled', 'gaming_mode', 'gaming_mode.json', 'http', 'https', 'master_password', 'master_password_hash', 'mute_until_utc', 'muted', 'ok', 'owner_guard', 'owner_session', 'owner_user_id', 'password', 'reason', 'reset', 'runtime_control', 'safe_mode', 'session', 'session_token', 'settings', 'signing_key', 'tls_active', 'token', 'true', 'trusted_device', 'updated_utc', 'utf-8', 'yes']

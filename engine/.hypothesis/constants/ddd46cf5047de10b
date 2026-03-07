@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/web_research.py
-# hypothesis_version: 6.151.9
-
-[260, 320, '(?<=[.!?])\\s+', '[^a-z0-9]+', '[a-zA-Z0-9]{3,}', 'about', 'after', 'also', 'because', 'between', 'could', 'does', 'domain', 'finding_count', 'findings', 'from', 'generated_utc', 'have', 'into', 'just', 'more', 'other', 'over', 'query', 'query is required', 'scanned_url_count', 'scanned_urls', 'snippet', 'some', 'summary_lines', 'than', 'that', 'them', 'then', 'there', 'these', 'they', 'this', 'url', 'what', 'when', 'where', 'which', 'while', 'with', 'your']

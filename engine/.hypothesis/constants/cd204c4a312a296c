@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/activity_feed.py
-# hypothesis_version: 6.151.9
-
-[5000, ' AND ', '.planning', 'WHERE ', 'activity_feed.db', 'brain', 'category', 'category = ?', 'cnt', 'command_lifecycle', 'consolidation', 'correction_applied', 'daemon_cycle', 'details', 'error', 'fact_extracted', 'harvest', 'id', 'llm_routing', 'mission_state_change', 'preference_learned', 'proactive_trigger', 'regression_check', 'resource_pressure', 'security', 'summary', 'timestamp', 'timestamp >= ?', 'voice', 'web_research']

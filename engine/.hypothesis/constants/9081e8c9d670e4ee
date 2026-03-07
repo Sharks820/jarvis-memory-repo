@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/mobile_routes/scam.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.4, 0.6, 0.8, 200, 500, 5000, 'active_campaigns', 'allow', 'answered', 'block', 'block_actions', 'call_intel.jsonl', 'caller_display_name', 'campaign_confidence', 'campaign_id', 'campaign_signals', 'campaigns', 'carrier', 'carrier_cache.json', 'contact_name', 'duration_sec', 'enhanced_score', 'error', 'failed', 'gateway_domain', 'is_voip', 'line_type', 'number', 'numbers', 'numbers_blocked', 'ok', 'passed', 'prefix', 'presentation', 'recommended_action', 'risk_score', 'scam_campaigns.json', 'setup_latency_ms', 'signals', 'silence', 'stir_failed', 'stir_passed', 'stir_status', 'top_scam_carriers', 'top_scam_prefixes', 'total_campaigns', 'total_scam_numbers', 'total_screened', 'voicemail', 'voip', 'voip_calls']

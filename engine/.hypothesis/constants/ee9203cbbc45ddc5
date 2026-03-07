@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/handlers/ops_handlers.py
-# hypothesis_version: 6.151.9
-
-[4000, ',', 'actions_path', 'history_path', 'mission', 'output_path', 'record_id', 'semantic', 'snapshot_path', 'source_domains', 'statement', 'tasks_path', 'utf-8', 'verified', 'verified_findings']

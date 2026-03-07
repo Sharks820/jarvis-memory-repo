@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/app.py
-# hypothesis_version: 6.151.9
-
-['.planning', 'ANTHROPIC_API_KEY', 'GROQ_API_KEY', 'JARVIS_SIGNING_KEY', 'MISTRAL_API_KEY', 'ZAI_API_KEY', 'brain', 'desktop', 'embed-warmup', 'forensic', 'logs', 'pids', 'search_document', 'security.db', 'sync_salt.bin', 'warmup']

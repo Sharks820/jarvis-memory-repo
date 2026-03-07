@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/sync/engine.py
-# hypothesis_version: 6.151.9
-
-[256, 500, ' (', ' = ?', ' AND ', ' SET ', ' WHERE ', ')', ') VALUES (', ', ', ':', '<missing>', '?', 'DELETE', 'DELETE FROM ', 'INSERT', 'UPDATE', 'UPDATE ', '__version', 'applied', 'changelog_id', 'changelog_size', 'changes', 'conflicts_resolved', 'cursors', 'desktop', 'device_id', 'errors', 'fields', 'fields_changed', 'last_sync_ts', 'last_version', 'most_recent', 'new_values', 'old_values', 'operation', 'pk', 'row_id', 'table_name', 'ts']

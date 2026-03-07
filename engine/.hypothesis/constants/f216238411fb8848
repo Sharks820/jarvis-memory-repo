@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/action_auditor.py
-# hypothesis_version: 6.151.9
-
-[500, ',', ':', 'a', 'action_audit.jsonl', 'action_type', 'by_trigger', 'by_type', 'detail', 'input_hash', 'resource_usage', 'timestamp', 'total_actions', 'trigger', 'unknown', 'utf-8']

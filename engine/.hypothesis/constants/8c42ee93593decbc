@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/connectors.py
-# hypothesis_version: 6.151.9
-
-['.planning', '.planning/bills.json', '.planning/tasks.json', 'Bills Source', 'Connector ready.', 'JARVIS_BILLS_JSON', 'JARVIS_CALENDAR_JSON', 'JARVIS_EMAIL_JSON', 'JARVIS_IMAP_HOST', 'JARVIS_IMAP_PASS', 'JARVIS_IMAP_USER', 'JARVIS_MOBILE_TOKEN', 'JARVIS_TASKS_JSON', 'JARVIS_TASK_SOURCE', 'JARVIS_TODOIST_TOKEN', 'Permission missing', 'Setup required.', 'Subscriptions Source', 'Tasks Source', 'bills', 'calendar', 'connector_id', 'connectors', 'email', 'granted', 'granted_utc', 'mobile_ingest', 'next_step', 'option_tap_url', 'option_voice', 'reason', 'scopes', 'security', 'setup_url', 'subscriptions', 'tasks', 'title', 'utf-8']

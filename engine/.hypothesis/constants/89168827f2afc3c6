@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/scope_enforcer.py
-# hypothesis_version: 6.151.9
-
-[1000, 'action', 'add_fact', 'delete_own', 'filesystem', 'get_battery', 'get_network_status', 'get_time', 'http_get', 'http_post', 'knowledge', 'memory', 'network', 'notification', 'ok', 'query', 'read', 'read_audit', 'read_data_dir', 'read_status', 'read_threats', 'reason', 'scope', 'search', 'security', 'send_important', 'send_routine', 'send_urgent', 'system', 'timestamp', 'update_fact', 'write', 'write_data_dir']

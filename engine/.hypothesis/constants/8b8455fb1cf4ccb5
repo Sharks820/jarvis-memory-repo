@@ -1,4 +1,0 @@
-# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/ip_tracker.py
-# hypothesis_version: 6.151.9
-
-[0.0, 1.0, 100.0, 'ALLOW', 'BLOCK', 'THROTTLE', 'attack_types', 'blocked_until', 'first_seen', 'ip', 'last_seen', 'notes', 'permanent', 'threat_score', 'total_attempts']
