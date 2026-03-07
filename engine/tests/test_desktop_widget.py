@@ -100,8 +100,8 @@ class TestSignedHeaders:
         body = b'{"text":"hello"}'
         device_id = "galaxy_s25_primary"
 
-        with patch("jarvis_engine.desktop_widget.time") as mock_time, \
-             patch("jarvis_engine.desktop_widget.uuid") as mock_uuid:
+        with patch("jarvis_engine.widget_helpers.time") as mock_time, \
+             patch("jarvis_engine.widget_helpers.uuid") as mock_uuid:
             mock_time.time.return_value = 1700000000.7  # float to verify int conversion
             mock_uuid.uuid4.return_value = SimpleNamespace(hex="deadbeef1234567890abcdef12345678")
 
@@ -204,7 +204,7 @@ class TestLoadMobileApiCfg:
         assert result == {}
 
 
-@patch("jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests"))
+@patch("jarvis_engine.widget_helpers.urlopen", side_effect=OSError("no network in tests"))
 class TestLoadWidgetCfg:
     def test_defaults_when_no_files(self, _mock_urlopen, tmp_path):
         cfg = _load_widget_cfg(tmp_path)
@@ -419,7 +419,7 @@ class TestHttpJson:
         with pytest.raises(RuntimeError, match="HTTPS"):
             _http_json(cfg, "/health")
 
-    @patch("jarvis_engine.desktop_widget.urlopen")
+    @patch("jarvis_engine.widget_helpers.urlopen")
     def test_get_request_success(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
         resp_mock = MagicMock()
@@ -435,7 +435,7 @@ class TestHttpJson:
         result = _http_json(cfg, "/health")
         assert result == {"ok": True}
 
-    @patch("jarvis_engine.desktop_widget.urlopen")
+    @patch("jarvis_engine.widget_helpers.urlopen")
     def test_post_request_includes_content_type(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
         resp_mock = MagicMock()
@@ -455,7 +455,7 @@ class TestHttpJson:
         # The Request object should have Content-Type
         assert req.get_header("Content-type") == "application/json"
 
-    @patch("jarvis_engine.desktop_widget.urlopen")
+    @patch("jarvis_engine.widget_helpers.urlopen")
     def test_invalid_json_response_raises(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
         resp_mock = MagicMock()
@@ -471,7 +471,7 @@ class TestHttpJson:
         with pytest.raises(RuntimeError, match="Invalid JSON"):
             _http_json(cfg, "/health")
 
-    @patch("jarvis_engine.desktop_widget.urlopen")
+    @patch("jarvis_engine.widget_helpers.urlopen")
     def test_non_dict_response_raises(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
         resp_mock = MagicMock()
@@ -506,7 +506,7 @@ class TestHttpJsonBootstrap:
         with pytest.raises(RuntimeError, match="Master password"):
             _http_json_bootstrap("http://127.0.0.1:8787", "  ", "dev1")
 
-    @patch("jarvis_engine.desktop_widget.urlopen")
+    @patch("jarvis_engine.widget_helpers.urlopen")
     def test_successful_bootstrap(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json_bootstrap
         resp_mock = MagicMock()
@@ -579,7 +579,7 @@ class TestDetectHotwordOnce:
         # Keywords with special chars should fail regex and return False
         assert _detect_hotword_once("jar!vis") is False
 
-    @patch("jarvis_engine.desktop_widget.subprocess")
+    @patch("jarvis_engine.widget_helpers.subprocess")
     def test_detected_keyword_returns_true(self, mock_subprocess):
         from jarvis_engine.desktop_widget import _detect_hotword_once
         mock_subprocess.run.return_value = SimpleNamespace(
@@ -587,7 +587,7 @@ class TestDetectHotwordOnce:
         )
         assert _detect_hotword_once("jarvis", timeout_s=2) is True
 
-    @patch("jarvis_engine.desktop_widget.subprocess")
+    @patch("jarvis_engine.widget_helpers.subprocess")
     def test_no_detection_returns_false(self, mock_subprocess):
         from jarvis_engine.desktop_widget import _detect_hotword_once
         mock_subprocess.run.return_value = SimpleNamespace(
@@ -595,7 +595,7 @@ class TestDetectHotwordOnce:
         )
         assert _detect_hotword_once("jarvis", timeout_s=2) is False
 
-    @patch("jarvis_engine.desktop_widget.subprocess")
+    @patch("jarvis_engine.widget_helpers.subprocess")
     def test_nonzero_returncode_returns_false(self, mock_subprocess):
         from jarvis_engine.desktop_widget import _detect_hotword_once
         mock_subprocess.run.return_value = SimpleNamespace(
@@ -605,7 +605,7 @@ class TestDetectHotwordOnce:
 
     def test_empty_keyword_uses_jarvis(self):
         from jarvis_engine.desktop_widget import _detect_hotword_once
-        with patch("jarvis_engine.desktop_widget.subprocess") as mock_sub:
+        with patch("jarvis_engine.widget_helpers.subprocess") as mock_sub:
             mock_sub.run.return_value = SimpleNamespace(
                 returncode=0, stdout="jarvis\n", stderr=""
             )
@@ -616,18 +616,18 @@ class TestDetectHotwordOnce:
 # ---- _voice_dictate_once ----------------------------------------------------
 
 class TestVoiceDictateOnce:
-    @patch("jarvis_engine.desktop_widget.listen_and_transcribe", create=True)
+    @patch("jarvis_engine.widget_helpers.listen_and_transcribe", create=True)
     def test_whisper_stt_success(self, mock_listen):
         # Need to patch the import inside the function
         mock_result = SimpleNamespace(text="hello world")
         with patch.dict("sys.modules", {"jarvis_engine.stt": MagicMock(listen_and_transcribe=MagicMock(return_value=mock_result))}):
-            with patch("jarvis_engine.desktop_widget.listen_and_transcribe", mock_listen, create=True):
+            with patch("jarvis_engine.widget_helpers.listen_and_transcribe", mock_listen, create=True):
                 mock_listen.return_value = mock_result
                 # Verify the mock is properly configured with expected text
                 assert mock_result.text == "hello world"
                 assert mock_listen.return_value.text == "hello world"
 
-    @patch("jarvis_engine.desktop_widget._voice_dictate_system_speech")
+    @patch("jarvis_engine.widget_helpers._voice_dictate_system_speech")
     def test_fallback_to_system_speech_on_runtime_error(self, mock_fallback):
         from jarvis_engine.desktop_widget import _voice_dictate_once
         mock_fallback.return_value = "fallback text"
@@ -730,8 +730,8 @@ class TestLauncherAnimationMath:
 # ---- Integration: full config round-trip ------------------------------------
 
 class TestConfigRoundTrip:
-    @patch("jarvis_engine.desktop_widget.urlopen", side_effect=OSError("no network in tests"))
-    @patch("jarvis_engine.desktop_widget._save_widget_cfg")
+    @patch("jarvis_engine.widget_helpers.urlopen", side_effect=OSError("no network in tests"))
+    @patch("jarvis_engine.widget_helpers._save_widget_cfg")
     def test_load_with_both_files_present(self, mock_save, _mock_urlopen, tmp_path):
         sec = tmp_path / ".planning" / "security"
         sec.mkdir(parents=True)
@@ -843,7 +843,7 @@ class TestConfigMigration:
         # Verify the protected value decrypts back to original
         assert _dpapi_decrypt(saved_payload["master_password_protected"]) == "migrate_me"
 
-    @patch("jarvis_engine.desktop_widget._save_widget_cfg")
+    @patch("jarvis_engine.widget_helpers._save_widget_cfg")
     def test_empty_plaintext_password_no_migration(self, mock_save, tmp_path):
         """Empty plaintext password should NOT trigger migration."""
         sec = tmp_path / ".planning" / "security"
@@ -873,7 +873,7 @@ class TestConfigMigration:
             }),
             encoding="utf-8",
         )
-        with patch("jarvis_engine.desktop_widget._save_widget_cfg") as mock_save:
+        with patch("jarvis_engine.widget_helpers._save_widget_cfg") as mock_save:
             cfg = _load_widget_cfg(tmp_path)
         assert cfg.master_password == "already_protected"
         # No migration needed -- save should NOT be called
@@ -893,7 +893,7 @@ class TestConfigMigration:
             }),
             encoding="utf-8",
         )
-        with patch("jarvis_engine.desktop_widget._save_widget_cfg") as mock_save:
+        with patch("jarvis_engine.widget_helpers._save_widget_cfg") as mock_save:
             cfg = _load_widget_cfg(tmp_path)
         assert cfg.master_password == "the_real_password"
         mock_save.assert_not_called()
@@ -940,10 +940,10 @@ class TestShowToast:
 
     def _reset_throttle(self):
         """Reset the module-level toast throttle state for test isolation."""
-        import jarvis_engine.desktop_widget as dw
-        dw._last_toast_time = 0.0
+        import jarvis_engine.widget_helpers as wh
+        wh._last_toast_time = 0.0
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_basic_toast_launches_powershell(self, mock_popen):
         self._reset_throttle()
         _show_toast("Hello", "World", "Info")
@@ -957,7 +957,7 @@ class TestShowToast:
         assert "Hello" in script
         assert "World" in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_title_truncated_to_max(self, mock_popen):
         self._reset_throttle()
         long_title = "A" * 200
@@ -967,7 +967,7 @@ class TestShowToast:
         assert "A" * _TOAST_MAX_TITLE in script
         assert "A" * (_TOAST_MAX_TITLE + 1) not in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_message_truncated_to_max(self, mock_popen):
         self._reset_throttle()
         long_msg = "B" * 500
@@ -976,28 +976,28 @@ class TestShowToast:
         assert "B" * _TOAST_MAX_MESSAGE in script
         assert "B" * (_TOAST_MAX_MESSAGE + 1) not in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_invalid_icon_defaults_to_info(self, mock_popen):
         self._reset_throttle()
         _show_toast("title", "msg", "BogusIcon")
         script = mock_popen.call_args[0][0][-1]
         assert "::Info" in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_warning_icon(self, mock_popen):
         self._reset_throttle()
         _show_toast("title", "msg", "Warning")
         script = mock_popen.call_args[0][0][-1]
         assert "::Warning" in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_error_icon(self, mock_popen):
         self._reset_throttle()
         _show_toast("title", "msg", "Error")
         script = mock_popen.call_args[0][0][-1]
         assert "::Error" in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_single_quotes_escaped_in_title_and_message(self, mock_popen):
         self._reset_throttle()
         _show_toast("It's", "don't panic")
@@ -1006,14 +1006,14 @@ class TestShowToast:
         assert "It''s" in script
         assert "don''t panic" in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_empty_title_defaults_to_jarvis(self, mock_popen):
         self._reset_throttle()
         _show_toast("", "msg")
         script = mock_popen.call_args[0][0][-1]
         assert "Jarvis" in script
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_popen_exception_does_not_raise(self, mock_popen):
         self._reset_throttle()
         mock_popen.side_effect = OSError("powershell not found")
@@ -1021,7 +1021,7 @@ class TestShowToast:
         _show_toast("title", "msg")
         mock_popen.assert_called_once()
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_fire_and_forget_uses_popen_not_run(self, mock_popen):
         """Verify Popen is used (non-blocking) rather than subprocess.run."""
         self._reset_throttle()
@@ -1038,10 +1038,10 @@ class TestToastThrottle:
     """Test the toast notification throttle (max 1 per cooldown period)."""
 
     def _reset_throttle(self):
-        import jarvis_engine.desktop_widget as dw
-        dw._last_toast_time = 0.0
+        import jarvis_engine.widget_helpers as wh
+        wh._last_toast_time = 0.0
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_second_toast_within_cooldown_is_throttled(self, mock_popen):
         self._reset_throttle()
         _show_toast("First", "msg")
@@ -1050,18 +1050,18 @@ class TestToastThrottle:
         _show_toast("Second", "msg")
         assert mock_popen.call_count == 1  # Still 1 -- second was suppressed
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_toast_after_cooldown_expires(self, mock_popen):
         self._reset_throttle()
         _show_toast("First", "msg")
         assert mock_popen.call_count == 1
         # Simulate time passing beyond cooldown
-        import jarvis_engine.desktop_widget as dw
-        dw._last_toast_time = time.time() - _TOAST_COOLDOWN_SECONDS - 1
+        import jarvis_engine.widget_helpers as wh
+        wh._last_toast_time = time.time() - _TOAST_COOLDOWN_SECONDS - 1
         _show_toast("Second", "msg")
         assert mock_popen.call_count == 2
 
-    @patch("jarvis_engine.desktop_widget.subprocess.Popen")
+    @patch("jarvis_engine.widget_helpers.subprocess.Popen")
     def test_cooldown_is_120_seconds(self, mock_popen):
         """Verify the cooldown constant is 2 minutes (120 seconds)."""
         assert _TOAST_COOLDOWN_SECONDS == 120

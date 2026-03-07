@@ -8,7 +8,6 @@ when new facts share keywords with facts in other branches.
 from __future__ import annotations
 
 import logging
-import re
 import sqlite3
 from typing import TYPE_CHECKING
 

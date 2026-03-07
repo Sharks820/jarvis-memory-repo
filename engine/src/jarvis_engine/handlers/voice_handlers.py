@@ -216,7 +216,7 @@ class PersonaComposeHandler:
                 compose_persona_system_prompt,
                 load_persona_config,
             )
-            from jarvis_engine.gateway.models import ModelGateway, GatewayResponse
+            from jarvis_engine.gateway.models import GatewayResponse
         except ImportError as exc:
             logger.warning("persona/gateway modules not available: %s", exc)
             return PersonaComposeResult(message="error: persona modules not available.")

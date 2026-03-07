@@ -23,7 +23,6 @@ from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.commands.task_commands import QueryCommand, QueryResult
 from jarvis_engine.config import repo_root
-from jarvis_engine.persona import compose_persona_reply, load_persona_config
 
 from jarvis_engine._constants import (
     ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY,

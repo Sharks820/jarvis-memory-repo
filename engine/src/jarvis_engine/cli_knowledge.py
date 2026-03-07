@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 
 from jarvis_engine._bus import get_bus as _get_bus
+from jarvis_engine._cli_helpers import cli_dispatch as _dispatch
 from jarvis_engine.voice_pipeline import escape_response
 
 from jarvis_engine.commands.memory_commands import (
@@ -36,25 +37,6 @@ from jarvis_engine.commands.learning_commands import (
     FlagExpiredFactsCommand,
     LearnInteractionCommand,
 )
-
-
-# ---------------------------------------------------------------------------
-# Shared dispatch helper (same as main._dispatch)
-# ---------------------------------------------------------------------------
-def _dispatch(command, *, as_json: bool = False, json_field: str = ""):
-    """Dispatch *command* via the bus with common boilerplate.
-
-    Returns ``(result, return_code)``.
-    """
-    result = _get_bus().dispatch(command)
-
-    if as_json and json_field:
-        data = getattr(result, json_field, None)
-        if isinstance(data, (dict, list)):
-            print(json.dumps(data, ensure_ascii=True, indent=2, default=str))
-            return result, 0
-
-    return result, 0
 
 
 # ---------------------------------------------------------------------------

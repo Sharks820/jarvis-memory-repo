@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
 from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
-from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
+from jarvis_engine.knowledge._base import upsert_fts_kg
 
 if TYPE_CHECKING:
     import networkx as nx

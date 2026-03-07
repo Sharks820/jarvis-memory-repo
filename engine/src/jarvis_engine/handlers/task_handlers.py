@@ -184,7 +184,7 @@ class QueryHandler:
         self._classifier = classifier
 
     def handle(self, cmd: QueryCommand) -> QueryResult:
-        from jarvis_engine.gateway.models import ModelGateway, GatewayResponse
+        from jarvis_engine.gateway.models import GatewayResponse
 
         gateway: ModelGateway = self._gateway  # type: ignore[assignment]
 
