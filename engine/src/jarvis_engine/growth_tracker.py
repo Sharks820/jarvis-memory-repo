@@ -8,12 +8,11 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 import logging
+from jarvis_engine._shared import call_ollama_generate as _call_ollama_generate
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import sha256_hex
-from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 
 _logger = logging.getLogger(__name__)
 
@@ -313,9 +312,6 @@ def _generate(
     think: bool | None,
     timeout_s: int,
 ) -> dict[str, Any]:
-    if not is_safe_ollama_endpoint(endpoint):
-        raise ValueError(f"Unsafe Ollama endpoint: {endpoint}")
-
     effective_prompt = prompt
     if think is False:
         effective_prompt = "/nothink\n" + prompt
@@ -328,23 +324,9 @@ def _generate(
         "temperature": temperature,
     }
 
-    payload = {
-        "model": model,
-        "prompt": effective_prompt,
-        "stream": False,
-        "options": options,
-    }
-    req = Request(
-        url=f"{endpoint.rstrip('/')}/api/generate",
-        method="POST",
-        headers={"Content-Type": "application/json"},
-        data=json.dumps(payload).encode("utf-8"),
+    return _call_ollama_generate(
+        endpoint, model, effective_prompt, options, timeout_s=timeout_s,
     )
-    with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
-        data = json.loads(resp.read().decode("utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Expected JSON object from Ollama")
-    return data
 
 
 def run_eval(

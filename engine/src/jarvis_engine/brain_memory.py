@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -17,7 +16,7 @@ from typing import Any
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
-from jarvis_engine._shared import sha256_hex
+from jarvis_engine._shared import sha256_hex, sha256_short
 
 logger = logging.getLogger(__name__)
 
@@ -135,16 +134,13 @@ def _load_records(root: Path, limit: int = 1500) -> list[dict[str, Any]]:
 
 
 def _load_index(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = _index_path(root)
-    if not path.exists():
-        return {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("Failed to load index from %s: %s", path, exc)
-        return {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
-    if not isinstance(raw, dict):
-        return {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
+    default: dict[str, Any] = {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
+        return default
     raw.setdefault("branches", {})
     raw.setdefault("hash_to_record_id", {})
     return raw
@@ -156,16 +152,13 @@ def _save_index(root: Path, payload: dict[str, Any]) -> None:
 
 
 def _load_facts(root: Path) -> dict[str, Any]:
+    from jarvis_engine._shared import load_json_file
+
     path = _facts_path(root)
-    if not path.exists():
-        return {"facts": {}, "conflicts": []}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("Failed to load facts from %s: %s", path, exc)
-        return {"facts": {}, "conflicts": []}
-    if not isinstance(raw, dict):
-        return {"facts": {}, "conflicts": []}
+    default: dict[str, Any] = {"facts": {}, "conflicts": []}
+    raw = load_json_file(path, None, expected_type=dict)
+    if raw is None:
+        return default
     raw.setdefault("facts", {})
     raw.setdefault("conflicts", [])
     return raw
@@ -346,7 +339,7 @@ def ingest_brain_record(
         unique_tags = sorted({t.lower() for t in (tags or []) if t.strip()})[:10]
         ts = _now_iso()
         material = f"{source}|{kind}|{task_id}|{content_hash}|{ts}".encode("utf-8")
-        record_id = hashlib.sha256(material).hexdigest()[:32]
+        record_id = sha256_short(material)
 
         record = BrainRecord(
             record_id=record_id,

@@ -8,12 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
+from jarvis_engine._shared import call_ollama_generate
 from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, VideoAdapter
 from jarvis_engine.capability import CapabilityGate
 from jarvis_engine.memory_store import MemoryStore
-from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
 
 TaskType = Literal["image", "code", "video", "model3d"]
 DEFAULT_FALLBACK_MODELS = ["qwen3:14b", "qwen3:latest", "deepseek-r1:8b"]
@@ -363,27 +362,15 @@ class TaskOrchestrator:
         options: dict[str, Any],
         timeout_s: int,
     ) -> tuple[dict[str, Any] | None, str]:
-        if not is_safe_ollama_endpoint(endpoint):
-            return None, f"Unsafe Ollama endpoint: {endpoint}"
-
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": options,
-        }
-        req = Request(
-            url=f"{endpoint.rstrip('/')}/api/generate",
-            method="POST",
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(payload).encode("utf-8"),
-        )
         try:
-            with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
-                data = json.loads(resp.read().decode("utf-8"))
-                if not isinstance(data, dict):
-                    return None, "Invalid Ollama payload type."
-                return data, ""
+            data = call_ollama_generate(
+                endpoint, model, prompt, options, timeout_s=timeout_s,
+            )
+            return data, ""
+        except json.JSONDecodeError:
+            return None, "Invalid JSON response from Ollama."
+        except ValueError as exc:
+            return None, str(exc)
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             return None, f"HTTP {exc.code}: {body[:240]}"
@@ -391,8 +378,6 @@ class TaskOrchestrator:
             return None, f"Network error: {exc}"
         except TimeoutError:
             return None, f"Timed out after {timeout_s}s."
-        except json.JSONDecodeError:
-            return None, "Invalid JSON response from Ollama."
 
     def _safe_output_path(self, raw_path: str) -> Path:
         try:

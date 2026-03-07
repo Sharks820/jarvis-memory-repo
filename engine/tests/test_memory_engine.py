@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from jarvis_engine._shared import sanitize_fts_query
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.memory.search import hybrid_search
 from jarvis_engine.memory.tiers import Tier, TierManager
@@ -496,7 +497,7 @@ class TestMemoryEngineFTS:
 
     def test_fts_boolean_operators_stripped(self, engine: MemoryEngine) -> None:
         """FTS5 boolean operators (AND, OR, NOT) are stripped from queries."""
-        sanitized = MemoryEngine._sanitize_fts_query("python AND java OR NOT ruby")
+        sanitized = sanitize_fts_query("python AND java OR NOT ruby")
         assert "AND" not in sanitized.split()
         assert "OR" not in sanitized.split()
         assert "NOT" not in sanitized.split()

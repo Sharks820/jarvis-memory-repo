@@ -102,14 +102,6 @@ class KnowledgeGraph:
     # Schema
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _sanitize_fts_query(query: str) -> str:
-        """Sanitize a user query for FTS5 MATCH to prevent injection.
-
-        Delegates to shared :func:`jarvis_engine._shared.sanitize_fts_query`.
-        """
-        return sanitize_fts_query(query)
-
     def _ensure_schema(self) -> None:
         """Create kg tables if they don't exist (idempotent)."""
         self._db.executescript("""
@@ -574,7 +566,7 @@ class KnowledgeGraph:
         # --- FTS5 path ---
         fts_query_parts = []
         for kw in keywords[:20]:
-            sanitized = self._sanitize_fts_query(kw)
+            sanitized = sanitize_fts_query(kw)
             if sanitized:
                 fts_query_parts.append(sanitized)
 

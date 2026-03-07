@@ -1076,7 +1076,6 @@ def _make_handler_stub(server):
     stub = _Stub()
     stub.server = server
     # Bind unbound methods from the real handler class
-    stub._gaming_state_path = mobile_api.MobileIngestHandler._gaming_state_path.__get__(stub)
     stub._read_gaming_state = mobile_api.MobileIngestHandler._read_gaming_state.__get__(stub)
     stub._write_gaming_state = mobile_api.MobileIngestHandler._write_gaming_state.__get__(stub)
     stub._cleanup_nonces = mobile_api.MobileIngestHandler._cleanup_nonces.__get__(stub)
@@ -1086,8 +1085,15 @@ def _make_handler_stub(server):
 
 def test_read_gaming_state_file_missing(mobile_server) -> None:
     """_read_gaming_state returns defaults when file does not exist."""
-    stub = _make_handler_stub(mobile_server.server)
-    state = stub._read_gaming_state()
+    from unittest.mock import patch
+
+    runtime_dir = mobile_server.root / ".planning" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    state_path = runtime_dir / "gaming_mode.json"
+
+    with patch("jarvis_engine.daemon_loop.gaming_mode_state_path", return_value=state_path):
+        stub = _make_handler_stub(mobile_server.server)
+        state = stub._read_gaming_state()
     assert state["enabled"] is False
     assert state["auto_detect"] is False
     assert state["reason"] == ""
@@ -1096,13 +1102,17 @@ def test_read_gaming_state_file_missing(mobile_server) -> None:
 
 def test_read_gaming_state_file_exists(mobile_server) -> None:
     """_read_gaming_state reads valid JSON from disk."""
+    from unittest.mock import patch
+
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state = {"enabled": True, "auto_detect": True, "reason": "playing", "updated_utc": "2026-02-25T10:00:00"}
-    (runtime_dir / "gaming_mode.json").write_text(json.dumps(state), encoding="utf-8")
+    state_path = runtime_dir / "gaming_mode.json"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
 
-    stub = _make_handler_stub(mobile_server.server)
-    result = stub._read_gaming_state()
+    with patch("jarvis_engine.daemon_loop.gaming_mode_state_path", return_value=state_path):
+        stub = _make_handler_stub(mobile_server.server)
+        result = stub._read_gaming_state()
     assert result["enabled"] is True
     assert result["auto_detect"] is True
     assert result["reason"] == "playing"
@@ -1110,38 +1120,47 @@ def test_read_gaming_state_file_exists(mobile_server) -> None:
 
 def test_read_gaming_state_corrupt_json(mobile_server) -> None:
     """_read_gaming_state returns defaults for corrupt JSON."""
+    from unittest.mock import patch
+
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
-    (runtime_dir / "gaming_mode.json").write_text("{bad json", encoding="utf-8")
+    state_path = runtime_dir / "gaming_mode.json"
+    state_path.write_text("{bad json", encoding="utf-8")
 
-    stub = _make_handler_stub(mobile_server.server)
-    result = stub._read_gaming_state()
+    with patch("jarvis_engine.daemon_loop.gaming_mode_state_path", return_value=state_path):
+        stub = _make_handler_stub(mobile_server.server)
+        result = stub._read_gaming_state()
     assert result["enabled"] is False
     assert result["auto_detect"] is False
 
 
 def test_write_gaming_state_roundtrip(mobile_server) -> None:
     """_write_gaming_state writes state that _read_gaming_state can read back."""
+    from unittest.mock import patch
+
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
+    state_path = runtime_dir / "gaming_mode.json"
 
-    stub = _make_handler_stub(mobile_server.server)
-    written = stub._write_gaming_state(enabled=True, auto_detect=False, reason="test roundtrip")
-    assert written["enabled"] is True
-    assert written["auto_detect"] is False
-    assert written["reason"] == "test roundtrip"
-    assert written["updated_utc"] != ""
+    with patch("jarvis_engine.daemon_loop.gaming_mode_state_path", return_value=state_path):
+        stub = _make_handler_stub(mobile_server.server)
+        written = stub._write_gaming_state(enabled=True, auto_detect=False, reason="test roundtrip")
+        assert written["enabled"] is True
+        assert written["auto_detect"] is False
+        assert written["reason"] == "test roundtrip"
+        assert written["updated_utc"] != ""
 
-    read_back = stub._read_gaming_state()
-    assert read_back["enabled"] is True
-    assert read_back["auto_detect"] is False
-    assert read_back["reason"] == "test roundtrip"
+        read_back = stub._read_gaming_state()
+        assert read_back["enabled"] is True
+        assert read_back["auto_detect"] is False
+        assert read_back["reason"] == "test roundtrip"
 
 
-def test_gaming_state_path_returns_expected_path(mobile_server) -> None:
-    """_gaming_state_path returns correct path under repo root."""
-    stub = _make_handler_stub(mobile_server.server)
-    path = stub._gaming_state_path()
+def test_gaming_state_path_returns_expected_path() -> None:
+    """gaming_mode_state_path returns correct path under repo root."""
+    from jarvis_engine.daemon_loop import gaming_mode_state_path
+
+    path = gaming_mode_state_path()
     assert path.name == "gaming_mode.json"
     assert "runtime" in str(path)
     assert ".planning" in str(path)

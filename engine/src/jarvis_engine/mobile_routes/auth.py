@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import socket
 from http import HTTPStatus
-from pathlib import Path
 from typing import Any
 
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine.daemon_loop import read_gaming_mode_state, write_gaming_mode_state
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.runtime_control import (
     read_control_state,
@@ -18,13 +16,6 @@ from jarvis_engine.runtime_control import (
 )
 
 logger = logging.getLogger(__name__)
-
-_GAMING_STATE_DEFAULT: dict[str, Any] = {
-    "enabled": False,
-    "auto_detect": False,
-    "reason": "",
-    "updated_utc": "",
-}
 
 
 class AuthRoutesMixin:
@@ -40,38 +31,9 @@ class AuthRoutesMixin:
             })
         return session
 
-    def _gaming_state_path(self) -> Path:
-        from jarvis_engine._constants import runtime_dir as _runtime_dir
-
-        root: Path = getattr(self, "_root", None) or self.server.repo_root
-        root_resolved = root.resolve()
-        path = _runtime_dir(root_resolved) / "gaming_mode.json"
-        resolved = path.resolve(strict=False)
-        try:
-            resolved.relative_to(root_resolved)
-        except ValueError as exc:
-            raise PermissionError("Unsafe gaming state path resolution.") from exc
-        return path
-
     def _read_gaming_state(self) -> dict[str, Any]:
-        try:
-            path = self._gaming_state_path()
-        except PermissionError:
-            return dict(_GAMING_STATE_DEFAULT)
-        if not path.exists():
-            return dict(_GAMING_STATE_DEFAULT)
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return dict(_GAMING_STATE_DEFAULT)
-        if not isinstance(raw, dict):
-            return dict(_GAMING_STATE_DEFAULT)
-        return {
-            "enabled": bool(raw.get("enabled", False)),
-            "auto_detect": bool(raw.get("auto_detect", False)),
-            "reason": str(raw.get("reason", "")).strip()[:200],
-            "updated_utc": str(raw.get("updated_utc", "")),
-        }
+        """Read gaming mode state from the shared daemon_loop implementation."""
+        return dict(read_gaming_mode_state())
 
     def _write_gaming_state(
         self,
@@ -88,9 +50,7 @@ class AuthRoutesMixin:
         if reason.strip():
             state["reason"] = reason.strip()[:200]
         state["updated_utc"] = _now_iso()
-        path = self._gaming_state_path()
-        _atomic_write_json(path, state)
-        return state
+        return dict(write_gaming_mode_state(state))
 
     def _settings_payload(self) -> dict[str, Any]:
         control = read_control_state(self._root)

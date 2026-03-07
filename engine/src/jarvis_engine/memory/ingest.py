@@ -14,7 +14,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -131,7 +131,7 @@ class EnrichedIngestPipeline:
 
             # 4b: Generate record_id -- 32 hex chars (Codex finding: >16 to avoid collisions)
             id_material = f"{source}|{kind}|{task_id}|{chunk}".encode("utf-8")
-            record_id = hashlib.sha256(id_material).hexdigest()[:32]
+            record_id = sha256_short(id_material)
 
             # 4c: Embedding already computed in batch above
 

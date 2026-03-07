@@ -89,7 +89,7 @@ class TestCaptureMetrics:
         """If WL hash computation fails, fall back to empty graph hash."""
         kg = _make_mock_kg(node_count=5, edge_count=3, locked_count=1)
         checker = RegressionChecker(kg)
-        with patch("networkx.weisfeiler_lehman_graph_hash", side_effect=Exception("hash error")):
+        with patch("networkx.weisfeiler_lehman_graph_hash", side_effect=ValueError("hash error")):
             metrics = checker.capture_metrics()
         assert metrics["graph_hash"] == _EMPTY_GRAPH_HASH
 

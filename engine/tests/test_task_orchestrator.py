@@ -384,7 +384,7 @@ class TestCallOllama:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("jarvis_engine.task_orchestrator.urlopen", return_value=mock_resp):
+        with patch("jarvis_engine._shared.urlopen", return_value=mock_resp):
             raw, err = orch._call_ollama(
                 endpoint="http://127.0.0.1:11434",
                 model="test",
@@ -397,7 +397,7 @@ class TestCallOllama:
 
     def test_timeout_returns_error(self, tmp_path):
         orch, _ = _make_orch(tmp_path)
-        with patch("jarvis_engine.task_orchestrator.urlopen", side_effect=TimeoutError):
+        with patch("jarvis_engine._shared.urlopen", side_effect=TimeoutError):
             raw, err = orch._call_ollama(
                 endpoint="http://127.0.0.1:11434",
                 model="test",
@@ -415,7 +415,7 @@ class TestCallOllama:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("jarvis_engine.task_orchestrator.urlopen", return_value=mock_resp):
+        with patch("jarvis_engine._shared.urlopen", return_value=mock_resp):
             raw, err = orch._call_ollama(
                 endpoint="http://127.0.0.1:11434",
                 model="test",
@@ -433,7 +433,7 @@ class TestCallOllama:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("jarvis_engine.task_orchestrator.urlopen", return_value=mock_resp):
+        with patch("jarvis_engine._shared.urlopen", return_value=mock_resp):
             raw, err = orch._call_ollama(
                 endpoint="http://127.0.0.1:11434",
                 model="test",
@@ -442,7 +442,7 @@ class TestCallOllama:
                 timeout_s=10,
             )
         assert raw is None
-        assert "Invalid" in err
+        assert "JSON object" in err or "Invalid" in err
 
 
 # ---------------------------------------------------------------------------

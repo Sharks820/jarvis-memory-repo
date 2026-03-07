@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from conftest import MockEmbeddingService
+from jarvis_engine._shared import sanitize_fts_query
 from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.knowledge.regression import RegressionChecker
 from jarvis_engine.memory.engine import MemoryEngine
@@ -222,16 +223,16 @@ class TestKGFTS5Query:
 
 
 class TestKGFTS5Sanitize:
-    """Tests for _sanitize_fts_query static method."""
+    """Tests for sanitize_fts_query shared function."""
 
     def test_sanitize_removes_special_chars(self) -> None:
         """Special FTS5 characters are stripped."""
-        result = KnowledgeGraph._sanitize_fts_query('"hello" AND "world"')
+        result = sanitize_fts_query('"hello" AND "world"')
         assert '"' not in result
 
     def test_sanitize_removes_boolean_operators(self) -> None:
         """FTS5 boolean operators are removed."""
-        result = KnowledgeGraph._sanitize_fts_query("python AND java OR NOT ruby")
+        result = sanitize_fts_query("python AND java OR NOT ruby")
         tokens = result.split()
         assert "AND" not in tokens
         assert "OR" not in tokens
@@ -242,11 +243,11 @@ class TestKGFTS5Sanitize:
 
     def test_sanitize_empty_string(self) -> None:
         """Empty string returns empty string."""
-        assert KnowledgeGraph._sanitize_fts_query("") == ""
+        assert sanitize_fts_query("") == ""
 
     def test_sanitize_only_special_chars(self) -> None:
         """String of only special chars returns empty string."""
-        assert KnowledgeGraph._sanitize_fts_query('***"[]()') == ""
+        assert sanitize_fts_query('***"[]()') == ""
 
 
 # ===================================================================

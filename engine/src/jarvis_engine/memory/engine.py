@@ -339,14 +339,6 @@ class MemoryEngine:
             return None
         return dict(row)
 
-    @staticmethod
-    def _sanitize_fts_query(query: str) -> str:
-        """Sanitize a user query for FTS5 MATCH to prevent injection.
-
-        Delegates to shared :func:`jarvis_engine._shared.sanitize_fts_query`.
-        """
-        return sanitize_fts_query(query)
-
     def search_fts(self, query: str, limit: int = 30) -> list[tuple[str, float]]:
         """FTS5 keyword search returning (record_id, rank) pairs.
 
@@ -354,7 +346,7 @@ class MemoryEngine:
         The query is sanitized to prevent FTS5 syntax injection.
         """
         self._check_open()
-        safe_query = self._sanitize_fts_query(query)
+        safe_query = sanitize_fts_query(query)
         if not safe_query:
             return []
         try:
