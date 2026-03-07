@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import os
-import re
 import sqlite3
 import subprocess
 import threading
@@ -19,7 +17,6 @@ from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._constants import (
     DEFAULT_API_PORT as _DEFAULT_API_PORT,
-    STOP_WORDS as _HARVEST_STOP_WORDS,
     memory_db_path as _memory_db_path,
     KG_METRICS_LOG as _KG_METRICS_LOG,
     SELF_TEST_HISTORY as _SELF_TEST_HISTORY,
@@ -35,6 +32,31 @@ from jarvis_engine.runtime_control import (
     read_control_state,
     recommend_daemon_sleep,
     write_resource_pressure_state,
+)
+
+# Re-export gaming mode helpers for backward compatibility (tests patch these names)
+from jarvis_engine.gaming_mode import (  # noqa: F401
+    DEFAULT_GAMING_PROCESSES,
+    _game_detect_cache,
+    _GAME_DETECT_CACHE_TTL,
+    _windows_idle_seconds,
+)
+from jarvis_engine.gaming_mode import (
+    detect_active_game_process as _gm_detect_active_game_process,
+    load_gaming_processes as _gm_load_gaming_processes,
+    read_gaming_mode_state as _gm_read_gaming_mode_state,
+    write_gaming_mode_state as _gm_write_gaming_mode_state,
+)
+
+# Re-export harvest discovery helpers (used by _discover_harvest_topics below)
+from jarvis_engine.harvest_discovery import (  # noqa: F401
+    _SQL_NODE_BY_RELATION,
+    _SQL_RARE_RELATIONS,
+    _SQL_RECENT_SUMMARIES,
+    _SQL_SPARSE_NODES,
+    _SQL_STRONG_LABELS,
+    _extract_topic_phrases,
+    _get_recently_harvested_topics,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,103 +88,6 @@ _daemon_kg_prev_metrics_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Auto-harvest topic discovery for daemon cycle
 # ---------------------------------------------------------------------------
-
-# Named SQL constants for _discover_harvest_topics() queries
-_SQL_RECENT_SUMMARIES = """\
-SELECT summary FROM records
-WHERE ts >= ? AND source = 'user'
-ORDER BY ts DESC
-LIMIT 30"""
-
-_SQL_SPARSE_NODES = """\
-SELECT n.label, COUNT(e.edge_id) AS edge_cnt
-FROM kg_nodes n
-LEFT JOIN kg_edges e ON n.node_id = e.source_id
-WHERE n.confidence >= 0.3
-GROUP BY n.node_id
-HAVING edge_cnt BETWEEN 0 AND 1
-ORDER BY n.updated_at DESC
-LIMIT 10"""
-
-_SQL_RARE_RELATIONS = """\
-SELECT relation, COUNT(*) AS cnt
-FROM kg_edges
-GROUP BY relation
-HAVING cnt BETWEEN 1 AND 3
-ORDER BY cnt ASC
-LIMIT 5"""
-
-_SQL_NODE_BY_RELATION = """\
-SELECT n.label FROM kg_nodes n
-JOIN kg_edges e ON n.node_id = e.source_id
-WHERE e.relation = ?
-LIMIT 1"""
-
-_SQL_STRONG_LABELS = """\
-SELECT label
-FROM kg_nodes
-WHERE confidence >= 0.5"""
-
-
-def _extract_topic_phrases(text: str) -> list[str]:
-    """Extract multi-word topic phrases (2-5 words) from a text string.
-
-    Uses simple heuristics: splits on punctuation, filters stop words,
-    keeps capitalised/meaningful consecutive word runs of 2-5 words.
-    No NLP libraries required.
-    """
-    # Split on sentence-level punctuation and common delimiters
-    fragments = re.split(r'[.!?;:,\-\|/\(\)\[\]{}"\n]+', text)
-    phrases: list[str] = []
-    seen_lower: set[str] = set()
-
-    for frag in fragments:
-        words = frag.strip().split()
-        # Filter out stop words and very short tokens
-        meaningful = [w for w in words if w.lower() not in _HARVEST_STOP_WORDS and len(w) > 1]
-        if len(meaningful) < 2:
-            continue
-        # Take up to 5 consecutive meaningful words
-        phrase = " ".join(meaningful[:5])
-        # Normalise and dedup
-        phrase_lower = phrase.lower()
-        if phrase_lower not in seen_lower and 2 <= len(phrase.split()) <= 5:
-            phrases.append(phrase)
-            seen_lower.add(phrase_lower)
-
-    return phrases
-
-
-def _get_recently_harvested_topics(root: Path) -> set[str]:
-    """Return lowercase topic strings that were harvested in the last 14 days.
-
-    Reads the activity feed for HARVEST events and extracts topic names
-    so we can deduplicate against them.
-    """
-    recent: set[str] = set()
-    try:
-        from jarvis_engine.activity_feed import ActivityFeed, ActivityCategory
-        from datetime import timedelta
-
-        feed_db = root / ".planning" / "brain" / "activity_feed.db"
-        if not feed_db.exists():
-            return recent
-        feed = ActivityFeed(db_path=feed_db)
-        since = (datetime.now(UTC) - timedelta(days=14)).isoformat()
-        events = feed.query(limit=100, category=ActivityCategory.HARVEST, since=since)
-        for ev in events:
-            details = ev.details or {}
-            # The auto-harvest log_activity stores {"topics": [...], ...}
-            for t in details.get("topics", []):
-                recent.add(str(t).lower().strip())
-            # Also check the summary for "Auto-harvest: ..." patterns
-            summary = ev.summary or ""
-            if summary:
-                recent.add(summary.lower().strip())
-    except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
-        logger.debug("Failed to read recent harvest topics from activity feed: %s", exc)
-    return recent
-
 
 def _discover_harvest_topics(root: Path) -> list[str]:
     """Discover 2-3 topics for autonomous knowledge harvesting.
@@ -355,163 +280,41 @@ def _discover_harvest_topics(root: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Windows idle detection + gaming mode helpers
+# Gaming mode helpers — thin wrappers around gaming_mode.py
 # ---------------------------------------------------------------------------
-
-
-def _windows_idle_seconds() -> float | None:
-    if os.name != "nt":
-        return None
-    try:
-        import ctypes
-
-        class LASTINPUTINFO(ctypes.Structure):
-            _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
-
-        last_input = LASTINPUTINFO()
-        last_input.cbSize = ctypes.sizeof(LASTINPUTINFO)
-        if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(last_input)) == 0:  # type: ignore[attr-defined]
-            return None
-        tick_now = ctypes.windll.kernel32.GetTickCount() & 0xFFFFFFFF  # type: ignore[attr-defined]
-        idle_ms = (tick_now - last_input.dwTime) & 0xFFFFFFFF
-        return max(0.0, idle_ms / 1000.0)
-    except (OSError, ImportError, ValueError, AttributeError) as exc:
-        logger.debug("Windows idle time detection failed: %s", exc)
-        return None
+# Tests patch ``daemon_loop_mod.repo_root``, so these wrappers call
+# ``repo_root()`` from *this* module's namespace (patchable) and forward the
+# resulting paths to the parameterised functions in ``gaming_mode.py``.
 
 
 def gaming_mode_state_path() -> Path:
+    """Return the path to the gaming mode JSON state file."""
     return _runtime_dir(repo_root()) / "gaming_mode.json"
 
 
 def gaming_processes_path() -> Path:
+    """Return the path to the gaming processes JSON config file."""
     return repo_root() / ".planning" / "gaming_processes.json"
 
 
-DEFAULT_GAMING_PROCESSES = (
-    "FortniteClient-Win64-Shipping.exe",
-    "VALORANT-Win64-Shipping.exe",
-    "r5apex.exe",
-    "cs2.exe",
-    "Overwatch.exe",
-    "RocketLeague.exe",
-    "GTA5.exe",
-    "eldenring.exe",
-)
-
-
 def read_gaming_mode_state() -> dict[str, object]:
-    from jarvis_engine._shared import load_json_file
-
-    path = gaming_mode_state_path()
-    default: dict[str, object] = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
-    raw = load_json_file(path, None, expected_type=dict)
-    if raw is None:
-        return default
-    return {
-        "enabled": bool(raw.get("enabled", False)),
-        "auto_detect": bool(raw.get("auto_detect", False)),
-        "updated_utc": str(raw.get("updated_utc", "")),
-        "reason": str(raw.get("reason", "")),
-    }
+    """Read gaming mode state using the daemon's repo_root."""
+    return _gm_read_gaming_mode_state(gaming_mode_state_path())
 
 
 def write_gaming_mode_state(state: dict[str, object]) -> dict[str, object]:
-    from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-
-    path = gaming_mode_state_path()
-    payload = {
-        "enabled": bool(state.get("enabled", False)),
-        "auto_detect": bool(state.get("auto_detect", False)),
-        "updated_utc": str(state.get("updated_utc", "")) or _now_iso(),
-        "reason": str(state.get("reason", "")).strip()[:200],
-    }
-    _atomic_write_json(path, payload)
-    return payload
+    """Write gaming mode state using the daemon's repo_root."""
+    return _gm_write_gaming_mode_state(state, gaming_mode_state_path())
 
 
 def load_gaming_processes() -> list[str]:
-    env_override = os.getenv("JARVIS_GAMING_PROCESSES", "").strip()
-    if env_override:
-        return [item.strip() for item in env_override.split(",") if item.strip()]
-
-    path = gaming_processes_path()
-    if not path.exists():
-        return list(DEFAULT_GAMING_PROCESSES)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return list(DEFAULT_GAMING_PROCESSES)
-
-    if isinstance(raw, dict):
-        values = raw.get("processes", [])
-    elif isinstance(raw, list):
-        values = raw
-    else:
-        values = []
-
-    if not isinstance(values, list):
-        return list(DEFAULT_GAMING_PROCESSES)
-    processes = [str(item).strip() for item in values if str(item).strip()]
-    return processes or list(DEFAULT_GAMING_PROCESSES)
-
-
-_game_detect_cache: tuple[float, bool, str] = (0.0, False, "")
-_GAME_DETECT_CACHE_TTL = 30.0  # seconds
+    """Load gaming process list using the daemon's repo_root."""
+    return _gm_load_gaming_processes(gaming_processes_path())
 
 
 def detect_active_game_process() -> tuple[bool, str]:
-    global _game_detect_cache
-
-    # Return cached result if still fresh
-    cached_time, cached_found, cached_name = _game_detect_cache
-    if (time.monotonic() - cached_time) < _GAME_DETECT_CACHE_TTL:
-        return cached_found, cached_name
-
-    if os.name != "nt":
-        _game_detect_cache = (time.monotonic(), False, "")
-        return False, ""
-    patterns = [name.lower() for name in load_gaming_processes()]
-    if not patterns:
-        _game_detect_cache = (time.monotonic(), False, "")
-        return False, ""
-    try:
-        result = subprocess.run(
-            ["tasklist", "/fo", "csv", "/nh"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-            timeout=6,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        _game_detect_cache = (time.monotonic(), False, "")
-        return False, ""
-    if result.returncode != 0:
-        _game_detect_cache = (time.monotonic(), False, "")
-        return False, ""
-
-    running: list[str] = []
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line or line.lower().startswith("info:"):
-            continue
-        try:
-            row = next(csv.reader([line]))
-        except (csv.Error, StopIteration):
-            logger.debug("Skipping unparseable tasklist CSV line: %s", line)
-            continue
-        if not row:
-            continue
-        running.append(row[0].strip().lower())
-
-    for proc_name in running:
-        for pattern in patterns:
-            if proc_name == pattern or pattern in proc_name:
-                _game_detect_cache = (time.monotonic(), True, proc_name)
-                return True, proc_name
-    _game_detect_cache = (time.monotonic(), False, "")
-    return False, ""
+    """Detect active game processes using loaded process list."""
+    return _gm_detect_active_game_process(load_gaming_processes())
 
 
 # ---------------------------------------------------------------------------
