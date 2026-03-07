@@ -308,6 +308,11 @@ class _ConversationHistoryProxy:
 
 _conversation_history = _ConversationHistoryProxy()
 
+# Cached fallback IntentClassifier (lazy singleton — avoids recreating on every call)
+_fallback_classifier_lock = threading.Lock()
+_fallback_classifier: Any = None
+_fallback_classifier_embed_id: int | None = None
+
 import sys as _sys
 import types as _types
 
@@ -693,7 +698,12 @@ def _classify_and_route(
 
             embed = bus.ctx.embed_service
             if embed is not None:
-                cls = IntentClassifier(embed)
+                global _fallback_classifier, _fallback_classifier_embed_id  # noqa: PLW0603
+                with _fallback_classifier_lock:
+                    if _fallback_classifier is None or _fallback_classifier_embed_id != id(embed):
+                        _fallback_classifier = IntentClassifier(embed)
+                        _fallback_classifier_embed_id = id(embed)
+                    cls = _fallback_classifier
                 route, llm_model, conf = cls.classify(text, available_models=avail_models)
                 logger.debug("Fallback route: %s model=%s confidence=%.2f", route, llm_model, conf)
         except (ImportError, RuntimeError, ValueError, TypeError) as exc:

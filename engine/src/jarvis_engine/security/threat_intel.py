@@ -12,6 +12,7 @@ produce graceful degradation, never exceptions.
 from __future__ import annotations
 
 import collections
+import concurrent.futures
 import json
 import logging
 import os
@@ -88,31 +89,37 @@ class ThreatIntelFeed:
                     result["cache_hit"] = True
                     return result
 
-        # Build fresh enrichment
+        # Build fresh enrichment — run all applicable feeds in parallel
         abuseipdb_score: int | None = None
         otx_pulses: int | None = None
         feodo_listed = False
         sources_checked: list[str] = []
         known_bad = False
 
-        # --- AbuseIPDB ---
-        if self._abuseipdb_key:
-            abuseipdb_score = self._query_abuseipdb(ip)
+        futures: dict[str, concurrent.futures.Future[Any]] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            if self._abuseipdb_key:
+                futures["abuseipdb"] = pool.submit(self._query_abuseipdb, ip)
+            if self._otx_key:
+                futures["otx"] = pool.submit(self._query_otx, ip)
+            futures["feodo"] = pool.submit(self._refresh_feodo_blocklist)
+
+        # Collect results
+        if "abuseipdb" in futures:
+            abuseipdb_score = futures["abuseipdb"].result()
             sources_checked.append("abuseipdb")
             if abuseipdb_score is not None and abuseipdb_score >= _ABUSEIPDB_BAD_THRESHOLD:
                 known_bad = True
 
-        # --- AlienVault OTX ---
-        if self._otx_key:
-            otx_pulses = self._query_otx(ip)
+        if "otx" in futures:
+            otx_pulses = futures["otx"].result()
             sources_checked.append("otx")
             if otx_pulses is not None and otx_pulses > 0:
                 known_bad = True
 
-        # --- Feodo Tracker ---
-        self._refresh_feodo_blocklist()
-        feodo_listed = ip in self._feodo_ips
+        # Feodo — future already completed via pool shutdown
         sources_checked.append("feodo")
+        feodo_listed = ip in self._feodo_ips
         if feodo_listed:
             known_bad = True
 
