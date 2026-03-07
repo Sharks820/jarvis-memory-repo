@@ -10,7 +10,11 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.security.attack_memory import AttackPatternMemory
+    from jarvis_engine.security.ip_tracker import IPTracker
 
 from jarvis_engine._shared import now_iso as _now_iso
 
@@ -42,8 +46,8 @@ class AdaptiveDefenseEngine:
 
     def __init__(
         self,
-        attack_memory: Any | None = None,
-        ip_tracker: Any | None = None,
+        attack_memory: AttackPatternMemory | None = None,
+        ip_tracker: IPTracker | None = None,
     ) -> None:
         self._attack_memory = attack_memory
         self._ip_tracker = ip_tracker

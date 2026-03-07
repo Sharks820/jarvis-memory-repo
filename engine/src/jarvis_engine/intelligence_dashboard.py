@@ -6,7 +6,14 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.knowledge.graph import KnowledgeGraph
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+    from jarvis_engine.learning.preferences import PreferenceTracker
+    from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+    from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +178,9 @@ def _estimate_eta(latest_score: float, slope_per_run: float, avg_days_per_run: f
 
 
 def _safe_learning_metrics(
-    pref_tracker: Any = None,
-    feedback_tracker: Any = None,
-    usage_tracker: Any = None,
+    pref_tracker: PreferenceTracker | None = None,
+    feedback_tracker: ResponseFeedbackTracker | None = None,
+    usage_tracker: UsagePatternTracker | None = None,
 ) -> dict[str, Any]:
     """Collect learning metrics from all trackers (returns empty on failure)."""
     result: dict[str, Any] = {}
@@ -209,7 +216,7 @@ def _safe_learning_metrics(
     return result
 
 
-def _safe_knowledge_snapshot(kg: Any = None, engine: Any = None) -> dict[str, Any]:
+def _safe_knowledge_snapshot(kg: KnowledgeGraph | None = None, engine: MemoryEngine | None = None) -> dict[str, Any]:
     """Capture live knowledge metrics (returns empty on failure)."""
     if kg is None and engine is None:
         return {}
@@ -225,11 +232,11 @@ def build_intelligence_dashboard(
     root: Path,
     *,
     last_runs: int = 20,
-    pref_tracker: Any = None,
-    feedback_tracker: Any = None,
-    usage_tracker: Any = None,
-    kg: Any = None,
-    engine: Any = None,
+    pref_tracker: PreferenceTracker | None = None,
+    feedback_tracker: ResponseFeedbackTracker | None = None,
+    usage_tracker: UsagePatternTracker | None = None,
+    kg: KnowledgeGraph | None = None,
+    engine: MemoryEngine | None = None,
 ) -> dict[str, Any]:
     history_rows = read_history(_history_path(root))
     summary = summarize_history(history_rows, last=last_runs)

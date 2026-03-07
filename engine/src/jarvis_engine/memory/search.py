@@ -20,7 +20,7 @@ import math
 import sqlite3
 import threading
 import time
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._constants import recency_weight as _recency_weight_core
 

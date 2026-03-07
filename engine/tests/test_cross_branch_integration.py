@@ -11,6 +11,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.command_bus import CommandBus
+from jarvis_engine.knowledge.facts import FactExtractor, FactTriple
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.classify import BranchClassifier
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+
 
 # ---------------------------------------------------------------------------
 # Task 1 tests: cross-branch edges wired into _extract_facts
@@ -24,14 +31,14 @@ class TestExtractFactsCrossBranch:
         """Create an EnrichedIngestPipeline with mocked dependencies."""
         from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
-        engine = MagicMock()
-        embed_service = MagicMock()
-        classifier = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        embed_service = MagicMock(spec=EmbeddingService)
+        classifier = MagicMock(spec=BranchClassifier)
         return EnrichedIngestPipeline(engine, embed_service, classifier, knowledge_graph=kg)
 
     def _make_triple(self, subject, predicate, object_val, confidence=0.8):
         """Create a mock triple object."""
-        triple = MagicMock()
+        triple = MagicMock(spec=FactTriple)
         triple.subject = subject
         triple.predicate = predicate
         triple.object_val = object_val
@@ -40,7 +47,7 @@ class TestExtractFactsCrossBranch:
 
     def test_cross_branch_edges_called_after_fact_creation(self):
         """After facts are created, create_cross_branch_edges is called for each."""
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         pipeline = self._make_pipeline(kg=kg)
 
         triples = [
@@ -49,7 +56,7 @@ class TestExtractFactsCrossBranch:
         ]
 
         # Mock the fact extractor
-        mock_extractor = MagicMock()
+        mock_extractor = MagicMock(spec=FactExtractor)
         mock_extractor.extract.return_value = triples
         pipeline._fact_extractor = mock_extractor
 
@@ -66,14 +73,14 @@ class TestExtractFactsCrossBranch:
 
     def test_cross_branch_failure_does_not_break_fact_creation(self):
         """If create_cross_branch_edges raises, facts are still created."""
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         pipeline = self._make_pipeline(kg=kg)
 
         triples = [
             self._make_triple("family.member.dad", "name", "Robert"),
         ]
 
-        mock_extractor = MagicMock()
+        mock_extractor = MagicMock(spec=FactExtractor)
         mock_extractor.extract.return_value = triples
         pipeline._fact_extractor = mock_extractor
 
@@ -90,10 +97,10 @@ class TestExtractFactsCrossBranch:
 
     def test_no_triples_means_no_cross_branch_call(self):
         """When no triples are extracted, cross-branch edges are not attempted."""
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         pipeline = self._make_pipeline(kg=kg)
 
-        mock_extractor = MagicMock()
+        mock_extractor = MagicMock(spec=FactExtractor)
         mock_extractor.extract.return_value = []
         pipeline._fact_extractor = mock_extractor
 
@@ -106,14 +113,14 @@ class TestExtractFactsCrossBranch:
 
     def test_cross_branch_called_with_correct_record_id(self):
         """create_cross_branch_edges receives the correct record_id for provenance."""
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         pipeline = self._make_pipeline(kg=kg)
 
         triples = [
             self._make_triple("ops.schedule.monday", "event", "Team meeting"),
         ]
 
-        mock_extractor = MagicMock()
+        mock_extractor = MagicMock(spec=FactExtractor)
         mock_extractor.extract.return_value = triples
         pipeline._fact_extractor = mock_extractor
 
@@ -160,12 +167,12 @@ class TestBuildSmartContextCrossBranch:
         import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_query.return_value = [0.1, 0.2]
-        bus = MagicMock()
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
+        bus = MagicMock(spec=CommandBus)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=mock_embed)
 
-        mock_kg_instance = MagicMock()
+        mock_kg_instance = MagicMock(spec=KnowledgeGraph)
         mock_kg_instance.query_relevant_facts.return_value = []
 
         cb_result = {
@@ -198,12 +205,12 @@ class TestBuildSmartContextCrossBranch:
         import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_query.return_value = [0.1, 0.2]
-        bus = MagicMock()
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
+        bus = MagicMock(spec=CommandBus)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=mock_embed)
 
-        mock_kg_instance = MagicMock()
+        mock_kg_instance = MagicMock(spec=KnowledgeGraph)
         mock_kg_instance.query_relevant_facts.return_value = []
 
         cb_result = {
@@ -224,12 +231,12 @@ class TestBuildSmartContextCrossBranch:
         import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_query.return_value = [0.1, 0.2]
-        bus = MagicMock()
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=mock_embed)
+        bus = MagicMock(spec=CommandBus)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=mock_embed)
 
-        mock_kg_instance = MagicMock()
+        mock_kg_instance = MagicMock(spec=KnowledgeGraph)
         mock_kg_instance.query_relevant_facts.return_value = []
 
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]), \
@@ -266,10 +273,10 @@ class TestBuildSmartContextCrossBranch:
         import jarvis_engine.voice_pipeline as voice_pipeline_mod
         from jarvis_engine.command_bus import AppContext
 
-        bus = MagicMock()
-        bus.ctx = AppContext(engine=MagicMock(), embed_service=None)
+        bus = MagicMock(spec=CommandBus)
+        bus.ctx = AppContext(engine=MagicMock(spec=MemoryEngine), embed_service=None)
 
-        mock_kg_instance = MagicMock()
+        mock_kg_instance = MagicMock(spec=KnowledgeGraph)
         mock_kg_instance.query_relevant_facts.return_value = []
 
         with patch.object(

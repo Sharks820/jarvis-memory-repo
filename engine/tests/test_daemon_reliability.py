@@ -11,7 +11,16 @@ from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import _bus as bus_mod
-from jarvis_engine.command_bus import AppContext
+from jarvis_engine.command_bus import AppContext, CommandBus
+from jarvis_engine.harvesting.budget import BudgetManager
+from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+from jarvis_engine.knowledge.entity_resolver import EntityResolver, ResolutionResult
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.knowledge.regression import RegressionChecker
+from jarvis_engine.memory.classify import BranchClassifier
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 
 class TestDaemonReliability:
@@ -471,8 +480,8 @@ class TestDaemonRegressionCheck:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
         capture_calls: list[int] = []
-        mock_bus = MagicMock()
-        mock_kg = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_bus.ctx = AppContext(kg=mock_kg)
 
         def mock_capture(*a, **kw):
@@ -486,7 +495,7 @@ class TestDaemonRegressionCheck:
                 "captured_at": "2026-01-01T00:00:00",
             }
 
-        mock_checker = MagicMock()
+        mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics = mock_capture
         mock_checker.compare.return_value = {"status": "pass", "discrepancies": []}
 
@@ -515,11 +524,11 @@ class TestDaemonRegressionCheck:
         backup_file = backup_dir / "20260101T000000_test.db"
         backup_file.write_bytes(b"fake_backup_data")
 
-        mock_bus = MagicMock()
-        mock_kg = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_bus.ctx = AppContext(kg=mock_kg)
 
-        mock_checker = MagicMock()
+        mock_checker = MagicMock(spec=RegressionChecker)
         mock_checker.capture_metrics.return_value = {
             "node_count": 3,
             "edge_count": 1,
@@ -566,8 +575,8 @@ class TestDaemonRegressionCheck:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
         def exploding_get_bus():
-            bus = MagicMock()
-            bus.ctx = AppContext(kg=MagicMock())
+            bus = MagicMock(spec=CommandBus)
+            bus.ctx = AppContext(kg=MagicMock(spec=KnowledgeGraph))
             return bus
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=exploding_get_bus), \
@@ -592,10 +601,10 @@ class TestDaemonConsolidation:
 
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_bus.ctx = AppContext(
-            engine=MagicMock(),
-            kg=MagicMock(),
+            engine=MagicMock(spec=MemoryEngine),
+            kg=MagicMock(spec=KnowledgeGraph),
             gateway=None,
             embed_service=None,
         )
@@ -642,7 +651,7 @@ class TestDaemonConsolidation:
 
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_bus.ctx = AppContext(engine=None, kg=None)
 
         # Bus dispatch returns a result with 0 groups (handler sees engine=None)
@@ -670,19 +679,19 @@ class TestDaemonEntityResolution:
         """Entity resolution should run on multiples of 100."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        mock_bus = MagicMock()
-        mock_kg = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_bus.ctx = AppContext(kg=mock_kg, embed_service=None)
 
-        mock_resolve_result = MagicMock()
+        mock_resolve_result = MagicMock(spec=ResolutionResult)
         mock_resolve_result.candidates_found = 5
         mock_resolve_result.merges_applied = 2
         mock_resolve_result.errors = []
 
-        mock_resolver = MagicMock()
+        mock_resolver = MagicMock(spec=EntityResolver)
         mock_resolver.auto_resolve.return_value = mock_resolve_result
 
-        mock_rc_checker = MagicMock()
+        mock_rc_checker = MagicMock(spec=RegressionChecker)
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
@@ -874,7 +883,7 @@ class TestDaemonAutoHarvest:
 
         harvest_calls: list[str] = []
 
-        mock_harvester = MagicMock()
+        mock_harvester = MagicMock(spec=KnowledgeHarvester)
         mock_harvester.harvest.return_value = {
             "topic": "test topic",
             "results": [{"provider": "mock", "status": "ok", "records_created": 3, "cost_usd": 0.001}],
@@ -883,11 +892,11 @@ class TestDaemonAutoHarvest:
         mock_provider = MagicMock()
         mock_provider.is_available = True
 
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_bus.ctx = AppContext(
-            engine=MagicMock(),
-            embed_service=MagicMock(),
-            kg=MagicMock(),
+            engine=MagicMock(spec=MemoryEngine),
+            embed_service=MagicMock(spec=EmbeddingService),
+            kg=MagicMock(spec=KnowledgeGraph),
         )
 
         with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["test topic"]), \
@@ -914,15 +923,15 @@ class TestDaemonAutoHarvest:
              ), \
              patch(
                  "jarvis_engine.harvesting.budget.BudgetManager",
-                 return_value=MagicMock(),
+                 return_value=MagicMock(spec=BudgetManager),
              ), \
              patch(
                  "jarvis_engine.memory.classify.BranchClassifier",
-                 return_value=MagicMock(),
+                 return_value=MagicMock(spec=BranchClassifier),
              ), \
              patch(
                  "jarvis_engine.memory.ingest.EnrichedIngestPipeline",
-                 return_value=MagicMock(),
+                 return_value=MagicMock(spec=EnrichedIngestPipeline),
              ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=200)

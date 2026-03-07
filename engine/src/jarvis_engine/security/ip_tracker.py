@@ -11,8 +11,22 @@ import logging
 import sqlite3
 import threading
 from datetime import datetime, timedelta
+from typing import TypedDict
 
 from jarvis_engine._compat import UTC
+
+
+class ThreatReport(TypedDict):
+    """Result from :meth:`IPThreatTracker.get_threat_report`."""
+
+    ip: str
+    first_seen: str
+    last_seen: str
+    total_attempts: int
+    attack_types: list[str]
+    threat_score: float
+    blocked_until: str | None
+    notes: str
 from jarvis_engine._shared import now_iso as _now_iso
 
 logger = logging.getLogger(__name__)
@@ -165,7 +179,7 @@ class IPTracker:
             logger.debug("Invalid blocked_until timestamp for IP %s: %s", ip, exc)
             return False
 
-    def get_threat_report(self, ip: str) -> dict | None:
+    def get_threat_report(self, ip: str) -> ThreatReport | None:
         """Return full threat history for *ip*, or None if not tracked."""
         with self._lock:
             row = self._db.execute(

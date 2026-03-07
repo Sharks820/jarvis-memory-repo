@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from jarvis_engine import desktop_widget
+from jarvis_engine.desktop_widget import JarvisDesktopWidget
 
 
 class TestWidgetSTTReliability:
@@ -96,7 +97,7 @@ class TestWidgetResourceManagement:
         monkeypatch.setattr(desktop_widget, "urlopen", mock_urlopen)
 
         # Create minimal widget mock
-        widget = MagicMock()
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget.stop_event = threading.Event()
         widget.stop_event.set()  # Stop immediately after first check
         widget.online = False
@@ -245,8 +246,8 @@ class TestWidgetUI:
         # Create mock event
         event = MagicMock()
         event.state = 0  # No modifier keys
-        
-        widget = MagicMock()
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget._send_command_async = MagicMock()
         
         # Call handler
@@ -261,8 +262,8 @@ class TestWidgetUI:
         # Create mock event with Shift pressed
         event = MagicMock()
         event.state = 0x0001  # Shift key
-        
-        widget = MagicMock()
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget._send_command_async = MagicMock()
         
         # Call handler
@@ -274,7 +275,7 @@ class TestWidgetUI:
 
     def test_bootstrap_requires_master_password(self) -> None:
         """UI: Bootstrap should fail fast when master password is missing."""
-        widget = MagicMock()
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget._current_cfg.return_value = desktop_widget.WidgetConfig(
             base_url="http://127.0.0.1:8787",
             token="",
@@ -282,7 +283,7 @@ class TestWidgetUI:
             device_id="device-1",
             master_password="",
         )
-        widget._log = MagicMock()
+        widget._log = MagicMock()  # override to track calls
 
         desktop_widget.JarvisDesktopWidget._bootstrap_session_async(widget)
 
@@ -307,7 +308,7 @@ class TestWidgetUI:
 
         monkeypatch.setattr(desktop_widget, "_http_json", fake_http_json)
 
-        widget = MagicMock()
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget._current_cfg.return_value = desktop_widget.WidgetConfig(
             base_url="http://127.0.0.1:8787",
             token="t",
@@ -325,7 +326,7 @@ class TestWidgetUI:
 
     def test_launcher_release_opens_panel_when_not_dragging(self) -> None:
         """UI: Launcher click release should open panel."""
-        widget = MagicMock()
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget._launcher_dragged = False
         widget._show_panel = MagicMock()
 
@@ -335,7 +336,7 @@ class TestWidgetUI:
 
     def test_launcher_release_does_not_open_panel_when_dragging(self) -> None:
         """UI: Drag release should not trigger open."""
-        widget = MagicMock()
+        widget = MagicMock(spec=JarvisDesktopWidget)
         widget._launcher_dragged = True
         widget._show_panel = MagicMock()
 

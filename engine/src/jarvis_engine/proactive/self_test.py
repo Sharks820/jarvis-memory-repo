@@ -11,10 +11,12 @@ import logging
 import os
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
+    from jarvis_engine.memory.engine import MemoryEngine
+    from jarvis_engine.proactive.notifications import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +52,9 @@ class AdversarialSelfTest:
 
     def __init__(
         self,
-        engine: Any,
+        engine: MemoryEngine,
         embed_service: EmbedServiceProtocol | None,
-        notifier: Any = None,
+        notifier: Notifier | None = None,
         score_threshold: float = 0.5,
     ) -> None:
         self._engine = engine

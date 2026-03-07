@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
+from jarvis_engine.stt_vad import SileroVADDetector
+
 
 # ---------------------------------------------------------------------------
 # 62. VAD: record_from_microphone stops early on silence after speech
@@ -158,7 +160,7 @@ def test_record_from_microphone_with_silero_vad() -> None:
     from jarvis_engine import stt as stt_mod
 
     # Create a mock VAD detector
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = True
     # First 3 chunks: speech detected, next 200 chunks: silence (trigger stop)
     speech_calls = [True, True, True] + [False] * 200
@@ -196,7 +198,7 @@ def test_record_from_microphone_rms_fallback() -> None:
     from jarvis_engine import stt as stt_mod
 
     # Create a mock VAD detector that reports not available
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = False
 
     # Mock sounddevice InputStream
@@ -242,7 +244,7 @@ def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
     """When Silero VAD is active, chunk size is 512 samples (32ms at 16kHz)."""
     from jarvis_engine import stt as stt_mod
 
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = True
     # Only speech for first chunk, then enough silence to stop
     mock_vad.process_chunk.side_effect = [True] + [False] * 2000
@@ -273,7 +275,7 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
     """When RMS fallback is active, chunk size is 1600 samples (100ms at 16kHz)."""
     from jarvis_engine import stt as stt_mod
 
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = False
 
     mock_stream = MagicMock()
@@ -314,7 +316,7 @@ def test_record_from_microphone_resets_vad_state() -> None:
     """VAD state is reset after recording completes (stateful model)."""
     from jarvis_engine import stt as stt_mod
 
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = True
     # All speech, hit max duration quickly
     mock_vad.process_chunk.return_value = True

@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 from anthropic import Anthropic, APIConnectionError
-from ollama import Client as OllamaClient
+from ollama import ChatResponse, Client as OllamaClient
+from ollama._types import Message as OllamaMessage
 
 from jarvis_engine.gateway.audit import GatewayAudit
 from jarvis_engine.gateway.costs import CostTracker
@@ -135,10 +136,10 @@ def _mock_anthropic_response(text: str = "hello", input_tokens: int = 10, output
 
 def _mock_ollama_response(text: str = "local answer") -> MagicMock:
     """Create a mock Ollama chat() response."""
-    message = MagicMock()
+    message = MagicMock(spec=OllamaMessage)
     message.content = text
 
-    response = MagicMock()
+    response = MagicMock(spec=ChatResponse)
     response.message = message
     return response
 

@@ -13,6 +13,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.ingest import IngestionPipeline
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 from jarvis_engine.commands.memory_commands import (
     BrainCompactCommand,
     BrainContextCommand,
@@ -43,7 +47,7 @@ class TestBrainStatusHandler:
     """Tests for BrainStatusHandler."""
 
     def test_with_engine_returns_sqlite_status(self, tmp_path: Path) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 42
         engine.db.execute.return_value.fetchall.return_value = [("general",)]
         handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
@@ -53,7 +57,7 @@ class TestBrainStatusHandler:
         engine.count_records.assert_called_once()
 
     def test_with_engine_zero_records(self, tmp_path: Path) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 0
         engine.db.execute.return_value.fetchall.return_value = []
         handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
@@ -88,7 +92,7 @@ class TestBrainStatusHandler:
         assert result.status["regression"]["status"] == "pass"
 
     def test_result_has_standard_keys(self, tmp_path: Path) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 5
         engine.db.execute.return_value.fetchall.return_value = []
         handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
@@ -107,8 +111,8 @@ class TestBrainContextHandler:
 
     def test_engine_path_embedding_failed(self, tmp_path: Path) -> None:
         """If embed_service returns empty, result should contain error."""
-        engine = MagicMock()
-        embed = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed_query.return_value = []  # empty embedding
         handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=embed)
         cmd = BrainContextCommand(query="test query")
@@ -118,9 +122,9 @@ class TestBrainContextHandler:
 
     def test_engine_path_happy(self, tmp_path: Path) -> None:
         """Engine path with valid embedding and search results."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 100
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed_query.return_value = [0.1, 0.2, 0.3]
 
         fake_results = [
@@ -139,9 +143,9 @@ class TestBrainContextHandler:
 
     def test_engine_path_respects_max_chars(self, tmp_path: Path) -> None:
         """Results should stop accumulating when max_chars is exceeded."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 10
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed_query.return_value = [0.1]
 
         # Each summary is 100 chars; max_chars=500 means 5 fit
@@ -158,9 +162,9 @@ class TestBrainContextHandler:
 
     def test_engine_path_clamps_max_items(self, tmp_path: Path) -> None:
         """max_items is clamped to [1, 40]."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 0
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed_query.return_value = [0.1]
 
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=[]) as mock_hs:
@@ -173,9 +177,9 @@ class TestBrainContextHandler:
 
     def test_engine_path_clamps_max_chars(self, tmp_path: Path) -> None:
         """max_chars is clamped to [500, 12000]."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 0
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed_query.return_value = [0.1]
 
         # Use max_chars=50 (below 500) — handler should clamp to 500
@@ -201,7 +205,7 @@ class TestBrainContextHandler:
 
     def test_fallback_when_only_engine_set(self, tmp_path: Path) -> None:
         """If engine is set but embed_service is None, falls back to build_context_packet."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         with patch("jarvis_engine.brain_memory.build_context_packet", return_value={
             "query": "q", "selected": [], "selected_count": 0, "canonical_facts": [],
             "max_items": 5, "max_chars": 800, "total_records_scanned": 0,
@@ -305,7 +309,7 @@ class TestIngestHandler:
 
     def test_pipeline_path_happy(self, tmp_path: Path) -> None:
         """With pipeline set, handler uses EnrichedIngestPipeline."""
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["rec_001"]
         handler = IngestHandler(root=tmp_path, pipeline=pipeline)
         cmd = IngestCommand(source="user", kind="episodic", task_id="t1", content="Remember to buy milk")
@@ -320,7 +324,7 @@ class TestIngestHandler:
 
     def test_pipeline_path_deduped(self, tmp_path: Path) -> None:
         """When pipeline.ingest returns empty list, record_id should be 'deduped'."""
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = []
         handler = IngestHandler(root=tmp_path, pipeline=pipeline)
         cmd = IngestCommand(source="user", kind="episodic", task_id="t1", content="Duplicate content")
@@ -337,7 +341,7 @@ class TestIngestHandler:
             kind: str = "episodic"
             task_id: str = "t1"
 
-        fake_pipeline = MagicMock()
+        fake_pipeline = MagicMock(spec=IngestionPipeline)
         fake_pipeline.ingest.return_value = FakeRecord()
 
         with patch("jarvis_engine.memory_store.MemoryStore") as MockStore, \
@@ -359,7 +363,7 @@ class TestIngestHandler:
             kind: str = "ep"
             task_id: str = "t"
 
-        fake_pipeline = MagicMock()
+        fake_pipeline = MagicMock(spec=IngestionPipeline)
         fake_pipeline.ingest.return_value = FakeRecord()
 
         with patch("jarvis_engine.memory_store.MemoryStore"), \
@@ -372,7 +376,7 @@ class TestIngestHandler:
         assert MockPipeline.call_count == 1
 
     def test_ingest_propagates_all_fields(self, tmp_path: Path) -> None:
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["abc123"]
         handler = IngestHandler(root=tmp_path, pipeline=pipeline)
         cmd = IngestCommand(source="task_outcome", kind="semantic", task_id="build-42", content="Deployed successfully")

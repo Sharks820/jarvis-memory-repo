@@ -8,7 +8,10 @@ import threading
 from unittest.mock import MagicMock
 
 from conftest import make_test_db
+from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
 from jarvis_engine.learning.consolidator import MemoryConsolidator
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +41,7 @@ def _make_engine() -> MagicMock:
         CREATE UNIQUE INDEX idx_content_hash ON records(content_hash);
     """)
 
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     engine._db = db
     engine._db_lock = threading.Lock()
     engine._write_lock = threading.Lock()
@@ -186,12 +189,12 @@ class TestConsolidateCreatesNewRecord:
         engine = _make_engine()
         _seed_records(engine, 5)
 
-        mock_gateway = MagicMock()
-        mock_response = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
+        mock_response = MagicMock(spec=GatewayResponse)
         mock_response.text = "Alpha is a recurring theme in the user's episodic memory."
         mock_gateway.complete.return_value = mock_response
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.return_value = _similar_embeddings(5)
         mock_embed.embed.return_value = [0.0] * 768
 
@@ -229,12 +232,12 @@ class TestConsolidateMarksOriginals:
         engine = _make_engine()
         _seed_records(engine, 4)
 
-        mock_gateway = MagicMock()
-        mock_response = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
+        mock_response = MagicMock(spec=GatewayResponse)
         mock_response.text = "Consolidated fact statement."
         mock_gateway.complete.return_value = mock_response
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.return_value = _similar_embeddings(4)
         mock_embed.embed.return_value = [0.0] * 768
 
@@ -274,11 +277,11 @@ class TestDryRun:
         engine = _make_engine()
         _seed_records(engine, 5)
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.return_value = _similar_embeddings(5)
 
-        mock_gateway = MagicMock()
-        mock_response = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
+        mock_response = MagicMock(spec=GatewayResponse)
         mock_response.text = "Dry run fact."
         mock_gateway.complete.return_value = mock_response
 
@@ -315,7 +318,7 @@ class TestNoGatewayConcatenates:
         engine = _make_engine()
         records = _seed_records(engine, 4)
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.return_value = _similar_embeddings(4)
         mock_embed.embed.return_value = [0.0] * 768
 
@@ -348,7 +351,7 @@ class TestBranchFiltering:
         _seed_records(engine, 4, branch="health")
         _seed_records(engine, 4, branch="finance")
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.return_value = _similar_embeddings(4)
         mock_embed.embed.return_value = [0.0] * 768
 
@@ -375,7 +378,7 @@ class TestErrorHandling:
         engine = _make_engine()
         _seed_records(engine, 5)
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.side_effect = RuntimeError("model not loaded")
 
         consolidator = MemoryConsolidator(
@@ -393,10 +396,10 @@ class TestErrorHandling:
         engine = _make_engine()
         _seed_records(engine, 5)
 
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.side_effect = RuntimeError("API timeout")
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed_batch.return_value = _similar_embeddings(5)
 
         consolidator = MemoryConsolidator(

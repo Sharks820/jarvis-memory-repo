@@ -13,9 +13,19 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+class HeartbeatStatus(TypedDict):
+    """Result from :meth:`HeartbeatMonitor.status`."""
+
+    running: bool
+    healthy: bool
+    missed_count: int
+    last_beat: float | None
+    uptime: float
 
 
 class HeartbeatMonitor:
@@ -106,7 +116,7 @@ class HeartbeatMonitor:
         with self._lock:
             return self._healthy
 
-    def status(self) -> dict:
+    def status(self) -> HeartbeatStatus:
         """Return a snapshot of monitor state.
 
         Keys: ``running``, ``healthy``, ``missed_count``, ``last_beat``,

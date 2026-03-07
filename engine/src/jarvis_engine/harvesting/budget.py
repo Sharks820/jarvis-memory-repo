@@ -247,5 +247,5 @@ class BudgetManager:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:  # noqa: BLE001 -- __del__: interpreter may be shutting down
-            pass
+        except Exception as exc:  # noqa: BLE001 -- __del__: interpreter may be shutting down
+            logger.debug("__del__ cleanup failed: %s", exc)

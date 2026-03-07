@@ -22,6 +22,13 @@ from jarvis_engine.commands.sync_commands import (
     SyncStatusResult,
 )
 
+try:
+    from cryptography.fernet import InvalidToken as _InvalidToken
+except ImportError:  # cryptography not installed
+
+    class _InvalidToken(Exception):  # type: ignore[no-redef]
+        """Placeholder — never raised when cryptography is absent."""
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,12 +67,9 @@ class SyncPullHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
-        except Exception as exc:  # noqa: BLE001 -- catch-and-retype for lazily-loaded InvalidToken
-            from cryptography.fernet import InvalidToken
-            if isinstance(exc, InvalidToken):
-                logger.error("SyncPull encryption failed (invalid token): %s", exc)
-                return SyncPullResult(message="error: encryption failed")
-            raise
+        except _InvalidToken as exc:
+            logger.error("SyncPull encryption failed (invalid token): %s", exc)
+            return SyncPullResult(message="error: encryption failed")
 
         return SyncPullResult(
             encrypted_payload=encoded,
@@ -101,12 +105,9 @@ class SyncPushHandler:
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
-        except Exception as exc:  # noqa: BLE001 -- catch-and-retype for lazily-loaded InvalidToken
-            from cryptography.fernet import InvalidToken
-            if isinstance(exc, InvalidToken):
-                logger.error("SyncPush decryption failed (invalid token): %s", exc)
-                return SyncPushResult(message="error: decryption failed")
-            raise
+        except _InvalidToken as exc:
+            logger.error("SyncPush decryption failed (invalid token): %s", exc)
+            return SyncPushResult(message="error: decryption failed")
 
         try:
             result = self._sync_engine.apply_incoming(payload, cmd.device_id)

@@ -128,7 +128,7 @@ class _DefenseHandlerBase:
         return self._orchestrator
 
     @property
-    def _forensic_logger(self):
+    def _forensic_logger(self) -> "ForensicLogger":
         if self._cached_forensic_logger is None:
             from jarvis_engine.security.forensic_logger import ForensicLogger
 

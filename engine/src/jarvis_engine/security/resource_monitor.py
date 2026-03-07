@@ -11,9 +11,27 @@ import collections
 import logging
 import math
 import threading
-from typing import Optional
+from typing import Optional, TypedDict
 
 logger = logging.getLogger(__name__)
+
+class MetricSnapshot(TypedDict):
+    """Per-metric snapshot in :class:`ResourceStatus`."""
+
+    current: float
+    cap: float | None
+    utilization_pct: float
+    anomalous: bool
+    values_count: int
+
+
+class ResourceStatus(TypedDict):
+    """Result from :meth:`ResourceMonitor.status`."""
+
+    metrics: dict[str, MetricSnapshot]
+    anomalies: list[str]
+    cap_exceeded: list[str]
+
 
 _DEFAULT_CAPS: dict[str, float] = {
     "tokens_per_day": 500_000,
@@ -119,7 +137,7 @@ class ResourceMonitor:
         with self._lock:
             return self._anomalous.get(metric, False)
 
-    def status(self) -> dict:
+    def status(self) -> ResourceStatus:
         """Return a snapshot of all tracked metrics.
 
         Returns a dict with keys ``metrics``, ``anomalies``, ``cap_exceeded``.

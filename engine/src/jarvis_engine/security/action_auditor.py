@@ -12,9 +12,19 @@ import logging
 import threading
 from pathlib import Path
 
+from typing import TypedDict
+
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
 
 logger = logging.getLogger(__name__)
+
+
+class DailySummary(TypedDict):
+    """Result from :meth:`ActionAuditor.daily_summary`."""
+
+    total_actions: int
+    by_type: dict[str, int]
+    by_trigger: dict[str, int]
 
 _RING_BUFFER_SIZE = 500
 
@@ -102,7 +112,7 @@ class ActionAuditor:
         # Return the last *limit* entries in chronological order
         return buf[-limit:] if limit < len(buf) else buf
 
-    def daily_summary(self) -> dict:
+    def daily_summary(self) -> DailySummary:
         """Return a summary of today's actions.
 
         Returns

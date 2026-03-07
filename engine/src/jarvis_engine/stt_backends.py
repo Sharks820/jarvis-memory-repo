@@ -117,6 +117,8 @@ def _try_deepgram(
         logger.warning("httpx not installed; Deepgram backend unavailable")
         return None
 
+    _httpx_errors = (httpx.HTTPError, httpx.StreamError)
+
     try:
         t0 = time.monotonic()
 
@@ -211,11 +213,9 @@ def _try_deepgram(
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Deepgram STT attempt failed: %s", exc)
         return None
-    except Exception as exc:  # noqa: BLE001 -- httpx exceptions (lazily imported); re-raises others
-        if type(exc).__module__.startswith("httpx"):
-            logger.warning("Deepgram STT network error: %s", exc)
-            return None
-        raise
+    except _httpx_errors as exc:
+        logger.warning("Deepgram STT network error: %s", exc)
+        return None
 
 
 # ---------------------------------------------------------------------------

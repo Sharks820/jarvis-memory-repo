@@ -214,7 +214,7 @@ def test_detection_invokes_callback() -> None:
             return True
         return False
 
-    detector._stop_event = MagicMock()
+    detector._stop_event = MagicMock(spec=threading.Event)
     detector._stop_event.is_set = _stop_after_first
 
     # Mock sounddevice and run the detection loop
@@ -392,7 +392,7 @@ def test_start_accepts_mic_lock() -> None:
 def test_mic_lock_acquired_and_released() -> None:
     """When mic_lock is provided, it is acquired before read and released after."""
     detector = WakeWordDetector(threshold=0.5)
-    mic_lock = MagicMock()
+    mic_lock = MagicMock(spec=threading.Lock())
 
     mock_model = MagicMock()
     mock_model.prediction_buffer = {"hey_jarvis": [0.1]}  # Below threshold
@@ -621,7 +621,7 @@ def test_cooldown_after_detection() -> None:
     # We'll test the full start() loop with mocked components
     # Set stop_event to stop after one iteration
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_detection():
         call_count[0] += 1
@@ -698,11 +698,11 @@ def test_mic_lock_acquire_uses_timeout() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    mic_lock = MagicMock()
+    mic_lock = MagicMock(spec=threading.Lock())
     mic_lock.acquire.return_value = True
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -741,13 +741,13 @@ def test_mic_lock_timeout_skips_iteration() -> None:
     mock_sd = MagicMock()
     mock_sd.InputStream.return_value = mock_stream
 
-    mic_lock = MagicMock()
+    mic_lock = MagicMock(spec=threading.Lock())
     mic_lock.acquire.return_value = False  # Timeout!
 
     callback = MagicMock()
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -802,7 +802,7 @@ def test_energy_prefilter_skips_predict_on_silence() -> None:
     callback = MagicMock()
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -851,7 +851,7 @@ def test_energy_prefilter_passes_loud_audio() -> None:
     callback = MagicMock()
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -1016,7 +1016,7 @@ def test_energy_prefilter_and_smoothing_integration() -> None:
     mock_sd.InputStream.return_value = mock_stream
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -1069,7 +1069,7 @@ def test_wakeword_silero_vad_integration() -> None:
     callback = MagicMock()
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -1127,7 +1127,7 @@ def test_wakeword_vad_reset_after_detection() -> None:
     callback = MagicMock()
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1
@@ -1183,7 +1183,7 @@ def test_wakeword_rms_fallback() -> None:
     callback = MagicMock()
 
     call_count = [0]
-    stop_event = MagicMock()
+    stop_event = MagicMock(spec=threading.Event)
 
     def _stop_after_one():
         call_count[0] += 1

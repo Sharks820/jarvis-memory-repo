@@ -420,7 +420,7 @@ def _restart_mobile_api(service_name: str) -> None:
             )
         logger.info("Watchdog: restarted mobile_api via subprocess.")
         print("watchdog_restart_mobile_api=ok")
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("Watchdog: failed to restart mobile_api: %s", exc)
         print(f"watchdog_restart_mobile_api_error={exc}")
 
@@ -451,7 +451,7 @@ def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
             f"Daemon cycle {cycles} started",
             {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
         )
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.debug("Activity feed cycle-start log failed: %s", exc)
 
 
@@ -465,7 +465,7 @@ def _log_cycle_end(cycles: int, rc: int) -> None:
             f"Daemon cycle {cycles} ended (rc={rc})",
             {"cycle": cycles, "rc": rc, "phase": "end"},
         )
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.debug("Activity feed cycle-end log failed: %s", exc)
 
 
@@ -569,7 +569,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
     """Run pending missions and auto-generate new ones (never raises)."""
     try:
         mission_rc = _run_next_pending_mission()
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, AttributeError, KeyError, ValueError, RuntimeError) as exc:
         mission_rc = 2
         logger.warning("Daemon mission cycle failed: %s", exc)
         print(f"mission_cycle_error={exc}")
@@ -595,7 +595,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
                 if generated:
                     topics = ", ".join(m.get("topic", "") for m in generated)
                     print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
-            except Exception as exc:  # noqa: BLE001
+            except (ImportError, OSError, sqlite3.Error, KeyError, ValueError) as exc:
                 logger.warning("Daemon mission auto-generation failed: %s", exc)
                 print(f"mission_autogen_error={exc}")
 
@@ -604,7 +604,7 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
     """Run mobile-desktop sync (never raises)."""
     try:
         sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         sync_rc = 2
         logger.warning("Daemon sync cycle failed: %s", exc)
         print(f"sync_cycle_error={exc}")
@@ -620,7 +620,7 @@ def _run_watchdog_cycle(root: Path) -> None:
         dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
         if dead:
             print(f"watchdog_dead_services={','.join(dead)}")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, subprocess.SubprocessError, RuntimeError) as exc:
         logger.warning("Daemon watchdog check failed: %s", exc)
         print(f"watchdog_error={exc}")
 
@@ -634,7 +634,7 @@ def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
             snapshot_note="daemon-self-heal",
             as_json=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         heal_rc = 2
         logger.warning("Daemon self-heal cycle failed: %s", exc)
         print(f"self_heal_cycle_error={exc}")
@@ -671,7 +671,7 @@ def _collect_kg_metrics(root: Path) -> None:
         history_path = _runtime_dir(root) / _KG_METRICS_LOG
         append_kg_metrics(metrics, history_path)
         print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
         logger.warning("Daemon KG metrics collection failed: %s", exc)
         print(f"kg_metrics_error={exc}")
 
@@ -696,7 +696,7 @@ def _run_self_test_cycle(root: Path) -> None:
                 print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
         else:
             print("self_test_skipped=engine_not_initialized")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
         logger.warning("Daemon self-test failed: %s", exc)
         print(f"self_test_error={exc}")
 
@@ -716,7 +716,7 @@ def _run_db_optimize_cycle(cycles: int) -> None:
                 print(f"db_optimize_errors={len(opt_result['errors'])}")
         else:
             print("db_optimize_skipped=engine_not_initialized")
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
         logger.warning("Daemon DB optimize failed: %s", exc)
         print(f"db_optimize_error={exc}")
 
@@ -763,7 +763,7 @@ def _run_kg_regression_cycle(root: Path) -> None:
                             )
         else:
             print("kg_regression_skipped=kg_not_initialized")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Daemon KG regression check failed: %s", exc)
         print(f"kg_regression_error={exc}")
 
@@ -783,7 +783,7 @@ def _run_usage_prediction_cycle() -> None:
                 if prediction["common_topics"]:
                     print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
                 print(f"usage_interaction_count={prediction['interaction_count']}")
-    except Exception as exc:  # noqa: BLE001
+    except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
         logger.warning("Daemon usage prediction failed: %s", exc)
         print(f"usage_prediction_error={exc}")
 
@@ -799,7 +799,7 @@ def _run_memory_consolidation_cycle() -> None:
         print(f"consolidation_new_facts={result.new_facts_created}")
         if result.errors:
             print(f"consolidation_errors={len(result.errors)}")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
         logger.warning("Daemon memory consolidation failed: %s", exc)
         print(f"consolidation_error={exc}")
 
@@ -820,7 +820,7 @@ def _run_entity_resolution_cycle() -> None:
                 rc_checker = RegressionChecker(kg)
                 rc_checker.backup_graph(tag="pre-entity-resolve")
                 print("entity_resolve_kg_backup=ok")
-            except Exception as exc:  # noqa: BLE001
+            except (OSError, sqlite3.Error, RuntimeError) as exc:
                 logger.warning("Daemon entity resolve KG backup failed: %s", exc)
                 print(f"entity_resolve_kg_backup_error={exc}")
             resolver = EntityResolver(kg, embed_service=embed_svc)
@@ -840,7 +840,7 @@ def _run_entity_resolution_cycle() -> None:
             )
         else:
             print("entity_resolve_skipped=kg_not_initialized")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
         logger.warning("Daemon entity resolution failed: %s", exc)
         print(f"entity_resolve_error={exc}")
 
@@ -914,7 +914,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                     h_budget.close()
         else:
             print("auto_harvest_skipped=no_topics_discovered")
-    except Exception as exc:  # noqa: BLE001
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Daemon auto-harvest failed: %s", exc)
         print(f"auto_harvest_error={exc}")
 
@@ -1088,7 +1088,7 @@ def cmd_daemon_run_impl(
                     approve_privileged=approve_cycle,
                     auto_open_connectors=auto_open_connectors,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (OSError, sqlite3.Error, RuntimeError, ValueError, KeyError) as exc:
                 rc = 2
                 logger.warning("Daemon autopilot cycle failed: %s", exc)
                 print(f"cycle_error={exc}")

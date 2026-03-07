@@ -11,6 +11,9 @@ from jarvis_engine.commands.task_commands import (
     RouteCommand,
     WebResearchCommand,
 )
+from jarvis_engine.config import EngineConfig
+from jarvis_engine.gateway.classifier import IntentClassifier
+from jarvis_engine.gateway.models import ModelGateway
 from jarvis_engine.handlers.task_handlers import (
     QueryHandler,
     RouteHandler,
@@ -24,7 +27,7 @@ from jarvis_engine.handlers.task_handlers import (
 
 def test_query_handler_explicit_model() -> None:
     """QueryHandler uses explicit model when cmd.model is set."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.return_value = SimpleNamespace(
         text="Hello world",
         model="gpt-4",
@@ -48,7 +51,7 @@ def test_query_handler_explicit_model() -> None:
 
 def test_query_handler_with_classifier() -> None:
     """QueryHandler uses classifier when no explicit model is set."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.return_value = SimpleNamespace(
         text="Classified response",
         model="llama3",
@@ -59,7 +62,7 @@ def test_query_handler_with_classifier() -> None:
         fallback_used=False,
         fallback_reason="",
     )
-    mock_classifier = MagicMock()
+    mock_classifier = MagicMock(spec=IntentClassifier)
     mock_classifier.classify.return_value = ("simple_query", "llama3", 0.95)
 
     handler = QueryHandler(gateway=mock_gateway, classifier=mock_classifier)
@@ -76,7 +79,7 @@ def test_query_handler_with_classifier() -> None:
 
 def test_query_handler_no_classifier_fallback() -> None:
     """QueryHandler uses default model when no classifier available."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.return_value = SimpleNamespace(
         text="Default response",
         model="claude-sonnet-4-5-20250929",
@@ -98,7 +101,7 @@ def test_query_handler_no_classifier_fallback() -> None:
 
 def test_query_handler_system_prompt_included() -> None:
     """QueryHandler includes system prompt in messages."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.return_value = SimpleNamespace(
         text="ok",
         model="test",
@@ -123,7 +126,7 @@ def test_query_handler_system_prompt_included() -> None:
 
 def test_query_handler_fallback_info_passed_through() -> None:
     """QueryHandler passes through fallback info from gateway."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.return_value = SimpleNamespace(
         text="fallback response",
         model="llama3",
@@ -145,7 +148,7 @@ def test_query_handler_fallback_info_passed_through() -> None:
 
 def test_query_handler_gateway_exception() -> None:
     """QueryHandler returns error result when gateway.complete raises."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.side_effect = RuntimeError("connection refused")
 
     handler = QueryHandler(gateway=mock_gateway, classifier=None)
@@ -159,7 +162,7 @@ def test_query_handler_gateway_exception() -> None:
 
 def test_query_handler_conversation_history() -> None:
     """QueryHandler injects conversation history into messages."""
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.return_value = SimpleNamespace(
         text="history response",
         model="test",
@@ -193,7 +196,7 @@ def test_query_handler_conversation_history() -> None:
 
 def test_route_handler_with_classifier() -> None:
     """RouteHandler uses classifier when query is provided."""
-    mock_classifier = MagicMock()
+    mock_classifier = MagicMock(spec=IntentClassifier)
     mock_classifier.classify.return_value = ("code_generation", "claude-opus", 0.92)
 
     handler = RouteHandler(root=Path("."), classifier=mock_classifier)
@@ -343,7 +346,7 @@ class TestRunTaskHandler:
 class TestQueryHandlerExtended:
 
     def test_no_system_prompt_injects_datetime(self):
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response()
         handler = QueryHandler(gateway=mock_gateway, classifier=None)
         cmd = QueryCommand(query="hello")
@@ -357,7 +360,7 @@ class TestQueryHandlerExtended:
         assert messages[1] == {"role": "user", "content": "hello"}
 
     def test_max_tokens_passed_through(self):
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response()
         handler = QueryHandler(gateway=mock_gateway, classifier=None)
         cmd = QueryCommand(query="test", max_tokens=2048)
@@ -366,7 +369,7 @@ class TestQueryHandlerExtended:
         assert call_args.kwargs.get("max_tokens", call_args[1].get("max_tokens")) == 2048
 
     def test_cost_usd_passed_through(self):
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response(cost_usd=0.05)
         handler = QueryHandler(gateway=mock_gateway, classifier=None)
         cmd = QueryCommand(query="test")
@@ -374,7 +377,7 @@ class TestQueryHandlerExtended:
         assert abs(result.cost_usd - 0.05) < 0.001
 
     def test_token_counts_passed_through(self):
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response(
             input_tokens=100, output_tokens=200
         )
@@ -385,9 +388,9 @@ class TestQueryHandlerExtended:
         assert result.output_tokens == 200
 
     def test_classifier_confidence_in_route_reason(self):
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response()
-        mock_classifier = MagicMock()
+        mock_classifier = MagicMock(spec=IntentClassifier)
         mock_classifier.classify.return_value = ("analysis", "claude-opus", 0.87)
         handler = QueryHandler(gateway=mock_gateway, classifier=mock_classifier)
         cmd = QueryCommand(query="analyze this data")
@@ -395,7 +398,7 @@ class TestQueryHandlerExtended:
         assert "0.87" in result.route_reason
 
     def test_route_reason_passed_to_gateway(self):
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response()
         handler = QueryHandler(gateway=mock_gateway, classifier=None)
         cmd = QueryCommand(query="test", model="custom-model")
@@ -413,7 +416,7 @@ class TestQueryHandlerExtended:
 class TestRouteHandlerExtended:
 
     def test_route_with_empty_query_and_classifier_uses_legacy(self):
-        mock_classifier = MagicMock()
+        mock_classifier = MagicMock(spec=IntentClassifier)
         handler = RouteHandler(root=Path("."), classifier=mock_classifier)
         cmd = RouteCommand(query="", risk="low", complexity="easy")
         result = handler.handle(cmd)
@@ -422,7 +425,7 @@ class TestRouteHandlerExtended:
         mock_classifier.classify.assert_not_called()
 
     def test_route_classifier_returns_confidence(self):
-        mock_classifier = MagicMock()
+        mock_classifier = MagicMock(spec=IntentClassifier)
         mock_classifier.classify.return_value = ("reasoning", "claude-opus", 0.99)
         handler = RouteHandler(root=Path("."), classifier=mock_classifier)
         cmd = RouteCommand(query="explain quantum computing")
@@ -565,7 +568,7 @@ class TestQueryHandlerConfigModel:
 
     def test_no_classifier_uses_config_default_model(self):
         """QueryHandler uses config.default_query_model when no classifier is available."""
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         mock_gateway.complete.return_value = _gateway_response(
             model="custom-model-from-config"
         )
@@ -576,7 +579,7 @@ class TestQueryHandlerConfigModel:
         with patch(
             "jarvis_engine.config.load_config"
         ) as mock_load_config:
-            mock_cfg = MagicMock()
+            mock_cfg = MagicMock(spec=EngineConfig)
             mock_cfg.default_query_model = "custom-model-from-config"
             mock_load_config.return_value = mock_cfg
             result = handler.handle(cmd)

@@ -9,6 +9,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.proactive import ProactiveEngine
 from jarvis_engine.proactive.triggers import TriggerRule
 from jarvis_engine.proactive.notifications import Notifier
@@ -72,7 +75,7 @@ def _make_kg_db() -> MagicMock:
         "  src TEXT, dst TEXT, relation TEXT"
         ")"
     )
-    kg = MagicMock()
+    kg = MagicMock(spec=KnowledgeGraph)
     kg.db = conn
     return kg, conn
 
@@ -232,7 +235,7 @@ class TestSelfTestRunMemoryQuiz:
             _FakeRecallResult("t1", 0.8),
             _FakeRecallResult("t2", 0.9),
         ]
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.run_memory_quiz(tasks=None)
         # Should have called run_memory_eval with DEFAULT_MEMORY_TASKS
         mock_eval.assert_called_once()
@@ -244,7 +247,7 @@ class TestSelfTestRunMemoryQuiz:
     @patch("jarvis_engine.growth_tracker.run_memory_eval")
     def test_custom_tasks(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("custom", 0.7)]
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.run_memory_quiz(tasks=["custom_task"])
         called_tasks = mock_eval.call_args[0][0]
         assert called_tasks == ["custom_task"]
@@ -254,10 +257,10 @@ class TestSelfTestRunMemoryQuiz:
     @patch("jarvis_engine.growth_tracker.run_memory_eval")
     def test_below_threshold_sends_alert(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("t1", 0.2)]
-        notifier = MagicMock()
+        notifier = MagicMock(spec=Notifier)
         st = AdversarialSelfTest(
-            engine=MagicMock(),
-            embed_service=MagicMock(),
+            engine=MagicMock(spec=MemoryEngine),
+            embed_service=MagicMock(spec=EmbeddingService),
             notifier=notifier,
             score_threshold=0.5,
         )
@@ -270,10 +273,10 @@ class TestSelfTestRunMemoryQuiz:
     @patch("jarvis_engine.growth_tracker.run_memory_eval")
     def test_above_threshold_no_alert(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("t1", 0.9)]
-        notifier = MagicMock()
+        notifier = MagicMock(spec=Notifier)
         st = AdversarialSelfTest(
-            engine=MagicMock(),
-            embed_service=MagicMock(),
+            engine=MagicMock(spec=MemoryEngine),
+            embed_service=MagicMock(spec=EmbeddingService),
             notifier=notifier,
             score_threshold=0.5,
         )
@@ -284,7 +287,7 @@ class TestSelfTestRunMemoryQuiz:
     @patch("jarvis_engine.growth_tracker.run_memory_eval")
     def test_empty_results(self, mock_eval):
         mock_eval.return_value = []
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.run_memory_quiz()
         assert result["tasks_run"] == 0
         assert result["average_score"] == 0.0
@@ -293,11 +296,11 @@ class TestSelfTestRunMemoryQuiz:
     @patch("jarvis_engine.growth_tracker.run_memory_eval")
     def test_notifier_exception_caught(self, mock_eval):
         mock_eval.return_value = [_FakeRecallResult("t1", 0.1)]
-        notifier = MagicMock()
+        notifier = MagicMock(spec=Notifier)
         notifier.send.side_effect = RuntimeError("fail")
         st = AdversarialSelfTest(
-            engine=MagicMock(),
-            embed_service=MagicMock(),
+            engine=MagicMock(spec=MemoryEngine),
+            embed_service=MagicMock(spec=EmbeddingService),
             notifier=notifier,
             score_threshold=0.5,
         )
@@ -311,7 +314,7 @@ class TestSelfTestRunMemoryQuiz:
             _FakeRecallResult("a", 0.6),
             _FakeRecallResult("b", 0.8),
         ]
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.run_memory_quiz()
         pts = result["per_task_scores"]
         assert len(pts) == 2
@@ -323,7 +326,7 @@ class TestSelfTestSaveQuizResult:
     """save_quiz_result to JSONL files."""
 
     def test_saves_to_new_file(self, tmp_path: Path):
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         data = {"average_score": 0.85, "tasks_run": 2}
         out = tmp_path / "subdir" / "history.jsonl"
         st.save_quiz_result(data, out)
@@ -332,7 +335,7 @@ class TestSelfTestSaveQuizResult:
         assert loaded["average_score"] == 0.85
 
     def test_appends_multiple_results(self, tmp_path: Path):
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         out = tmp_path / "history.jsonl"
         st.save_quiz_result({"score": 1}, out)
         st.save_quiz_result({"score": 2}, out)
@@ -350,14 +353,14 @@ class TestSelfTestCheckRegression:
                 f.write(json.dumps({"average_score": s}) + "\n")
 
     def test_no_history_file(self, tmp_path: Path):
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.check_regression(tmp_path / "nope.jsonl")
         assert result["regression_detected"] is False
 
     def test_single_entry_no_regression(self, tmp_path: Path):
         p = tmp_path / "h.jsonl"
         self._write_history(p, [0.8])
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.check_regression(p)
         assert result["regression_detected"] is False
         assert result["current_score"] == 0.8
@@ -366,7 +369,7 @@ class TestSelfTestCheckRegression:
         # Baseline ~0.9 avg, current 0.5 => 0.5 < 0.9*0.8=0.72 => regression
         p = tmp_path / "h.jsonl"
         self._write_history(p, [0.9, 0.9, 0.9, 0.5])
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.check_regression(p, window=5)
         assert result["regression_detected"] is True
         assert result["drop_pct"] > 0
@@ -374,7 +377,7 @@ class TestSelfTestCheckRegression:
     def test_no_regression_when_stable(self, tmp_path: Path):
         p = tmp_path / "h.jsonl"
         self._write_history(p, [0.85, 0.86, 0.84, 0.85])
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.check_regression(p, window=5)
         assert result["regression_detected"] is False
 
@@ -384,7 +387,7 @@ class TestSelfTestCheckRegression:
             f.write("not-json\n")
             f.write(json.dumps({"average_score": 0.9}) + "\n")
             f.write(json.dumps({"average_score": 0.85}) + "\n")
-        st = AdversarialSelfTest(engine=MagicMock(), embed_service=MagicMock())
+        st = AdversarialSelfTest(engine=MagicMock(spec=MemoryEngine), embed_service=MagicMock(spec=EmbeddingService))
         result = st.check_regression(p, window=5)
         assert result["regression_detected"] is False
 
@@ -464,7 +467,7 @@ class TestCollectKgMetrics:
         conn.close()
 
     def test_db_error_returns_defaults(self):
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.db.execute.side_effect = sqlite3.OperationalError("no such table")
         metrics = collect_kg_metrics(kg)
         assert metrics["node_count"] == 0
@@ -481,7 +484,7 @@ class TestCollectKgMetrics:
         conn.execute("CREATE TABLE kg_edges (src TEXT, dst TEXT, relation TEXT)")
         conn.execute("INSERT INTO kg_nodes (node_id, label) VALUES ('a.1', 'test')")
         conn.commit()
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.db = conn
         metrics = collect_kg_metrics(kg)
         assert metrics["node_count"] == 1

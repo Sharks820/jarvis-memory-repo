@@ -14,12 +14,37 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class HitSummary(TypedDict):
+    """Result from :meth:`HoneypotEngine.record_hit`."""
+
+    path: str
+    total_hits: int
+    unique_ips: int
+
+
+class AttackerInfo(TypedDict):
+    """Attacker entry in :class:`HoneypotStats`."""
+
+    ip: str
+    hits: int
+
+
+class HoneypotStats(TypedDict):
+    """Result from :meth:`HoneypotEngine.get_honeypot_stats`."""
+
+    total_hits: int
+    hits_per_path: dict[str, int]
+    unique_ips: int
+    top_attackers: list[AttackerInfo]
+
 
 # ---------------------------------------------------------------------------
 # Honeypot path registry
@@ -250,7 +275,7 @@ class HoneypotEngine:
 
     def record_hit(
         self, path: str, source_ip: str, headers: dict | None = None
-    ) -> dict:
+    ) -> HitSummary:
         """Record a honeypot hit and return summary stats for the path.
 
         If a *forensic_logger* was provided at construction time, the hit
@@ -296,7 +321,7 @@ class HoneypotEngine:
             "unique_ips": unique_path_ips,
         }
 
-    def get_honeypot_stats(self) -> dict:
+    def get_honeypot_stats(self) -> HoneypotStats:
         """Return aggregate honeypot statistics."""
         with self._lock:
             total_hits = sum(len(recs) for recs in self._hits.values())

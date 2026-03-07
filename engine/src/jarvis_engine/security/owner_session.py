@@ -16,8 +16,17 @@ import logging
 import secrets
 import threading
 import time
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+class SessionStatus(TypedDict):
+    """Result from :meth:`OwnerSessionManager.session_status`."""
+
+    active: bool
+    locked_out: bool
+    session_count: int
 
 # ---------------------------------------------------------------------------
 # Argon2id — optional, fall back to PBKDF2 if not installed
@@ -259,7 +268,7 @@ class OwnerSessionManager:
     # Status
     # ------------------------------------------------------------------
 
-    def session_status(self) -> dict:
+    def session_status(self) -> SessionStatus:
         """Return a status summary.
 
         Returns

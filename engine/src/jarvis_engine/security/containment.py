@@ -16,12 +16,46 @@ import threading
 import time
 from collections import deque
 from enum import IntEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class ContainResult(TypedDict, total=False):
+    """Result from :meth:`ContainmentEngine.contain`."""
+
+    ip: str
+    level: int
+    level_name: str
+    reason: str
+    actions: list[str]
+    timestamp: float
+    credentials_rotated: bool
+
+
+class ContainmentStatus(TypedDict):
+    """Result from :meth:`ContainmentEngine.get_containment_status`."""
+
+    current_level: int
+    level_name: str
+    throttled_ips: dict[str, float]
+    blocked_ips: list[str]
+    isolated_endpoints: list[str]
+    lockdown_active: bool
+    killed: bool
+    history_count: int
+
+
+class RecoveryResult(TypedDict, total=False):
+    """Result from :meth:`ContainmentEngine.recover`."""
+
+    recovered: bool
+    reason: str
+    level_recovered: int
+    actions: list[str]
 
 
 class ContainmentLevel(IntEnum):
@@ -100,7 +134,7 @@ class ContainmentEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def contain(self, ip: str, level: int, reason: str) -> dict:
+    def contain(self, ip: str, level: int, reason: str) -> ContainResult:
         """Execute containment at the specified *level* against *ip*.
 
         Returns a dict describing the actions taken.
@@ -198,7 +232,7 @@ class ContainmentEngine:
 
         return result
 
-    def get_containment_status(self) -> dict:
+    def get_containment_status(self) -> ContainmentStatus:
         """Return current containment state."""
         with self._lock:
             if self._current_level > 0:
@@ -219,7 +253,7 @@ class ContainmentEngine:
                 "history_count": len(self._containment_history),
             }
 
-    def recover(self, level: int, master_password: str | None = None) -> dict:
+    def recover(self, level: int, master_password: str | None = None) -> RecoveryResult:
         """Recover from containment at the specified *level*.
 
         Levels 1-3 auto-recover (no password required).

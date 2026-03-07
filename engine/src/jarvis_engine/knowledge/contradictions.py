@@ -11,11 +11,22 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from typing import TypedDict
+
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
 from jarvis_engine.knowledge._base import KGManagerBase, upsert_fts_kg
 
 logger = logging.getLogger(__name__)
+
+
+class ResolutionResult(TypedDict):
+    """Result from :meth:`ContradictionManager.resolve_contradiction`."""
+
+    success: bool
+    node_id: str
+    resolution: str
+    message: str
 
 
 class ContradictionManager(KGManagerBase):
@@ -123,7 +134,7 @@ class ContradictionManager(KGManagerBase):
         contradiction_id: int,
         resolution: str,
         merge_value: str = "",
-    ) -> dict:
+    ) -> ResolutionResult:
         """Resolve a contradiction by owner decision.
 
         Args:

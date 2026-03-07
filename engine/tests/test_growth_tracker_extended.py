@@ -6,11 +6,14 @@ import hashlib
 import json
 import os
 from dataclasses import asdict
+from http.client import HTTPResponse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.security.net_policy import is_safe_ollama_endpoint as _is_safe_ollama_endpoint
 from jarvis_engine.growth_tracker import (
     BRANCH_TASK_MAP,
@@ -515,9 +518,9 @@ class TestMemoryRecall:
             assert task.query
 
     def test_evaluate_memory_recall_no_results(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = []
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         task = MemoryRecallTask("test", "query", ["health"], 1, ["medication"])
@@ -528,13 +531,13 @@ class TestMemoryRecall:
         assert result.overall_score == 0.0
 
     def test_evaluate_memory_recall_full_match(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = [("id1", 0.1), ("id2", 0.2)]
         engine.get_records_batch.return_value = [
             {"branch": "health", "summary": "Take medication daily"},
             {"branch": "health", "summary": "Medication for blood pressure"},
         ]
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         task = MemoryRecallTask("health_recall", "meds?", ["health"], 1, ["medication"])
@@ -547,12 +550,12 @@ class TestMemoryRecall:
         assert result.overall_score == 1.0
 
     def test_evaluate_memory_recall_partial_branch(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = [("id1", 0.1)]
         engine.get_records_batch.return_value = [
             {"branch": "health", "summary": "daily routine"},
         ]
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         task = MemoryRecallTask(
@@ -566,12 +569,12 @@ class TestMemoryRecall:
         assert result.keyword_coverage == 0.0
 
     def test_evaluate_memory_recall_no_required_branches(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = [("id1", 0.1)]
         engine.get_records_batch.return_value = [
             {"branch": "general", "summary": "some text with keyword"},
         ]
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         task = MemoryRecallTask("test", "query", [], 1, ["keyword"])
@@ -581,12 +584,12 @@ class TestMemoryRecall:
         assert result.branch_coverage == 1.0
 
     def test_evaluate_memory_recall_no_required_keywords(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = [("id1", 0.1)]
         engine.get_records_batch.return_value = [
             {"branch": "health", "summary": "anything"},
         ]
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         task = MemoryRecallTask("test", "query", ["health"], 1, [])
@@ -597,16 +600,16 @@ class TestMemoryRecall:
 
     def test_run_memory_eval_none_engine_raises(self) -> None:
         with pytest.raises(RuntimeError, match="engine is required"):
-            run_memory_eval(DEFAULT_MEMORY_TASKS, None, MagicMock())
+            run_memory_eval(DEFAULT_MEMORY_TASKS, None, MagicMock(spec=EmbeddingService))
 
     def test_run_memory_eval_none_embed_raises(self) -> None:
         with pytest.raises(RuntimeError, match="embed_service is required"):
-            run_memory_eval(DEFAULT_MEMORY_TASKS, MagicMock(), None)
+            run_memory_eval(DEFAULT_MEMORY_TASKS, MagicMock(spec=MemoryEngine), None)
 
     def test_run_memory_eval_catches_task_failures(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.side_effect = RuntimeError("db locked")
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         tasks = [MemoryRecallTask("fail_task", "query", [], 1, [])]
@@ -617,12 +620,12 @@ class TestMemoryRecall:
         assert results[0].overall_score == 0.0
 
     def test_run_memory_eval_multiple_tasks(self) -> None:
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = [("id1", 0.1)]
         engine.get_records_batch.return_value = [
             {"branch": "health", "summary": "medication info"},
         ]
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         tasks = [
@@ -643,7 +646,7 @@ class TestRunEval:
 
     def _mock_urlopen(self, response_data: dict):
         """Create a mock for urlopen returning the given JSON dict."""
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=HTTPResponse)
         mock_resp.read.return_value = json.dumps(response_data).encode("utf-8")
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
@@ -913,12 +916,12 @@ class TestBranchTaskMap:
 
     def test_eval_branch_returns_results(self) -> None:
         """eval_branch should return a dict with branch, results, and avg_score."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = [("id1", 0.1)]
         engine.get_records_batch.return_value = [
             {"branch": "health", "summary": "daily medication routine"},
         ]
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         result = eval_branch("health", engine, embed)
@@ -931,13 +934,13 @@ class TestBranchTaskMap:
     def test_eval_branch_unknown_raises(self) -> None:
         """eval_branch with an unknown branch should raise ValueError."""
         with pytest.raises(ValueError, match="Unknown branch"):
-            eval_branch("nonexistent", MagicMock(), MagicMock())
+            eval_branch("nonexistent", MagicMock(spec=MemoryEngine), MagicMock(spec=EmbeddingService))
 
     def test_eval_branch_task_ids_match(self) -> None:
         """eval_branch should return the correct task_ids for the branch."""
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.search_vec.return_value = []
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         embed.embed.return_value = [0.0] * 128
 
         result = eval_branch("ops", engine, embed)

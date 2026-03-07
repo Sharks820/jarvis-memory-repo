@@ -11,12 +11,26 @@ import logging
 import threading
 import time
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine._protocols import ForensicLoggerProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class AlertRecord(TypedDict):
+    """Result from :meth:`AlertChain.alert`."""
+
+    timestamp: float
+    level: int
+    channel: str
+    summary: str
+    evidence: str
+    containment_action: str
+    source_ip: str
+    deduped: bool
+
 
 # Channel mapping per alert level
 _LEVEL_CHANNELS: dict[int, str] = {
@@ -60,7 +74,7 @@ class AlertChain:
         evidence: str | None = None,
         containment_action: str | None = None,
         source_ip: str | None = None,
-    ) -> dict:
+    ) -> AlertRecord:
         """Dispatch an alert at the given *level*.
 
         Returns a dict describing the alert sent (or dedup status).

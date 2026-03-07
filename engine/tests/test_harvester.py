@@ -19,12 +19,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine.gateway.costs import CostTracker
+from jarvis_engine.harvesting.budget import BudgetManager
 from jarvis_engine.harvesting.harvester import (
     HarvestCommand,
     HarvestResult,
     KnowledgeHarvester,
     _DEDUP_COSINE_THRESHOLD,
 )
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +242,7 @@ class TestHarvestFlow:
         """Topic tags are lowercased, spaces replaced, truncated to 50 chars."""
         long_topic = "a very very very very long topic name that exceeds fifty characters"
         providers = _make_providers("alpha")
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["rec1"]
         h = KnowledgeHarvester(providers=providers, pipeline=pipeline)
         cmd = HarvestCommand(topic=long_topic, providers=["alpha"])
@@ -260,7 +265,7 @@ class TestBudgetEnforcement:
     def test_budget_exceeded_skips_provider(self) -> None:
         """When budget.can_spend returns False, provider is skipped."""
         providers = _make_providers("alpha")
-        budget = MagicMock()
+        budget = MagicMock(spec=BudgetManager)
         budget.can_spend.return_value = False
         h = KnowledgeHarvester(providers=providers, budget_manager=budget)
         cmd = HarvestCommand(topic="topic", providers=["alpha"])
@@ -274,7 +279,7 @@ class TestBudgetEnforcement:
     def test_budget_record_spend_called_on_success(self) -> None:
         """On successful query, budget.record_spend is called with cost."""
         providers = [FakeProvider("alpha", cost_usd=0.05)]
-        budget = MagicMock()
+        budget = MagicMock(spec=BudgetManager)
         budget.can_spend.return_value = True
         h = KnowledgeHarvester(providers=providers, budget_manager=budget)
         cmd = HarvestCommand(topic="test topic", providers=["alpha"])
@@ -295,7 +300,7 @@ class TestBudgetEnforcement:
         """Budget is checked individually per provider."""
         p1 = FakeProvider("allowed")
         p2 = FakeProvider("blocked")
-        budget = MagicMock()
+        budget = MagicMock(spec=BudgetManager)
         budget.can_spend.side_effect = lambda name: name == "allowed"
 
         h = KnowledgeHarvester(providers=[p1, p2], budget_manager=budget)
@@ -317,7 +322,7 @@ class TestCostTracking:
     def test_cost_tracker_log_called(self) -> None:
         """When cost_tracker is provided, log() is called with correct args."""
         providers = [FakeProvider("p", cost_usd=0.03)]
-        cost_tracker = MagicMock()
+        cost_tracker = MagicMock(spec=CostTracker)
         h = KnowledgeHarvester(providers=providers, cost_tracker=cost_tracker)
         cmd = HarvestCommand(topic="ai safety", providers=["p"])
         h.harvest(cmd)
@@ -347,7 +352,7 @@ class TestPipelineIntegration:
     def test_pipeline_ingest_called_with_content(self) -> None:
         """Pipeline.ingest is called with enriched content and correct args."""
         providers = [FakeProvider("alpha", result_text="fact about AI")]
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["rec1"]
         h = KnowledgeHarvester(providers=providers, pipeline=pipeline)
         cmd = HarvestCommand(topic="artificial intelligence", providers=["alpha"])
@@ -364,7 +369,7 @@ class TestPipelineIntegration:
     def test_pipeline_not_called_when_result_text_empty(self) -> None:
         """If provider returns empty text, pipeline.ingest is NOT called."""
         providers = [FakeProvider("alpha", result_text="")]
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         h = KnowledgeHarvester(providers=providers, pipeline=pipeline)
         cmd = HarvestCommand(topic="test", providers=["alpha"])
         result = h.harvest(cmd)
@@ -375,7 +380,7 @@ class TestPipelineIntegration:
     def test_pipeline_tags_include_provider_and_topic(self) -> None:
         """Tags include 'harvested', provider name, and topic tag."""
         providers = [FakeProvider("gemini", result_text="some data")]
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = []
         h = KnowledgeHarvester(providers=providers, pipeline=pipeline)
         cmd = HarvestCommand(topic="quantum computing", providers=["gemini"])
@@ -440,7 +445,7 @@ class TestDeduplication:
         same_text = "identical knowledge about physics"
         p1 = FakeProvider("alpha", result_text=same_text)
         p2 = FakeProvider("beta", result_text=same_text)
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["rec1"]
         h = KnowledgeHarvester(providers=[p1, p2], pipeline=pipeline)
         cmd = HarvestCommand(topic="test", providers=["alpha", "beta"])
@@ -456,7 +461,7 @@ class TestDeduplication:
         """Two providers returning different text: both get ingested."""
         p1 = FakeProvider("alpha", result_text="alpha knowledge")
         p2 = FakeProvider("beta", result_text="beta knowledge")
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["rec1"]
         h = KnowledgeHarvester(providers=[p1, p2], pipeline=pipeline)
         cmd = HarvestCommand(topic="test", providers=["alpha", "beta"])
@@ -483,8 +488,8 @@ class TestDeduplication:
         """When pipeline has embed_service and engine, semantic dedup triggers."""
         # Mock the pipeline with embed_service and engine
         pipeline = MagicMock()
-        embed_service = MagicMock()
-        engine_mock = MagicMock()
+        embed_service = MagicMock(spec=EmbeddingService)
+        engine_mock = MagicMock(spec=MemoryEngine)
 
         pipeline._embed_service = embed_service
         pipeline._engine = engine_mock
@@ -500,8 +505,8 @@ class TestDeduplication:
     def test_semantic_dedup_below_threshold(self) -> None:
         """When embedding distance is large, text is not a duplicate."""
         pipeline = MagicMock()
-        embed_service = MagicMock()
-        engine_mock = MagicMock()
+        embed_service = MagicMock(spec=EmbeddingService)
+        engine_mock = MagicMock(spec=MemoryEngine)
 
         pipeline._embed_service = embed_service
         pipeline._engine = engine_mock
@@ -517,9 +522,9 @@ class TestDeduplication:
     def test_semantic_dedup_exception_falls_back(self) -> None:
         """If embedding/search throws, fall back to hash-only (no duplicate)."""
         pipeline = MagicMock()
-        pipeline._embed_service = MagicMock()
+        pipeline._embed_service = MagicMock(spec=EmbeddingService)
         pipeline._embed_service.embed.side_effect = RuntimeError("embed failed")
-        pipeline._engine = MagicMock()
+        pipeline._engine = MagicMock(spec=MemoryEngine)
 
         h = KnowledgeHarvester(providers=[], pipeline=pipeline)
         # Should not raise; should return False (hash not in seen_hashes)
