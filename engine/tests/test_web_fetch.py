@@ -5,6 +5,7 @@ Covers: is_safe_public_url, resolve_and_check_ip, SafeRedirectHandler,
 
 ALL network calls and DNS resolution are mocked — no real HTTP/DNS.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,11 +45,17 @@ class TestIsSafePublicUrl:
     # ---- scheme checks ----
 
     def test_http_allowed(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ):
             assert is_safe_public_url("http://example.com/page") is True
 
     def test_https_allowed(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ):
             assert is_safe_public_url("https://example.com/page") is True
 
     def test_ftp_rejected(self):
@@ -128,19 +135,31 @@ class TestIsSafePublicUrl:
     # ---- hostname resolves to private IP (DNS attack) ----
 
     def test_hostname_resolving_to_private_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("10.0.0.1")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("10.0.0.1"),
+        ):
             assert is_safe_public_url("http://evil.example.com/") is False
 
     def test_hostname_resolving_to_loopback_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("127.0.0.1")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("127.0.0.1"),
+        ):
             assert is_safe_public_url("http://evil.example.com/") is False
 
     def test_hostname_resolving_to_public_accepted(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ):
             assert is_safe_public_url("http://example.com/") is True
 
     def test_hostname_dns_failure_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", side_effect=socket.gaierror("nope")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            side_effect=socket.gaierror("nope"),
+        ):
             assert is_safe_public_url("http://nonexistent.invalid/") is False
 
     def test_mixed_dns_results_one_private_rejected(self):
@@ -160,45 +179,71 @@ class TestResolveAndCheckIp:
     """Security-critical: DNS rebinding prevention (TOCTOU mitigation)."""
 
     def test_public_ip_passes(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ):
             assert resolve_and_check_ip("https://example.com/page") is True
 
     def test_private_ip_fails(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("192.168.1.1")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("192.168.1.1"),
+        ):
             assert resolve_and_check_ip("https://evil.com/") is False
 
     def test_loopback_fails(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("127.0.0.1")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("127.0.0.1"),
+        ):
             assert resolve_and_check_ip("https://evil.com/") is False
 
     def test_dns_failure_returns_false(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", side_effect=socket.gaierror):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo", side_effect=socket.gaierror
+        ):
             assert resolve_and_check_ip("https://fail.example.com/") is False
 
     def test_empty_host_returns_false(self):
         assert resolve_and_check_ip("https:///path") is False
 
     def test_uses_correct_default_port_https(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ) as m:
             resolve_and_check_ip("https://example.com/page")
             m.assert_called_once_with("example.com", 443, proto=socket.IPPROTO_TCP)
 
     def test_uses_correct_default_port_http(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ) as m:
             resolve_and_check_ip("http://example.com/page")
             m.assert_called_once_with("example.com", 80, proto=socket.IPPROTO_TCP)
 
     def test_explicit_port_used(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")) as m:
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ) as m:
             resolve_and_check_ip("http://example.com:8080/page")
             m.assert_called_once_with("example.com", 8080, proto=socket.IPPROTO_TCP)
 
     def test_ipv6_loopback_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo_v6("::1")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo_v6("::1"),
+        ):
             assert resolve_and_check_ip("https://evil.com/") is False
 
     def test_link_local_rejected(self):
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("169.254.0.1")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("169.254.0.1"),
+        ):
             assert resolve_and_check_ip("https://evil.com/") is False
 
 
@@ -215,7 +260,10 @@ class TestSafeRedirectHandler:
         req.get_method.return_value = "GET"
         req.full_url = "https://original.example.com/"
         req.data = None
-        with patch("jarvis_engine.web_fetch.socket.getaddrinfo", return_value=_addrinfo("93.184.216.34")):
+        with patch(
+            "jarvis_engine.web_fetch.socket.getaddrinfo",
+            return_value=_addrinfo("93.184.216.34"),
+        ):
             result = handler.redirect_request(
                 req, None, 302, "Found", {}, "https://safe.example.com/page"
             )
@@ -375,12 +423,12 @@ class TestSearchDuckduckgo:
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_extracts_urls_from_results(self, mock_build_opener, mock_safe):
-        html = b'''
+        html = b"""
         <div>
             <a href="https://example.com/result1">Result 1</a>
             <a href="https://example.org/result2">Result 2</a>
         </div>
-        '''
+        """
         mock_build_opener.return_value = self._mock_opener(html)
 
         urls = search_duckduckgo("test query", limit=5)
@@ -390,12 +438,12 @@ class TestSearchDuckduckgo:
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_respects_limit(self, mock_build_opener, mock_safe):
-        html = b'''
+        html = b"""
         <a href="https://a.com/1">1</a>
         <a href="https://b.com/2">2</a>
         <a href="https://c.com/3">3</a>
         <a href="https://d.com/4">4</a>
-        '''
+        """
         mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=2)
         assert len(urls) <= 2
@@ -403,10 +451,10 @@ class TestSearchDuckduckgo:
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_filters_duckduckgo_urls(self, mock_build_opener, mock_safe):
-        html = b'''
+        html = b"""
         <a href="https://duckduckgo.com/internal">DDG</a>
         <a href="https://example.com/real">Real</a>
-        '''
+        """
         mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=5)
         for url in urls:
@@ -414,17 +462,19 @@ class TestSearchDuckduckgo:
 
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_filters_unsafe_urls(self, mock_build_opener):
-        html = b'''
+        html = b"""
         <a href="http://192.168.1.1/admin">Private</a>
         <a href="https://safe.example.com/page">Safe</a>
-        '''
+        """
         mock_build_opener.return_value = self._mock_opener(html)
 
         # is_safe_public_url: private IP returns False, safe URL returns True
         def _safe_check(url):
             return "192.168" not in url
 
-        with patch("jarvis_engine.web_fetch.is_safe_public_url", side_effect=_safe_check):
+        with patch(
+            "jarvis_engine.web_fetch.is_safe_public_url", side_effect=_safe_check
+        ):
             urls = search_duckduckgo("test", limit=5)
         assert all("192.168" not in u for u in urls)
 
@@ -437,11 +487,11 @@ class TestSearchDuckduckgo:
     @patch("jarvis_engine.web_fetch.is_safe_public_url", return_value=True)
     @patch("jarvis_engine.web_fetch.build_opener")
     def test_deduplicates_urls(self, mock_build_opener, mock_safe):
-        html = b'''
+        html = b"""
         <a href="https://example.com/page">First</a>
         <a href="https://example.com/page">Duplicate</a>
         <a href="https://other.com/page">Other</a>
-        '''
+        """
         mock_build_opener.return_value = self._mock_opener(html)
         urls = search_duckduckgo("test", limit=10)
         assert len(urls) == len(set(urls))  # no duplicates
@@ -495,10 +545,12 @@ class TestSearchBrave:
     @patch("jarvis_engine.web_fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_extracts_urls_from_json(self, mock_urlopen, mock_safe):
-        payload = _brave_json_response([
-            {"title": "Result 1", "url": "https://example.com/page1"},
-            {"title": "Result 2", "url": "https://example.org/page2"},
-        ])
+        payload = _brave_json_response(
+            [
+                {"title": "Result 1", "url": "https://example.com/page1"},
+                {"title": "Result 2", "url": "https://example.org/page2"},
+            ]
+        )
         mock_urlopen.return_value = _mock_urlopen_cm(payload)
 
         urls = search_brave("test query", limit=5)
@@ -510,10 +562,9 @@ class TestSearchBrave:
     @patch("jarvis_engine.web_fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_respects_limit(self, mock_urlopen, mock_safe):
-        payload = _brave_json_response([
-            {"title": f"R{i}", "url": f"https://site{i}.com/"}
-            for i in range(10)
-        ])
+        payload = _brave_json_response(
+            [{"title": f"R{i}", "url": f"https://site{i}.com/"} for i in range(10)]
+        )
         mock_urlopen.return_value = _mock_urlopen_cm(payload)
 
         urls = search_brave("test", limit=3)
@@ -534,16 +585,20 @@ class TestSearchBrave:
     @patch("jarvis_engine.web_fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_filters_unsafe_urls(self, mock_urlopen):
-        payload = _brave_json_response([
-            {"title": "Private", "url": "http://192.168.1.1/admin"},
-            {"title": "Safe", "url": "https://safe.example.com/page"},
-        ])
+        payload = _brave_json_response(
+            [
+                {"title": "Private", "url": "http://192.168.1.1/admin"},
+                {"title": "Safe", "url": "https://safe.example.com/page"},
+            ]
+        )
         mock_urlopen.return_value = _mock_urlopen_cm(payload)
 
         def _safe_check(url):
             return "192.168" not in url
 
-        with patch("jarvis_engine.web_fetch.is_safe_public_url", side_effect=_safe_check):
+        with patch(
+            "jarvis_engine.web_fetch.is_safe_public_url", side_effect=_safe_check
+        ):
             urls = search_brave("test", limit=5)
         assert all("192.168" not in u for u in urls)
         assert "https://safe.example.com/page" in urls
@@ -565,11 +620,13 @@ class TestSearchBrave:
     @patch("jarvis_engine.web_fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_deduplicates_urls(self, mock_urlopen, mock_safe):
-        payload = _brave_json_response([
-            {"title": "First", "url": "https://example.com/page"},
-            {"title": "Dup", "url": "https://example.com/page"},
-            {"title": "Other", "url": "https://other.com/page"},
-        ])
+        payload = _brave_json_response(
+            [
+                {"title": "First", "url": "https://example.com/page"},
+                {"title": "Dup", "url": "https://example.com/page"},
+                {"title": "Other", "url": "https://other.com/page"},
+            ]
+        )
         mock_urlopen.return_value = _mock_urlopen_cm(payload)
 
         urls = search_brave("test", limit=10)
@@ -579,10 +636,12 @@ class TestSearchBrave:
     @patch("jarvis_engine.web_fetch.urlopen")
     @patch.dict("os.environ", {"BRAVE_SEARCH_API_KEY": "test-key-123"})
     def test_skips_results_without_url(self, mock_urlopen, mock_safe):
-        payload = _brave_json_response([
-            {"title": "No URL"},
-            {"title": "Has URL", "url": "https://example.com/real"},
-        ])
+        payload = _brave_json_response(
+            [
+                {"title": "No URL"},
+                {"title": "Has URL", "url": "https://example.com/real"},
+            ]
+        )
         mock_urlopen.return_value = _mock_urlopen_cm(payload)
 
         urls = search_brave("test", limit=5)
@@ -619,6 +678,7 @@ class TestSearchWeb:
     def test_no_brave_key_env_missing_uses_duckduckgo(self, mock_ddg):
         """BRAVE_SEARCH_API_KEY not in env at all."""
         import os
+
         env_copy = dict(os.environ)
         env_copy.pop("BRAVE_SEARCH_API_KEY", None)
         with patch.dict("os.environ", env_copy, clear=True):

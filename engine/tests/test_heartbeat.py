@@ -1,4 +1,5 @@
 """Tests for HeartbeatMonitor — dead man's switch for engine liveness."""
+
 from __future__ import annotations
 
 import threading
@@ -55,7 +56,9 @@ class TestMissedHeartbeat:
             m.start()
             # Don't send any beats — wait for 2 missed checks + buffer
             triggered = failure_event.wait(timeout=2.0)
-            assert triggered, "on_failure callback was not called after missed heartbeats"
+            assert triggered, (
+                "on_failure callback was not called after missed heartbeats"
+            )
             assert m.is_healthy() is False
         finally:
             m.stop()
@@ -93,7 +96,9 @@ class TestStatusReport:
         s = monitor.status()
         assert s["uptime"] >= 0.1
 
-    def test_status_last_beat_none_before_first_beat(self, monitor: HeartbeatMonitor) -> None:
+    def test_status_last_beat_none_before_first_beat(
+        self, monitor: HeartbeatMonitor
+    ) -> None:
         monitor.start()
         s = monitor.status()
         assert s["last_beat"] is None

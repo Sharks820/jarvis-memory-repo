@@ -16,6 +16,7 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_db() -> sqlite3.Connection:
     """Create an in-memory SQLite database with the core tables."""
     db = sqlite3.connect(":memory:", check_same_thread=False)
@@ -383,9 +384,7 @@ class TestChangelogDiff:
         db.commit()
 
         # Backdate the changelog entry
-        db.execute(
-            "UPDATE _sync_changelog SET ts = datetime('now', '-30 days')"
-        )
+        db.execute("UPDATE _sync_changelog SET ts = datetime('now', '-30 days')")
         db.commit()
 
         # Mark cursor past that version
@@ -394,9 +393,7 @@ class TestChangelogDiff:
         deleted = compact_changelog(db, lock, retention_days=7)
         assert deleted >= 1
 
-        remaining = db.execute(
-            "SELECT COUNT(*) FROM _sync_changelog"
-        ).fetchone()[0]
+        remaining = db.execute("SELECT COUNT(*) FROM _sync_changelog").fetchone()[0]
         assert remaining == 0
 
 
@@ -487,7 +484,9 @@ class TestSyncEngine:
         db.commit()
 
         # Update it locally (this creates a changelog entry)
-        db.execute("UPDATE records SET summary = 'desktop update' WHERE record_id = 'r1'")
+        db.execute(
+            "UPDATE records SET summary = 'desktop update' WHERE record_id = 'r1'"
+        )
         db.commit()
 
         engine = SyncEngine(db, lock, device_id="desktop")
@@ -536,7 +535,9 @@ class TestSyncEngine:
             "new_values": {"summary": "mobile-value"},
         }
 
-        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
+        resolved = engine._resolve_conflict(
+            local_entry, remote_entry, desktop_is_local=True
+        )
         assert resolved["new_values"]["summary"] == "desktop-value"
 
     def test_conflict_resolution_delete_wins(self):
@@ -563,7 +564,9 @@ class TestSyncEngine:
             "new_values": {},
         }
 
-        resolved = engine._resolve_conflict(local_entry, remote_entry, desktop_is_local=True)
+        resolved = engine._resolve_conflict(
+            local_entry, remote_entry, desktop_is_local=True
+        )
         assert resolved["operation"] == "DELETE"
 
     def test_sync_status_returns_structure(self):
@@ -774,9 +777,15 @@ class TestSyncProtocolHardening:
         assert "REPLACE" in result["errors"][0]
 
         # Verify r1 and r3 were inserted but r2 was not
-        r1 = db.execute("SELECT record_id FROM records WHERE record_id = 'r1'").fetchone()
-        r2 = db.execute("SELECT record_id FROM records WHERE record_id = 'r2'").fetchone()
-        r3 = db.execute("SELECT record_id FROM records WHERE record_id = 'r3'").fetchone()
+        r1 = db.execute(
+            "SELECT record_id FROM records WHERE record_id = 'r1'"
+        ).fetchone()
+        r2 = db.execute(
+            "SELECT record_id FROM records WHERE record_id = 'r2'"
+        ).fetchone()
+        r3 = db.execute(
+            "SELECT record_id FROM records WHERE record_id = 'r3'"
+        ).fetchone()
         assert r1 is not None
         assert r2 is None
         assert r3 is not None
@@ -967,7 +976,10 @@ class TestTransport:
         salt = b"0123456789abcdef"
         key = derive_sync_key("test-key", salt)
 
-        payload = {"changes": {"records": [{"row_id": "r1"}]}, "cursors": {"records": 5}}
+        payload = {
+            "changes": {"records": [{"row_id": "r1"}]},
+            "cursors": {"records": 5},
+        }
         encrypted = encrypt_sync_payload(payload, key)
         decrypted = decrypt_sync_payload(encrypted, key)
 
@@ -1041,7 +1053,9 @@ class TestSyncCommands:
         from jarvis_engine.commands.sync_commands import SyncPushCommand
 
         handler = SyncPushHandler(Path("."))
-        result = handler.handle(SyncPushCommand(device_id="mobile-1", encrypted_payload="abc"))
+        result = handler.handle(
+            SyncPushCommand(device_id="mobile-1", encrypted_payload="abc")
+        )
         assert "not available" in result.message
 
     def test_sync_status_handler_no_engine(self):
@@ -1073,7 +1087,9 @@ class TestSyncCommands:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             transport = SyncTransport("test-key", Path(tmpdir) / "salt.bin")
-            handler = SyncPullHandler(Path("."), sync_engine=sync_engine, transport=transport)
+            handler = SyncPullHandler(
+                Path("."), sync_engine=sync_engine, transport=transport
+            )
             result = handler.handle(SyncPullCommand(device_id="mobile-1"))
 
             assert result.message == "ok"
@@ -1108,7 +1124,11 @@ class TestSyncCommands:
                             "operation": "INSERT",
                             "fields_changed": ["source", "kind", "summary"],
                             "old_values": {},
-                            "new_values": {"source": "user", "kind": "episodic", "summary": "mobile data"},
+                            "new_values": {
+                                "source": "user",
+                                "kind": "episodic",
+                                "summary": "mobile data",
+                            },
                         }
                     ]
                 },
@@ -1117,8 +1137,12 @@ class TestSyncCommands:
             encrypted = transport.encrypt(changes)
             encoded = base64.b64encode(encrypted).decode("ascii")
 
-            handler = SyncPushHandler(Path("."), sync_engine=sync_engine, transport=transport)
-            result = handler.handle(SyncPushCommand(device_id="mobile-1", encrypted_payload=encoded))
+            handler = SyncPushHandler(
+                Path("."), sync_engine=sync_engine, transport=transport
+            )
+            result = handler.handle(
+                SyncPushCommand(device_id="mobile-1", encrypted_payload=encoded)
+            )
 
             assert result.applied == 1
             assert "ok" in result.message
@@ -1261,11 +1285,7 @@ class TestTransportEdgeCases:
         # Rewrite the timestamp to 2 hours ago so that ttl=1 rejects it.
         token_bytes = base64.urlsafe_b64decode(encrypted)
         old_ts = int(time.time()) - 7200  # 2 hours ago
-        tampered = (
-            token_bytes[0:1]
-            + struct.pack(">Q", old_ts)
-            + token_bytes[9:]
-        )
+        tampered = token_bytes[0:1] + struct.pack(">Q", old_ts) + token_bytes[9:]
         old_token = base64.urlsafe_b64encode(tampered)
 
         # Must be rejected with a 1-second TTL — token is 2 hours old
@@ -1350,7 +1370,9 @@ class TestTransportEdgeCases:
                 Path(dst).write_bytes(winner_salt)
                 raise OSError("simulated race loss")
 
-            with patch("jarvis_engine.sync.transport.os.replace", side_effect=mock_replace):
+            with patch(
+                "jarvis_engine.sync.transport.os.replace", side_effect=mock_replace
+            ):
                 result = get_or_create_salt(salt_path)
 
             assert result == winner_salt
@@ -1367,7 +1389,9 @@ class TestTransportEdgeCases:
                 # Ensure the salt_path does NOT exist so the fallback re-raises
                 raise OSError("simulated failure")
 
-            with patch("jarvis_engine.sync.transport.os.replace", side_effect=mock_replace):
+            with patch(
+                "jarvis_engine.sync.transport.os.replace", side_effect=mock_replace
+            ):
                 with pytest.raises(OSError, match="simulated failure"):
                     get_or_create_salt(salt_path)
 
@@ -1425,7 +1449,9 @@ class TestTransportEdgeCases:
                 "jarvis_engine.sync.transport.derive_sync_key",
                 side_effect=counting_derive,
             ):
-                threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+                threads = [
+                    threading.Thread(target=worker, args=(i,)) for i in range(20)
+                ]
                 for t in threads:
                     t.start()
                 for t in threads:

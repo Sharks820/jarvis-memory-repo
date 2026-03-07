@@ -27,7 +27,6 @@ from jarvis_engine.memory.classify import (
 
 
 class TestCosineSimilarity:
-
     def test_identical_vectors_return_one(self):
         """Identical normalized vectors have similarity 1.0."""
         v = [1.0, 0.0, 0.0]
@@ -89,7 +88,6 @@ class TestCosineSimilarity:
 
 
 class TestBranchDescriptions:
-
     def test_branch_descriptions_not_empty(self):
         """BRANCH_DESCRIPTIONS must have at least one branch."""
         assert len(BRANCH_DESCRIPTIONS) > 0
@@ -112,7 +110,6 @@ class TestBranchDescriptions:
 
 
 class TestBranchClassifier:
-
     def _make_mock_embed(self, dim: int = 4) -> MagicMock:
         """Create a mock embed service that returns distinct per-branch vectors."""
         svc = MagicMock()

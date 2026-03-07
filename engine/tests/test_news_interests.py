@@ -1,4 +1,5 @@
 """Tests for the interest learning engine."""
+
 import json
 from unittest.mock import patch
 

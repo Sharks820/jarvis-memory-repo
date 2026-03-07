@@ -1,4 +1,5 @@
 """Tests for desktop widget reliability, STT, and security."""
+
 from __future__ import annotations
 
 import os
@@ -21,6 +22,7 @@ class TestWidgetSTTReliability:
 
         class SlowProcess:
             """Simulates a process that times out."""
+
             def __init__(self, *args, **kwargs):
                 pass
 
@@ -44,7 +46,7 @@ class TestWidgetSTTReliability:
     def test_detect_hotword_empty_result(self, monkeypatch) -> None:
         """STT: Hotword detection should handle empty result."""
         import subprocess
-        
+
         # Mock subprocess returning empty stdout
         class EmptyResult:
             returncode = 0
@@ -52,21 +54,23 @@ class TestWidgetSTTReliability:
             stderr = ""
 
         monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: EmptyResult())
-        
+
         result = desktop_widget._detect_hotword_once(keyword="jarvis", timeout_s=2)
         assert result is False
 
     def test_detect_hotword_case_insensitive(self, monkeypatch) -> None:
         """STT: Hotword detection should be case insensitive."""
         import subprocess
-        
+
         class MixedCaseResult:
             returncode = 0
             stdout = "JARVIS"  # All caps
             stderr = ""
 
-        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: MixedCaseResult())
-        
+        monkeypatch.setattr(
+            subprocess, "run", lambda *args, **kwargs: MixedCaseResult()
+        )
+
         result = desktop_widget._detect_hotword_once(keyword="jarvis", timeout_s=2)
         assert result is True  # Should match despite case difference
 
@@ -79,7 +83,7 @@ class TestWidgetResourceManagement:
         from urllib.error import URLError
 
         call_count = 0
-        
+
         def mock_urlopen(req, timeout):
             nonlocal call_count
             call_count += 1
@@ -107,24 +111,26 @@ class TestWidgetResourceManagement:
         # Verify the method exists and is callable.
         assert hasattr(desktop_widget.JarvisDesktopWidget, "_health_loop")
         # Verify url_open was set up for retry testing
-        assert call_count >= 0  # Standalone _health_loop was removed; method tested via integration
+        assert (
+            call_count >= 0
+        )  # Standalone _health_loop was removed; method tested via integration
 
     def test_widget_cleanup_on_close(self, tmp_path: Path) -> None:
         """C3: Widget should clean up resources on close."""
         # This test verifies the widget cleanup mechanism
         stop_event = threading.Event()
-        
+
         # Simulate resources
         threads_before = threading.active_count()
-        
+
         # Simulate widget close
         stop_event.set()
-        
+
         # Give threads time to stop
         time.sleep(0.1)
-        
+
         threads_after = threading.active_count()
-        
+
         # Cleanup should not leak threads
         assert threads_after <= threads_before + 1  # Allow for test thread variance
 
@@ -135,7 +141,7 @@ class TestWidgetSecurity:
     def test_widget_config_permission_restrictions(self, tmp_path: Path) -> None:
         """M2: Widget config should have restricted permissions."""
         config_path = tmp_path / "desktop_widget.json"
-        
+
         # Create test config
         cfg = desktop_widget.WidgetConfig(
             base_url="http://localhost:8787",
@@ -144,19 +150,21 @@ class TestWidgetSecurity:
             device_id="test-device",
             master_password="secret123",
         )
-        
+
         # Mock _widget_cfg_path to use temp path
         original_path_fn = desktop_widget._widget_cfg_path
         desktop_widget._widget_cfg_path = lambda root: config_path
-        
+
         try:
             desktop_widget._save_widget_cfg(tmp_path, cfg)
-            
+
             # Check file permissions (Windows may not support this fully)
             if os.name != "nt":
                 stat = config_path.stat()
                 # Should not be world-readable/writable
-                assert stat.st_mode & 0o077 == 0, "Config file has overly permissive permissions"
+                assert stat.st_mode & 0o077 == 0, (
+                    "Config file has overly permissive permissions"
+                )
         finally:
             desktop_widget._widget_cfg_path = original_path_fn
 
@@ -184,7 +192,8 @@ class TestWidgetSecurity:
 
         # Signature is valid hex
         import re
-        assert re.match(r'^[a-f0-9]{64}$', headers["X-Jarvis-Signature"])
+
+        assert re.match(r"^[a-f0-9]{64}$", headers["X-Jarvis-Signature"])
 
 
 class TestWidgetNetworkResilience:
@@ -193,12 +202,12 @@ class TestWidgetNetworkResilience:
     def test_http_json_handles_timeout(self, monkeypatch) -> None:
         """Network: HTTP JSON should handle timeout gracefully."""
         import socket
-        
+
         def mock_urlopen(*args, **kwargs):
             raise socket.timeout("Connection timed out")
-        
+
         monkeypatch.setattr(desktop_widget, "urlopen", mock_urlopen)
-        
+
         cfg = desktop_widget.WidgetConfig(
             base_url="http://localhost:8787",
             token="token",
@@ -206,25 +215,25 @@ class TestWidgetNetworkResilience:
             device_id="device",
             master_password="",
         )
-        
+
         with pytest.raises(RuntimeError, match="HTTP request failed"):
             desktop_widget._http_json(cfg, "/test", method="GET")
 
     def test_http_json_handles_http_error(self, monkeypatch) -> None:
         """Network: HTTP JSON should handle HTTP errors."""
         from urllib.error import HTTPError
-        
+
         def mock_urlopen(*args, **kwargs):
             raise HTTPError(
                 url="http://localhost:8787/test",
                 code=500,
                 msg="Internal Server Error",
                 hdrs={},
-                fp=None
+                fp=None,
             )
-        
+
         monkeypatch.setattr(desktop_widget, "urlopen", mock_urlopen)
-        
+
         cfg = desktop_widget.WidgetConfig(
             base_url="http://localhost:8787",
             token="token",
@@ -232,7 +241,7 @@ class TestWidgetNetworkResilience:
             device_id="device",
             master_password="",
         )
-        
+
         with pytest.raises(RuntimeError, match="HTTP request failed"):
             desktop_widget._http_json(cfg, "/test", method="GET")
 
@@ -245,13 +254,13 @@ class TestWidgetUI:
         # Create mock event
         event = MagicMock()
         event.state = 0  # No modifier keys
-        
+
         widget = MagicMock()
         widget._send_command_async = MagicMock()
-        
+
         # Call handler
         result = desktop_widget.JarvisDesktopWidget._on_command_enter(widget, event)
-        
+
         # Should trigger send and return "break"
         widget._send_command_async.assert_called_once()
         assert result == "break"
@@ -261,13 +270,13 @@ class TestWidgetUI:
         # Create mock event with Shift pressed
         event = MagicMock()
         event.state = 0x0001  # Shift key
-        
+
         widget = MagicMock()
         widget._send_command_async = MagicMock()
-        
+
         # Call handler
         result = desktop_widget.JarvisDesktopWidget._on_command_enter(widget, event)
-        
+
         # Should NOT trigger send and return None
         widget._send_command_async.assert_not_called()
         assert result is None

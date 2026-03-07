@@ -45,7 +45,10 @@ class TestResponseFeedbackTracker:
 
     def test_detect_positive_satisfaction(self, tracker):
         """Satisfaction signals are detected as positive."""
-        assert tracker.detect_feedback("perfect, that's exactly what I needed") == "positive"
+        assert (
+            tracker.detect_feedback("perfect, that's exactly what I needed")
+            == "positive"
+        )
         assert tracker.detect_feedback("great work") == "positive"
         assert tracker.detect_feedback("thanks for the help") == "positive"
         assert tracker.detect_feedback("exactly what I wanted") == "positive"

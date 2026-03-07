@@ -25,6 +25,7 @@ from jarvis_engine.commands.harvest_commands import (
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def empty_bm(tmp_path: Path) -> BudgetManager:
     """BudgetManager with defaults cleared so tests control all budgets."""
@@ -370,7 +371,9 @@ class TestThreadSafety:
             except (OSError, RuntimeError, ValueError, sqlite3.Error) as e:
                 errors.append(e)
 
-        threads = [threading.Thread(target=spend_loop, args=("prov", 20)) for _ in range(4)]
+        threads = [
+            threading.Thread(target=spend_loop, args=("prov", 20)) for _ in range(4)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -427,7 +430,14 @@ class TestHarvestHandler:
         mock_harvester = MagicMock()
         mock_harvester.harvest.return_value = {
             "topic": "test topic",
-            "results": [{"provider": "minimax", "status": "ok", "records_created": 2, "cost_usd": 0.001}],
+            "results": [
+                {
+                    "provider": "minimax",
+                    "status": "ok",
+                    "records_created": 2,
+                    "cost_usd": 0.001,
+                }
+            ],
         }
 
         handler = HarvestHandler(harvester=mock_harvester)

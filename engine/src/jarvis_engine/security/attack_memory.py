@@ -47,10 +47,10 @@ CREATE INDEX IF NOT EXISTS idx_attack_patterns_last_seen
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _payload_hash(payload: str) -> str:
     """SHA-256 hex digest of the payload, used as the pattern_id."""
     return sha256_hex(payload)
-
 
 
 def _tokenize(text: str) -> set[str]:
@@ -70,6 +70,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 # ---------------------------------------------------------------------------
 # AttackPatternMemory
 # ---------------------------------------------------------------------------
+
 
 class AttackPatternMemory:
     """SQLite-backed memory of observed attack patterns.
@@ -116,11 +117,14 @@ class AttackPatternMemory:
         pid = _payload_hash(payload)
         now = _now_iso()
         # Truncate payload for storage to prevent stored XSS and limit DB bloat
-        safe_payload = payload[:self._MAX_PAYLOAD_STORED]
+        safe_payload = payload[: self._MAX_PAYLOAD_STORED]
 
         with self._lock:
             cur = self._db.cursor()
-            cur.execute("SELECT pattern_id, frequency, source_ips FROM attack_patterns WHERE pattern_id = ?", (pid,))
+            cur.execute(
+                "SELECT pattern_id, frequency, source_ips FROM attack_patterns WHERE pattern_id = ?",
+                (pid,),
+            )
             row = cur.fetchone()
 
             if row is None:
@@ -157,7 +161,9 @@ class AttackPatternMemory:
 
     # -- Similarity search --------------------------------------------------
 
-    def find_similar(self, payload: str, threshold: float = 0.8, limit: int = 1000) -> list[dict[str, Any]]:
+    def find_similar(
+        self, payload: str, threshold: float = 0.8, limit: int = 1000
+    ) -> list[dict[str, Any]]:
         """Find patterns with token-overlap (Jaccard) similarity >= threshold.
 
         Parameters
@@ -182,18 +188,20 @@ class AttackPatternMemory:
             pid, cat, sig, det, first, last, freq, ips, notes = row
             sim = _jaccard(target_tokens, _tokenize(sig))
             if sim >= threshold:
-                results.append({
-                    "pattern_id": pid,
-                    "category": cat,
-                    "payload_signature": sig,
-                    "detection_method": det,
-                    "first_seen": first,
-                    "last_seen": last,
-                    "frequency": freq,
-                    "source_ips": json.loads(ips) if ips else [],
-                    "notes": notes,
-                    "similarity": round(sim, 4),
-                })
+                results.append(
+                    {
+                        "pattern_id": pid,
+                        "category": cat,
+                        "payload_signature": sig,
+                        "detection_method": det,
+                        "first_seen": first,
+                        "last_seen": last,
+                        "frequency": freq,
+                        "source_ips": json.loads(ips) if ips else [],
+                        "notes": notes,
+                        "similarity": round(sim, 4),
+                    }
+                )
 
         results.sort(key=lambda r: r["similarity"], reverse=True)
         return results
@@ -217,7 +225,9 @@ class AttackPatternMemory:
                    ORDER BY total_freq DESC
                    LIMIT 10"""
             )
-            top_categories = [{"category": r[0], "total_frequency": r[1]} for r in cur.fetchall()]
+            top_categories = [
+                {"category": r[0], "total_frequency": r[1]} for r in cur.fetchall()
+            ]
 
             # Recent attacks (last 20)
             cur.execute(
@@ -238,9 +248,7 @@ class AttackPatternMemory:
             ]
 
             # Frequency trends (patterns seen more than once)
-            cur.execute(
-                """SELECT COUNT(*) FROM attack_patterns WHERE frequency > 1"""
-            )
+            cur.execute("""SELECT COUNT(*) FROM attack_patterns WHERE frequency > 1""")
             recurring = cur.fetchone()[0]
 
             # Total frequency sum

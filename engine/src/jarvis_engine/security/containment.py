@@ -48,7 +48,10 @@ def _hash_password(password: str, salt: bytes | None = None) -> str:
     if salt is None:
         salt = secrets.token_bytes(32)
     dk = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS,
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        _PBKDF2_ITERATIONS,
     )
     return salt.hex() + ":" + dk.hex()
 
@@ -289,7 +292,9 @@ class ContainmentEngine:
             else:
                 # Higher containment levels remain; adjust current level to
                 # the next level above what was recovered.
-                self._current_level = level + 1 if level < ContainmentLevel.FULL_KILL else 0
+                self._current_level = (
+                    level + 1 if level < ContainmentLevel.FULL_KILL else 0
+                )
 
         # IP tracker operations (outside lock — avoids lock-ordering deadlock)
         if _ips_to_unblock and self._ip_tracker is not None:
@@ -366,7 +371,10 @@ class ContainmentEngine:
         # Legacy: fixed salt, bare hash
         _LEGACY_SALT = b"jarvis-containment-recovery-v1"
         dk = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), _LEGACY_SALT, _PBKDF2_ITERATIONS,
+            "sha256",
+            password.encode("utf-8"),
+            _LEGACY_SALT,
+            _PBKDF2_ITERATIONS,
         )
         return _hmac_module.compare_digest(dk.hex(), stored)
 

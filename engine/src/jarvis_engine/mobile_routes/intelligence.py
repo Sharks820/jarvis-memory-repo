@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 class IntelligenceRoutesMixin:
     """Endpoint handlers for intelligence growth, learning, and knowledge export."""
 
-    def _gather_intelligence_growth(self, *, reliability_cache: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _gather_intelligence_growth(
+        self, *, reliability_cache: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Collect real intelligence growth metrics from all subsystems."""
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
 
@@ -44,7 +46,10 @@ class IntelligenceRoutesMixin:
 
         # --- Knowledge graph metrics from KG history ---
         try:
-            from jarvis_engine.proactive.kg_metrics import kg_growth_trend, load_kg_history
+            from jarvis_engine.proactive.kg_metrics import (
+                kg_growth_trend,
+                load_kg_history,
+            )
 
             history_path = _runtime_dir(root) / _KG_METRICS_LOG
             history = load_kg_history(history_path, limit=50)
@@ -55,18 +60,21 @@ class IntelligenceRoutesMixin:
                 metrics["facts_total"] = metrics["kg_nodes"]
                 branch_counts = latest.get("branch_counts", {})
                 if isinstance(branch_counts, dict):
-                    metrics["branches"] = {str(k): int(v) for k, v in branch_counts.items()}
+                    metrics["branches"] = {
+                        str(k): int(v) for k, v in branch_counts.items()
+                    }
 
                 cutoff_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
                 recent_entries = [
-                    e for e in history
-                    if str(e.get("ts", "")) >= cutoff_7d
+                    e for e in history if str(e.get("ts", "")) >= cutoff_7d
                 ]
                 if recent_entries and len(history) > len(recent_entries):
                     before_idx = len(history) - len(recent_entries) - 1
                     if before_idx >= 0:
                         old_count = int(history[before_idx].get("node_count", 0))
-                        metrics["facts_last_7d"] = max(0, metrics["kg_nodes"] - old_count)
+                        metrics["facts_last_7d"] = max(
+                            0, metrics["kg_nodes"] - old_count
+                        )
 
                 try:
                     trend = kg_growth_trend(history)
@@ -95,7 +103,9 @@ class IntelligenceRoutesMixin:
                 metrics["consolidations_run"] = int(stats.get("consolidation", 0))
             since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
             try:
-                recent_events = feed.query(limit=500, category="correction_applied", since=since_7d)
+                recent_events = feed.query(
+                    limit=500, category="correction_applied", since=since_7d
+                )
                 metrics["corrections_last_7d"] = len(recent_events)
             except (ImportError, RuntimeError, ValueError, TypeError) as exc:
                 logger.debug("intelligence growth metric failed: %s", exc)
@@ -103,7 +113,11 @@ class IntelligenceRoutesMixin:
             logger.debug("Intelligence growth: activity feed unavailable: %s", exc)
 
         # --- Command reliability and pressure ---
-        reliability = reliability_cache if reliability_cache is not None else _compute_command_reliability()
+        reliability = (
+            reliability_cache
+            if reliability_cache is not None
+            else _compute_command_reliability()
+        )
         metrics["command_success_rate_pct"] = reliability["command_success_rate_pct"]
         metrics["timeout_count"] = reliability["timeout_count"]
         metrics["memory_pressure_incidents"] = reliability["memory_pressure_incidents"]
@@ -143,7 +157,13 @@ class IntelligenceRoutesMixin:
                     metrics["growth_trend"] = "increasing"
                 elif latest_score < prev_score:
                     metrics["growth_trend"] = "declining"
-        except (ImportError, OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        except (
+            ImportError,
+            OSError,
+            json.JSONDecodeError,
+            ValueError,
+            TypeError,
+        ) as exc:
             logger.debug("Intelligence growth: capability history unavailable: %s", exc)
 
         # --- Active learning missions ---
@@ -156,9 +176,11 @@ class IntelligenceRoutesMixin:
                     rows = mission_data.get("missions", [])
                     if isinstance(rows, list):
                         active_missions = [
-                            m for m in rows
+                            m
+                            for m in rows
                             if isinstance(m, dict)
-                            and str(m.get("status", "")).lower() not in {"completed", "failed", "cancelled", "exhausted"}
+                            and str(m.get("status", "")).lower()
+                            not in {"completed", "failed", "cancelled", "exhausted"}
                         ]
             metrics["mission_count"] = len(active_missions)
             metrics["active_missions"] = [
@@ -208,14 +230,26 @@ class IntelligenceRoutesMixin:
 
                 pt = PreferenceTracker(lrn_db)
                 summary["preferences"] = pt.get_preferences()
-            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+            except (
+                ImportError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+                sqlite3.Error,
+            ) as exc:
                 logger.debug("Learning summary: preferences unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
                 ft = ResponseFeedbackTracker(lrn_db)
                 summary["route_quality"] = ft.get_all_route_quality()
-            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+            except (
+                ImportError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+                sqlite3.Error,
+            ) as exc:
                 logger.debug("Learning summary: route quality unavailable: %s", exc)
             try:
                 from jarvis_engine.learning.usage_patterns import UsagePatternTracker
@@ -225,7 +259,13 @@ class IntelligenceRoutesMixin:
                 summary["hourly_distribution"] = ut.get_hourly_distribution()
                 now = datetime.now(UTC)
                 summary["current_context"] = ut.predict_context(now.hour, now.weekday())
-            except (ImportError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
+            except (
+                ImportError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+                sqlite3.Error,
+            ) as exc:
                 logger.debug("Learning summary: usage patterns unavailable: %s", exc)
         except (ImportError, sqlite3.Error, OSError, ValueError, TypeError) as exc:
             logger.debug("Learning summary: DB unavailable: %s", exc)
@@ -242,7 +282,9 @@ class IntelligenceRoutesMixin:
         try:
             items = payload.get("items", [])
             if not items:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "No items to merge."})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST, {"ok": False, "error": "No items to merge."}
+                )
                 return
 
             merged = 0
@@ -270,17 +312,24 @@ class IntelligenceRoutesMixin:
                 except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
                     logger.debug("Phone intelligence merge failed: %s", exc)
 
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "merged": merged,
-                "total_received": len(items),
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "merged": merged,
+                    "total_received": len(items),
+                },
+            )
             logger.info("Intelligence merge: %d items from phone", merged)
         except Exception as exc:
             logger.error("intelligence/merge failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
-                "ok": False, "error": "Intelligence merge failed.",
-            })
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "ok": False,
+                    "error": "Intelligence merge failed.",
+                },
+            )
 
     def _handle_post_intelligence_export(self) -> None:
         """Export desktop knowledge for the phone's local intelligence."""
@@ -310,12 +359,20 @@ class IntelligenceRoutesMixin:
                             (limit // 2,),
                         ).fetchall()
                         for row in rows:
-                            items.append({
-                                "content": f"{row['label']} ({row['node_type']})",
-                                "category": "knowledge",
-                                "confidence": row["confidence"],
-                            })
-                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
+                            items.append(
+                                {
+                                    "content": f"{row['label']} ({row['node_type']})",
+                                    "category": "knowledge",
+                                    "confidence": row["confidence"],
+                                }
+                            )
+                    except (
+                        sqlite3.Error,
+                        OSError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                    ) as exc:
                         logger.warning("KG nodes export failure: %s", exc)
 
                     # Memory records
@@ -327,12 +384,20 @@ class IntelligenceRoutesMixin:
                             (limit // 2,),
                         ).fetchall()
                         for row in rows:
-                            items.append({
-                                "content": row["summary"],
-                                "category": row["kind"] or "memory",
-                                "confidence": row["confidence"],
-                            })
-                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
+                            items.append(
+                                {
+                                    "content": row["summary"],
+                                    "category": row["kind"] or "memory",
+                                    "confidence": row["confidence"],
+                                }
+                            )
+                    except (
+                        sqlite3.Error,
+                        OSError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                    ) as exc:
                         logger.warning("Memory records export failure: %s", exc)
 
                     # User preferences
@@ -342,25 +407,40 @@ class IntelligenceRoutesMixin:
                             "WHERE score > 0 ORDER BY score DESC LIMIT 50",
                         ).fetchall()
                         for row in rows:
-                            items.append({
-                                "content": f"Preference: {row['category']} — {row['preference']} "
-                                           f"(score: {row['score']:.1f})",
-                                "category": "preference",
-                                "confidence": min(row["score"] / 10.0, 1.0),
-                            })
-                    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError) as exc:
+                            items.append(
+                                {
+                                    "content": f"Preference: {row['category']} — {row['preference']} "
+                                    f"(score: {row['score']:.1f})",
+                                    "category": "preference",
+                                    "confidence": min(row["score"] / 10.0, 1.0),
+                                }
+                            )
+                    except (
+                        sqlite3.Error,
+                        OSError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                    ) as exc:
                         logger.warning("Preferences export failure: %s", exc)
                 finally:
                     db.close()
 
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "items": items[:limit],
-                "total": len(items),
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "items": items[:limit],
+                    "total": len(items),
+                },
+            )
             logger.info("Intelligence export: %d items for phone", len(items))
         except Exception as exc:
             logger.error("intelligence/export failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
-                "ok": False, "error": "Intelligence export failed.",
-            })
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "ok": False,
+                    "error": "Intelligence export failed.",
+                },
+            )

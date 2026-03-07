@@ -55,7 +55,6 @@ def resolver(kg: KnowledgeGraph) -> EntityResolver:
 
 
 class TestFindDuplicates:
-
     def test_find_duplicates_same_entity(
         self, kg: KnowledgeGraph, resolver: EntityResolver
     ) -> None:
@@ -132,7 +131,6 @@ class TestFindDuplicates:
 
 
 class TestMergeNodes:
-
     def test_merge_transfers_edges(
         self, kg: KnowledgeGraph, resolver: EntityResolver
     ) -> None:
@@ -245,7 +243,6 @@ class TestMergeNodes:
 
 
 class TestAutoResolve:
-
     def test_auto_resolve_dry_run(
         self, kg: KnowledgeGraph, resolver: EntityResolver
     ) -> None:
@@ -346,7 +343,6 @@ class _FailingEmbedService:
 
 
 class TestVectorBasedCandidateRetrieval:
-
     @pytest.fixture
     def embed_service(self) -> _FakeEmbedService:
         return _FakeEmbedService()
@@ -356,7 +352,9 @@ class TestVectorBasedCandidateRetrieval:
         self, kg: KnowledgeGraph, embed_service: _FakeEmbedService
     ) -> EntityResolver:
         """EntityResolver with vector mode enabled and low threshold."""
-        return EntityResolver(kg, embed_service=embed_service, similarity_threshold=0.75)
+        return EntityResolver(
+            kg, embed_service=embed_service, similarity_threshold=0.75
+        )
 
     def test_vector_mode_finds_similar_labels(
         self, kg: KnowledgeGraph, vec_resolver: EntityResolver
@@ -446,9 +444,7 @@ class TestVectorBasedCandidateRetrieval:
         assert len(candidates) >= 1
         assert all(c.merge_reason == "string" for c in candidates)
 
-    def test_fallback_when_all_embeddings_fail(
-        self, kg: KnowledgeGraph
-    ) -> None:
+    def test_fallback_when_all_embeddings_fail(self, kg: KnowledgeGraph) -> None:
         """When embed_service.embed() always fails, falls back to string comparison."""
         failing_svc = _FailingEmbedService()
         resolver = EntityResolver(
@@ -503,8 +499,16 @@ class TestVectorBasedCandidateRetrieval:
         # Use clearly distinct labels so the fake embed service produces
         # very different vectors (each label dominated by a different letter).
         distinct_labels = [
-            "aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee",
-            "ffffff", "gggggg", "hhhhhh", "iiiiii", "jjjjjj",
+            "aaaaaa",
+            "bbbbbb",
+            "cccccc",
+            "dddddd",
+            "eeeeee",
+            "ffffff",
+            "gggggg",
+            "hhhhhh",
+            "iiiiii",
+            "jjjjjj",
         ]
         for i, label in enumerate(distinct_labels):
             kg.add_fact(f"n{i}", label, 0.5, node_type="biggroup")

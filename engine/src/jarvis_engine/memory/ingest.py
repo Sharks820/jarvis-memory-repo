@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 # Patterns for credential redaction (matches password, token, secret, api_key, etc.)
 _CREDENTIAL_PATTERNS = [
     re.compile(r"(password|passwd|pwd)\s*[:=]\s*\S+", re.IGNORECASE),
-    re.compile(r"(token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+", re.IGNORECASE),
+    re.compile(
+        r"(token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+", re.IGNORECASE
+    ),
     re.compile(r"(bearer)\s+\S+", re.IGNORECASE),
 ]
 
@@ -114,7 +116,9 @@ class EnrichedIngestPipeline:
                 )
             except (RuntimeError, OSError, ValueError) as exc:
                 # Fallback to individual calls if batch fails
-                logger.debug("Batch embedding failed, falling back to individual: %s", exc)
+                logger.debug(
+                    "Batch embedding failed, falling back to individual: %s", exc
+                )
                 all_embeddings = [
                     self._embed_service.embed(chunk, prefix="search_document")
                     for chunk in valid_chunks
@@ -184,7 +188,9 @@ class EnrichedIngestPipeline:
                     try:
                         llm_extractor = self._get_llm_extractor()
                         if llm_extractor:
-                            llm_facts = llm_extractor.extract_facts(chunk, branch=branch)
+                            llm_facts = llm_extractor.extract_facts(
+                                chunk, branch=branch
+                            )
                             for fact in llm_facts:
                                 node_id = f"llm:{hashlib.sha256(f'{fact.entity}.{fact.relationship}.{fact.value}'.encode()).hexdigest()[:16]}"
                                 self._kg.add_fact(
@@ -226,6 +232,7 @@ class EnrichedIngestPipeline:
         """
         if self._fact_extractor is None:
             from jarvis_engine.knowledge.facts import FactExtractor
+
             self._fact_extractor = FactExtractor()
 
         triples = self._fact_extractor.extract(content, source, branch)

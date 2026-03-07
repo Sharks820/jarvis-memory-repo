@@ -30,13 +30,18 @@ logger = logging.getLogger(__name__)
 class LearnInteractionHandler:
     """Delegates LearnInteractionCommand to ConversationLearningEngine."""
 
-    def __init__(self, root: Path, learning_engine: Optional[ConversationLearningEngine] = None) -> None:
+    def __init__(
+        self, root: Path, learning_engine: Optional[ConversationLearningEngine] = None
+    ) -> None:
         self._root = root
         self._learning_engine = learning_engine
 
     def handle(self, cmd: LearnInteractionCommand) -> LearnInteractionResult:
         if self._learning_engine is None:
-            logger.warning("LearnInteractionCommand dropped: learning engine not available (task=%s)", cmd.task_id)
+            logger.warning(
+                "LearnInteractionCommand dropped: learning engine not available (task=%s)",
+                cmd.task_id,
+            )
             return LearnInteractionResult(
                 message="Learning engine not available.",
             )
@@ -51,9 +56,13 @@ class LearnInteractionHandler:
         records = result.get("records_created", 0)
         error = result.get("error", "")
         if records > 0:
-            logger.info("Learned %d record(s) from interaction (task=%s)", records, cmd.task_id)
+            logger.info(
+                "Learned %d record(s) from interaction (task=%s)", records, cmd.task_id
+            )
         elif error:
-            logger.warning("Learning produced 0 records (task=%s): %s", cmd.task_id, error)
+            logger.warning(
+                "Learning produced 0 records (task=%s): %s", cmd.task_id, error
+            )
         return LearnInteractionResult(
             records_created=records,
             message=error or "ok",
@@ -159,6 +168,7 @@ class ConsolidateMemoryHandler:
         if self._kg is not None:
             try:
                 from jarvis_engine.knowledge.regression import RegressionChecker
+
                 rc_checker = RegressionChecker(self._kg)
                 rc_checker.backup_graph(tag="pre-consolidation")
             except Exception as exc:
@@ -178,6 +188,7 @@ class ConsolidateMemoryHandler:
         # Log to activity feed
         try:
             from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
             log_activity(
                 ActivityCategory.CONSOLIDATION,
                 f"Memory consolidation: {result.new_facts_created} facts from {result.groups_found} groups",

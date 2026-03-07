@@ -32,6 +32,7 @@ def _isolate_activity_feed(tmp_path):
     """
     try:
         import jarvis_engine.activity_feed as _af
+
         _af._reset_feed()
         # Pre-seed the singleton with a temp-path feed so any test that
         # calls log_activity() / get_activity_feed() writes to tmp, not prod.
@@ -41,6 +42,7 @@ def _isolate_activity_feed(tmp_path):
     yield
     try:
         from jarvis_engine.activity_feed import _reset_feed
+
         _reset_feed()
     except (ImportError, OSError, AttributeError):
         pass
@@ -119,7 +121,9 @@ def signed_headers(
     ts = int(time.time()) if timestamp is None else int(timestamp)
     nonce_value = uuid.uuid4().hex if nonce is None else nonce
     signing_material = f"{ts}\n{nonce_value}\n".encode("utf-8") + raw_body
-    sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()
+    sig = hmac.new(
+        signing_key.encode("utf-8"), signing_material, hashlib.sha256
+    ).hexdigest()
     return {
         "Authorization": f"Bearer {auth_token}",
         "X-Jarvis-Signature": sig,

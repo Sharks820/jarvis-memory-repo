@@ -14,7 +14,11 @@ from jarvis_engine import mobile_api
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
-from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
+from jarvis_engine.owner_guard import (
+    set_master_password,
+    trust_mobile_device,
+    write_owner_guard,
+)
 
 
 def test_health_endpoint(mobile_server) -> None:
@@ -36,11 +40,13 @@ def test_health_endpoint_with_self_test_history(mobile_server) -> None:
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     history_path = runtime_dir / "self_test_history.jsonl"
-    record = json.dumps({
-        "average_score": 0.85,
-        "timestamp": "2026-02-25T10:00:00Z",
-        "below_threshold": False,
-    })
+    record = json.dumps(
+        {
+            "average_score": 0.85,
+            "timestamp": "2026-02-25T10:00:00Z",
+            "below_threshold": False,
+        }
+    )
     history_path.write_text(record + "\n", encoding="utf-8")
 
     code, body = http_request("GET", f"{mobile_server.base_url}/health")
@@ -58,8 +64,20 @@ def test_health_endpoint_with_regression_detected(mobile_server) -> None:
     runtime_dir.mkdir(parents=True, exist_ok=True)
     history_path = runtime_dir / "self_test_history.jsonl"
     records = [
-        json.dumps({"average_score": 0.85, "timestamp": "2026-02-24T10:00:00Z", "below_threshold": False}),
-        json.dumps({"average_score": 0.42, "timestamp": "2026-02-25T10:00:00Z", "below_threshold": True}),
+        json.dumps(
+            {
+                "average_score": 0.85,
+                "timestamp": "2026-02-24T10:00:00Z",
+                "below_threshold": False,
+            }
+        ),
+        json.dumps(
+            {
+                "average_score": 0.42,
+                "timestamp": "2026-02-25T10:00:00Z",
+                "below_threshold": True,
+            }
+        ),
     ]
     history_path.write_text("\n".join(records) + "\n", encoding="utf-8")
 
@@ -84,11 +102,13 @@ class TestHealthIntelligence:
         runtime_dir = mobile_server.root / ".planning" / "runtime"
         runtime_dir.mkdir(parents=True, exist_ok=True)
         history_path = runtime_dir / "self_test_history.jsonl"
-        record = json.dumps({
-            "average_score": 0.85,
-            "timestamp": "2026-02-25T12:00:00",
-            "below_threshold": False,
-        })
+        record = json.dumps(
+            {
+                "average_score": 0.85,
+                "timestamp": "2026-02-25T12:00:00",
+                "below_threshold": False,
+            }
+        )
         history_path.write_text(record + "\n", encoding="utf-8")
 
         code, body = http_request("GET", f"{mobile_server.base_url}/health")
@@ -104,7 +124,9 @@ class TestHealthIntelligence:
     def test_health_intelligence_defaults_when_no_file(self, mobile_server) -> None:
         """Verify default values when self_test_history.jsonl doesn't exist."""
         # Ensure the file does not exist
-        history_path = mobile_server.root / ".planning" / "runtime" / "self_test_history.jsonl"
+        history_path = (
+            mobile_server.root / ".planning" / "runtime" / "self_test_history.jsonl"
+        )
         if history_path.exists():
             history_path.unlink()
 
@@ -143,8 +165,20 @@ class TestHealthIntelligence:
         runtime_dir.mkdir(parents=True, exist_ok=True)
         history_path = runtime_dir / "self_test_history.jsonl"
         records = [
-            json.dumps({"average_score": 0.90, "timestamp": "2026-02-24T08:00:00", "below_threshold": False}),
-            json.dumps({"average_score": 0.35, "timestamp": "2026-02-25T14:30:00", "below_threshold": True}),
+            json.dumps(
+                {
+                    "average_score": 0.90,
+                    "timestamp": "2026-02-24T08:00:00",
+                    "below_threshold": False,
+                }
+            ),
+            json.dumps(
+                {
+                    "average_score": 0.35,
+                    "timestamp": "2026-02-25T14:30:00",
+                    "below_threshold": True,
+                }
+            ),
         ]
         history_path.write_text("\n".join(records) + "\n", encoding="utf-8")
 
@@ -229,8 +263,12 @@ def test_ingest_rejects_replay_nonce(mobile_server) -> None:
         timestamp=ts,
         nonce=fixed_nonce,
     )
-    first_code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
-    second_code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+    first_code, _ = http_request(
+        "POST", f"{mobile_server.base_url}/ingest", raw, headers
+    )
+    second_code, _ = http_request(
+        "POST", f"{mobile_server.base_url}/ingest", raw, headers
+    )
     assert first_code == 201
     assert second_code == 401
 
@@ -262,7 +300,7 @@ def test_ingest_rejects_invalid_json(mobile_server) -> None:
 
 
 def test_ingest_rejects_invalid_utf8(mobile_server) -> None:
-    raw = b"{\"source\": \"user\", \"kind\": \"semantic\", \"task_id\": \"t\", \"content\": \"\x80\"}"
+    raw = b'{"source": "user", "kind": "semantic", "task_id": "t", "content": "\x80"}'
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
     code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
     assert code == 400
@@ -311,7 +349,9 @@ def test_concurrent_ingest_writes_are_jsonl_safe(mobile_server) -> None:
             "content": f"parallel content {i}",
         }
         raw = json.dumps(payload).encode("utf-8")
-        headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+        headers = signed_headers(
+            raw, mobile_server.auth_token, mobile_server.signing_key
+        )
         code, _ = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
         return code
 
@@ -348,8 +388,12 @@ def test_endpoint_requires_auth(mobile_server, method, path) -> None:
 
 
 def test_settings_get_and_update_controls(mobile_server) -> None:
-    get_headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    get_code, get_body = http_request("GET", f"{mobile_server.base_url}/settings", headers=get_headers)
+    get_headers = signed_headers(
+        b"", mobile_server.auth_token, mobile_server.signing_key
+    )
+    get_code, get_body = http_request(
+        "GET", f"{mobile_server.base_url}/settings", headers=get_headers
+    )
     assert get_code == 200
     get_payload = json.loads(get_body.decode("utf-8"))
     assert get_payload["ok"] is True
@@ -365,7 +409,9 @@ def test_settings_get_and_update_controls(mobile_server) -> None:
     }
     raw = json.dumps(update_payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/settings", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/settings", raw, headers
+    )
     assert code == 200
     payload = json.loads(body.decode("utf-8"))
     assert payload["ok"] is True
@@ -384,14 +430,22 @@ def test_settings_reset(mobile_server) -> None:
         "reason": "before reset",
     }
     update_raw = json.dumps(update_payload).encode("utf-8")
-    update_headers = signed_headers(update_raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, _ = http_request("POST", f"{mobile_server.base_url}/settings", update_raw, update_headers)
+    update_headers = signed_headers(
+        update_raw, mobile_server.auth_token, mobile_server.signing_key
+    )
+    code, _ = http_request(
+        "POST", f"{mobile_server.base_url}/settings", update_raw, update_headers
+    )
     assert code == 200
 
     reset_payload = {"reset": True, "reason": "reset"}
     reset_raw = json.dumps(reset_payload).encode("utf-8")
-    reset_headers = signed_headers(reset_raw, mobile_server.auth_token, mobile_server.signing_key)
-    reset_code, reset_body = http_request("POST", f"{mobile_server.base_url}/settings", reset_raw, reset_headers)
+    reset_headers = signed_headers(
+        reset_raw, mobile_server.auth_token, mobile_server.signing_key
+    )
+    reset_code, reset_body = http_request(
+        "POST", f"{mobile_server.base_url}/settings", reset_raw, reset_headers
+    )
     assert reset_code == 200
     payload = json.loads(reset_body.decode("utf-8"))
     assert payload["settings"]["runtime_control"]["daemon_paused"] is False
@@ -419,7 +473,9 @@ def test_quick_panel_endpoint_serves_html(mobile_server) -> None:
 
 def test_dashboard_endpoint_returns_payload(mobile_server) -> None:
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/dashboard", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/dashboard", headers=headers
+    )
     assert code == 200
     payload = json.loads(body.decode("utf-8"))
     assert payload["ok"] is True
@@ -431,7 +487,9 @@ def test_dashboard_endpoint_returns_payload(mobile_server) -> None:
 
 def test_widget_status_includes_reliability_panel(mobile_server) -> None:
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/widget-status", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/widget-status", headers=headers
+    )
     assert code == 200
     payload = json.loads(body.decode("utf-8"))
     assert "reliability" in payload
@@ -458,8 +516,13 @@ def test_command_endpoint_executes_voice_route(mobile_server) -> None:
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    with patch("jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command", _mock_run_voice):
-        code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+    with patch(
+        "jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command",
+        _mock_run_voice,
+    ):
+        code, body = http_request(
+            "POST", f"{mobile_server.base_url}/command", raw, headers
+        )
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is True
@@ -489,7 +552,10 @@ def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> 
     }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    with patch("jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command", _mock_run_voice_fail):
+    with patch(
+        "jarvis_engine.mobile_api.MobileIngestHandler._run_voice_command",
+        _mock_run_voice_fail,
+    ):
         req = Request(
             url=f"{mobile_server.base_url}/command",
             method="POST",
@@ -576,8 +642,13 @@ def test_bootstrap_endpoint_returns_session_and_trusts_device(mobile_server) -> 
         "device_id": "galaxy_s25_primary",
     }
     raw = json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json", "Host": f"{mobile_server.host}:{mobile_server.port}"}
-    code, body = http_request("POST", f"{mobile_server.base_url}/bootstrap", raw, headers)
+    headers = {
+        "Content-Type": "application/json",
+        "Host": f"{mobile_server.host}:{mobile_server.port}",
+    }
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/bootstrap", raw, headers
+    )
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is True
@@ -617,19 +688,39 @@ def test_self_heal_endpoint_calls_main_cli(mobile_server, monkeypatch) -> None:
 
     def fake_run_main_cli(self, args, timeout_s=240):  # noqa: ANN001, ANN202
         called.append((list(args), int(timeout_s)))
-        return {"ok": True, "command_exit_code": 0, "stdout_tail": ["heal ok"], "stderr_tail": []}
+        return {
+            "ok": True,
+            "command_exit_code": 0,
+            "stdout_tail": ["heal ok"],
+            "stderr_tail": [],
+        }
 
-    monkeypatch.setattr(mobile_api.MobileIngestHandler, "_run_main_cli", fake_run_main_cli)
-    payload = {"keep_recent": 2300, "force_maintenance": True, "snapshot_note": "api-test"}
+    monkeypatch.setattr(
+        mobile_api.MobileIngestHandler, "_run_main_cli", fake_run_main_cli
+    )
+    payload = {
+        "keep_recent": 2300,
+        "force_maintenance": True,
+        "snapshot_note": "api-test",
+    }
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/self-heal", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/self-heal", raw, headers
+    )
     assert code == 200
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["ok"] is True
     assert called == [
         (
-            ["self-heal", "--keep-recent", "2300", "--snapshot-note", "api-test", "--force-maintenance"],
+            [
+                "self-heal",
+                "--keep-recent",
+                "2300",
+                "--snapshot-note",
+                "api-test",
+                "--force-maintenance",
+            ],
             240,
         )
     ]
@@ -676,17 +767,30 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
     import unittest.mock as _mock
     from jarvis_engine.gateway.models import GatewayResponse
 
-    def _mock_complete(self, messages, model="", max_tokens=1024, route_reason="", **kwargs):
+    def _mock_complete(
+        self, messages, model="", max_tokens=1024, route_reason="", **kwargs
+    ):
         return GatewayResponse(text="hi", model=model, provider="mock")
 
-    mock_cls = type("MockClassifier", (), {
-        "classify": lambda self, q: ("routine", "mock-model", 0.9),
-    })
+    mock_cls = type(
+        "MockClassifier",
+        (),
+        {
+            "classify": lambda self, q: ("routine", "mock-model", 0.9),
+        },
+    )
     # Temporarily lower the limit for testing
-    with _mock.patch.object(mobile_api._API_RATE_EXPENSIVE, "max_attempts", 2), \
-         _mock.patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
-         _mock.patch("jarvis_engine.voice_pipeline._build_smart_context", return_value=([], [], [], [])), \
-         _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
+    with (
+        _mock.patch.object(mobile_api._API_RATE_EXPENSIVE, "max_attempts", 2),
+        _mock.patch(
+            "jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete
+        ),
+        _mock.patch(
+            "jarvis_engine.voice_pipeline._build_smart_context",
+            return_value=([], [], [], []),
+        ),
+        _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls),
+    ):
         # Clear any existing rate state for our IP
         mobile_server.server._api_rate_normal.clear()
         mobile_server.server._api_rate_expensive.clear()
@@ -696,9 +800,13 @@ def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
 
         for i in range(4):
             headers = signed_headers(
-                raw, mobile_server.auth_token, mobile_server.signing_key,
+                raw,
+                mobile_server.auth_token,
+                mobile_server.signing_key,
             )
-            code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
+            code, body = http_request(
+                "POST", f"{mobile_server.base_url}/command", raw, headers
+            )
             if i >= 2:
                 # Should be rate-limited after 2 requests
                 assert code == 429, f"Expected 429 on request {i + 1}, got {code}"
@@ -746,7 +854,9 @@ def test_audit_endpoint_returns_records(mobile_server) -> None:
 def test_processes_endpoint_returns_services(mobile_server) -> None:
     """GET /processes returns service statuses with auth."""
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/processes", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/processes", headers=headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -759,8 +869,12 @@ def test_processes_endpoint_returns_services(mobile_server) -> None:
 def test_processes_kill_requires_auth(mobile_server) -> None:
     """POST /processes/kill requires HMAC auth."""
     raw = json.dumps({"service": "daemon"}).encode("utf-8")
-    code, _body = http_request("POST", f"{mobile_server.base_url}/processes/kill", raw,
-                               {"Content-Type": "application/json"})
+    code, _body = http_request(
+        "POST",
+        f"{mobile_server.base_url}/processes/kill",
+        raw,
+        {"Content-Type": "application/json"},
+    )
     assert code == 401
 
 
@@ -768,7 +882,9 @@ def test_processes_kill_rejects_unknown_service(mobile_server) -> None:
     """POST /processes/kill returns 400 for unknown service name."""
     raw = json.dumps({"service": "nonexistent"}).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/processes/kill", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/processes/kill", raw, headers
+    )
     assert code == 400
     resp = json.loads(body.decode("utf-8"))
     assert "Unknown service" in resp["error"]
@@ -800,7 +916,9 @@ def test_sync_pull_success_with_valid_auth(mobile_server, monkeypatch) -> None:
     payload = {"device_id": "galaxy_s25_primary"}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/pull", raw, headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -824,7 +942,9 @@ def test_sync_pull_rejects_missing_device_id(mobile_server) -> None:
     payload = {"device_id": ""}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/pull", raw, headers
+    )
     assert code == 400
     resp = json.loads(body.decode("utf-8"))
     assert "device_id" in resp["error"].lower()
@@ -838,7 +958,9 @@ def test_sync_pull_returns_503_when_sync_unavailable(mobile_server) -> None:
     payload = {"device_id": "galaxy_s25_primary"}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/pull", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/pull", raw, headers
+    )
     assert code == 503
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is False
@@ -870,7 +992,9 @@ def test_sync_push_success_with_valid_auth(mobile_server) -> None:
     payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": encrypted}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/push", raw, headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -897,7 +1021,9 @@ def test_sync_push_rejects_missing_encrypted_payload(mobile_server) -> None:
     payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": ""}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/push", raw, headers
+    )
     assert code == 400
     resp = json.loads(body.decode("utf-8"))
     assert "encrypted_payload" in resp["error"].lower()
@@ -911,7 +1037,9 @@ def test_sync_push_rejects_missing_device_id(mobile_server) -> None:
     payload = {"device_id": "", "encrypted_payload": encrypted}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/push", raw, headers
+    )
     assert code == 400
     resp = json.loads(body.decode("utf-8"))
     assert "device_id" in resp["error"].lower()
@@ -928,7 +1056,9 @@ def test_sync_push_returns_503_when_sync_unavailable(mobile_server) -> None:
     payload = {"device_id": "galaxy_s25_primary", "encrypted_payload": encrypted}
     raw = json.dumps(payload).encode("utf-8")
     headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("POST", f"{mobile_server.base_url}/sync/push", raw, headers)
+    code, body = http_request(
+        "POST", f"{mobile_server.base_url}/sync/push", raw, headers
+    )
     assert code == 503
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is False
@@ -950,7 +1080,9 @@ def test_sync_status_returns_status_when_available(mobile_server) -> None:
     mobile_server.server._sync_engine = FakeSyncEngine()
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/sync/status", headers=headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -962,7 +1094,9 @@ def test_sync_status_returns_503_when_unavailable(mobile_server) -> None:
     mobile_server.server._sync_engine = None
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/sync/status", headers=headers
+    )
     assert code == 503
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is False
@@ -979,7 +1113,9 @@ def test_sync_status_handles_engine_exception(mobile_server) -> None:
     mobile_server.server._sync_engine = BrokenSyncEngine()
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/sync/status", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/sync/status", headers=headers
+    )
     assert code == 500
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is False
@@ -1071,14 +1207,22 @@ def test_is_cors_origin_allowed_patterns(mobile_server, origin, expected) -> Non
 def _make_handler_stub(server):
     """Create a minimal object that can call MobileIngestHandler methods
     that only need ``self.server`` (gaming state, nonce cleanup, _run_main_cli)."""
+
     class _Stub:
         pass
+
     stub = _Stub()
     stub.server = server
     # Bind unbound methods from the real handler class
-    stub._gaming_state_path = mobile_api.MobileIngestHandler._gaming_state_path.__get__(stub)
-    stub._read_gaming_state = mobile_api.MobileIngestHandler._read_gaming_state.__get__(stub)
-    stub._write_gaming_state = mobile_api.MobileIngestHandler._write_gaming_state.__get__(stub)
+    stub._gaming_state_path = mobile_api.MobileIngestHandler._gaming_state_path.__get__(
+        stub
+    )
+    stub._read_gaming_state = mobile_api.MobileIngestHandler._read_gaming_state.__get__(
+        stub
+    )
+    stub._write_gaming_state = (
+        mobile_api.MobileIngestHandler._write_gaming_state.__get__(stub)
+    )
     stub._cleanup_nonces = mobile_api.MobileIngestHandler._cleanup_nonces.__get__(stub)
     stub._run_main_cli = mobile_api.MobileIngestHandler._run_main_cli.__get__(stub)
     return stub
@@ -1098,7 +1242,12 @@ def test_read_gaming_state_file_exists(mobile_server) -> None:
     """_read_gaming_state reads valid JSON from disk."""
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
-    state = {"enabled": True, "auto_detect": True, "reason": "playing", "updated_utc": "2026-02-25T10:00:00"}
+    state = {
+        "enabled": True,
+        "auto_detect": True,
+        "reason": "playing",
+        "updated_utc": "2026-02-25T10:00:00",
+    }
     (runtime_dir / "gaming_mode.json").write_text(json.dumps(state), encoding="utf-8")
 
     stub = _make_handler_stub(mobile_server.server)
@@ -1126,7 +1275,9 @@ def test_write_gaming_state_roundtrip(mobile_server) -> None:
     runtime_dir.mkdir(parents=True, exist_ok=True)
 
     stub = _make_handler_stub(mobile_server.server)
-    written = stub._write_gaming_state(enabled=True, auto_detect=False, reason="test roundtrip")
+    written = stub._write_gaming_state(
+        enabled=True, auto_detect=False, reason="test roundtrip"
+    )
     assert written["enabled"] is True
     assert written["auto_detect"] is False
     assert written["reason"] == "test roundtrip"
@@ -1328,7 +1479,9 @@ def test_persist_nonces_excludes_expired(mobile_server) -> None:
     now = time.time()
     mobile_server.server.nonce_seen.clear()
     mobile_server.server.nonce_seen["fresh"] = now - 10
-    mobile_server.server.nonce_seen["expired"] = now - mobile_api.REPLAY_WINDOW_SECONDS - 60
+    mobile_server.server.nonce_seen["expired"] = (
+        now - mobile_api.REPLAY_WINDOW_SECONDS - 60
+    )
 
     mobile_server.server._persist_nonces()
 
@@ -1348,7 +1501,9 @@ def test_load_nonces_restores_valid_nonces(mobile_server) -> None:
     entries = [
         json.dumps({"nonce": "restored_1", "ts": now - 10}),
         json.dumps({"nonce": "restored_2", "ts": now - 50}),
-        json.dumps({"nonce": "too_old", "ts": now - mobile_api.REPLAY_WINDOW_SECONDS - 100}),
+        json.dumps(
+            {"nonce": "too_old", "ts": now - mobile_api.REPLAY_WINDOW_SECONDS - 100}
+        ),
     ]
     cache_path.write_text("\n".join(entries) + "\n", encoding="utf-8")
 
@@ -1513,7 +1668,9 @@ class TestNoncePersistence:
 
         assert server._nonce_cache_path.exists()
         tmp_file = server._nonce_cache_path.with_suffix(".jsonl.tmp")
-        assert not tmp_file.exists(), "Temp file should be cleaned up after atomic rename"
+        assert not tmp_file.exists(), (
+            "Temp file should be cleaned up after atomic rename"
+        )
 
     def test_load_nonces_handles_missing_file(self, tmp_path: Path) -> None:
         """_load_nonces does not crash when no cache file exists on disk."""
@@ -1539,15 +1696,20 @@ class TestNoncePersistence:
         runtime_dir.mkdir(parents=True, exist_ok=True)
         cache_path = runtime_dir / "nonce_cache.jsonl"
 
-        content = "\n".join([
-            json.dumps({"nonce": "good_one", "ts": fake_now - 10}),
-            "{this is not valid json",
-            json.dumps({"nonce": "", "ts": fake_now - 5}),         # empty nonce
-            json.dumps({"ts": fake_now - 5}),                      # missing nonce key
-            json.dumps({"nonce": "also_good", "ts": fake_now - 20}),
-            "",                                                      # blank line
-            "null",                                                  # valid JSON but wrong type
-        ]) + "\n"
+        content = (
+            "\n".join(
+                [
+                    json.dumps({"nonce": "good_one", "ts": fake_now - 10}),
+                    "{this is not valid json",
+                    json.dumps({"nonce": "", "ts": fake_now - 5}),  # empty nonce
+                    json.dumps({"ts": fake_now - 5}),  # missing nonce key
+                    json.dumps({"nonce": "also_good", "ts": fake_now - 20}),
+                    "",  # blank line
+                    "null",  # valid JSON but wrong type
+                ]
+            )
+            + "\n"
+        )
         cache_path.write_text(content, encoding="utf-8")
 
         with patch("time.time", return_value=fake_now):
@@ -1612,7 +1774,9 @@ def test_processes_endpoint_rejects_invalid_bearer(mobile_server) -> None:
     """GET /processes with wrong bearer token should return 401."""
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
     headers["Authorization"] = "Bearer wrong-token"
-    code, _ = http_request("GET", f"{mobile_server.base_url}/processes", headers=headers)
+    code, _ = http_request(
+        "GET", f"{mobile_server.base_url}/processes", headers=headers
+    )
     assert code == 401
 
 
@@ -1621,7 +1785,9 @@ def test_processes_endpoint_rejects_invalid_bearer(mobile_server) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobile_server) -> None:
+def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(
+    mobile_server,
+) -> None:
     """The subprocess fallback path should NOT put master_password in cmd args."""
     from unittest.mock import patch, MagicMock
 
@@ -1638,8 +1804,10 @@ def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobil
         return result
 
     # Force the subprocess path by making the in-process import fail
-    with patch("jarvis_engine.mobile_api.subprocess.run", fake_run), \
-         patch.dict("sys.modules", {"jarvis_engine.main": None}):
+    with (
+        patch("jarvis_engine.mobile_api.subprocess.run", fake_run),
+        patch.dict("sys.modules", {"jarvis_engine.main": None}),
+    ):
         handler = MobileIngestHandler.__new__(MobileIngestHandler)
         handler.server = mobile_server.server
 
@@ -1663,7 +1831,9 @@ def test_voice_command_subprocess_does_not_pass_master_password_as_cli_arg(mobil
         assert env.get("JARVIS_MASTER_PASSWORD") == "SuperSecret123!"
 
 
-def test_run_voice_command_in_process_sets_skip_voice_auth_guard(mobile_server, monkeypatch) -> None:
+def test_run_voice_command_in_process_sets_skip_voice_auth_guard(
+    mobile_server, monkeypatch
+) -> None:
     """In-process /command execution should bypass voice-auth guard after API auth."""
     import jarvis_engine.main as main_mod
 
@@ -1685,7 +1855,9 @@ def test_run_voice_command_in_process_sets_skip_voice_auth_guard(mobile_server, 
     assert captured.get("skip_voice_auth_guard") is True
 
 
-def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch) -> None:
+def test_best_effort_learning_records_failed_command(
+    mobile_server, monkeypatch
+) -> None:
     import jarvis_engine._bus as bus_mod
 
     dispatched: list[object] = []
@@ -1713,15 +1885,21 @@ def test_best_effort_learning_records_failed_command(mobile_server, monkeypatch)
     assert len(dispatched) == 1
     cmd = dispatched[0]
     assert getattr(cmd, "route") == "owner_guard_blocked"
-    assert "voice_auth_required_when_owner_guard_enabled" in getattr(cmd, "assistant_response")
+    assert "voice_auth_required_when_owner_guard_enabled" in getattr(
+        cmd, "assistant_response"
+    )
 
 
-def test_best_effort_learning_skips_success_with_response(mobile_server, monkeypatch) -> None:
+def test_best_effort_learning_skips_success_with_response(
+    mobile_server, monkeypatch
+) -> None:
     import jarvis_engine._bus as bus_mod
 
     class _FakeBus:
         def dispatch(self, cmd):  # noqa: ANN001, ANN202
-            raise AssertionError("dispatch should not be called for successful response")
+            raise AssertionError(
+                "dispatch should not be called for successful response"
+            )
 
     monkeypatch.setattr(bus_mod, "get_bus", lambda: _FakeBus())
 
@@ -1730,7 +1908,11 @@ def test_best_effort_learning_skips_success_with_response(mobile_server, monkeyp
     # Should complete without calling dispatch (which would raise AssertionError)
     handler._best_effort_learn_command_result(
         payload={"text": "runtime status"},
-        result={"ok": True, "response": "All systems normal.", "intent": "runtime_status"},
+        result={
+            "ok": True,
+            "response": "All systems normal.",
+            "intent": "runtime_status",
+        },
     )
     assert True  # dispatch was not called (no AssertionError raised)
 
@@ -1760,10 +1942,14 @@ def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -
                 "content": "rate limit test",
             }
             raw = json.dumps(payload).encode("utf-8")
-            headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
+            headers = signed_headers(
+                raw, mobile_server.auth_token, mobile_server.signing_key
+            )
             headers["X-Jarvis-Device-Id"] = f"untrusted_device_{i}"
             headers["X-Jarvis-Master-Password"] = "CorrectPassword123!"
-            code, body = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
+            code, body = http_request(
+                "POST", f"{mobile_server.base_url}/ingest", raw, headers
+            )
 
             if code == 429:
                 resp = json.loads(body.decode("utf-8"))
@@ -1804,7 +1990,9 @@ def test_master_password_rate_limiter_allows_normal_usage(mobile_server) -> None
 def test_intelligence_growth_returns_metrics_structure(mobile_server) -> None:
     """GET /intelligence/growth with auth returns expected JSON structure."""
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -1838,15 +2026,19 @@ def test_intelligence_growth_reads_self_test_score(mobile_server) -> None:
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     history_path = runtime_dir / "self_test_history.jsonl"
-    record = json.dumps({
-        "average_score": 0.78,
-        "timestamp": "2026-02-25T12:00:00Z",
-        "below_threshold": False,
-    })
+    record = json.dumps(
+        {
+            "average_score": 0.78,
+            "timestamp": "2026-02-25T12:00:00Z",
+            "below_threshold": False,
+        }
+    )
     history_path.write_text(record + "\n", encoding="utf-8")
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -1858,19 +2050,23 @@ def test_intelligence_growth_reads_kg_history(mobile_server) -> None:
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     kg_path = runtime_dir / "kg_metrics.jsonl"
-    record = json.dumps({
-        "ts": "2026-02-25T12:00:00Z",
-        "node_count": 142,
-        "edge_count": 312,
-        "branch_counts": {"health": 45, "finance": 32, "coding": 65},
-        "cross_branch_edges": 12,
-        "avg_confidence": 0.82,
-        "locked_facts": 7,
-    })
+    record = json.dumps(
+        {
+            "ts": "2026-02-25T12:00:00Z",
+            "node_count": 142,
+            "edge_count": 312,
+            "branch_counts": {"health": 45, "finance": 32, "coding": 65},
+            "cross_branch_edges": 12,
+            "avg_confidence": 0.82,
+            "locked_facts": 7,
+        }
+    )
     kg_path.write_text(record + "\n", encoding="utf-8")
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     m = resp["metrics"]
@@ -1892,7 +2088,9 @@ def test_intelligence_growth_handles_missing_data_gracefully(mobile_server) -> N
             p.unlink()
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, body = http_request("GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers)
+    code, body = http_request(
+        "GET", f"{mobile_server.base_url}/intelligence/growth", headers=headers
+    )
     assert code == 200
     resp = json.loads(body.decode("utf-8"))
     assert resp["ok"] is True
@@ -1914,7 +2112,9 @@ def test_intelligence_growth_handles_missing_data_gracefully(mobile_server) -> N
 def test_missions_create_requires_auth(mobile_server) -> None:
     """POST /missions/create without auth should return 401."""
     body = json.dumps({"topic": "test"}).encode()
-    code, _ = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body)
+    code, _ = http_request(
+        "POST", f"{mobile_server.base_url}/missions/create", body=body
+    )
     assert code == 401
 
 
@@ -1922,7 +2122,9 @@ def test_missions_create_missing_topic(mobile_server) -> None:
     """POST /missions/create without topic should return 400."""
     body = json.dumps({"objective": "learn stuff"}).encode()
     headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
-    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    code, resp = http_request(
+        "POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers
+    )
     assert code == 400
     payload = json.loads(resp.decode("utf-8"))
     assert payload["ok"] is False
@@ -1933,7 +2135,9 @@ def test_missions_create_empty_topic(mobile_server) -> None:
     """POST /missions/create with empty topic should return 400."""
     body = json.dumps({"topic": "   "}).encode()
     headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
-    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    code, resp = http_request(
+        "POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers
+    )
     assert code == 400
     payload = json.loads(resp.decode("utf-8"))
     assert payload["ok"] is False
@@ -1943,7 +2147,9 @@ def test_missions_create_invalid_sources_type(mobile_server) -> None:
     """POST /missions/create with non-list sources should return 400."""
     body = json.dumps({"topic": "test topic", "sources": "google"}).encode()
     headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
-    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    code, resp = http_request(
+        "POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers
+    )
     assert code == 400
     payload = json.loads(resp.decode("utf-8"))
     assert payload["ok"] is False
@@ -1966,11 +2172,14 @@ def test_missions_create_success(mobile_server, monkeypatch) -> None:
             return MissionCreateResult(mission=mock_mission)
 
     import jarvis_engine._bus as _bus_mod
+
     monkeypatch.setattr(_bus_mod, "get_bus", lambda: FakeBus())
 
     body = json.dumps({"topic": "quantum computing basics"}).encode()
     headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
-    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    code, resp = http_request(
+        "POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers
+    )
     assert code == 200
     payload = json.loads(resp.decode("utf-8"))
     assert payload["ok"] is True
@@ -1982,30 +2191,40 @@ def test_missions_create_success(mobile_server, monkeypatch) -> None:
 
 def test_missions_create_with_objective_and_sources(mobile_server, monkeypatch) -> None:
     """POST /missions/create passes objective and sources to CQRS command."""
-    from jarvis_engine.commands.ops_commands import MissionCreateCommand, MissionCreateResult
+    from jarvis_engine.commands.ops_commands import (
+        MissionCreateCommand,
+        MissionCreateResult,
+    )
 
     captured_cmds = []
 
     class FakeBus:
         def dispatch(self, cmd):
             captured_cmds.append(cmd)
-            return MissionCreateResult(mission={
-                "mission_id": "m-test",
-                "topic": cmd.topic,
-                "status": "pending",
-                "sources": cmd.sources or ["google", "reddit"],
-            })
+            return MissionCreateResult(
+                mission={
+                    "mission_id": "m-test",
+                    "topic": cmd.topic,
+                    "status": "pending",
+                    "sources": cmd.sources or ["google", "reddit"],
+                }
+            )
 
     import jarvis_engine._bus as _bus_mod
+
     monkeypatch.setattr(_bus_mod, "get_bus", lambda: FakeBus())
 
-    body = json.dumps({
-        "topic": "rust async patterns",
-        "objective": "Learn tokio runtime internals",
-        "sources": ["google", "official_docs"],
-    }).encode()
+    body = json.dumps(
+        {
+            "topic": "rust async patterns",
+            "objective": "Learn tokio runtime internals",
+            "sources": ["google", "official_docs"],
+        }
+    ).encode()
     headers = signed_headers(body, mobile_server.auth_token, mobile_server.signing_key)
-    code, resp = http_request("POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers)
+    code, resp = http_request(
+        "POST", f"{mobile_server.base_url}/missions/create", body=body, headers=headers
+    )
     assert code == 200
     payload = json.loads(resp.decode("utf-8"))
     assert payload["ok"] is True
@@ -2051,10 +2270,13 @@ def test_missions_status_returns_structure(mobile_server, monkeypatch) -> None:
             return MissionStatusResult(missions=mock_missions, total_count=2)
 
     import jarvis_engine._bus as _bus_mod
+
     monkeypatch.setattr(_bus_mod, "get_bus", lambda: FakeBus())
 
     headers = signed_headers(b"", mobile_server.auth_token, mobile_server.signing_key)
-    code, resp = http_request("GET", f"{mobile_server.base_url}/missions/status", headers=headers)
+    code, resp = http_request(
+        "GET", f"{mobile_server.base_url}/missions/status", headers=headers
+    )
     assert code == 200
     payload = json.loads(resp.decode("utf-8"))
     assert payload["ok"] is True

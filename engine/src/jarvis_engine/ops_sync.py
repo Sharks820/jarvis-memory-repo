@@ -53,10 +53,18 @@ def build_live_snapshot(root: Path, output_path: Path) -> SyncSummary:
     tasks = load_task_items(root)
     bills = _read_json_list(planning / "bills.json")
     subscriptions = _read_json_list(planning / "subscriptions.json")
-    medications = _load_feed_json_list(root, "JARVIS_MEDICATIONS_JSON", planning / "medications.json")
-    school_items = _load_feed_json_list(root, "JARVIS_SCHOOL_JSON", planning / "school.json")
-    family_items = _load_feed_json_list(root, "JARVIS_FAMILY_JSON", planning / "family.json")
-    projects = _load_feed_json_list(root, "JARVIS_PROJECTS_JSON", planning / "projects.json")
+    medications = _load_feed_json_list(
+        root, "JARVIS_MEDICATIONS_JSON", planning / "medications.json"
+    )
+    school_items = _load_feed_json_list(
+        root, "JARVIS_SCHOOL_JSON", planning / "school.json"
+    )
+    family_items = _load_feed_json_list(
+        root, "JARVIS_FAMILY_JSON", planning / "family.json"
+    )
+    projects = _load_feed_json_list(
+        root, "JARVIS_PROJECTS_JSON", planning / "projects.json"
+    )
     calendar_events = load_calendar_events()
     emails = load_email_items()
     connector_statuses = evaluate_connector_statuses(root)
@@ -107,7 +115,9 @@ def _read_json_list(path: Path) -> list[dict]:
     return []
 
 
-def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> list[dict]:
+def _load_feed_json_list(
+    repo_root: Path, env_key: str, default_path: Path
+) -> list[dict]:
     configured = os.getenv(env_key, "").strip()
     if configured:
         configured_path = Path(configured).expanduser()
@@ -118,7 +128,9 @@ def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> l
         resolved = configured_path.resolve()
         if resolved.is_dir():
             return []
-        allow_external = os.getenv("JARVIS_ALLOW_EXTERNAL_FEEDS", "").strip().lower() in {"1", "true", "yes"}
+        allow_external = os.getenv(
+            "JARVIS_ALLOW_EXTERNAL_FEEDS", ""
+        ).strip().lower() in {"1", "true", "yes"}
         if not allow_external:
             try:
                 resolved.relative_to(repo_root.resolve())
@@ -145,7 +157,9 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
 
     ics_url = os.getenv("JARVIS_CALENDAR_ICS_URL", "").strip()
     ics_file = os.getenv("JARVIS_CALENDAR_ICS_FILE", "").strip()
-    allow_remote_url = os.getenv("JARVIS_ALLOW_REMOTE_CALENDAR_URLS", "").strip().lower() in {"1", "true", "yes"}
+    allow_remote_url = os.getenv(
+        "JARVIS_ALLOW_REMOTE_CALENDAR_URLS", ""
+    ).strip().lower() in {"1", "true", "yes"}
     if ics_file:
         p = Path(ics_file).expanduser()
         # Block symlinks and UNC paths to prevent path traversal
@@ -153,7 +167,10 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
             return []
         if p.is_file():
             try:
-                return _parse_ics(p.read_text(encoding="utf-8", errors="replace"), target_date=target_date)
+                return _parse_ics(
+                    p.read_text(encoding="utf-8", errors="replace"),
+                    target_date=target_date,
+                )
             except OSError as exc:
                 logger.warning("Failed to read ICS file %s: %s", p, exc)
                 return []
@@ -168,12 +185,15 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
         # and pass the original hostname via Host header.
         pinned_ip, original_host = safe_result
         parsed_ics = urlparse(ics_url)
-        pinned_url = parsed_ics._replace(netloc=f"{pinned_ip}:{parsed_ics.port or 443}").geturl()
+        pinned_url = parsed_ics._replace(
+            netloc=f"{pinned_ip}:{parsed_ics.port or 443}"
+        ).geturl()
         try:
             # Use a no-redirect opener to prevent SSRF bypass via HTTP redirect
             # to internal IPs after initial URL validation.
             opener = _build_no_redirect_opener()
             from urllib.request import Request as _IcsRequest
+
             pinned_req = _IcsRequest(pinned_url, headers={"Host": original_host})
             with opener.open(pinned_req, timeout=15) as resp:  # nosec B310
                 payload = resp.read(MAX_ICS_BYTES + 1)
@@ -226,7 +246,9 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
         else:
             time_str = "all-day"
         location = str(event.get("LOCATION", "")) if event.get("LOCATION") else ""
-        description = str(event.get("DESCRIPTION", "")) if event.get("DESCRIPTION") else ""
+        description = (
+            str(event.get("DESCRIPTION", "")) if event.get("DESCRIPTION") else ""
+        )
         events.append(
             {
                 "title": summary,
@@ -242,7 +264,12 @@ def _parse_ics(text: str, target_date: date | None = None) -> list[dict]:
 def _parse_ics_fallback(text: str, target_date: date | None = None) -> list[dict]:
     """Simple line-by-line ICS parser (fallback when icalendar is not installed)."""
     # Unfold RFC 5545 line folding (CRLF + space/tab continuation)
-    text = text.replace("\r\n ", "").replace("\r\n\t", "").replace("\n ", "").replace("\n\t", "")
+    text = (
+        text.replace("\r\n ", "")
+        .replace("\r\n\t", "")
+        .replace("\n ", "")
+        .replace("\n\t", "")
+    )
     lines = [line.strip() for line in text.splitlines()]
     events: list[dict] = []
     current: dict[str, str] | None = None
@@ -272,7 +299,8 @@ def _parse_ics_fallback(text: str, target_date: date | None = None) -> list[dict
                     time_str = "all-day"
                 events.append(
                     {
-                        "title": str(current.get("SUMMARY", "")).strip() or "Untitled event",
+                        "title": str(current.get("SUMMARY", "")).strip()
+                        or "Untitled event",
                         "time": time_str,
                         "location": current.get("LOCATION", ""),
                         "description": current.get("DESCRIPTION", "")[:200],
@@ -410,8 +438,15 @@ def _triage_email(sender: str, subject: str) -> str:
     lowered_subject = subject.lower()
     lowered_sender = sender.lower()
     high_subject_markers = [
-        "urgent", "action required", "payment due", "invoice",
-        "security", "incident", "deadline", "expiring", "overdue",
+        "urgent",
+        "action required",
+        "payment due",
+        "invoice",
+        "security",
+        "incident",
+        "deadline",
+        "expiring",
+        "overdue",
     ]
     high_sender_markers = ["noreply@", "alert@", "billing@", "security@", "no-reply@"]
     if any(m in lowered_subject for m in high_subject_markers):
@@ -420,7 +455,10 @@ def _triage_email(sender: str, subject: str) -> str:
     sender_email = lowered_sender
     if "<" in sender_email:
         sender_email = sender_email.split("<")[-1].rstrip(">")
-    if any(sender_email.startswith(m) or sender_email.split("@")[0] + "@" == m for m in high_sender_markers):
+    if any(
+        sender_email.startswith(m) or sender_email.split("@")[0] + "@" == m
+        for m in high_sender_markers
+    ):
         return "high"
     return "normal"
 
@@ -430,7 +468,10 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         from urllib.error import HTTPError
-        raise HTTPError(newurl, code, f"Redirects are not allowed (got {code})", headers, fp)
+
+        raise HTTPError(
+            newurl, code, f"Redirects are not allowed (got {code})", headers, fp
+        )
 
 
 def _build_no_redirect_opener():
@@ -453,8 +494,14 @@ def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
         return None
     try:
         ip = ip_address(host)
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
             return None
         return (host, host)
     except ValueError:
@@ -476,8 +523,14 @@ def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
             ip = ip_address(raw_ip)
         except ValueError:
             return None
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
             return None
         if first_safe_ip is None:
             first_safe_ip = raw_ip

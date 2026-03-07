@@ -11,7 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.security.net_policy import is_safe_ollama_endpoint as _is_safe_ollama_endpoint
+from jarvis_engine.security.net_policy import (
+    is_safe_ollama_endpoint as _is_safe_ollama_endpoint,
+)
 from jarvis_engine.growth_tracker import (
     BRANCH_TASK_MAP,
     DEFAULT_MEMORY_TASKS,
@@ -38,6 +40,7 @@ from jarvis_engine.growth_tracker import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_task_eval(**overrides) -> TaskEval:
     """Create a TaskEval with sensible defaults, overridable per field."""
@@ -80,6 +83,7 @@ def _make_eval_run(**overrides) -> EvalRun:
 # ===================================================================
 # score_text tests
 # ===================================================================
+
 
 class TestScoreText:
     """Tests for score_text() — word-boundary matching of required tokens."""
@@ -125,17 +129,13 @@ class TestScoreText:
         assert coverage == 0.0
 
     def test_case_insensitive(self) -> None:
-        matched, total, coverage, tokens = score_text(
-            "Hello WORLD", ["hello", "world"]
-        )
+        matched, total, coverage, tokens = score_text("Hello WORLD", ["hello", "world"])
         assert matched == 2
         assert coverage == 1.0
 
     def test_word_boundary_matching(self) -> None:
         """'the' should NOT match inside 'therefore'."""
-        matched, total, coverage, tokens = score_text(
-            "therefore", ["the"]
-        )
+        matched, total, coverage, tokens = score_text("therefore", ["the"])
         assert matched == 0
         assert coverage == 0.0
 
@@ -155,9 +155,7 @@ class TestScoreText:
 
     def test_duplicate_tokens_counted_once(self) -> None:
         """If the same token appears twice in required_tokens, both count."""
-        matched, total, coverage, tokens = score_text(
-            "hello world", ["hello", "hello"]
-        )
+        matched, total, coverage, tokens = score_text("hello world", ["hello", "hello"])
         assert matched == 2
         assert total == 2
         assert coverage == 1.0
@@ -166,6 +164,7 @@ class TestScoreText:
 # ===================================================================
 # _is_safe_ollama_endpoint tests
 # ===================================================================
+
 
 class TestIsSafeOllamaEndpoint:
     """Tests for the Ollama endpoint safety check."""
@@ -215,6 +214,7 @@ class TestIsSafeOllamaEndpoint:
 # load_golden_tasks tests
 # ===================================================================
 
+
 class TestLoadGoldenTasks:
     """Tests for load_golden_tasks() — JSON parsing and validation."""
 
@@ -247,7 +247,9 @@ class TestLoadGoldenTasks:
 
     def test_skips_non_dict_items(self, tmp_path: Path) -> None:
         p = tmp_path / "tasks.json"
-        p.write_text('[42, "string", {"id": "t1", "prompt": "valid"}]', encoding="utf-8")
+        p.write_text(
+            '[42, "string", {"id": "t1", "prompt": "valid"}]', encoding="utf-8"
+        )
         tasks = load_golden_tasks(p)
         assert len(tasks) == 1
         assert tasks[0].task_id == "t1"
@@ -265,7 +267,9 @@ class TestLoadGoldenTasks:
         assert tasks == []
 
     def test_must_include_lowered(self, tmp_path: Path) -> None:
-        tasks_json = [{"id": "t1", "prompt": "test", "must_include": ["UPPER", "MiXeD"]}]
+        tasks_json = [
+            {"id": "t1", "prompt": "test", "must_include": ["UPPER", "MiXeD"]}
+        ]
         p = tmp_path / "tasks.json"
         p.write_text(json.dumps(tasks_json), encoding="utf-8")
         tasks = load_golden_tasks(p)
@@ -275,6 +279,7 @@ class TestLoadGoldenTasks:
 # ===================================================================
 # History management: append_history, read_history, summarize_history
 # ===================================================================
+
 
 class TestHistoryManagement:
     """Tests for history JSONL append/read/summarize."""
@@ -341,6 +346,7 @@ class TestHistoryManagement:
 # summarize_history tests
 # ===================================================================
 
+
 class TestSummarizeHistory:
     """Tests for summarize_history()."""
 
@@ -390,6 +396,7 @@ class TestSummarizeHistory:
 # ===================================================================
 # compute_run_sha256 and validate_history_chain tests
 # ===================================================================
+
 
 class TestChainIntegrity:
     """Tests for hash chain computation and validation."""
@@ -460,6 +467,7 @@ class TestChainIntegrity:
 # audit_run tests
 # ===================================================================
 
+
 class TestAuditRun:
     """Tests for audit_run()."""
 
@@ -503,6 +511,7 @@ class TestAuditRun:
 # ===================================================================
 # MemoryRecallTask / evaluate_memory_recall / run_memory_eval
 # ===================================================================
+
 
 class TestMemoryRecall:
     """Tests for memory recall evaluation."""
@@ -638,6 +647,7 @@ class TestMemoryRecall:
 # _generate and run_eval tests (with mocked HTTP)
 # ===================================================================
 
+
 class TestRunEval:
     """Tests for run_eval() with mocked Ollama HTTP calls."""
 
@@ -658,7 +668,10 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "What is Python?", ["python", "programming"])]
 
-        with patch("jarvis_engine.growth_tracker.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch(
+            "jarvis_engine.growth_tracker.urlopen",
+            return_value=self._mock_urlopen(response_data),
+        ):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test-model",
@@ -683,7 +696,10 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "What is Python?", ["python"])]
 
-        with patch("jarvis_engine.growth_tracker.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch(
+            "jarvis_engine.growth_tracker.urlopen",
+            return_value=self._mock_urlopen(response_data),
+        ):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -704,7 +720,10 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "What?", ["something"])]
 
-        with patch("jarvis_engine.growth_tracker.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch(
+            "jarvis_engine.growth_tracker.urlopen",
+            return_value=self._mock_urlopen(response_data),
+        ):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -737,7 +756,11 @@ class TestRunEval:
         tasks = [GoldenTask("t1", "test", ["token"])]
 
         from urllib.error import URLError
-        with patch("jarvis_engine.growth_tracker.urlopen", side_effect=URLError("connection refused")):
+
+        with patch(
+            "jarvis_engine.growth_tracker.urlopen",
+            side_effect=URLError("connection refused"),
+        ):
             with pytest.raises(RuntimeError, match="Failed to reach Ollama"):
                 run_eval(
                     endpoint="http://localhost:11434",
@@ -755,7 +778,10 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "prompt", ["token"])]
 
-        with patch("jarvis_engine.growth_tracker.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch(
+            "jarvis_engine.growth_tracker.urlopen",
+            return_value=self._mock_urlopen(response_data),
+        ):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -774,7 +800,10 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "test prompt", [])]
 
-        with patch("jarvis_engine.growth_tracker.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch(
+            "jarvis_engine.growth_tracker.urlopen",
+            return_value=self._mock_urlopen(response_data),
+        ):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -841,6 +870,7 @@ class TestRunEval:
 # Dataclass tests
 # ===================================================================
 
+
 class TestDataclasses:
     """Verify dataclass defaults and structure."""
 
@@ -882,12 +912,20 @@ class TestDataclasses:
 # Branch task map and eval_branch tests
 # ===================================================================
 
+
 class TestBranchTaskMap:
     """Tests for BRANCH_TASK_MAP and eval_branch()."""
 
     _EXPECTED_BRANCHES = (
-        "ops", "coding", "health", "finance", "security",
-        "learning", "family", "communications", "gaming",
+        "ops",
+        "coding",
+        "health",
+        "finance",
+        "security",
+        "learning",
+        "family",
+        "communications",
+        "gaming",
     )
 
     def test_all_branches_have_golden_tasks(self) -> None:

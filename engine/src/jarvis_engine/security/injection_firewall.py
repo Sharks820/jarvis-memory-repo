@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Verdict types
 # ---------------------------------------------------------------------------
 
+
 class InjectionVerdict(Enum):
     """Severity classification for injection scan results."""
 
@@ -56,18 +57,47 @@ _INSTRUCTION_OVERRIDE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # --- Instruction override ---
     ("ignore_previous", re.compile(r"ignore\s+(all\s+)?previous", re.I)),
     ("ignore_above", re.compile(r"ignore\s+(all\s+)?(above|prior)", re.I)),
-    ("disregard_instructions", re.compile(r"disregard\s+(all\s+)?(your\s+)?instructions", re.I)),
+    (
+        "disregard_instructions",
+        re.compile(r"disregard\s+(all\s+)?(your\s+)?instructions", re.I),
+    ),
     ("disregard_above", re.compile(r"disregard\s+(everything\s+)?(above|prior)", re.I)),
-    ("forget_instructions", re.compile(r"forget\s+(all\s+)?(your\s+)?instructions", re.I)),
-    ("forget_everything", re.compile(r"forget\s+everything\s+(above|before|prior)", re.I)),
-    ("do_not_follow", re.compile(r"do\s+not\s+follow\s+(your\s+)?(previous|original|prior)", re.I)),
+    (
+        "forget_instructions",
+        re.compile(r"forget\s+(all\s+)?(your\s+)?instructions", re.I),
+    ),
+    (
+        "forget_everything",
+        re.compile(r"forget\s+everything\s+(above|before|prior)", re.I),
+    ),
+    (
+        "do_not_follow",
+        re.compile(r"do\s+not\s+follow\s+(your\s+)?(previous|original|prior)", re.I),
+    ),
     ("stop_being", re.compile(r"stop\s+being\s+\w+", re.I)),
 ]
 
 _SYSTEM_PROMPT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("system_prompt_leak", re.compile(r"(show|reveal|print|output|display|repeat)\s+(me\s+)?(the\s+)?(your\s+)?system\s+prompt", re.I)),
-    ("what_is_system_prompt", re.compile(r"what\s+(is|are)\s+(your\s+)?system\s+(prompt|instructions|message)", re.I)),
-    ("initial_instructions", re.compile(r"(show|reveal|print|output)\s+(your\s+)?(initial|original|first)\s+instructions", re.I)),
+    (
+        "system_prompt_leak",
+        re.compile(
+            r"(show|reveal|print|output|display|repeat)\s+(me\s+)?(the\s+)?(your\s+)?system\s+prompt",
+            re.I,
+        ),
+    ),
+    (
+        "what_is_system_prompt",
+        re.compile(
+            r"what\s+(is|are)\s+(your\s+)?system\s+(prompt|instructions|message)", re.I
+        ),
+    ),
+    (
+        "initial_instructions",
+        re.compile(
+            r"(show|reveal|print|output)\s+(your\s+)?(initial|original|first)\s+instructions",
+            re.I,
+        ),
+    ),
 ]
 
 _ROLE_HIJACK_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -82,14 +112,35 @@ _ROLE_HIJACK_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 _MODE_OVERRIDE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("override_safety", re.compile(r"override\s+(all\s+)?(safety|security|content)", re.I)),
-    ("admin_mode", re.compile(r"(enter|enable|activate|switch\s+to)\s+admin\s+mode", re.I)),
-    ("developer_mode", re.compile(r"(enter|enable|activate|switch\s+to)\s+developer\s+mode", re.I)),
-    ("debug_mode", re.compile(r"(enter|enable|activate|switch\s+to)\s+debug\s+mode", re.I)),
+    (
+        "override_safety",
+        re.compile(r"override\s+(all\s+)?(safety|security|content)", re.I),
+    ),
+    (
+        "admin_mode",
+        re.compile(r"(enter|enable|activate|switch\s+to)\s+admin\s+mode", re.I),
+    ),
+    (
+        "developer_mode",
+        re.compile(r"(enter|enable|activate|switch\s+to)\s+developer\s+mode", re.I),
+    ),
+    (
+        "debug_mode",
+        re.compile(r"(enter|enable|activate|switch\s+to)\s+debug\s+mode", re.I),
+    ),
     ("god_mode", re.compile(r"(enter|enable|activate|switch\s+to)\s+god\s+mode", re.I)),
     ("jailbreak", re.compile(r"(jailbreak|jail\s+break|unlock\s+mode)", re.I)),
-    ("unrestricted_mode", re.compile(r"(unrestricted|unfiltered|uncensored)\s+mode", re.I)),
-    ("disable_safety", re.compile(r"(disable|turn\s+off|remove)\s+(all\s+)?(safety|filters|restrictions)", re.I)),
+    (
+        "unrestricted_mode",
+        re.compile(r"(unrestricted|unfiltered|uncensored)\s+mode", re.I),
+    ),
+    (
+        "disable_safety",
+        re.compile(
+            r"(disable|turn\s+off|remove)\s+(all\s+)?(safety|filters|restrictions)",
+            re.I,
+        ),
+    ),
 ]
 
 _FAKE_HEADER_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -117,11 +168,17 @@ _ENCODING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 _DELIMITER_INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("triple_backtick_block", re.compile(r"```\s*(system|admin|instructions|override)", re.I)),
+    (
+        "triple_backtick_block",
+        re.compile(r"```\s*(system|admin|instructions|override)", re.I),
+    ),
     ("triple_dash_separator", re.compile(r"^-{3,}\s*$", re.M)),
     ("triple_equals_separator", re.compile(r"^={3,}\s*$", re.M)),
     ("angle_bracket_block", re.compile(r"<<<\s*|\s*>>>", re.I)),
-    ("xml_system_tag", re.compile(r"<\s*/?\s*(system|admin|instructions|prompt)\s*>", re.I)),
+    (
+        "xml_system_tag",
+        re.compile(r"<\s*/?\s*(system|admin|instructions|prompt)\s*>", re.I),
+    ),
 ]
 
 _REPETITION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -163,25 +220,27 @@ ALL_PATTERNS: list[tuple[str, re.Pattern[str]]] = (
 )
 
 # Patterns that count as "strong" matches — high confidence injection
-_STRONG_PATTERN_NAMES: frozenset[str] = frozenset({
-    "ignore_previous",
-    "ignore_above",
-    "disregard_instructions",
-    "forget_instructions",
-    "system_prompt_leak",
-    "override_safety",
-    "admin_mode",
-    "developer_mode",
-    "god_mode",
-    "jailbreak",
-    "disable_safety",
-    "new_instructions_header",
-    "system_header",
-    "admin_header",
-    "script_tag",
-    "javascript_uri",
-    "rtl_override",
-})
+_STRONG_PATTERN_NAMES: frozenset[str] = frozenset(
+    {
+        "ignore_previous",
+        "ignore_above",
+        "disregard_instructions",
+        "forget_instructions",
+        "system_prompt_leak",
+        "override_safety",
+        "admin_mode",
+        "developer_mode",
+        "god_mode",
+        "jailbreak",
+        "disable_safety",
+        "new_instructions_header",
+        "system_header",
+        "admin_header",
+        "script_tag",
+        "javascript_uri",
+        "rtl_override",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -189,13 +248,35 @@ _STRONG_PATTERN_NAMES: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 
 # Imperative verbs that suggest command-like syntax
-_IMPERATIVE_VERBS: frozenset[str] = frozenset({
-    "ignore", "disregard", "forget", "override", "bypass",
-    "execute", "run", "delete", "remove", "disable",
-    "enable", "activate", "print", "output", "display",
-    "reveal", "show", "send", "forward", "export",
-    "write", "read", "access", "modify", "change",
-})
+_IMPERATIVE_VERBS: frozenset[str] = frozenset(
+    {
+        "ignore",
+        "disregard",
+        "forget",
+        "override",
+        "bypass",
+        "execute",
+        "run",
+        "delete",
+        "remove",
+        "disable",
+        "enable",
+        "activate",
+        "print",
+        "output",
+        "display",
+        "reveal",
+        "show",
+        "send",
+        "forward",
+        "export",
+        "write",
+        "read",
+        "access",
+        "modify",
+        "change",
+    }
+)
 
 
 def _detect_context_switch(text: str) -> bool:
@@ -222,10 +303,12 @@ def _detect_imperative_instructions(text: str) -> bool:
     """Detect instruction-like syntax: imperative verb + obligation language."""
     lower = text.lower()
     # "you must/should/will" + imperative
-    obligation = bool(re.search(
-        r"you\s+(must|should|will|shall|need\s+to)\s+(ignore|disregard|forget|override|follow|obey|comply|execute|respond|act|pretend|be)",
-        lower,
-    ))
+    obligation = bool(
+        re.search(
+            r"you\s+(must|should|will|shall|need\s+to)\s+(ignore|disregard|forget|override|follow|obey|comply|execute|respond|act|pretend|be)",
+            lower,
+        )
+    )
     return obligation
 
 
@@ -252,8 +335,13 @@ def _detect_encoded_payloads(text: str) -> list[str]:
             if any(
                 kw in decoded.lower()
                 for kw in (
-                    "ignore", "system", "admin", "override",
-                    "instructions", "jailbreak", "prompt",
+                    "ignore",
+                    "system",
+                    "admin",
+                    "override",
+                    "instructions",
+                    "jailbreak",
+                    "prompt",
                 )
             ):
                 findings.append(f"base64_decoded_injection:{segment[:30]}...")
@@ -278,7 +366,10 @@ def _detect_encoded_payloads(text: str) -> list[str]:
         segment = match.group(1)
         try:
             decoded = _url_unquote(segment)
-            if any(kw in decoded.lower() for kw in ("ignore", "system", "admin", "override", "instructions")):
+            if any(
+                kw in decoded.lower()
+                for kw in ("ignore", "system", "admin", "override", "instructions")
+            ):
                 findings.append(f"url_decoded_injection:{segment[:30]}...")
         except (ValueError, UnicodeDecodeError) as exc:
             logger.debug("Failed to decode URL segment: %s", exc)
@@ -315,6 +406,7 @@ def _detect_mixed_scripts(text: str) -> bool:
 # ---------------------------------------------------------------------------
 # PromptInjectionFirewall
 # ---------------------------------------------------------------------------
+
 
 class PromptInjectionFirewall:
     """Multi-layer prompt injection detection engine.
@@ -476,7 +568,8 @@ class PromptInjectionFirewall:
 
         except (RuntimeError, ValueError, OSError) as exc:
             logger.warning(
-                "Semantic injection check failed — returning CLEAN: %s", exc,
+                "Semantic injection check failed — returning CLEAN: %s",
+                exc,
             )
 
         return InjectionVerdict.CLEAN
@@ -532,8 +625,11 @@ class PromptInjectionFirewall:
                 verdict=InjectionVerdict.HOSTILE,
                 matched_patterns=all_matched,
                 confidence=confidence,
-                details={"strong_hits": strong_hits, "structural": structural_findings,
-                         "semantic": semantic_flagged},
+                details={
+                    "strong_hits": strong_hits,
+                    "structural": structural_findings,
+                    "semantic": semantic_flagged,
+                },
             )
 
         # Pattern matches + structural findings -> HOSTILE
@@ -543,8 +639,11 @@ class PromptInjectionFirewall:
                 verdict=InjectionVerdict.HOSTILE,
                 matched_patterns=all_matched,
                 confidence=confidence,
-                details={"patterns": pattern_matches, "structural": structural_findings,
-                         "semantic": semantic_flagged},
+                details={
+                    "patterns": pattern_matches,
+                    "structural": structural_findings,
+                    "semantic": semantic_flagged,
+                },
             )
 
         # Semantic + any other signal -> escalate to HOSTILE
@@ -554,8 +653,11 @@ class PromptInjectionFirewall:
                 verdict=InjectionVerdict.HOSTILE,
                 matched_patterns=all_matched,
                 confidence=confidence,
-                details={"patterns": pattern_matches, "structural": structural_findings,
-                         "semantic": True},
+                details={
+                    "patterns": pattern_matches,
+                    "structural": structural_findings,
+                    "semantic": True,
+                },
             )
 
         # Pattern matches only -> INJECTION_DETECTED

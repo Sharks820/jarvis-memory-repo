@@ -14,6 +14,7 @@ from jarvis_engine.gateway.audit import GatewayAudit, _MAX_AUDIT_LOG_BYTES
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+
 def _make_audit(tmp_path: Path) -> GatewayAudit:
     return GatewayAudit(tmp_path / "audit.jsonl")
 
@@ -35,6 +36,7 @@ def _log_one(audit: GatewayAudit, **overrides) -> None:
 
 
 # ── log_decision() ──────────────────────────────────────────────────────────
+
 
 class TestLogDecision:
     def test_creates_file_and_parent_dirs(self, tmp_path: Path) -> None:
@@ -62,9 +64,17 @@ class TestLogDecision:
             (tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip()
         )
         expected_keys = {
-            "ts", "provider", "model", "reason", "latency_ms",
-            "input_tokens", "output_tokens", "cost_usd", "success",
-            "fallback_from", "privacy_routed",
+            "ts",
+            "provider",
+            "model",
+            "reason",
+            "latency_ms",
+            "input_tokens",
+            "output_tokens",
+            "cost_usd",
+            "success",
+            "fallback_from",
+            "privacy_routed",
         }
         assert set(record.keys()) == expected_keys
 
@@ -88,7 +98,9 @@ class TestLogDecision:
         audit = _make_audit(tmp_path)
         for i in range(5):
             _log_one(audit, model=f"model-{i}")
-        lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        lines = (
+            (tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        )
         assert len(lines) == 5
 
     def test_os_error_logged_not_raised(self, tmp_path: Path) -> None:
@@ -101,6 +113,7 @@ class TestLogDecision:
 
 
 # ── rotation ────────────────────────────────────────────────────────────────
+
 
 class TestRotation:
     def test_no_rotation_under_limit(self, tmp_path: Path) -> None:
@@ -142,6 +155,7 @@ class TestRotation:
 
 # ── recent() ────────────────────────────────────────────────────────────────
 
+
 class TestRecent:
     def test_empty_file(self, tmp_path: Path) -> None:
         audit = _make_audit(tmp_path)
@@ -177,6 +191,7 @@ class TestRecent:
 
 
 # ── summary() ───────────────────────────────────────────────────────────────
+
 
 class TestSummary:
     def test_empty(self, tmp_path: Path) -> None:
@@ -225,6 +240,7 @@ class TestSummary:
 
 # ── thread safety ───────────────────────────────────────────────────────────
 
+
 class TestThreadSafety:
     def test_concurrent_log_decisions(self, tmp_path: Path) -> None:
         audit = _make_audit(tmp_path)
@@ -233,7 +249,9 @@ class TestThreadSafety:
         def _writer(n: int) -> None:
             try:
                 for i in range(n):
-                    _log_one(audit, model=f"model-{threading.current_thread().name}-{i}")
+                    _log_one(
+                        audit, model=f"model-{threading.current_thread().name}-{i}"
+                    )
             except (OSError, RuntimeError, ValueError) as exc:
                 errors.append(exc)
 

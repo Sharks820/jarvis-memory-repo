@@ -20,6 +20,7 @@ from jarvis_engine.activity_feed import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def feed(tmp_path: Path) -> ActivityFeed:
     """Create a temporary ActivityFeed for each test."""
@@ -32,10 +33,13 @@ def feed(tmp_path: Path) -> ActivityFeed:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestActivityFeed:
     def test_log_and_query(self, feed: ActivityFeed) -> None:
         """Logging an event returns an id and query retrieves it."""
-        eid = feed.log(ActivityCategory.LLM_ROUTING, "Chose claude-sonnet", {"model": "sonnet"})
+        eid = feed.log(
+            ActivityCategory.LLM_ROUTING, "Chose claude-sonnet", {"model": "sonnet"}
+        )
         assert isinstance(eid, str) and len(eid) == 32  # uuid4 hex
 
         events = feed.query(limit=10)
@@ -68,7 +72,14 @@ class TestActivityFeed:
         feed._db.execute(
             "INSERT INTO activity_log (id, timestamp, category, summary, details, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            ("old_id", old_ts, ActivityCategory.DAEMON_CYCLE, "old cycle", "{}", time.time() - 18000),
+            (
+                "old_id",
+                old_ts,
+                ActivityCategory.DAEMON_CYCLE,
+                "old cycle",
+                "{}",
+                time.time() - 18000,
+            ),
         )
         feed._db.commit()
 
@@ -90,7 +101,14 @@ class TestActivityFeed:
         feed._db.execute(
             "INSERT INTO activity_log (id, timestamp, category, summary, details, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            ("ancient", old_ts, ActivityCategory.HARVEST, "old harvest", "{}", time.time() - 86400 * 60),
+            (
+                "ancient",
+                old_ts,
+                ActivityCategory.HARVEST,
+                "old harvest",
+                "{}",
+                time.time() - 86400 * 60,
+            ),
         )
         feed._db.commit()
 
@@ -114,7 +132,14 @@ class TestActivityFeed:
         feed._db.execute(
             "INSERT INTO activity_log (id, timestamp, category, summary, details, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            ("stale", old_ts, ActivityCategory.LLM_ROUTING, "ancient route", "{}", time.time() - 86400 * 2),
+            (
+                "stale",
+                old_ts,
+                ActivityCategory.LLM_ROUTING,
+                "ancient route",
+                "{}",
+                time.time() - 86400 * 2,
+            ),
         )
         feed._db.commit()
 
@@ -168,7 +193,9 @@ class TestActivityFeed:
             summaries = {e.summary for e in events}
             # The first 5 events (cycle 0..4) should have been pruned
             for i in range(5):
-                assert f"cycle {i}" not in summaries, f"cycle {i} should have been pruned"
+                assert f"cycle {i}" not in summaries, (
+                    f"cycle {i} should have been pruned"
+                )
             # The last max_ev events should remain
             for i in range(5, max_ev + 5):
                 assert f"cycle {i}" in summaries, f"cycle {i} should still exist"

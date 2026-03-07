@@ -47,7 +47,9 @@ def _delete_checkpoint(checkpoint_path: Path) -> None:
     try:
         checkpoint_path.unlink(missing_ok=True)
     except OSError as exc:
-        logger.debug("Failed to delete migration checkpoint %s: %s", checkpoint_path, exc)
+        logger.debug(
+            "Failed to delete migration checkpoint %s: %s", checkpoint_path, exc
+        )
 
 
 def migrate_brain_records(
@@ -91,7 +93,9 @@ def migrate_brain_records(
             start_offset = saved_offset
             logger.info("Resuming migration from line %d", start_offset)
         else:
-            logger.warning("Invalid checkpoint offset %r, starting from 0", saved_offset)
+            logger.warning(
+                "Invalid checkpoint offset %r, starting from 0", saved_offset
+            )
 
     # Count lines and prepare for streaming read
     try:
@@ -170,7 +174,9 @@ def migrate_brain_records(
             try:
                 confidence = float(record_data.get("confidence", 0.72))
             except (TypeError, ValueError):
-                logger.debug("Invalid confidence value in record %s, using default", original_id)
+                logger.debug(
+                    "Invalid confidence value in record %s, using default", original_id
+                )
 
             tags = record_data.get("tags", [])
             if isinstance(tags, list):
@@ -203,15 +209,20 @@ def migrate_brain_records(
         except Exception as exc:
             errors += 1
             if len(error_details) < _MAX_ERROR_DETAILS:
-                error_details.append(f"Line {line_num + 1}: {type(exc).__name__}: {exc}")
+                error_details.append(
+                    f"Line {line_num + 1}: {type(exc).__name__}: {exc}"
+                )
 
         # Save checkpoint every batch
         if (line_num - start_offset + 1) % _CHECKPOINT_BATCH_SIZE == 0:
-            _save_checkpoint(checkpoint_path, {
-                "file": jsonl_path.name,
-                "line_offset": line_num + 1,
-                "records_hash": hashlib.sha256(line.encode()).hexdigest(),
-            })
+            _save_checkpoint(
+                checkpoint_path,
+                {
+                    "file": jsonl_path.name,
+                    "line_offset": line_num + 1,
+                    "records_hash": hashlib.sha256(line.encode()).hexdigest(),
+                },
+            )
 
         # Progress logging
         processed = line_num - start_offset + 1
@@ -267,7 +278,13 @@ def migrate_facts(
     try:
         raw = json.loads(facts_path.read_text(encoding="utf-8", errors="replace"))
     except (json.JSONDecodeError, OSError) as exc:
-        return {"status": "error", "source_count": 0, "inserted": 0, "errors": 1, "error_details": [str(exc)]}
+        return {
+            "status": "error",
+            "source_count": 0,
+            "inserted": 0,
+            "errors": 1,
+            "error_details": [str(exc)],
+        }
 
     facts_data = raw.get("facts", {}) if isinstance(raw, dict) else {}
     if not isinstance(facts_data, dict):
@@ -282,7 +299,11 @@ def migrate_facts(
             for key, value in facts_data.items():
                 try:
                     if not isinstance(value, dict):
-                        value = {"value": str(value), "confidence": 0.5, "updated_utc": _now_iso()}
+                        value = {
+                            "value": str(value),
+                            "confidence": 0.5,
+                            "updated_utc": _now_iso(),
+                        }
                     else:
                         value = dict(value)
                     value.setdefault("value", "")
@@ -322,7 +343,12 @@ def migrate_facts(
             raise
 
     status = "ok" if errors == 0 else ("partial" if inserted > 0 else "error")
-    return {"status": status, "source_count": source_count, "inserted": inserted, "errors": errors}
+    return {
+        "status": status,
+        "source_count": source_count,
+        "inserted": inserted,
+        "errors": errors,
+    }
 
 
 def migrate_events(
@@ -345,13 +371,26 @@ def migrate_events(
         Dict with status, source_count, inserted, skipped, errors.
     """
     if not events_path.exists():
-        return {"status": "ok", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 0}
+        return {
+            "status": "ok",
+            "source_count": 0,
+            "inserted": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
 
     try:
         with events_path.open(encoding="utf-8", errors="replace") as f:
             lines = [line for line in f if line.strip()]
     except OSError as exc:
-        return {"status": "error", "source_count": 0, "inserted": 0, "skipped": 0, "errors": 1, "error_details": [str(exc)]}
+        return {
+            "status": "error",
+            "source_count": 0,
+            "inserted": 0,
+            "skipped": 0,
+            "errors": 1,
+            "error_details": [str(exc)],
+        }
 
     source_count = len(lines)
 
@@ -457,28 +496,42 @@ def run_full_migration(
     brain_result = migrate_brain_records(brain_path, engine, embed_service, classifier)
     logger.info(
         "  Brain records: %d inserted, %d skipped, %d errors",
-        brain_result["inserted"], brain_result["skipped"], brain_result["errors"],
+        brain_result["inserted"],
+        brain_result["skipped"],
+        brain_result["errors"],
     )
 
     logger.info("Migrating facts from %s...", facts_path)
     facts_result = migrate_facts(facts_path, engine)
-    logger.info("  Facts: %d inserted, %d errors", facts_result["inserted"], facts_result["errors"])
+    logger.info(
+        "  Facts: %d inserted, %d errors",
+        facts_result["inserted"],
+        facts_result["errors"],
+    )
 
     logger.info("Migrating events from %s...", events_path)
     events_result = migrate_events(events_path, engine, embed_service, classifier)
     logger.info(
         "  Events: %d inserted, %d skipped, %d errors",
-        events_result["inserted"], events_result["skipped"], events_result["errors"],
+        events_result["inserted"],
+        events_result["skipped"],
+        events_result["errors"],
     )
 
-    total_inserted = brain_result["inserted"] + facts_result["inserted"] + events_result["inserted"]
+    total_inserted = (
+        brain_result["inserted"] + facts_result["inserted"] + events_result["inserted"]
+    )
     total_skipped = brain_result.get("skipped", 0) + events_result.get("skipped", 0)
-    total_errors = brain_result["errors"] + facts_result["errors"] + events_result["errors"]
+    total_errors = (
+        brain_result["errors"] + facts_result["errors"] + events_result["errors"]
+    )
 
     engine.close()
 
     # Derive overall status from sub-migration results
-    status = "ok" if total_errors == 0 else ("partial" if total_inserted > 0 else "error")
+    status = (
+        "ok" if total_errors == 0 else ("partial" if total_inserted > 0 else "error")
+    )
 
     return {
         "status": status,

@@ -86,9 +86,7 @@ class KnowledgeHarvester:
     def available_providers(self) -> list[str]:
         """Return names of providers with valid API keys."""
         return [
-            name
-            for name, provider in self._providers.items()
-            if provider.is_available
+            name for name, provider in self._providers.items() if provider.is_available
         ]
 
     def harvest(self, cmd: HarvestCommand) -> dict:
@@ -102,9 +100,7 @@ class KnowledgeHarvester:
         """
         # Determine which providers to query
         if cmd.providers is not None:
-            provider_names = [
-                n for n in cmd.providers if n in self._providers
-            ]
+            provider_names = [n for n in cmd.providers if n in self._providers]
         else:
             provider_names = self.available_providers()
 
@@ -118,22 +114,26 @@ class KnowledgeHarvester:
             provider = self._providers[name]
 
             if not provider.is_available:
-                results.append({
-                    "provider": name,
-                    "status": "unavailable",
-                    "records_created": 0,
-                    "cost_usd": 0.0,
-                })
+                results.append(
+                    {
+                        "provider": name,
+                        "status": "unavailable",
+                        "records_created": 0,
+                        "cost_usd": 0.0,
+                    }
+                )
                 continue
 
             # Budget check
             if self._budget is not None and not self._budget.can_spend(name):
-                results.append({
-                    "provider": name,
-                    "status": "budget_exceeded",
-                    "records_created": 0,
-                    "cost_usd": 0.0,
-                })
+                results.append(
+                    {
+                        "provider": name,
+                        "status": "budget_exceeded",
+                        "records_created": 0,
+                        "cost_usd": 0.0,
+                    }
+                )
                 continue
 
             try:
@@ -146,7 +146,9 @@ class KnowledgeHarvester:
                 # Record spend in budget manager
                 if self._budget is not None:
                     self._budget.record_spend(
-                        name, result.cost_usd, topic=cmd.topic,
+                        name,
+                        result.cost_usd,
+                        topic=cmd.topic,
                     )
 
                 # Log cost
@@ -169,14 +171,16 @@ class KnowledgeHarvester:
                             "Skipping semantic near-duplicate from %s",
                             name,
                         )
-                        results.append({
-                            "provider": name,
-                            "status": "ok",
-                            "records_created": 0,
-                            "cost_usd": result.cost_usd,
-                            "error": "",
-                            "skipped_dedup": True,
-                        })
+                        results.append(
+                            {
+                                "provider": name,
+                                "status": "ok",
+                                "records_created": 0,
+                                "cost_usd": result.cost_usd,
+                                "error": "",
+                                "skipped_dedup": True,
+                            }
+                        )
                         continue
 
                     # Track this content hash for cross-provider dedup
@@ -184,9 +188,7 @@ class KnowledgeHarvester:
                     seen_hashes.add(content_hash)
 
                     # Append confidence marker and ingest
-                    content_with_confidence = (
-                        f"{result.text}\n\n(confidence:0.50)"
-                    )
+                    content_with_confidence = f"{result.text}\n\n(confidence:0.50)"
                     inserted = self._pipeline.ingest(
                         source=f"harvest:{provider.name}",
                         kind="semantic",
@@ -196,27 +198,33 @@ class KnowledgeHarvester:
                     )
                     records_created = len(inserted)
 
-                results.append({
-                    "provider": name,
-                    "status": "ok",
-                    "records_created": records_created,
-                    "cost_usd": result.cost_usd,
-                    "error": "",
-                    "skipped_dedup": False,
-                })
+                results.append(
+                    {
+                        "provider": name,
+                        "status": "ok",
+                        "records_created": records_created,
+                        "cost_usd": result.cost_usd,
+                        "error": "",
+                        "skipped_dedup": False,
+                    }
+                )
 
             except Exception as exc:
                 logger.warning(
-                    "Harvest from %s failed: %s", name, exc,
+                    "Harvest from %s failed: %s",
+                    name,
+                    exc,
                 )
-                results.append({
-                    "provider": name,
-                    "status": "error",
-                    "error": str(exc),
-                    "records_created": 0,
-                    "cost_usd": 0.0,
-                    "skipped_dedup": False,
-                })
+                results.append(
+                    {
+                        "provider": name,
+                        "status": "error",
+                        "error": str(exc),
+                        "records_created": 0,
+                        "cost_usd": 0.0,
+                        "skipped_dedup": False,
+                    }
+                )
 
         return {
             "topic": cmd.topic,

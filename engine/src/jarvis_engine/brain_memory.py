@@ -32,7 +32,15 @@ _brain_io_lock = threading.RLock()
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{2,}")
 
 BRANCH_RULES: dict[str, tuple[str, ...]] = {
-    "ops": ("calendar", "email", "bill", "subscription", "schedule", "meeting", "brief"),
+    "ops": (
+        "calendar",
+        "email",
+        "bill",
+        "subscription",
+        "schedule",
+        "meeting",
+        "brief",
+    ),
     "coding": ("code", "python", "bug", "test", "refactor", "api", "deploy", "build"),
     "health": ("med", "prescription", "doctor", "health", "pharmacy", "dose"),
     "finance": ("budget", "bank", "invoice", "payment", "expense", "finance"),
@@ -198,18 +206,28 @@ def _extract_fact_candidates(text: str, branch: str) -> list[dict[str, Any]]:
                 add("runtime.gaming_mode_auto", "enabled", 0.8)
             if any(x in lowered for x in ["disable", "off", "stop"]):
                 add("runtime.gaming_mode_auto", "disabled", 0.8)
-    if ("pause" in lowered and any(x in lowered for x in ["daemon", "autopilot", "jarvis"])):
+    if "pause" in lowered and any(
+        x in lowered for x in ["daemon", "autopilot", "jarvis"]
+    ):
         add("runtime.daemon_paused", "true", 0.82)
-    if any(x in lowered for x in ["resume daemon", "resume autopilot", "resume jarvis"]):
+    if any(
+        x in lowered for x in ["resume daemon", "resume autopilot", "resume jarvis"]
+    ):
         add("runtime.daemon_paused", "false", 0.82)
-    if ("spam" in lowered and "call" in lowered and any(x in lowered for x in ["block", "guard", "stop"])):
+    if (
+        "spam" in lowered
+        and "call" in lowered
+        and any(x in lowered for x in ["block", "guard", "stop"])
+    ):
         add("phone.spam_guard", "enabled", 0.77)
     if "owner guard" in lowered:
         if any(x in lowered for x in ["enable", "on"]):
             add("security.owner_guard", "enabled", 0.88)
         if any(x in lowered for x in ["disable", "off"]):
             add("security.owner_guard", "disabled", 0.88)
-    if "organize" in lowered and any(x in lowered for x in ["day", "today", "schedule"]):
+    if "organize" in lowered and any(
+        x in lowered for x in ["day", "today", "schedule"]
+    ):
         add("ops.daily_autopilot", "preferred", 0.7)
 
     if not out and branch != "general":
@@ -391,7 +409,10 @@ def ingest_brain_record(
         hash_map[content_hash] = record_id
         if len(hash_map) > 6000:
             recent = _load_records(root, limit=1200)
-            keep = {str(item.get("content_hash", "")): str(item.get("record_id", "")) for item in recent}
+            keep = {
+                str(item.get("content_hash", "")): str(item.get("record_id", ""))
+                for item in recent
+            }
             hash_map = {k: v for k, v in keep.items() if k and v}
         index["hash_to_record_id"] = hash_map
         _save_index(root, index)
@@ -419,11 +440,15 @@ def _recency_weight(ts_text: str) -> float:
         return 0.3
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
-    delta_hours = max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0)
+    delta_hours = max(
+        0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0
+    )
     return math.exp(-delta_hours / 96.0)
 
 
-def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> dict[str, Any]:
+def build_context_packet(
+    root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400
+) -> dict[str, Any]:
     with _brain_io_lock:
         rows = _load_records(root, limit=10000)
         facts_state = _load_facts(root)
@@ -492,7 +517,13 @@ def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_cha
                     "overlap": overlap,
                 }
             )
-    canonical_facts.sort(key=lambda item: (_to_float(item.get("confidence", 0.0), 0.0), int(item.get("overlap", 0))), reverse=True)
+    canonical_facts.sort(
+        key=lambda item: (
+            _to_float(item.get("confidence", 0.0), 0.0),
+            int(item.get("overlap", 0)),
+        ),
+        reverse=True,
+    )
 
     return {
         "query": query,
@@ -569,7 +600,9 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, A
         if content_hash and rec_id:
             hash_map[content_hash] = rec_id
 
-        state = branch_state.get(branch, {"record_ids": [], "count": 0, "last_ts": "", "last_summary": ""})
+        state = branch_state.get(
+            branch, {"record_ids": [], "count": 0, "last_ts": "", "last_summary": ""}
+        )
         ids = state.get("record_ids", [])
         if not isinstance(ids, list):
             ids = []
@@ -604,7 +637,13 @@ def brain_regression_report(root: Path) -> dict[str, Any]:
         facts_state = _load_facts(root)
 
     total = len(records)
-    unique_hashes = len({str(r.get("content_hash", "")) for r in records if str(r.get("content_hash", ""))})
+    unique_hashes = len(
+        {
+            str(r.get("content_hash", ""))
+            for r in records
+            if str(r.get("content_hash", ""))
+        }
+    )
     duplicate_ratio = 0.0
     if total > 0:
         duplicate_ratio = max(0.0, min(1.0, 1.0 - (unique_hashes / total)))

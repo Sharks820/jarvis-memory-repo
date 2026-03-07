@@ -79,7 +79,10 @@ def capture_knowledge_metrics(kg: Any, engine: Any) -> dict:
             for row in rows:
                 temporal_distribution[row[0]] = row[1]
         except (sqlite3.Error, OSError, AttributeError) as exc:
-            logger.debug("Temporal distribution query failed (migration may not have run): %s", exc)
+            logger.debug(
+                "Temporal distribution query failed (migration may not have run): %s",
+                exc,
+            )
 
     return {
         "total_records": total_records,

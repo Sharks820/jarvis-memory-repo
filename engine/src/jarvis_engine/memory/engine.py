@@ -45,6 +45,7 @@ class MemoryEngine:
         self._closed = False
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(db_path, full=True, check_same_thread=False)
 
         # Load sqlite-vec extension (graceful degradation)
@@ -58,7 +59,9 @@ class MemoryEngine:
                 self._db.enable_load_extension(False)
         except (ImportError, OSError, sqlite3.Error) as exc:
             self._vec_available = False
-            logger.warning("sqlite-vec unavailable, falling back to FTS5-only search: %s", exc)
+            logger.warning(
+                "sqlite-vec unavailable, falling back to FTS5-only search: %s", exc
+            )
 
         self._init_schema()
 
@@ -310,7 +313,9 @@ class MemoryEngine:
 
             except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
-                logger.debug("delete_records_batch transaction failed, rolled back: %s", exc)
+                logger.debug(
+                    "delete_records_batch transaction failed, rolled back: %s", exc
+                )
                 raise
 
     def get_record(self, record_id: str) -> dict | None:
@@ -390,7 +395,8 @@ class MemoryEngine:
             if len(query_embedding) != _EMBEDDING_DIM:
                 logger.warning(
                     "Vec search dimension mismatch: got %d, expected %d",
-                    len(query_embedding), _EMBEDDING_DIM,
+                    len(query_embedding),
+                    _EMBEDDING_DIM,
                 )
                 return []
             blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
@@ -579,7 +585,9 @@ class MemoryEngine:
                 try:
                     self._db.close()
                 except sqlite3.Error as exc:
-                    logger.debug("Failed to close MemoryEngine database connection: %s", exc)
+                    logger.debug(
+                        "Failed to close MemoryEngine database connection: %s", exc
+                    )
 
     def __enter__(self) -> "MemoryEngine":
         return self

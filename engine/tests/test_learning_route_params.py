@@ -127,9 +127,7 @@ class TestEngineForwardsToTrackers:
         mock_feedback.record_feedback.assert_called_once_with(
             "tell me something", route=""
         )
-        mock_usage.record_interaction.assert_called_once_with(
-            route="", topic=""
-        )
+        mock_usage.record_interaction.assert_called_once_with(route="", topic="")
         assert isinstance(result, dict)
 
 
