@@ -17,6 +17,7 @@ from typing import Any
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import sha256_hex, sha256_short
+from jarvis_engine._constants import recency_weight as _recency_weight_core
 
 logger = logging.getLogger(__name__)
 
@@ -403,19 +404,12 @@ def ingest_brain_record(
 
 
 def _recency_weight(ts_text: str) -> float:
-    raw = str(ts_text).strip()
-    if not raw:
-        return 0.3
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return 0.3
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    delta_hours = max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0)
-    return math.exp(-delta_hours / 96.0)
+    """Compute exponential recency decay (96-hour half-life).
+
+    Returns 0.3 for empty or unparseable timestamps (so context packets
+    always include some recency contribution even for undated records).
+    """
+    return _recency_weight_core(ts_text, default=0.3, decay_hours=96.0)
 
 
 def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> dict[str, Any]:

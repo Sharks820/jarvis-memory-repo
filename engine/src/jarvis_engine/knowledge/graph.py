@@ -23,6 +23,8 @@ import threading
 from typing import TYPE_CHECKING
 
 from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
+from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -31,8 +33,6 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
-
-_EMBEDDING_DIM = 768
 
 
 class KnowledgeGraph:
@@ -358,18 +358,7 @@ class KnowledgeGraph:
                         ),
                     )
                     # Update FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-                    try:
-                        self._db.execute(
-                            "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-                        )
-                        self._db.execute(
-                            "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                            (node_id, label),
-                        )
-                    except sqlite3.OperationalError as exc:
-                        if "no such table" not in str(exc):
-                            raise
-                        logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+                    upsert_fts_kg(self._db, node_id, label)
                 else:
                     # New node
                     sources = [source_record] if source_record else []
@@ -380,15 +369,7 @@ class KnowledgeGraph:
                         (node_id, label, node_type, confidence, json.dumps(sources)),
                     )
                     # Insert into FTS5 index
-                    try:
-                        self._db.execute(
-                            "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                            (node_id, label),
-                        )
-                    except sqlite3.OperationalError as exc:
-                        if "no such table" not in str(exc):
-                            raise
-                        logger.debug("FTS5 table not available, skipping index insert for node %s", node_id)
+                    upsert_fts_kg(self._db, node_id, label)
 
                 # Insert/update vec embedding using pre-computed blob
                 if embedding_blob is not None:

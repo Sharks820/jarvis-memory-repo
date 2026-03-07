@@ -20,13 +20,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jarvis_engine._shared import now_iso as _now_iso, sanitize_fts_query
+from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
-
-_EMBEDDING_DIM = 768
 
 
 class MemoryEngine:

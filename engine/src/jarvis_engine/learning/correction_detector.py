@@ -15,6 +15,9 @@ import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from jarvis_engine._constants import extract_keywords as _extract_keywords_core
+from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
+
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
 
@@ -248,14 +251,7 @@ class CorrectionDetector:
                             (node_id,),
                         )
                         # Clean up FTS5 index for the retracted node
-                        try:
-                            self._kg._db.execute(
-                                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-                            )
-                        except sqlite3.OperationalError as exc:
-                            if "no such table" not in str(exc):
-                                raise
-                            logger.debug("FTS5 table not available, skipping cleanup for retracted node %s", node_id)
+                        delete_fts_kg(self._kg._db, node_id)
                         # Clean up vec index for the retracted node
                         if getattr(self._kg, "_vec_available", False):
                             try:
@@ -290,18 +286,7 @@ class CorrectionDetector:
                 )
 
                 # Maintain FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-                try:
-                    self._kg._db.execute(
-                        "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-                    )
-                    self._kg._db.execute(
-                        "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                        (node_id, correction.new_claim),
-                    )
-                except sqlite3.OperationalError as exc:
-                    if "no such table" not in str(exc):
-                        raise
-                    logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
+                upsert_fts_kg(self._kg._db, node_id, correction.new_claim)
 
                 self._kg._db.commit()
                 # Invalidate NetworkX cache (bypassed add_fact)
@@ -336,7 +321,10 @@ _CORRECTION_STOPWORDS = frozenset({
 
 def _extract_keywords(text: str) -> list[str]:
     """Extract meaningful keywords from *text* for KG searching."""
-    if not text:
-        return []
-    words = re.findall(r"[a-zA-Z0-9]+", text.lower())
-    return [w for w in words if len(w) > 2 and w not in _CORRECTION_STOPWORDS]
+    return _extract_keywords_core(
+        text,
+        stop_words=_CORRECTION_STOPWORDS,
+        min_length=3,
+        pattern=r"[a-zA-Z0-9]+",
+        deduplicate=False,
+    )

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 _MIN_KEYWORD_LEN = 4
 
 from jarvis_engine._constants import STOP_WORDS as _STOP_WORDS
+from jarvis_engine._constants import extract_keywords as _extract_keywords_core
 
 
 def cross_branch_query(
@@ -217,26 +218,12 @@ def _extract_branch(node_id: str) -> str | None:
 def _extract_keywords(label: str) -> list[str]:
     """Extract meaningful keywords from a label for cross-branch matching.
 
-    Filters out short words and common stop words.
+    Filters out short words and common stop words, deduplicates.
     """
-    if not label:
-        return []
-
-    # Tokenize: split on non-alphanumeric
-    words = re.findall(r"[a-zA-Z]+", label.lower())
-
-    # Filter short words and stop words
-    keywords = [
-        w for w in words
-        if len(w) >= _MIN_KEYWORD_LEN and w not in _STOP_WORDS
-    ]
-
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    unique: list[str] = []
-    for kw in keywords:
-        if kw not in seen:
-            seen.add(kw)
-            unique.append(kw)
-
-    return unique
+    return _extract_keywords_core(
+        label,
+        stop_words=_STOP_WORDS,
+        min_length=_MIN_KEYWORD_LEN,
+        pattern=r"[a-zA-Z]+",
+        deduplicate=True,
+    )

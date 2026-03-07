@@ -12,7 +12,8 @@ import json
 import logging
 import sqlite3
 from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine.knowledge._base import KGManagerBase
+from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine.knowledge._base import KGManagerBase, upsert_fts_kg
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +32,7 @@ class ContradictionManager(KGManagerBase):
         acquire any lock itself to avoid deadlock from nested lock ordering
         (``_write_lock`` -> ``_db_lock``).
         """
-        try:
-            self._db.execute(
-                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-            )
-            self._db.execute(
-                "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                (node_id, label),
-            )
-        except sqlite3.OperationalError as exc:
-            if "no such table" in str(exc):
-                logger.debug("FTS5 table not available, skipping index update for node %s", node_id)
-            else:
-                raise
+        upsert_fts_kg(self._db, node_id, label)
 
     def _precompute_vec_embedding(self, label: str) -> bytes | None:
         """Pre-compute a vec embedding blob for *label* WITHOUT holding any lock.
@@ -62,7 +51,7 @@ class ContradictionManager(KGManagerBase):
         try:
             import struct
             embedding = embed_service.embed(label, prefix="search_document")
-            if len(embedding) == 768:
+            if len(embedding) == _EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             logger.debug("Vec embedding pre-compute for label %r failed: %s", label[:50], exc)

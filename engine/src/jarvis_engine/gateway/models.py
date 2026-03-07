@@ -604,43 +604,35 @@ class ModelGateway:
             cost_usd=cost,
         )
 
-    def _call_ollama(
+    def _try_ollama_chat(
         self,
         messages: list[dict[str, str]],
         model: str,
         max_tokens: int,
         temperature: float = 0.7,
-    ) -> GatewayResponse:
-        """Call local Ollama server."""
+    ) -> tuple[GatewayResponse | None, str]:
+        """Attempt an Ollama chat call, returning (response, error_reason).
+
+        On success, returns ``(GatewayResponse, "")``.
+        On failure, returns ``(None, reason_string)`` describing the error.
+        Handles all Ollama-specific exception classes in one place.
+        """
         if not _HAS_OLLAMA:
-            return GatewayResponse(
-                text="",
-                model=model,
-                provider="none",
-                fallback_used=True,
-                fallback_reason="ollama package is not installed",
-            )
+            return None, "ollama package is not installed"
         try:
-            resp = self._ollama.chat(model=model, messages=messages, options={"num_predict": max_tokens, "temperature": temperature})
+            resp = self._ollama.chat(
+                model=model,
+                messages=messages,
+                options={"num_predict": max_tokens, "temperature": temperature},
+            )
         except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             logger.warning("Ollama call failed: %s", exc)
-            return GatewayResponse(
-                text="",
-                model=model,
-                provider="none",
-                fallback_used=True,
-                fallback_reason="Ollama error",
-            )
+            return None, "Ollama error"
         except (RuntimeError, ValueError, TypeError) as exc:
             # Catch httpx transport/timeout errors that don't inherit from builtins
             logger.warning("Ollama call failed (unexpected): %s", exc)
-            return GatewayResponse(
-                text="",
-                model=model,
-                provider="none",
-                fallback_used=True,
-                fallback_reason=f"Ollama error: {type(exc).__name__}",
-            )
+            return None, f"Ollama error: {type(exc).__name__}"
+
         text = (resp.message.content if resp.message else "") or ""
         input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
         output_tokens = getattr(resp, "eval_count", 0) or 0
@@ -652,6 +644,25 @@ class ModelGateway:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=0.0,
+        ), ""
+
+    def _call_ollama(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        temperature: float = 0.7,
+    ) -> GatewayResponse:
+        """Call local Ollama server."""
+        resp, error = self._try_ollama_chat(messages, model, max_tokens, temperature)
+        if resp is not None:
+            return resp
+        return GatewayResponse(
+            text="",
+            model=model,
+            provider="none",
+            fallback_used=True,
+            fallback_reason=error,
         )
 
     def _call_cli(
@@ -776,58 +787,20 @@ class ModelGateway:
         Returns a graceful error response if Ollama also fails.
         """
         fallback_model = _get_local_model()
-
-        if not _HAS_OLLAMA:
-            full_reason = f"{reason} -> Ollama also failed: ollama package is not installed"
-            logger.error("All providers failed: %s", full_reason)
-            return GatewayResponse(
-                text="",
-                model=fallback_model,
-                provider="none",
-                fallback_used=True,
-                fallback_reason=full_reason,
-            )
-
-        try:
-            resp = self._ollama.chat(model=fallback_model, messages=messages, options={"num_predict": max_tokens, "temperature": temperature})
-            input_tokens = getattr(resp, "prompt_eval_count", 0) or 0
-            output_tokens = getattr(resp, "eval_count", 0) or 0
-            return GatewayResponse(
-                text=(resp.message.content if resp.message else "") or "",
-                model=fallback_model,
-                provider="ollama",
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=0.0,
-                fallback_used=True,
-                fallback_reason=reason,
-            )
-        except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
-            full_reason = f"{reason} -> Ollama also failed"
-            logger.error("All providers failed: %s -> %s", reason, exc)
-            return GatewayResponse(
-                text="",
-                model=fallback_model,
-                provider="none",
-                input_tokens=0,
-                output_tokens=0,
-                cost_usd=0.0,
-                fallback_used=True,
-                fallback_reason=full_reason,
-            )
-        except (RuntimeError, ValueError, TypeError) as exc:
-            full_reason = f"{reason} -> Ollama also failed: {type(exc).__name__}"
-            logger.error("All providers failed: %s -> %s", reason, exc)
-            return GatewayResponse(
-                text="",
-                model=fallback_model,
-                provider="none",
-                input_tokens=0,
-                output_tokens=0,
-                cost_usd=0.0,
-                fallback_used=True,
-                fallback_reason=full_reason,
-            )
+        resp, error = self._try_ollama_chat(messages, fallback_model, max_tokens, temperature)
+        if resp is not None:
+            resp.fallback_used = True
+            resp.fallback_reason = reason
+            return resp
+        full_reason = f"{reason} -> Ollama also failed" + (f": {error}" if error != "Ollama error" else "")
+        logger.error("All providers failed: %s", full_reason)
+        return GatewayResponse(
+            text="",
+            model=fallback_model,
+            provider="none",
+            fallback_used=True,
+            fallback_reason=full_reason,
+        )
 
     def check_ollama(self) -> bool:
         """Check if local Ollama server is reachable."""

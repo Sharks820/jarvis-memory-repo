@@ -20,9 +20,9 @@ import math
 import sqlite3
 import threading
 import time
-from datetime import datetime
-from jarvis_engine._compat import UTC
 from typing import TYPE_CHECKING
+
+from jarvis_engine._constants import recency_weight as _recency_weight_core
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
@@ -63,24 +63,12 @@ def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> No
 
 
 def _recency_weight(ts_str: str) -> float:
-    """Compute exponential recency decay.
+    """Compute exponential recency decay (7-day / 168-hour half-life).
 
-    Returns a value between 0.0 and 1.0, where 1.0 means just created
-    and values decay with a half-life of approximately 7 days (168 hours).
+    Returns a value between 0.0 and 1.0, where 1.0 means just created.
+    Returns 0.0 for empty or unparseable timestamps.
     """
-    raw = str(ts_str).strip()
-    if not raw:
-        return 0.0
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return 0.0
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    delta_hours = max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0)
-    return math.exp(-delta_hours / 168.0)
+    return _recency_weight_core(ts_str, default=0.0, decay_hours=168.0)
 
 
 def hybrid_search(

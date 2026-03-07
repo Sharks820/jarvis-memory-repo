@@ -14,6 +14,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
+from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
+
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
 
@@ -363,7 +366,7 @@ class EntityResolver:
         try:
             import struct
             embedding = self._embed_service.embed(label, prefix="search_document")
-            if len(embedding) == 768:
+            if len(embedding) == _EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except (RuntimeError, TypeError, ValueError, OSError) as exc:
             logger.debug("Vec embedding pre-compute for merge label failed: %s", exc)
@@ -527,17 +530,7 @@ class EntityResolver:
         )
 
         # Update FTS5 index for keep_id (DELETE + INSERT since FTS5 has no UPDATE)
-        try:
-            self._kg.db.execute(
-                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (keep_id,)
-            )
-            self._kg.db.execute(
-                "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
-                (keep_id, new_label),
-            )
-        except sqlite3.OperationalError as exc:
-            if "no such table" not in str(exc):
-                raise
+        upsert_fts_kg(self._kg.db, keep_id, new_label)
 
         # Write pre-computed vec embedding for keep_id (no-ops if blob is None)
         if _embedding_blob is not None:
@@ -559,13 +552,7 @@ class EntityResolver:
         )
 
         # Remove remove_id from FTS5 and vec indexes before deleting the node
-        try:
-            self._kg.db.execute(
-                "DELETE FROM fts_kg_nodes WHERE node_id = ?", (remove_id,)
-            )
-        except sqlite3.OperationalError as exc:
-            if "no such table" not in str(exc):
-                raise
+        delete_fts_kg(self._kg.db, remove_id)
         if getattr(self._kg, "_vec_available", False):
             try:
                 self._kg.db.execute(
