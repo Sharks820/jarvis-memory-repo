@@ -13,6 +13,14 @@ import json
 import sqlite3
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.command_bus import CommandBus
+from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
+from jarvis_engine.commands.proactive_commands import ProactiveCheckResult
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.proactive import ProactiveEngine
+from jarvis_engine.proactive.triggers import TriggerAlert
+
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +173,7 @@ class TestSilentExceptLogging:
         """Temporal distribution query failure now logs debug."""
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
 
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_db = MagicMock()
         mock_db.execute.side_effect = sqlite3.OperationalError("no such column: temporal_type")
         mock_kg.db = mock_db
@@ -173,7 +181,7 @@ class TestSilentExceptLogging:
         mock_kg.db_lock.__enter__ = MagicMock(return_value=None)
         mock_kg.db_lock.__exit__ = MagicMock(return_value=False)
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         mock_engine._db = MagicMock()
 
         with patch("jarvis_engine.learning.metrics.logger") as mock_logger:
@@ -236,13 +244,13 @@ class TestConsolidateMemoryCommand:
         from jarvis_engine.handlers.learning_handlers import ConsolidateMemoryHandler
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         handler = ConsolidateMemoryHandler(
             tmp_path, engine=mock_engine, gateway=MagicMock(),
             embed_service=MagicMock(),
         )
 
-        mock_consolidation_result = MagicMock()
+        mock_consolidation_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_consolidation_result.groups_found = 3
         mock_consolidation_result.records_consolidated = 15
         mock_consolidation_result.new_facts_created = 3
@@ -261,10 +269,10 @@ class TestConsolidateMemoryCommand:
         from jarvis_engine.handlers.learning_handlers import ConsolidateMemoryHandler
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         handler = ConsolidateMemoryHandler(tmp_path, engine=mock_engine)
 
-        mock_result = MagicMock()
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 0
         mock_result.records_consolidated = 0
         mock_result.new_facts_created = 0
@@ -281,10 +289,10 @@ class TestConsolidateMemoryCommand:
         from jarvis_engine.handlers.learning_handlers import ConsolidateMemoryHandler
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         handler = ConsolidateMemoryHandler(tmp_path, engine=mock_engine)
 
-        mock_result = MagicMock()
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 2
         mock_result.records_consolidated = 0
         mock_result.new_facts_created = 0
@@ -301,13 +309,13 @@ class TestConsolidateMemoryCommand:
         from jarvis_engine.handlers.learning_handlers import ConsolidateMemoryHandler
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
-        mock_engine = MagicMock()
-        mock_kg = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         handler = ConsolidateMemoryHandler(
             tmp_path, engine=mock_engine, kg=mock_kg,
         )
 
-        mock_result = MagicMock()
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 0
         mock_result.records_consolidated = 0
         mock_result.new_facts_created = 0
@@ -325,10 +333,10 @@ class TestConsolidateMemoryCommand:
         from jarvis_engine.handlers.learning_handlers import ConsolidateMemoryHandler
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         handler = ConsolidateMemoryHandler(tmp_path, engine=mock_engine)
 
-        mock_result = MagicMock()
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 2
         mock_result.records_consolidated = 8
         mock_result.new_facts_created = 2
@@ -347,10 +355,10 @@ class TestConsolidateMemoryCommand:
         from jarvis_engine.handlers.learning_handlers import ConsolidateMemoryHandler
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         handler = ConsolidateMemoryHandler(tmp_path, engine=mock_engine)
 
-        mock_result = MagicMock()
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 3
         mock_result.records_consolidated = 10
         mock_result.new_facts_created = 2
@@ -368,8 +376,8 @@ class TestConsolidateCLI:
 
     def test_cmd_consolidate_success(self, capsys):
         """cmd_consolidate prints consolidation stats and response= line."""
-        mock_bus = MagicMock()
-        mock_result = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 5
         mock_result.records_consolidated = 20
         mock_result.new_facts_created = 5
@@ -389,8 +397,8 @@ class TestConsolidateCLI:
 
     def test_cmd_consolidate_with_errors(self, capsys):
         """cmd_consolidate returns 2 and prints errors on failure."""
-        mock_bus = MagicMock()
-        mock_result = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 1
         mock_result.records_consolidated = 0
         mock_result.new_facts_created = 0
@@ -408,8 +416,8 @@ class TestConsolidateCLI:
 
     def test_cmd_consolidate_dry_run(self, capsys):
         """cmd_consolidate passes dry_run to command."""
-        mock_bus = MagicMock()
-        mock_result = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_result = MagicMock(spec=ConsolidateMemoryResult)
         mock_result.groups_found = 3
         mock_result.records_consolidated = 0
         mock_result.new_facts_created = 0
@@ -437,7 +445,7 @@ class TestProactiveDiagnostics:
 
     def _make_handler(self, tmp_path):
         from jarvis_engine.handlers.proactive_handlers import ProactiveCheckHandler
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=ProactiveEngine)
         mock_engine.evaluate.return_value = []
         return ProactiveCheckHandler(tmp_path, proactive_engine=mock_engine)
 
@@ -529,13 +537,13 @@ class TestProactiveDiagnostics:
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
         from jarvis_engine.handlers.proactive_handlers import ProactiveCheckHandler
 
-        mock_alert = MagicMock()
+        mock_alert = MagicMock(spec=TriggerAlert)
         mock_alert.rule_id = "medication_reminder"
         mock_alert.message = "Take medication"
         mock_alert.priority = "high"
         mock_alert.timestamp = "2026-03-02T10:00:00"
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=ProactiveEngine)
         mock_engine.evaluate.return_value = [mock_alert]
         handler = ProactiveCheckHandler(tmp_path, proactive_engine=mock_engine)
         self._write_snapshot(tmp_path, {"medications": [{"name": "test"}], "bills": [], "calendar_events": [], "tasks": []})
@@ -564,8 +572,8 @@ class TestProactiveDiagnostics:
 
     def test_cli_prints_diagnostics(self, capsys):
         """cmd_proactive_check prints diagnostics when present."""
-        mock_bus = MagicMock()
-        mock_result = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_result = MagicMock(spec=ProactiveCheckResult)
         mock_result.alerts_fired = 0
         mock_result.alerts = "[]"
         mock_result.message = "No alerts. 2 diagnostic(s)."
@@ -611,7 +619,7 @@ class TestConsolidateRegisteredOnBus:
 
             # Should not raise — command is registered
             with patch("jarvis_engine.learning.consolidator.MemoryConsolidator") as mock_cls:
-                mock_r = MagicMock()
+                mock_r = MagicMock(spec=ConsolidateMemoryResult)
                 mock_r.groups_found = 0
                 mock_r.records_consolidated = 0
                 mock_r.new_facts_created = 0

@@ -18,7 +18,7 @@ import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     import sqlite3
@@ -63,6 +63,17 @@ MAX_COMMAND_RESPONSE_CHARS = 12_000
 MAX_COMMAND_RESPONSE_CHUNK_CHARS = 800
 MAX_COMMAND_RESPONSE_CHUNKS = 24
 THREAD_CAPTURE_MAX_CHARS = 200_000
+
+
+class CLIResult(TypedDict, total=False):
+    """Typed return value for ``_run_main_cli``."""
+
+    ok: bool
+    error: str
+    command_exit_code: int
+    stdout_tail: list[str]
+    stderr_tail: list[str]
+
 
 # Thread-local storage — shared single instance lives in mobile_routes._helpers
 # so route mixin modules (e.g. command.py) and this file see the same object.
@@ -1141,7 +1152,7 @@ class MobileIngestHandler(
             "user_hint": "" if result.returncode == 0 else "Retry or rephrase the request. Check diagnostic_id if it keeps failing.",
         }
 
-    def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
+    def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> CLIResult:
         root: Path = getattr(self, "_root", None) or self.server.repo_root
         engine_dir = root / "engine"
         if not engine_dir.exists():

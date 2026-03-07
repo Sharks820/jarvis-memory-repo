@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.wakeword import WakeWordDetector
 
 from jarvis_engine.proactive.triggers import (
     DEFAULT_TRIGGER_RULES,
@@ -323,7 +324,7 @@ class TestProactiveCheckHandler:
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
 
         from pathlib import Path
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=ProactiveEngine)
         handler = ProactiveCheckHandler(Path("."), proactive_engine=mock_engine)
         result = handler.handle(ProactiveCheckCommand(snapshot_path="./nonexistent.json"))
         assert "not found" in result.message
@@ -333,7 +334,7 @@ class TestProactiveCheckHandler:
         from jarvis_engine.commands.proactive_commands import ProactiveCheckCommand
 
         from pathlib import Path
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=ProactiveEngine)
         handler = ProactiveCheckHandler(Path("."), proactive_engine=mock_engine)
         result = handler.handle(ProactiveCheckCommand(snapshot_path="/etc/passwd"))
         assert "outside" in result.message.lower()
@@ -347,7 +348,7 @@ class TestWakeWordStartHandler:
         from pathlib import Path
 
         with patch("jarvis_engine.wakeword.WakeWordDetector") as mock_cls:
-            mock_detector = MagicMock()
+            mock_detector = MagicMock(spec=WakeWordDetector)
             mock_cls.return_value = mock_detector
             handler = WakeWordStartHandler(Path("."))
             result = handler.handle(WakeWordStartCommand(threshold=0.6))

@@ -12,6 +12,9 @@ import httpx
 import numpy as np
 import pytest
 
+# Capture before any patching so spec= always refers to the real class.
+_RealHttpxClient = httpx.Client
+
 
 # ---------------------------------------------------------------------------
 # 22-23, 29-31, 47, 49-50. Groq confidence calculation (parametrized)
@@ -83,7 +86,7 @@ def test_groq_confidence_calculation(response_json, expected_confidence) -> None
     mock_response.json.return_value = response_json
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -208,7 +211,7 @@ def test_groq_transcription_api_error_raises() -> None:
     mock_response.text = "Rate limited"
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -250,7 +253,7 @@ def test_groq_transcription_custom_prompt() -> None:
     }
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -300,7 +303,7 @@ def test_groq_transcription_detected_language() -> None:
     }
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -335,7 +338,7 @@ def test_groq_retry_on_500_response() -> None:
     }
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.side_effect = [mock_500_response, mock_ok_response]
@@ -362,7 +365,7 @@ def test_groq_retry_on_connection_error() -> None:
     fake_audio = np.zeros(16000, dtype=np.float32)
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.side_effect = _httpx.ConnectError("connection refused")
@@ -393,7 +396,7 @@ def test_groq_retry_on_read_timeout() -> None:
     fake_audio = np.zeros(16000, dtype=np.float32)
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.side_effect = _httpx.ReadTimeout("read timed out")
@@ -430,7 +433,7 @@ def test_groq_connection_error_recovers_on_retry() -> None:
     }
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.side_effect = [
@@ -464,7 +467,7 @@ def test_groq_api_uses_model_constant() -> None:
     }
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response
@@ -513,7 +516,7 @@ def test_groq_transcription_exact_threshold_passes() -> None:
     }
 
     with patch("httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=_RealHttpxClient)
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client.post.return_value = mock_response

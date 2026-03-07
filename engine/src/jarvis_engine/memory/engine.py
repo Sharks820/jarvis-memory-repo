@@ -27,6 +27,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "MemoryEngine",
+]
+
 
 class MemoryEngine:
     """SQLite-backed memory engine with FTS5 and sqlite-vec support."""

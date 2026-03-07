@@ -119,6 +119,7 @@ def _load_feed_json_list(repo_root: Path, env_key: str, default_path: Path) -> l
             try:
                 resolved.relative_to(repo_root.resolve())
             except ValueError:
+                logger.debug("Tasks file %s is outside repo root; skipping (set JARVIS_ALLOW_EXTERNAL_FEEDS=1 to allow)", resolved)
                 return []
         return _read_json_list(resolved)
     if not default_path.exists():
@@ -177,7 +178,8 @@ def load_calendar_events(target_date: date | None = None) -> list[dict]:
                     return []
                 text = payload.decode("utf-8", errors="replace")
             return _parse_ics(text, target_date=target_date)
-        except (URLError, TimeoutError, OSError):
+        except (URLError, TimeoutError, OSError) as exc:
+            logger.debug("ICS calendar fetch failed for %s: %s", ics_url, exc)
             return []
     return []
 
@@ -453,15 +455,16 @@ def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return None
         return (host, host)
-    except ValueError:
-        pass
+    except ValueError as exc:
+        logger.debug("Host is not an IP literal, resolving as hostname: %s", exc)
     # Resolve DNS without using the process-global socket.setdefaulttimeout()
     # which would affect all sockets in the process.  The resolved IP is
     # returned so the caller can pin it for the actual connection, preventing
     # DNS rebinding between validation and use.
     try:
         resolved = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-    except (socket.gaierror, OSError):
+    except (socket.gaierror, OSError) as exc:
+        logger.debug("DNS resolution failed for calendar host %s: %s", host, exc)
         return None
     first_safe_ip: str | None = None
     for item in resolved:
@@ -471,6 +474,7 @@ def _is_safe_calendar_url(url: str) -> tuple[str, str] | None:
         try:
             ip = ip_address(raw_ip)
         except ValueError:
+            logger.debug("Invalid IP address %r in DNS response for %s", raw_ip, host)
             return None
         if (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):

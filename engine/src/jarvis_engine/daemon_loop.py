@@ -426,6 +426,500 @@ def _restart_mobile_api(service_name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Extracted subsystem helpers — each encapsulates one daemon responsibility
+# ---------------------------------------------------------------------------
+
+
+def _register_daemon_pid(root: Path) -> bool:
+    """Register daemon PID file.  Returns True if registration succeeded."""
+    from jarvis_engine.process_manager import is_service_running, write_pid_file
+
+    if is_service_running("daemon", root):
+        print("error: daemon is already running")
+        return False
+    write_pid_file("daemon", root)
+    return True
+
+
+def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
+    """Log daemon cycle start to activity feed (never raises)."""
+    try:
+        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
+        log_activity(
+            ActivityCategory.DAEMON_CYCLE,
+            f"Daemon cycle {cycles} started",
+            {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Activity feed cycle-start log failed: %s", exc)
+
+
+def _log_cycle_end(cycles: int, rc: int) -> None:
+    """Log daemon cycle end to activity feed (never raises)."""
+    try:
+        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
+        log_activity(
+            ActivityCategory.DAEMON_CYCLE,
+            f"Daemon cycle {cycles} ended (rc={rc})",
+            {"cycle": cycles, "rc": rc, "phase": "end"},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Activity feed cycle-end log failed: %s", exc)
+
+
+def _print_cycle_status(
+    cycles: int,
+    cycle_start_ts: str,
+    *,
+    daemon_paused: bool,
+    safe_mode: bool,
+    gaming_mode_enabled: bool,
+    auto_detect: bool,
+    detected_process: str,
+    gaming_state: dict,
+    control_state: dict,
+    is_active: bool,
+    pressure_level: str,
+    resource_snapshot: dict,
+    sleep_seconds: int,
+    skip_heavy_tasks: bool,
+    idle_seconds: float | None,
+) -> None:
+    """Print all per-cycle status lines to stdout."""
+    print(f"cycle={cycles} ts={cycle_start_ts}")
+    print(f"daemon_paused={daemon_paused}")
+    print(f"safe_mode={safe_mode}")
+    print(f"gaming_mode={gaming_mode_enabled}")
+    print(f"gaming_mode_auto_detect={auto_detect}")
+    if detected_process:
+        print(f"gaming_mode_detected_process={detected_process}")
+    if gaming_state.get("reason", ""):
+        print(f"gaming_mode_reason={gaming_state.get('reason', '')}")
+    if control_state.get("reason", ""):
+        print(f"runtime_control_reason={control_state.get('reason', '')}")
+    print(f"device_active={is_active}")
+    print(f"resource_pressure_level={pressure_level}")
+    try:
+        _m = resource_snapshot.get("metrics", {})
+        _rss = _m.get("process_memory_mb", {}).get("current", 0.0)
+        _cpu = _m.get("process_cpu_pct", {}).get("current", 0.0)
+        _emb = _m.get("embedding_cache_mb", {}).get("current", 0.0)
+        print(f"resource_process_memory_mb={_rss}")
+        print(f"resource_process_cpu_pct={_cpu}")
+        print(f"resource_embedding_cache_mb={_emb}")
+    except (AttributeError, KeyError, TypeError) as exc:
+        logger.debug("Resource metric print failed: %s", exc)
+    if pressure_level in {"mild", "severe"}:
+        print(f"resource_throttle_sleep_s={sleep_seconds}")
+        if skip_heavy_tasks:
+            print("resource_skip_heavy_tasks=true")
+    if idle_seconds is not None:
+        print(f"idle_seconds={round(idle_seconds, 1)}")
+
+
+def _log_resource_pressure(
+    cycles: int,
+    pressure_level: str,
+    last_pressure_level: str,
+    resource_snapshot: dict,
+    sleep_seconds: int,
+    skip_heavy_tasks: bool,
+) -> None:
+    """Log resource pressure changes to activity feed (never raises)."""
+    if pressure_level != "none" and (pressure_level != last_pressure_level or cycles % 5 == 0):
+        try:
+            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+            log_activity(
+                ActivityCategory.RESOURCE_PRESSURE,
+                f"Resource pressure {pressure_level}",
+                {
+                    "pressure_level": pressure_level,
+                    "cycle": cycles,
+                    "correlation_id": f"daemon-cycle-{cycles}",
+                    "metrics": resource_snapshot.get("metrics", {}),
+                    "sleep_s": sleep_seconds,
+                    "skip_heavy_tasks": skip_heavy_tasks,
+                },
+            )
+        except (ImportError, OSError, sqlite3.Error) as exc:
+            logger.debug("Resource pressure activity log failed: %s", exc)
+    elif pressure_level == "none" and last_pressure_level != "none":
+        try:
+            from jarvis_engine.activity_feed import ActivityCategory, log_activity
+
+            log_activity(
+                ActivityCategory.RESOURCE_PRESSURE,
+                "Resource pressure recovered",
+                {
+                    "pressure_level": "none",
+                    "cycle": cycles,
+                    "correlation_id": f"daemon-cycle-{cycles}",
+                    "sleep_s": sleep_seconds,
+                    "skip_heavy_tasks": skip_heavy_tasks,
+                },
+            )
+        except (ImportError, OSError, sqlite3.Error) as exc:
+            logger.debug("Resource pressure recovery log failed: %s", exc)
+
+
+def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None:
+    """Run pending missions and auto-generate new ones (never raises)."""
+    try:
+        mission_rc = _run_next_pending_mission()
+    except Exception as exc:  # noqa: BLE001
+        mission_rc = 2
+        logger.warning("Daemon mission cycle failed: %s", exc)
+        print(f"mission_cycle_error={exc}")
+    else:
+        print(f"mission_cycle_rc={mission_rc}")
+    # Auto-generate new missions when queue is empty (every 50 cycles)
+    if cycles % 50 == 0:
+        if skip_heavy_tasks:
+            print("mission_autogen_skipped=resource_pressure")
+        else:
+            try:
+                from jarvis_engine.learning_missions import (
+                    auto_generate_missions,
+                    retry_failed_missions,
+                )
+
+                # First, retry any failed missions
+                retried = retry_failed_missions(root)
+                if retried:
+                    print(f"mission_retried={retried}")
+                # Then auto-generate if still no pending
+                generated = auto_generate_missions(root, max_new=3)
+                if generated:
+                    topics = ", ".join(m.get("topic", "") for m in generated)
+                    print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Daemon mission auto-generation failed: %s", exc)
+                print(f"mission_autogen_error={exc}")
+
+
+def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
+    """Run mobile-desktop sync (never raises)."""
+    try:
+        sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
+    except Exception as exc:  # noqa: BLE001
+        sync_rc = 2
+        logger.warning("Daemon sync cycle failed: %s", exc)
+        print(f"sync_cycle_error={exc}")
+    else:
+        print(f"sync_cycle_rc={sync_rc}")
+
+
+def _run_watchdog_cycle(root: Path) -> None:
+    """Check if mobile_api crashed and restart it (never raises)."""
+    try:
+        from jarvis_engine.process_manager import check_and_restart_services
+
+        dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
+        if dead:
+            print(f"watchdog_dead_services={','.join(dead)}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon watchdog check failed: %s", exc)
+        print(f"watchdog_error={exc}")
+
+
+def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
+    """Run self-heal and collect KG metrics (never raises)."""
+    try:
+        heal_rc = cmd_self_heal(
+            force_maintenance=False,
+            keep_recent=1800,
+            snapshot_note="daemon-self-heal",
+            as_json=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        heal_rc = 2
+        logger.warning("Daemon self-heal cycle failed: %s", exc)
+        print(f"self_heal_cycle_error={exc}")
+    else:
+        print(f"self_heal_cycle_rc={heal_rc}")
+    # Collect KG growth metrics alongside self-heal
+    _collect_kg_metrics(root)
+
+
+def _collect_kg_metrics(root: Path) -> None:
+    """Collect and append KG growth metrics (never raises)."""
+    try:
+        import sqlite3 as _sqlite3
+
+        from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
+
+        db_path = _memory_db_path(root)
+        if db_path.exists():
+            _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
+            from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
+
+            _cfg_sql(_kg_conn)
+            try:
+                # collect_kg_metrics uses kg.db — provide a lightweight shim
+                class _KGShim:
+                    def __init__(self, conn: _sqlite3.Connection) -> None:
+                        self.db = conn
+
+                metrics = collect_kg_metrics(_KGShim(_kg_conn))
+            finally:
+                _kg_conn.close()
+        else:
+            metrics = {"node_count": 0, "edge_count": 0}
+        history_path = _runtime_dir(root) / _KG_METRICS_LOG
+        append_kg_metrics(metrics, history_path)
+        print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon KG metrics collection failed: %s", exc)
+        print(f"kg_metrics_error={exc}")
+
+
+def _run_self_test_cycle(root: Path) -> None:
+    """Run adversarial self-test: memory quiz + regression detection (never raises)."""
+    try:
+        from jarvis_engine.proactive.self_test import AdversarialSelfTest
+
+        bus = _get_daemon_bus()
+        engine = bus.ctx.engine
+        embed_svc = bus.ctx.embed_service
+        if engine is not None and embed_svc is not None:
+            tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
+            quiz_result = tester.run_memory_quiz()
+            quiz_history = _runtime_dir(root) / _SELF_TEST_HISTORY
+            tester.save_quiz_result(quiz_result, quiz_history)
+            regression = tester.check_regression(quiz_history)
+            print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
+            print(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
+            if regression.get("regression_detected"):
+                print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
+        else:
+            print("self_test_skipped=engine_not_initialized")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon self-test failed: %s", exc)
+        print(f"self_test_error={exc}")
+
+
+def _run_db_optimize_cycle(cycles: int) -> None:
+    """Run SQLite ANALYZE (every 100 cycles) and VACUUM (every 500) (never raises)."""
+    try:
+        bus = _get_daemon_bus()
+        engine = bus.ctx.engine
+        if engine is not None:
+            do_vacuum = (cycles % 500 == 0)
+            opt_result = engine.optimize(vacuum=do_vacuum)
+            print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
+            if do_vacuum:
+                print(f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}")
+            if opt_result.get("errors"):
+                print(f"db_optimize_errors={len(opt_result['errors'])}")
+        else:
+            print("db_optimize_skipped=engine_not_initialized")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon DB optimize failed: %s", exc)
+        print(f"db_optimize_error={exc}")
+
+
+def _run_kg_regression_cycle(root: Path) -> None:
+    """Run KG regression check with auto-restore on failure (never raises)."""
+    try:
+        from jarvis_engine.knowledge.regression import RegressionChecker
+        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
+        bus = _get_daemon_bus()
+        kg = bus.ctx.kg
+        if kg is not None:
+            rc_checker = RegressionChecker(kg)
+            current_metrics = rc_checker.capture_metrics()
+            # Compare against previous snapshot stored in module state
+            global _daemon_kg_prev_metrics
+            with _daemon_kg_prev_metrics_lock:
+                prev_metrics = _daemon_kg_prev_metrics
+            comparison = rc_checker.compare(prev_metrics, current_metrics)
+            with _daemon_kg_prev_metrics_lock:
+                _daemon_kg_prev_metrics = current_metrics
+            print(f"kg_regression_status={comparison.get('status', 'unknown')}")
+            if comparison.get("status") in ("fail", "warn"):
+                discrepancies = comparison.get("discrepancies", [])
+                print(f"kg_regression_discrepancies={len(discrepancies)}")
+                log_activity(
+                    ActivityCategory.REGRESSION_CHECK,
+                    f"KG regression detected: {comparison['status']}",
+                    {"status": comparison["status"], "discrepancies": discrepancies},
+                )
+                # Auto-restore from backup on failure
+                if comparison["status"] == "fail":
+                    backup_dir = _runtime_dir(root) / "kg_backups"
+                    if backup_dir.exists():
+                        backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
+                        if backups:
+                            restored = rc_checker.restore_graph(backups[-1])
+                            print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
+                            log_activity(
+                                ActivityCategory.REGRESSION_CHECK,
+                                f"KG auto-restore {'succeeded' if restored else 'failed'}",
+                                {"backup": str(backups[-1]), "restored": restored},
+                            )
+        else:
+            print("kg_regression_skipped=kg_not_initialized")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon KG regression check failed: %s", exc)
+        print(f"kg_regression_error={exc}")
+
+
+def _run_usage_prediction_cycle() -> None:
+    """Run usage pattern prediction (never raises)."""
+    try:
+        bus = _get_daemon_bus()
+        usage_tracker = bus.ctx.usage_tracker
+        if usage_tracker is not None:
+            from datetime import datetime as _dt
+
+            _now = _dt.now(UTC)
+            prediction = usage_tracker.predict_context(_now.hour, _now.weekday())
+            if prediction["interaction_count"] > 0:
+                print(f"usage_predicted_route={prediction['likely_route']}")
+                if prediction["common_topics"]:
+                    print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
+                print(f"usage_interaction_count={prediction['interaction_count']}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon usage prediction failed: %s", exc)
+        print(f"usage_prediction_error={exc}")
+
+
+def _run_memory_consolidation_cycle() -> None:
+    """Run memory consolidation (never raises)."""
+    try:
+        from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
+
+        bus = _get_daemon_bus()
+        result = bus.dispatch(ConsolidateMemoryCommand())
+        print(f"consolidation_groups={result.groups_found}")
+        print(f"consolidation_new_facts={result.new_facts_created}")
+        if result.errors:
+            print(f"consolidation_errors={len(result.errors)}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon memory consolidation failed: %s", exc)
+        print(f"consolidation_error={exc}")
+
+
+def _run_entity_resolution_cycle() -> None:
+    """Run entity resolution with KG backup (never raises)."""
+    try:
+        from jarvis_engine.knowledge.entity_resolver import EntityResolver
+        from jarvis_engine.knowledge.regression import RegressionChecker
+        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
+        bus = _get_daemon_bus()
+        kg = bus.ctx.kg
+        embed_svc = bus.ctx.embed_service
+        if kg is not None:
+            # Backup KG state before entity resolution
+            try:
+                rc_checker = RegressionChecker(kg)
+                rc_checker.backup_graph(tag="pre-entity-resolve")
+                print("entity_resolve_kg_backup=ok")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Daemon entity resolve KG backup failed: %s", exc)
+                print(f"entity_resolve_kg_backup_error={exc}")
+            resolver = EntityResolver(kg, embed_service=embed_svc)
+            resolve_result = resolver.auto_resolve()
+            print(f"entity_resolve_candidates={resolve_result.candidates_found}")
+            print(f"entity_resolve_merges={resolve_result.merges_applied}")
+            if resolve_result.errors:
+                print(f"entity_resolve_errors={len(resolve_result.errors)}")
+            log_activity(
+                ActivityCategory.CONSOLIDATION,
+                f"Entity resolution: {resolve_result.merges_applied} merges from {resolve_result.candidates_found} candidates",
+                {
+                    "candidates_found": resolve_result.candidates_found,
+                    "merges_applied": resolve_result.merges_applied,
+                    "errors": resolve_result.errors,
+                },
+            )
+        else:
+            print("entity_resolve_skipped=kg_not_initialized")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon entity resolution failed: %s", exc)
+        print(f"entity_resolve_error={exc}")
+
+
+def _run_auto_harvest_cycle(root: Path) -> None:
+    """Run autonomous knowledge harvesting (never raises)."""
+    try:
+        from jarvis_engine.harvesting.harvester import KnowledgeHarvester, HarvestCommand
+        from jarvis_engine.harvesting.providers import (
+            GeminiProvider,
+            KimiNvidiaProvider,
+            KimiProvider,
+            MiniMaxProvider,
+        )
+        from jarvis_engine.harvesting.budget import BudgetManager
+        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+
+        harvest_topics = _discover_harvest_topics(root)
+        if harvest_topics:
+            # Build harvester with ingest pipeline so results are stored
+            harvest_db_path = _memory_db_path(root)
+            h_budget = None
+            if harvest_db_path.exists():
+                h_budget = BudgetManager(harvest_db_path)
+            try:
+                h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
+                h_available = [p for p in h_providers if p.is_available]
+                # Get pipeline components from daemon bus
+                h_bus = _get_daemon_bus()
+                h_engine = h_bus.ctx.engine
+                h_embed = h_bus.ctx.embed_service
+                h_kg = h_bus.ctx.kg
+                h_pipeline = None
+                if h_engine is not None and h_embed is not None:
+                    try:
+                        from jarvis_engine.memory.classify import BranchClassifier
+                        from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+
+                        h_classifier = BranchClassifier(h_embed)
+                        h_pipeline = EnrichedIngestPipeline(
+                            h_engine, h_embed, h_classifier, knowledge_graph=h_kg,
+                        )
+                    except (ImportError, OSError, sqlite3.Error) as exc_pipe:
+                        logger.debug("Auto-harvest pipeline init failed: %s", exc_pipe)
+                if h_available and h_pipeline is not None:
+                    harvester = KnowledgeHarvester(
+                        providers=h_available,
+                        pipeline=h_pipeline,
+                        cost_tracker=None,
+                        budget_manager=h_budget,
+                    )
+                    total_records = 0
+                    for topic in harvest_topics:
+                        topic_records = 0
+                        h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
+                        for entry in h_result.get("results", []):
+                            topic_records += entry.get("records_created", 0)
+                        total_records += topic_records
+                        print(f"auto_harvest_topic={topic} records={topic_records}")
+                    log_activity(
+                        ActivityCategory.HARVEST,
+                        f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
+                        {"topics": harvest_topics, "total_records": total_records},
+                    )
+                elif not h_available:
+                    print("auto_harvest_skipped=no_providers_available")
+                else:
+                    print("auto_harvest_skipped=no_ingest_pipeline")
+            finally:
+                if h_budget is not None:
+                    h_budget.close()
+        else:
+            print("auto_harvest_skipped=no_topics_discovered")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Daemon auto-harvest failed: %s", exc)
+        print(f"auto_harvest_error={exc}")
+
+
+# ---------------------------------------------------------------------------
 # Main daemon loop implementation
 # ---------------------------------------------------------------------------
 
@@ -459,11 +953,10 @@ def cmd_daemon_run_impl(
 
     root = repo_root()
     # Register PID file for duplicate detection and dashboard visibility
-    from jarvis_engine.process_manager import is_service_running, write_pid_file, remove_pid_file
-    if is_service_running("daemon", root):
-        print("error: daemon is already running")
+    from jarvis_engine.process_manager import remove_pid_file
+
+    if not _register_daemon_pid(root):
         return 4
-    write_pid_file("daemon", root)
 
     active_interval = max(30, interval_s)
     idle_interval = max(30, idle_interval_s)
@@ -499,81 +992,32 @@ def cmd_daemon_run_impl(
             daemon_paused = bool(control_state.get("daemon_paused", False))
             safe_mode = bool(control_state.get("safe_mode", False))
             cycle_start_ts = _now_iso()
-            print(f"cycle={cycles} ts={cycle_start_ts}")
             # --- Activity feed: log cycle start ---
-            try:
-                from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                log_activity(
-                    ActivityCategory.DAEMON_CYCLE,
-                    f"Daemon cycle {cycles} started",
-                    {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("Activity feed cycle-start log failed: %s", exc)
-            print(f"daemon_paused={daemon_paused}")
-            print(f"safe_mode={safe_mode}")
-            print(f"gaming_mode={gaming_mode_enabled}")
-            print(f"gaming_mode_auto_detect={auto_detect}")
-            if detected_process:
-                print(f"gaming_mode_detected_process={detected_process}")
-            if gaming_state.get("reason", ""):
-                print(f"gaming_mode_reason={gaming_state.get('reason', '')}")
-            if control_state.get("reason", ""):
-                print(f"runtime_control_reason={control_state.get('reason', '')}")
-            print(f"device_active={is_active}")
-            print(f"resource_pressure_level={pressure_level}")
-            try:
-                _m = resource_snapshot.get("metrics", {})
-                _rss = _m.get("process_memory_mb", {}).get("current", 0.0)
-                _cpu = _m.get("process_cpu_pct", {}).get("current", 0.0)
-                _emb = _m.get("embedding_cache_mb", {}).get("current", 0.0)
-                print(f"resource_process_memory_mb={_rss}")
-                print(f"resource_process_cpu_pct={_cpu}")
-                print(f"resource_embedding_cache_mb={_emb}")
-            except (AttributeError, KeyError, TypeError) as exc:
-                logger.debug("Resource metric print failed: %s", exc)
-            if pressure_level in {"mild", "severe"}:
-                print(f"resource_throttle_sleep_s={sleep_seconds}")
-                if skip_heavy_tasks:
-                    print("resource_skip_heavy_tasks=true")
-            if pressure_level != "none" and (pressure_level != last_pressure_level or cycles % 5 == 0):
-                try:
-                    from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
-                    log_activity(
-                        ActivityCategory.RESOURCE_PRESSURE,
-                        f"Resource pressure {pressure_level}",
-                        {
-                            "pressure_level": pressure_level,
-                            "cycle": cycles,
-                            "correlation_id": f"daemon-cycle-{cycles}",
-                            "metrics": resource_snapshot.get("metrics", {}),
-                            "sleep_s": sleep_seconds,
-                            "skip_heavy_tasks": skip_heavy_tasks,
-                        },
-                    )
-                except (ImportError, OSError, sqlite3.Error) as exc:
-                    logger.debug("Resource pressure activity log failed: %s", exc)
-            elif pressure_level == "none" and last_pressure_level != "none":
-                try:
-                    from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
-                    log_activity(
-                        ActivityCategory.RESOURCE_PRESSURE,
-                        "Resource pressure recovered",
-                        {
-                            "pressure_level": "none",
-                            "cycle": cycles,
-                            "correlation_id": f"daemon-cycle-{cycles}",
-                            "sleep_s": sleep_seconds,
-                            "skip_heavy_tasks": skip_heavy_tasks,
-                        },
-                    )
-                except (ImportError, OSError, sqlite3.Error) as exc:
-                    logger.debug("Resource pressure recovery log failed: %s", exc)
+            _log_cycle_start(cycles, cycle_start_ts)
+            # --- Print all cycle status lines ---
+            _print_cycle_status(
+                cycles,
+                cycle_start_ts,
+                daemon_paused=daemon_paused,
+                safe_mode=safe_mode,
+                gaming_mode_enabled=gaming_mode_enabled,
+                auto_detect=auto_detect,
+                detected_process=detected_process,
+                gaming_state=gaming_state,
+                control_state=control_state,
+                is_active=is_active,
+                pressure_level=pressure_level,
+                resource_snapshot=resource_snapshot,
+                sleep_seconds=sleep_seconds,
+                skip_heavy_tasks=skip_heavy_tasks,
+                idle_seconds=idle_seconds,
+            )
+            # --- Log resource pressure changes ---
+            _log_resource_pressure(
+                cycles, pressure_level, last_pressure_level,
+                resource_snapshot, sleep_seconds, skip_heavy_tasks,
+            )
             last_pressure_level = pressure_level
-            if idle_seconds is not None:
-                print(f"idle_seconds={round(idle_seconds, 1)}")
             if daemon_paused:
                 print("cycle_skipped=runtime_control_daemon_paused")
                 if max_cycles > 0 and cycles >= max_cycles:
@@ -592,335 +1036,45 @@ def cmd_daemon_run_impl(
                 continue
             # --- Non-core subsystems: isolated so failures never affect circuit breaker ---
             if run_missions:
-                try:
-                    mission_rc = _run_next_pending_mission()
-                except Exception as exc:  # noqa: BLE001
-                    mission_rc = 2
-                    logger.warning("Daemon mission cycle failed: %s", exc)
-                    print(f"mission_cycle_error={exc}")
-                else:
-                    print(f"mission_cycle_rc={mission_rc}")
-                # Auto-generate new missions when queue is empty (every 50 cycles)
-                if cycles % 50 == 0:
-                    if skip_heavy_tasks:
-                        print("mission_autogen_skipped=resource_pressure")
-                    else:
-                        try:
-                            from jarvis_engine.learning_missions import (
-                                auto_generate_missions,
-                                retry_failed_missions,
-                            )
-                            # First, retry any failed missions
-                            retried = retry_failed_missions(root)
-                            if retried:
-                                print(f"mission_retried={retried}")
-                            # Then auto-generate if still no pending
-                            generated = auto_generate_missions(root, max_new=3)
-                            if generated:
-                                topics = ", ".join(m.get("topic", "") for m in generated)
-                                print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
-                        except Exception as exc:  # noqa: BLE001
-                            logger.warning("Daemon mission auto-generation failed: %s", exc)
-                            print(f"mission_autogen_error={exc}")
+                _run_missions_cycle(root, cycles, skip_heavy_tasks)
             if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
-                try:
-                    sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
-                except Exception as exc:  # noqa: BLE001
-                    sync_rc = 2
-                    logger.warning("Daemon sync cycle failed: %s", exc)
-                    print(f"sync_cycle_error={exc}")
-                else:
-                    print(f"sync_cycle_rc={sync_rc}")
-            # --- Watchdog: check if mobile_api crashed and restart it ---
+                _run_sync_cycle(cmd_mobile_desktop_sync)
             if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
-                try:
-                    from jarvis_engine.process_manager import check_and_restart_services
-                    dead = check_and_restart_services(root, restart_callback=_restart_mobile_api)
-                    if dead:
-                        print(f"watchdog_dead_services={','.join(dead)}")
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Daemon watchdog check failed: %s", exc)
-                    print(f"watchdog_error={exc}")
+                _run_watchdog_cycle(root)
             if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
                 if skip_heavy_tasks:
                     print("self_heal_cycle_skipped=resource_pressure")
                 else:
-                    try:
-                        heal_rc = cmd_self_heal(
-                            force_maintenance=False,
-                            keep_recent=1800,
-                            snapshot_note="daemon-self-heal",
-                            as_json=False,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        heal_rc = 2
-                        logger.warning("Daemon self-heal cycle failed: %s", exc)
-                        print(f"self_heal_cycle_error={exc}")
-                    else:
-                        print(f"self_heal_cycle_rc={heal_rc}")
-                    # Collect KG growth metrics alongside self-heal
-                    try:
-                        import sqlite3 as _sqlite3
-                        from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
-                        db_path = _memory_db_path(root)
-                        if db_path.exists():
-                            _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
-                            from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
-                            _cfg_sql(_kg_conn)
-                            try:
-                                # collect_kg_metrics uses kg.db — provide a lightweight shim
-                                class _KGShim:
-                                    def __init__(self, conn: _sqlite3.Connection) -> None:
-                                        self.db = conn
-                                metrics = collect_kg_metrics(_KGShim(_kg_conn))
-                            finally:
-                                _kg_conn.close()
-                        else:
-                            metrics = {"node_count": 0, "edge_count": 0}
-                        history_path = _runtime_dir(root) / _KG_METRICS_LOG
-                        append_kg_metrics(metrics, history_path)
-                        print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Daemon KG metrics collection failed: %s", exc)
-                        print(f"kg_metrics_error={exc}")
-            # --- Adversarial self-test: memory quiz + regression detection ---
+                    _run_self_heal_cycle(root, cmd_self_heal)
             if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
                 if skip_heavy_tasks:
                     print("self_test_skipped=resource_pressure")
                 else:
-                    try:
-                        from jarvis_engine.proactive.self_test import AdversarialSelfTest
-                        bus = _get_daemon_bus()
-                        engine = bus.ctx.engine
-                        embed_svc = bus.ctx.embed_service
-                        if engine is not None and embed_svc is not None:
-                            tester = AdversarialSelfTest(engine, embed_svc, score_threshold=0.5)
-                            quiz_result = tester.run_memory_quiz()
-                            quiz_history = _runtime_dir(root) / _SELF_TEST_HISTORY
-                            tester.save_quiz_result(quiz_result, quiz_history)
-                            regression = tester.check_regression(quiz_history)
-                            print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
-                            print(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
-                            if regression.get("regression_detected"):
-                                print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
-                        else:
-                            print("self_test_skipped=engine_not_initialized")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Daemon self-test failed: %s", exc)
-                        print(f"self_test_error={exc}")
-            # --- SQLite optimize: ANALYZE every 100 cycles, VACUUM every 500 ---
+                    _run_self_test_cycle(root)
             if cycles % 100 == 0:
                 if skip_heavy_tasks:
                     print("db_optimize_skipped=resource_pressure")
                 else:
-                    try:
-                        bus = _get_daemon_bus()
-                        engine = bus.ctx.engine
-                        if engine is not None:
-                            do_vacuum = (cycles % 500 == 0)
-                            opt_result = engine.optimize(vacuum=do_vacuum)
-                            print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
-                            if do_vacuum:
-                                print(f"db_optimize_vacuumed={opt_result.get('vacuumed', False)}")
-                            if opt_result.get("errors"):
-                                print(f"db_optimize_errors={len(opt_result['errors'])}")
-                        else:
-                            print("db_optimize_skipped=engine_not_initialized")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Daemon DB optimize failed: %s", exc)
-                        print(f"db_optimize_error={exc}")
-            # --- Knowledge graph regression check (every 10 cycles) ---
+                    _run_db_optimize_cycle(cycles)
             if cycles % 10 == 0:
-                try:
-                    from jarvis_engine.knowledge.regression import RegressionChecker
-                    from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                    bus = _get_daemon_bus()
-                    kg = bus.ctx.kg
-                    if kg is not None:
-                        rc_checker = RegressionChecker(kg)
-                        current_metrics = rc_checker.capture_metrics()
-                        # Compare against previous snapshot stored in module state
-                        global _daemon_kg_prev_metrics
-                        with _daemon_kg_prev_metrics_lock:
-                            prev_metrics = _daemon_kg_prev_metrics
-                        comparison = rc_checker.compare(prev_metrics, current_metrics)
-                        with _daemon_kg_prev_metrics_lock:
-                            _daemon_kg_prev_metrics = current_metrics
-                        print(f"kg_regression_status={comparison.get('status', 'unknown')}")
-                        if comparison.get("status") in ("fail", "warn"):
-                            discrepancies = comparison.get("discrepancies", [])
-                            print(f"kg_regression_discrepancies={len(discrepancies)}")
-                            log_activity(
-                                ActivityCategory.REGRESSION_CHECK,
-                                f"KG regression detected: {comparison['status']}",
-                                {"status": comparison["status"], "discrepancies": discrepancies},
-                            )
-                            # Auto-restore from backup on failure
-                            if comparison["status"] == "fail":
-                                backup_dir = _runtime_dir(root) / "kg_backups"
-                                if backup_dir.exists():
-                                    backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
-                                    if backups:
-                                        restored = rc_checker.restore_graph(backups[-1])
-                                        print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
-                                        log_activity(
-                                            ActivityCategory.REGRESSION_CHECK,
-                                            f"KG auto-restore {'succeeded' if restored else 'failed'}",
-                                            {"backup": str(backups[-1]), "restored": restored},
-                                        )
-                    else:
-                        print("kg_regression_skipped=kg_not_initialized")
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Daemon KG regression check failed: %s", exc)
-                    print(f"kg_regression_error={exc}")
-            # --- Usage pattern prediction (LEARN-03, every 10 cycles) ---
+                _run_kg_regression_cycle(root)
             if cycles % 10 == 0:
-                try:
-                    bus = _get_daemon_bus()
-                    usage_tracker = bus.ctx.usage_tracker
-                    if usage_tracker is not None:
-                        from datetime import datetime as _dt
-                        _now = _dt.now(UTC)
-                        prediction = usage_tracker.predict_context(_now.hour, _now.weekday())
-                        if prediction["interaction_count"] > 0:
-                            print(f"usage_predicted_route={prediction['likely_route']}")
-                            if prediction["common_topics"]:
-                                print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
-                            print(f"usage_interaction_count={prediction['interaction_count']}")
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Daemon usage prediction failed: %s", exc)
-                    print(f"usage_prediction_error={exc}")
-            # --- Memory consolidation (every 50 cycles) ---
+                _run_usage_prediction_cycle()
             if cycles % 50 == 0:
                 if skip_heavy_tasks:
                     print("consolidation_skipped=resource_pressure")
                 else:
-                    try:
-                        from jarvis_engine.commands.learning_commands import ConsolidateMemoryCommand
-                        bus = _get_daemon_bus()
-                        result = bus.dispatch(ConsolidateMemoryCommand())
-                        print(f"consolidation_groups={result.groups_found}")
-                        print(f"consolidation_new_facts={result.new_facts_created}")
-                        if result.errors:
-                            print(f"consolidation_errors={len(result.errors)}")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Daemon memory consolidation failed: %s", exc)
-                        print(f"consolidation_error={exc}")
-            # --- Entity resolution (every 100 cycles) ---
+                    _run_memory_consolidation_cycle()
             if cycles % 100 == 0:
                 if skip_heavy_tasks:
                     print("entity_resolve_skipped=resource_pressure")
                 else:
-                    try:
-                        from jarvis_engine.knowledge.entity_resolver import EntityResolver
-                        from jarvis_engine.knowledge.regression import RegressionChecker
-                        from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                        bus = _get_daemon_bus()
-                        kg = bus.ctx.kg
-                        embed_svc = bus.ctx.embed_service
-                        if kg is not None:
-                            # Backup KG state before entity resolution
-                            try:
-                                rc_checker = RegressionChecker(kg)
-                                rc_checker.backup_graph(tag="pre-entity-resolve")
-                                print("entity_resolve_kg_backup=ok")
-                            except Exception as exc:  # noqa: BLE001
-                                logger.warning("Daemon entity resolve KG backup failed: %s", exc)
-                                print(f"entity_resolve_kg_backup_error={exc}")
-                            resolver = EntityResolver(kg, embed_service=embed_svc)
-                            resolve_result = resolver.auto_resolve()
-                            print(f"entity_resolve_candidates={resolve_result.candidates_found}")
-                            print(f"entity_resolve_merges={resolve_result.merges_applied}")
-                            if resolve_result.errors:
-                                print(f"entity_resolve_errors={len(resolve_result.errors)}")
-                            log_activity(
-                                ActivityCategory.CONSOLIDATION,
-                                f"Entity resolution: {resolve_result.merges_applied} merges from {resolve_result.candidates_found} candidates",
-                                {
-                                    "candidates_found": resolve_result.candidates_found,
-                                    "merges_applied": resolve_result.merges_applied,
-                                    "errors": resolve_result.errors,
-                                },
-                            )
-                        else:
-                            print("entity_resolve_skipped=kg_not_initialized")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Daemon entity resolution failed: %s", exc)
-                        print(f"entity_resolve_error={exc}")
-            # --- Auto-harvest: autonomous knowledge growth (every 200 cycles) ---
+                    _run_entity_resolution_cycle()
             if cycles % 200 == 0:
                 if skip_heavy_tasks:
                     print("auto_harvest_skipped=resource_pressure")
                 else:
-                    try:
-                        from jarvis_engine.harvesting.harvester import KnowledgeHarvester, HarvestCommand
-                        from jarvis_engine.harvesting.providers import (
-                            GeminiProvider,
-                            KimiNvidiaProvider,
-                            KimiProvider,
-                            MiniMaxProvider,
-                        )
-                        from jarvis_engine.harvesting.budget import BudgetManager
-                        from jarvis_engine.activity_feed import log_activity, ActivityCategory
-
-                        harvest_topics = _discover_harvest_topics(root)
-                        if harvest_topics:
-                            # Build harvester with ingest pipeline so results are stored
-                            harvest_db_path = _memory_db_path(root)
-                            h_budget = None
-                            if harvest_db_path.exists():
-                                h_budget = BudgetManager(harvest_db_path)
-                            try:
-                                h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
-                                h_available = [p for p in h_providers if p.is_available]
-                                # Get pipeline components from daemon bus
-                                h_bus = _get_daemon_bus()
-                                h_engine = h_bus.ctx.engine
-                                h_embed = h_bus.ctx.embed_service
-                                h_kg = h_bus.ctx.kg
-                                h_pipeline = None
-                                if h_engine is not None and h_embed is not None:
-                                    try:
-                                        from jarvis_engine.memory.classify import BranchClassifier
-                                        from jarvis_engine.memory.ingest import EnrichedIngestPipeline
-                                        h_classifier = BranchClassifier(h_embed)
-                                        h_pipeline = EnrichedIngestPipeline(
-                                            h_engine, h_embed, h_classifier, knowledge_graph=h_kg,
-                                        )
-                                    except (ImportError, OSError, sqlite3.Error) as exc_pipe:
-                                        logger.debug("Auto-harvest pipeline init failed: %s", exc_pipe)
-                                if h_available and h_pipeline is not None:
-                                    harvester = KnowledgeHarvester(
-                                        providers=h_available,
-                                        pipeline=h_pipeline,
-                                        cost_tracker=None,
-                                        budget_manager=h_budget,
-                                    )
-                                    total_records = 0
-                                    for topic in harvest_topics:
-                                        topic_records = 0
-                                        h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
-                                        for entry in h_result.get("results", []):
-                                            topic_records += entry.get("records_created", 0)
-                                        total_records += topic_records
-                                        print(f"auto_harvest_topic={topic} records={topic_records}")
-                                    log_activity(
-                                        ActivityCategory.HARVEST,
-                                        f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
-                                        {"topics": harvest_topics, "total_records": total_records},
-                                    )
-                                elif not h_available:
-                                    print("auto_harvest_skipped=no_providers_available")
-                                else:
-                                    print("auto_harvest_skipped=no_ingest_pipeline")
-                            finally:
-                                if h_budget is not None:
-                                    h_budget.close()
-                        else:
-                            print("auto_harvest_skipped=no_topics_discovered")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Daemon auto-harvest failed: %s", exc)
-                        print(f"auto_harvest_error={exc}")
+                    _run_auto_harvest_cycle(root)
             # --- Core autopilot: only this drives the circuit breaker ---
             exec_cycle = execute and not safe_mode
             approve_cycle = approve_privileged and not safe_mode
@@ -940,15 +1094,7 @@ def cmd_daemon_run_impl(
                 print(f"cycle_error={exc}")
             print(f"cycle_rc={rc}")
             # --- Activity feed: log cycle end ---
-            try:
-                from jarvis_engine.activity_feed import log_activity, ActivityCategory
-                log_activity(
-                    ActivityCategory.DAEMON_CYCLE,
-                    f"Daemon cycle {cycles} ended (rc={rc})",
-                    {"cycle": cycles, "rc": rc, "phase": "end"},
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("Activity feed cycle-end log failed: %s", exc)
+            _log_cycle_end(cycles, rc)
             # Circuit breaker: only autopilot (rc) counts toward consecutive failures.
             # Mission, sync, and self-heal failures are logged but never trigger shutdown.
             if rc == 0:

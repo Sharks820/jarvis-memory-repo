@@ -41,18 +41,20 @@ def is_safe_public_url(url: str) -> bool:
         ip = ip_address(host)
         return not (ip.is_private or ip.is_loopback or ip.is_link_local
                     or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
-    except ValueError:
-        pass
+    except ValueError as exc:
+        logger.debug("Host is not an IP literal, resolving as hostname: %s", exc)
     default_port = 443 if parsed.scheme == "https" else 80
     try:
         resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
+    except socket.gaierror as exc:
+        logger.debug("DNS resolution failed for %s: %s", host, exc)
         return False
     for item in resolved:
         raw_ip = item[4][0]
         try:
             ip = ip_address(raw_ip)
         except ValueError:
+            logger.debug("Invalid IP address %r in DNS response for %s", raw_ip, host)
             return False
         if (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
@@ -73,13 +75,15 @@ def resolve_and_check_ip(url: str) -> bool:
     default_port = 443 if parsed.scheme == "https" else 80
     try:
         resolved = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
+    except socket.gaierror as exc:
+        logger.debug("DNS re-resolution failed for %s: %s", host, exc)
         return False
     for item in resolved:
         raw_ip = item[4][0]
         try:
             ip = ip_address(raw_ip)
         except ValueError:
+            logger.debug("Invalid IP %r in DNS re-resolution for %s", raw_ip, host)
             return False
         if (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
@@ -137,7 +141,8 @@ def fetch_page_text(url: str, *, max_bytes: int = 250_000) -> str:
             ):
                 return ""
             payload = resp.read(max_bytes)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.debug("Failed to fetch page text from %s: %s", url, exc)
         return ""
     text = payload.decode("utf-8", errors="replace")
     text = _SCRIPT_RE.sub(" ", text)
@@ -161,7 +166,8 @@ def search_duckduckgo(query: str, *, limit: int) -> list[str]:
         opener = build_opener(SafeRedirectHandler)
         with opener.open(req, timeout=12) as resp:  # nosec B310
             payload = resp.read(400_000)
-    except OSError:
+    except OSError as exc:
+        logger.debug("DuckDuckGo search request failed: %s", exc)
         return []
     text = payload.decode("utf-8", errors="replace")
     urls: list[str] = []

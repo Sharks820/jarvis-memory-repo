@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
+from jarvis_engine.stt_vad import SileroVADDetector
 from jarvis_engine.wakeword import WakeWordDetector
 
 
@@ -1078,7 +1079,7 @@ def test_wakeword_silero_vad_integration() -> None:
     detector._stop_event = stop_event
 
     # Mock SileroVADDetector to be available and return speech=True
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = True
     mock_vad.process_chunk.return_value = True  # Speech detected
 
@@ -1135,7 +1136,7 @@ def test_wakeword_vad_reset_after_detection() -> None:
     stop_event.is_set = _stop_after_one
     detector._stop_event = stop_event
 
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = True
     mock_vad.process_chunk.return_value = True
 
@@ -1192,7 +1193,7 @@ def test_wakeword_rms_fallback() -> None:
     detector._stop_event = stop_event
 
     # Mock VAD as unavailable
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = False
 
     original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
@@ -1226,7 +1227,7 @@ def test_wakeword_vad_stored_on_instance() -> None:
     assert detector._vad is None
     assert detector._vad_available is False
 
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     mock_vad.available = True
 
     original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
@@ -1258,7 +1259,7 @@ def test_wakeword_vad_reset_on_resume() -> None:
     """resume() resets VAD state for clean slate after pause."""
     detector = WakeWordDetector()
 
-    mock_vad = MagicMock()
+    mock_vad = MagicMock(spec=SileroVADDetector)
     detector._vad = mock_vad
 
     mock_sd = MagicMock()

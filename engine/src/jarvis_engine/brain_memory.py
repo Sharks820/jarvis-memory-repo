@@ -34,6 +34,21 @@ class ContextPacket(TypedDict):
     max_chars: int
     total_records_scanned: int
 
+
+class RegressionReport(TypedDict):
+    """Result from :func:`brain_regression_report`."""
+
+    status: str
+    total_records: int
+    unique_hashes: int
+    duplicate_ratio: float
+    branch_entropy: float
+    branch_count: int
+    unresolved_conflicts: int
+    conflict_total: int
+    generated_utc: str
+
+
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import sha256_hex, sha256_short
@@ -607,7 +622,7 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> dict[str, A
     }
 
 
-def brain_regression_report(root: Path) -> dict[str, Any]:
+def brain_regression_report(root: Path) -> RegressionReport:
     with _brain_io_lock:
         records = _load_records(root, limit=200000)
         facts_state = _load_facts(root)

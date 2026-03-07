@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -19,6 +19,17 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 logger = logging.getLogger(__name__)
+
+
+class LearningResult(TypedDict, total=False):
+    """Result from :meth:`ConversationLearningEngine.learn_from_interaction`."""
+
+    records_created: int
+    correction_detected: bool
+    correction_applied: bool
+    preferences_detected: list[tuple[str, str]]
+    feedback_detected: str
+    error: str
 
 # Greeting prefixes that indicate non-knowledge-bearing messages (when short).
 _GREETING_PREFIXES = (
@@ -56,7 +67,7 @@ class ConversationLearningEngine:
         task_id: str = "",
         route: str = "",
         topic: str = "",
-    ) -> dict:
+    ) -> LearningResult:
         """Learn from a single interaction, returning ingestion stats.
 
         Filters non-knowledge-bearing messages, then ingests user messages

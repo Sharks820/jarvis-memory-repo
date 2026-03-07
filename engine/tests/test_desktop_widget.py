@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import http.client
 import json
 import math
 import threading
 import time
+import tkinter as tk
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -306,7 +308,7 @@ class TestLoadWidgetCfg:
             encoding="utf-8",
         )
         # First call (probe saved IP) fails, second call (localhost) succeeds
-        mock_resp = MagicMock()
+        mock_resp = MagicMock(spec=http.client.HTTPResponse)
         mock_resp.status = 200
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
@@ -422,7 +424,7 @@ class TestHttpJson:
     @patch("jarvis_engine.widget_helpers.urlopen")
     def test_get_request_success(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-        resp_mock = MagicMock()
+        resp_mock = MagicMock(spec=http.client.HTTPResponse)
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
         resp_mock.read.return_value = b'{"ok": true}'
@@ -438,7 +440,7 @@ class TestHttpJson:
     @patch("jarvis_engine.widget_helpers.urlopen")
     def test_post_request_includes_content_type(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-        resp_mock = MagicMock()
+        resp_mock = MagicMock(spec=http.client.HTTPResponse)
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
         resp_mock.read.return_value = b'{"ok": true}'
@@ -458,7 +460,7 @@ class TestHttpJson:
     @patch("jarvis_engine.widget_helpers.urlopen")
     def test_invalid_json_response_raises(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-        resp_mock = MagicMock()
+        resp_mock = MagicMock(spec=http.client.HTTPResponse)
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
         resp_mock.read.return_value = b"NOT JSON"
@@ -474,7 +476,7 @@ class TestHttpJson:
     @patch("jarvis_engine.widget_helpers.urlopen")
     def test_non_dict_response_raises(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json
-        resp_mock = MagicMock()
+        resp_mock = MagicMock(spec=http.client.HTTPResponse)
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
         resp_mock.read.return_value = b'[1, 2, 3]'
@@ -509,7 +511,7 @@ class TestHttpJsonBootstrap:
     @patch("jarvis_engine.widget_helpers.urlopen")
     def test_successful_bootstrap(self, mock_urlopen):
         from jarvis_engine.desktop_widget import _http_json_bootstrap
-        resp_mock = MagicMock()
+        resp_mock = MagicMock(spec=http.client.HTTPResponse)
         resp_mock.__enter__ = MagicMock(return_value=resp_mock)
         resp_mock.__exit__ = MagicMock(return_value=False)
         resp_mock.read.return_value = json.dumps({
@@ -1512,7 +1514,7 @@ class TestSnapToEdge:
 
     def _make_tk_root(self, screen_w: int = 1920, screen_h: int = 1080):
         """Create a mock tkinter root with screen dimensions."""
-        root = MagicMock()
+        root = MagicMock(spec=tk.Tk)
         root.winfo_screenwidth.return_value = screen_w
         root.winfo_screenheight.return_value = screen_h
         return root
@@ -1577,7 +1579,7 @@ class TestIsPositionOnScreen:
     """Test on-screen position validation."""
 
     def _make_tk_root(self, screen_w: int = 1920, screen_h: int = 1080):
-        root = MagicMock()
+        root = MagicMock(spec=tk.Tk)
         root.winfo_screenwidth.return_value = screen_w
         root.winfo_screenheight.return_value = screen_h
         return root

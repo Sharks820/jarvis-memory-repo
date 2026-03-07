@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import socket
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1181,7 +1182,7 @@ def test_run_main_cli_successful_command(mobile_server) -> None:
 
     stub = _make_handler_stub(mobile_server.server)
 
-    fake_result = MagicMock()
+    fake_result = MagicMock(spec=subprocess.CompletedProcess)
     fake_result.returncode = 0
     fake_result.stdout = "output line 1\noutput line 2\n"
     fake_result.stderr = ""
@@ -1223,7 +1224,7 @@ def test_run_main_cli_command_failure(mobile_server) -> None:
 
     stub = _make_handler_stub(mobile_server.server)
 
-    fake_result = MagicMock()
+    fake_result = MagicMock(spec=subprocess.CompletedProcess)
     fake_result.returncode = 1
     fake_result.stdout = "some output\n"
     fake_result.stderr = "error occurred\n"
@@ -1651,7 +1652,7 @@ def test_voice_command_subprocess_does_not_leak_master_password(mobile_server) -
     def fake_run(cmd, **kwargs):
         captured_cmds.append(list(cmd))
         captured_envs.append(dict(kwargs.get("env", {})))
-        result = MagicMock()
+        result = MagicMock(spec=subprocess.CompletedProcess)
         result.returncode = 0
         result.stdout = "intent=noop\nreason=test\nstatus_code=ok\n"
         result.stderr = ""

@@ -117,8 +117,8 @@ def create_signed_snapshot(
                 try:
                     path.resolve().relative_to(snapshot_dir.resolve())
                     continue
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    logger.debug("Path not within snapshot dir (including): %s", exc)
                 rel = _safe_rel(path, root_resolved)
                 zf.write(path, arcname=rel)
                 archived_files.append(rel)

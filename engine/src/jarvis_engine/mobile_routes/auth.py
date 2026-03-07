@@ -4,7 +4,7 @@ import logging
 import os
 import socket
 from http import HTTPStatus
-from typing import Any
+from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine.daemon_loop import read_gaming_mode_state, write_gaming_mode_state
@@ -16,6 +16,15 @@ from jarvis_engine.runtime_control import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class GamingState(TypedDict, total=False):
+    """Typed dict for gaming mode state."""
+
+    enabled: bool
+    auto_detect: bool
+    reason: str
+    updated_utc: str
 
 
 class AuthRoutesMixin:
@@ -31,7 +40,7 @@ class AuthRoutesMixin:
             })
         return session
 
-    def _read_gaming_state(self) -> dict[str, Any]:
+    def _read_gaming_state(self) -> GamingState:
         """Read gaming mode state from the shared daemon_loop implementation."""
         return dict(read_gaming_mode_state())
 
@@ -41,7 +50,7 @@ class AuthRoutesMixin:
         enabled: bool | None = None,
         auto_detect: bool | None = None,
         reason: str = "",
-    ) -> dict[str, Any]:
+    ) -> GamingState:
         state = self._read_gaming_state()
         if enabled is not None:
             state["enabled"] = enabled

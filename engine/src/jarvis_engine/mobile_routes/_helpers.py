@@ -11,12 +11,23 @@ import logging
 import sqlite3
 import subprocess
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.activity_feed import ActivityEvent
 
 logger = logging.getLogger(__name__)
+
+
+class CommandReliability(TypedDict):
+    """Aggregated command reliability metrics."""
+
+    sampled_commands: int
+    command_success_rate_pct: float
+    retry_count: int
+    timeout_count: int
+    memory_pressure_incidents: int
+    last_pressure_level: str
 
 ALLOWED_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
@@ -58,8 +69,8 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
             for line in result.stdout.splitlines():
                 if "=" in line:
                     return line.split("=", 1)[1].strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("openssl fingerprint extraction failed, trying fallback: %s", exc)
     # Fallback: pure-Python PEM -> DER -> SHA-256
     try:
         import base64
@@ -74,8 +85,8 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
         der_bytes = base64.b64decode("".join(lines))
         digest = hashlib.sha256(der_bytes).hexdigest().upper()
         return ":".join(digest[i : i + 2] for i in range(0, len(digest), 2))
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as exc:
+        logger.debug("PEM-to-DER fingerprint fallback failed: %s", exc)
     return None
 
 
@@ -115,7 +126,7 @@ def _serialize_activity_event(event: ActivityEvent) -> dict[str, Any]:
     )
 
 
-def _compute_command_reliability() -> dict[str, Any]:
+def _compute_command_reliability() -> CommandReliability:
     """Aggregate command reliability metrics from the activity feed."""
     result: dict[str, Any] = {
         "sampled_commands": 0,
