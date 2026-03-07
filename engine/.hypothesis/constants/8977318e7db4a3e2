@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/api_contracts.py
+# hypothesis_version: 6.151.9
+
+['.', 'GET /dashboard', 'GET /health', 'GET /processes', 'GET /settings', 'GET /spam/candidates', 'GET /sync/status', 'POST /bootstrap', 'POST /command', 'POST /ingest', 'POST /settings', 'POST /sync/pull', 'POST /sync/push', '__args__', '__origin__', 'algorithm', 'array', 'base_url', 'bool', 'boolean', 'candidates', 'dashboard', 'device_id', 'error', 'etas', 'fingerprint', 'float', 'gaming_mode', 'int', 'integer', 'intent', 'items', 'jarvis', 'memory_regression', 'message', 'null', 'nullable', 'number', 'object', 'ok', 'properties', 'ranking', 'required', 'runtime_control', 'session', 'settings', 'sha256', 'signing_key', 'status', 'stdout_tail', 'str', 'string', 'token', 'trusted_device', 'type']

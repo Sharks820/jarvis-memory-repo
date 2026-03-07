@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/voice.py
+# hypothesis_version: 6.151.9
+
+[120, 180, 200, '(?<=[.!?])\\s+', '--list-voices', '--text', '--voice', '--write-media', '-Command', '-EncodedCommand', '-NoProfile', '.mp3', 'David', 'Great Britain', 'JARVIS_TTS_ENGINE', 'JARVIS_VOICE_MEDIA', 'JARVIS_VOICE_NAME', 'JARVIS_VOICE_OUTPUT', 'JARVIS_VOICE_PATTERN', 'JARVIS_VOICE_RATE', 'JARVIS_VOICE_TEXT', 'Male', '\\1', '\\n{3,}', '^#{1,6}\\s+', '^\\s*[-*+]\\s+', '__ERROR__', '_{1,2}([^_]+)_{1,2}', '`([^`]+)`', 'ascii', 'auto', 'chunk_*.mp3', 'edge', 'edge-tts', 'edge-tts.exe', 'edge_tts', 'en-GB', 'en-GB-RyanNeural', 'en-GB-ThomasNeural', 'en-US', 'en-US-AndrewNeural', 'en-US-GuyNeural', 'en-US-RogerNeural', 'jarvis_edge_stream_', 'jarvis_like', 'jarvis_voice_', 'powershell', 'utf-16-le']

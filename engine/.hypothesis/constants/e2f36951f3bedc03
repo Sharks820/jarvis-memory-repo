@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/correction_detector.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.1, 0.9, 1.0, '.!?', '[a-zA-Z0-9]+', '_vec_available', 'a', 'am', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'but', 'by', 'did', 'do', 'does', 'for', 'from', 'had', 'has', 'have', 'he', 'i', 'if', 'in', 'is', 'it', 'its', 'me', 'my', 'no', 'no such table', 'node_id', 'not', 'of', 'on', 'or', 's', 'she', 'so', 'superseded', 'that', 'the', 'they', 'this', 'to', 'us', 'was', 'we', 'were', 'with']

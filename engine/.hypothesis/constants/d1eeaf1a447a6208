@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/handlers/memory_handlers.py
+# hypothesis_version: 6.151.9
+
+[0.0, 160, 200, 500, 12000, 50000, 'branch', 'branch_count', 'branches', 'canonical_facts', 'deduped', 'edge_count', 'embedding failed', 'engine', 'error', 'fact_count', 'general', 'kind', 'locked_facts', 'max_chars', 'max_items', 'not_available', 'query', 'record_id', 'regression', 'score', 'selected', 'selected_count', 'source', 'sqlite', 'status', 'summary', 'total_records', 'ts', 'updated_utc']

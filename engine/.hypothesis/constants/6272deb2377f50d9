@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/gateway/costs.py
+# hypothesis_version: 6.151.9
+
+[0.0, 100, 3650, 'CostTracker', '_closed', 'category', 'cloud', 'cloud_cost_usd', 'cloud_count', 'cnt', 'cost_usd', 'count', 'failed_cost_usd', 'failed_count', 'input_tokens', 'local', 'local_count', 'local_pct', 'model', 'models', 'output_tokens', 'period_days', 'total_cost', 'total_cost_usd', 'total_count', 'total_input_tokens', 'total_output_tokens']

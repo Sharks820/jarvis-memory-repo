@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/memory/tiers.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.85, 48.0, 3600.0, '+00:00', 'MemoryEngine', 'Z', 'access_count', 'archive', 'cold', 'confidence', 'demoted', 'hot', 'inf', 'promoted', 'record_id', 'tier', 'total', 'ts', 'unchanged', 'warm']

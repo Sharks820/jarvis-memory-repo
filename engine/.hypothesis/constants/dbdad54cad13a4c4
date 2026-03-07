@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/news/interests.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.01, 0.3, 0.5, 30.0, 90.0, 86400, 'count', 'interests.json', 'last_seen', 'score', 'utf-8']

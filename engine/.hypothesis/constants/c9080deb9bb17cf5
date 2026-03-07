@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/handlers/proactive_handlers.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.15, 0.3, 0.82, 8.0, 20.0, '.planning', '; ', 'average_score', 'bill_due_alert', 'bills', 'brain', 'calendar_events', 'calendar_prep', 'cloud_cost_usd', 'connector_statuses', 'conner', 'cost_history.jsonl', 'en', 'failed_cost_usd', 'failed_count', 'hey jarvis ', 'hey jarvis, ', 'jarvis ', 'jarvis, ', 'local_pct', 'medication_reminder', 'medications', 'message', 'name', 'per_task_scores', 'priority', 'r', 'ready', 'regression_detected', 'rule_id', 'stable', 'tasks', 'tasks_run', 'timestamp', 'trend', 'urgent_task_alert', 'utf-8']

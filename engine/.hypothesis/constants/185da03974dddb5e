@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/memory/ingest.py
+# hypothesis_version: 6.151.9
+
+[0.72, 1.0, 1.2, 100, 200, 1500, 10000, '(?<=\\. )', '(bearer)\\s+\\S+', 'BranchClassifier', 'EmbeddingService', 'MemoryEngine', '[REDACTED]', '\\n\\n+', 'access_count', 'branch', 'confidence', 'content_hash', 'embed_batch', 'extracted_from', 'fact', 'kind', 'last_accessed', 'object | None', 'provenance', 'record_id', 'search_document', 'source', 'summary', 'tags', 'task_id', 'tier', 'ts', 'utf-8', 'warm']

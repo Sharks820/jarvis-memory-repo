@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/handlers/harvest_handlers.py
+# hypothesis_version: 6.151.9
+
+['.claude', '.codex', 'AppData', 'action', 'claude', 'codex', 'error', 'limit_requests', 'limit_usd', 'nt', 'period', 'provider', 'results', 'semantic', 'session', 'set', 'status', 'topic']

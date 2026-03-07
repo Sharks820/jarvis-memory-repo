@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/wakeword.py
+# hypothesis_version: 6.151.9
+
+[0.005, 0.1, 0.3, 0.5, 2.0, 32767.0, -32768, 1280, 16000, 32767, 'float32', 'hey_jarvis', 'onnx']

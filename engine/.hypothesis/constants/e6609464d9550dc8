@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/learning/usage_patterns.py
+# hypothesis_version: 6.151.9
+
+['common_topics', 'interaction_count', 'likely_route']

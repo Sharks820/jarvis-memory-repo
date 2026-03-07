@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/handlers/learning_handlers.py
+# hypothesis_version: 6.151.9
+
+['branches_involved', 'direct_results', 'error', 'groups_found', 'new_facts_created', 'ok', 'pre-consolidation', 'records_consolidated', 'records_created']

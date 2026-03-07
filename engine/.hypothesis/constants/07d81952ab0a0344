@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/_shared.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.06, 100, 384, 1024, '(', 'AND', 'CREATE_NO_WINDOW', 'NEAR', 'NOT', 'OR', 'STARTF_USESHOWWINDOW', 'creationflags', 'data', 'nt', 'personal_vocab.txt', 'rb', 'replace', 'repo_root_override', 'startupinfo', 'utf-8']

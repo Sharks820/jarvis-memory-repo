@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/runtime_control.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1.35, 2.0, 24.0, 64.0, 92.0, 256.0, 1024.0, 2048.0, 200, 1800, '*', '.planning', 'RUSAGE_SELF', 'base_sleep_s', 'brain', 'budget', 'cache', 'captured_utc', 'control.json', 'current', 'daemon_paused', 'darwin', 'embedding_cache_mb', 'getrusage', 'max_sleep_s', 'metrics', 'mild', 'mild_scale', 'mission_state_mb', 'missions', 'missions.json', 'mute_until_utc', 'muted', 'none', 'over_budget', 'over_budget_count', 'pressure_level', 'process_cpu_pct', 'process_memory_mb', 'reason', 'safe_mode', 'severe', 'severe_scale', 'should_throttle', 'skip_heavy_tasks', 'sleep_s', 'throttle', 'updated_utc', 'utf-8']

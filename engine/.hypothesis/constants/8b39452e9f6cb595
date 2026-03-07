@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/knowledge/facts.py
+# hypothesis_version: 6.151.9
+
+[0.65, 0.7, 0.75, 0.8, 100, '[^a-z0-9_]', '\\s+', '_', 'earns', 'family.member', 'family_relation', 'finance.income', 'has_event', 'health.medication', 'located_at', 'ops.location', 'ops.schedule', 'preference', 'prefers', 'takes']

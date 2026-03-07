@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/security/containment.py
+# hypothesis_version: 6.151.9
+
+[b'jarvis-containment-recovery-v1', 1.0, 1000, 600000, ':', 'CRITICAL', 'HIGH', 'INFO', 'NONE', 'actions', 'blocked_ips', 'containment_executed', 'credential_rotation', 'credentials_rotated', 'current_level', 'event_type', 'history_count', 'ip', 'isolated_endpoints', 'killed', 'level', 'level_name', 'level_recovered', 'lockdown_active', 'reason', 'recovered', 'recovery_denied', 'recovery_executed', 'sha256', 'throttled_ips', 'timestamp', 'utf-8']

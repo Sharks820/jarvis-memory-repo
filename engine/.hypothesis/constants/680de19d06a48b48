@@ -1,0 +1,4 @@
+# file: /home/runner/work/jarvis-memory-repo/jarvis-memory-repo/engine/src/jarvis_engine/router.py
+# hypothesis_version: 6.151.9
+
+['cloud_burst', 'cloud_verifier', 'critical', 'hard', 'high', 'local_primary', 'very_hard']
