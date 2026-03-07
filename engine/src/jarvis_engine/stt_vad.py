@@ -23,27 +23,32 @@ logger = logging.getLogger(__name__)
 
 _torch_available: bool | None = None
 _silero_available: bool | None = None
+_availability_lock = threading.Lock()
 
 
 def _check_torch() -> bool:
     global _torch_available
     if _torch_available is None:
-        try:
-            import torch  # noqa: F401
-            _torch_available = True
-        except ImportError:
-            _torch_available = False
+        with _availability_lock:
+            if _torch_available is None:
+                try:
+                    import torch  # noqa: F401
+                    _torch_available = True
+                except ImportError:
+                    _torch_available = False
     return _torch_available
 
 
 def _check_silero() -> bool:
     global _silero_available
     if _silero_available is None:
-        try:
-            import silero_vad  # noqa: F401
-            _silero_available = True
-        except ImportError:
-            _silero_available = False
+        with _availability_lock:
+            if _silero_available is None:
+                try:
+                    import silero_vad  # noqa: F401
+                    _silero_available = True
+                except ImportError:
+                    _silero_available = False
     return _silero_available
 
 

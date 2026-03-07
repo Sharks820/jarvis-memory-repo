@@ -228,65 +228,14 @@ class CorrectionDetector:
                 if pre_new_matches:
                     existing_new_id = pre_new_matches[0]["node_id"]
                     if existing_new_id != node_id:
-                        # A node with the new claim already exists — merge instead of duplicating.
-                        # Boost the existing node's confidence to the max of both.
-                        existing_new_row = self._kg._db.execute(
-                            "SELECT confidence FROM kg_nodes WHERE node_id = ?",
-                            (existing_new_id,),
-                        ).fetchone()
-                        if existing_new_row is not None:
-                            existing_new_conf = float(existing_new_row[0])
-                            merged_confidence = min(max(existing_new_conf, new_confidence), 1.0)
-                            self._kg._db.execute(
-                                """UPDATE kg_nodes
-                                   SET confidence = ?, updated_at = datetime('now')
-                                   WHERE node_id = ?""",
-                                (merged_confidence, existing_new_id),
-                            )
-                        # Retract the old node (set confidence to 0) rather than deleting
-                        self._kg._db.execute(
-                            """UPDATE kg_nodes
-                               SET confidence = 0, updated_at = datetime('now')
-                               WHERE node_id = ?""",
-                            (node_id,),
+                        merged = self._retract_and_merge(
+                            node_id, existing_new_id, new_confidence,
                         )
-                        # Clean up FTS5 index for the retracted node
-                        delete_fts_kg(self._kg._db, node_id)
-                        # Clean up vec index for the retracted node
-                        if getattr(self._kg, "_vec_available", False):
-                            try:
-                                self._kg._db.execute(
-                                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
-                                )
-                            except sqlite3.Error as exc:
-                                logger.debug("Vec cleanup for retracted node %s failed: %s", node_id, exc)
-                        self._kg._db.commit()
-                        self._kg._mutation_counter += 1
-                        logger.info(
-                            "Correction merged: node %s retracted, existing node %s boosted to %.2f",
-                            node_id, existing_new_id, merged_confidence if existing_new_row else new_confidence,
-                        )
-                        # Add superseded edge for historical audit trail
-                        try:
-                            self._kg.add_edge(
-                                source_id=node_id,
-                                target_id=existing_new_id,
-                                relation="superseded",
-                            )
-                        except (sqlite3.Error, ValueError) as exc:
-                            logger.debug("KG audit edge failed: %s", exc)
-                        return True
+                        if merged:
+                            return True
 
                 # Update the fact label and confidence
-                self._kg._db.execute(
-                    """UPDATE kg_nodes
-                       SET label = ?, confidence = ?, updated_at = datetime('now')
-                       WHERE node_id = ?""",
-                    (correction.new_claim, new_confidence, node_id),
-                )
-
-                # Maintain FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
-                upsert_fts_kg(self._kg._db, node_id, correction.new_claim)
+                self._update_fts_and_vec(node_id, correction.new_claim, new_confidence)
 
                 self._kg._db.commit()
                 # Invalidate NetworkX cache (bypassed add_fact)
@@ -304,6 +253,101 @@ class CorrectionDetector:
         )
 
         return True
+
+    # ------------------------------------------------------------------
+    # Internal helpers for apply_correction
+    # ------------------------------------------------------------------
+
+    def _retract_and_merge(
+        self,
+        old_node_id: str,
+        new_node_id: str,
+        new_confidence: float,
+    ) -> bool:
+        """Retract *old_node_id* and boost *new_node_id* confidence.
+
+        Called when the correction's new claim already exists as a separate
+        node.  The old node is retracted (confidence set to 0), its FTS5/vec
+        indexes are cleaned up, and a ``superseded`` edge is added for audit.
+
+        Must be called while holding ``self._kg.write_lock``.
+        Returns ``True`` on success.
+        """
+        assert self._kg is not None  # caller guarantees
+
+        existing_new_row = self._kg._db.execute(
+            "SELECT confidence FROM kg_nodes WHERE node_id = ?",
+            (new_node_id,),
+        ).fetchone()
+        if existing_new_row is not None:
+            existing_new_conf = float(existing_new_row[0])
+            merged_confidence = min(max(existing_new_conf, new_confidence), 1.0)
+            self._kg._db.execute(
+                """UPDATE kg_nodes
+                   SET confidence = ?, updated_at = datetime('now')
+                   WHERE node_id = ?""",
+                (merged_confidence, new_node_id),
+            )
+        else:
+            merged_confidence = new_confidence
+
+        # Retract the old node (set confidence to 0) rather than deleting
+        self._kg._db.execute(
+            """UPDATE kg_nodes
+               SET confidence = 0, updated_at = datetime('now')
+               WHERE node_id = ?""",
+            (old_node_id,),
+        )
+        # Clean up FTS5 index for the retracted node
+        delete_fts_kg(self._kg._db, old_node_id)
+        # Clean up vec index for the retracted node
+        if getattr(self._kg, "_vec_available", False):
+            try:
+                self._kg._db.execute(
+                    "DELETE FROM vec_kg_nodes WHERE node_id = ?", (old_node_id,)
+                )
+            except sqlite3.Error as exc:
+                logger.debug("Vec cleanup for retracted node %s failed: %s", old_node_id, exc)
+
+        self._kg._db.commit()
+        self._kg._mutation_counter += 1
+        logger.info(
+            "Correction merged: node %s retracted, existing node %s boosted to %.2f",
+            old_node_id, new_node_id, merged_confidence,
+        )
+        # Add superseded edge for historical audit trail
+        try:
+            self._kg.add_edge(
+                source_id=old_node_id,
+                target_id=new_node_id,
+                relation="superseded",
+            )
+        except (sqlite3.Error, ValueError) as exc:
+            logger.debug("KG audit edge failed: %s", exc)
+        return True
+
+    def _update_fts_and_vec(
+        self,
+        node_id: str,
+        new_label: str,
+        new_confidence: float,
+    ) -> None:
+        """Update a node's label, confidence, and FTS5 index.
+
+        Must be called while holding ``self._kg.write_lock``.
+        Does NOT commit -- the caller is responsible for committing.
+        """
+        assert self._kg is not None  # caller guarantees
+
+        self._kg._db.execute(
+            """UPDATE kg_nodes
+               SET label = ?, confidence = ?, updated_at = datetime('now')
+               WHERE node_id = ?""",
+            (new_label, new_confidence, node_id),
+        )
+
+        # Maintain FTS5 index (DELETE + INSERT since FTS5 has no UPDATE)
+        upsert_fts_kg(self._kg._db, node_id, new_label)
 
 
 # ------------------------------------------------------------------

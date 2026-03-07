@@ -275,6 +275,7 @@ def set_process_title(name: str) -> None:
 
 _personal_vocab_raw_cache: list[str] | None = None
 _personal_vocab_stripped_cache: list[str] | None = None
+_personal_vocab_lock = threading.Lock()
 
 
 def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
@@ -282,7 +283,7 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
 
     The file is located relative to the ``jarvis_engine`` package directory.
     Results are cached per variant (raw vs stripped) so the file is read at
-    most once per process lifetime.
+    most once per process lifetime.  Thread-safe via double-checked locking.
 
     Parameters
     ----------
@@ -296,6 +297,7 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
     """
     global _personal_vocab_raw_cache, _personal_vocab_stripped_cache
 
+    # Fast path: check cache without lock
     if strip_parens:
         if _personal_vocab_stripped_cache is not None:
             return _personal_vocab_stripped_cache
@@ -303,36 +305,45 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         if _personal_vocab_raw_cache is not None:
             return _personal_vocab_raw_cache
 
-    # Locate the file relative to the jarvis_engine package
-    vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
-    try:
-        lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
-    except OSError:
-        _personal_vocab_raw_cache = []
-        _personal_vocab_stripped_cache = []
-        return []
+    with _personal_vocab_lock:
+        # Re-check under lock (double-checked locking)
+        if strip_parens:
+            if _personal_vocab_stripped_cache is not None:
+                return _personal_vocab_stripped_cache
+        else:
+            if _personal_vocab_raw_cache is not None:
+                return _personal_vocab_raw_cache
 
-    # Build raw list (always needed)
-    raw: list[str] = [line.strip() for line in lines if line.strip()]
+        # Locate the file relative to the jarvis_engine package
+        vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
+        try:
+            lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
+        except OSError:
+            _personal_vocab_raw_cache = []
+            _personal_vocab_stripped_cache = []
+            return []
 
-    if _personal_vocab_raw_cache is None:
-        _personal_vocab_raw_cache = raw
+        # Build raw list (always needed)
+        raw: list[str] = [line.strip() for line in lines if line.strip()]
 
-    # Build stripped list on demand
-    if strip_parens:
-        stripped: list[str] = []
-        for entry in raw:
-            paren_idx = entry.find("(")
-            if paren_idx > 0:
-                term = entry[:paren_idx].strip()
-            else:
-                term = entry
-            if term:
-                stripped.append(term)
-        _personal_vocab_stripped_cache = stripped
-        return _personal_vocab_stripped_cache
+        if _personal_vocab_raw_cache is None:
+            _personal_vocab_raw_cache = raw
 
-    return _personal_vocab_raw_cache
+        # Build stripped list on demand
+        if strip_parens:
+            stripped: list[str] = []
+            for entry in raw:
+                paren_idx = entry.find("(")
+                if paren_idx > 0:
+                    term = entry[:paren_idx].strip()
+                else:
+                    term = entry
+                if term:
+                    stripped.append(term)
+            _personal_vocab_stripped_cache = stripped
+            return _personal_vocab_stripped_cache
+
+        return _personal_vocab_raw_cache
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from anthropic import APIConnectionError
+from anthropic import Anthropic, APIConnectionError
+from ollama import Client as OllamaClient
 
 from jarvis_engine.gateway.audit import GatewayAudit
 from jarvis_engine.gateway.costs import CostTracker
@@ -118,14 +119,15 @@ class TestGatewayResponse:
 
 def _mock_anthropic_response(text: str = "hello", input_tokens: int = 10, output_tokens: int = 5) -> MagicMock:
     """Create a mock Anthropic messages.create() response."""
-    content_block = MagicMock()
+    from anthropic.types import Message, TextBlock, Usage
+    content_block = MagicMock(spec=TextBlock)
     content_block.text = text
 
-    usage = MagicMock()
+    usage = MagicMock(spec=Usage)
     usage.input_tokens = input_tokens
     usage.output_tokens = output_tokens
 
-    response = MagicMock()
+    response = MagicMock(spec=Message)
     response.content = [content_block]
     response.usage = usage
     return response
@@ -146,7 +148,7 @@ class TestModelGateway:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_anthropic_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """ModelGateway dispatches to Anthropic for claude-* models."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_client.messages.create.return_value = _mock_anthropic_response("hello", 10, 5)
         mock_anthropic_cls.return_value = mock_client
 
@@ -169,7 +171,7 @@ class TestModelGateway:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_ollama_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """ModelGateway dispatches to Ollama for non-claude models or when no API key."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.return_value = _mock_ollama_response("local answer")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -192,12 +194,12 @@ class TestModelGateway:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_fallback_on_api_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """ModelGateway falls back to Ollama when Anthropic raises APIConnectionError."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
         mock_client.messages.create.side_effect = APIConnectionError(request=mock_request)
         mock_anthropic_cls.return_value = mock_client
 
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.return_value = _mock_ollama_response("fallback answer")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -219,7 +221,7 @@ class TestModelGateway:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_local_only_mode(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """With no API key and no cloud keys, claude-* models fall through to Ollama."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.return_value = _mock_ollama_response("local only")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -243,7 +245,7 @@ class TestModelGateway:
         tmp_path: Path,
     ) -> None:
         """ModelGateway logs completion cost to CostTracker."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_client.messages.create.return_value = _mock_anthropic_response("hi", 100, 50)
         mock_anthropic_cls.return_value = mock_client
 
@@ -267,12 +269,12 @@ class TestModelGateway:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_gateway_all_providers_fail(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """When both Anthropic and Ollama fail, return graceful error response."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
         mock_client.messages.create.side_effect = APIConnectionError(request=mock_request)
         mock_anthropic_cls.return_value = mock_client
 
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.side_effect = ConnectionError("Ollama not running")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -513,7 +515,7 @@ class TestModelGatewayAudit:
         tmp_path: Path,
     ) -> None:
         """ModelGateway writes an audit record on successful Anthropic call."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_client.messages.create.return_value = _mock_anthropic_response("hi", 100, 50)
         mock_anthropic_cls.return_value = mock_client
 
@@ -545,12 +547,12 @@ class TestModelGatewayAudit:
         tmp_path: Path,
     ) -> None:
         """ModelGateway logs both the failed attempt and the fallback success."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
         mock_client.messages.create.side_effect = APIConnectionError(request=mock_request)
         mock_anthropic_cls.return_value = mock_client
 
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         ollama_resp = _mock_ollama_response("fallback")
         ollama_resp.prompt_eval_count = 20
         ollama_resp.eval_count = 10
@@ -585,7 +587,7 @@ class TestModelGatewayAudit:
         tmp_path: Path,
     ) -> None:
         """ModelGateway works fine without audit (no overhead, no file created)."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_client.messages.create.return_value = _mock_anthropic_response("hi", 10, 5)
         mock_anthropic_cls.return_value = mock_client
 
@@ -609,7 +611,7 @@ class TestModelGatewayAudit:
         tmp_path: Path,
     ) -> None:
         """privacy_routed flag is passed through to audit records."""
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=Anthropic)
         mock_client.messages.create.return_value = _mock_anthropic_response("hi", 10, 5)
         mock_anthropic_cls.return_value = mock_client
 
@@ -675,7 +677,7 @@ class TestCallOpenaiCompat:
     def test_successful_groq_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Groq provider calls the correct endpoint with GROQ_API_KEY."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("groq answer", 20, 10)
         )
@@ -701,7 +703,7 @@ class TestCallOpenaiCompat:
     def test_successful_mistral_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Mistral provider calls the correct endpoint with MISTRAL_API_KEY."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("mistral answer", 30, 15)
         )
@@ -725,7 +727,7 @@ class TestCallOpenaiCompat:
     def test_successful_zai_call(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Z.ai provider calls the correct endpoint with ZAI_API_KEY."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("zai answer", 25, 12)
         )
@@ -749,7 +751,7 @@ class TestCallOpenaiCompat:
     def test_http_error_raises_runtime_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Non-200 HTTP status from cloud API raises RuntimeError."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             429, text="Rate limit exceeded"
         )
@@ -765,7 +767,7 @@ class TestCallOpenaiCompat:
     def test_http_500_error(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """HTTP 500 from cloud API raises RuntimeError with status code."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             500, text="Internal Server Error"
         )
@@ -781,7 +783,7 @@ class TestCallOpenaiCompat:
     def test_model_alias_resolved_to_api_model(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Cloud model aliases (e.g. kimi-k2) are resolved to API model IDs in the payload."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("ok")
         )
@@ -801,7 +803,7 @@ class TestCallOpenaiCompat:
     def test_unknown_model_passes_through(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Model name not in CLOUD_MODEL_MAP passes through as-is."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("ok")
         )
@@ -820,7 +822,7 @@ class TestCallOpenaiCompat:
     def test_empty_choices_returns_empty_text(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """When API returns empty choices array, text should be empty string."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 0}}
         )
@@ -839,7 +841,7 @@ class TestCallOpenaiCompat:
     def test_missing_usage_defaults_to_zero(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """When API response lacks usage field, tokens default to 0."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, {"choices": [{"message": {"content": "hi"}}]}
         )
@@ -865,7 +867,7 @@ class TestResolveProvider:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_claude_model_routes_to_anthropic(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """claude-* models route to anthropic when API key is configured."""
-        mock_anthropic_cls.return_value = MagicMock()
+        mock_anthropic_cls.return_value = MagicMock(spec=Anthropic)
         gw = ModelGateway(anthropic_api_key="test-key")
 
         assert gw._resolve_provider("claude-sonnet-4-5-20250929") == "anthropic"
@@ -987,7 +989,7 @@ class TestFallbackChain:
     def test_anthropic_fails_groq_succeeds(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """When Anthropic fails, fallback chain tries Groq and succeeds."""
         gw = ModelGateway(anthropic_api_key="test-key")
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("groq fallback", 10, 5)
         )
@@ -1009,7 +1011,7 @@ class TestFallbackChain:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_all_cloud_fails_ollama_fallback(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """When no cloud providers available, chain falls back to Ollama."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.return_value = _mock_ollama_response("ollama saves the day")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1030,7 +1032,7 @@ class TestFallbackChain:
     def test_skip_failed_provider(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Fallback chain skips the provider that already failed."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("mistral fallback", 10, 5)
         )
@@ -1053,12 +1055,12 @@ class TestFallbackChain:
         self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock
     ) -> None:
         """When Groq and Mistral both fail, chain falls through to Ollama."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.return_value = _mock_ollama_response("local final")
         mock_ollama_cls.return_value = mock_ollama
 
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(500, text="Server Error")
 
         resp = gw._fallback_chain(
@@ -1103,7 +1105,7 @@ class TestHealthChecks:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_check_ollama_reachable(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """check_ollama returns True when Ollama server responds."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.list.return_value = {"models": []}
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1116,7 +1118,7 @@ class TestHealthChecks:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_check_ollama_unreachable(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """check_ollama returns False when Ollama server is down."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.list.side_effect = ConnectionError("Connection refused")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1139,7 +1141,7 @@ class TestHealthChecks:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_check_anthropic_with_key(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """check_anthropic returns True when API key is configured."""
-        mock_anthropic_cls.return_value = MagicMock()
+        mock_anthropic_cls.return_value = MagicMock(spec=Anthropic)
         gw = ModelGateway(anthropic_api_key="test-key")
         assert gw.check_anthropic() is True
 
@@ -1183,8 +1185,8 @@ class TestAvailableProviders:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_all_providers_available(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Lists anthropic, cloud providers, and ollama when all configured."""
-        mock_anthropic_cls.return_value = MagicMock()
-        mock_ollama = MagicMock()
+        mock_anthropic_cls.return_value = MagicMock(spec=Anthropic)
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.list.return_value = {"models": []}
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1202,7 +1204,7 @@ class TestAvailableProviders:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_ollama_only(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """With no API keys, only ollama is available (if running)."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.list.return_value = {"models": []}
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1219,7 +1221,7 @@ class TestAvailableProviders:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_no_providers_when_ollama_down(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock) -> None:
         """With no API keys and Ollama down, empty provider list."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.list.side_effect = ConnectionError("down")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1234,7 +1236,7 @@ class TestAvailableProviders:
     @patch("jarvis_engine.gateway.models.Anthropic")
     def test_all_cloud_keys_present(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """All three cloud providers appear when all keys set."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.list.side_effect = ConnectionError("down")
         mock_ollama_cls.return_value = mock_ollama
 
@@ -1260,7 +1262,7 @@ class TestGatewayLifecycle:
     def test_close_releases_http_client(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """close() calls _http.close() to release connection pool."""
         gw = ModelGateway()
-        mock_http = MagicMock()
+        mock_http = MagicMock(spec=httpx.Client)
         gw._http = mock_http
 
         gw.close()
@@ -1273,7 +1275,7 @@ class TestGatewayLifecycle:
     def test_context_manager_returns_gateway(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Context manager __enter__ returns the gateway instance."""
         gw = ModelGateway()
-        mock_http = MagicMock()
+        mock_http = MagicMock(spec=httpx.Client)
         gw._http = mock_http
 
         with gw as g:
@@ -1287,7 +1289,7 @@ class TestGatewayLifecycle:
     def test_context_manager_closes_on_exception(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """Context manager still calls close() even if body raises."""
         gw = ModelGateway()
-        mock_http = MagicMock()
+        mock_http = MagicMock(spec=httpx.Client)
         gw._http = mock_http
 
         with pytest.raises(ValueError):
@@ -1310,7 +1312,7 @@ class TestCloudCompleteIntegration:
     def test_complete_dispatches_to_groq(self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock) -> None:
         """complete() with a Groq model name dispatches through cloud path."""
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         gw._http.post.return_value = _mock_httpx_response(
             200, _openai_chat_response("groq response", 20, 10)
         )
@@ -1333,12 +1335,12 @@ class TestCloudCompleteIntegration:
         self, mock_anthropic_cls: MagicMock, mock_ollama_cls: MagicMock, mock_cli: MagicMock
     ) -> None:
         """complete() with cloud provider failure falls back through chain."""
-        mock_ollama = MagicMock()
+        mock_ollama = MagicMock(spec=OllamaClient)
         mock_ollama.chat.return_value = _mock_ollama_response("ollama rescue")
         mock_ollama_cls.return_value = mock_ollama
 
         gw = ModelGateway()
-        gw._http = MagicMock()
+        gw._http = MagicMock(spec=httpx.Client)
         # All HTTP calls fail
         gw._http.post.return_value = _mock_httpx_response(500, text="Server Error")
 
