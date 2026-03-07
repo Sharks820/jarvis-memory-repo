@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.gateway.costs import CostTracker
 from jarvis_engine.harvesting.harvester import (
     HarvestCommand,
     HarvestResult,
@@ -19,10 +20,12 @@ from jarvis_engine.harvesting.harvester import (
 )
 from jarvis_engine.harvesting.providers import (
     GeminiProvider,
+    HarvesterProvider,
     KimiNvidiaProvider,
     KimiProvider,
     MiniMaxProvider,
 )
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +248,7 @@ class TestProviderAvailability:
 
 def _make_mock_provider(name: str, available: bool = True, text: str = "facts"):
     """Create a mock provider with configurable availability."""
-    provider = MagicMock()
+    provider = MagicMock(spec=HarvesterProvider)
     provider.name = name
     provider.is_available = available
     provider.query.return_value = HarvestResult(
@@ -325,7 +328,7 @@ class TestKnowledgeHarvester:
     def test_harvest_ingests_through_pipeline(self):
         """Harvested content is ingested via pipeline with correct source and tags."""
         p1 = _make_mock_provider("test_provider", text="Some knowledge facts")
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["record_1", "record_2"]
 
         harvester = KnowledgeHarvester(providers=[p1], pipeline=mock_pipeline)
@@ -348,7 +351,7 @@ class TestKnowledgeHarvester:
     def test_harvest_logs_cost(self):
         """Cost tracker is called with correct model, provider, tokens, and route_reason."""
         p1 = _make_mock_provider("cost_provider")
-        mock_cost_tracker = MagicMock()
+        mock_cost_tracker = MagicMock(spec=CostTracker)
 
         harvester = KnowledgeHarvester(providers=[p1], cost_tracker=mock_cost_tracker)
         cmd = HarvestCommand(topic="cost test topic")

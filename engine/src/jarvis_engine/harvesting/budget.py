@@ -9,8 +9,26 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
+from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+class ProviderSpend(TypedDict):
+    """Shape of a single provider entry in spend summary."""
+
+    provider: str
+    total_cost_usd: float
+    total_requests: int
+
+
+class SpendSummary(TypedDict):
+    """Return shape of ``BudgetManager.get_spend_summary``."""
+
+    period_days: int
+    providers: list[ProviderSpend]
+    total_cost_usd: float
+
 
 # Default budget limits (inserted on first schema init only)
 _DEFAULT_BUDGETS: list[tuple[str, str, float, int]] = [
@@ -176,7 +194,7 @@ class BudgetManager:
         self,
         provider: str | None = None,
         days: int = 30,
-    ) -> dict:
+    ) -> SpendSummary:
         """Return per-provider spend breakdown for the last N days.
 
         Args:

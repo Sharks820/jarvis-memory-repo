@@ -12,7 +12,9 @@ import sqlite3
 import threading
 from unittest.mock import MagicMock, patch
 
-
+from jarvis_engine.security.alert_chain import AlertChain
+from jarvis_engine.security.forensic_logger import ForensicLogger
+from jarvis_engine.security.threat_intel import ThreatIntelFeed
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -35,7 +37,7 @@ def _make_deps():
     db = sqlite3.connect(":memory:")
     lock = threading.Lock()
 
-    forensic_logger = MagicMock()
+    forensic_logger = MagicMock(spec=ForensicLogger)
     forensic_logger.log_event = MagicMock()
 
     from jarvis_engine.security.ip_tracker import IPTracker
@@ -44,10 +46,10 @@ def _make_deps():
     from jarvis_engine.security.attack_memory import AttackPatternMemory
     attack_memory = AttackPatternMemory(db, lock)
 
-    alert_chain = MagicMock()
+    alert_chain = MagicMock(spec=AlertChain)
     alert_chain.send_alert = MagicMock(return_value={"level": 4, "deduped": False})
 
-    threat_intel = MagicMock()
+    threat_intel = MagicMock(spec=ThreatIntelFeed)
     threat_intel.enrich_ip = MagicMock(return_value={
         "ip": "1.2.3.4",
         "is_known_bad": True,

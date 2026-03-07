@@ -13,8 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-
-from jarvis_engine.gateway.models import GatewayResponse
+from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
 from jarvis_engine.knowledge.llm_extractor import (
     ExtractedFact,
     LLMFactExtractor,
@@ -30,7 +29,7 @@ from jarvis_engine.knowledge.llm_extractor import (
 
 def _make_gateway(response_text: str) -> MagicMock:
     """Create a mock ModelGateway that returns the given text."""
-    gw = MagicMock()
+    gw = MagicMock(spec=ModelGateway)
     gw.complete.return_value = GatewayResponse(
         text=response_text,
         model="kimi-k2",
@@ -259,7 +258,7 @@ class TestMalformedJsonReturnsEmpty:
 
     def test_gateway_exception_returns_empty(self):
         """If gateway.complete raises, return empty list (never crash)."""
-        gw = MagicMock()
+        gw = MagicMock(spec=ModelGateway)
         gw.complete.side_effect = RuntimeError("connection timeout")
         extractor = LLMFactExtractor(gateway=gw)
 

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from jarvis_engine.harvesting.budget import BudgetManager, _DEFAULT_BUDGETS
+from jarvis_engine.harvesting.harvester import KnowledgeHarvester
 from jarvis_engine.handlers.harvest_handlers import HarvestBudgetHandler, HarvestHandler
 from jarvis_engine.commands.harvest_commands import (
     HarvestBudgetCommand,
@@ -424,7 +425,7 @@ class TestHarvestHandler:
 
     def test_dispatches_correctly(self):
         """HarvestHandler translates HarvestTopicCommand to internal HarvestCommand."""
-        mock_harvester = MagicMock()
+        mock_harvester = MagicMock(spec=KnowledgeHarvester)
         mock_harvester.harvest.return_value = {
             "topic": "test topic",
             "results": [{"provider": "minimax", "status": "ok", "records_created": 2, "cost_usd": 0.001}],
@@ -454,7 +455,7 @@ class TestHarvestBudgetHandler:
 
     def test_status_calls_get_spend_summary(self):
         """Status action calls budget_manager.get_spend_summary."""
-        mock_bm = MagicMock()
+        mock_bm = MagicMock(spec=BudgetManager)
         mock_bm.get_spend_summary.return_value = {
             "period_days": 30,
             "providers": [],
@@ -470,7 +471,7 @@ class TestHarvestBudgetHandler:
 
     def test_set_calls_set_budget(self):
         """Set action calls budget_manager.set_budget with correct params."""
-        mock_bm = MagicMock()
+        mock_bm = MagicMock(spec=BudgetManager)
 
         handler = HarvestBudgetHandler(budget_manager=mock_bm)
         cmd = HarvestBudgetCommand(

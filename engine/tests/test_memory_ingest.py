@@ -13,7 +13,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.memory.classify import BRANCH_DESCRIPTIONS, BranchClassifier, _cosine_similarity
+from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
@@ -492,7 +494,7 @@ class TestIngestFactExtraction:
         self, engine: MemoryEngine, embed_service: MockEmbeddingService, classifier: BranchClassifier
     ) -> None:
         """If fact extraction throws, the record is still stored."""
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         pipeline = EnrichedIngestPipeline(engine, embed_service, classifier, knowledge_graph=kg)
 
         # Make the fact extractor fail
@@ -525,7 +527,7 @@ class TestIngestEmbeddingFailure:
         self, engine: MemoryEngine, classifier: BranchClassifier
     ) -> None:
         """If the embedding service raises, the error propagates (no silent swallow)."""
-        failing_embed = MagicMock()
+        failing_embed = MagicMock(spec=EmbeddingService)
         failing_embed.embed.side_effect = RuntimeError("Model not loaded")
 
         pipeline = EnrichedIngestPipeline(engine, failing_embed, classifier)

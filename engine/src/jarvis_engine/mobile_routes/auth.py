@@ -27,6 +27,22 @@ class GamingState(TypedDict, total=False):
     updated_utc: str
 
 
+class OwnerGuardSummary(TypedDict):
+    """Shape of the ``owner_guard`` key in settings payload."""
+
+    enabled: bool
+    owner_user_id: str
+    trusted_mobile_device_count: int
+
+
+class SettingsPayload(TypedDict):
+    """Return shape of ``_settings_payload``."""
+
+    runtime_control: dict[str, Any]
+    gaming_mode: GamingState
+    owner_guard: OwnerGuardSummary
+
+
 class AuthRoutesMixin:
     """Endpoint handlers for authentication, bootstrap, and settings."""
 
@@ -61,7 +77,7 @@ class AuthRoutesMixin:
         state["updated_utc"] = _now_iso()
         return dict(write_gaming_mode_state(state))
 
-    def _settings_payload(self) -> dict[str, Any]:
+    def _settings_payload(self) -> SettingsPayload:
         control = read_control_state(self._root)
         gaming = self._read_gaming_state()
         owner_guard = read_owner_guard(self._root)

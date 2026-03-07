@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine.security.ip_tracker import IPTracker
 from jarvis_engine.security.threat_detector import (
     ThreatAssessment,
     ThreatDetector,
@@ -290,14 +291,14 @@ class TestAuthBruteForce:
         assert not any(s.category == "auth_brute_force" for s in result.signals)
 
     def test_low_attempts_no_signal(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=IPTracker)
         tracker.get_threat_report.return_value = {"total_attempts": 2}
         d = ThreatDetector(ip_tracker=tracker)
         result = d.assess(_clean_ctx())
         assert not any(s.category == "auth_brute_force" for s in result.signals)
 
     def test_5_attempts_medium(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=IPTracker)
         tracker.get_threat_report.return_value = {"total_attempts": 5}
         tracker.is_blocked.return_value = False
         d = ThreatDetector(ip_tracker=tracker)
@@ -306,7 +307,7 @@ class TestAuthBruteForce:
         assert sig and sig[0].severity == "MEDIUM"
 
     def test_10_attempts_high(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=IPTracker)
         tracker.get_threat_report.return_value = {"total_attempts": 10}
         tracker.is_blocked.return_value = False
         d = ThreatDetector(ip_tracker=tracker)
@@ -315,7 +316,7 @@ class TestAuthBruteForce:
         assert sig and sig[0].severity == "HIGH"
 
     def test_unknown_ip_no_signal(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=IPTracker)
         tracker.get_threat_report.return_value = None
         tracker.is_blocked.return_value = False
         d = ThreatDetector(ip_tracker=tracker)
@@ -330,7 +331,7 @@ class TestAuthBruteForce:
 
 class TestKnownBadIP:
     def test_blocked_ip_critical(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=IPTracker)
         tracker.is_blocked.return_value = True
         tracker.get_threat_report.return_value = None
         d = ThreatDetector(ip_tracker=tracker)
@@ -339,7 +340,7 @@ class TestKnownBadIP:
         assert sig and sig[0].severity == "CRITICAL"
 
     def test_unblocked_ip_no_signal(self) -> None:
-        tracker = MagicMock()
+        tracker = MagicMock(spec=IPTracker)
         tracker.is_blocked.return_value = False
         tracker.get_threat_report.return_value = None
         d = ThreatDetector(ip_tracker=tracker)

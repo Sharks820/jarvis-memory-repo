@@ -218,30 +218,13 @@ def _register_with_fallback(
     bus.register(command_type, handler)
 
 
-def create_app(root: Path) -> CommandBus:
-    """Build and wire the full Command Bus.  This is the DI composition root.
+def _init_memory_subsystem(
+    db_path: Path,
+) -> tuple[Any, Any, Any, Any]:
+    """Initialize memory engine, embedding service, ingest pipeline, and KG.
 
-    If a SQLite memory database exists at .planning/brain/jarvis_memory.db,
-    memory handlers use MemoryEngine for queries and ingestion. Otherwise,
-    they fall back to the adapter shim path (JSONL-based).
+    Returns ``(engine, embed_service, pipeline, kg)`` — all ``None`` on failure.
     """
-    bus = CommandBus()
-
-    # -- Ensure required directories exist --
-    brain_dir = root / ".planning" / "brain"
-    brain_dir.mkdir(parents=True, exist_ok=True)
-    from jarvis_engine._constants import GATEWAY_AUDIT_LOG, runtime_dir as _runtime_dir
-    (_runtime_dir(root) / "pids").mkdir(parents=True, exist_ok=True)
-    (root / ".planning" / "logs").mkdir(parents=True, exist_ok=True)
-
-    # -- Check for SQLite memory engine --
-    from jarvis_engine._constants import memory_db_path as _memory_db_path
-    db_path = _memory_db_path(root)
-    engine = None
-    embed_service = None
-    pipeline = None
-    kg = None
-
     try:
         from jarvis_engine.memory.classify import BranchClassifier
         from jarvis_engine.memory.embeddings import EmbeddingService
@@ -253,7 +236,6 @@ def create_app(root: Path) -> CommandBus:
         engine = MemoryEngine(db_path, embed_service=embed_service)
         classifier = BranchClassifier(embed_service)
         kg = KnowledgeGraph(engine, embed_service=embed_service)
-        # Run temporal metadata migration (idempotent)
         try:
             from jarvis_engine.learning.temporal import migrate_temporal_metadata
             migrate_temporal_metadata(engine.db, engine.write_lock)
@@ -262,19 +244,20 @@ def create_app(root: Path) -> CommandBus:
         pipeline = EnrichedIngestPipeline(
             engine, embed_service, classifier, knowledge_graph=kg,
         )
+        return engine, embed_service, pipeline, kg
     except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
-        # Graceful degradation: if SQLite engine fails, fall back to adapter shims
         logger.warning("Failed to initialize MemoryEngine, falling back to adapter shims: %s", exc)
-        engine = None
-        embed_service = None
-        pipeline = None
-        kg = None
+        return None, None, None, None
 
-    # -- Intelligence Gateway --
-    gateway = None
-    intent_classifier = None
-    cost_tracker = None
 
+def _init_gateway(
+    root: Path, db_path: Path,
+) -> tuple[Any, Any, Any]:
+    """Initialize the intelligence gateway.
+
+    Returns ``(gateway, intent_classifier, cost_tracker)`` — all ``None`` on failure.
+    """
+    from jarvis_engine._constants import GATEWAY_AUDIT_LOG, runtime_dir as _runtime_dir
     try:
         from jarvis_engine.gateway.costs import CostTracker
         from jarvis_engine.gateway.models import ModelGateway
@@ -288,22 +271,17 @@ def create_app(root: Path) -> CommandBus:
             zai_api_key=os.environ.get("ZAI_API_KEY"),
             audit_path=_runtime_dir(root) / GATEWAY_AUDIT_LOG,
         )
-        # Keep classifier lazy to avoid heavy startup latency in request paths.
-        # It will be instantiated on-demand where needed (e.g. voice fallback).
-        intent_classifier = None
+        return gateway, None, cost_tracker
     except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.warning("Failed to initialize Intelligence Gateway, continuing without: %s", exc)
-        gateway = None
-        intent_classifier = None
-        cost_tracker = None
+        return None, None, None
 
-    # Wire gateway into ingest pipeline for LLM fact extraction
-    # (pipeline is constructed before gateway is available; gateway is a
-    # documented constructor parameter so this late-binding is intentional)
-    if pipeline is not None and gateway is not None:
-        pipeline.set_gateway(gateway)
 
-    # -- Memory (dual-path: MemoryEngine or adapter shim) --
+def _register_memory_handlers(
+    bus: CommandBus, root: Path, engine: Any, embed_service: Any,
+    kg: Any, pipeline: Any,
+) -> None:
+    """Register memory CQRS handlers."""
     bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine, kg=kg).handle)
     bus.register(BrainContextCommand, BrainContextHandler(root, engine=engine, embed_service=embed_service).handle)
     bus.register(BrainCompactCommand, BrainCompactHandler(root).handle)
@@ -312,7 +290,9 @@ def create_app(root: Path) -> CommandBus:
     bus.register(MemorySnapshotCommand, MemorySnapshotHandler(root).handle)
     bus.register(MemoryMaintenanceCommand, MemoryMaintenanceHandler(root).handle)
 
-    # -- Voice --
+
+def _register_voice_handlers(bus: CommandBus, root: Path, gateway: Any) -> None:
+    """Register voice CQRS handlers."""
     bus.register(VoiceListCommand, VoiceListHandler(root).handle)
     bus.register(VoiceSayCommand, VoiceSayHandler(root).handle)
     bus.register(VoiceEnrollCommand, VoiceEnrollHandler(root).handle)
@@ -320,7 +300,9 @@ def create_app(root: Path) -> CommandBus:
     bus.register(VoiceRunCommand, VoiceRunHandler(root).handle)
     bus.register(VoiceListenCommand, VoiceListenHandler(root, gateway=gateway).handle)
 
-    # -- System --
+
+def _register_system_handlers(bus: CommandBus, root: Path) -> None:
+    """Register system CQRS handlers."""
     bus.register(StatusCommand, StatusHandler(root).handle)
     bus.register(LogCommand, LogHandler(root).handle)
     bus.register(ServeMobileCommand, ServeMobileHandler(root).handle)
@@ -333,7 +315,11 @@ def create_app(root: Path) -> CommandBus:
     bus.register(WeatherCommand, WeatherHandler(root).handle)
     bus.register(MigrateMemoryCommand, MigrateMemoryHandler(root).handle)
 
-    # -- Task --
+
+def _register_task_handlers(
+    bus: CommandBus, root: Path, gateway: Any, intent_classifier: Any,
+) -> None:
+    """Register task/query CQRS handlers."""
     bus.register(RunTaskCommand, RunTaskHandler(root).handle)
     bus.register(RouteCommand, RouteHandler(root, classifier=intent_classifier, gateway=gateway).handle)
     if gateway is not None:
@@ -353,7 +339,11 @@ def create_app(root: Path) -> CommandBus:
         bus.register(PersonaComposeCommand, _persona_gateway_unavailable)
     bus.register(WebResearchCommand, WebResearchHandler(root).handle)
 
-    # -- Ops --
+
+def _register_ops_handlers(
+    bus: CommandBus, root: Path, gateway: Any, pipeline: Any,
+) -> None:
+    """Register ops CQRS handlers."""
     bus.register(OpsBriefCommand, OpsBriefHandler(root, gateway=gateway).handle)
     bus.register(OpsExportActionsCommand, OpsExportActionsHandler(root).handle)
     bus.register(OpsSyncCommand, OpsSyncHandler(root).handle)
@@ -366,9 +356,10 @@ def create_app(root: Path) -> CommandBus:
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)
     bus.register(GrowthReportCommand, GrowthReportHandler(root).handle)
     bus.register(GrowthAuditCommand, GrowthAuditHandler(root).handle)
-    # IntelligenceDashboardHandler registered after learning subsystem init (LEARN-07/08)
 
-    # -- Security --
+
+def _register_security_handlers(bus: CommandBus, root: Path) -> None:
+    """Register security CQRS handlers (core + defense)."""
     bus.register(RuntimeControlCommand, RuntimeControlHandler(root).handle)
     bus.register(OwnerGuardCommand, OwnerGuardHandler(root).handle)
     bus.register(ConnectStatusCommand, ConnectStatusHandler(root).handle)
@@ -378,8 +369,12 @@ def create_app(root: Path) -> CommandBus:
     bus.register(PhoneSpamGuardCommand, PhoneSpamGuardHandler(root).handle)
     bus.register(PersonaConfigCommand, PersonaConfigHandler(root).handle)
 
-    # Defense commands (Wave 9-13 security modules)
-    # Each handler registered individually so one failure doesn't disable all.
+    _register_defense_handlers(bus, root)
+
+
+def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
+    """Register defense command handlers with shared SecurityOrchestrator."""
+    from jarvis_engine._constants import runtime_dir as _runtime_dir
     try:
         from jarvis_engine.commands.defense_commands import (
             BlockIPCommand,
@@ -412,8 +407,6 @@ def create_app(root: Path) -> CommandBus:
         _sec_lock = threading.Lock()
         _sec_log_dir = _runtime_dir(root) / "forensic"
 
-        # Create a single shared orchestrator for all defense handlers
-        # to avoid duplicating threat-response infrastructure.
         _shared_orch = None
         try:
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
@@ -441,14 +434,24 @@ def create_app(root: Path) -> CommandBus:
     except (ImportError, OSError, sqlite3.Error) as exc:
         logger.warning("Failed to import defense commands: %s", exc)
 
-    # -- Knowledge --
+
+def _register_knowledge_handlers(bus: CommandBus, root: Path, kg: Any) -> None:
+    """Register knowledge graph CQRS handlers."""
     bus.register(KnowledgeStatusCommand, KnowledgeStatusHandler(root, kg=kg).handle)
     bus.register(ContradictionListCommand, ContradictionListHandler(root, kg=kg).handle)
     bus.register(ContradictionResolveCommand, ContradictionResolveHandler(root, kg=kg).handle)
     bus.register(FactLockCommand, FactLockHandler(root, kg=kg).handle)
     bus.register(KnowledgeRegressionCommand, KnowledgeRegressionHandler(root, kg=kg).handle)
 
-    # -- Learning --
+
+def _init_learning_subsystem(
+    bus: CommandBus, root: Path, engine: Any, pipeline: Any, kg: Any,
+    gateway: Any, embed_service: Any, intent_classifier: Any,
+) -> tuple[Any, Any, Any, Any]:
+    """Initialize learning subsystem and register handlers.
+
+    Returns ``(learning_engine, pref_tracker, feedback_tracker, usage_tracker)``.
+    """
     learning_engine = None
     pref_tracker = None
     feedback_tracker = None
@@ -470,14 +473,11 @@ def create_app(root: Path) -> CommandBus:
             feedback_tracker=feedback_tracker, usage_tracker=usage_tracker,
         )
 
-        # Expose learning trackers via typed AppContext
         bus.ctx.pref_tracker = pref_tracker
         bus.ctx.feedback_tracker = feedback_tracker
         bus.ctx.usage_tracker = usage_tracker
         bus.ctx.learning_engine = learning_engine
 
-        # Wire feedback tracker into IntentClassifier for route quality penalty (LEARN-02)
-        # Classifier is created before learning subsystem, so we set it after the fact
         if intent_classifier is not None:
             intent_classifier.set_feedback_tracker(feedback_tracker)
     except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
@@ -520,8 +520,11 @@ def create_app(root: Path) -> CommandBus:
         ).handle,
         lambda: IntelligenceDashboardHandler(root).handle,
     )
+    return learning_engine, pref_tracker, feedback_tracker, usage_tracker
 
-    # -- Sync --
+
+def _init_sync_subsystem(bus: CommandBus, root: Path, engine: Any) -> None:
+    """Initialize sync subsystem and register handlers."""
     sync_engine = None
     sync_transport = None
     try:
@@ -534,16 +537,12 @@ def create_app(root: Path) -> CommandBus:
 
             signing_key = os.environ.get("JARVIS_SIGNING_KEY", "")
             if signing_key:
-                # Lazy import: cryptography may crash with pyo3 ABI mismatch on
-                # some systems.  Deferring the import keeps the rest of the bus
-                # functional even when the crypto library is broken.
                 from jarvis_engine.sync.transport import SyncTransport
                 salt_path = root / ".planning" / "brain" / "sync_salt.bin"
                 sync_transport = SyncTransport(signing_key, salt_path)
     except BaseException as exc:
         # NOTE: BaseException needed because cryptography's pyo3 bindings can
         # raise PanicException (a BaseException subclass) on ABI mismatch.
-        # Always re-raise signal-level exceptions so Ctrl+C / sys.exit() work.
         if isinstance(exc, (KeyboardInterrupt, SystemExit, GeneratorExit)):
             raise
         logger.warning("Failed to initialize Sync subsystem, continuing without: %s", exc)
@@ -564,7 +563,11 @@ def create_app(root: Path) -> CommandBus:
         lambda: SyncStatusHandler(root).handle,
     )
 
-    # -- Harvesting --
+
+def _init_harvesting_subsystem(
+    bus: CommandBus, root: Path, db_path: Path, pipeline: Any, cost_tracker: Any,
+) -> None:
+    """Initialize harvesting subsystem and register handlers."""
     harvester = None
     budget_manager = None
     try:
@@ -607,7 +610,12 @@ def create_app(root: Path) -> CommandBus:
         lambda: HarvestBudgetHandler().handle,
     )
 
-    # -- Proactive Intelligence --
+
+def _init_proactive_subsystem(
+    bus: CommandBus, root: Path, gateway: Any, engine: Any,
+    embed_service: Any, cost_tracker: Any,
+) -> None:
+    """Initialize proactive intelligence and register handlers."""
     proactive_engine = None
     try:
         from jarvis_engine.proactive import (
@@ -629,7 +637,6 @@ def create_app(root: Path) -> CommandBus:
 
     bus.register(WakeWordStartCommand, WakeWordStartHandler(root, gateway=gateway).handle)
 
-    # -- Cost Reduction & Self-Testing --
     bus.register(
         CostReductionCommand,
         CostReductionHandler(root, cost_tracker=cost_tracker).handle,
@@ -639,6 +646,44 @@ def create_app(root: Path) -> CommandBus:
         SelfTestHandler(root, engine=engine, embed_service=embed_service).handle,
     )
 
+
+def create_app(root: Path) -> CommandBus:
+    """Build and wire the full Command Bus.  This is the DI composition root."""
+    bus = CommandBus()
+
+    # Ensure required directories
+    (root / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
+    from jarvis_engine._constants import runtime_dir as _runtime_dir
+    (_runtime_dir(root) / "pids").mkdir(parents=True, exist_ok=True)
+    (root / ".planning" / "logs").mkdir(parents=True, exist_ok=True)
+
+    from jarvis_engine._constants import memory_db_path as _memory_db_path
+    db_path = _memory_db_path(root)
+
+    # Core subsystem init
+    engine, embed_service, pipeline, kg = _init_memory_subsystem(db_path)
+    gateway, intent_classifier, cost_tracker = _init_gateway(root, db_path)
+
+    if pipeline is not None and gateway is not None:
+        pipeline.set_gateway(gateway)
+
+    # Register all handler groups
+    _register_memory_handlers(bus, root, engine, embed_service, kg, pipeline)
+    _register_voice_handlers(bus, root, gateway)
+    _register_system_handlers(bus, root)
+    _register_task_handlers(bus, root, gateway, intent_classifier)
+    _register_ops_handlers(bus, root, gateway, pipeline)
+    _register_security_handlers(bus, root)
+    _register_knowledge_handlers(bus, root, kg)
+
+    # Subsystems with internal state
+    _init_learning_subsystem(
+        bus, root, engine, pipeline, kg, gateway, embed_service, intent_classifier,
+    )
+    _init_sync_subsystem(bus, root, engine)
+    _init_harvesting_subsystem(bus, root, db_path, pipeline, cost_tracker)
+    _init_proactive_subsystem(bus, root, gateway, engine, embed_service, cost_tracker)
+
     # Expose subsystem references via typed AppContext
     bus.ctx.engine = engine
     bus.ctx.embed_service = embed_service
@@ -646,7 +691,7 @@ def create_app(root: Path) -> CommandBus:
     bus.ctx.kg = kg
     bus.ctx.gateway = gateway
 
-    # Warm embedding model in background (first embed call loads the ~300MB model)
+    # Warm embedding model in background
     if embed_service is not None:
         def _warm_embeddings() -> None:
             try:

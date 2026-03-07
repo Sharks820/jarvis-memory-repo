@@ -6,7 +6,7 @@ import re
 import threading
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.error import URLError
 
 import logging
@@ -19,6 +19,43 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 _logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# TypedDicts for dict-returning functions
+# ---------------------------------------------------------------------------
+
+
+class BranchEvalResult(TypedDict):
+    """Return shape of ``eval_branch``."""
+
+    branch: str
+    task_ids: list[str]
+    results: list[MemoryRecallResult]
+    avg_score: float
+
+
+class HistorySummary(TypedDict):
+    """Return shape of ``summarize_history``."""
+
+    runs: int
+    latest_score_pct: float
+    delta_vs_prev_pct: float
+    latest_model: str
+    latest_ts: str
+    window_avg_pct: float
+
+
+class AuditRunResult(TypedDict):
+    """Return shape of ``audit_run``."""
+
+    ts: str
+    model: str
+    score_pct: float
+    tasks: int
+    results: list[dict[str, Any]]
+    run_sha256: str
+    prev_run_sha256: str
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +233,7 @@ def eval_branch(
     branch: str,
     engine: MemoryEngine,
     embed_service: EmbedServiceProtocol,
-) -> dict:
+) -> BranchEvalResult:
     """Evaluate only the golden tasks for a specific branch.
 
     Args:
@@ -456,7 +493,7 @@ def read_history(history_path: Path) -> list[dict[str, Any]]:
         return out
 
 
-def summarize_history(rows: list[dict[str, Any]], last: int = 10) -> dict[str, Any]:
+def summarize_history(rows: list[dict[str, Any]], last: int = 10) -> HistorySummary:
     if not rows:
         return {
             "runs": 0,
@@ -485,7 +522,7 @@ def summarize_history(rows: list[dict[str, Any]], last: int = 10) -> dict[str, A
     }
 
 
-def audit_run(rows: list[dict[str, Any]], run_index: int = -1) -> dict[str, Any]:
+def audit_run(rows: list[dict[str, Any]], run_index: int = -1) -> AuditRunResult:
     if not rows:
         raise RuntimeError("No history runs found.")
     if run_index >= len(rows) or run_index < -len(rows):

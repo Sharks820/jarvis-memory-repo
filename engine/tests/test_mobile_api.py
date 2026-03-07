@@ -15,6 +15,7 @@ from jarvis_engine import mobile_api
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.mobile_api import MobileIngestHandler, MobileIngestServer
+from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
 
 
@@ -1741,7 +1742,7 @@ def test_best_effort_learning_skips_success_with_response(mobile_server, monkeyp
     from unittest.mock import MagicMock
     import jarvis_engine._bus as bus_mod
 
-    mock_bus = MagicMock()
+    mock_bus = MagicMock(spec=CommandBus)
     monkeypatch.setattr(bus_mod, "get_bus", lambda: mock_bus)
 
     handler = MobileIngestHandler.__new__(MobileIngestHandler)

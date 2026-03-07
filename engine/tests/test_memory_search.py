@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from jarvis_engine._compat import UTC
+from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.memory.search import _recency_weight, hybrid_search
 
 
@@ -36,7 +37,7 @@ def _make_mock_engine(
     closed: bool = False,
 ) -> MagicMock:
     """Build a mock MemoryEngine with search and batch methods."""
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     engine._closed = closed
     engine.search_fts.return_value = fts_results or []
     engine.search_vec.return_value = vec_results or []

@@ -11,7 +11,7 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import urlparse
 
 from jarvis_engine.web_fetch import (
@@ -32,6 +32,47 @@ _PAGE_CACHE_TTL_SECONDS = 900.0
 _PAGE_CACHE_MAX_BYTES = 50_000_000  # 50 MB soft cap
 _page_cache_bytes = 0
 from jarvis_engine.web_research import STOPWORDS
+
+
+class MissionRecord(TypedDict):
+    """Shape returned by ``create_learning_mission``."""
+
+    mission_id: str
+    topic: str
+    objective: str
+    sources: list[str]
+    status: str
+    origin: str
+    created_utc: str
+    updated_utc: str
+    last_report_path: str
+    verified_findings: int
+    progress_pct: int
+    status_detail: str
+    progress_bar: str
+
+
+class VerifiedFinding(TypedDict):
+    """Shape of a single verified finding in a mission report."""
+
+    statement: str
+    source_urls: list[str]
+    source_domains: list[str]
+    confidence: float
+
+
+class MissionReport(TypedDict):
+    """Shape returned by ``run_learning_mission``."""
+
+    mission_id: str
+    topic: str
+    objective: str
+    queries: list[str]
+    scanned_urls: list[str]
+    candidate_count: int
+    verified_findings: list[VerifiedFinding]
+    verified_count: int
+    completed_utc: str
 
 
 def _missions_path(root: Path) -> Path:
@@ -141,7 +182,7 @@ def create_learning_mission(
     objective: str,
     sources: list[str] | None = None,
     origin: str = "desktop-manual",
-) -> dict[str, Any]:
+) -> MissionRecord:
     cleaned_topic = topic.strip()
     if not cleaned_topic:
         raise ValueError("topic is required")
@@ -314,7 +355,7 @@ def run_learning_mission(
     mission_id: str,
     max_search_results: int = 8,
     max_pages: int = 12,
-) -> dict[str, Any]:
+) -> MissionReport:
     # Mark as "running" under lock before starting the long operation.
     with _MISSIONS_LOCK:
         missions = load_missions(root)

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from jarvis_engine.security.orchestrator import SecurityOrchestrator
+from jarvis_engine.security.owner_session import OwnerSessionManager
 
 
 @pytest.fixture()
@@ -222,8 +223,7 @@ class TestStatus:
 
     def test_status_owner_session_present_when_set(self, orchestrator):
         """Owner session key present when session manager is set externally."""
-        from unittest.mock import MagicMock
-        mock_session = MagicMock()
+        mock_session = MagicMock(spec=OwnerSessionManager)
         mock_session.session_status.return_value = {"active": False, "session_count": 0}
         orchestrator.owner_session = mock_session
         status = orchestrator.status()

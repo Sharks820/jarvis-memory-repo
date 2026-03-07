@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from jarvis_engine.command_bus import AppContext
+from jarvis_engine.command_bus import AppContext, CommandBus
+from jarvis_engine.learning.engine import ConversationLearningEngine
+from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+from jarvis_engine.learning.preferences import PreferenceTracker
+from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 from jarvis_engine.commands.learning_commands import (
     LearnInteractionCommand,
 )
@@ -49,7 +54,7 @@ class TestHandlerForwardsRouteParams:
     """Test that LearnInteractionHandler passes route/topic to engine."""
 
     def test_handler_passes_route_topic(self):
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=ConversationLearningEngine)
         mock_engine.learn_from_interaction.return_value = {
             "records_created": 1,
             "error": "",
@@ -79,12 +84,12 @@ class TestEngineForwardsToTrackers:
     def test_engine_passes_route_to_feedback_tracker(self):
         from jarvis_engine.learning.engine import ConversationLearningEngine
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = []
-        mock_feedback = MagicMock()
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.record_feedback.return_value = "positive"
-        mock_usage = MagicMock()
-        mock_pref = MagicMock()
+        mock_usage = MagicMock(spec=UsagePatternTracker)
+        mock_pref = MagicMock(spec=PreferenceTracker)
         mock_pref.observe.return_value = []
 
         engine = ConversationLearningEngine(
@@ -109,11 +114,11 @@ class TestEngineForwardsToTrackers:
     def test_engine_backward_compat_no_route(self):
         from jarvis_engine.learning.engine import ConversationLearningEngine
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = []
-        mock_feedback = MagicMock()
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.record_feedback.return_value = "neutral"
-        mock_usage = MagicMock()
+        mock_usage = MagicMock(spec=UsagePatternTracker)
 
         engine = ConversationLearningEngine(
             pipeline=mock_pipeline,
@@ -138,11 +143,11 @@ class TestBusExposesTrackers:
 
     def test_bus_tracker_attributes_pattern(self):
         """Verify the attribute pattern works with AppContext on a mock bus."""
-        mock_pref = MagicMock()
-        mock_feedback = MagicMock()
-        mock_usage = MagicMock()
+        mock_pref = MagicMock(spec=PreferenceTracker)
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
+        mock_usage = MagicMock(spec=UsagePatternTracker)
 
-        bus = MagicMock()
+        bus = MagicMock(spec=CommandBus)
         bus.ctx = AppContext(
             pref_tracker=mock_pref,
             feedback_tracker=mock_feedback,
@@ -155,7 +160,7 @@ class TestBusExposesTrackers:
 
     def test_bus_missing_tracker_returns_none(self):
         """Verify graceful fallback when tracker not set (AppContext defaults)."""
-        bus = MagicMock()
+        bus = MagicMock(spec=CommandBus)
         bus.ctx = AppContext()
 
         assert bus.ctx.pref_tracker is None

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine.memory.embeddings import EmbeddingService
 from jarvis_engine.memory.classify import (
     BRANCH_DESCRIPTIONS,
     BranchClassifier,
@@ -115,7 +116,7 @@ class TestBranchClassifier:
 
     def _make_mock_embed(self, dim: int = 4) -> MagicMock:
         """Create a mock embed service that returns distinct per-branch vectors."""
-        svc = MagicMock()
+        svc = MagicMock(spec=EmbeddingService)
         call_count = [0]
 
         def fake_embed(text: str, prefix: str = "search_document") -> list[float]:
@@ -155,7 +156,7 @@ class TestBranchClassifier:
 
     def test_classify_returns_general_below_threshold(self):
         """When best similarity is below threshold, return 'general'."""
-        svc = MagicMock()
+        svc = MagicMock(spec=EmbeddingService)
         # All centroids return the same vector -> similarity will be high for that direction only
         # Make centroids all identical
         svc.embed.return_value = [1.0, 0.0, 0.0, 0.0]
@@ -168,7 +169,7 @@ class TestBranchClassifier:
 
     def test_classify_returns_best_matching_branch(self):
         """classify returns the branch whose centroid is most similar."""
-        svc = MagicMock()
+        svc = MagicMock(spec=EmbeddingService)
         # Give each branch a unique unit vector centroid
         branch_names = list(BRANCH_DESCRIPTIONS.keys())
         dim = len(branch_names) + 1
@@ -197,7 +198,7 @@ class TestBranchClassifier:
 
     def test_failed_centroid_init_resets_to_none(self):
         """If embedding fails during centroid build, _centroids stays None."""
-        svc = MagicMock()
+        svc = MagicMock(spec=EmbeddingService)
         svc.embed.side_effect = RuntimeError("model failed")
         clf = BranchClassifier(svc)
         with pytest.raises(RuntimeError, match="model failed"):
@@ -206,7 +207,7 @@ class TestBranchClassifier:
 
     def test_partial_failure_resets_centroids(self):
         """If embedding fails mid-build, centroids are reset to None (not partial)."""
-        svc = MagicMock()
+        svc = MagicMock(spec=EmbeddingService)
         call_count = [0]
 
         def fail_on_third(text, prefix="search_document"):

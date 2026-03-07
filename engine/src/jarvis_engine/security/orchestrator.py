@@ -20,7 +20,7 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.security.owner_session import OwnerSessionManager
@@ -66,6 +66,39 @@ TyposquatMonitor = _try_import("jarvis_engine.security.identity_shield", "Typosq
 OwnerSessionManager = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
 
 logger = logging.getLogger(__name__)
+
+
+class OutputScanResult(TypedDict):
+    """Return shape of ``SecurityOrchestrator.scan_output``."""
+
+    safe: bool
+    findings: list[str]
+    filtered_text: str
+
+
+class SecurityStatus(TypedDict, total=False):
+    """Return shape of ``SecurityOrchestrator.status``.
+
+    Core keys are always present; module-specific keys are included only
+    when the corresponding module is available (hence ``total=False``).
+    """
+
+    containment_level: int
+    containment_detail: dict[str, Any]
+    total_threats: int
+    blocked_ips: list[str]
+    honeypot_stats: dict[str, Any]
+    adaptive_defense: dict[str, Any]
+    total_requests: int
+    total_blocked: int
+    # Optional module statuses
+    action_auditor: dict[str, Any]
+    scope_enforcer_violations: int
+    resource_monitor: dict[str, Any]
+    threat_intel: dict[str, Any]
+    threat_neutralizer: dict[str, Any]
+    owner_session: dict[str, Any]
+
 
 # Threat levels that trigger automatic escalation
 _ESCALATION_LEVELS = frozenset({"HIGH", "CRITICAL"})
@@ -537,7 +570,7 @@ class SecurityOrchestrator:
         self,
         response_text: str,
         system_context: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> OutputScanResult:
         """Scan an LLM response for credential leaks, exfiltration, etc.
 
         Returns a dict with keys:
@@ -565,7 +598,7 @@ class SecurityOrchestrator:
     # Status dashboard
     # ------------------------------------------------------------------
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> SecurityStatus:
         """Return aggregate security status across all modules.
 
         Keys: ``containment_level``, ``total_threats``, ``blocked_ips``,

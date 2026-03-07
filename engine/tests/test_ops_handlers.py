@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.automation import AutomationExecutor
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
     GrowthEvalCommand,
@@ -130,7 +132,7 @@ class TestAutomationRunHandler:
         actions_path = tmp_path / "actions.json"
         actions_path.write_text("[]", encoding="utf-8")
 
-        mock_executor_instance = MagicMock()
+        mock_executor_instance = MagicMock(spec=AutomationExecutor)
         mock_executor_instance.run.return_value = [{"action": "test", "status": "ok"}]
         mock_executor_cls.return_value = mock_executor_instance
 
@@ -169,7 +171,7 @@ class TestAutomationRunHandler:
         actions_path.write_text("[]", encoding="utf-8")
         mock_load_actions.return_value = []
 
-        mock_executor = MagicMock()
+        mock_executor = MagicMock(spec=AutomationExecutor)
         mock_executor.run.return_value = []
         with patch(
             "jarvis_engine.automation.AutomationExecutor", return_value=mock_executor
@@ -487,7 +489,7 @@ class TestMissionRunHandler:
         }
         mock_run.return_value = fake_report
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_record = SimpleNamespace(record_id="rec-xyz")
         mock_pipeline.ingest.return_value = mock_record
 
@@ -541,7 +543,7 @@ class TestMissionRunHandler:
         }
         mock_run.return_value = fake_report
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.side_effect = RuntimeError("db locked")
 
         handler = MissionRunHandler(root=tmp_path)

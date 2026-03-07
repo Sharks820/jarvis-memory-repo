@@ -9,6 +9,8 @@ import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.engine import MemoryEngine
 
 from jarvis_engine.learning.metrics import capture_knowledge_metrics
 
@@ -19,7 +21,7 @@ from jarvis_engine.learning.metrics import capture_knowledge_metrics
 
 def _make_engine(total_records=0, branch_rows=None):
     """Create a mock MemoryEngine with configurable DB responses."""
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     db = MagicMock()
     engine._db = db
     engine.db = db  # Public property alias
@@ -44,7 +46,7 @@ def _make_engine(total_records=0, branch_rows=None):
 
 def _make_kg(nodes=0, edges=0, locked=0, temporal_rows=None, temporal_error=False):
     """Create a mock KnowledgeGraph with configurable counts."""
-    kg = MagicMock()
+    kg = MagicMock(spec=KnowledgeGraph)
     kg.count_nodes.return_value = nodes
     kg.count_edges.return_value = edges
     kg.count_locked.return_value = locked
@@ -146,7 +148,7 @@ class TestNullHandling:
 
 class TestErrorHandling:
     def test_engine_db_exception(self):
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine.db.execute.side_effect = sqlite3.OperationalError("DB locked")
         kg = _make_kg(nodes=10)
 
@@ -156,7 +158,7 @@ class TestErrorHandling:
         assert result["total_facts"] == 10
 
     def test_kg_count_nodes_exception(self):
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.count_nodes.side_effect = sqlite3.OperationalError("Graph corrupted")
         kg.count_edges.return_value = 50
         kg.count_locked.return_value = 5
@@ -168,7 +170,7 @@ class TestErrorHandling:
         assert result["total_edges"] == 50
 
     def test_kg_count_edges_exception(self):
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.count_nodes.return_value = 100
         kg.count_edges.side_effect = sqlite3.OperationalError("Edge table missing")
         kg.count_locked.return_value = 5
@@ -180,7 +182,7 @@ class TestErrorHandling:
         assert result["total_edges"] == 0
 
     def test_kg_count_locked_exception(self):
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.count_nodes.return_value = 100
         kg.count_edges.return_value = 250
         kg.count_locked.side_effect = sqlite3.OperationalError("Lock table missing")

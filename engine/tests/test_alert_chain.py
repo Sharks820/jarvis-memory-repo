@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from jarvis_engine.security.alert_chain import AlertChain, _DEDUP_WINDOW_S
+from jarvis_engine.security.forensic_logger import ForensicLogger
 
 
 # ---------------------------------------------------------------
@@ -165,7 +166,7 @@ class TestAlertHistory:
 
 class TestForensicLoggerIntegration:
     def test_alert_logs_to_forensic_logger(self) -> None:
-        mock_logger = MagicMock()
+        mock_logger = MagicMock(spec=ForensicLogger)
         chain = AlertChain(forensic_logger=mock_logger)
         chain.send_alert(2, "test alert", source_ip="10.0.0.1")
         mock_logger.log_event.assert_called_once()
@@ -176,7 +177,7 @@ class TestForensicLoggerIntegration:
         assert event["source_ip"] == "10.0.0.1"
 
     def test_deduped_alert_does_not_log(self) -> None:
-        mock_logger = MagicMock()
+        mock_logger = MagicMock(spec=ForensicLogger)
         chain = AlertChain(forensic_logger=mock_logger)
         chain.send_alert(2, "first", source_ip="10.0.0.1")
         mock_logger.reset_mock()

@@ -487,7 +487,7 @@ class TestDeduplication:
     def test_semantic_dedup_via_embed_service(self) -> None:
         """When pipeline has embed_service and engine, semantic dedup triggers."""
         # Mock the pipeline with embed_service and engine
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         embed_service = MagicMock(spec=EmbeddingService)
         engine_mock = MagicMock(spec=MemoryEngine)
 
@@ -504,7 +504,7 @@ class TestDeduplication:
 
     def test_semantic_dedup_below_threshold(self) -> None:
         """When embedding distance is large, text is not a duplicate."""
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         embed_service = MagicMock(spec=EmbeddingService)
         engine_mock = MagicMock(spec=MemoryEngine)
 
@@ -521,7 +521,7 @@ class TestDeduplication:
 
     def test_semantic_dedup_exception_falls_back(self) -> None:
         """If embedding/search throws, fall back to hash-only (no duplicate)."""
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline._embed_service = MagicMock(spec=EmbeddingService)
         pipeline._embed_service.embed.side_effect = RuntimeError("embed failed")
         pipeline._engine = MagicMock(spec=MemoryEngine)

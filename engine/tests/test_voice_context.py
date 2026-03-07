@@ -10,6 +10,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.learning.preferences import PreferenceTracker
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 from jarvis_engine.voice_context import (
     _build_smart_context,
     _build_system_parts,
@@ -74,8 +78,8 @@ class TestBuildSmartContext:
 
     def test_hybrid_search_path(self, tmp_path: Path) -> None:
         """When engine and embed_service are available, hybrid search is used."""
-        engine = MagicMock()
-        embed_service = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        embed_service = MagicMock(spec=EmbeddingService)
         embed_service.embed_query.return_value = [0.1] * 128
 
         bus = _make_bus(engine=engine, embed_service=embed_service)
@@ -120,15 +124,15 @@ class TestBuildSmartContext:
 
     def test_kg_facts_extracted(self, tmp_path: Path) -> None:
         """KG facts with confidence >= 0.5 are included."""
-        engine = MagicMock()
-        kg = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.query_relevant_facts.return_value = [
             {"label": "User likes Python", "confidence": 0.8, "node_id": "n1"},
             {"label": "Low confidence fact", "confidence": 0.3, "node_id": "n2"},
         ]
         kg.query_relevant_facts_semantic.return_value = []
 
-        embed_service = MagicMock()
+        embed_service = MagicMock(spec=EmbeddingService)
         embed_service.embed_query.return_value = [0.1] * 128
 
         bus = _make_bus(engine=engine, kg=kg, embed_service=embed_service)
@@ -142,7 +146,7 @@ class TestBuildSmartContext:
 
     def test_preferences_included(self, tmp_path: Path) -> None:
         """User preferences from pref_tracker are returned."""
-        pref_tracker = MagicMock()
+        pref_tracker = MagicMock(spec=PreferenceTracker)
         pref_tracker.get_preferences.return_value = {
             "tone": "casual",
             "detail": "concise",
@@ -168,11 +172,11 @@ class TestBuildSmartContext:
 
     def test_cross_branch_connections(self, tmp_path: Path) -> None:
         """Cross-branch connections are formatted correctly."""
-        engine = MagicMock()
-        kg = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.query_relevant_facts.return_value = []
         kg.query_relevant_facts_semantic.return_value = []
-        embed_service = MagicMock()
+        embed_service = MagicMock(spec=EmbeddingService)
         embed_service.embed_query.return_value = [0.1] * 128
 
         bus = _make_bus(engine=engine, kg=kg, embed_service=embed_service)
@@ -201,8 +205,8 @@ class TestBuildSmartContext:
 
     def test_hybrid_search_error_falls_back(self, tmp_path: Path) -> None:
         """When hybrid_search raises, falls back to legacy."""
-        engine = MagicMock()
-        embed_service = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        embed_service = MagicMock(spec=EmbeddingService)
         embed_service.embed_query.return_value = [0.1] * 128
 
         bus = _make_bus(engine=engine, embed_service=embed_service)
@@ -218,8 +222,8 @@ class TestBuildSmartContext:
 
     def test_empty_summaries_filtered(self, tmp_path: Path) -> None:
         """Empty or whitespace-only summaries are excluded."""
-        engine = MagicMock()
-        embed_service = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
+        embed_service = MagicMock(spec=EmbeddingService)
         embed_service.embed_query.return_value = [0.1] * 128
 
         bus = _make_bus(engine=engine, embed_service=embed_service)

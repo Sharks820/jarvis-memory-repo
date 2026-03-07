@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from jarvis_engine.gateway.models import ModelGateway
+
 
 # ---------------------------------------------------------------------------
 # 14. Confidence retry triggers when confidence < 0.6
@@ -481,7 +483,7 @@ def test_transcribe_smart_calls_postprocess() -> None:
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
          patch("jarvis_engine.stt_postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt_postprocess.postprocess_transcription", return_value="Hello, Conner!") as mock_post:
-        mock_gateway = MagicMock()
+        mock_gateway = MagicMock(spec=ModelGateway)
         result = transcribe_smart(fake_audio, gateway=mock_gateway, entity_list=["Conner"])
         mock_post.assert_called_once_with(
             "um hello conner",

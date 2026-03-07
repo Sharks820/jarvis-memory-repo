@@ -12,9 +12,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
+from jarvis_engine.harvesting.providers import HarvesterProvider
 from jarvis_engine.harvesting.session_ingestors import ClaudeCodeIngestor, CodexIngestor
 from jarvis_engine.harvesting.harvester import HarvestCommand, HarvestResult, KnowledgeHarvester
 from jarvis_engine.handlers.harvest_handlers import IngestSessionHandler
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -200,14 +204,14 @@ class TestIngestSessionHandler:
         session_file = session_dir / "session.jsonl"
         _write_jsonl(session_file, [_make_assistant_entry("H" * 150)])
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["record_1"]
 
         handler = IngestSessionHandler(pipeline=mock_pipeline)
 
         # Patch the ingestor at its source module (lazy-imported in handle())
         with patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor") as MockIngestor:
-            mock_ingestor = MagicMock()
+            mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
             mock_ingestor.find_sessions.return_value = [session_file]
             mock_ingestor.ingest_session.return_value = ["H" * 150]
             MockIngestor.return_value = mock_ingestor
@@ -239,7 +243,7 @@ class TestSemanticDedup:
 
     def test_skips_near_duplicates(self):
         """Harvester skips ingestion when cosine similarity > 0.92."""
-        p1 = MagicMock()
+        p1 = MagicMock(spec=HarvesterProvider)
         p1.name = "provider_a"
         p1.is_available = True
         p1.query.return_value = HarvestResult(
@@ -251,7 +255,7 @@ class TestSemanticDedup:
             cost_usd=0.001,
         )
 
-        p2 = MagicMock()
+        p2 = MagicMock(spec=HarvesterProvider)
         p2.name = "provider_b"
         p2.is_available = True
         p2.query.return_value = HarvestResult(
@@ -263,7 +267,7 @@ class TestSemanticDedup:
             cost_usd=0.001,
         )
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["record_1"]
         mock_pipeline._embed_service = None  # No embed service
         mock_pipeline._engine = None
@@ -303,7 +307,7 @@ class TestSemanticDedup:
             cost_usd=0.001,
         )
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["record_1"]
         mock_pipeline._embed_service = None
         mock_pipeline._engine = None
@@ -342,7 +346,7 @@ class TestSemanticDedup:
         )
 
         # Mock embed service that returns fixed embeddings
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.1] * 768
 
         # Mock engine that returns high similarity for second query

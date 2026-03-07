@@ -5,7 +5,10 @@ from __future__ import annotations
 import sqlite3
 from unittest.mock import MagicMock, patch
 
-from jarvis_engine.command_bus import AppContext
+from jarvis_engine.command_bus import AppContext, CommandBus
+from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+from jarvis_engine.learning.preferences import PreferenceTracker
+from jarvis_engine.memory.embeddings import EmbeddingService
 
 
 # ---------------------------------------------------------------------------
@@ -16,7 +19,7 @@ class TestPreferenceInjection:
     """Test that _build_smart_context returns preference data."""
 
     def _make_bus(self, *, pref_tracker=None, engine=None, embed_service=None, kg=None):
-        bus = MagicMock()
+        bus = MagicMock(spec=CommandBus)
         bus.ctx = AppContext(
             engine=engine,
             embed_service=embed_service,
@@ -28,7 +31,7 @@ class TestPreferenceInjection:
     def test_returns_four_elements(self):
         from jarvis_engine.voice_pipeline import _build_smart_context
 
-        pref = MagicMock()
+        pref = MagicMock(spec=PreferenceTracker)
         pref.get_preferences.return_value = {
             "communication_style": "concise",
             "format_preferences": "lists",
@@ -53,7 +56,7 @@ class TestPreferenceInjection:
     def test_tracker_error_graceful(self):
         from jarvis_engine.voice_pipeline import _build_smart_context
 
-        pref = MagicMock()
+        pref = MagicMock(spec=PreferenceTracker)
         pref.get_preferences.side_effect = RuntimeError("db error")
         bus = self._make_bus(pref_tracker=pref)
         result = _build_smart_context(bus, "test")
@@ -63,7 +66,7 @@ class TestPreferenceInjection:
     def test_empty_preferences_returns_empty_list(self):
         from jarvis_engine.voice_pipeline import _build_smart_context
 
-        pref = MagicMock()
+        pref = MagicMock(spec=PreferenceTracker)
         pref.get_preferences.return_value = {}
         bus = self._make_bus(pref_tracker=pref)
         result = _build_smart_context(bus, "test")
@@ -82,7 +85,7 @@ class TestRouteQualityPenalty:
         import numpy as np
         from jarvis_engine.gateway.classifier import IntentClassifier
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         # Use 384 dim to match the real embedding model (all-MiniLM-L6-v2)
         dim = 384
 
@@ -106,7 +109,7 @@ class TestRouteQualityPenalty:
 
     def test_quality_penalty_applied(self):
         """Verify that a route with 100% negative feedback gets penalized."""
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=ResponseFeedbackTracker)
         mock_tracker.get_route_quality.return_value = {
             "total": 10,
             "satisfaction_rate": 0.0,
@@ -121,7 +124,7 @@ class TestRouteQualityPenalty:
 
     def test_quality_below_threshold_no_penalty(self):
         """Verify penalty is NOT applied when total < 5 threshold."""
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=ResponseFeedbackTracker)
         mock_tracker.get_route_quality.return_value = {
             "total": 2,  # Below threshold of 5
             "satisfaction_rate": 0.0,
@@ -134,7 +137,7 @@ class TestRouteQualityPenalty:
 
     def test_tracker_error_graceful(self):
         """Verify classifier works when tracker raises an exception."""
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=ResponseFeedbackTracker)
         mock_tracker.get_route_quality.side_effect = RuntimeError("db error")
         classifier = self._make_classifier(feedback_tracker=mock_tracker)
         route, model, conf = classifier.classify("test query")

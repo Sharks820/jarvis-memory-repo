@@ -95,6 +95,7 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.memory_store import MemoryStore as _MemoryStore
 from jarvis_engine.task_orchestrator import (
     TaskResult,
     DEFAULT_FALLBACK_MODELS,
@@ -640,7 +641,7 @@ class TestAdapterTasks:
 class TestLogging:
 
     def test_run_logs_event(self, tmp_path):
-        store = MagicMock()
+        store = MagicMock(spec=_MemoryStore)
         orch = TaskOrchestrator(store, tmp_path)
         req = TaskRequest(
             task_type="code",

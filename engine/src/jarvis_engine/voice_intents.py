@@ -476,358 +476,161 @@ def _handle_system_status(ctx: _DispatchCtx) -> tuple[str, int]:
 
 
 # ---------------------------------------------------------------------------
-# Matcher functions — each returns True if the lowered text matches
+# Matcher helpers — build predicate functions declaratively
 # ---------------------------------------------------------------------------
 
 # Type alias for a matcher/handler pair
 _IntentRule = tuple[Callable[[str], bool], Callable[[_DispatchCtx], tuple[str, int]]]
 
 
-def _system_runtime_rules() -> list[_IntentRule]:
-    """Rules for system setup, runtime control, and safe mode."""
-    return [
-        # connect/setup
-        (
-            lambda low: ("connect" in low or "setup" in low)
-            and any(k in low for k in ["email", "calendar", "all", "everything"]),
-            _handle_connect_bootstrap,
-        ),
-        # runtime pause
-        (
-            lambda low: any(k in low for k in [
-                "pause jarvis", "pause daemon", "pause autopilot",
-                "go idle", "stand down", "pause yourself",
-            ]),
-            _handle_runtime_pause,
-        ),
-        # runtime resume
-        (
-            lambda low: any(k in low for k in [
-                "resume jarvis", "resume daemon", "resume autopilot",
-                "wake up", "start working again",
-            ]),
-            _handle_runtime_resume,
-        ),
-        # safe mode on
-        (
-            lambda low: any(k in low for k in ["safe mode on", "enable safe mode"]),
-            _handle_runtime_safe_on,
-        ),
-        # safe mode off
-        (
-            lambda low: any(k in low for k in ["safe mode off", "disable safe mode"]),
-            _handle_runtime_safe_off,
-        ),
-        # runtime status
-        (
-            lambda low: any(k in low for k in [
-                "runtime status", "control status", "safe mode status",
-            ]),
-            _handle_runtime_status,
-        ),
-    ]
+def _match_any(*phrases: str) -> Callable[[str], bool]:
+    """Return a matcher that succeeds if *any* phrase is found in the text."""
+    return lambda low: any(p in low for p in phrases)
 
 
-def _gaming_mode_rules() -> list[_IntentRule]:
-    """Rules for gaming mode control (auto-detect must precede generic)."""
-    return [
-        # gaming mode auto enable (must come before generic gaming mode)
-        (
-            lambda low: "auto gaming mode" in low
-            and any(k in low for k in ["on", "enable", "start"]),
-            _handle_gaming_mode_auto_enable,
-        ),
-        # gaming mode auto disable
-        (
-            lambda low: "auto gaming mode" in low
-            and any(k in low for k in ["off", "disable", "stop"]),
-            _handle_gaming_mode_auto_disable,
-        ),
-        # gaming mode enable
-        (
-            lambda low: "gaming mode" in low
-            and any(k in low for k in ["on", "enable", "start"]),
-            _handle_gaming_mode_enable,
-        ),
-        # gaming mode disable
-        (
-            lambda low: "gaming mode" in low
-            and any(k in low for k in ["off", "disable", "stop"]),
-            _handle_gaming_mode_disable,
-        ),
-        # gaming mode status
-        (
-            lambda low: "gaming mode" in low
-            and any(k in low for k in ["status", "state"]),
-            _handle_gaming_mode_status,
-        ),
-    ]
+def _match_all_any(required: str, *any_of: str) -> Callable[[str], bool]:
+    """Match when *required* phrase is present AND any of *any_of* is too."""
+    return lambda low: required in low and any(p in low for p in any_of)
 
 
-def _info_and_web_rules() -> list[_IntentRule]:
-    """Rules for weather, web research, URL opening, sync, self-heal, and ops."""
-    return [
-        # weather (but not "my calendar")
-        (
-            lambda low: ("weather" in low or "forecast" in low) and "my calendar" not in low,
-            _handle_weather,
-        ),
-        # web research
-        (
-            lambda low: any(key in low for key in [
-                "search the web for", "search web for",
+# ---------------------------------------------------------------------------
+# Dispatch table — ordered list of (matcher, handler) rules.
+#
+# Order matters: first match wins, preserving the original if/elif semantics.
+# Grouped by theme; comments mark group boundaries for readability.
+# ---------------------------------------------------------------------------
+
+_DISPATCH_RULES: list[_IntentRule] = [
+    # -- System setup & runtime control --
+    (
+        lambda low: ("connect" in low or "setup" in low)
+        and any(k in low for k in ("email", "calendar", "all", "everything")),
+        _handle_connect_bootstrap,
+    ),
+    (_match_any("pause jarvis", "pause daemon", "pause autopilot",
+                "go idle", "stand down", "pause yourself"),
+     _handle_runtime_pause),
+    (_match_any("resume jarvis", "resume daemon", "resume autopilot",
+                "wake up", "start working again"),
+     _handle_runtime_resume),
+    (_match_any("safe mode on", "enable safe mode"),   _handle_runtime_safe_on),
+    (_match_any("safe mode off", "disable safe mode"), _handle_runtime_safe_off),
+    (_match_any("runtime status", "control status", "safe mode status"),
+     _handle_runtime_status),
+
+    # -- Gaming mode (auto-detect rules must precede generic) --
+    (_match_all_any("auto gaming mode", "on", "enable", "start"),
+     _handle_gaming_mode_auto_enable),
+    (_match_all_any("auto gaming mode", "off", "disable", "stop"),
+     _handle_gaming_mode_auto_disable),
+    (_match_all_any("gaming mode", "on", "enable", "start"),
+     _handle_gaming_mode_enable),
+    (_match_all_any("gaming mode", "off", "disable", "stop"),
+     _handle_gaming_mode_disable),
+    (_match_all_any("gaming mode", "status", "state"),
+     _handle_gaming_mode_status),
+
+    # -- Info, web & ops --
+    (lambda low: ("weather" in low or "forecast" in low) and "my calendar" not in low,
+     _handle_weather),
+    (_match_any("search the web for", "search web for",
                 "search the internet for", "search online for",
                 "web search", "find on the web", "search for",
-                "look up", "google", "find me", "find out",
-            ]),
-            _handle_web_research,
-        ),
-        # open web
-        (
-            lambda low: any(key in low for key in [
-                "open website", "open webpage", "open page",
-                "open url", "browse to", "go to ",
-            ]),
-            _handle_open_web,
-        ),
-        # mobile/desktop sync
-        (
-            lambda low: any(key in low for key in [
-                "sync mobile", "sync desktop", "cross-device sync", "sync devices",
-            ]),
-            _handle_mobile_desktop_sync,
-        ),
-        # self heal
-        (
-            lambda low: any(key in low for key in [
-                "self heal", "self-heal", "repair yourself", "diagnose yourself",
-            ]),
-            _handle_self_heal,
-        ),
-        # ops autopilot
-        (
-            lambda low: any(k in low for k in [
-                "organize my day", "run autopilot", "daily autopilot",
+                "look up", "google", "find me", "find out"),
+     _handle_web_research),
+    (_match_any("open website", "open webpage", "open page",
+                "open url", "browse to", "go to "),
+     _handle_open_web),
+    (_match_any("sync mobile", "sync desktop", "cross-device sync", "sync devices"),
+     _handle_mobile_desktop_sync),
+    (_match_any("self heal", "self-heal", "repair yourself", "diagnose yourself"),
+     _handle_self_heal),
+    (_match_any("organize my day", "run autopilot", "daily autopilot",
                 "plan my day", "plan today", "organize today",
-                "help me prioritize",
-            ]),
-            _handle_ops_autopilot,
-        ),
-    ]
+                "help me prioritize"),
+     _handle_ops_autopilot),
 
+    # -- Phone actions --
+    (
+        lambda low: (
+            ("block" in low and "spam" in low and "call" in low)
+            or ("stop" in low and "scam" in low and "call" in low)
+            or ("handle" in low and "spam" in low and "call" in low)
+            or ("run" in low and "spam" in low and "scan" in low)
+            or ("show" in low and "spam" in low and "report" in low)
+        ),
+        _handle_phone_spam_guard,
+    ),
+    (_match_any("send text", "send message", "send a text",
+                "send a message", "text to ", "message to "),
+     _handle_phone_send_sms),
+    (_match_any("ignore call", "decline call", "reject call"),
+     _handle_phone_ignore_call),
+    (lambda low: low.startswith("call ") or "place a call" in low
+                 or "make a call" in low or "phone call" in low,
+     _handle_phone_place_call),
 
-def _phone_rules() -> list[_IntentRule]:
-    """Rules for phone actions: spam guard, SMS, calls."""
-    return [
-        # phone spam guard
-        (
-            lambda low: (
-                ("block" in low and "spam" in low and "call" in low)
-                or ("stop" in low and "scam" in low and "call" in low)
-                or ("handle" in low and "spam" in low and "call" in low)
-                or ("run" in low and "spam" in low and "scan" in low)
-                or ("show" in low and "spam" in low and "report" in low)
-            ),
-            _handle_phone_spam_guard,
-        ),
-        # phone send SMS
-        (
-            lambda low: any(k in low for k in [
-                "send text", "send message", "send a text",
-                "send a message", "text to ", "message to ",
-            ]),
-            _handle_phone_send_sms,
-        ),
-        # phone ignore call
-        (
-            lambda low: any(k in low for k in [
-                "ignore call", "decline call", "reject call",
-            ]),
-            _handle_phone_ignore_call,
-        ),
-        # phone place call (needs number extraction as part of match)
-        (
-            lambda low: (
-                low.startswith("call ") or "place a call" in low
-                or "make a call" in low or "phone call" in low
-            ),
-            _handle_phone_place_call,
-        ),
-    ]
+    # -- Ops sync, brief, automation & content generation --
+    (_match_all_any("sync", "calendar", "email", "inbox", "ops"),
+     _handle_ops_sync),
+    (_match_any("daily brief", "ops brief", "morning brief",
+                "give me a brief", "my brief", "run brief", "brief me"),
+     _handle_ops_brief),
+    (_match_all_any("automation", "run", "execute", "start"),
+     _handle_automation_run),
+    (_match_any("generate code"),  _handle_generate_code),
+    (_match_any("generate image"), _handle_generate_image),
+    (_match_any("generate video"), _handle_generate_video),
+    (_match_any("generate 3d", "generate a 3d model", "generate 3d model"),
+     _handle_generate_model3d),
 
-
-def _ops_and_generation_rules() -> list[_IntentRule]:
-    """Rules for ops sync/brief/automation and content generation."""
-    return [
-        # ops sync (calendar/email/ops)
-        (
-            lambda low: "sync" in low
-            and any(k in low for k in ["calendar", "email", "inbox", "ops"]),
-            _handle_ops_sync,
-        ),
-        # ops brief
-        (
-            lambda low: any(k in low for k in [
-                "daily brief", "ops brief", "morning brief",
-                "give me a brief", "my brief", "run brief", "brief me",
-            ]),
-            _handle_ops_brief,
-        ),
-        # automation run
-        (
-            lambda low: "automation" in low
-            and any(k in low for k in ["run", "execute", "start"]),
-            _handle_automation_run,
-        ),
-        # generate code
-        (
-            lambda low: "generate code" in low,
-            _handle_generate_code,
-        ),
-        # generate image
-        (
-            lambda low: "generate image" in low,
-            _handle_generate_image,
-        ),
-        # generate video
-        (
-            lambda low: "generate video" in low,
-            _handle_generate_video,
-        ),
-        # generate 3d model
-        (
-            lambda low: "generate 3d" in low
-            or "generate a 3d model" in low
-            or "generate 3d model" in low,
-            _handle_generate_model3d,
-        ),
-    ]
-
-
-def _calendar_task_rules() -> list[_IntentRule]:
-    """Rules for schedule/calendar/meeting and task list queries."""
-    return [
-        # schedule / calendar / meeting queries
-        (
-            lambda low: any(k in low for k in [
-                "my schedule", "my calendar", "my meetings", "my agenda",
+    # -- Calendar & task queries --
+    (_match_any("my schedule", "my calendar", "my meetings", "my agenda",
                 "what's on today", "what is on today",
                 "what do i have today", "what's happening today",
                 "what is happening today", "today's schedule",
                 "today's meetings", "upcoming meetings",
                 "upcoming events", "next meeting", "next appointment",
                 "daily briefing", "morning briefing",
-                "give me a briefing", "give me my briefing",
-            ]),
-            _handle_schedule_calendar,
-        ),
-        # task queries
-        (
-            lambda low: any(k in low for k in [
-                "my tasks", "my to-do", "my todo",
+                "give me a briefing", "give me my briefing"),
+     _handle_schedule_calendar),
+    (_match_any("my tasks", "my to-do", "my todo",
                 "what are my tasks", "task list", "pending tasks",
                 "open tasks", "what do i need to do",
-                "what should i do", "what needs to be done",
-            ]),
-            _handle_task_queries,
-        ),
-    ]
+                "what should i do", "what needs to be done"),
+     _handle_task_queries),
 
-
-def _memory_knowledge_rules() -> list[_IntentRule]:
-    """Rules for memory search, forget, ingest, and knowledge status."""
-    return [
-        # memory search / knowledge queries
-        (
-            lambda low: any(k in low for k in [
-                "what do you know about", "what do you remember about",
+    # -- Memory & knowledge --
+    (_match_any("what do you know about", "what do you remember about",
                 "do you remember when", "do you remember that",
                 "do you remember my", "search memory for",
                 "search your memory for", "search your memory about",
-                "what did i tell you about", "what have i said about",
-            ]),
-            _handle_memory_search,
-        ),
-        # forget / unlearn
-        (
-            lambda low: any(k in low for k in [
-                "forget about", "forget that", "forget everything about",
+                "what did i tell you about", "what have i said about"),
+     _handle_memory_search),
+    (_match_any("forget about", "forget that", "forget everything about",
                 "unlearn", "stop remembering", "delete memory of",
-                "remove from memory",
-            ]),
-            _handle_memory_forget,
-        ),
-        # memory save / remember
-        (
-            lambda low: any(k in low for k in [
-                "remember that", "remember this", "save this",
+                "remove from memory"),
+     _handle_memory_forget),
+    (_match_any("remember that", "remember this", "save this",
                 "make a note", "take a note", "note that",
-                "don't forget",
-            ]),
-            _handle_memory_ingest,
-        ),
-        # knowledge graph queries
-        (
-            lambda low: any(k in low for k in [
-                "knowledge status", "knowledge graph",
-                "how much do you know", "brain status", "memory status",
-            ]),
-            _handle_brain_status,
-        ),
-    ]
+                "don't forget"),
+     _handle_memory_ingest),
+    (_match_any("knowledge status", "knowledge graph",
+                "how much do you know", "brain status", "memory status"),
+     _handle_brain_status),
 
-
-def _mission_status_rules() -> list[_IntentRule]:
-    """Rules for mission management and system status queries."""
-    return [
-        # cancel mission
-        (
-            lambda low: any(k in low for k in [
-                "cancel mission", "cancel the mission",
-                "stop mission", "abort mission",
-            ]),
-            _handle_mission_cancel,
-        ),
-        # mission / learning queries
-        (
-            lambda low: any(k in low for k in [
-                "mission status", "learning mission",
-                "active missions", "my missions",
-            ]),
-            _handle_mission_status,
-        ),
-        # system status
-        (
-            lambda low: any(k in low for k in [
-                "system status", "jarvis status", "how are you",
+    # -- Missions & system status --
+    (_match_any("cancel mission", "cancel the mission",
+                "stop mission", "abort mission"),
+     _handle_mission_cancel),
+    (_match_any("mission status", "learning mission",
+                "active missions", "my missions"),
+     _handle_mission_status),
+    (_match_any("system status", "jarvis status", "how are you",
                 "status report", "health check",
-                "are you working", "are you running",
-            ]),
-            _handle_system_status,
-        ),
-    ]
-
-
-def _build_dispatch_rules() -> list[_IntentRule]:
-    """Build the ordered list of (matcher, handler) rules.
-
-    The order matters: first match wins, matching the original if/elif
-    semantics exactly.  Rules are grouped by theme for readability.
-    """
-    return [
-        *_system_runtime_rules(),
-        *_gaming_mode_rules(),
-        *_info_and_web_rules(),
-        *_phone_rules(),
-        *_ops_and_generation_rules(),
-        *_calendar_task_rules(),
-        *_memory_knowledge_rules(),
-        *_mission_status_rules(),
-    ]
-
-
-# Module-level singleton — built once at import time.
-_DISPATCH_RULES: list[_IntentRule] = _build_dispatch_rules()
+                "are you working", "are you running"),
+     _handle_system_status),
+]
 
 
 # ---------------------------------------------------------------------------

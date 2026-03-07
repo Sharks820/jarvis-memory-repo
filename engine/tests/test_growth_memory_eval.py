@@ -14,7 +14,10 @@ from jarvis_engine.growth_tracker import (
     evaluate_memory_recall,
     run_memory_eval,
 )
+from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.learning.metrics import capture_knowledge_metrics
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +26,7 @@ from jarvis_engine.learning.metrics import capture_knowledge_metrics
 
 def _make_engine_mock(records: list[dict] | None = None, vec_results: list[tuple[str, float]] | None = None):
     """Create a mock MemoryEngine with search_vec and get_records_batch."""
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     engine.search_vec.return_value = vec_results or []
     engine.get_records_batch.return_value = records or []
     return engine
@@ -31,14 +34,14 @@ def _make_engine_mock(records: list[dict] | None = None, vec_results: list[tuple
 
 def _make_embed_service_mock():
     """Create a mock EmbeddingService."""
-    svc = MagicMock()
+    svc = MagicMock(spec=EmbeddingService)
     svc.embed.return_value = [0.1] * 384
     return svc
 
 
 def _make_kg_mock(nodes: int = 0, edges: int = 0, locked: int = 0, db: sqlite3.Connection | None = None):
     """Create a mock KnowledgeGraph."""
-    kg = MagicMock()
+    kg = MagicMock(spec=KnowledgeGraph)
     kg.count_nodes.return_value = nodes
     kg.count_edges.return_value = edges
     kg.count_locked.return_value = locked
@@ -189,7 +192,7 @@ def test_capture_knowledge_metrics_structure():
     db.execute("INSERT INTO records VALUES ('r1', 'health', 'test')")
     db.commit()
 
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     engine._db = db  # noqa: SLF001
     engine.db = db
     engine.db_lock = MagicMock()
@@ -225,7 +228,7 @@ def test_capture_knowledge_metrics_empty_db():
     db.execute("CREATE TABLE records (record_id TEXT, branch TEXT, summary TEXT)")
     db.commit()
 
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     engine._db = db  # noqa: SLF001
     engine.db = db
     engine.db_lock = MagicMock()
@@ -248,7 +251,7 @@ def test_capture_knowledge_metrics_temporal_missing():
     db.execute("CREATE TABLE records (record_id TEXT, branch TEXT, summary TEXT)")
     db.commit()
 
-    engine = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
     engine._db = db  # noqa: SLF001
     engine.db = db
     engine.db_lock = MagicMock()

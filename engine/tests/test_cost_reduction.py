@@ -15,6 +15,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from jarvis_engine.gateway.costs import CostTracker
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.proactive.notifications import Notifier
 from jarvis_engine.proactive.cost_tracking import (
     cost_reduction_snapshot,
     cost_reduction_trend,
@@ -260,8 +263,8 @@ def test_cost_reduction_trend_empty() -> None:
 
 def _make_mock_engine_and_embed():
     """Create mocked engine and embed_service that return controlled results."""
-    engine = MagicMock()
-    embed_service = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
+    embed_service = MagicMock(spec=EmbeddingService)
 
     # embed returns a dummy vector
     embed_service.embed.return_value = [0.1] * 768
@@ -296,9 +299,9 @@ def test_adversarial_self_test_run() -> None:
 
 def test_adversarial_self_test_alerts_on_low_score() -> None:
     """Score below threshold -> notifier.send() called."""
-    engine = MagicMock()
-    embed_service = MagicMock()
-    notifier = MagicMock()
+    engine = MagicMock(spec=MemoryEngine)
+    embed_service = MagicMock(spec=EmbeddingService)
+    notifier = MagicMock(spec=Notifier)
 
     # Make engine return empty results so scores are 0
     embed_service.embed.return_value = [0.1] * 768
@@ -316,7 +319,7 @@ def test_adversarial_self_test_alerts_on_low_score() -> None:
 def test_adversarial_self_test_no_alert_above_threshold() -> None:
     """Score above threshold -> no notifier.send() call."""
     engine, embed_service = _make_mock_engine_and_embed()
-    notifier = MagicMock()
+    notifier = MagicMock(spec=Notifier)
 
     tester = AdversarialSelfTest(
         engine, embed_service, notifier=notifier, score_threshold=0.0

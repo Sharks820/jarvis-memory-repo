@@ -1523,6 +1523,7 @@ class JarvisDesktopWidget(tk.Tk):
             except (RuntimeError, TimeoutError) as exc:
                 self._log_async(f"Connect failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
+                logger.debug("Widget connect failed: %s", exc)
                 self._log_async(f"Connect failed: {exc}", role="error")
 
         self._thread(worker)
@@ -1551,6 +1552,7 @@ class JarvisDesktopWidget(tk.Tk):
             self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
             self._log_async(f"  Last sync: {last_sync}", role="jarvis")
         except Exception as exc:  # boundary: catch-all justified
+            logger.debug("Diagnostics sync check failed: %s", exc)
             self._log_async(f"  Sync: unavailable ({exc})", role="error")
 
     def _diag_check_intelligence(self, cfg: WidgetConfig) -> None:
@@ -1564,6 +1566,7 @@ class JarvisDesktopWidget(tk.Tk):
             self._log_async(f"  Intelligence score: {score}", role="jarvis")
             self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
         except Exception as exc:  # boundary: catch-all justified
+            logger.debug("Diagnostics intelligence check failed: %s", exc)
             self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
 
     def _diag_run_self_heal(self, cfg: WidgetConfig) -> None:
@@ -1623,6 +1626,7 @@ class JarvisDesktopWidget(tk.Tk):
             except (RuntimeError, TimeoutError) as exc:
                 self._log_async(f"Diagnose failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
+                logger.debug("Diagnose and repair failed: %s", exc)
                 self._log_async(f"Diagnose failed: {exc}", role="error")
 
         self._thread(worker)
@@ -1792,6 +1796,7 @@ class JarvisDesktopWidget(tk.Tk):
             except (RuntimeError, TimeoutError) as exc:
                 self._handle_command_error(f"Command failed: {exc}")
             except Exception as exc:  # noqa: BLE001
+                logger.debug("Command execution failed: %s", exc)
                 self._handle_command_error(f"Command failed: {exc}")
             finally:
                 if not self._cancel_event.is_set():
@@ -2024,6 +2029,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self._log_async("Cannot connect to Jarvis services.", role="error")
                 self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
             except Exception as exc:  # noqa: BLE001
+                logger.debug("Dashboard refresh failed: %s", exc)
                 self._log_async(f"Dashboard failed: {exc}", role="error")
 
         self._thread(worker)
@@ -2065,6 +2071,7 @@ class JarvisDesktopWidget(tk.Tk):
                 self._log_async("Cannot connect to Jarvis services.", role="error")
                 self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
             except Exception as exc:  # noqa: BLE001
+                logger.debug("Activity log load failed: %s", exc)
                 self._log_async(f"Could not load activity: {exc}", role="error")
 
         self._thread(worker)
@@ -2091,6 +2098,7 @@ class JarvisDesktopWidget(tk.Tk):
                 else:
                     self._set_state_async("idle")
             except Exception as exc:  # noqa: BLE001
+                logger.debug("Voice dictation failed: %s", exc)
                 self._log_async(f"dictation failed: {exc}", role="error")
                 self._set_error_briefly_async()
 

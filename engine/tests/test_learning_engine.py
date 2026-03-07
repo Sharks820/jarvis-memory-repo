@@ -9,6 +9,10 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.memory.embeddings import EmbeddingService
+from jarvis_engine.memory.engine import MemoryEngine
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 # ---------------------------------------------------------------------------
 # ConversationLearningEngine tests
@@ -22,7 +26,7 @@ class TestConversationLearningEngine:
 
     def _make_pipeline(self):
         """Create a mock pipeline that returns a single record ID per call."""
-        pipeline = MagicMock()
+        pipeline = MagicMock(spec=EnrichedIngestPipeline)
         pipeline.ingest.return_value = ["rec_001"]
         return pipeline
 
@@ -219,7 +223,7 @@ class TestTemporalMetadata:
         db.commit()
 
         # Create a mock KG
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.db = db
         mock_kg.write_lock = write_lock
 
@@ -293,7 +297,7 @@ class TestCrossBranch:
 
     def test_cross_branch_query_returns_results(self):
         """Mock engine+kg, verify dict structure."""
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         mock_engine.search_vec.return_value = [
             ("rec_001", 0.1),
             ("rec_002", 0.2),
@@ -306,10 +310,10 @@ class TestCrossBranch:
         G.add_node("family.member.dad", label="Dad", node_type="fact")
         G.add_edge("ingest:rec_001", "family.member.dad", relation="extracted_from", confidence=0.8)
 
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.to_networkx.return_value = G
 
-        mock_embed = MagicMock()
+        mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.1] * 768
 
         result = cross_branch_query(
@@ -330,7 +334,7 @@ class TestCrossBranch:
 
     def test_cross_branch_edges_created(self):
         """Mock KG, verify add_edge calls for cross-branch connections."""
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.get_node.return_value = {
             "node_id": "health.medication.aspirin",
             "label": "Aspirin taken daily for heart health",
@@ -361,7 +365,7 @@ class TestCrossBranch:
 
     def test_cross_branch_edges_skip_same_branch(self):
         """No edges created within the same branch."""
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.get_node.return_value = {
             "node_id": "health.medication.aspirin",
             "label": "Aspirin taken daily",
@@ -428,7 +432,7 @@ class TestLearningHandlers:
 
     def test_learn_handler_dispatches(self):
         """Mock learning engine, verify delegation."""
-        mock_learning = MagicMock()
+        mock_learning = MagicMock(spec=ConversationLearningEngine)
         mock_learning.learn_from_interaction.return_value = {
             "records_created": 2,
         }

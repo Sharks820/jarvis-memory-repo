@@ -10,6 +10,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.activity_feed import ActivityFeed
+from jarvis_engine.command_bus import CommandBus
+from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+from jarvis_engine.learning.preferences import PreferenceTracker
+from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+from jarvis_engine.memory.ingest import EnrichedIngestPipeline
+
 
 
 # ---------------------------------------------------------------------------
@@ -147,13 +154,13 @@ class TestLearningActivityEvents:
         """When preferences are detected, PREFERENCE_LEARNED events are logged."""
         from jarvis_engine.learning.engine import ConversationLearningEngine
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["rec-1"]
-        mock_pref = MagicMock()
+        mock_pref = MagicMock(spec=PreferenceTracker)
         mock_pref.observe.return_value = [("style", "concise")]
-        mock_feedback = MagicMock()
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.record_feedback.return_value = "neutral"
-        mock_usage = MagicMock()
+        mock_usage = MagicMock(spec=UsagePatternTracker)
 
         engine = ConversationLearningEngine(
             pipeline=mock_pipeline,
@@ -180,13 +187,13 @@ class TestLearningActivityEvents:
         """When no preferences are detected, no PREFERENCE_LEARNED event is logged."""
         from jarvis_engine.learning.engine import ConversationLearningEngine
 
-        mock_pipeline = MagicMock()
+        mock_pipeline = MagicMock(spec=EnrichedIngestPipeline)
         mock_pipeline.ingest.return_value = ["rec-1"]
-        mock_pref = MagicMock()
+        mock_pref = MagicMock(spec=PreferenceTracker)
         mock_pref.observe.return_value = []
-        mock_feedback = MagicMock()
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.record_feedback.return_value = "neutral"
-        mock_usage = MagicMock()
+        mock_usage = MagicMock(spec=UsagePatternTracker)
 
         engine = ConversationLearningEngine(
             pipeline=mock_pipeline,
@@ -218,7 +225,7 @@ class TestWidgetStatusEvents:
         """Widget status response includes recent_events from activity feed."""
         from jarvis_engine.activity_feed import ActivityEvent
 
-        mock_feed = MagicMock()
+        mock_feed = MagicMock(spec=ActivityFeed)
         mock_events = [
             ActivityEvent(
                 timestamp="2026-03-02T10:00:00",
@@ -273,7 +280,7 @@ class TestResponseOutputLines:
     def test_brain_status_emits_response(self, capsys):
         """cmd_brain_status prints a response= line."""
 
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_result = MagicMock()
         mock_result.status = {
             "updated_utc": "2026-03-02T10:00:00",
@@ -296,7 +303,7 @@ class TestResponseOutputLines:
 
     def test_mission_status_emits_response(self, capsys):
         """cmd_mission_status prints a response= line."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_result = MagicMock()
         mock_result.missions = [
             {"mission_id": "m-001", "status": "completed", "topic": "Test",
@@ -316,7 +323,7 @@ class TestResponseOutputLines:
 
     def test_mission_cancel_emits_response(self, capsys):
         """cmd_mission_cancel prints a response= line."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_result = MagicMock()
         mock_result.cancelled = True
         mock_result.mission = {"mission_id": "m-001", "topic": "Test", "status": "cancelled"}
@@ -334,7 +341,7 @@ class TestResponseOutputLines:
 
     def test_mission_status_empty_emits_response(self, capsys):
         """cmd_mission_status with no missions prints a response= line."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_result = MagicMock()
         mock_result.missions = []
         mock_result.total_count = 0

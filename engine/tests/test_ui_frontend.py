@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from jarvis_engine.command_bus import CommandBus
+
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +136,7 @@ class TestCmdStatusResponse:
 
     def test_cmd_status_emits_response(self, capsys):
         """cmd_status prints a response= line with profile and mode."""
-        mock_bus = MagicMock()
+        mock_bus = MagicMock(spec=CommandBus)
         mock_result = MagicMock()
         mock_result.profile = "standard"
         mock_result.primary_runtime = "ollama"

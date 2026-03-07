@@ -6,7 +6,7 @@ from datetime import datetime
 from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -16,6 +16,58 @@ if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
+
+
+class ETAEstimate(TypedDict):
+    """Return shape of ``_estimate_eta``."""
+
+    runs: int | None
+    days: float | None
+    status: str
+
+
+class MethodologyInfo(TypedDict):
+    """Shape of the ``methodology`` key in the dashboard."""
+
+    metric: str
+    note: str
+    history_runs: int
+    slope_score_pct_per_run: float
+    avg_days_per_run: float
+
+
+class JarvisScore(TypedDict):
+    """Shape of the ``jarvis`` key in the dashboard."""
+
+    score_pct: float
+    delta_vs_prev_pct: float
+    window_avg_pct: float
+    latest_model: str
+    latest_ts: str
+
+
+class AchievementsInfo(TypedDict):
+    """Shape of the ``achievements`` key in the dashboard."""
+
+    new: list[dict[str, Any]]
+    all: list[dict[str, Any]]
+
+
+class IntelligenceDashboard(TypedDict):
+    """Return shape of ``build_intelligence_dashboard``."""
+
+    generated_utc: str
+    methodology: MethodologyInfo
+    jarvis: JarvisScore
+    ranking: list[dict[str, Any]]
+    etas: list[dict[str, Any]]
+    memory_regression: dict[str, Any]
+    knowledge_graph: dict[str, Any]
+    gateway_audit: dict[str, Any]
+    learning: dict[str, Any]
+    knowledge_snapshot: dict[str, Any]
+    achievements: AchievementsInfo
+
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
@@ -166,7 +218,7 @@ def _score_slope_per_run(rows: list[dict[str, Any]], window: int = 12) -> float:
     return (end - start) / float(len(sample) - 1)
 
 
-def _estimate_eta(latest_score: float, slope_per_run: float, avg_days_per_run: float, target_score: float) -> dict[str, Any]:
+def _estimate_eta(latest_score: float, slope_per_run: float, avg_days_per_run: float, target_score: float) -> ETAEstimate:
     if latest_score >= target_score:
         return {"runs": 0, "days": 0.0, "status": "met"}
     if slope_per_run <= 0.0:
@@ -237,7 +289,7 @@ def build_intelligence_dashboard(
     usage_tracker: UsagePatternTracker | None = None,
     kg: KnowledgeGraph | None = None,
     engine: MemoryEngine | None = None,
-) -> dict[str, Any]:
+) -> IntelligenceDashboard:
     history_rows = read_history(_history_path(root))
     summary = summarize_history(history_rows, last=last_runs)
     latest_score = _to_float(summary.get("latest_score_pct", 0.0), 0.0)

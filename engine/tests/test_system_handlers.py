@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
+from jarvis_engine.memory_store import MemoryStore as _MemoryStore
 from jarvis_engine.commands.system_commands import (
     DaemonRunCommand,
     DesktopWidgetCommand,
@@ -54,7 +55,7 @@ def test_status_handler(mock_config: MagicMock, mock_store_cls: MagicMock) -> No
         operation_mode="normal",
         cloud_burst_enabled=True,
     )
-    mock_store = MagicMock()
+    mock_store = MagicMock(spec=_MemoryStore)
     mock_store.tail.return_value = [{"ts": "1", "type": "test"}]
     mock_store_cls.return_value = mock_store
 
@@ -74,7 +75,7 @@ def test_status_handler(mock_config: MagicMock, mock_store_cls: MagicMock) -> No
 
 @patch("jarvis_engine.memory_store.MemoryStore")
 def test_log_handler(mock_store_cls: MagicMock) -> None:
-    mock_store = MagicMock()
+    mock_store = MagicMock(spec=_MemoryStore)
     mock_store.append.return_value = SimpleNamespace(ts="2024-01-01T00:00:00", event_type="info", message="hello")
     mock_store_cls.return_value = mock_store
 

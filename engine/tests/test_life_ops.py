@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-
+from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
 from jarvis_engine.life_ops import (
     OpsSnapshot,
     _assemble_data_summary,
@@ -407,8 +407,8 @@ class TestBuildNarrativeBrief:
 
     def test_gateway_success_returns_llm_text(self):
         snap = _snapshot()
-        gateway = MagicMock()
-        response = MagicMock()
+        gateway = MagicMock(spec=ModelGateway)
+        response = MagicMock(spec=GatewayResponse)
         response.text = "Good morning! Here is your briefing..."
         gateway.complete.return_value = response
 
@@ -418,7 +418,7 @@ class TestBuildNarrativeBrief:
 
     def test_gateway_exception_falls_back(self):
         snap = _snapshot(tasks=[{"title": "Fallback task", "priority": "high"}])
-        gateway = MagicMock()
+        gateway = MagicMock(spec=ModelGateway)
         gateway.complete.side_effect = RuntimeError("LLM unavailable")
 
         result = build_narrative_brief(snap, gateway=gateway)
@@ -426,8 +426,8 @@ class TestBuildNarrativeBrief:
 
     def test_gateway_empty_response_falls_back(self):
         snap = _snapshot()
-        gateway = MagicMock()
-        response = MagicMock()
+        gateway = MagicMock(spec=ModelGateway)
+        response = MagicMock(spec=GatewayResponse)
         response.text = ""
         gateway.complete.return_value = response
 
@@ -436,7 +436,7 @@ class TestBuildNarrativeBrief:
 
     def test_gateway_none_response_falls_back(self):
         snap = _snapshot()
-        gateway = MagicMock()
+        gateway = MagicMock(spec=ModelGateway)
         gateway.complete.return_value = None
 
         result = build_narrative_brief(snap, gateway=gateway)
@@ -444,8 +444,8 @@ class TestBuildNarrativeBrief:
 
     def test_memory_context_truncated(self):
         snap = _snapshot()
-        gateway = MagicMock()
-        response = MagicMock()
+        gateway = MagicMock(spec=ModelGateway)
+        response = MagicMock(spec=GatewayResponse)
         response.text = "Brief with context"
         gateway.complete.return_value = response
 
@@ -458,8 +458,8 @@ class TestBuildNarrativeBrief:
 
     def test_uses_local_model_env(self):
         snap = _snapshot()
-        gateway = MagicMock()
-        response = MagicMock()
+        gateway = MagicMock(spec=ModelGateway)
+        response = MagicMock(spec=GatewayResponse)
         response.text = "Custom model brief"
         gateway.complete.return_value = response
 

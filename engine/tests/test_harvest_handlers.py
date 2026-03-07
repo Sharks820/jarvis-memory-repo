@@ -18,6 +18,7 @@ from jarvis_engine.handlers.harvest_handlers import (
 )
 from jarvis_engine.harvesting.budget import BudgetManager
 from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+from jarvis_engine.harvesting.session_ingestors import ClaudeCodeIngestor
 from jarvis_engine.memory.ingest import EnrichedIngestPipeline
 
 
@@ -98,7 +99,7 @@ def test_ingest_session_unknown_source() -> None:
 @patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor")
 def test_ingest_session_claude_discover(mock_ingestor_cls: MagicMock) -> None:
     """Claude source with no session_path discovers sessions."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     mock_ingestor.find_sessions.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 
@@ -114,7 +115,7 @@ def test_ingest_session_claude_discover(mock_ingestor_cls: MagicMock) -> None:
 @patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor")
 def test_ingest_session_claude_with_project_path(mock_ingestor_cls: MagicMock) -> None:
     """Claude source with project_path scopes discovery."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     mock_ingestor.find_sessions.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 
@@ -126,7 +127,7 @@ def test_ingest_session_claude_with_project_path(mock_ingestor_cls: MagicMock) -
 @patch("jarvis_engine.harvesting.session_ingestors.CodexIngestor")
 def test_ingest_session_codex_discover(mock_ingestor_cls: MagicMock) -> None:
     """Codex source with no session_path discovers sessions."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     mock_ingestor.find_sessions.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 
@@ -139,7 +140,7 @@ def test_ingest_session_codex_discover(mock_ingestor_cls: MagicMock) -> None:
 @patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor")
 def test_ingest_session_processes_texts(mock_ingestor_cls: MagicMock) -> None:
     """Ingests text chunks from discovered sessions."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     session_path = MagicMock(spec=Path)
     session_path.name = "session_001.jsonl"
     mock_ingestor.find_sessions.return_value = [session_path]
@@ -161,7 +162,7 @@ def test_ingest_session_processes_texts(mock_ingestor_cls: MagicMock) -> None:
 @patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor")
 def test_ingest_session_empty_texts_skipped(mock_ingestor_cls: MagicMock) -> None:
     """Sessions returning empty texts are not counted."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     s1, s2 = MagicMock(spec=Path), MagicMock(spec=Path)
     s1.name = "s1.jsonl"
     s2.name = "s2.jsonl"
@@ -181,7 +182,7 @@ def test_ingest_session_empty_texts_skipped(mock_ingestor_cls: MagicMock) -> Non
 @patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor")
 def test_ingest_session_pipeline_error_continues(mock_ingestor_cls: MagicMock) -> None:
     """Pipeline errors on individual chunks don't abort the session."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     session = MagicMock(spec=Path)
     session.name = "s.jsonl"
     mock_ingestor.find_sessions.return_value = [session]
@@ -222,7 +223,7 @@ def test_ingest_session_explicit_path_outside_allowed() -> None:
 @patch("jarvis_engine.harvesting.session_ingestors.ClaudeCodeIngestor")
 def test_ingest_session_explicit_path_allowed(mock_ingestor_cls: MagicMock) -> None:
     """Explicit session_path within ~/.claude is accepted."""
-    mock_ingestor = MagicMock()
+    mock_ingestor = MagicMock(spec=ClaudeCodeIngestor)
     mock_ingestor.ingest_session.return_value = []
     mock_ingestor_cls.return_value = mock_ingestor
 

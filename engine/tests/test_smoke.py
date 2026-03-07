@@ -21,6 +21,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.memory.embeddings import EmbeddingService
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -303,7 +305,7 @@ class TestIntentClassifierSmoke:
         import numpy as np
         from jarvis_engine.gateway.classifier import IntentClassifier
 
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         # Return a stable 384-dim vector so cosine similarity can be computed
         embed.embed.return_value = np.zeros(384).tolist()
         embed.embed_query.return_value = np.zeros(384).tolist()
@@ -347,7 +349,7 @@ class TestIntentClassifierSmoke:
         pytest.importorskip("numpy", reason="numpy required for classifier")
         from jarvis_engine.gateway.classifier import IntentClassifier
 
-        embed = MagicMock()
+        embed = MagicMock(spec=EmbeddingService)
         clf = IntentClassifier(embed_service=embed)
         keywords = clf.PRIVACY_KEYWORDS
         assert any("password" in kw for kw in keywords), (

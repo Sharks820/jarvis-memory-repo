@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
+
 _HAS_LIBROSA = bool(importlib.util.find_spec("librosa"))
 _HAS_JELLYFISH = bool(importlib.util.find_spec("jellyfish"))
 
@@ -193,8 +195,8 @@ def test_correct_with_llm_calls_gateway() -> None:
     """correct_with_llm calls ModelGateway.complete with the right prompt."""
     from jarvis_engine.stt_postprocess import correct_with_llm
 
-    mock_gateway = MagicMock()
-    mock_gateway.complete.return_value = MagicMock(text="Corrected text here.")
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(spec=GatewayResponse, text="Corrected text here.")
 
     result = correct_with_llm("corrected text here", mock_gateway, vocab_lines=["Conner"])
     mock_gateway.complete.assert_called_once()
@@ -207,8 +209,8 @@ def test_correct_with_llm_returns_corrected_text() -> None:
     """The corrected text from the LLM is returned."""
     from jarvis_engine.stt_postprocess import correct_with_llm
 
-    mock_gateway = MagicMock()
-    mock_gateway.complete.return_value = MagicMock(text="Hello, Conner!")
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(spec=GatewayResponse, text="Hello, Conner!")
 
     result = correct_with_llm("hello conner", mock_gateway)
     assert result == "Hello, Conner!"
@@ -218,7 +220,7 @@ def test_correct_with_llm_fallback_on_error() -> None:
     """On gateway error, original text is returned unchanged."""
     from jarvis_engine.stt_postprocess import correct_with_llm
 
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
     mock_gateway.complete.side_effect = RuntimeError("API error")
 
     result = correct_with_llm("hello conner", mock_gateway)
@@ -290,8 +292,8 @@ def test_postprocess_full_pipeline() -> None:
     """Full pipeline runs all stages in order."""
     from jarvis_engine.stt_postprocess import postprocess_transcription
 
-    mock_gateway = MagicMock()
-    mock_gateway.complete.return_value = MagicMock(text="Hello, Conner!")
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(spec=GatewayResponse, text="Hello, Conner!")
 
     result = postprocess_transcription(
         text="um hello conner",
@@ -307,7 +309,7 @@ def test_postprocess_skip_path_short_command() -> None:
     """Short high-confidence commands skip LLM and NER stages."""
     from jarvis_engine.stt_postprocess import postprocess_transcription
 
-    mock_gateway = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
 
     result = postprocess_transcription(
         text="brain status",
@@ -367,8 +369,8 @@ def test_end_to_end_pipeline_with_noisy_input() -> None:
     assert len(processed) > 0
 
     # Postprocess with mock gateway
-    mock_gateway = MagicMock()
-    mock_gateway.complete.return_value = MagicMock(text="Hello, Jarvis!")
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_gateway.complete.return_value = MagicMock(spec=GatewayResponse, text="Hello, Jarvis!")
 
     result = postprocess_transcription(
         text="um hello jarvis",

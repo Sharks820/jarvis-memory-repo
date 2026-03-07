@@ -9,6 +9,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+from jarvis_engine.learning.preferences import PreferenceTracker
+from jarvis_engine.learning.usage_patterns import UsagePatternTracker
+from jarvis_engine.memory.engine import MemoryEngine
 
 from jarvis_engine._compat import UTC
 
@@ -40,7 +45,7 @@ class TestHybridSearchFrequencyBoost:
         """High-access records score higher than zero-access records."""
         from jarvis_engine.memory.search import hybrid_search
 
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine._closed = False
 
         # FTS returns two records with same rank
@@ -65,7 +70,7 @@ class TestHybridSearchFrequencyBoost:
         """Records missing access_count field still work (default 0)."""
         from jarvis_engine.memory.search import hybrid_search
 
-        engine = MagicMock()
+        engine = MagicMock(spec=MemoryEngine)
         engine._closed = False
 
         engine.search_fts.return_value = [("rec_1", 1.0)]
@@ -91,11 +96,11 @@ class TestConsolidatorTierUpdate:
 
     def _make_consolidator(self, engine=None):
         from jarvis_engine.learning.consolidator import MemoryConsolidator
-        return MemoryConsolidator(engine or MagicMock())
+        return MemoryConsolidator(engine or MagicMock(spec=MemoryEngine))
 
     def test_update_tiers_hot(self):
         """Record with high access + recent access -> hot tier."""
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         mock_engine.update_tiers_batch.return_value = None
 
         consolidator = self._make_consolidator(mock_engine)
@@ -121,7 +126,7 @@ class TestConsolidatorTierUpdate:
 
     def test_update_tiers_archive(self):
         """Record with 0 access + very old -> archive tier."""
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         mock_engine.update_tiers_batch.return_value = None
 
         consolidator = self._make_consolidator(mock_engine)
@@ -145,7 +150,7 @@ class TestConsolidatorTierUpdate:
 
     def test_update_tiers_no_change(self):
         """Record whose tier already matches relevance -> no UPDATE."""
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         consolidator = self._make_consolidator(mock_engine)
 
         now = datetime.now(UTC).isoformat()
@@ -182,14 +187,14 @@ class TestDashboardLearningMetrics:
         """Dashboard includes 'learning' key with tracker data."""
         from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 
-        mock_feedback = MagicMock()
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.get_all_route_quality.return_value = {
             "routine": {"total": 10, "satisfaction_rate": 0.8},
         }
-        mock_pref = MagicMock()
+        mock_pref = MagicMock(spec=PreferenceTracker)
         mock_pref.get_preferences.return_value = {"style": "concise"}
         mock_pref.get_all_preferences.return_value = [{"key": "style", "value": "concise"}]
-        mock_usage = MagicMock()
+        mock_usage = MagicMock(spec=UsagePatternTracker)
         mock_usage.get_peak_hours.return_value = [(9, 15), (14, 10)]
         mock_usage.get_hourly_distribution.return_value = {9: 15, 14: 10}
 
@@ -214,7 +219,7 @@ class TestDashboardLearningMetrics:
         """Dashboard includes 'knowledge_snapshot' with KG/engine data."""
         from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.count_nodes.return_value = 100
         mock_kg.count_edges.return_value = 250
         mock_kg.count_locked.return_value = 5
@@ -227,7 +232,7 @@ class TestDashboardLearningMetrics:
         # Make the temporal query return empty
         mock_kg.db.execute.return_value.fetchall.return_value = []
 
-        mock_engine = MagicMock()
+        mock_engine = MagicMock(spec=MemoryEngine)
         mock_engine.db_lock.__enter__ = MagicMock(return_value=None)
         mock_engine.db_lock.__exit__ = MagicMock(return_value=False)
         mock_engine.db.execute.return_value.fetchone.return_value = [42]
@@ -257,12 +262,12 @@ class TestDashboardLearningMetrics:
         """Dashboard handles tracker exceptions gracefully."""
         from jarvis_engine.intelligence_dashboard import build_intelligence_dashboard
 
-        mock_feedback = MagicMock()
+        mock_feedback = MagicMock(spec=ResponseFeedbackTracker)
         mock_feedback.get_all_route_quality.side_effect = RuntimeError("db error")
-        mock_pref = MagicMock()
+        mock_pref = MagicMock(spec=PreferenceTracker)
         mock_pref.get_preferences.side_effect = RuntimeError("db error")
         mock_pref.get_all_preferences.side_effect = RuntimeError("db error")
-        mock_usage = MagicMock()
+        mock_usage = MagicMock(spec=UsagePatternTracker)
         mock_usage.get_peak_hours.side_effect = RuntimeError("db error")
         mock_usage.get_hourly_distribution.side_effect = RuntimeError("db error")
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+from jarvis_engine.gateway.models import ModelGateway
 
 from jarvis_engine.life_ops import (
     OpsSnapshot,
@@ -131,7 +132,7 @@ class TestBuildNarrativeBrief:
 
     def test_build_narrative_brief_with_mock_gateway(self) -> None:
         snapshot = _make_snapshot()
-        mock_gw = MagicMock()
+        mock_gw = MagicMock(spec=ModelGateway)
         mock_gw.complete.return_value = MockGatewayResponse(
             text="Good morning, sir. Your schedule is clear today."
         )
@@ -145,7 +146,7 @@ class TestBuildNarrativeBrief:
         snapshot = _make_snapshot(
             tasks=[{"title": "Important task", "priority": "urgent"}],
         )
-        mock_gw = MagicMock()
+        mock_gw = MagicMock(spec=ModelGateway)
         mock_gw.complete.side_effect = ConnectionError("Ollama down")
         result = build_narrative_brief(snapshot, gateway=mock_gw)
         expected = build_daily_brief(snapshot)
@@ -153,7 +154,7 @@ class TestBuildNarrativeBrief:
 
     def test_build_narrative_brief_empty_response(self) -> None:
         snapshot = _make_snapshot()
-        mock_gw = MagicMock()
+        mock_gw = MagicMock(spec=ModelGateway)
         mock_gw.complete.return_value = MockGatewayResponse(text="")
         result = build_narrative_brief(snapshot, gateway=mock_gw)
         expected = build_daily_brief(snapshot)
@@ -161,7 +162,7 @@ class TestBuildNarrativeBrief:
 
     def test_build_narrative_brief_with_memory_context(self) -> None:
         snapshot = _make_snapshot()
-        mock_gw = MagicMock()
+        mock_gw = MagicMock(spec=ModelGateway)
         mock_gw.complete.return_value = MockGatewayResponse(
             text="Based on your recent patterns..."
         )
@@ -281,7 +282,7 @@ class TestOpsBriefHandler:
         from jarvis_engine.commands.ops_commands import OpsBriefCommand
 
         snapshot_path = _make_snapshot_path(tmp_path)
-        mock_gw = MagicMock()
+        mock_gw = MagicMock(spec=ModelGateway)
         mock_gw.complete.return_value = MockGatewayResponse(
             text="Good morning. All clear today."
         )
@@ -295,7 +296,7 @@ class TestOpsBriefHandler:
         from jarvis_engine.commands.ops_commands import OpsBriefCommand
 
         snapshot_path = _make_snapshot_path(tmp_path)
-        mock_gw = MagicMock()
+        mock_gw = MagicMock(spec=ModelGateway)
         mock_gw.complete.side_effect = RuntimeError("Gateway crashed")
         handler = OpsBriefHandler(tmp_path, gateway=mock_gw)
         cmd = OpsBriefCommand(snapshot_path=snapshot_path, output_path=None)

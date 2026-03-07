@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel, _hash_password
+from jarvis_engine.security.forensic_logger import ForensicLogger
+from jarvis_engine.security.ip_tracker import IPTracker
 
 
 # ---------------------------------------------------------------
@@ -248,7 +250,7 @@ class TestStatus:
 
 class TestForensicLoggerIntegration:
     def test_contain_logs_event(self) -> None:
-        mock_logger = MagicMock()
+        mock_logger = MagicMock(spec=ForensicLogger)
         eng = _make_engine(forensic_logger=mock_logger)
         eng.contain("10.0.0.1", ContainmentLevel.THROTTLE, "test")
         mock_logger.log_event.assert_called_once()
@@ -258,7 +260,7 @@ class TestForensicLoggerIntegration:
         assert event["level"] == 1
 
     def test_recovery_logs_event(self) -> None:
-        mock_logger = MagicMock()
+        mock_logger = MagicMock(spec=ForensicLogger)
         eng = _make_engine(forensic_logger=mock_logger)
         eng.contain("10.0.0.1", ContainmentLevel.THROTTLE, "test")
         mock_logger.reset_mock()
@@ -268,7 +270,7 @@ class TestForensicLoggerIntegration:
         assert event["event_type"] == "recovery_executed"
 
     def test_lockdown_logs_credential_rotation(self) -> None:
-        mock_logger = MagicMock()
+        mock_logger = MagicMock(spec=ForensicLogger)
         eng = _make_engine(forensic_logger=mock_logger)
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
         # Should have containment + rotation log events
@@ -281,7 +283,7 @@ class TestForensicLoggerIntegration:
         assert "containment_executed" in event_types
 
     def test_denied_recovery_logs_event(self) -> None:
-        mock_logger = MagicMock()
+        mock_logger = MagicMock(spec=ForensicLogger)
         eng = _make_engine(forensic_logger=mock_logger)
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
         mock_logger.reset_mock()
@@ -298,25 +300,25 @@ class TestForensicLoggerIntegration:
 
 class TestIPTrackerIntegration:
     def test_block_calls_ip_tracker(self) -> None:
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=IPTracker)
         eng = _make_engine(ip_tracker=mock_tracker)
         eng.contain("10.0.0.1", ContainmentLevel.BLOCK, "test")
         mock_tracker.block_ip.assert_called_once_with("10.0.0.1")
 
     def test_throttle_does_not_call_ip_tracker(self) -> None:
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=IPTracker)
         eng = _make_engine(ip_tracker=mock_tracker)
         eng.contain("10.0.0.1", ContainmentLevel.THROTTLE, "test")
         mock_tracker.block_ip.assert_not_called()
 
     def test_isolate_calls_ip_tracker(self) -> None:
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=IPTracker)
         eng = _make_engine(ip_tracker=mock_tracker)
         eng.contain("10.0.0.1", ContainmentLevel.ISOLATE, "test")
         mock_tracker.block_ip.assert_called_once_with("10.0.0.1")
 
     def test_lockdown_calls_ip_tracker(self) -> None:
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=IPTracker)
         eng = _make_engine(ip_tracker=mock_tracker)
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
         mock_tracker.block_ip.assert_called_once()

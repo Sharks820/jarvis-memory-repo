@@ -9,6 +9,7 @@ import pytest
 
 from conftest import make_test_db
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.proactive.kg_metrics import (
     append_kg_metrics,
     collect_kg_metrics,
@@ -87,7 +88,7 @@ def _make_db(
 
 def _make_kg_mock(db: sqlite3.Connection) -> MagicMock:
     """Create a mock KG object with a .db property returning the given connection."""
-    kg = MagicMock()
+    kg = MagicMock(spec=KnowledgeGraph)
     type(kg).db = PropertyMock(return_value=db)
     return kg
 

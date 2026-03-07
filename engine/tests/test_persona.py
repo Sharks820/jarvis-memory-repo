@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from jarvis_engine.gateway.models import GatewayResponse, ModelGateway
 from jarvis_engine.persona import (
     PersonaConfig,
     _resolve_tone,
@@ -156,8 +157,8 @@ def test_compose_system_prompt_distinct_per_domain() -> None:
 
 
 def test_persona_compose_handler_success(tmp_path: Path) -> None:
-    mock_gateway = MagicMock()
-    mock_resp = MagicMock()
+    mock_gateway = MagicMock(spec=ModelGateway)
+    mock_resp = MagicMock(spec=GatewayResponse)
     mock_resp.text = "Very good, sir. Here is your answer."
     mock_gateway.complete.return_value = mock_resp
 

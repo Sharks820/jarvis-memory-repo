@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine.memory_store import MemoryStore
 from jarvis_engine.ingest import (
     IngestRecord,
     IngestionPipeline,
@@ -18,7 +19,7 @@ from jarvis_engine.ingest import (
 @pytest.fixture
 def mock_store() -> MagicMock:
     """Provide a mocked MemoryStore."""
-    store = MagicMock()
+    store = MagicMock(spec=MemoryStore)
     store.append = MagicMock()
     return store
 

@@ -14,6 +14,7 @@ from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext, CommandBus
 from jarvis_engine.harvesting.budget import BudgetManager
 from jarvis_engine.harvesting.harvester import KnowledgeHarvester
+from jarvis_engine.harvesting.providers import HarvesterProvider
 from jarvis_engine.knowledge.entity_resolver import EntityResolver, ResolutionResult
 from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.knowledge.regression import RegressionChecker
@@ -889,7 +890,7 @@ class TestDaemonAutoHarvest:
             "results": [{"provider": "mock", "status": "ok", "records_created": 3, "cost_usd": 0.001}],
         }
 
-        mock_provider = MagicMock()
+        mock_provider = MagicMock(spec=HarvesterProvider)
         mock_provider.is_available = True
 
         mock_bus = MagicMock(spec=CommandBus)
@@ -987,7 +988,7 @@ class TestDaemonAutoHarvest:
         """When no providers have API keys, auto-harvest should be skipped."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
-        mock_provider = MagicMock()
+        mock_provider = MagicMock(spec=HarvesterProvider)
         mock_provider.is_available = False
 
         with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["some topic"]), \

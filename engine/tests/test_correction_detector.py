@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.learning.correction_detector import (
     Correction,
     CorrectionDetector,
@@ -300,7 +301,7 @@ class TestCorrectionDetector:
 
     def test_apply_correction_no_matches_returns_false(self):
         """apply_correction returns False when KG has no matching facts."""
-        mock_kg = MagicMock()
+        mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_kg.query_relevant_facts.return_value = []
 
         detector = CorrectionDetector(kg=mock_kg)

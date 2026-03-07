@@ -7,6 +7,8 @@ import threading
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+from jarvis_engine.knowledge.graph import KnowledgeGraph
+
 from conftest import make_test_db
 from jarvis_engine._compat import UTC
 from jarvis_engine.learning.temporal import (
@@ -212,7 +214,7 @@ class TestFlagExpired:
         )
         db.commit()
 
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.db = db
         kg.write_lock = threading.Lock()
 
@@ -238,7 +240,7 @@ class TestFlagExpired:
         )
         db.commit()
 
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.db = db
         kg.write_lock = threading.Lock()
 
@@ -253,7 +255,7 @@ class TestFlagExpired:
         )
         db.commit()
 
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.db = db
         kg.write_lock = threading.Lock()
 
@@ -270,7 +272,7 @@ class TestFlagExpired:
             )
         db.commit()
 
-        kg = MagicMock()
+        kg = MagicMock(spec=KnowledgeGraph)
         kg.db = db
         kg.write_lock = threading.Lock()
 

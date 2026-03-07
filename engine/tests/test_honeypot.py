@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from jarvis_engine._protocols import ForensicLoggerProtocol
 from jarvis_engine.security.honeypot import HONEYPOT_PATHS, HoneypotEngine
 
 
@@ -21,7 +22,7 @@ def engine() -> HoneypotEngine:
 
 @pytest.fixture()
 def mock_logger() -> MagicMock:
-    return MagicMock()
+    return MagicMock(spec=ForensicLoggerProtocol)
 
 
 @pytest.fixture()

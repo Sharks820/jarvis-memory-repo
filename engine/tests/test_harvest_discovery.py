@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jarvis_engine.activity_feed import ActivityFeed
+
 from jarvis_engine.harvest_discovery import (
     _SQL_NODE_BY_RELATION,
     _SQL_RARE_RELATIONS,
@@ -142,7 +144,7 @@ class TestGetRecentlyHarvestedTopics:
         mock_event.details = {"topics": ["machine learning", "Python"]}
         mock_event.summary = "Auto-harvest: Python basics"
 
-        mock_feed = MagicMock()
+        mock_feed = MagicMock(spec=ActivityFeed)
         mock_feed.query.return_value = [mock_event]
 
         # Create the DB path so the exists() check passes
@@ -189,7 +191,7 @@ class TestGetRecentlyHarvestedTopics:
         mock_event.details = {"topics": ["UPPERCASE Topic"]}
         mock_event.summary = ""
 
-        mock_feed = MagicMock()
+        mock_feed = MagicMock(spec=ActivityFeed)
         mock_feed.query.return_value = [mock_event]
 
         db_dir = tmp_path / ".planning" / "brain"
