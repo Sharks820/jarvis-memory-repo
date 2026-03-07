@@ -84,6 +84,7 @@ class TestCostTracker:
     def test_cost_tracker_summary_respects_days_filter(self, cost_tracker: CostTracker) -> None:
         """Entries older than the days filter are excluded from summary."""
         cost_tracker.log("claude-sonnet-4-5-20250929", "anthropic", 1000, 500, cost_usd=0.01)
+        cost_tracker.flush()
 
         # Manually backdate the entry to 60 days ago
         cost_tracker._db.execute(

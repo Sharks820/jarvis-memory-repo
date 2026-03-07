@@ -2,6 +2,11 @@
 
 Logs every LLM completion with model, tokens, and calculated USD cost.
 Provides per-model cost summaries over configurable time periods.
+
+Writes are batched: entries accumulate in a buffer and are flushed to
+SQLite when the buffer reaches ``_BATCH_SIZE`` entries, when a read
+method is called, or when ``close()`` is called.  A background timer
+flushes every ``_FLUSH_INTERVAL_S`` seconds as a safety net.
 """
 
 from __future__ import annotations
@@ -13,6 +18,9 @@ from pathlib import Path
 from jarvis_engine.gateway.pricing import calculate_cost
 
 logger = logging.getLogger(__name__)
+
+_BATCH_SIZE = 10
+_FLUSH_INTERVAL_S = 30.0
 
 
 class CostTracker:
@@ -28,11 +36,14 @@ class CostTracker:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
         self._write_lock = threading.Lock()
+        self._buffer: list[tuple] = []
+        self._flush_timer: threading.Timer | None = None
 
         from jarvis_engine._db_pragmas import connect_db
         self._db = connect_db(db_path, check_same_thread=False)
 
         self._init_schema()
+        self._schedule_flush()
 
     def _init_schema(self) -> None:
         """Create query_costs table and indexes if they don't exist."""
@@ -55,6 +66,52 @@ class CostTracker:
         """)
         self._db.commit()
 
+    # -- internal helpers ---------------------------------------------------
+
+    def _schedule_flush(self) -> None:
+        """Start a daemon timer that periodically flushes the buffer."""
+        self._flush_timer = threading.Timer(_FLUSH_INTERVAL_S, self._timed_flush)
+        self._flush_timer.daemon = True
+        self._flush_timer.start()
+
+    def _timed_flush(self) -> None:
+        """Timer callback: flush then reschedule."""
+        if getattr(self, "_closed", False):
+            return
+        try:
+            self.flush()
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.debug("Timed flush failed: %s", exc)
+        if not getattr(self, "_closed", False):
+            self._schedule_flush()
+
+    def _flush_locked(self) -> None:
+        """Write buffered entries to SQLite.  Caller MUST hold _write_lock."""
+        if not self._buffer:
+            return
+        self._db.executemany(
+            """
+            INSERT INTO query_costs
+                (model, provider, input_tokens, output_tokens, cost_usd,
+                 route_reason, fallback_used, query_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            self._buffer,
+        )
+        self._db.commit()
+        self._buffer.clear()
+
+    # -- public API ---------------------------------------------------------
+
+    def flush(self) -> None:
+        """Flush any buffered cost entries to the database."""
+        if getattr(self, "_closed", False):
+            return
+        with self._write_lock:
+            if getattr(self, "_closed", False):
+                return
+            self._flush_locked()
+
     def log(
         self,
         model: str,
@@ -69,6 +126,7 @@ class CostTracker:
         """Log a completion cost to the database.
 
         If cost_usd is None, automatically calculates from pricing table.
+        Entries are buffered and flushed in batches for efficiency.
         """
         if cost_usd is None:
             cost_usd = calculate_cost(model, input_tokens, output_tokens)
@@ -79,25 +137,18 @@ class CostTracker:
         with self._write_lock:
             if getattr(self, "_closed", False):
                 return
-            self._db.execute(
-                """
-                INSERT INTO query_costs
-                    (model, provider, input_tokens, output_tokens, cost_usd,
-                     route_reason, fallback_used, query_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    model,
-                    provider,
-                    input_tokens,
-                    output_tokens,
-                    cost_usd,
-                    route_reason,
-                    1 if fallback_used else 0,
-                    query_hash,
-                ),
-            )
-            self._db.commit()
+            self._buffer.append((
+                model,
+                provider,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                route_reason,
+                1 if fallback_used else 0,
+                query_hash,
+            ))
+            if len(self._buffer) >= _BATCH_SIZE:
+                self._flush_locked()
 
     def summary(self, days: int = 30) -> dict:
         """Return per-model cost breakdown for the last N days.
@@ -113,6 +164,7 @@ class CostTracker:
         with self._write_lock:
             if getattr(self, "_closed", False):
                 return {"period_days": days, "models": [], "total_cost_usd": 0.0}
+            self._flush_locked()
             cur = self._db.execute(
                 """
                 SELECT
@@ -182,6 +234,7 @@ class CostTracker:
                 closed = dict(empty)
                 closed["period_days"] = days
                 return closed
+            self._flush_locked()
             cur = self._db.execute(
                 """
                 SELECT
@@ -239,18 +292,22 @@ class CostTracker:
         if getattr(self, "_closed", False):
             return
         self._closed = True
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+            self._flush_timer = None
         try:
             with self._write_lock:
+                self._flush_locked()
                 self._db.close()
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             logger.debug("Failed to close CostTracker database connection: %s", exc)
 
     def __del__(self) -> None:
         """Best-effort close on garbage collection."""
         try:
             self.close()
-        except Exception as exc:
-            logger.debug("CostTracker __del__ cleanup failed: %s", exc)
+        except Exception:  # noqa: BLE001 -- __del__: interpreter may be shutting down
+            pass
 
     def __enter__(self) -> "CostTracker":
         return self

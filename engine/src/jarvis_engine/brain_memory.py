@@ -420,7 +420,7 @@ def _recency_weight(ts_text: str) -> float:
 
 def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> dict[str, Any]:
     with _brain_io_lock:
-        rows = _load_records(root, limit=10000)
+        rows = _load_records(root, limit=200)
         facts_state = _load_facts(root)
 
     query_tokens = set(_tokenize(query))

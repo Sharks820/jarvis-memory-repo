@@ -61,6 +61,7 @@ class TestLog:
     def test_log_explicit_cost(self, tmp_path: Path) -> None:
         tracker = _make_tracker(tmp_path)
         tracker.log("claude-sonnet", "anthropic", 100, 50, cost_usd=0.123)
+        tracker.flush()
         cur = tracker._db.execute("SELECT cost_usd FROM query_costs")
         assert cur.fetchone()["cost_usd"] == pytest.approx(0.123)
         tracker.close()
@@ -71,6 +72,7 @@ class TestLog:
         with patch("jarvis_engine.gateway.costs.calculate_cost", return_value=0.042) as mock_cc:
             tracker.log("claude-haiku", "anthropic", 200, 100)
             mock_cc.assert_called_once_with("claude-haiku", 200, 100)
+        tracker.flush()
         cur = tracker._db.execute("SELECT cost_usd FROM query_costs")
         assert cur.fetchone()["cost_usd"] == pytest.approx(0.042)
         tracker.close()
@@ -87,6 +89,7 @@ class TestLog:
             fallback_used=True,
             query_hash="abc123",
         )
+        tracker.flush()
         row = tracker._db.execute("SELECT * FROM query_costs").fetchone()
         assert row["model"] == "claude-opus"
         assert row["provider"] == "anthropic"
@@ -101,6 +104,7 @@ class TestLog:
     def test_log_defaults(self, tmp_path: Path) -> None:
         tracker = _make_tracker(tmp_path)
         tracker.log("model", "prov", 10, 5, cost_usd=0.0)
+        tracker.flush()
         row = tracker._db.execute("SELECT * FROM query_costs").fetchone()
         assert row["route_reason"] == ""
         assert row["fallback_used"] == 0
@@ -233,6 +237,7 @@ class TestThreadSafety:
             t.join()
 
         assert errors == []
+        tracker.flush()
         cur = tracker._db.execute("SELECT COUNT(*) as cnt FROM query_costs")
         assert cur.fetchone()["cnt"] == 80
         tracker.close()
