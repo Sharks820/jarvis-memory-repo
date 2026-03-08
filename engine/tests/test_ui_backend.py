@@ -292,7 +292,7 @@ class TestResponseOutputLines:
         }
         mock_bus.dispatch.return_value = mock_result
 
-        with patch("jarvis_engine.cli_knowledge._get_bus", return_value=mock_bus):
+        with patch("jarvis_engine._cli_helpers._get_bus", return_value=mock_bus):
             from jarvis_engine.main import cmd_brain_status
             rc = cmd_brain_status(as_json=False)
 
