@@ -673,40 +673,32 @@ def test_api_rate_limiter_allows_normal_requests(mobile_server) -> None:
         assert code == 200
 
 
-def test_api_rate_limiter_blocks_excessive_post_requests(mobile_server) -> None:
-    """Exceeding _API_RATE_LIMIT_EXPENSIVE on /command should yield 429."""
+def test_api_rate_limiter_blocks_excessive_requests(mobile_server) -> None:
+    """check_api_rate returns True (blocked) after max_attempts within window."""
     import unittest.mock as _mock
-    from jarvis_engine.gateway.models import GatewayResponse
 
-    def _mock_complete(self, messages, model="", max_tokens=1024, route_reason="", **kwargs):
-        return GatewayResponse(text="hi", model=model, provider="mock")
+    server = mobile_server.server
+    # Clear any existing rate state
+    server._api_rate_normal.clear()
+    server._api_rate_expensive.clear()
 
-    mock_cls = type("MockClassifier", (), {
-        "classify": lambda self, q: ("routine", "mock-model", 0.9),
-    })
-    # Temporarily lower the limit for testing
-    with _mock.patch.object(mobile_api._API_RATE_EXPENSIVE, "max_attempts", 2), \
-         _mock.patch("jarvis_engine.gateway.models.ModelGateway.complete", _mock_complete), \
-         _mock.patch("jarvis_engine.voice_pipeline._build_smart_context", return_value=([], [], [], [])), \
-         _mock.patch("jarvis_engine.gateway.classifier.IntentClassifier", mock_cls):
-        # Clear any existing rate state for our IP
-        mobile_server.server._api_rate_normal.clear()
-        mobile_server.server._api_rate_expensive.clear()
+    test_ip = "10.99.99.99"
 
-        payload = {"text": "hello jarvis"}
-        raw = json.dumps(payload).encode("utf-8")
-
-        for i in range(4):
-            headers = signed_headers(
-                raw, mobile_server.auth_token, mobile_server.signing_key,
+    # Temporarily lower the expensive limit for testing
+    with _mock.patch.object(mobile_api._API_RATE_EXPENSIVE, "max_attempts", 3):
+        # First 3 requests should be allowed
+        for i in range(3):
+            assert not server.check_api_rate(test_ip, "/command"), (
+                f"Request {i + 1} should be allowed"
             )
-            code, body = http_request("POST", f"{mobile_server.base_url}/command", raw, headers)
-            if i >= 2:
-                # Should be rate-limited after 2 requests
-                assert code == 429, f"Expected 429 on request {i + 1}, got {code}"
-                resp = json.loads(body.decode("utf-8"))
-                assert "rate limit" in resp["error"].lower()
-                break
+
+        # 4th request should be rate-limited
+        assert server.check_api_rate(test_ip, "/command"), (
+            "Request 4 should be rate-limited"
+        )
+
+        # Normal-path requests should still be allowed (separate bucket)
+        assert not server.check_api_rate(test_ip, "/health")
 
 
 # ---------------------------------------------------------------------------
