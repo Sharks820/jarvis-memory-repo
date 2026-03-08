@@ -124,6 +124,7 @@ class ThreatIntelFeed:
                 data, ts = cached
                 if time.time() - ts < self._cache_ttl:
                     self._cache.move_to_end(ip)  # LRU: mark as recently used
+                    self._requests_total += 1
                     result = dict(data)
                     result["cache_hit"] = True
                     return result
@@ -131,7 +132,6 @@ class ThreatIntelFeed:
         # Build fresh enrichment — run all applicable feeds in parallel
         abuseipdb_score: int | None = None
         otx_pulses: int | None = None
-        feodo_listed = False
         sources_checked: list[str] = []
         known_bad = False
 
@@ -158,9 +158,10 @@ class ThreatIntelFeed:
             if otx_pulses is not None and otx_pulses > 0:
                 known_bad = True
 
-        # Feodo — future already completed via pool shutdown
+        # Feodo — check under lock for thread safety
         sources_checked.append("feodo")
-        feodo_listed = ip in self._feodo_ips
+        with self._lock:
+            feodo_listed = ip in self._feodo_ips
         if feodo_listed:
             known_bad = True
 

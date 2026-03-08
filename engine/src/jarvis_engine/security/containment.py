@@ -160,10 +160,10 @@ class ContainmentEngine:
             self._isolated_endpoints.add(endpoint)
             actions.append(f"ISOLATE: disabled endpoint {endpoint}")
 
+        do_terminate_sessions = False
         if level >= ContainmentLevel.LOCKDOWN:
             self._lockdown_active = True
-            if self._session_manager is not None:
-                self._session_manager.terminate_all_sessions()
+            do_terminate_sessions = self._session_manager is not None
             credentials_rotated = True
             actions.append("LOCKDOWN: mobile API shut down, credentials rotated")
             actions.append("LOCKDOWN: all sessions invalidated")
@@ -177,13 +177,19 @@ class ContainmentEngine:
         if level > self._current_level:
             self._current_level = level
 
-        return actions, do_block_ip, credentials_rotated
+        return actions, do_block_ip, credentials_rotated, do_terminate_sessions
 
     def _run_post_containment(
         self, ip: str, level: int, reason: str,
         actions: list[str], do_block_ip: bool, do_rotate: bool,
+        do_terminate_sessions: bool = False,
     ) -> None:
         """Run side-effects outside the lock after containment."""
+        if do_terminate_sessions and self._session_manager is not None:
+            try:
+                self._session_manager.terminate_all_sessions()
+            except (RuntimeError, OSError) as exc:
+                logger.warning("Failed to terminate sessions during lockdown: %s", exc)
         if do_rotate:
             self._rotate_credentials()
 
@@ -213,7 +219,7 @@ class ContainmentEngine:
             raise ValueError(f"Invalid containment level: {level}")
 
         with self._lock:
-            actions, do_block_ip, credentials_rotated = self._apply_containment_actions(ip, level)
+            actions, do_block_ip, credentials_rotated, do_terminate = self._apply_containment_actions(ip, level)
 
             result: ContainResult = {
                 "ip": ip,
@@ -227,7 +233,7 @@ class ContainmentEngine:
                 result["credentials_rotated"] = True
             self._containment_history.append(result)
 
-        self._run_post_containment(ip, level, reason, actions, do_block_ip, credentials_rotated)
+        self._run_post_containment(ip, level, reason, actions, do_block_ip, credentials_rotated, do_terminate)
         return result
 
     def get_containment_status(self) -> ContainmentStatus:

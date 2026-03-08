@@ -1106,6 +1106,9 @@ class MobileIngestHandler(
                 reason="internal error",
                 status_code="500",
             )
+        except BaseException:
+            _ThreadCapturingStdout.stop_capture()  # ensure cleanup on unexpected exceptions
+            raise
 
         stdout_text, capture_truncated = _ThreadCapturingStdout.stop_capture()
         stdout_lines = stdout_text.splitlines()

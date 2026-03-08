@@ -317,6 +317,9 @@ class OwnerSessionManager:
     def _verify_password_internal(self, password: str) -> bool:
         """Verify *password* against stored hash.  Caller must hold lock."""
         if self._hash_algo == "argon2":
+            if not _HAS_ARGON2:
+                logger.error("Password stored with argon2 but argon2-cffi not installed")
+                return False
             ph = _Argon2Hasher(
                 memory_cost=65536,
                 time_cost=3,

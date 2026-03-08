@@ -39,9 +39,9 @@ class DNSCacheAnalysis(TypedDict):
 
 
 class NetworkScanResult(TypedDict):
-    arp: dict
+    arp: list[dict]
     dns: dict
-    connections: dict
+    connections: list[dict]
     scan_time: float | None
 
 
@@ -602,12 +602,13 @@ class HomeNetworkMonitor:
 
         with self._lock:
             self._last_scan_time = time.time()
+            scan_time = self._last_scan_time
 
         return {
             "arp": arp_results,
             "dns": dns_results,
             "connections": conn_results,
-            "scan_time": self._last_scan_time,
+            "scan_time": scan_time,
         }
 
     def status(self) -> NetworkDefenseStatus:

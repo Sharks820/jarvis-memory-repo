@@ -83,7 +83,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         ("claude-sonnet", "Claude Sonnet", "Balanced Thinker (API)", "#06b6d4"),
         ("claude-haiku", "Claude Haiku", "Rapid Responder (API)", "#22c55e"),
         # Specialty aliases
-        ("claude-cli", "Planner", "Opus 4.6 · Strategy & Research", "#c084fc"),
+        ("planner-cli", "Planner", "Opus 4.6 · Strategy & Research", "#c084fc"),
     )
 
     def __init__(self, root_path: Path) -> None:

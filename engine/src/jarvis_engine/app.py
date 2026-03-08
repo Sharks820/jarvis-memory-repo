@@ -664,6 +664,14 @@ def create_app(root: Path) -> CommandBus:
     engine, embed_service, pipeline, kg = _init_memory_subsystem(db_path)
     gateway, intent_classifier, cost_tracker = _init_gateway(root, db_path)
 
+    # Create IntentClassifier if embedding service is available
+    if intent_classifier is None and embed_service is not None:
+        try:
+            from jarvis_engine.gateway.classifier import IntentClassifier
+            intent_classifier = IntentClassifier(embed_service)
+        except (ImportError, RuntimeError, OSError) as exc:
+            logger.debug("IntentClassifier init failed: %s", exc)
+
     if pipeline is not None and gateway is not None:
         pipeline.set_gateway(gateway)
 

@@ -358,7 +358,7 @@ def test_transcribe_smart_forced_local() -> None:
         duration_seconds=1.0, backend="faster-whisper",
     )
 
-    with patch("jarvis_engine.stt._try_local", return_value=local_result), \
+    with patch("jarvis_engine.stt._try_local_emergency", return_value=local_result), \
          patch("jarvis_engine.stt._try_groq") as mock_groq, \
          patch("jarvis_engine.stt._try_parakeet") as mock_pk, \
          patch("jarvis_engine.stt._try_deepgram") as mock_dg, \

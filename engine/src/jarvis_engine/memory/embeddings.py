@@ -105,11 +105,39 @@ class EmbeddingService:
         return self.embed(query, prefix="search_query")
 
     def embed_batch(self, texts: list[str], prefix: str = "search_document") -> list[list[float]]:
-        """Embed a batch of texts."""
-        model = self._ensure_model()
-        prefixed = [f"{prefix}: {t}" if prefix else t for t in texts]
-        vecs = model.encode(prefixed, normalize_embeddings=True)
-        return [v.tolist() for v in vecs]
+        """Embed a batch of texts, using cache for already-seen texts."""
+        results: list[list[float] | None] = [None] * len(texts)
+        uncached_indices: list[int] = []
+
+        with self._cache_lock:
+            for i, text in enumerate(texts):
+                key = (text, prefix)
+                if key in self._cache:
+                    self._cache_hits += 1
+                    self._cache.move_to_end(key)
+                    results[i] = self._cache[key]
+                else:
+                    uncached_indices.append(i)
+
+        if uncached_indices:
+            model = self._ensure_model()
+            uncached_prefixed = [
+                f"{prefix}: {texts[i]}" if prefix else texts[i]
+                for i in uncached_indices
+            ]
+            vecs = model.encode(uncached_prefixed, normalize_embeddings=True)
+            with self._cache_lock:
+                for j, idx in enumerate(uncached_indices):
+                    vec_list = vecs[j].tolist()
+                    results[idx] = vec_list
+                    key = (texts[idx], prefix)
+                    self._cache_misses += 1
+                    self._cache[key] = vec_list
+                    self._cache.move_to_end(key)
+                    while len(self._cache) > self._CACHE_MAXSIZE:
+                        self._cache.popitem(last=False)
+
+        return results  # type: ignore[return-value]
 
     # -- Cache management --------------------------------------------------
 

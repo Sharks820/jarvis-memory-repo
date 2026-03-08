@@ -40,6 +40,15 @@ class OwnerGuardCommand:
     set_master_password_value: str = ""
     clear_master_password_value: bool = False
 
+    def __repr__(self) -> str:
+        return (
+            f"OwnerGuardCommand(enable={self.enable!r}, disable={self.disable!r}, "
+            f"owner_user={self.owner_user!r}, trust_device={self.trust_device!r}, "
+            f"revoke_device={self.revoke_device!r}, "
+            f"set_master_password_value='***', "
+            f"clear_master_password_value={self.clear_master_password_value!r})"
+        )
+
 
 @dataclass
 class OwnerGuardResult(ResultBase):

@@ -265,25 +265,21 @@ class IntelligenceRoutesMixin:
                 return
 
             merged = 0
-            from jarvis_engine.memory.store import MemoryStore
-
-            store = MemoryStore(self._root)
+            pipeline = self.server.pipeline
 
             for item in items[:200]:
                 content = item.get("content", "")
                 category = item.get("category", "general")
-                source = item.get("source", "phone")
 
                 if not content or len(content) > 5000:
                     continue
 
                 try:
-                    store.add(
+                    pipeline.ingest(
+                        source="user",
+                        kind="episodic",
+                        task_id=f"phone-merge:{category}",
                         content=f"[phone-intelligence:{category}] {content}",
-                        source=source,
-                        kind="intelligence",
-                        tags=f"phone,{category},auto-merged",
-                        branch="phone-intelligence",
                     )
                     merged += 1
                 except (sqlite3.Error, OSError, ValueError, TypeError) as exc:

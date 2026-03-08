@@ -123,6 +123,8 @@ class KnowledgeHarvester:
                 "status": "unavailable",
                 "records_created": 0,
                 "cost_usd": 0.0,
+                "error": "",
+                "skipped_dedup": False,
             }
         if self._budget is not None and not self._budget.can_spend(name):
             return {
@@ -130,6 +132,8 @@ class KnowledgeHarvester:
                 "status": "budget_exceeded",
                 "records_created": 0,
                 "cost_usd": 0.0,
+                "error": "",
+                "skipped_dedup": False,
             }
         return None
 

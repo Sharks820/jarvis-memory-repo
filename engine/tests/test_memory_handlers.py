@@ -49,7 +49,7 @@ class TestBrainStatusHandler:
     def test_with_engine_returns_sqlite_status(self, tmp_path: Path) -> None:
         engine = MagicMock(spec=MemoryEngine)
         engine.count_records.return_value = 42
-        engine.db.execute.return_value.fetchall.return_value = [("general",)]
+        engine.db.execute.return_value.fetchall.return_value = [("general", 42, "2026-03-07")]
         handler = BrainStatusHandler(root=tmp_path, engine=engine, kg=None)
         result = handler.handle(BrainStatusCommand())
         assert result.status["total_records"] == 42

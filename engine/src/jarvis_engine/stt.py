@@ -639,15 +639,13 @@ def _transcribe_forced(
     """Run a single forced backend and return its result."""
     _forced_backends: dict[str, object] = {
         "groq": _try_groq,
-        "local": _try_local,
+        "local": _try_local_emergency,
         "parakeet": _try_parakeet,
         "deepgram": _try_deepgram,
     }
 
     try_fn = _forced_backends[backend]
-    if backend == "groq":
-        result = transcribe_groq(audio, language=language, prompt=prompt)
-    elif backend == "deepgram":
+    if backend == "deepgram":
         result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
     else:
         result = try_fn(audio, language=language, prompt=prompt)

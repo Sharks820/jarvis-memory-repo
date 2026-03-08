@@ -545,7 +545,7 @@ class MemoryEngine:
 
         # ANALYZE: update statistics for the query planner (lightweight)
         try:
-            with self._write_lock:
+            with self._write_lock, self._db_lock:
                 self._db.execute("ANALYZE")
                 self._db.commit()
             result["analyzed"] = True
@@ -557,7 +557,7 @@ class MemoryEngine:
         # VACUUM: rebuild the database file (expensive, reclaims space)
         if vacuum:
             try:
-                with self._write_lock:
+                with self._write_lock, self._db_lock:
                     self._db.execute("VACUUM")
                 result["vacuumed"] = True
                 logger.info("VACUUM completed successfully")
