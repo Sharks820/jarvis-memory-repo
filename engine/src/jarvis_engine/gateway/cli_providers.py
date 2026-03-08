@@ -393,15 +393,20 @@ def _compact_messages_for_cli(messages: list[dict[str, str]]) -> list[dict[str, 
         kept_system.append({"role": "system", "content": checkpoint})
 
     # Notify conversation state manager about compaction so it can
-    # preserve entities/goals from dropped messages.
+    # preserve entities/goals from dropped messages.  Deduplicate by
+    # content hash to avoid double-checkpointing when both
+    # _build_messages_text and _build_claude_cli_prompt call us.
     if dropped:
-        try:
-            from jarvis_engine.conversation_state import get_conversation_state
+        content_key = hash(tuple(m.get("content", "")[:100] for m in dropped))
+        if content_key != getattr(_compact_messages_for_cli, "_last_ckpt", None):
+            _compact_messages_for_cli._last_ckpt = content_key  # type: ignore[attr-defined]
+            try:
+                from jarvis_engine.conversation_state import get_conversation_state
 
-            csm = get_conversation_state()
-            csm.create_checkpoint(dropped)
-        except (ImportError, OSError, ValueError) as exc:
-            logger.debug("Conversation state checkpoint failed: %s", exc)
+                csm = get_conversation_state()
+                csm.create_checkpoint(dropped)
+            except (ImportError, OSError, ValueError) as exc:
+                logger.debug("Conversation state checkpoint failed: %s", exc)
 
     compacted = [*kept_system, *kept_convo]
     return compacted if compacted else normalized[-3:]

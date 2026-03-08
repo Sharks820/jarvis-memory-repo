@@ -301,13 +301,14 @@ class ConversationTimeline:
         with self._lock:
             if self._using_db and self._db is not None:
                 try:
+                    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     rows = self._db.execute(
                         "SELECT timestamp, model, role, content_hash, "
                         "entities_extracted, summary_snippet "
                         "FROM conversation_timeline "
-                        "WHERE summary_snippet LIKE ? "
+                        "WHERE summary_snippet LIKE ? ESCAPE '\\' "
                         "ORDER BY id DESC LIMIT ?",
-                        (f"%{query}%", limit),
+                        (f"%{escaped}%", limit),
                     ).fetchall()
                     return [
                         TimelineEntry(
@@ -719,7 +720,13 @@ class ConversationStateManager:
             if len(self._snapshot.model_history) > 100:
                 self._snapshot.model_history = self._snapshot.model_history[-100:]
 
-        # Emit telemetry
+            # Capture telemetry values under lock to avoid races
+            _entities_count = len(self._snapshot.anchor_entities)
+            _goals_count = len(self._snapshot.unresolved_goals)
+            _summary_len = len(self._snapshot.rolling_summary)
+            _turn_count = self._snapshot.turn_count
+
+        # Emit telemetry (outside lock to avoid blocking)
         try:
             from jarvis_engine.activity_feed import ActivityCategory, log_activity
 
@@ -731,10 +738,10 @@ class ConversationStateManager:
                     "model_from": from_model,
                     "model_to": to_model,
                     "reason": reason,
-                    "entities_preserved": len(self._snapshot.anchor_entities),
-                    "goals_carried": len(self._snapshot.unresolved_goals),
-                    "summary_length": len(self._snapshot.rolling_summary),
-                    "turn_count": self._snapshot.turn_count,
+                    "entities_preserved": _entities_count,
+                    "goals_carried": _goals_count,
+                    "summary_length": _summary_len,
+                    "turn_count": _turn_count,
                 },
             )
         except (ImportError, OSError, ValueError) as exc:
@@ -893,7 +900,7 @@ class ConversationStateManager:
         try:
             self._state_dir.mkdir(parents=True, exist_ok=True)
             raw = json.dumps(payload, ensure_ascii=False, indent=2)
-            tmp = self._state_file.with_suffix(f".tmp.{os.getpid()}")
+            tmp = self._state_file.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
             tmp.write_text(raw, encoding="utf-8")
             os.replace(str(tmp), str(self._state_file))
         except OSError as exc:
@@ -970,8 +977,13 @@ class ConversationStateManager:
 
     @property
     def snapshot(self) -> ConversationSnapshot:
-        """Return the current conversation snapshot (read-only access)."""
-        return self._snapshot
+        """Return a defensive copy of the conversation snapshot.
+
+        Thread-safe: acquires the lock and copies the snapshot so callers
+        cannot mutate internal state or encounter races.
+        """
+        with self._lock:
+            return ConversationSnapshot.from_dict(self._snapshot.to_dict())
 
     # ------------------------------------------------------------------
     # Cleanup

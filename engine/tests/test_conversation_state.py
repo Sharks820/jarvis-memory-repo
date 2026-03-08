@@ -51,6 +51,13 @@ def _reset_singleton():
     old = getattr(_cs, "_conversation_state", None)
     _cs._conversation_state = None
     yield
+    # Close any manager created during the test to avoid leaking SQLite connections
+    current = getattr(_cs, "_conversation_state", None)
+    if current is not None:
+        try:
+            current.close()
+        except Exception:  # noqa: BLE001
+            pass
     _cs._conversation_state = old
 
 

@@ -1177,15 +1177,15 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     consecutive_failures = 0
     cycles = 0
     last_pressure_level = "none"
-    # Load persisted conversation state for cross-LLM continuity
+    # Initialize conversation state singleton for cross-LLM continuity.
+    # get_conversation_state() creates the manager which auto-loads from disk.
     try:
         from jarvis_engine.conversation_state import get_conversation_state
 
-        _csm = get_conversation_state()
-        _csm.load()
-        logger.debug("Conversation state loaded on daemon startup")
+        get_conversation_state()
+        logger.debug("Conversation state initialized on daemon startup")
     except (ImportError, OSError, ValueError) as exc:
-        logger.debug("Conversation state load on daemon startup failed: %s", exc)
+        logger.debug("Conversation state init on daemon startup failed: %s", exc)
 
     print("jarvis_daemon_started=true")
     print(f"active_interval_s={active_interval}")
