@@ -402,11 +402,22 @@ class CommandRoutesMixin:
                         except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
                             logger.debug("KG topic fact lookup failed: %s", exc)
                 keywords = attendees + ([title] if title else [])
+                # Batch: collect all record IDs first, then fetch in one query
+                _keyword_record_ids: list[tuple[str, str]] = []  # (keyword, record_id)
                 for keyword in keywords[:3]:
                     try:
                         results = mem_engine.search_fts(keyword, limit=3)
                         for record_id, _score in results:
-                            rec = mem_engine.get_record(record_id)
+                            _keyword_record_ids.append((keyword, record_id))
+                    except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                        logger.debug("Memory search for meeting keyword %s failed: %s", keyword, exc)
+                if _keyword_record_ids:
+                    try:
+                        all_ids = [rid for _, rid in _keyword_record_ids]
+                        records_batch = mem_engine.get_records_batch(all_ids)
+                        rec_map = {str(r.get("record_id", "")): r for r in records_batch}
+                        for keyword, record_id in _keyword_record_ids:
+                            rec = rec_map.get(record_id)
                             if rec:
                                 briefing["recent_memories"].append({
                                     "about": keyword,
@@ -414,7 +425,7 @@ class CommandRoutesMixin:
                                     "date": str(rec.get("ts", "")),
                                 })
                     except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
-                        logger.debug("Memory search for meeting keyword %s failed: %s", keyword, exc)
+                        logger.debug("Batch record fetch for meeting prep failed: %s", exc)
         except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
             logger.debug("Meeting prep KG query failed: %s", exc)
         if briefing["context_facts"] or briefing["recent_memories"]:
