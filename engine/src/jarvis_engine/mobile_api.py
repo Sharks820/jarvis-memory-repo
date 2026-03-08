@@ -617,22 +617,22 @@ class MobileIngestServer(ThreadingHTTPServer):
                         sync_db, sync_lock, device_id="desktop",
                         conflict_strategy=conflict_strategy,
                     )
+                    # Build transport BEFORE committing to self._sync_engine so
+                    # a transport failure doesn't leave a half-initialized state.
+                    transport = None
+                    if self.signing_key:
+                        salt_path = self.repo_root / ".planning" / "brain" / "sync_salt.bin"
+                        transport = SyncTransport(self.signing_key, salt_path)
+                    # Both succeeded — commit.
+                    self._sync_engine = engine
+                    if transport is not None:
+                        self._sync_transport = transport
+                    self._sync_init_attempted = True
+                    logger.info("Sync engine lazy-initialized for mobile API")
                 except (_sqlite3.Error, OSError) as exc:
-                    logger.debug("Sync engine init failed, closing DB: %s", exc)
+                    logger.debug("Sync engine/transport init failed, closing DB: %s", exc)
                     sync_db.close()
                     raise
-                # Build transport BEFORE committing to self._sync_engine so
-                # a transport failure doesn't leave a half-initialized state.
-                transport = None
-                if self.signing_key:
-                    salt_path = self.repo_root / ".planning" / "brain" / "sync_salt.bin"
-                    transport = SyncTransport(self.signing_key, salt_path)
-                # Both succeeded — commit.
-                self._sync_engine = engine
-                if transport is not None:
-                    self._sync_transport = transport
-                self._sync_init_attempted = True
-                logger.info("Sync engine lazy-initialized for mobile API")
             except Exception as exc:  # boundary: catch-all justified
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
                 # Do NOT set _sync_init_attempted so future calls can retry.
