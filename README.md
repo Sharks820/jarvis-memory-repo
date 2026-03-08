@@ -8,6 +8,43 @@ This repo is now set up as a Codex-native workspace for planning and implementat
 - `engine/`: runnable bootstrap code for the Jarvis engine.
 - `AGENTS.md`: working rules for ongoing agent-driven execution.
 
+## Developer Tools & Prerequisites
+
+Before working with this repository you will need the following tools installed:
+
+| Tool | Purpose | Download |
+|------|---------|----------|
+| **Git** | Version control | https://git-scm.com/downloads |
+| **GitHub CLI (`gh`)** | Create PRs, manage issues, authenticate to GitHub from the terminal | **https://cli.github.com/** |
+| **Python 3.11+** | Desktop engine runtime | https://www.python.org/downloads/ |
+| **PowerShell 7+** | Windows automation scripts | https://github.com/PowerShell/PowerShell/releases |
+
+### Installing GitHub CLI
+
+1. Go to **https://cli.github.com/** and click **Download for Windows** (or choose your OS).
+2. Run the installer (`.msi` on Windows, `brew install gh` on macOS, `sudo apt install gh` on Debian/Ubuntu).
+3. Authenticate once:
+   ```powershell
+   gh auth login
+   ```
+   Follow the prompts — choose **GitHub.com → HTTPS → Login with a web browser**.
+4. Verify:
+   ```powershell
+   gh --version
+   ```
+
+Once authenticated, common commands used with this repo:
+```powershell
+gh repo clone Conner-s-Private-Org/jarvis-memory-repo   # clone
+gh pr list                                               # list open PRs
+gh pr create --fill                                      # open a PR for current branch
+gh issue list                                            # list open issues
+gh run list                                              # view CI workflow runs
+gh run view --log                                        # view logs of the latest run
+```
+
+---
+
 ## Quick Start (Codex Direct)
 ```powershell
 cd C:\Users\Conner\jarvis-memory-repo
