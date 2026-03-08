@@ -222,3 +222,41 @@ class HealthRoutesMixin:
             logger.debug("Gateway budget query failed: %s", exc)
             budget_dict = {}
         self._write_json(HTTPStatus.OK, {"ok": True, "budget": budget_dict})
+
+    def _handle_get_memory_hygiene(self) -> None:
+        """GET /memory/hygiene — memory quality distribution and cleanup status."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.memory_hygiene import hygiene_dashboard_metrics
+            metrics = hygiene_dashboard_metrics(self._root)
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+            logger.debug("Memory hygiene metrics failed: %s", exc)
+            metrics = {}
+        self._write_json(HTTPStatus.OK, {"ok": True, "hygiene": metrics})
+
+    def _handle_get_diagnostics(self) -> None:
+        """GET /diagnostics/status — run quick scan, return health score + issues."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.self_diagnosis import DiagnosticEngine
+
+            diag = DiagnosticEngine(self._root)
+            issues = diag.run_quick_scan()
+            score = diag.health_score(issues)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "healthy": score >= 70,
+                "score": score,
+                "issues": [i.to_dict() for i in issues],
+            })
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+            logger.debug("Diagnostics scan failed: %s", exc)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "healthy": True,
+                "score": 100,
+                "issues": [],
+                "error": str(exc),
+            })

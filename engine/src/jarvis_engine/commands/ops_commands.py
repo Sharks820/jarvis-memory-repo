@@ -227,6 +227,22 @@ class MissionActiveResult:
 
 
 @dataclass(frozen=True)
+class MemoryHygieneCommand:
+    dry_run: bool = False
+
+
+@dataclass
+class MemoryHygieneResult(ResultBase):
+    scanned: int = 0
+    classified: int = 0
+    distribution: dict[str, int] = field(default_factory=dict)
+    cleanup_candidates: int = 0
+    archived: int = 0
+    protected: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class IntelligenceDashboardCommand:
     last_runs: int = 20
     output_path: str = ""
@@ -237,3 +253,17 @@ class IntelligenceDashboardCommand:
 class IntelligenceDashboardResult:
     dashboard: dict[str, Any] = field(default_factory=dict)
     message: str = ""
+
+
+@dataclass(frozen=True)
+class DiagnosticRunCommand:
+    full_scan: bool = True
+    categories: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DiagnosticRunResult:
+    issues: list[dict[str, Any]] = field(default_factory=list)
+    healthy: bool = True
+    score: int = 100
+    return_code: int = 0

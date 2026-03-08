@@ -50,10 +50,12 @@ from jarvis_engine.commands.task_commands import (
 )
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
+    DiagnosticRunCommand,
     GrowthAuditCommand,
     GrowthEvalCommand,
     GrowthReportCommand,
     IntelligenceDashboardCommand,
+    MemoryHygieneCommand,
     MissionActiveCommand,
     MissionCancelCommand,
     MissionCreateCommand,
@@ -125,10 +127,12 @@ from jarvis_engine.handlers.task_handlers import (
 )
 from jarvis_engine.handlers.ops_handlers import (
     AutomationRunHandler,
+    DiagnosticRunHandler,
     GrowthAuditHandler,
     GrowthEvalHandler,
     GrowthReportHandler,
     IntelligenceDashboardHandler,
+    MemoryHygieneHandler,
     MissionActiveHandler,
     MissionCancelHandler,
     MissionCreateHandler,
@@ -368,9 +372,11 @@ def _register_ops_handlers(
     bus.register(MissionRestartCommand, MissionRestartHandler(root).handle)
     bus.register(MissionStepsCommand, MissionStepsHandler(root).handle)
     bus.register(MissionActiveCommand, MissionActiveHandler(root).handle)
+    bus.register(MemoryHygieneCommand, MemoryHygieneHandler(root, engine=getattr(bus, '_engine', None)).handle)
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)
     bus.register(GrowthReportCommand, GrowthReportHandler(root).handle)
     bus.register(GrowthAuditCommand, GrowthAuditHandler(root).handle)
+    bus.register(DiagnosticRunCommand, DiagnosticRunHandler(root).handle)
 
 
 def _register_security_handlers(bus: CommandBus, root: Path) -> None:

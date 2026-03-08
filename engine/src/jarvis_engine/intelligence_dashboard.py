@@ -393,6 +393,8 @@ def build_intelligence_dashboard(
         "learning": _safe_learning_metrics(pref_tracker, feedback_tracker, usage_tracker),
         "knowledge_snapshot": _safe_knowledge_snapshot(kg, engine),
         "missions": _safe_mission_metrics(root),
+        "memory_hygiene": _safe_hygiene_metrics(root),
+        "diagnostics": _safe_diagnostics(root),
         "achievements": {
             "new": new_unlocks,
             "all": unlocked,
@@ -431,6 +433,34 @@ def _safe_mission_metrics(root: Path) -> dict[str, Any]:
         return mission_dashboard_metrics(root)
     except (ImportError, OSError, ValueError, TypeError) as exc:
         logger.debug("Failed to collect mission metrics: %s", exc)
+    return {}
+
+
+def _safe_hygiene_metrics(root: Path) -> dict[str, Any]:
+    """Collect memory hygiene metrics safely."""
+    try:
+        from jarvis_engine.memory_hygiene import hygiene_dashboard_metrics
+        return hygiene_dashboard_metrics(root)
+    except (ImportError, OSError, ValueError, TypeError) as exc:
+        logger.debug("Failed to collect hygiene metrics: %s", exc)
+    return {}
+
+
+def _safe_diagnostics(root: Path) -> dict[str, Any]:
+    """Run quick diagnostic scan safely (returns empty on failure)."""
+    try:
+        from jarvis_engine.self_diagnosis import DiagnosticEngine
+        diag = DiagnosticEngine(root)
+        issues = diag.run_quick_scan()
+        score = diag.health_score(issues)
+        return {
+            "healthy": score >= 70,
+            "score": score,
+            "issue_count": len(issues),
+            "issues": [i.to_dict() for i in issues[:10]],  # cap at 10 for dashboard
+        }
+    except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        logger.debug("Failed to collect diagnostics: %s", exc)
     return {}
 
 

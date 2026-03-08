@@ -98,6 +98,31 @@ _daemon_bus_lock = threading.Lock()
 _MISSION_BACKOFF_CYCLES = 5
 _mission_backoff_until_cycle: int = 0
 
+# Maximum allowed duration for a single daemon cycle (seconds).
+# If a cycle exceeds this, a WARNING is logged.
+_CYCLE_TIMEOUT_S = 600
+
+# Tracks the start time of the current cycle (set before each cycle).
+_cycle_start: float = 0.0
+
+
+def _watchdog_check() -> dict:
+    """Check cycle health and return a status dict.
+
+    Returns dict with keys:
+    - ``healthy`` (bool): True if current cycle is within timeout
+    - ``elapsed_s`` (float): seconds since cycle started (0 if not started)
+    - ``timeout_s`` (int): the configured timeout
+    """
+    if _cycle_start <= 0:
+        return {"healthy": True, "elapsed_s": 0.0, "timeout_s": _CYCLE_TIMEOUT_S}
+    elapsed = time.monotonic() - _cycle_start
+    return {
+        "healthy": elapsed < _CYCLE_TIMEOUT_S,
+        "elapsed_s": round(elapsed, 2),
+        "timeout_s": _CYCLE_TIMEOUT_S,
+    }
+
 
 def _get_daemon_bus() -> CommandBus:
     """Return cached daemon bus, creating once on first call (thread-safe).
@@ -1111,6 +1136,36 @@ def _run_periodic_subsystems(
             print("auto_harvest_skipped=resource_pressure")
         else:
             _run_auto_harvest_cycle(root)
+    if cycles % 50 == 0:
+        _run_diagnostic_scan_cycle(root)
+
+
+def _run_diagnostic_scan_cycle(root: Path) -> None:
+    """Run a quick diagnostic scan and persist results to JSONL history."""
+    try:
+        from jarvis_engine.self_diagnosis import DiagnosticEngine
+
+        diag = DiagnosticEngine(root)
+        issues = diag.run_quick_scan()
+        score = diag.health_score(issues)
+        print(f"diagnostic_scan_score={score} issues={len(issues)}")
+
+        # Persist to diagnostics_history.jsonl
+        history_path = _runtime_dir(root) / "diagnostics_history.jsonl"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": _now_iso(),
+            "score": score,
+            "issue_count": len(issues),
+            "issues": [i.to_dict() for i in issues],
+        }
+        try:
+            with open(history_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, default=str) + "\n")
+        except OSError as exc:
+            logger.debug("Failed to write diagnostics history: %s", exc)
+    except (ImportError, RuntimeError, OSError, ValueError) as exc:
+        logger.debug("Diagnostic scan cycle failed: %s", exc)
 
 
 def _run_core_autopilot(
@@ -1223,13 +1278,25 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Conversation state init on daemon startup failed: %s", exc)
 
+    # Warm-start STT backends in a background thread to eliminate cold-start
+    # latency when the user first issues a voice command.
+    try:
+        from jarvis_engine.stt import warmup_stt_backends
+
+        threading.Thread(target=warmup_stt_backends, daemon=True).start()
+        logger.debug("STT backend warmup started in background thread")
+    except (ImportError, OSError) as exc:
+        logger.debug("STT backend warmup launch failed: %s", exc)
+
     print("jarvis_daemon_started=true")
     print(f"active_interval_s={active_interval}")
     print(f"idle_interval_s={idle_interval}")
     print(f"idle_after_s={idle_after}")
     try:
+        global _cycle_start  # noqa: PLW0603
         while True:
             cycles += 1
+            _cycle_start = time.monotonic()
             state = _gather_cycle_state(root, active_interval, idle_interval, idle_after)
             _emit_cycle_status(cycles, state, last_pressure_level)
             last_pressure_level = state["pressure_level"]
@@ -1257,6 +1324,15 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             print(f"cycle_rc={rc}")
             _log_cycle_end(cycles, rc)
             consecutive_failures = _handle_circuit_breaker(rc, consecutive_failures)
+
+            # Watchdog: warn if cycle exceeded timeout
+            cycle_elapsed = time.monotonic() - _cycle_start
+            if cycle_elapsed > _CYCLE_TIMEOUT_S:
+                logger.warning(
+                    "Daemon cycle %d exceeded timeout: %.1fs > %ds",
+                    cycles, cycle_elapsed, _CYCLE_TIMEOUT_S,
+                )
+                print(f"cycle_timeout_warning={cycle_elapsed:.1f}s")
 
             if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                 break

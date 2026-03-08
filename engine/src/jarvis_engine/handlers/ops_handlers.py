@@ -26,6 +26,8 @@ from jarvis_engine._shared import check_path_within_root as _check_path_within_r
 from jarvis_engine.commands.ops_commands import (
     AutomationRunCommand,
     AutomationRunResult,
+    DiagnosticRunCommand,
+    DiagnosticRunResult,
     GrowthAuditCommand,
     GrowthAuditResult,
     GrowthEvalCommand,
@@ -50,6 +52,8 @@ from jarvis_engine.commands.ops_commands import (
     MissionRunResult,
     MissionStatusCommand,
     MissionStatusResult,
+    MemoryHygieneCommand,
+    MemoryHygieneResult,
     MissionStepsCommand,
     MissionStepsResult,
     OpsAutopilotCommand,
@@ -451,6 +455,35 @@ class MissionActiveHandler:
         return MissionActiveResult(missions=missions, count=len(missions))
 
 
+class MemoryHygieneHandler:
+    def __init__(self, root: Path, engine: Optional[MemoryEngine] = None) -> None:
+        self._root = root
+        self._engine = engine
+
+    def handle(self, cmd: MemoryHygieneCommand) -> MemoryHygieneResult:
+        from jarvis_engine.memory_hygiene import MemoryHygieneEngine
+
+        if self._engine is None:
+            return MemoryHygieneResult(return_code=2, message="No memory engine available")
+
+        try:
+            hygiene = MemoryHygieneEngine(self._root)
+            report = hygiene.run_cleanup(self._engine, dry_run=cmd.dry_run)
+            return MemoryHygieneResult(
+                scanned=report.scanned,
+                classified=report.classified,
+                distribution=report.distribution,
+                cleanup_candidates=report.cleanup_candidates,
+                archived=report.archived,
+                protected=report.protected,
+                errors=report.errors,
+                return_code=0,
+            )
+        except (RuntimeError, OSError, ValueError) as exc:
+            logger.warning("Memory hygiene failed: %s", exc)
+            return MemoryHygieneResult(return_code=2, message=str(exc))
+
+
 class IntelligenceDashboardHandler:
     def __init__(
         self,
@@ -481,3 +514,28 @@ class IntelligenceDashboardHandler:
             engine=self._engine,
         )
         return IntelligenceDashboardResult(dashboard=dashboard)
+
+
+class DiagnosticRunHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: DiagnosticRunCommand) -> DiagnosticRunResult:
+        from jarvis_engine.self_diagnosis import DiagnosticEngine
+
+        try:
+            diag = DiagnosticEngine(self._root)
+            if cmd.full_scan:
+                issues = diag.run_full_scan()
+            else:
+                issues = diag.run_quick_scan()
+            score = diag.health_score(issues)
+            return DiagnosticRunResult(
+                issues=[i.to_dict() for i in issues],
+                healthy=score >= 70,
+                score=score,
+                return_code=0,
+            )
+        except (RuntimeError, OSError, ValueError) as exc:
+            logger.warning("Diagnostic run failed: %s", exc)
+            return DiagnosticRunResult(return_code=2, issues=[], healthy=False, score=0)

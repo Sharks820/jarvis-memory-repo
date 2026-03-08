@@ -1605,6 +1605,8 @@ class MobileIngestHandler(
         "/voice/latency": "_handle_get_voice_latency",
         "/gateway/health": "_handle_get_gateway_health",
         "/gateway/budget": "_handle_get_gateway_budget",
+        "/memory/hygiene": "_handle_get_memory_hygiene",
+        "/diagnostics/status": "_handle_get_diagnostics",
         "/favicon.ico": "_handle_get_favicon",
     }
 
