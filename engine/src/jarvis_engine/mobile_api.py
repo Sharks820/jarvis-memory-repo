@@ -1571,6 +1571,7 @@ class MobileIngestHandler(
         "/meeting-prep": "_handle_get_meeting_prep",
         "/scam/campaigns": "_handle_get_scam_campaigns",
         "/scam/stats": "_handle_get_scam_stats",
+        "/voice/latency": "_handle_get_voice_latency",
         "/favicon.ico": "_handle_get_favicon",
     }
 

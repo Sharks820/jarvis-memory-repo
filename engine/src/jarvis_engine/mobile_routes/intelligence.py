@@ -391,3 +391,24 @@ class IntelligenceRoutesMixin:
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "ok": False, "error": "Intelligence export failed.",
             })
+
+    def _handle_get_voice_latency(self) -> None:
+        """Return voice pipeline latency stats for the mobile dashboard."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.voice_telemetry import get_voice_telemetry
+
+            telemetry = get_voice_telemetry()
+            self._write_json(HTTPStatus.OK, telemetry.get_endpoint_response())
+        except (ImportError, OSError, ValueError) as exc:
+            logger.debug("voice/latency endpoint failed: %s", exc)
+            self._write_json(HTTPStatus.OK, {
+                "p50_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "sample_count": 0,
+                "slo_violations": [],
+                "backend_distribution": {},
+                "health": {"utterances_total": 0, "success_rate": 0.0, "avg_confidence": 0.0},
+            })

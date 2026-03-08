@@ -51,6 +51,7 @@ class ActivityCategory:
     COMMAND_LIFECYCLE = "command_lifecycle"
     RESOURCE_PRESSURE = "resource_pressure"
     CONVERSATION_STATE = "conversation_state"
+    VOICE_PIPELINE = "voice_pipeline"
 
 
 # ---------------------------------------------------------------------------

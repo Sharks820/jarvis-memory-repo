@@ -655,6 +655,13 @@ def _dispatch_and_handle_response(
     """
     from jarvis_engine.main import cmd_voice_say
 
+    # Telemetry: mark command dispatch
+    try:
+        from jarvis_engine.voice_telemetry import STAGE_COMMAND_DISPATCH, get_voice_telemetry
+        get_voice_telemetry().mark_stage(STAGE_COMMAND_DISPATCH)
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Voice telemetry command_dispatch mark failed: %s", exc)
+
     try:
         result: QueryResult = bus.dispatch(QueryCommand(
             query=text,
@@ -664,6 +671,14 @@ def _dispatch_and_handle_response(
             history=history,
         ))
         response = result.text.strip()
+
+        # Telemetry: mark response ready
+        try:
+            from jarvis_engine.voice_telemetry import STAGE_RESPONSE_READY, get_voice_telemetry
+            get_voice_telemetry().mark_stage(STAGE_RESPONSE_READY)
+        except (ImportError, OSError, ValueError) as exc:
+            logger.debug("Voice telemetry response_ready mark failed: %s", exc)
+
         if result.return_code != 0:
             if web_searched:
                 fallback_lines = web_result.get("summary_lines", []) if isinstance(web_result, dict) else []
@@ -813,6 +828,14 @@ def _web_augmented_llm_conversation(
     _route, _llm_model = _classify_and_route(
         bus, text, default_route=default_route, try_fallback_classifier=try_fallback_classifier,
     )
+
+    # Telemetry: mark intent classification complete
+    try:
+        from jarvis_engine.voice_telemetry import STAGE_INTENT_CLASSIFICATION, get_voice_telemetry
+        get_voice_telemetry().mark_stage(STAGE_INTENT_CLASSIFICATION)
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Voice telemetry intent_classification mark failed: %s", exc)
+
     if model_override:
         _llm_model = model_override
         logger.debug("Model overridden by user selection: %s", model_override)
