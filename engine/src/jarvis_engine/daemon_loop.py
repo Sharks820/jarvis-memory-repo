@@ -94,6 +94,10 @@ class DaemonConfig:
 _daemon_bus: CommandBus | None = None
 _daemon_bus_lock = threading.Lock()
 
+# Mission failure backoff: skip missions for N cycles after a failure
+_MISSION_BACKOFF_CYCLES = 5
+_mission_backoff_until_cycle: int = 0
+
 
 def _get_daemon_bus() -> CommandBus:
     """Return cached daemon bus, creating once on first call (thread-safe).
@@ -624,12 +628,19 @@ def _log_resource_pressure(
 
 def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None:
     """Run pending missions and auto-generate new ones (never raises)."""
+    global _mission_backoff_until_cycle
+    # Skip if in failure backoff cooldown
+    if cycles < _mission_backoff_until_cycle:
+        print(f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}")
+        return
     try:
         mission_rc = _run_next_pending_mission()
     except (ImportError, OSError, sqlite3.Error, AttributeError, KeyError, ValueError, RuntimeError) as exc:
         mission_rc = 2
         logger.warning("Daemon mission cycle failed: %s", exc)
         print(f"mission_cycle_error={exc}")
+        _mission_backoff_until_cycle = cycles + _MISSION_BACKOFF_CYCLES
+        print(f"mission_backoff_set=until_cycle_{_mission_backoff_until_cycle}")
     else:
         print(f"mission_cycle_rc={mission_rc}")
     # Auto-generate new missions when queue is empty (every 50 cycles)
@@ -702,29 +713,45 @@ def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
 
 
 def _collect_kg_metrics(root: Path) -> None:
-    """Collect and append KG growth metrics (never raises)."""
-    try:
-        import sqlite3 as _sqlite3
+    """Collect and append KG growth metrics (never raises).
 
+    Prefers the daemon bus's existing KG connection (``bus.ctx.kg``) to
+    avoid opening a redundant raw ``sqlite3.connect()`` each cycle.
+    Falls back to a temporary connection only when the bus KG is
+    unavailable.
+    """
+    try:
         from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
 
-        db_path = _memory_db_path(root)
-        if db_path.exists():
-            _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
-            from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
+        kg = None
+        try:
+            bus = _get_daemon_bus()
+            kg = getattr(bus.ctx, "kg", None)
+        except Exception:
+            kg = None
 
-            _cfg_sql(_kg_conn)
-            try:
-                # collect_kg_metrics uses kg.db — provide a lightweight shim
-                class _KGShim:
-                    def __init__(self, conn: _sqlite3.Connection) -> None:
-                        self.db = conn
-
-                metrics = collect_kg_metrics(_KGShim(_kg_conn))
-            finally:
-                _kg_conn.close()
+        if kg is not None:
+            metrics = collect_kg_metrics(kg)
         else:
-            metrics = {"node_count": 0, "edge_count": 0}
+            # Fallback: open a temporary connection when bus KG is unavailable
+            import sqlite3 as _sqlite3
+
+            db_path = _memory_db_path(root)
+            if db_path.exists():
+                _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
+                from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
+
+                _cfg_sql(_kg_conn)
+                try:
+                    class _KGShim:
+                        def __init__(self, conn: _sqlite3.Connection) -> None:
+                            self.db = conn
+
+                    metrics = collect_kg_metrics(_KGShim(_kg_conn))
+                finally:
+                    _kg_conn.close()
+            else:
+                metrics = {"node_count": 0, "edge_count": 0}
         history_path = _runtime_dir(root) / _KG_METRICS_LOG
         append_kg_metrics(metrics, history_path)
         print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
@@ -1050,7 +1077,7 @@ def _run_periodic_subsystems(
         _run_sync_cycle(cmd_mobile_desktop_sync)
     if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
         _run_watchdog_cycle(root)
-    if self_heal_every_cycles > 0 and (cycles == 1 or cycles % self_heal_every_cycles == 0):
+    if self_heal_every_cycles > 0 and (cycles == 2 or cycles % self_heal_every_cycles == 0):
         if skip_heavy_tasks:
             print("self_heal_cycle_skipped=resource_pressure")
         else:
@@ -1112,6 +1139,15 @@ def _run_core_autopilot(
         logger.warning("Daemon autopilot cycle failed: %s", exc)
         print(f"cycle_error={exc}")
         return 2
+
+
+def _interruptible_sleep(seconds: float) -> None:
+    """Sleep in 1-second chunks so KeyboardInterrupt is handled promptly."""
+    remaining = float(seconds)
+    while remaining > 0:
+        chunk = min(1.0, remaining)
+        time.sleep(chunk)
+        remaining -= chunk
 
 
 def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
@@ -1203,7 +1239,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
                 print(skip_reason)
                 if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                     break
-                time.sleep(max(idle_interval, 600))
+                _interruptible_sleep(max(idle_interval, 600))
                 continue
 
             _run_periodic_subsystems(
@@ -1225,7 +1261,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             if cfg.max_cycles > 0 and cycles >= cfg.max_cycles:
                 break
             print(f"sleep_s={state['sleep_seconds']}")
-            time.sleep(state["sleep_seconds"])
+            _interruptible_sleep(state["sleep_seconds"])
     except KeyboardInterrupt:
         print("jarvis_daemon_stopped=true")
     finally:

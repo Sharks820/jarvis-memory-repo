@@ -76,7 +76,7 @@ class SileroVADDetector:
 
     def __init__(
         self,
-        threshold: float = 0.5,
+        threshold: float = 0.4,
         sampling_rate: int = 16000,
     ) -> None:
         self._threshold = threshold
@@ -190,7 +190,7 @@ _vad_lock = threading.Lock()
 
 
 def get_vad_detector(
-    threshold: float = 0.5,
+    threshold: float = 0.4,
     sampling_rate: int = 16000,
 ) -> SileroVADDetector:
     """Return a shared :class:`SileroVADDetector` singleton.

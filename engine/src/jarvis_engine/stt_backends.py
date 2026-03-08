@@ -101,10 +101,14 @@ def _build_deepgram_params(
         ("language", language),
         ("punctuate", "true"),
         ("smart_format", "true"),
+        ("utterances", "true"),
+        ("endpointing", "400"),
+        ("filler_words", "false"),
+        ("numerals", "true"),
     ]
-    # Deepgram supports up to 500 keywords per request
+    # Deepgram supports up to 500 keywords per request; boost intensity
     for kt in keyterms[:500]:
-        params.append(("keywords", kt))
+        params.append(("keywords", f"{kt}:2"))
     return params
 
 
@@ -342,8 +346,8 @@ def record_from_microphone(
     sample_rate: int = 16000,
     max_duration_seconds: float = 30.0,
     silence_threshold: float = 0.01,
-    silence_duration: float = 2.0,
-    drain_seconds: float = 0.0,
+    silence_duration: float = 1.0,
+    drain_seconds: float = 0.3,
 ) -> np.ndarray:
     """Record audio from the default microphone with Silero VAD.
 
@@ -364,7 +368,7 @@ def record_from_microphone(
         RMS energy threshold below which audio is considered silence
         (default 0.01).  Only used when Silero VAD is unavailable.
     silence_duration:
-        Seconds of continuous silence after speech before stopping (default 2.0).
+        Seconds of continuous silence after speech before stopping (default 1.0).
     drain_seconds:
         Seconds of audio to read and discard when opening the stream.  This
         flushes stale audio left in the OS audio buffer (e.g. wake word

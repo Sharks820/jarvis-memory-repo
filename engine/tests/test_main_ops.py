@@ -66,7 +66,10 @@ def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeyp
     )
     assert rc == 0
     assert calls["ops"] == 2
-    assert calls["sleep"] == [120]
+    # _interruptible_sleep breaks long sleeps into 1s chunks
+    sleeps = calls["sleep"]
+    assert isinstance(sleeps, list)
+    assert abs(sum(sleeps) - 120) < 2, f"Expected ~120s total sleep, got {sum(sleeps)}"
 
 
 def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path, monkeypatch) -> None:
@@ -105,7 +108,10 @@ def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path
     )
     assert rc == 0
     assert calls["ops"] == 0
-    assert calls["sleep"] == [900]
+    # _interruptible_sleep breaks long sleeps into 1s chunks
+    sleeps = calls["sleep"]
+    assert isinstance(sleeps, list)
+    assert abs(sum(sleeps) - 900) < 2, f"Expected ~900s total sleep, got {sum(sleeps)}"
 
 
 def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Path, monkeypatch) -> None:
@@ -145,7 +151,9 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
     )
     assert rc == 0
     assert calls["ops"] == 0
-    assert calls["sleep"] == [900]
+    sleeps = calls["sleep"]
+    assert isinstance(sleeps, list)
+    assert abs(sum(sleeps) - 900) < 2, f"Expected ~900s total sleep, got {sum(sleeps)}"
 
 
 def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monkeypatch) -> None:
@@ -192,7 +200,9 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
     )
     assert rc == 0
     assert calls["ops"] == 0
-    assert calls["sleep"] == [900]
+    sleeps = calls["sleep"]
+    assert isinstance(sleeps, list)
+    assert abs(sum(sleeps) - 900) < 2, f"Expected ~900s total sleep, got {sum(sleeps)}"
 
 
 def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monkeypatch) -> None:

@@ -55,6 +55,14 @@ __all__ = [
 ]
 
 # ---------------------------------------------------------------------------
+#  RRF weight constants — tune these to adjust FTS5 vs. semantic balance.
+#  fts_weight + vec_weight need not sum to 1; they are independent multipliers
+#  on each retrieval method's RRF contribution.
+# ---------------------------------------------------------------------------
+RRF_FTS_WEIGHT: float = 0.4  # keyword (FTS5) contribution
+RRF_VEC_WEIGHT: float = 0.6  # semantic (sqlite-vec) contribution
+
+# ---------------------------------------------------------------------------
 #  Debounced access-count updater — avoids a DB write on every search call.
 #  Flushes when the pending set reaches _ACCESS_BATCH_SIZE or when
 #  _ACCESS_FLUSH_INTERVAL seconds have elapsed since the first pending entry.
@@ -129,14 +137,14 @@ def hybrid_search(
     # 2. sqlite-vec KNN search
     vec_results = engine.search_vec(query_embedding, limit=k * 3)
 
-    # 3. Reciprocal Rank Fusion
+    # 3. Reciprocal Rank Fusion with configurable weights
     scores: dict[str, float] = {}
 
     for i, (rid, _rank) in enumerate(fts_results):
-        scores[rid] = scores.get(rid, 0.0) + 1.0 / (rrf_k + i + 1)
+        scores[rid] = scores.get(rid, 0.0) + RRF_FTS_WEIGHT / (rrf_k + i + 1)
 
     for i, (rid, _distance) in enumerate(vec_results):
-        scores[rid] = scores.get(rid, 0.0) + 1.0 / (rrf_k + i + 1)
+        scores[rid] = scores.get(rid, 0.0) + RRF_VEC_WEIGHT / (rrf_k + i + 1)
 
     if not scores:
         return []

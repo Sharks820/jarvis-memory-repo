@@ -107,7 +107,7 @@ class FactExtractor:
     ]
 
     def extract(
-        self, text: str, source: str = "", branch: str = ""
+        self, text: str, source: str = "", branch: str = "", max_facts: int = 10
     ) -> list[FactTriple]:
         """Extract fact triples from text content.
 
@@ -115,9 +115,10 @@ class FactExtractor:
             text: The text to extract facts from.
             source: Origin identifier for provenance.
             branch: Memory branch for context.
+            max_facts: Maximum number of facts to return (default 10).
 
         Returns:
-            List of FactTriple objects, capped at 10 per content.
+            List of FactTriple objects, capped at ``max_facts`` per content.
         """
         facts: list[FactTriple] = []
 
@@ -143,4 +144,4 @@ class FactExtractor:
                     )
                 )
 
-        return facts[:10]  # Cap per-content extraction
+        return facts[:max_facts]

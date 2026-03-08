@@ -330,6 +330,7 @@ def _unescape_response(text: str) -> str:
 
 class MobileIngestServer(ThreadingHTTPServer):
     allow_reuse_address = True
+    _MAX_CONCURRENT = 32
 
     def __init__(
         self,
@@ -342,6 +343,7 @@ class MobileIngestServer(ThreadingHTTPServer):
         repo_root: Path,
     ) -> None:
         super().__init__(server_address, handler_cls)
+        self._thread_semaphore = threading.Semaphore(self._MAX_CONCURRENT)
         self.auth_token = auth_token
         self.signing_key = signing_key
         self.pipeline = pipeline
@@ -425,6 +427,33 @@ class MobileIngestServer(ThreadingHTTPServer):
             logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
             self._session_degraded = True
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        """Override to cap concurrent request threads via semaphore.
+
+        If the semaphore cannot be acquired within 5 seconds, the connection
+        is rejected with a 503 Service Unavailable response.
+        """
+        if not self._thread_semaphore.acquire(timeout=5.0):
+            # Reject: too many concurrent connections
+            try:
+                request.sendall(
+                    b"HTTP/1.1 503 Service Unavailable\r\n"
+                    b"Content-Length: 0\r\n"
+                    b"Connection: close\r\n\r\n"
+                )
+            except OSError:
+                pass
+            finally:
+                try:
+                    self.shutdown_request(request)
+                except OSError:
+                    pass
+            return
+        try:
+            super().process_request(request, client_address)
+        finally:
+            self._thread_semaphore.release()
 
     @staticmethod
     def _prune_rate_dict(rate_dict: dict[str, list[float]], max_keys: int = 5000) -> None:
@@ -1689,23 +1718,31 @@ class MobileIngestHandler(
         "/missions/create": "_handle_post_missions_create",
     }
 
+    # Endpoint-specific POST body size limits (bytes).
+    # /sync/push is allowed 2 MB; all others default to 1 MB.
+    _POST_BODY_LIMITS: dict[str, int] = {
+        "/sync/push": 2_000_000,
+    }
+    _DEFAULT_POST_BODY_LIMIT: int = 1_000_000
+
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if not self._check_rate_limit(path):
             return
         # Pre-read POST body so security pipeline can inspect it.
-        # Cap at 5MB to prevent memory exhaustion from malicious Content-Length.
-        _MAX_POST_BODY = 5_000_000
+        # Enforce endpoint-specific Content-Length limits before reading
+        # the full body to reject oversized payloads early.
+        max_body = self._POST_BODY_LIMITS.get(path, self._DEFAULT_POST_BODY_LIMIT)
         self._cached_post_body: bytes | None = None
         raw_cl = self.headers.get("Content-Length", "0")
         try:
             cl = int(raw_cl)
         except (TypeError, ValueError):
             cl = 0
-        if cl > _MAX_POST_BODY:
+        if cl > max_body:
             self._write_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {
                 "ok": False,
-                "error": "Request body too large.",
+                "error": f"Request body too large (limit {max_body} bytes).",
             })
             return
         if cl > 0:

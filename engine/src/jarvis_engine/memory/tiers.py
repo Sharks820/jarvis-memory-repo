@@ -131,6 +131,45 @@ class TierManager:
         )
         return changes
 
+    # Threshold for promoting cold records back to warm when accessed
+    COLD_PROMOTION_ACCESS_THRESHOLD: int = 2
+
+    def promote_accessed(self, engine: "MemoryEngine", record_ids: list[str]) -> int:
+        """Promote cold-tier records back to warm if they have been accessed enough.
+
+        Checks each record in *record_ids*: if it is currently in the COLD tier
+        and its ``access_count`` meets or exceeds
+        :attr:`COLD_PROMOTION_ACCESS_THRESHOLD`, it is promoted to WARM.
+
+        Returns the number of records promoted.
+        """
+        if not record_ids:
+            return 0
+
+        records = engine.get_records_batch(record_ids)
+        updates: list[tuple[str, str]] = []
+
+        for record in records:
+            rid = record.get("record_id", "")
+            if not rid:
+                continue
+            current_tier = str(record.get("tier", "warm"))
+            if current_tier != Tier.COLD.value:
+                continue
+            access_count = _safe_int(record.get("access_count", 0))
+            if access_count >= self.COLD_PROMOTION_ACCESS_THRESHOLD:
+                updates.append((rid, Tier.WARM.value))
+
+        if updates:
+            engine.update_tiers_batch(updates)
+            logger.info(
+                "Promoted %d cold records to warm (access threshold %d)",
+                len(updates),
+                self.COLD_PROMOTION_ACCESS_THRESHOLD,
+            )
+
+        return len(updates)
+
     @staticmethod
     def _compute_age_hours(ts_str: str) -> float:
         """Compute age in hours from a timestamp string."""

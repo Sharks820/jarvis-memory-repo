@@ -32,7 +32,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-07): 4903 passing, 11 skipped, 0 failures
+- Latest full test run (2026-03-07): 5077 passing, 4 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
@@ -108,6 +108,6 @@ Progress (v5.0): [██████░░░░] 55%
 
 ## Session Continuity
 
-Last session: 2026-03-06
-Stopped at: User engagement/feedback checkpoint logged. Owner confirmed positive signal and acceptance of main-branch state. No code changes required this session. Resume next session with v5 runtime reliability tranche: cross-LLM continuity, voice robustness, mission activity truthfulness, and desloppify burn-down.
-Resume file: None
+Last session: 2026-03-07
+Stopped at: Phase 1 completion design approved. 22 bugs fixed + 5 rescan bugs fixed + flaky test replaced. 5077 tests clean. Design doc committed: docs/plans/2026-03-07-phase1-completion-design.md. Beginning GSD execution of 6 remaining tasks: Context Continuity, Voice UX, Mission Transparency, Self-Diagnosis, Memory Hygiene, Desloppify. Implementation order: A→C→D→E→F→H with test+scan gates between each.
+Resume file: docs/plans/2026-03-07-phase1-completion-design.md

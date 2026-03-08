@@ -36,6 +36,28 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Canonical relation synonyms — normalizes common variants to a single form
+RELATION_SYNONYMS: dict[str, str] = {
+    "lives_in": "located_at",
+    "lives_at": "located_at",
+    "resides_in": "located_at",
+    "works_for": "employed_at",
+    "works_at": "employed_at",
+    "married_to": "spouse_of",
+    "is_a": "type_of",
+    "is_an": "type_of",
+}
+
+
+def _normalize_relation(rel: str) -> str:
+    """Normalize a relation string to its canonical form.
+
+    Lowercases, strips whitespace, replaces spaces with underscores,
+    and maps known synonyms to their canonical relation name.
+    """
+    normalized = rel.lower().strip().replace(" ", "_")
+    return RELATION_SYNONYMS.get(normalized, normalized)
+
 
 class KnowledgeGraph:
     """SQLite-backed knowledge graph with NetworkX bridge."""
@@ -429,8 +451,12 @@ class KnowledgeGraph:
     ) -> bool:
         """Add a directed edge.  INSERT OR IGNORE handles dedup via UNIQUE index.
 
+        The relation string is normalized (lowercased, synonym-mapped) before
+        storage to ensure consistent edge naming.
+
         Returns True if a new edge was inserted, False if it already existed.
         """
+        relation = _normalize_relation(relation)
         with self._write_lock:
             try:
                 cur = self._db.execute(
@@ -713,6 +739,30 @@ class KnowledgeGraph:
         except (sqlite3.Error, struct.error, ValueError) as exc:
             logger.warning("KG semantic search failed: %s", exc)
             return []
+
+    def find_orphans(self, min_age_days: int = 7) -> list[dict]:
+        """Find fact nodes with no edges older than ``min_age_days``.
+
+        Returns a list of dicts with node_id, label, confidence, and created_at
+        for nodes that have no outgoing or incoming edges and were created more
+        than ``min_age_days`` ago.
+        """
+        with self._db_lock:
+            cur = self._db.execute(
+                """
+                SELECT n.node_id, n.label, n.confidence, n.created_at
+                FROM kg_nodes n
+                LEFT JOIN kg_edges e_out ON n.node_id = e_out.source_id
+                LEFT JOIN kg_edges e_in ON n.node_id = e_in.target_id
+                WHERE e_out.edge_id IS NULL
+                  AND e_in.edge_id IS NULL
+                  AND n.created_at <= datetime('now', ? || ' days')
+                  AND n.confidence > 0
+                ORDER BY n.created_at ASC
+                """,
+                (str(-min_age_days),),
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def retract_facts(self, keywords: list[str]) -> int:
         """Soft-retract KG facts matching keywords by setting confidence to 0.

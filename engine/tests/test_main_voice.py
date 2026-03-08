@@ -361,9 +361,9 @@ class TestMaxTokensByRoute:
     """Tests for _MAX_TOKENS_BY_ROUTE configuration."""
 
     @pytest.mark.parametrize("route,expected", [
-        pytest.param("math_logic", 1024, id="math_logic"),
-        pytest.param("complex", 1024, id="complex"),
-        pytest.param("routine", 512, id="routine"),
+        pytest.param("math_logic", 2048, id="math_logic"),
+        pytest.param("complex", 2048, id="complex"),
+        pytest.param("routine", 1024, id="routine"),
         pytest.param("simple_private", 1024, id="simple_private"),
     ])
     def test_max_tokens_by_route(self, route, expected):

@@ -387,10 +387,10 @@ class SpeechToText:
             hallucination_silence_threshold=0.2,
             word_timestamps=True,
             vad_parameters=dict(
-                threshold=0.5,
-                min_silence_duration_ms=500,
-                speech_pad_ms=200,
-                min_speech_duration_ms=250,
+                threshold=0.4,
+                min_silence_duration_ms=400,
+                speech_pad_ms=300,
+                min_speech_duration_ms=200,
             ),
         )
         segments = list(segments_gen)

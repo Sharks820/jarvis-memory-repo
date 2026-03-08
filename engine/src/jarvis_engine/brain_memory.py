@@ -513,10 +513,46 @@ def _recency_weight(ts_text: str) -> float:
     return _recency_weight_core(ts_text, default=0.3, decay_hours=96.0)
 
 
-def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_chars: int = 2400) -> ContextPacket:
+def _try_hybrid_search(
+    query: str,
+    max_items: int,
+    engine: Any = None,
+    embed_service: Any = None,
+) -> list[dict[str, Any]] | None:
+    """Attempt to use hybrid_search from the MemoryEngine for better results.
+
+    Returns a list of record dicts on success, or None if the search module
+    or engine is unavailable (caller should fall back to JSONL).
+    """
+    if engine is None or embed_service is None:
+        return None
+
+    try:
+        from jarvis_engine.memory.search import hybrid_search
+    except ImportError:
+        return None
+
+    try:
+        # embed_service may expose embed() or embed_query() depending on the interface
+        embed_fn = getattr(embed_service, "embed_query", None) or getattr(embed_service, "embed", None)
+        if embed_fn is None:
+            return None
+        query_embedding = embed_fn(query)
+        if not query_embedding:
+            return None
+        results = hybrid_search(engine, query, query_embedding, k=max_items * 3)
+        return results
+    except Exception as exc:
+        logger.debug("hybrid_search failed, falling back to JSONL: %s", exc)
+        return None
+
+
+def _jsonl_keyword_search(
+    root: Path, query: str, max_items: int,
+) -> tuple[list[tuple[float, dict[str, Any]]], int]:
+    """Legacy JSONL-based keyword overlap scorer. Returns (scored_rows, total_scanned)."""
     with _brain_io_lock:
         rows = _load_records(root, limit=200)
-        facts_state = _load_facts(root)
 
     query_tokens = set(_tokenize(query))
 
@@ -533,6 +569,38 @@ def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_cha
             scored.append((score, row))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
+    return scored, len(rows)
+
+
+def build_context_packet(
+    root: Path,
+    *,
+    query: str,
+    max_items: int = 10,
+    max_chars: int = 2400,
+    engine: Any = None,
+    embed_service: Any = None,
+) -> ContextPacket:
+    # --- Primary path: try hybrid_search (FTS5 + sqlite-vec) ---
+    hybrid_results = _try_hybrid_search(query, max_items, engine=engine, embed_service=embed_service)
+
+    if hybrid_results is not None:
+        # hybrid_search returned ranked records — use them directly
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for i, row in enumerate(hybrid_results):
+            # Assign a score based on rank position (higher rank = higher score)
+            score = 1.0 / (1 + i)
+            scored.append((score, row))
+        total_scanned = len(hybrid_results)
+    else:
+        # --- Fallback: legacy JSONL keyword overlap scorer ---
+        scored, total_scanned = _jsonl_keyword_search(root, query, max_items)
+
+    with _brain_io_lock:
+        facts_state = _load_facts(root)
+
+    query_tokens = set(_tokenize(query))
+
     selected: list[dict[str, Any]] = []
     used_branches: dict[str, int] = {}
     total_chars = 0
@@ -591,7 +659,7 @@ def build_context_packet(root: Path, *, query: str, max_items: int = 10, max_cha
         "canonical_facts": canonical_facts[:8],
         "max_items": max_items,
         "max_chars": max_chars,
-        "total_records_scanned": len(rows),
+        "total_records_scanned": total_scanned,
     }
 
 

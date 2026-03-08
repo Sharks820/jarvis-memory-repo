@@ -98,6 +98,7 @@ def test_record_microphone_vad_no_speech_records_full() -> None:
             max_duration_seconds=2.0,  # 2s = 20 chunks
             silence_threshold=0.01,
             silence_duration=1.0,
+            drain_seconds=0.0,
         )
 
     # No speech detected, so silence_frames never incremented -> records all 20 chunks
@@ -281,7 +282,7 @@ def test_record_from_microphone_silero_uses_32ms_chunks() -> None:
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
          patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
-        stt_mod.record_from_microphone()
+        stt_mod.record_from_microphone(drain_seconds=0.0)
 
     # stream.read should be called with 512 samples (32ms at 16kHz)
     first_read_arg = mock_stream.read.call_args_list[0][0][0]
@@ -322,7 +323,7 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
 
     with patch.dict("sys.modules", {"sounddevice": mock_sd}), \
          patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
-        stt_mod.record_from_microphone()
+        stt_mod.record_from_microphone(drain_seconds=0.0)
 
     # stream.read should be called with 1600 samples (100ms at 16kHz)
     first_read_arg = mock_stream.read.call_args_list[0][0][0]

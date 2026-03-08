@@ -19,6 +19,7 @@ import os
 import re
 import sqlite3
 import threading
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -61,6 +62,14 @@ _RE_NAME_PREFIX = re.compile(
     r"\b(?:Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b"
 )
 _RE_CAPITALIZED_SEQ = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
+
+# PII patterns — matches are excluded from anchor_entities
+_RE_PII_PHONE = re.compile(
+    r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
+)
+_RE_PII_SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
+_RE_PII_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_RE_PII_CC = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 
 # Decision detection patterns
 _RE_DECISIONS = re.compile(
@@ -346,6 +355,43 @@ class ConversationTimeline:
                     return 0
             return len(self._in_memory)
 
+    def prune(self, max_age_days: int = 30) -> int:
+        """Delete timeline entries older than *max_age_days*.
+
+        Returns the number of deleted rows.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        ).isoformat()
+
+        with self._lock:
+            if self._using_db and self._db is not None:
+                try:
+                    cur = self._db.execute(
+                        "DELETE FROM conversation_timeline WHERE timestamp < ?",
+                        (cutoff,),
+                    )
+                    self._db.commit()
+                    deleted = cur.rowcount
+                    if deleted:
+                        logger.info(
+                            "Pruned %d timeline entries older than %d days",
+                            deleted,
+                            max_age_days,
+                        )
+                    return deleted
+                except sqlite3.Error as exc:
+                    logger.warning("Timeline prune failed: %s", exc)
+                    return 0
+            else:
+                before = len(self._in_memory)
+                self._in_memory = [
+                    e for e in self._in_memory if e.timestamp >= cutoff
+                ]
+                return before - len(self._in_memory)
+
     def close(self) -> None:
         """Close the database connection (idempotent)."""
         with self._lock:
@@ -438,7 +484,14 @@ def extract_entities(text: str) -> set[str]:
             continue
         entities.add(name)
 
-    return entities
+    # Filter out PII matches
+    pii_patterns = [_RE_PII_PHONE, _RE_PII_SSN, _RE_PII_EMAIL, _RE_PII_CC]
+    filtered: set[str] = set()
+    for entity in entities:
+        if any(pat.fullmatch(entity) for pat in pii_patterns):
+            continue
+        filtered.add(entity)
+    return filtered
 
 
 def extract_decisions(text: str) -> list[str]:
@@ -569,12 +622,16 @@ class ConversationStateManager:
         ``<state_dir>/conversation_timeline.db``.
     """
 
+    _SAVE_DEBOUNCE_SECONDS = 5.0
+
     def __init__(
         self,
         state_dir: Path | None = None,
         db_path: Path | None = None,
     ) -> None:
         self._lock = threading.RLock()
+        self._last_save_time: float = 0.0
+        self._save_pending = False
 
         if state_dir is None:
             state_dir = repo_root() / _DEFAULT_STATE_DIR
@@ -684,8 +741,8 @@ class ConversationStateManager:
             # Emit telemetry
             self._emit_entity_telemetry(entities)
 
-        # Save outside the lock to minimize lock duration
-        self.save()
+        # Debounced save — avoid disk I/O on every single turn
+        self._save_debounced()
 
     # ------------------------------------------------------------------
     # Model switch tracking
@@ -888,6 +945,24 @@ class ConversationStateManager:
     # Persistence
     # ------------------------------------------------------------------
 
+    def _save_debounced(self) -> None:
+        """Save only if enough time has elapsed since the last save.
+
+        Mirrors the debounce pattern from ``voice_pipeline.ConversationState``.
+        Callers should use ``save()`` for immediate persistence (e.g. on
+        shutdown).
+        """
+        now = time.monotonic()
+        if now - self._last_save_time < self._SAVE_DEBOUNCE_SECONDS:
+            self._save_pending = True
+            return
+        self.save()
+
+    def flush_pending(self) -> None:
+        """Force-save if a debounced save is pending (call on shutdown)."""
+        if self._save_pending:
+            self.save()
+
     def save(self) -> None:
         """Persist conversation state to disk atomically.
 
@@ -903,6 +978,8 @@ class ConversationStateManager:
             tmp = self._state_file.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
             tmp.write_text(raw, encoding="utf-8")
             os.replace(str(tmp), str(self._state_file))
+            self._last_save_time = time.monotonic()
+            self._save_pending = False
         except OSError as exc:
             logger.debug("Could not save conversation state: %s", exc)
 

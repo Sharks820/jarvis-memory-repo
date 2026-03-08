@@ -30,6 +30,9 @@ DEFAULT_RESOURCE_BUDGETS = {
 _MB = 1024.0 * 1024.0
 _DEFAULT_THROTTLE = {"mild_scale": 1.35, "severe_scale": 2.0, "max_sleep_s": 1800}
 
+_dir_size_cache: dict[str, tuple[float, float]] = {}  # path -> (size_mb, timestamp)
+_DIR_SIZE_CACHE_TTL = 600.0  # 10 minutes
+
 
 class ControlState(TypedDict):
     daemon_paused: bool
@@ -135,6 +138,15 @@ def _file_size_mb(path: Path) -> float:
 def _dir_size_mb(path: Path) -> float:
     if not path.exists() or not path.is_dir():
         return 0.0
+    import time as _time
+
+    cache_key = str(path)
+    cached = _dir_size_cache.get(cache_key)
+    if cached is not None:
+        cached_size, cached_ts = cached
+        if (_time.monotonic() - cached_ts) < _DIR_SIZE_CACHE_TTL:
+            return cached_size
+
     total = 0
     try:
         for p in path.rglob("*"):
@@ -146,7 +158,9 @@ def _dir_size_mb(path: Path) -> float:
                     continue
     except OSError:
         return 0.0
-    return max(0.0, float(total) / _MB)
+    result = max(0.0, float(total) / _MB)
+    _dir_size_cache[cache_key] = (result, _time.monotonic())
+    return result
 
 
 def _process_usage() -> tuple[float, float]:

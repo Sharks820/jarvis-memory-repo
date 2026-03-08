@@ -421,10 +421,10 @@ def _mark_routed_model(model: str, provider: str) -> None:
 # ---------------------------------------------------------------------------
 
 _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
-    "math_logic": 1024,
-    "complex": 1024,
+    "math_logic": 2048,
+    "complex": 2048,
     "creative": 1024,
-    "routine": 512,
+    "routine": 1024,
     "simple_private": 1024,
     "web_research": 1024,
 }

@@ -1209,6 +1209,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _refresh_services(self) -> None:
         """Update service status dots directly from process_manager (no HTTP)."""
+        # Skip expensive refresh when the widget window is not visible
+        try:
+            if not self.winfo_viewable():
+                self.after(10000, self._refresh_services)
+                return
+        except tk.TclError:
+            # Window may be destroyed; bail out without rescheduling
+            return
         try:
             from jarvis_engine.process_manager import list_services
             root = _repo_root()

@@ -38,7 +38,7 @@ class EmbeddingService:
     # pulling unreviewed code from the repository HEAD.
     MODEL_REVISION = None
 
-    _CACHE_MAXSIZE = 1024
+    _CACHE_MAXSIZE = 4096
 
     def __init__(self) -> None:
         self._model: SentenceTransformer | None = None

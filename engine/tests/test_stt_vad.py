@@ -37,7 +37,7 @@ def test_constructor_defaults() -> None:
     from jarvis_engine.stt_vad import SileroVADDetector
 
     d = SileroVADDetector()
-    assert d._threshold == 0.5
+    assert d._threshold == 0.4
     assert d._sampling_rate == 16000
     assert d._model is None
 

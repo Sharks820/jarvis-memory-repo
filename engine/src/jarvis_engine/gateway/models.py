@@ -125,11 +125,11 @@ for _alias, (_pk, _) in CLOUD_MODEL_MAP.items():
 
 def _cli_refresh_interval_seconds() -> float:
     """Return CLI provider refresh cadence in seconds."""
-    raw = os.environ.get("JARVIS_CLI_PROVIDER_REFRESH_S", "5").strip()
+    raw = os.environ.get("JARVIS_CLI_PROVIDER_REFRESH_S", "30").strip()
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        return 5.0
+        return 30.0
     return max(1.0, min(value, 300.0))
 
 
@@ -145,6 +145,18 @@ class GatewayResponse:
     cost_usd: float = 0.0
     fallback_used: bool = False
     fallback_reason: str = ""
+
+
+# Route -> temperature mapping for _derive_temperature.
+# Covers all known intent routes; unknown routes default to 0.7.
+_ROUTE_TEMPERATURE: dict[str, float] = {
+    "math_logic": 0.2,
+    "complex": 0.3,
+    "routine": 0.5,
+    "creative": 0.85,
+    "web_research": 0.5,
+    "simple_private": 0.7,
+}
 
 
 class ModelGateway:
@@ -325,16 +337,29 @@ class ModelGateway:
         route_reason: str,
         temperature: float | None,
     ) -> float:
-        """Derive sampling temperature from route/model when not explicitly set."""
+        """Derive sampling temperature from route/model when not explicitly set.
+
+        Uses the ``_ROUTE_TEMPERATURE`` dict to map intent routes to
+        appropriate temperatures. Model-specific overrides (codex -> 0.2,
+        gemini -> 0.85) are applied on top when no route matches.
+        """
         if temperature is not None:
             return temperature
-        model_lower = model.lower()
+
+        # Check route-based temperature first (covers all known intent routes)
         reason_lower = route_reason.lower()
-        if "codex" in model_lower or "math_logic" in reason_lower:
+        for route, temp in _ROUTE_TEMPERATURE.items():
+            if route in reason_lower:
+                return temp
+
+        # Model-specific overrides for cases where route_reason is empty/generic
+        model_lower = model.lower()
+        if "codex" in model_lower:
             return 0.2
-        if "gemini" in model_lower or "creative" in reason_lower:
+        if "gemini" in model_lower:
             return 0.85
-        return 0.7
+
+        return _ROUTE_TEMPERATURE.get("", 0.7)  # default 0.7
 
     def _remap_model_if_needed(self, model: str) -> str:
         """Remap Claude API model to best cloud model if Anthropic is unavailable."""
@@ -619,6 +644,23 @@ class ModelGateway:
                 "Content-Type": "application/json",
             },
         )
+
+        if resp.status_code == 429:
+            headers = getattr(resp, "headers", None)
+            retry_after = (
+                headers.get("Retry-After", "unknown")
+                if headers is not None
+                else "unknown"
+            )
+            logger.warning(
+                "Rate limited by %s (HTTP 429). Retry-After: %s",
+                cfg["provider_name"],
+                retry_after,
+            )
+            raise RuntimeError(
+                f"Rate limited by {cfg['provider_name']} (HTTP 429, "
+                f"Retry-After: {retry_after})"
+            )
 
         if resp.status_code != 200:
             error_text = resp.text[:200]

@@ -412,6 +412,43 @@ class ContradictionManager(KGManagerBase):
             "message": f"Contradiction {contradiction_id} resolved via {resolution}.",
         }
 
+    def auto_resolve_simple(self, max_resolve: int = 10) -> int:
+        """Auto-resolve pending contradictions where incoming confidence clearly wins.
+
+        Resolves contradictions where the incoming confidence exceeds the existing
+        confidence by more than 0.2, and the target node is NOT locked.  Applies
+        ``accept_new`` resolution for each qualifying contradiction.
+
+        Args:
+            max_resolve: Maximum number of contradictions to auto-resolve.
+
+        Returns:
+            The number of contradictions resolved.
+        """
+        with self._db_lock:
+            cur = self._db.execute(
+                """SELECT c.contradiction_id, c.node_id,
+                          c.existing_confidence, c.incoming_confidence
+                   FROM kg_contradictions c
+                   LEFT JOIN kg_nodes n ON c.node_id = n.node_id
+                   WHERE c.status = 'pending'
+                     AND (c.incoming_confidence - c.existing_confidence) > 0.2
+                     AND (n.locked IS NULL OR n.locked = 0)
+                   ORDER BY c.created_at ASC
+                   LIMIT ?""",
+                (max_resolve,),
+            )
+            candidates = cur.fetchall()
+
+        resolved_count = 0
+        for row in candidates:
+            cid = row[0]
+            result = self.resolve(cid, "accept_new")
+            if result["success"]:
+                resolved_count += 1
+
+        return resolved_count
+
     def resolve(
         self,
         contradiction_id: int,

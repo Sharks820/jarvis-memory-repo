@@ -193,9 +193,9 @@ def test_try_deepgram_with_keyterms():
     call_kwargs = mock_client.post.call_args
     params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", [])
     keyword_values = [v for k, v in params if k == "keywords"]
-    assert "Jarvis" in keyword_values
-    assert "Conner" in keyword_values
-    assert "brain status" in keyword_values
+    assert "Jarvis:2" in keyword_values
+    assert "Conner:2" in keyword_values
+    assert "brain status:2" in keyword_values
     _reset_keyterms_cache()
 
 

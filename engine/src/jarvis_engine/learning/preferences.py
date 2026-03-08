@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from jarvis_engine._shared import now_iso as _now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
@@ -29,6 +31,12 @@ class PreferenceTracker(LearningTrackerBase):
             "prose": ["paragraph", "explain", "narrative"],
             "code": ["show me code", "code example", "implementation"],
         },
+    }
+
+    _NEGATIVE_PATTERNS: dict[str, list[str]] = {
+        "communication_style": ["don't be", "stop being", "less formal", "too formal", "too casual"],
+        "format_preferences": ["no bullet", "no list", "don't use", "stop using"],
+        "time_preferences": ["not in the morning", "don't remind me", "stop scheduling"],
     }
 
     # Maximum score to prevent unbounded growth
@@ -58,7 +66,7 @@ class PreferenceTracker(LearningTrackerBase):
             self._db.commit()
 
     def observe(self, user_message: str) -> list[tuple[str, str]]:
-        """Scan a user message for preference signals.
+        """Scan a user message for preference signals (positive and negative).
 
         Returns detected (category, preference) pairs.
         """
@@ -66,12 +74,50 @@ class PreferenceTracker(LearningTrackerBase):
             return []
         detected: list[tuple[str, str]] = []
         lower = user_message.lower()
+
+        # Check negative patterns first (they take priority over positive)
+        negative_categories: set[str] = set()
+        for category, phrases in self._NEGATIVE_PATTERNS.items():
+            if any(phrase in lower for phrase in phrases):
+                negative_categories.add(category)
+                self._detect_negative_preferences(category, lower)
+
         for category, prefs in self.PREFERENCE_PATTERNS.items():
+            if category in negative_categories:
+                continue  # Skip positive detection for categories with negative signals
             for pref_name, keywords in prefs.items():
                 if any(kw in lower for kw in keywords):
                     detected.append((category, pref_name))
                     self._update_preference(category, pref_name)
         return detected
+
+    def _detect_negative_preferences(self, category: str, lower_msg: str) -> None:
+        """Decrease scores for preferences in a category when negative signals are found.
+
+        Finds existing preferences in the category and decreases their scores
+        by 0.2 (clamped to 0.0 minimum).
+        """
+        with self._db_lock:
+            cur = self._db.execute(
+                "SELECT preference FROM user_preferences WHERE category = ?",
+                (category,),
+            )
+            existing = [row[0] for row in cur.fetchall()]
+
+        if not existing:
+            return
+
+        now = _now_iso()
+        with self._write_lock:
+            for pref_name in existing:
+                self._db.execute(
+                    """UPDATE user_preferences
+                       SET score = MAX(score - 0.2, 0.0),
+                           last_observed = ?
+                       WHERE category = ? AND preference = ?""",
+                    (now, category, pref_name),
+                )
+            self._db.commit()
 
     def _update_preference(self, category: str, preference: str) -> None:
         now = _now_iso()
@@ -86,24 +132,49 @@ class PreferenceTracker(LearningTrackerBase):
             """, (category, preference, now, self._MAX_SCORE, now))
             self._db.commit()
 
+    @staticmethod
+    def _parse_iso_timestamp(ts: str) -> datetime | None:
+        """Parse an ISO-8601 timestamp string to a datetime, or None on failure."""
+        if not ts:
+            return None
+        try:
+            # Handle both aware (with +00:00/Z) and naive ISO strings
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError):
+            return None
+
     def get_preferences(self) -> dict[str, str]:
         """Return the highest-scored preference per category.
 
-        Uses a correlated subquery to ensure the preference column
-        actually corresponds to the maximum score row (SQLite does NOT
-        guarantee that with bare MAX() + GROUP BY).
+        Applies exponential time decay (30-day half-life) based on
+        ``last_observed`` so stale preferences naturally lose influence.
+        Falls back to raw score if the timestamp cannot be parsed.
         """
+        now = datetime.now(timezone.utc)
         with self._db_lock:
-            cur = self._db.execute("""
-                SELECT p.category, p.preference
-                FROM user_preferences p
-                INNER JOIN (
-                    SELECT category, MAX(score) AS max_score
-                    FROM user_preferences
-                    GROUP BY category
-                ) m ON p.category = m.category AND p.score = m.max_score
-            """)
-            return {row[0]: row[1] for row in cur.fetchall()}
+            cur = self._db.execute(
+                "SELECT category, preference, score, last_observed "
+                "FROM user_preferences"
+            )
+            rows = cur.fetchall()
+
+        # Compute decayed scores and pick the best per category
+        best: dict[str, tuple[str, float]] = {}  # category -> (preference, decayed_score)
+        for row in rows:
+            category, preference, score, last_observed = row[0], row[1], row[2], row[3]
+            dt = self._parse_iso_timestamp(last_observed)
+            if dt is not None:
+                days_since = (now - dt).total_seconds() / 86400
+                decayed_score = score * math.exp(-0.023 * days_since)  # 30-day half-life
+            else:
+                decayed_score = score
+            if category not in best or decayed_score > best[category][1]:
+                best[category] = (preference, decayed_score)
+
+        return {cat: pref for cat, (pref, _) in best.items()}
 
     def get_all_preferences(self) -> list[dict]:
         """Return all preferences with full details."""
