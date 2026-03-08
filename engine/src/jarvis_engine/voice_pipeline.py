@@ -220,6 +220,15 @@ class ConversationState:
             except (ImportError, OSError, ValueError) as exc:
                 logger.debug("Model continuity telemetry logging failed: %s", exc)
 
+            # Update conversation state manager for cross-LLM continuity
+            try:
+                from jarvis_engine.conversation_state import get_conversation_state
+
+                csm = get_conversation_state()
+                csm.mark_model_switch(previous, normalized_model, reason=provider)
+            except (ImportError, OSError, ValueError) as exc:
+                logger.debug("Conversation state model switch failed: %s", exc)
+
     def conversation_continuity_instruction(self, target_model: str, history_len: int) -> str | None:
         """Return continuity instruction when conversation switches models/providers."""
         if history_len <= 0:
@@ -250,6 +259,15 @@ def _flush_history_atexit() -> None:
         _state.save_conversation_history(force=True)
     except Exception as exc:  # noqa: BLE001 — best-effort at shutdown
         logger.debug("atexit conversation history flush failed: %s", exc)
+
+    # Also save cross-LLM conversation state
+    try:
+        from jarvis_engine.conversation_state import get_conversation_state
+
+        csm = get_conversation_state()
+        csm.save()
+    except Exception as exc:  # noqa: BLE001 — best-effort at shutdown
+        logger.debug("atexit conversation state flush failed: %s", exc)
 
 
 _atexit.register(_flush_history_atexit)
@@ -663,6 +681,16 @@ def _dispatch_and_handle_response(
             return 1
         elif response:
             _add_to_history("assistant", response)
+
+            # Track assistant turn in conversation state for cross-LLM continuity
+            try:
+                from jarvis_engine.conversation_state import get_conversation_state
+
+                csm = get_conversation_state()
+                csm.update_turn("assistant", response, result.model or "unknown")
+            except (ImportError, OSError, ValueError) as exc:
+                logger.debug("Conversation state assistant turn failed: %s", exc)
+
             print(f"response={escape_response(response)}")
             if response_callback is not None:
                 response_callback(response)
@@ -713,9 +741,48 @@ def _prepare_history(
     continuity = _conversation_continuity_instruction(llm_model, len(hist))
     if continuity:
         system_parts.append(continuity)
+
+    # Inject cross-LLM context continuity state into prompt
+    try:
+        from jarvis_engine.conversation_state import get_conversation_state
+
+        csm = get_conversation_state()
+        injection = csm.get_prompt_injection()
+        if injection.get("rolling_summary"):
+            system_parts.append(
+                f"Conversation summary (prior context): {injection['rolling_summary']}"
+            )
+        entities = injection.get("anchor_entities", [])
+        if entities:
+            system_parts.append(
+                f"Key entities in this conversation: {', '.join(entities)}"
+            )
+        goals = injection.get("unresolved_goals", [])
+        if goals:
+            system_parts.append(
+                f"Unresolved goals from this conversation: {'; '.join(goals)}"
+            )
+        decisions = injection.get("prior_decisions", [])
+        if decisions:
+            system_parts.append(
+                f"Prior decisions made: {'; '.join(decisions)}"
+            )
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Conversation state injection failed: %s", exc)
+
     system_prompt = "\n\n".join(system_parts)
     hist_tuples = tuple((m["role"], m["content"]) for m in hist)
     _add_to_history("user", text)
+
+    # Track user turn in conversation state for cross-LLM continuity
+    try:
+        from jarvis_engine.conversation_state import get_conversation_state
+
+        csm = get_conversation_state()
+        csm.update_turn("user", text, llm_model or "unknown")
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Conversation state user turn failed: %s", exc)
+
     return system_prompt, hist_tuples
 
 

@@ -1177,6 +1177,16 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     consecutive_failures = 0
     cycles = 0
     last_pressure_level = "none"
+    # Load persisted conversation state for cross-LLM continuity
+    try:
+        from jarvis_engine.conversation_state import get_conversation_state
+
+        _csm = get_conversation_state()
+        _csm.load()
+        logger.debug("Conversation state loaded on daemon startup")
+    except (ImportError, OSError, ValueError) as exc:
+        logger.debug("Conversation state load on daemon startup failed: %s", exc)
+
     print("jarvis_daemon_started=true")
     print(f"active_interval_s={active_interval}")
     print(f"idle_interval_s={idle_interval}")
@@ -1219,5 +1229,14 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     except KeyboardInterrupt:
         print("jarvis_daemon_stopped=true")
     finally:
+        # Persist conversation state before shutdown
+        try:
+            from jarvis_engine.conversation_state import get_conversation_state
+
+            _csm_shutdown = get_conversation_state()
+            _csm_shutdown.save()
+            logger.debug("Conversation state saved on daemon shutdown")
+        except (ImportError, OSError, ValueError) as exc:
+            logger.debug("Conversation state save on shutdown failed: %s", exc)
         remove_pid_file("daemon", root)
     return 0

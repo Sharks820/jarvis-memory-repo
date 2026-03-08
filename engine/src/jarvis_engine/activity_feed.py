@@ -50,6 +50,7 @@ class ActivityCategory:
     MISSION_STATE_CHANGE = "mission_state_change"
     COMMAND_LIFECYCLE = "command_lifecycle"
     RESOURCE_PRESSURE = "resource_pressure"
+    CONVERSATION_STATE = "conversation_state"
 
 
 # ---------------------------------------------------------------------------

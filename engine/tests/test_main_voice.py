@@ -77,6 +77,7 @@ def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
 
     class _Cat:
         LLM_ROUTING = "llm_routing"
+        CONVERSATION_STATE = "conversation_state"
 
     import types
     fake_mod = types.SimpleNamespace(ActivityCategory=_Cat, log_activity=_fake_log_activity)
@@ -86,9 +87,12 @@ def test_mark_routed_model_logs_on_switch(monkeypatch) -> None:
     voice_pipeline_mod._mark_routed_model("kimi-k2", "groq")
     voice_pipeline_mod._mark_routed_model("gemma3:4b", "ollama")
 
-    assert len(calls) == 1
+    # First call: model switch event from voice_pipeline
+    # Second call: continuity_reconstruction event from conversation_state
+    assert len(calls) == 2
     assert "kimi-k2 -> gemma3:4b" in calls[0][1]
     assert calls[0][2]["event"] == "conversation_model_switch"
+    assert calls[1][2]["event"] == "continuity_reconstruction"
 
 
 def test_cmd_voice_say_sanitizes_urls_before_dispatch(capsys, monkeypatch) -> None:

@@ -200,6 +200,18 @@ class IntelligenceRoutesMixin:
             return
         self._write_json(HTTPStatus.OK, self._gather_intelligence_growth())
 
+    def _handle_get_conversation_state(self) -> None:
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.conversation_state import get_conversation_state
+
+            csm = get_conversation_state()
+            self._write_json(HTTPStatus.OK, csm.get_state_snapshot())
+        except (ImportError, OSError, ValueError) as exc:
+            logger.debug("conversation state endpoint failed: %s", exc)
+            self._write_json(HTTPStatus.OK, {"error": str(exc), "available": False})
+
     def _handle_get_learning_summary(self) -> None:
         from jarvis_engine.mobile_routes._helpers import _configure_db
 

@@ -1564,6 +1564,7 @@ class MobileIngestHandler(
         "/widget-status": "_handle_get_widget_status",
         "/intelligence/growth": "_handle_get_intelligence_growth",
         "/learning/summary": "_handle_get_learning_summary",
+        "/conversation/state": "_handle_get_conversation_state",
         "/missions/status": "_handle_get_missions_status",
         "/alerts/pending": "_handle_get_alerts_pending",
         "/digest": "_handle_get_digest",
