@@ -39,8 +39,9 @@ def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
     from jarvis_engine.stt import record_from_microphone
 
     call_count = [0]
-    # First 3 chunks: speech (RMS > threshold), next 25 chunks: silence
+    # First 3 chunks: speech (RMS > threshold), then silence
     # With silence_duration=2.0 and chunk_duration=0.1, need 20 silence chunks
+    # Note: drain_seconds=0.0 to skip the drain read
     def mock_read(n):
         call_count[0] += 1
         if call_count[0] <= 3:
@@ -64,6 +65,7 @@ def test_record_microphone_vad_stops_on_silence_after_speech() -> None:
             max_duration_seconds=30.0,
             silence_threshold=0.01,
             silence_duration=2.0,
+            drain_seconds=0.0,
         )
 
     # 3 speech chunks + 20 silence chunks = 23 total (not 300 for 30s)
@@ -393,3 +395,114 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
 
     # Should still produce audio (fell back to RMS)
     assert len(result) > 0
+
+
+# ===========================================================================
+# RC-1: Silence timeout and mode tests
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# RC-1: Default silence duration is 0.8s for command mode
+# ---------------------------------------------------------------------------
+
+def test_record_microphone_default_silence_duration_is_command_mode() -> None:
+    """Default silence_duration is 0.8s (command mode), not 2.0s."""
+    from jarvis_engine.stt_backends import _SILENCE_DURATION_COMMAND
+
+    assert _SILENCE_DURATION_COMMAND == 0.8
+
+
+def test_record_microphone_dictation_mode_silence_duration() -> None:
+    """Dictation mode uses 2.0s silence duration."""
+    from jarvis_engine.stt_backends import _SILENCE_DURATION_DICTATION
+
+    assert _SILENCE_DURATION_DICTATION == 2.0
+
+
+def test_record_microphone_command_mode_stops_faster() -> None:
+    """Command mode (default) stops recording faster than old 2.0s default."""
+    from jarvis_engine.stt import record_from_microphone
+
+    call_count = [0]
+    # 3 speech chunks then silence (RMS fallback, 100ms chunks)
+    # silence_duration=0.8 -> 8 silence chunks needed
+    def mock_read(n):
+        call_count[0] += 1
+        if call_count[0] <= 3:
+            chunk = np.full((n, 1), 0.5, dtype=np.float32)
+        else:
+            chunk = np.zeros((n, 1), dtype=np.float32)
+        return chunk, False
+
+    mock_stream = MagicMock(spec=_SdInputStreamStub)
+    mock_stream.read = mock_read
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+
+    mock_sd = MagicMock(spec=_SdModuleStub)
+    mock_sd.InputStream.return_value = mock_stream
+
+    with patch("builtins.__import__", side_effect=lambda name, *a, **kw: mock_sd if name == "sounddevice" else __import__(name, *a, **kw)):
+        record_from_microphone(
+            max_duration_seconds=30.0,
+            silence_threshold=0.01,
+            drain_seconds=0.0,
+            # Uses default silence_duration=0.8 and mode="command"
+        )
+
+    # 3 speech + 8 silence = 11 (much less than 23 with old 2.0s default)
+    assert call_count[0] == 11
+
+
+# ===========================================================================
+# RC-3: Speech padding tests
+# ===========================================================================
+
+
+def test_capture_loop_prepends_pre_speech_audio() -> None:
+    """Pre-speech ring buffer audio is prepended when speech starts."""
+    from jarvis_engine.stt_backends import _capture_audio_loop
+
+    call_count = [0]
+    samples_per_chunk = 1600  # 100ms at 16kHz
+    pre_speech_value = 0.001
+    speech_value = 0.5
+
+    def mock_read(n):
+        call_count[0] += 1
+        if call_count[0] <= 2:
+            # Pre-speech: quiet audio that goes into ring buffer
+            chunk = np.full((n, 1), pre_speech_value, dtype=np.float32)
+        elif call_count[0] <= 4:
+            # Speech
+            chunk = np.full((n, 1), speech_value, dtype=np.float32)
+        else:
+            # Silence
+            chunk = np.zeros((n, 1), dtype=np.float32)
+        return chunk, False
+
+    mock_stream = MagicMock()
+    mock_stream.read = mock_read
+
+    frames = _capture_audio_loop(
+        mock_stream,
+        sample_rate=16000,
+        max_duration_seconds=5.0,
+        silence_threshold=0.01,
+        silence_duration=0.3,
+        drain_seconds=0.0,
+        vad_detector=None,
+        use_silero=False,
+        pre_speech_pad_seconds=0.2,  # 2 chunks of pre-speech
+        post_speech_pad_seconds=0.0,
+    )
+
+    # frames should include pre-speech buffer chunks + speech chunks + some silence
+    assert len(frames) > 0
+    # First frames should be the pre-speech chunks (quiet but non-zero)
+    first_frame = frames[0]
+    first_val = float(first_frame.flatten()[0])
+    assert abs(first_val - pre_speech_value) < 0.01, (
+        f"First frame should be pre-speech audio, got {first_val}"
+    )

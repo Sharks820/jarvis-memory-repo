@@ -171,4 +171,54 @@ class HealthRoutesMixin:
         except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Recent activity events gather failed: %s", exc)
             combined["recent_events"] = []
+        try:
+            from jarvis_engine.learning_missions import get_now_working_on
+
+            now_working = get_now_working_on(self._root)
+            combined["now_working_on"] = now_working
+        except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
+            logger.debug("now_working_on gather failed: %s", exc)
+            combined["now_working_on"] = None
         self._write_json(HTTPStatus.OK, combined)
+
+    def _handle_get_gateway_health(self) -> None:
+        """GET /gateway/health — per-provider health and circuit breaker status."""
+        if not self._validate_auth(b""):
+            return
+        server_obj = self.server
+        gateway = getattr(server_obj, "gateway", None)
+        if gateway is None:
+            self._write_json(HTTPStatus.OK, {"ok": True, "providers": {}})
+            return
+        health_tracker = getattr(gateway, "_health", None)
+        if health_tracker is None:
+            self._write_json(HTTPStatus.OK, {"ok": True, "providers": {}})
+            return
+        try:
+            provider_health = health_tracker.all_health()
+        except (AttributeError, RuntimeError, ValueError) as exc:
+            logger.debug("Gateway health query failed: %s", exc)
+            provider_health = {}
+        self._write_json(HTTPStatus.OK, {"ok": True, "providers": provider_health})
+
+    def _handle_get_gateway_budget(self) -> None:
+        """GET /gateway/budget — current budget utilisation snapshot."""
+        if not self._validate_auth(b""):
+            return
+        server_obj = self.server
+        gateway = getattr(server_obj, "gateway", None)
+        if gateway is None:
+            self._write_json(HTTPStatus.OK, {"ok": True, "budget": {}})
+            return
+        budget = getattr(gateway, "_budget", None)
+        if budget is None:
+            self._write_json(HTTPStatus.OK, {"ok": True, "budget": {}})
+            return
+        try:
+            from dataclasses import asdict
+            status = budget.status()
+            budget_dict = asdict(status)
+        except (AttributeError, RuntimeError, ValueError) as exc:
+            logger.debug("Gateway budget query failed: %s", exc)
+            budget_dict = {}
+        self._write_json(HTTPStatus.OK, {"ok": True, "budget": budget_dict})

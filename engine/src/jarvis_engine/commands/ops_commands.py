@@ -173,6 +173,60 @@ class MissionCancelResult:
 
 
 @dataclass(frozen=True)
+class MissionPauseCommand:
+    mission_id: str
+
+
+@dataclass
+class MissionPauseResult(ResultBase):
+    mission: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MissionResumeCommand:
+    mission_id: str
+
+
+@dataclass
+class MissionResumeResult(ResultBase):
+    mission: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MissionRestartCommand:
+    mission_id: str
+
+
+@dataclass
+class MissionRestartResult(ResultBase):
+    mission: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MissionStepsCommand:
+    mission_id: str
+
+
+@dataclass
+class MissionStepsResult:
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    mission_id: str = ""
+    message: str = ""
+
+
+@dataclass(frozen=True)
+class MissionActiveCommand:
+    pass
+
+
+@dataclass
+class MissionActiveResult:
+    missions: list[dict[str, Any]] = field(default_factory=list)
+    count: int = 0
+    message: str = ""
+
+
+@dataclass(frozen=True)
 class IntelligenceDashboardCommand:
     last_runs: int = 20
     output_path: str = ""

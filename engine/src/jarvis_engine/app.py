@@ -54,10 +54,15 @@ from jarvis_engine.commands.ops_commands import (
     GrowthEvalCommand,
     GrowthReportCommand,
     IntelligenceDashboardCommand,
+    MissionActiveCommand,
     MissionCancelCommand,
     MissionCreateCommand,
+    MissionPauseCommand,
+    MissionRestartCommand,
+    MissionResumeCommand,
     MissionRunCommand,
     MissionStatusCommand,
+    MissionStepsCommand,
     OpsAutopilotCommand,
     OpsBriefCommand,
     OpsExportActionsCommand,
@@ -124,10 +129,15 @@ from jarvis_engine.handlers.ops_handlers import (
     GrowthEvalHandler,
     GrowthReportHandler,
     IntelligenceDashboardHandler,
+    MissionActiveHandler,
     MissionCancelHandler,
     MissionCreateHandler,
+    MissionPauseHandler,
+    MissionRestartHandler,
+    MissionResumeHandler,
     MissionRunHandler,
     MissionStatusHandler,
+    MissionStepsHandler,
     OpsAutopilotHandler,
     OpsBriefHandler,
     OpsExportActionsHandler,
@@ -353,6 +363,11 @@ def _register_ops_handlers(
     bus.register(MissionCancelCommand, MissionCancelHandler(root).handle)
     bus.register(MissionStatusCommand, MissionStatusHandler(root).handle)
     bus.register(MissionRunCommand, MissionRunHandler(root, enriched_pipeline=pipeline).handle)
+    bus.register(MissionPauseCommand, MissionPauseHandler(root).handle)
+    bus.register(MissionResumeCommand, MissionResumeHandler(root).handle)
+    bus.register(MissionRestartCommand, MissionRestartHandler(root).handle)
+    bus.register(MissionStepsCommand, MissionStepsHandler(root).handle)
+    bus.register(MissionActiveCommand, MissionActiveHandler(root).handle)
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)
     bus.register(GrowthReportCommand, GrowthReportHandler(root).handle)
     bus.register(GrowthAuditCommand, GrowthAuditHandler(root).handle)

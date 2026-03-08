@@ -34,14 +34,24 @@ from jarvis_engine.commands.ops_commands import (
     GrowthReportResult,
     IntelligenceDashboardCommand,
     IntelligenceDashboardResult,
+    MissionActiveCommand,
+    MissionActiveResult,
     MissionCancelCommand,
     MissionCancelResult,
     MissionCreateCommand,
     MissionCreateResult,
+    MissionPauseCommand,
+    MissionPauseResult,
+    MissionRestartCommand,
+    MissionRestartResult,
+    MissionResumeCommand,
+    MissionResumeResult,
     MissionRunCommand,
     MissionRunResult,
     MissionStatusCommand,
     MissionStatusResult,
+    MissionStepsCommand,
+    MissionStepsResult,
     OpsAutopilotCommand,
     OpsAutopilotResult,
     OpsBriefCommand,
@@ -372,6 +382,73 @@ class GrowthAuditHandler:
             logger.warning("GrowthAudit run lookup failed: %s", exc)
             return GrowthAuditResult(message=str(exc))
         return GrowthAuditResult(run=run)
+
+
+class MissionPauseHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MissionPauseCommand) -> MissionPauseResult:
+        from jarvis_engine.learning_missions import pause_mission
+
+        try:
+            mission = pause_mission(self._root, mission_id=cmd.mission_id)
+        except ValueError as exc:
+            logger.warning("Mission pause failed: %s", exc)
+            return MissionPauseResult(return_code=2, message=str(exc))
+        return MissionPauseResult(mission=mission, return_code=0)
+
+
+class MissionResumeHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MissionResumeCommand) -> MissionResumeResult:
+        from jarvis_engine.learning_missions import resume_mission
+
+        try:
+            mission = resume_mission(self._root, mission_id=cmd.mission_id)
+        except ValueError as exc:
+            logger.warning("Mission resume failed: %s", exc)
+            return MissionResumeResult(return_code=2, message=str(exc))
+        return MissionResumeResult(mission=mission, return_code=0)
+
+
+class MissionRestartHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MissionRestartCommand) -> MissionRestartResult:
+        from jarvis_engine.learning_missions import restart_mission
+
+        try:
+            mission = restart_mission(self._root, mission_id=cmd.mission_id)
+        except ValueError as exc:
+            logger.warning("Mission restart failed: %s", exc)
+            return MissionRestartResult(return_code=2, message=str(exc))
+        return MissionRestartResult(mission=mission, return_code=0)
+
+
+class MissionStepsHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MissionStepsCommand) -> MissionStepsResult:
+        from jarvis_engine.learning_missions import get_mission_steps
+
+        steps = get_mission_steps(self._root, cmd.mission_id)
+        return MissionStepsResult(steps=steps, mission_id=cmd.mission_id)
+
+
+class MissionActiveHandler:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def handle(self, cmd: MissionActiveCommand) -> MissionActiveResult:
+        from jarvis_engine.learning_missions import get_active_missions
+
+        missions = get_active_missions(self._root)
+        return MissionActiveResult(missions=missions, count=len(missions))
 
 
 class IntelligenceDashboardHandler:

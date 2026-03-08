@@ -70,6 +70,17 @@ class SileroVADDetector:
     ----------
     threshold:
         Speech probability above which a chunk is considered speech.
+        Used as both onset and offset threshold when *onset_threshold*
+        and *offset_threshold* are not provided.  Kept for backward
+        compatibility.
+    onset_threshold:
+        Speech probability above which speech **starts** being detected.
+        More sensitive (lower) than *offset_threshold* to catch soft
+        speech beginnings.  Defaults to 0.4.
+    offset_threshold:
+        Speech probability below which speech is considered **ended**.
+        Higher than *onset_threshold* to avoid premature cutoff on
+        momentary dips.  Defaults to 0.6.
     sampling_rate:
         Audio sampling rate in Hz.  Silero supports 8000 and 16000.
     """
@@ -78,11 +89,19 @@ class SileroVADDetector:
         self,
         threshold: float = 0.4,
         sampling_rate: int = 16000,
+        *,
+        onset_threshold: float | None = None,
+        offset_threshold: float | None = None,
     ) -> None:
         self._threshold = threshold
+        # RC-2: split onset/offset thresholds for hysteresis
+        self._onset_threshold = onset_threshold if onset_threshold is not None else threshold
+        self._offset_threshold = offset_threshold if offset_threshold is not None else 0.6
         self._sampling_rate = sampling_rate
         self._model = None  # lazy-loaded
         self._threads_set = False
+        # Track whether we are currently in a speech region (for hysteresis)
+        self._in_speech = False
 
     # -- lazy model loading --------------------------------------------------
 
@@ -109,17 +128,35 @@ class SileroVADDetector:
             self._threads_set = True
 
         self._model = load_silero_vad()
-        logger.info("Silero VAD model loaded (threshold=%.2f)", self._threshold)
+        logger.info(
+            "Silero VAD model loaded (onset=%.2f, offset=%.2f)",
+            self._onset_threshold,
+            self._offset_threshold,
+        )
 
     # -- public API -----------------------------------------------------------
 
     def is_speech(self, audio_chunk: np.ndarray) -> bool:
         """Return ``True`` if *audio_chunk* contains speech.
 
+        Uses hysteresis: once speech is detected (confidence > onset_threshold),
+        it remains detected until confidence drops below offset_threshold.
+        This prevents rapid toggling on borderline audio.
+
         *audio_chunk* should be a 1-D float32 array of 512 samples at
         16 kHz.  If the model is unavailable the method returns ``False``.
         """
-        return self.get_confidence(audio_chunk) > self._threshold
+        conf = self.get_confidence(audio_chunk)
+        if self._in_speech:
+            # Already in speech -- require stronger silence to exit
+            if conf < (1.0 - self._offset_threshold):
+                self._in_speech = False
+            return self._in_speech
+        else:
+            # Not in speech -- use more sensitive onset
+            if conf > self._onset_threshold:
+                self._in_speech = True
+            return self._in_speech
 
     def get_confidence(self, audio_chunk: np.ndarray) -> float:
         """Return the raw speech probability for *audio_chunk*.
@@ -142,7 +179,8 @@ class SileroVADDetector:
 
         Splits the chunk into 512-sample sub-windows and returns ``True``
         if the **maximum** confidence across sub-windows exceeds the
-        threshold.  This handles e.g. wakeword.py's 1280-frame chunks.
+        onset threshold (or offset threshold if currently in speech).
+        This handles e.g. wakeword.py's 1280-frame chunks.
         """
         self._ensure_model()
         if self._model is None:
@@ -161,7 +199,14 @@ class SileroVADDetector:
                 max_conf = conf
             offset += _SILERO_WINDOW_SAMPLES
 
-        return max_conf > self._threshold
+        # Apply hysteresis at the chunk level
+        active_threshold = (1.0 - self._offset_threshold) if self._in_speech else self._onset_threshold
+        if max_conf > active_threshold:
+            self._in_speech = True
+        elif self._in_speech and max_conf < (1.0 - self._offset_threshold):
+            self._in_speech = False
+
+        return max_conf > active_threshold
 
     def reset(self) -> None:
         """Reset internal model state between utterances.
@@ -169,6 +214,7 @@ class SileroVADDetector:
         Silero VAD is stateful (recurrent layers carry over across calls).
         Call this after each recording session / wake-word activation.
         """
+        self._in_speech = False
         if self._model is not None:
             try:
                 self._model.reset_states()
@@ -192,6 +238,9 @@ _vad_lock = threading.Lock()
 def get_vad_detector(
     threshold: float = 0.4,
     sampling_rate: int = 16000,
+    *,
+    onset_threshold: float | None = None,
+    offset_threshold: float | None = None,
 ) -> SileroVADDetector:
     """Return a shared :class:`SileroVADDetector` singleton.
 
@@ -205,5 +254,7 @@ def get_vad_detector(
                 _vad_instance = SileroVADDetector(
                     threshold=threshold,
                     sampling_rate=sampling_rate,
+                    onset_threshold=onset_threshold,
+                    offset_threshold=offset_threshold,
                 )
     return _vad_instance

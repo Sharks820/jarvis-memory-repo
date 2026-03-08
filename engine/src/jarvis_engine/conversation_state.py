@@ -6,12 +6,13 @@ unresolved goals, and a rolling summary so that any new LLM provider can
 resume the conversation seamlessly.
 
 Thread safety: all mutations go through ``threading.RLock`` instances.
-Persistence: atomic JSON writes via ``os.replace`` for crash safety.
+Persistence: Fernet-encrypted JSON writes via ``os.replace`` for crash safety.
 Timeline: SQLite-backed turn history, falls back to in-memory list.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -38,6 +39,36 @@ logger = logging.getLogger(__name__)
 _DEFAULT_STATE_DIR = ".planning/runtime"
 _STATE_FILENAME = "conversation_state.json"
 _TIMELINE_DB_FILENAME = "conversation_timeline.db"
+_SALT_FILENAME = "conversation_state_salt.bin"
+
+# Encryption constants
+_KDF_ITERATIONS = 480_000
+_ENCRYPTION_ENV_KEY = "JARVIS_SIGNING_KEY"
+_ENCRYPTED_HEADER = b"FERNET:"
+
+# Timeline retention
+_TIMELINE_MAX_AGE_DAYS = 30
+_TIMELINE_PRUNE_INTERVAL = 100  # prune every Nth save
+_TIMELINE_VACUUM_THRESHOLD = 1000
+
+# Entity validation limits (S5)
+_MAX_ENTITY_LENGTH = 200
+_MAX_ENTITIES_PER_TURN = 50
+_RE_CODE_BLOCK = re.compile(r"```")
+_RE_URL_ENCODED = re.compile(r"(?:%[0-9A-Fa-f]{2}){3,}")
+_RE_BASE64_BLOCK = re.compile(
+    r"^(?=[A-Za-z0-9+/]*[+/=])[A-Za-z0-9+/]{16,}={0,2}$"
+)
+_RE_PROMPT_INJECTION = re.compile(
+    r"(?:ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions?"
+    r"|system\s*:\s*you\s+are"
+    r"|<\s*(?:script|img|iframe|object)\b"
+    r"|javascript\s*:"
+    r"|EXECUTE\s+|DROP\s+TABLE|SELECT\s+.*FROM"
+    r"|\beval\s*\("
+    r"|\b__import__\s*\()",
+    re.IGNORECASE,
+)
 
 # Entity extraction patterns (compiled once)
 _RE_URL = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
@@ -63,13 +94,15 @@ _RE_NAME_PREFIX = re.compile(
 )
 _RE_CAPITALIZED_SEQ = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
 
-# PII patterns — matches are excluded from anchor_entities
+# PII patterns — matches are masked before storage in anchor_entities
+# These are used with fullmatch() on extracted entity strings, so anchors
+# like \b are not needed (and would interfere with parenthesized phones).
 _RE_PII_PHONE = re.compile(
-    r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
+    r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}"
 )
-_RE_PII_SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
-_RE_PII_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_RE_PII_CC = re.compile(r"\b(?:\d[ -]?){13,19}\b")
+_RE_PII_SSN = re.compile(r"\d{3}-\d{2}-\d{4}")
+_RE_PII_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_RE_PII_CC = re.compile(r"\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}")
 
 # Decision detection patterns
 _RE_DECISIONS = re.compile(
@@ -392,6 +425,16 @@ class ConversationTimeline:
                 ]
                 return before - len(self._in_memory)
 
+    def vacuum(self) -> None:
+        """Run VACUUM on the timeline database to reclaim space (S4)."""
+        with self._lock:
+            if self._using_db and self._db is not None:
+                try:
+                    self._db.execute("VACUUM")
+                    logger.info("Timeline database vacuumed")
+                except sqlite3.Error as exc:
+                    logger.warning("Timeline VACUUM failed: %s", exc)
+
     def close(self) -> None:
         """Close the database connection (idempotent)."""
         with self._lock:
@@ -402,6 +445,203 @@ class ConversationTimeline:
                     logger.warning("Failed to close timeline DB: %s", exc)
                 self._db = None
                 self._using_db = False
+
+
+# ---------------------------------------------------------------------------
+# Snippet redaction (S3)
+# ---------------------------------------------------------------------------
+
+
+def _redact_snippet(snippet: str, max_len: int = 50) -> str:
+    """Truncate a summary snippet for API exposure.
+
+    If the snippet is longer than *max_len*, show the first 20 chars,
+    "...", and the last 20 chars.
+    """
+    if len(snippet) <= max_len:
+        return snippet
+    return f"{snippet[:20]}...{snippet[-20:]}"
+
+
+# ---------------------------------------------------------------------------
+# Encryption helpers (S1)
+# ---------------------------------------------------------------------------
+
+
+def _get_or_create_salt(salt_path: Path) -> bytes:
+    """Return salt bytes from *salt_path*, creating the file if needed."""
+    if salt_path.exists():
+        return salt_path.read_bytes()
+    salt = os.urandom(16)
+    salt_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = salt_path.with_suffix(f".tmp.{os.getpid()}")
+    try:
+        tmp.write_bytes(salt)
+        os.replace(str(tmp), str(salt_path))
+    except OSError:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        if salt_path.exists():
+            return salt_path.read_bytes()
+        raise
+    return salt
+
+
+def _derive_fernet_key(signing_key: str, salt: bytes) -> bytes:
+    """Derive a Fernet-compatible key using PBKDF2HMAC (same approach as sync module)."""
+    try:
+        from cryptography.hazmat.primitives import hashes as _hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    except ImportError:
+        raise ImportError("cryptography package required for conversation state encryption")
+
+    kdf = PBKDF2HMAC(
+        algorithm=_hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=_KDF_ITERATIONS,
+    )
+    raw_key = kdf.derive(signing_key.encode("utf-8"))
+    return base64.urlsafe_b64encode(raw_key)
+
+
+def _encrypt_json(payload: dict[str, Any], fernet_key: bytes) -> bytes:
+    """Serialize *payload* to JSON and encrypt with Fernet."""
+    from cryptography.fernet import Fernet
+
+    raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    f = Fernet(fernet_key)
+    return _ENCRYPTED_HEADER + f.encrypt(raw)
+
+
+def _decrypt_json(data: bytes, fernet_key: bytes) -> dict[str, Any]:
+    """Decrypt Fernet-encrypted JSON data."""
+    from cryptography.fernet import Fernet
+
+    if data.startswith(_ENCRYPTED_HEADER):
+        data = data[len(_ENCRYPTED_HEADER):]
+    f = Fernet(fernet_key)
+    raw = f.decrypt(data)
+    return json.loads(raw)
+
+
+def _get_encryption_key(state_dir: Path) -> bytes | None:
+    """Get Fernet key for conversation state encryption.
+
+    Uses JARVIS_SIGNING_KEY env var.  Returns None if encryption is
+    not available (no signing key set or cryptography not installed).
+    """
+    signing_key = os.environ.get(_ENCRYPTION_ENV_KEY, "")
+    if not signing_key:
+        return None
+    try:
+        salt_path = state_dir / _SALT_FILENAME
+        salt = _get_or_create_salt(salt_path)
+        return _derive_fernet_key(signing_key, salt)
+    except (ImportError, OSError) as exc:
+        logger.debug("Encryption unavailable for conversation state: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# PII masking helpers (S2)
+# ---------------------------------------------------------------------------
+
+
+def _mask_ssn(value: str) -> str:
+    """Mask SSN: 123-45-6789 -> ***-**-6789"""
+    return f"***-**-{value[-4:]}"
+
+
+def _mask_cc(value: str) -> str:
+    """Mask credit card: 1234-5678-9012-3456 -> ****-****-****-3456"""
+    digits = re.sub(r"[\s-]", "", value)
+    return f"****-****-****-{digits[-4:]}"
+
+
+def _mask_phone(value: str) -> str:
+    """Mask phone: (555) 123-4567 -> ***-***-4567"""
+    digits = re.sub(r"\D", "", value)
+    return f"***-***-{digits[-4:]}"
+
+
+def _mask_email(value: str) -> str:
+    """Mask email: user@domain.com -> u***@domain.com"""
+    parts = value.split("@")
+    if len(parts) == 2 and parts[0]:
+        return f"{parts[0][0]}***@{parts[1]}"
+    return "***@***"
+
+
+@dataclass
+class PIIFilterResult:
+    """Result of PII filtering on an entity."""
+
+    value: str
+    pii_detected: bool
+    masked: bool
+
+
+def filter_pii_entity(entity: str) -> PIIFilterResult:
+    """Check entity for PII and return masked version if found.
+
+    Returns a PIIFilterResult with the (possibly masked) value and a
+    pii_detected flag for audit purposes.
+    """
+    # SSN — highest priority (most dangerous)
+    if _RE_PII_SSN.fullmatch(entity):
+        return PIIFilterResult(value=_mask_ssn(entity), pii_detected=True, masked=True)
+
+    # Credit card
+    if _RE_PII_CC.fullmatch(entity):
+        return PIIFilterResult(value=_mask_cc(entity), pii_detected=True, masked=True)
+
+    # Phone number
+    if _RE_PII_PHONE.fullmatch(entity):
+        return PIIFilterResult(value=_mask_phone(entity), pii_detected=True, masked=True)
+
+    # Email address
+    if _RE_PII_EMAIL.fullmatch(entity):
+        return PIIFilterResult(value=_mask_email(entity), pii_detected=True, masked=True)
+
+    return PIIFilterResult(value=entity, pii_detected=False, masked=False)
+
+
+# ---------------------------------------------------------------------------
+# Entity validation (S5)
+# ---------------------------------------------------------------------------
+
+
+def validate_entity(entity: str) -> bool:
+    """Validate an entity string against poisoning attempts.
+
+    Returns True if the entity is safe to store, False if it should be
+    rejected.
+    """
+    # Max length check
+    if len(entity) > _MAX_ENTITY_LENGTH:
+        return False
+
+    # Code block markers
+    if _RE_CODE_BLOCK.search(entity):
+        return False
+
+    # URL-encoded content (3+ consecutive encoded bytes)
+    if _RE_URL_ENCODED.search(entity):
+        return False
+
+    # Base64 blocks (long base64-looking strings)
+    if _RE_BASE64_BLOCK.fullmatch(entity.strip()):
+        return False
+
+    # Prompt injection patterns
+    if _RE_PROMPT_INJECTION.search(entity):
+        return False
+
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -484,13 +724,31 @@ def extract_entities(text: str) -> set[str]:
             continue
         entities.add(name)
 
-    # Filter out PII matches
-    pii_patterns = [_RE_PII_PHONE, _RE_PII_SSN, _RE_PII_EMAIL, _RE_PII_CC]
+    # S5: Validate entities against poisoning + S2: mask PII
     filtered: set[str] = set()
+    pii_count = 0
+    rejected_count = 0
     for entity in entities:
-        if any(pat.fullmatch(entity) for pat in pii_patterns):
+        # S5: reject entities that fail validation
+        if not validate_entity(entity):
+            rejected_count += 1
             continue
-        filtered.add(entity)
+        # S2: mask PII instead of silently dropping
+        result = filter_pii_entity(entity)
+        if result.pii_detected:
+            pii_count += 1
+        filtered.add(result.value)
+
+    # S5: enforce max entities per turn
+    if len(filtered) > _MAX_ENTITIES_PER_TURN:
+        # Keep the first N entities (sorted for determinism)
+        filtered = set(sorted(filtered)[:_MAX_ENTITIES_PER_TURN])
+
+    if pii_count:
+        logger.info("PII masked in %d entities", pii_count)
+    if rejected_count:
+        logger.info("Rejected %d entities (validation failure)", rejected_count)
+
     return filtered
 
 
@@ -628,15 +886,24 @@ class ConversationStateManager:
         self,
         state_dir: Path | None = None,
         db_path: Path | None = None,
+        *,
+        encryption_key: bytes | None = ...,  # type: ignore[assignment]
     ) -> None:
         self._lock = threading.RLock()
         self._last_save_time: float = 0.0
         self._save_pending = False
+        self._save_count = 0
 
         if state_dir is None:
             state_dir = repo_root() / _DEFAULT_STATE_DIR
         self._state_dir = state_dir
         self._state_file = self._state_dir / _STATE_FILENAME
+
+        # S1: Fernet encryption key (lazy derive from env if not explicitly given)
+        if encryption_key is ...:
+            self._fernet_key = _get_encryption_key(self._state_dir)
+        else:
+            self._fernet_key = encryption_key
 
         if db_path is None:
             db_path = self._state_dir / _TIMELINE_DB_FILENAME
@@ -915,30 +1182,54 @@ class ConversationStateManager:
     # State snapshot (for mobile API / dashboard)
     # ------------------------------------------------------------------
 
-    def get_state_snapshot(self) -> dict[str, Any]:
-        """Return the full conversation state as a serializable dict.
+    def get_state_snapshot(self, *, full: bool = False) -> dict[str, Any]:
+        """Return conversation state as a serializable dict.
 
-        Suitable for the ``GET /conversation/state`` mobile API endpoint.
+        Parameters
+        ----------
+        full : bool
+            When True, return complete unredacted data (for authenticated
+            dashboard use only).  When False (default, used by the mobile
+            API), redact sensitive fields per S3.
 
         Returns
         -------
         dict
-            Complete snapshot including all fields, timeline count, and
-            recent timeline entries.
+            Snapshot with timeline count and recent timeline entries.
         """
         with self._lock:
             data = self._snapshot.to_dict()
             data["timeline_count"] = self._timeline.count()
-            data["recent_timeline"] = [
-                {
-                    "timestamp": e.timestamp,
-                    "model": e.model,
-                    "role": e.role,
-                    "content_hash": e.content_hash,
-                    "summary_snippet": e.summary_snippet,
-                }
-                for e in self._timeline.recent(limit=10)
-            ]
+
+            if full:
+                # Full unredacted snapshot for authenticated dashboard
+                data["recent_timeline"] = [
+                    {
+                        "timestamp": e.timestamp,
+                        "model": e.model,
+                        "role": e.role,
+                        "content_hash": e.content_hash,
+                        "summary_snippet": e.summary_snippet,
+                    }
+                    for e in self._timeline.recent(limit=10)
+                ]
+            else:
+                # S3: Redacted snapshot — no full rolling_summary, truncated snippets
+                data["summary_length"] = len(data.get("rolling_summary", ""))
+                data["entity_count"] = len(data.get("anchor_entities", []))
+                data.pop("rolling_summary", None)
+
+                data["recent_timeline"] = [
+                    {
+                        "timestamp": e.timestamp,
+                        "model": e.model,
+                        "role": e.role,
+                        "content_hash": e.content_hash,
+                        "summary_snippet": _redact_snippet(e.summary_snippet),
+                    }
+                    for e in self._timeline.recent(limit=10)
+                ]
+
             return data
 
     # ------------------------------------------------------------------
@@ -966,26 +1257,45 @@ class ConversationStateManager:
     def save(self) -> None:
         """Persist conversation state to disk atomically.
 
+        Uses Fernet encryption when a signing key is available (S1).
         Uses a temporary file + ``os.replace`` for crash safety.  Errors
         are logged but do not propagate.
         """
         with self._lock:
             payload = self._snapshot.to_dict()
+            self._save_count += 1
+            do_prune = (self._save_count % _TIMELINE_PRUNE_INTERVAL) == 0
 
         try:
             self._state_dir.mkdir(parents=True, exist_ok=True)
-            raw = json.dumps(payload, ensure_ascii=False, indent=2)
             tmp = self._state_file.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
-            tmp.write_text(raw, encoding="utf-8")
+            if self._fernet_key is not None:
+                encrypted = _encrypt_json(payload, self._fernet_key)
+                tmp.write_bytes(encrypted)
+            else:
+                raw = json.dumps(payload, ensure_ascii=False, indent=2)
+                tmp.write_text(raw, encoding="utf-8")
             os.replace(str(tmp), str(self._state_file))
             self._last_save_time = time.monotonic()
             self._save_pending = False
         except OSError as exc:
             logger.debug("Could not save conversation state: %s", exc)
 
+        # S4: periodic timeline pruning
+        if do_prune:
+            try:
+                deleted = self._timeline.prune(max_age_days=_TIMELINE_MAX_AGE_DAYS)
+                if deleted >= _TIMELINE_VACUUM_THRESHOLD:
+                    self._timeline.vacuum()
+            except (OSError, sqlite3.Error) as exc:
+                logger.debug("Timeline prune during save failed: %s", exc)
+
     def load(self) -> None:
         """Load conversation state from disk if the file exists.
 
+        Handles both encrypted and plaintext files (S1). If an
+        unencrypted file exists and a Fernet key is available, the file
+        is automatically re-encrypted on first load (graceful migration).
         Tolerates missing files, corrupt JSON, and schema changes
         gracefully.  On any error, the current state is left unchanged.
         """
@@ -993,8 +1303,35 @@ class ConversationStateManager:
             return
 
         try:
-            raw = self._state_file.read_text(encoding="utf-8")
-            data = json.loads(raw)
+            raw_bytes = self._state_file.read_bytes()
+            data: dict[str, Any] | None = None
+            was_plaintext = False
+
+            if raw_bytes.startswith(_ENCRYPTED_HEADER):
+                # File is encrypted
+                if self._fernet_key is not None:
+                    data = _decrypt_json(raw_bytes, self._fernet_key)
+                else:
+                    logger.warning(
+                        "Conversation state file is encrypted but no key is available"
+                    )
+                    return
+            else:
+                # File is plaintext JSON — try to parse
+                try:
+                    data = json.loads(raw_bytes.decode("utf-8"))
+                    was_plaintext = True
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    # Might be encrypted without header (shouldn't happen, but be safe)
+                    if self._fernet_key is not None:
+                        try:
+                            data = _decrypt_json(raw_bytes, self._fernet_key)
+                        except Exception:
+                            pass
+                    if data is None:
+                        logger.warning("Could not parse conversation state file")
+                        return
+
             if isinstance(data, dict):
                 with self._lock:
                     self._snapshot = ConversationSnapshot.from_dict(data)
@@ -1003,8 +1340,15 @@ class ConversationStateManager:
                     self._snapshot.session_id,
                     self._snapshot.turn_count,
                 )
+                # S1: Graceful migration — encrypt plaintext file on first load
+                if was_plaintext and self._fernet_key is not None:
+                    logger.info("Migrating plaintext conversation state to encrypted format")
+                    self.save()
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.warning("Could not load conversation state: %s", exc)
+        except Exception as exc:
+            # Catch cryptography errors (InvalidToken, etc.)
+            logger.warning("Could not decrypt conversation state: %s", exc)
 
     # ------------------------------------------------------------------
     # Reset

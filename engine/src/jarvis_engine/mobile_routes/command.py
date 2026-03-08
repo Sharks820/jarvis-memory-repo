@@ -286,6 +286,129 @@ class CommandRoutesMixin:
             logger.error("Mission status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
 
+    def _handle_get_missions_active(self) -> None:
+        """Return all running/paused/pending missions."""
+        if not self._validate_auth(b""):
+            return
+        try:
+            from jarvis_engine.learning_missions import get_active_missions
+
+            missions = get_active_missions(self._root)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "count": len(missions),
+                "missions": [
+                    {
+                        "mission_id": m.get("mission_id", ""),
+                        "topic": m.get("topic", ""),
+                        "status": m.get("status", ""),
+                        "progress_pct": int(m.get("progress_pct", 0)),
+                        "progress_bar": m.get("progress_bar", ""),
+                        "status_detail": m.get("status_detail", ""),
+                        "updated_utc": m.get("updated_utc", ""),
+                    }
+                    for m in missions
+                    if isinstance(m, dict)
+                ],
+            })
+        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            logger.error("Mission active list failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Active missions unavailable."})
+
+    def _handle_get_missions_steps(self) -> None:
+        """Return the step breakdown for a specific mission."""
+        if not self._validate_auth(b""):
+            return
+        qs = _parse_query_params(self.path)
+        mission_id = str(qs.get("id", [""])[0]).strip()
+        if not mission_id:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "id query parameter is required"})
+            return
+        try:
+            from jarvis_engine.learning_missions import get_mission_steps
+
+            steps = get_mission_steps(self._root, mission_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission_id,
+                "steps": steps,
+            })
+        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            logger.error("Mission steps failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission steps unavailable."})
+
+    def _handle_post_missions_pause(self) -> None:
+        """Pause a running mission."""
+        payload, _ = self._read_json_body(max_content_length=1_000)
+        if payload is None:
+            return
+        mission_id = str(payload.get("mission_id", "")).strip()
+        if not mission_id:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            return
+        try:
+            from jarvis_engine.learning_missions import pause_mission
+
+            mission = pause_mission(self._root, mission_id=mission_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission.get("mission_id", ""),
+                "status": mission.get("status", ""),
+            })
+        except ValueError as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
+        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            logger.error("Mission pause failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission pause failed."})
+
+    def _handle_post_missions_resume(self) -> None:
+        """Resume a paused mission."""
+        payload, _ = self._read_json_body(max_content_length=1_000)
+        if payload is None:
+            return
+        mission_id = str(payload.get("mission_id", "")).strip()
+        if not mission_id:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            return
+        try:
+            from jarvis_engine.learning_missions import resume_mission
+
+            mission = resume_mission(self._root, mission_id=mission_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission.get("mission_id", ""),
+                "status": mission.get("status", ""),
+            })
+        except ValueError as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
+        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            logger.error("Mission resume failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission resume failed."})
+
+    def _handle_post_missions_restart(self) -> None:
+        """Restart a failed/cancelled mission."""
+        payload, _ = self._read_json_body(max_content_length=1_000)
+        if payload is None:
+            return
+        mission_id = str(payload.get("mission_id", "")).strip()
+        if not mission_id:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            return
+        try:
+            from jarvis_engine.learning_missions import restart_mission
+
+            mission = restart_mission(self._root, mission_id=mission_id)
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "mission_id": mission.get("mission_id", ""),
+                "status": mission.get("status", ""),
+            })
+        except ValueError as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
+        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            logger.error("Mission restart failed: %s", exc)
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission restart failed."})
+
     def _handle_get_digest(self) -> None:
         """Return a context-aware digest of what happened while user was busy."""
         if not self._validate_auth(b""):

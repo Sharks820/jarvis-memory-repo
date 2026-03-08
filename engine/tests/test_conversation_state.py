@@ -226,7 +226,7 @@ class TestConversationStateManager:
         cid = manager.create_checkpoint(dropped_messages=dropped)
         assert isinstance(cid, int)
         assert cid >= 1
-        snap = manager.get_state_snapshot()
+        snap = manager.get_state_snapshot(full=True)
         assert snap["checkpoint_id"] == cid
         assert len(snap["rolling_summary"]) > 0
 
@@ -590,7 +590,7 @@ class TestContractScenarios:
         cid = mgr.create_checkpoint(dropped_messages=dropped)
         assert cid >= 1
 
-        snap = mgr.get_state_snapshot()
+        snap = mgr.get_state_snapshot(full=True)
         summary = snap["rolling_summary"]
         assert isinstance(summary, str)
         assert len(summary) > 0

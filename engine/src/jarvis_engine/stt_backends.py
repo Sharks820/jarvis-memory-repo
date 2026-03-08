@@ -18,6 +18,7 @@ import logging
 import os
 import struct
 import time
+from collections import deque
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -102,13 +103,13 @@ def _build_deepgram_params(
         ("punctuate", "true"),
         ("smart_format", "true"),
         ("utterances", "true"),
-        ("endpointing", "400"),
+        ("endpointing", "300"),
         ("filler_words", "false"),
         ("numerals", "true"),
     ]
     # Deepgram supports up to 500 keywords per request; boost intensity
     for kt in keyterms[:500]:
-        params.append(("keywords", f"{kt}:2"))
+        params.append(("keywords", f"{kt}:2.0"))
     return params
 
 
@@ -294,10 +295,16 @@ def _capture_audio_loop(
     drain_seconds: float,
     vad_detector: object | None,
     use_silero: bool,
+    pre_speech_pad_seconds: float = 0.2,
+    post_speech_pad_seconds: float = 0.3,
 ) -> list[np.ndarray]:
     """Read audio chunks from *stream*, stopping on post-speech silence.
 
     Returns the list of captured numpy frames.
+
+    RC-3 speech padding: keeps a ring buffer of pre-speech audio so that
+    word beginnings are not clipped, and appends a small amount of
+    post-speech audio so trailing consonants are preserved.
     """
     # Drain stale audio from OS buffer (e.g. wake word remnants)
     if drain_seconds > 0:
@@ -313,23 +320,36 @@ def _capture_audio_loop(
     min_recording_chunks = int(0.5 / chunk_duration)  # At least 0.5s
     max_chunks = int(max_duration_seconds / chunk_duration)
 
+    # RC-3: pre-speech ring buffer (~200ms of audio before speech onset)
+    pre_pad_chunks = max(1, int(pre_speech_pad_seconds / chunk_duration))
+    pre_speech_buffer: deque[np.ndarray] = deque(maxlen=pre_pad_chunks)
+
+    # RC-3: post-speech padding (~300ms after VAD says speech ended)
+    post_pad_chunks = max(1, int(post_speech_pad_seconds / chunk_duration))
+
     frames: list[np.ndarray] = []
     speech_detected = False
     silence_frames = 0
 
     for i in range(max_chunks):
         chunk, _ = stream.read(samples_per_chunk)
-        frames.append(chunk.copy())
 
         is_speech = _detect_speech(
             chunk, vad_detector, use_silero, silence_threshold,
         )
 
         if is_speech:
+            if not speech_detected:
+                # RC-3: speech just started -- prepend buffered pre-speech audio
+                for buffered in pre_speech_buffer:
+                    frames.append(buffered)
+                pre_speech_buffer.clear()
             speech_detected = True
             silence_frames = 0
+            frames.append(chunk.copy())
         elif speech_detected:
             silence_frames += 1
+            frames.append(chunk.copy())  # RC-3: keep post-speech audio
             if silence_frames >= max_silence_chunks and i >= min_recording_chunks:
                 logger.debug(
                     "Silence detected after speech, stopping recording "
@@ -337,8 +357,16 @@ def _capture_audio_loop(
                     (i + 1) * chunk_duration,
                 )
                 break
+        else:
+            # No speech yet -- keep filling the pre-speech ring buffer
+            pre_speech_buffer.append(chunk.copy())
 
     return frames
+
+
+# RC-1: silence timeout defaults by mode
+_SILENCE_DURATION_COMMAND = 0.8   # fast cutoff for voice commands
+_SILENCE_DURATION_DICTATION = 2.0  # longer pause tolerance for dictation
 
 
 def record_from_microphone(
@@ -346,8 +374,9 @@ def record_from_microphone(
     sample_rate: int = 16000,
     max_duration_seconds: float = 30.0,
     silence_threshold: float = 0.01,
-    silence_duration: float = 1.0,
+    silence_duration: float = _SILENCE_DURATION_COMMAND,
     drain_seconds: float = 0.3,
+    mode: str = "command",
 ) -> np.ndarray:
     """Record audio from the default microphone with Silero VAD.
 
@@ -368,11 +397,17 @@ def record_from_microphone(
         RMS energy threshold below which audio is considered silence
         (default 0.01).  Only used when Silero VAD is unavailable.
     silence_duration:
-        Seconds of continuous silence after speech before stopping (default 1.0).
+        Seconds of continuous silence after speech before stopping
+        (default 0.8 for command mode, 2.0 for dictation mode).
     drain_seconds:
         Seconds of audio to read and discard when opening the stream.  This
         flushes stale audio left in the OS audio buffer (e.g. wake word
         remnants) before the actual recording begins.
+    mode:
+        Recording mode: ``"command"`` (default) uses 0.8s silence timeout
+        for snappy command recognition; ``"dictation"`` uses 2.0s to allow
+        natural pauses in longer speech.  Only applies when *silence_duration*
+        is not explicitly overridden.
 
     Returns a mono float32 numpy array at the given sample rate.
     Raises RuntimeError if sounddevice is not installed or no microphone
@@ -386,13 +421,18 @@ def record_from_microphone(
             "Install with: pip install sounddevice"
         ) from exc
 
+    # RC-1: apply mode-specific silence duration if caller used the default
+    if mode == "dictation" and silence_duration == _SILENCE_DURATION_COMMAND:
+        silence_duration = _SILENCE_DURATION_DICTATION
+
     vad_detector, use_silero = _init_vad(sample_rate)
 
     try:
         logger.info(
-            "Recording from microphone for up to %.1f seconds at %d Hz...",
+            "Recording from microphone for up to %.1f seconds at %d Hz (mode=%s)...",
             max_duration_seconds,
             sample_rate,
+            mode,
         )
 
         with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:

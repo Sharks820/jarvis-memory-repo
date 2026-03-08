@@ -1595,12 +1595,16 @@ class MobileIngestHandler(
         "/learning/summary": "_handle_get_learning_summary",
         "/conversation/state": "_handle_get_conversation_state",
         "/missions/status": "_handle_get_missions_status",
+        "/missions/active": "_handle_get_missions_active",
+        "/missions/steps": "_handle_get_missions_steps",
         "/alerts/pending": "_handle_get_alerts_pending",
         "/digest": "_handle_get_digest",
         "/meeting-prep": "_handle_get_meeting_prep",
         "/scam/campaigns": "_handle_get_scam_campaigns",
         "/scam/stats": "_handle_get_scam_stats",
         "/voice/latency": "_handle_get_voice_latency",
+        "/gateway/health": "_handle_get_gateway_health",
+        "/gateway/budget": "_handle_get_gateway_budget",
         "/favicon.ico": "_handle_get_favicon",
     }
 
@@ -1716,6 +1720,9 @@ class MobileIngestHandler(
         "/self-heal": "_handle_post_self_heal",
         "/feedback": "_handle_post_feedback",
         "/missions/create": "_handle_post_missions_create",
+        "/missions/pause": "_handle_post_missions_pause",
+        "/missions/resume": "_handle_post_missions_resume",
+        "/missions/restart": "_handle_post_missions_restart",
     }
 
     # Endpoint-specific POST body size limits (bytes).

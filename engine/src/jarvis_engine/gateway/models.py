@@ -63,6 +63,8 @@ from jarvis_engine.gateway.cli_providers import (
 from jarvis_engine.gateway.pricing import calculate_cost
 
 if TYPE_CHECKING:
+    from jarvis_engine.gateway.budget import BudgetEnforcer
+    from jarvis_engine.gateway.circuit_breaker import ProviderHealthTracker
     from jarvis_engine.gateway.costs import CostTracker
 
 logger = logging.getLogger(__name__)
@@ -176,8 +178,12 @@ class ModelGateway:
         mistral_api_key: str | None = None,
         zai_api_key: str | None = None,
         audit_path: Path | None = None,
+        budget_enforcer: "BudgetEnforcer | None" = None,
+        health_tracker: "ProviderHealthTracker | None" = None,
     ) -> None:
         self._closed = False
+        self._budget = budget_enforcer
+        self._health = health_tracker
         self._audit: GatewayAudit | None = (
             GatewayAudit(audit_path) if audit_path is not None else None
         )
@@ -552,6 +558,8 @@ class ModelGateway:
         """Send a completion request to the appropriate provider.
 
         Automatically falls back through the provider chain on failure.
+        Enforces budget caps when a BudgetEnforcer is configured — exceeding
+        the daily or monthly cap causes an automatic reroute to local Ollama.
         Logs cost to CostTracker if one is configured.
         Logs routing decision to GatewayAudit if one is configured.
 
@@ -573,11 +581,46 @@ class ModelGateway:
 
         model = self._remap_model_if_needed(model)
 
+        # Budget enforcement: check before making the call
+        if self._budget is not None:
+            try:
+                # Estimate cost for a typical request (use max_tokens as output estimate)
+                estimated = self._budget.estimate_cost(model, max_tokens, max_tokens)
+                self._budget.check_budget(estimated)
+            except Exception as exc:
+                # Import here to avoid circular import at module level
+                from jarvis_engine.gateway.budget import BudgetExceededError
+                if isinstance(exc, BudgetExceededError):
+                    logger.warning("Budget exceeded, routing to local Ollama: %s", exc)
+                    fallback_model = _get_local_model()
+                    response = self._call_ollama(messages, fallback_model, max_tokens, temperature)
+                    response.fallback_used = True
+                    response.fallback_reason = f"budget_exceeded:{exc.period}"
+                    t0 = time.perf_counter()
+                    latency_ms = 0.0
+                    self._log_completion(
+                        response, f"budget_exceeded:{exc.period}",
+                        route_reason, latency_ms, privacy_routed,
+                    )
+                    return response
+                raise  # re-raise non-budget exceptions
+
         response, audit_reason, t0 = self._route_to_provider(
             messages, model, max_tokens, temperature, route_reason, privacy_routed,
         )
 
         latency_ms = (time.perf_counter() - t0) * 1000
+
+        # Record provider health
+        if self._health is not None:
+            provider_name = response.provider
+            if provider_name and provider_name != "none":
+                self._health.record_success(provider_name, latency_ms)
+
+        # Record cost in budget enforcer
+        if self._budget is not None and response.cost_usd > 0:
+            self._budget.record_cost(response.cost_usd, response.model, response.provider)
+
         self._log_completion(response, audit_reason, route_reason, latency_ms, privacy_routed)
 
         return response
@@ -607,6 +650,9 @@ class ModelGateway:
             success=False,
             privacy_routed=privacy_routed,
         )
+        # Record failure in health tracker for circuit breaker
+        if self._health is not None:
+            self._health.record_failure(provider)
         return time.perf_counter()
 
     def _call_openai_compat(
@@ -854,10 +900,19 @@ class ModelGateway:
         """
         if not privacy_routed:
             self._refresh_cli_providers()
-            # Try other cloud providers first
+
+            # Cost-aware provider ordering: sort cloud providers by cost
             priority = ["groq", "mistral", "zai"]
+            if self._budget is not None:
+                priority = self._budget.rank_providers_by_cost(priority)
+
+            # Try other cloud providers first
             for pk in priority:
                 if pk == skip_provider or pk not in self._cloud_keys:
+                    continue
+                # Circuit breaker: skip providers in cooldown
+                if self._health is not None and self._health.should_skip(pk):
+                    logger.info("Skipping %s in fallback chain (circuit open)", pk)
                     continue
                 # Look up the preferred model for this provider (O(1) lookup)
                 model_alias = _PROVIDER_DEFAULT_MODEL.get(pk)
@@ -867,34 +922,56 @@ class ModelGateway:
                     resp = self._call_openai_compat(messages, model_alias, max_tokens, pk, temperature)
                     resp.fallback_used = True
                     resp.fallback_reason = reason
+                    if self._health is not None:
+                        self._health.record_success(pk, 0.0)
                     return resp
                 except (OSError, RuntimeError, ValueError, KeyError) as exc:
                     logger.warning("Fallback to %s also failed: %s", pk, exc)
+                    if self._health is not None:
+                        self._health.record_failure(pk)
 
             # Try CLI-based providers as fallback (free via subscription)
             cli_priority = ["claude-cli", "gemini-cli", "codex-cli", "kimi-cli"]
             for cli_key in cli_priority:
                 if cli_key == skip_provider or cli_key not in self._cli_providers:
                     continue
+                # Circuit breaker for CLI providers too
+                if self._health is not None and self._health.should_skip(cli_key):
+                    logger.info("Skipping %s in fallback chain (circuit open)", cli_key)
+                    continue
                 try:
                     resp = self._call_cli(messages, cli_key, max_tokens, cli_key)
                     if resp.provider != "none":
                         resp.fallback_used = True
                         resp.fallback_reason = reason
+                        if self._health is not None:
+                            self._health.record_success(cli_key, 0.0)
                         return resp
                     logger.warning("CLI fallback %s returned empty", cli_key)
+                    if self._health is not None:
+                        self._health.record_failure(cli_key)
                 except (OSError, RuntimeError, ValueError) as exc:
                     logger.warning("CLI fallback %s failed: %s", cli_key, exc)
+                    if self._health is not None:
+                        self._health.record_failure(cli_key)
 
             # Try Anthropic as fallback if available and not the one that failed
             if self._anthropic is not None and skip_provider != "anthropic":
-                try:
-                    resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
-                    resp.fallback_used = True
-                    resp.fallback_reason = reason
-                    return resp
-                except (OSError, RuntimeError, ValueError) as exc:
-                    logger.warning("Fallback to Anthropic also failed: %s", exc)
+                should_skip_anthropic = (
+                    self._health is not None and self._health.should_skip("anthropic")
+                )
+                if not should_skip_anthropic:
+                    try:
+                        resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
+                        resp.fallback_used = True
+                        resp.fallback_reason = reason
+                        if self._health is not None:
+                            self._health.record_success("anthropic", 0.0)
+                        return resp
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        logger.warning("Fallback to Anthropic also failed: %s", exc)
+                        if self._health is not None:
+                            self._health.record_failure("anthropic")
 
         # All cloud providers failed
         if skip_ollama:

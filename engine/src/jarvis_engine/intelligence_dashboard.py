@@ -392,6 +392,7 @@ def build_intelligence_dashboard(
         "gateway_audit": _safe_gateway_summary(root),
         "learning": _safe_learning_metrics(pref_tracker, feedback_tracker, usage_tracker),
         "knowledge_snapshot": _safe_knowledge_snapshot(kg, engine),
+        "missions": _safe_mission_metrics(root),
         "achievements": {
             "new": new_unlocks,
             "all": unlocked,
@@ -420,6 +421,16 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
             }
     except (ImportError, OSError, ValueError):
         logger.debug("Failed to collect KG metrics (knowledge graph module may not be available)")
+    return {}
+
+
+def _safe_mission_metrics(root: Path) -> dict[str, Any]:
+    """Collect mission dashboard metrics safely."""
+    try:
+        from jarvis_engine.learning_missions import mission_dashboard_metrics
+        return mission_dashboard_metrics(root)
+    except (ImportError, OSError, ValueError, TypeError) as exc:
+        logger.debug("Failed to collect mission metrics: %s", exc)
     return {}
 
 

@@ -193,9 +193,9 @@ def test_try_deepgram_with_keyterms():
     call_kwargs = mock_client.post.call_args
     params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", [])
     keyword_values = [v for k, v in params if k == "keywords"]
-    assert "Jarvis:2" in keyword_values
-    assert "Conner:2" in keyword_values
-    assert "brain status:2" in keyword_values
+    assert "Jarvis:2.0" in keyword_values
+    assert "Conner:2.0" in keyword_values
+    assert "brain status:2.0" in keyword_values
     _reset_keyterms_cache()
 
 
@@ -286,3 +286,68 @@ def test_try_deepgram_with_numpy_audio():
     # Content-Type header should be audio/wav
     headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
     assert headers.get("Content-Type") == "audio/wav"
+
+
+# ---------------------------------------------------------------------------
+# D9. RC-4: Deepgram API params include utterances, endpointing, numerals
+# ---------------------------------------------------------------------------
+
+def test_deepgram_params_include_required_fields():
+    """_build_deepgram_params includes utterances, endpointing=300, numerals=true."""
+    from jarvis_engine.stt_backends import _build_deepgram_params
+
+    params = _build_deepgram_params("en", keyterms=[])
+    param_dict = {k: v for k, v in params}
+
+    assert param_dict["utterances"] == "true"
+    assert param_dict["endpointing"] == "300"
+    assert param_dict["filler_words"] == "false"
+    assert param_dict["numerals"] == "true"
+
+
+# ---------------------------------------------------------------------------
+# D10. RC-4: Keyword boost uses float intensity (2.0 not 2)
+# ---------------------------------------------------------------------------
+
+def test_deepgram_keyword_boost_uses_float():
+    """Keywords include float intensity boost (e.g., 'term:2.0')."""
+    from jarvis_engine.stt_backends import _build_deepgram_params
+
+    params = _build_deepgram_params("en", keyterms=["Conner", "Jarvis"])
+    keyword_values = [v for k, v in params if k == "keywords"]
+
+    assert "Conner:2.0" in keyword_values
+    assert "Jarvis:2.0" in keyword_values
+    # Ensure no integer-only boost format
+    assert "Conner:2" not in keyword_values
+    assert "Jarvis:2" not in keyword_values
+
+
+# ---------------------------------------------------------------------------
+# D11. RC-5: Personal vocabulary has at least 50 entries
+# ---------------------------------------------------------------------------
+
+def test_personal_vocab_has_minimum_entries():
+    """personal_vocab.txt contains at least 50 entries after expansion."""
+    _reset_keyterms_cache()
+    from jarvis_engine.stt import _load_keyterms
+
+    terms = _load_keyterms()
+    assert len(terms) >= 50, f"Expected >= 50 vocab entries, got {len(terms)}"
+    _reset_keyterms_cache()
+
+
+# ---------------------------------------------------------------------------
+# D12. RC-5: Personal vocabulary includes tech terms
+# ---------------------------------------------------------------------------
+
+def test_personal_vocab_includes_tech_terms():
+    """personal_vocab.txt includes common tech terms after expansion."""
+    _reset_keyterms_cache()
+    from jarvis_engine.stt import _load_keyterms
+
+    terms = _load_keyterms()
+    expected_tech = ["API", "GitHub", "Python", "Docker", "Kubernetes", "PyTorch"]
+    for term in expected_tech:
+        assert term in terms, f"Missing tech term: {term}"
+    _reset_keyterms_cache()

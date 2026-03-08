@@ -204,10 +204,17 @@ class IntelligenceRoutesMixin:
         if not self._validate_auth(b""):
             return
         try:
+            from urllib.parse import parse_qs, urlparse
+
             from jarvis_engine.conversation_state import get_conversation_state
 
             csm = get_conversation_state()
-            self._write_json(HTTPStatus.OK, csm.get_state_snapshot())
+            # S3: Use query param ?full=1 for unredacted data (dashboard only),
+            # otherwise return redacted snapshot.
+            parsed = urlparse(self.path)
+            qs = parse_qs(parsed.query)
+            full = qs.get("full", ["0"])[0] == "1"
+            self._write_json(HTTPStatus.OK, csm.get_state_snapshot(full=full))
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("conversation state endpoint failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"error": str(exc), "available": False})
