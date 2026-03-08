@@ -301,6 +301,9 @@ def _handle_phone_ignore_call(ctx: _DispatchCtx) -> tuple[str, int]:
 
 def _handle_phone_place_call(ctx: _DispatchCtx) -> tuple[str, int]:
     number = _extract_first_phone_number(ctx.text)
+    if not number:
+        print("reason=No phone number found in command.")
+        return "phone_place_call", 2
     if not ctx.execute:
         print("reason=Set --execute to queue phone actions.")
         return "phone_place_call", 2

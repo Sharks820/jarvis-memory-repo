@@ -97,7 +97,7 @@ class CommandRoutesMixin:
                 _output_check = _sec_orch.scan_output(_response_text)
                 if not _output_check["safe"]:
                     result["response"] = _output_check["filtered_text"]
-                    result["reason"] = _output_check["filtered_text"]
+                    result["reason"] = "Output security-filtered: " + ", ".join(_output_check.get("findings", ["policy violation"]))
                     result["stdout_tail"] = [_output_check["filtered_text"]]
                     result["security_filtered"] = True
                     normalized = self._normalize_command_output(

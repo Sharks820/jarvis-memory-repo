@@ -396,7 +396,7 @@ class SecurityOrchestrator:
                         "injection_verdict": "clean",
                         "containment_actions": [],
                     }
-            except (OSError, ValueError, TimeoutError) as exc:
+            except (OSError, ValueError, TimeoutError, RuntimeError) as exc:
                 logger.debug("Threat intel enrichment failed for %s: %s", source_ip, exc)
 
         return None

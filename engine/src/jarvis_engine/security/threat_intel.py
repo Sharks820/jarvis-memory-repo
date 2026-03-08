@@ -101,6 +101,13 @@ class ThreatIntelFeed:
         """
         self._pool.shutdown(wait=False)
 
+    def __del__(self) -> None:
+        """Best-effort cleanup of the thread pool on garbage collection."""
+        try:
+            self._pool.shutdown(wait=False)
+        except Exception:  # noqa: BLE001
+            pass
+
     def __enter__(self) -> "ThreatIntelFeed":
         return self
 
