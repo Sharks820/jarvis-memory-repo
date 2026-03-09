@@ -54,14 +54,20 @@ class ProactiveEngine:
                 # Undo reservation since the rule didn't actually fire
                 with self._lock:
                     if self._last_fired.get(rule.rule_id) == now:
-                        self._last_fired[rule.rule_id] = last
+                        if last is not None:
+                            self._last_fired[rule.rule_id] = last
+                        else:
+                            self._last_fired.pop(rule.rule_id, None)
                 continue
 
             if not messages:
                 # Undo reservation since no alerts were produced
                 with self._lock:
                     if self._last_fired.get(rule.rule_id) == now:
-                        self._last_fired[rule.rule_id] = last
+                        if last is not None:
+                            self._last_fired[rule.rule_id] = last
+                        else:
+                            self._last_fired.pop(rule.rule_id, None)
                 continue
 
             # Create alerts and send notifications (with dedup)
@@ -100,7 +106,10 @@ class ProactiveEngine:
                 # No alerts after dedup — undo reservation
                 with self._lock:
                     if self._last_fired.get(rule.rule_id) == now:
-                        self._last_fired[rule.rule_id] = last
+                        if last is not None:
+                            self._last_fired[rule.rule_id] = last
+                        else:
+                            self._last_fired.pop(rule.rule_id, None)
 
         # Log to activity feed
         if alerts:

@@ -128,9 +128,9 @@ class ConversationState:
 
         try:
             import json as _json
-            path = self._conversation_history_path()
-            path.parent.mkdir(parents=True, exist_ok=True)
             with self._conversation_history_lock:
+                path = self._conversation_history_path()
+                path.parent.mkdir(parents=True, exist_ok=True)
                 if not force:
                     if not self._dirty:
                         return

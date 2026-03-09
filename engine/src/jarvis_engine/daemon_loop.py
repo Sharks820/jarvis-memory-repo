@@ -488,6 +488,8 @@ def _collect_kg_metrics(root: Path) -> None:
                     class _KGShim:
                         def __init__(self, conn: sqlite3.Connection) -> None:
                             self.db = conn
+                            self.write_lock = threading.Lock()
+                            self.db_lock = threading.RLock()
 
                     metrics = collect_kg_metrics(_KGShim(_kg_conn))
                 finally:
@@ -780,7 +782,7 @@ def _gather_cycle_state(
     skip_heavy_tasks = bool(throttle.get("skip_heavy_tasks", False))
 
     gaming_state = read_gaming_mode_state()
-    control_state = read_control_state(repo_root())
+    control_state = read_control_state(root)
     auto_detect = bool(gaming_state.get("auto_detect", False))
     auto_detect_hit = False
     detected_process = ""

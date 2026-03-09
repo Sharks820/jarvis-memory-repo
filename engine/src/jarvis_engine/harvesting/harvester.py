@@ -296,7 +296,7 @@ class KnowledgeHarvester:
                     # cosine > 0.92 ≈ L2 < sqrt(2 * (1 - 0.92)) ≈ 0.4
                     similar = engine.search_vec(embedding, limit=3)
                     for _record_id, distance in similar:
-                        similarity = 1.0 - (distance * distance) / 2.0
+                        similarity = max(0.0, min(1.0, 1.0 - (distance * distance) / 2.0))
                         if similarity > _DEDUP_COSINE_THRESHOLD:
                             return True
             except (sqlite3.Error, ValueError, RuntimeError) as exc:

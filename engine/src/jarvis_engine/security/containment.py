@@ -363,7 +363,8 @@ class ContainmentEngine:
         so the HTTP server's signing key is updated in real-time.
         """
         new_key = os.urandom(32).hex()
-        self._current_hmac_key = new_key
+        with self._lock:
+            self._current_hmac_key = new_key
         if callable(self._on_credential_rotate):
             try:
                 self._on_credential_rotate(new_key)

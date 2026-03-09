@@ -97,8 +97,9 @@ def check_calendar_prep(snapshot_data: dict) -> list[str]:
         try:
             start_dt = datetime.fromisoformat(start_str)
             if start_dt.tzinfo is None:
-                # Treat naive timestamps as local time (not UTC)
-                start_dt = start_dt.astimezone()
+                # Treat naive timestamps as local time
+                local_tz = datetime.now().astimezone().tzinfo
+                start_dt = start_dt.replace(tzinfo=local_tz)
             diff_hours = (start_dt - now).total_seconds() / 3600.0
             if 0 <= diff_hours <= 2:
                 title = event.get("title", "event")

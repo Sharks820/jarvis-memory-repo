@@ -70,8 +70,6 @@ def _get_or_create_orchestrator(
     """
     global _shared_orchestrator, _shared_orchestrator_key, _shared_provenance
     key = (id(db), id(write_lock), str(log_dir))
-    if _shared_orchestrator is not None and _shared_orchestrator_key == key:
-        return _shared_orchestrator
     with _shared_orchestrator_lock:
         # Double-checked locking
         if _shared_orchestrator is not None and _shared_orchestrator_key == key:
