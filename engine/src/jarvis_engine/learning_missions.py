@@ -478,7 +478,7 @@ def _finalize_mission(
             except (OSError, ImportError) as exc:
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
-            retries = int(target.get("retries", 0))
+            retries = int(target.get("retries", 0) or 0)
             target["status"] = "failed" if retries < 2 else "exhausted"
             target["progress_pct"] = 100
             target["status_detail"] = "Completed with no verified findings"
@@ -653,7 +653,7 @@ def retry_failed_missions(root: Path) -> int:
         for mission in missions:
             if str(mission.get("status", "")).lower() != "failed":
                 continue
-            retries = int(mission.get("retries", 0))
+            retries = int(mission.get("retries", 0) or 0)
             if retries >= 2:
                 mission["status"] = "exhausted"
                 mission["updated_utc"] = _now_iso()
@@ -994,12 +994,12 @@ def get_now_working_on(root: Path) -> dict[str, Any] | None:
                     logger.debug("Failed to parse mission created_utc timestamp: %s", created)
             artifacts = 0
             if isinstance(steps, list):
-                artifacts = sum(int(s.get("artifacts_produced", 0)) for s in steps)
+                artifacts = sum(int(s.get("artifacts_produced", 0) or 0) for s in steps)
             return {
                 "mission_id": m.get("mission_id", ""),
                 "mission_topic": m.get("topic", ""),
                 "current_step": current_step,
-                "progress_pct": int(m.get("progress_pct", 0)),
+                "progress_pct": int(m.get("progress_pct", 0) or 0),
                 "elapsed_s": elapsed_s,
                 "artifacts_so_far": artifacts,
             }
@@ -1027,14 +1027,14 @@ def pause_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         target["status"] = "paused"
         target["updated_utc"] = _now_iso()
         target["status_detail"] = "Paused"
-        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0)))
+        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
 
     _log_mission_activity(
         mission_id=mission_id,
         topic=str(target.get("topic", "")),
         status="paused",
-        progress_pct=int(target.get("progress_pct", 0)),
+        progress_pct=int(target.get("progress_pct", 0) or 0),
         step="Paused",
     )
     return target
@@ -1056,14 +1056,14 @@ def resume_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         target["status"] = "pending"  # Will be picked up by daemon loop
         target["updated_utc"] = _now_iso()
         target["status_detail"] = "Resumed — queued for execution"
-        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0)))
+        target["progress_bar"] = _progress_bar(int(target.get("progress_pct", 0) or 0))
         _save_missions(root, missions)
 
     _log_mission_activity(
         mission_id=mission_id,
         topic=str(target.get("topic", "")),
         status="resumed",
-        progress_pct=int(target.get("progress_pct", 0)),
+        progress_pct=int(target.get("progress_pct", 0) or 0),
         step="Resumed",
     )
     return target
@@ -1110,7 +1110,8 @@ def mission_dashboard_metrics(root: Path) -> dict[str, Any]:
     """Compute mission-related dashboard metrics for the last 7 days."""
     missions = load_missions(root)
     now = datetime.now(UTC)
-    cutoff = (now - __import__("datetime").timedelta(days=7)).isoformat()
+    from datetime import timedelta
+    cutoff = (now - timedelta(days=7)).isoformat()
 
     completed_7d = 0
     failed_7d = 0

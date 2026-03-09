@@ -147,8 +147,8 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
             tags=[source, kind],
             confidence=0.74 if source == "task_outcome" else 0.68,
         )
-    except ValueError:
-        logger.warning("brain ingest failed for task_id=%s", safe_task_id[:32])
+    except (ValueError, OSError) as exc:
+        logger.warning("brain ingest failed for task_id=%s: %s", safe_task_id[:32], exc)
 
     # Mark as seen only AFTER successful ingestion so failures can be retried
     with _auto_ingest_lock:

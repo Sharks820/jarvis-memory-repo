@@ -33,7 +33,8 @@ def cli_dispatch(
     try:
         result = _get_bus().dispatch(command)
     except Exception as exc:  # noqa: BLE001
-        return f"Error: {exc}", 1
+        print(f"error: {exc}")
+        raise SystemExit(1) from exc
 
     # JSON output path -- used by the --json flag on many sub-commands.
     if as_json and json_field:

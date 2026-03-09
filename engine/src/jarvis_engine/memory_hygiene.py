@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -108,7 +109,10 @@ def classify_record(record: dict[str, Any]) -> ClassificationResult:
     summary = str(record.get("summary", ""))
     content = summary  # summary IS the searchable content
     tags_raw = record.get("tags", "[]")
-    confidence_val = float(record.get("confidence", 0.72))
+    try:
+        confidence_val = float(record.get("confidence", 0.72) or 0.72)
+    except (TypeError, ValueError):
+        confidence_val = 0.72
 
     # --- Junk detection ---
     if not content.strip():
@@ -206,7 +210,10 @@ def is_protected(
         return True, "user-pinned"
 
     # High cross-reference count
-    access_count = int(record.get("access_count", 0))
+    try:
+        access_count = int(record.get("access_count", 0) or 0)
+    except (TypeError, ValueError):
+        access_count = 0
     if access_count >= min_cross_refs:
         return True, f"high access count ({access_count})"
 
@@ -253,7 +260,7 @@ class MemoryHygieneEngine:
         """
         try:
             records = engine.get_all_records_for_tier_maintenance()
-        except (RuntimeError, OSError) as exc:
+        except (RuntimeError, OSError, sqlite3.Error) as exc:
             logger.warning("Failed to fetch records for hygiene scan: %s", exc)
             return []
 
@@ -372,7 +379,7 @@ class MemoryHygieneEngine:
 
         try:
             records_list = engine.get_records_batch(record_ids)
-        except (RuntimeError, OSError) as exc:
+        except (RuntimeError, OSError, sqlite3.Error) as exc:
             report.errors.append(f"Failed to fetch records: {exc}")
             return report
 

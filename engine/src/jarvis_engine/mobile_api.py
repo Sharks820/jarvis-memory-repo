@@ -20,9 +20,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, ClassVar, TypedDict
 
-if TYPE_CHECKING:
-    import sqlite3
+import sqlite3 as _sqlite3
 
+if TYPE_CHECKING:
     from jarvis_engine.memory.embeddings import EmbeddingService
     from jarvis_engine.memory.engine import MemoryEngine
     from jarvis_engine.security.orchestrator import SecurityOrchestrator

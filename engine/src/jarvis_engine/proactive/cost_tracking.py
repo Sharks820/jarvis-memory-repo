@@ -82,8 +82,8 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> CostSnapsh
         "30d_failed_count": int(summary_30d.get("failed_count", 0) or 0),
         "7d_failed_cost_usd": round(float(summary_7d.get("failed_cost_usd", 0.0)), 6),
         "30d_failed_cost_usd": round(float(summary_30d.get("failed_cost_usd", 0.0)), 6),
-        "7d_total_queries": summary_7d.get("total_count", 0),
-        "30d_total_queries": summary_30d.get("total_count", 0),
+        "7d_total_queries": int(summary_7d.get("total_count", 0) or 0),
+        "30d_total_queries": int(summary_30d.get("total_count", 0) or 0),
     }
 
     history_path.parent.mkdir(parents=True, exist_ok=True)

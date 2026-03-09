@@ -250,17 +250,17 @@ def _extract_fact_candidates(text: str, branch: str) -> list[dict[str, Any]]:
     if "safe mode" in lowered:
         if any(x in lowered for x in ["enable", "on", "start"]):
             add("runtime.safe_mode", "enabled", 0.84)
-        if any(x in lowered for x in ["disable", "off", "stop"]):
+        elif any(x in lowered for x in ["disable", "off", "stop"]):
             add("runtime.safe_mode", "disabled", 0.84)
     if "gaming mode" in lowered:
         if any(x in lowered for x in ["enable", "on", "start"]):
             add("runtime.gaming_mode", "enabled", 0.83)
-        if any(x in lowered for x in ["disable", "off", "stop"]):
+        elif any(x in lowered for x in ["disable", "off", "stop"]):
             add("runtime.gaming_mode", "disabled", 0.83)
         if "auto" in lowered:
             if any(x in lowered for x in ["enable", "on", "start"]):
                 add("runtime.gaming_mode_auto", "enabled", 0.8)
-            if any(x in lowered for x in ["disable", "off", "stop"]):
+            elif any(x in lowered for x in ["disable", "off", "stop"]):
                 add("runtime.gaming_mode_auto", "disabled", 0.8)
     if ("pause" in lowered and any(x in lowered for x in ["daemon", "autopilot", "jarvis"])):
         add("runtime.daemon_paused", "true", 0.82)
@@ -271,7 +271,7 @@ def _extract_fact_candidates(text: str, branch: str) -> list[dict[str, Any]]:
     if "owner guard" in lowered:
         if any(x in lowered for x in ["enable", "on"]):
             add("security.owner_guard", "enabled", 0.88)
-        if any(x in lowered for x in ["disable", "off"]):
+        elif any(x in lowered for x in ["disable", "off"]):
             add("security.owner_guard", "disabled", 0.88)
     if "organize" in lowered and any(x in lowered for x in ["day", "today", "schedule"]):
         add("ops.daily_autopilot", "preferred", 0.7)

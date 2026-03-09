@@ -136,10 +136,10 @@ class ContainmentEngine:
 
     def _apply_containment_actions(
         self, ip: str, level: int,
-    ) -> tuple[list[str], bool, bool]:
+    ) -> tuple[list[str], bool, bool, bool]:
         """Apply containment state changes under the lock.
 
-        Returns ``(actions, do_block_ip, credentials_rotated)``.
+        Returns ``(actions, do_block_ip, credentials_rotated, do_terminate_sessions)``.
         Caller MUST hold ``self._lock``.
         """
         actions: list[str] = []

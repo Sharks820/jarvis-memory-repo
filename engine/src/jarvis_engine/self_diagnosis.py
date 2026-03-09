@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -67,9 +68,10 @@ class DiagnosticIssue:
         if not self.timestamp:
             try:
                 from jarvis_engine._compat import UTC
-                self.timestamp = datetime.now(UTC).isoformat()
-            except (ImportError, OSError):
-                self.timestamp = datetime.utcnow().isoformat() + "Z"
+            except ImportError:
+                from datetime import timezone as _tz
+                UTC = _tz.utc
+            self.timestamp = datetime.now(UTC).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dictionary for JSON responses."""
@@ -237,7 +239,7 @@ class DiagnosticEngine:
                     ))
             finally:
                 conn.close()
-        except (ImportError, OSError, ValueError) as exc:
+        except (ImportError, OSError, ValueError, sqlite3.Error) as exc:
             logger.debug("Integrity check failed: %s", exc)
             issues.append(DiagnosticIssue(
                 id=_issue_id(),
@@ -375,9 +377,10 @@ class DiagnosticEngine:
         # Check for stuck missions (running > 10 minutes)
         try:
             from jarvis_engine._compat import UTC
-            now = datetime.now(UTC)
-        except (ImportError, OSError):
-            now = datetime.utcnow()
+        except ImportError:
+            from datetime import timezone as _tz
+            UTC = _tz.utc
+        now = datetime.now(UTC)
 
         stuck_ids: list[str] = []
         for mission in missions:
@@ -584,7 +587,7 @@ class DiagnosticEngine:
             finally:
                 conn.close()
             return {"applied": True, "result": "FTS5 index rebuilt successfully"}
-        except (sqlite3.OperationalError, OSError, ValueError) as exc:
+        except (sqlite3.Error, OSError, ValueError) as exc:
             return {"applied": False, "result": f"FTS rebuild failed: {exc}"}
 
     def _fix_prune_wal(self) -> dict[str, Any]:

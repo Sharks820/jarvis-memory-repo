@@ -518,9 +518,13 @@ def extract_keywords(
 
 
 def make_task_id(prefix: str) -> str:
-    """Generate a timestamped task ID like ``prefix-20260305143000``."""
+    """Generate a timestamped task ID like ``prefix-20260305143000-a1b2``."""
+    import secrets
+
     from jarvis_engine._compat import UTC
-    return f"{prefix}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    stamp = datetime.now(UTC).strftime('%Y%m%d%H%M%S')
+    suffix = secrets.token_hex(2)
+    return f"{prefix}-{stamp}-{suffix}"
 
 
 def recency_weight(

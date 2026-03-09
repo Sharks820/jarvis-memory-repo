@@ -191,6 +191,9 @@ def kg_growth_trend(history: list[dict]) -> KGGrowthTrend:
             "edge_growth": 0,
             "cross_branch_growth": 0,
             "confidence_change": 0.0,
+            "first_snapshot": history[0].get("ts", "") if history else "",
+            "last_snapshot": history[0].get("ts", "") if history else "",
+            "snapshots_analyzed": len(history),
         }
 
     first = history[0]
