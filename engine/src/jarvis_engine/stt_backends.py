@@ -30,6 +30,46 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Adaptive noise floor calibration
+# ---------------------------------------------------------------------------
+
+# Clamping bounds for the adaptive noise threshold
+_NOISE_FLOOR_MIN = 0.005
+_NOISE_FLOOR_MAX = 0.05
+_NOISE_FLOOR_MULTIPLIER = 2.5
+_NOISE_FLOOR_RECALIBRATE_INTERVAL = 60.0  # seconds
+
+
+def _calibrate_noise_floor(
+    stream: object,
+    sample_rate: int,
+) -> float:
+    """Capture 500ms of ambient audio and compute an adaptive silence threshold.
+
+    The threshold is set to 2.5x the ambient RMS, clamped between
+    ``_NOISE_FLOOR_MIN`` (0.005) and ``_NOISE_FLOOR_MAX`` (0.05) to
+    avoid extreme values in very quiet or very noisy environments.
+    """
+    calibration_samples = int(sample_rate * 0.5)  # 500ms
+    try:
+        ambient_chunk, _ = stream.read(calibration_samples)
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        logger.debug("Noise floor calibration read failed: %s", exc)
+        return 0.01  # fall back to original default
+
+    ambient_rms = float(np.sqrt(np.mean(ambient_chunk ** 2)))
+    threshold = ambient_rms * _NOISE_FLOOR_MULTIPLIER
+    clamped = max(_NOISE_FLOOR_MIN, min(_NOISE_FLOOR_MAX, threshold))
+    logger.debug(
+        "Noise floor calibration: ambient_rms=%.5f, raw_threshold=%.5f, clamped=%.5f",
+        ambient_rms,
+        threshold,
+        clamped,
+    )
+    return clamped
+
+
+# ---------------------------------------------------------------------------
 # Shared WAV conversion utility
 # ---------------------------------------------------------------------------
 
@@ -436,6 +476,15 @@ def record_from_microphone(
         )
 
         with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:
+            # Adaptive noise floor: calibrate from ambient audio when using
+            # RMS fallback (not Silero VAD).  Re-calibrates every 60 seconds.
+            if not use_silero:
+                silence_threshold = _calibrate_noise_floor(stream, sample_rate)
+                logger.info(
+                    "Adaptive noise floor: silence_threshold=%.5f",
+                    silence_threshold,
+                )
+
             frames = _capture_audio_loop(
                 stream,
                 sample_rate=sample_rate,

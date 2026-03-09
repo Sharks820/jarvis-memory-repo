@@ -28,6 +28,72 @@ from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Token usage parsing from CLI stderr/stdout
+# ---------------------------------------------------------------------------
+
+# Patterns for extracting token counts from CLI output.
+# Claude CLI JSON has usage.input_tokens / usage.output_tokens in event stream.
+# Other CLIs may print "tokens: X input, Y output" or similar to stderr.
+_TOKEN_PATTERNS = [
+    # "X input tokens, Y output tokens"
+    re.compile(r"(\d[\d,]*)\s*input\s*tokens?\b.*?(\d[\d,]*)\s*output\s*tokens?", re.IGNORECASE),
+    # "tokens: X input, Y output"
+    re.compile(r"tokens?:\s*(\d[\d,]*)\s*input\b.*?(\d[\d,]*)\s*output\b", re.IGNORECASE),
+    # "input: X tokens, output: Y tokens"
+    re.compile(r"input:\s*(\d[\d,]*)\s*tokens?\b.*?output:\s*(\d[\d,]*)\s*tokens?", re.IGNORECASE),
+    # "prompt_tokens: X" / "completion_tokens: Y"
+    re.compile(r"prompt_tokens?:\s*(\d[\d,]*).*?completion_tokens?:\s*(\d[\d,]*)", re.IGNORECASE | re.DOTALL),
+]
+
+
+def _parse_token_usage(text: str) -> tuple[int, int]:
+    """Try to extract (input_tokens, output_tokens) from CLI output text.
+
+    Scans *text* (typically stderr or JSON stdout) for common token usage
+    patterns.  Returns ``(0, 0)`` if no pattern matches.
+    """
+    if not text:
+        return (0, 0)
+
+    # Try JSON parsing first (Claude CLI event-stream format)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            usage = parsed.get("usage", {})
+            if isinstance(usage, dict):
+                inp = int(usage.get("input_tokens", 0) or 0)
+                out = int(usage.get("output_tokens", 0) or 0)
+                if inp or out:
+                    return (inp, out)
+        elif isinstance(parsed, list):
+            # Event stream — look for result event with usage
+            for event in parsed:
+                if not isinstance(event, dict):
+                    continue
+                usage = event.get("usage", {})
+                if isinstance(usage, dict):
+                    inp = int(usage.get("input_tokens", 0) or 0)
+                    out = int(usage.get("output_tokens", 0) or 0)
+                    if inp or out:
+                        return (inp, out)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+
+    # Try regex patterns on raw text
+    for pattern in _TOKEN_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                inp = int(match.group(1).replace(",", ""))
+                out = int(match.group(2).replace(",", ""))
+                return (inp, out)
+            except (ValueError, IndexError):
+                continue
+
+    return (0, 0)
+
 def _default_cli_timeout() -> int:
     """Return CLI timeout seconds from env with safe bounds."""
     raw = os.environ.get("JARVIS_CLI_TIMEOUT_S", "240").strip()
@@ -165,6 +231,8 @@ class CLIProviderResult(TypedDict):
     success: bool
     error: str
     cost_usd: float
+    input_tokens: int
+    output_tokens: int
 
 
 def _cli_result(
@@ -175,6 +243,8 @@ def _cli_result(
     success: bool = False,
     error: str = "",
     cost_usd: float = 0.0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
 ) -> CLIProviderResult:
     """Construct a standardised CLI provider result dict."""
     return {
@@ -184,6 +254,8 @@ def _cli_result(
         "success": success,
         "error": error,
         "cost_usd": cost_usd,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
     }
 
 
@@ -244,6 +316,11 @@ def _run_cli_subprocess(
             text = proc.stdout.strip()
             cost = 0.0
 
+        # Try to extract token usage from stdout or stderr
+        input_tokens, output_tokens = _parse_token_usage(proc.stdout)
+        if input_tokens == 0 and output_tokens == 0 and proc.stderr:
+            input_tokens, output_tokens = _parse_token_usage(proc.stderr)
+
         success = bool(text.strip())
         return _cli_result(
             provider, model,
@@ -251,6 +328,8 @@ def _run_cli_subprocess(
             success=success,
             error="" if success else "empty response",
             cost_usd=cost,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
     except subprocess.TimeoutExpired:
         return _cli_result(
@@ -641,11 +720,19 @@ def call_codex_cli(
             )
 
         final_text = text or proc.stdout.strip()
+
+        # Try to extract token usage from stdout or stderr
+        input_tokens, output_tokens = _parse_token_usage(proc.stdout)
+        if input_tokens == 0 and output_tokens == 0 and proc.stderr:
+            input_tokens, output_tokens = _parse_token_usage(proc.stderr)
+
         return _cli_result(
             "codex-cli", "codex-cli",
             text=final_text,
             success=bool(final_text),
             error="" if final_text else "empty response",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
     except subprocess.TimeoutExpired:
         return _cli_result(

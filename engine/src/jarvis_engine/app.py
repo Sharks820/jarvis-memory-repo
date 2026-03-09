@@ -720,8 +720,9 @@ def create_app(root: Path) -> CommandBus:
     bus.ctx.kg = kg
     bus.ctx.gateway = gateway
 
-    # Warm embedding model in background
-    if embed_service is not None:
+    # Warm embedding model in background (skip in test environments to avoid
+    # loading the full nomic-bert model in every xdist worker).
+    if embed_service is not None and not os.environ.get("JARVIS_SKIP_EMBED_WARMUP"):
         def _warm_embeddings() -> None:
             try:
                 embed_service.embed("warmup", prefix="search_document")

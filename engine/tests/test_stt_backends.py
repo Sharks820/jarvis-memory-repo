@@ -410,6 +410,14 @@ class TestRecordFromMicrophone:
                 drain_seconds=0.1,
             )
 
-        # First read call should be the drain (16000 * 0.1 = 1600 samples)
+        # When Silero VAD is unavailable, the first read is noise floor
+        # calibration (8000 samples = 500ms at 16kHz), and the second read
+        # is the drain (1600 samples = 100ms at 16kHz).
         first_read_args = mock_stream.read.call_args_list[0]
-        assert first_read_args[0][0] == 1600
+        assert first_read_args[0][0] == 8000, (
+            f"First read should be noise floor calibration (8000), got {first_read_args[0][0]}"
+        )
+        second_read_args = mock_stream.read.call_args_list[1]
+        assert second_read_args[0][0] == 1600, (
+            f"Second read should be drain (1600), got {second_read_args[0][0]}"
+        )

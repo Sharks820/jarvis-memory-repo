@@ -44,15 +44,60 @@ try:
 except ImportError:
     _log_activity = None
 
-try:
-    from ollama import Client as OllamaClient, ResponseError
-    _HAS_OLLAMA = True
-except ImportError:
-    _HAS_OLLAMA = False
-    OllamaClient = None  # type: ignore[assignment,misc]
+# Defer ollama import to avoid blocking when Ollama server isn't running.
+# Some ollama versions attempt a connection check during import/init.
+_HAS_OLLAMA = False
+OllamaClient = None  # type: ignore[assignment,misc]
 
-    class ResponseError(Exception):  # type: ignore[no-redef]
-        pass
+
+class ResponseError(Exception):  # type: ignore[no-redef]
+    """Placeholder until real ollama.ResponseError is loaded."""
+    pass
+
+
+def _ensure_ollama() -> bool:
+    """Lazy-import ollama client with timeout guard.
+
+    The ollama package may try to connect to the Ollama server during import
+    or Client() construction.  If the server is down, this blocks indefinitely.
+    We use a daemon thread with a 3-second timeout to prevent the hang.
+
+    Set JARVIS_SKIP_OLLAMA=1 to bypass entirely (used in test environments).
+    """
+    global _HAS_OLLAMA, OllamaClient, ResponseError  # noqa: PLW0603
+    if _HAS_OLLAMA:
+        return True
+    if os.environ.get("JARVIS_SKIP_OLLAMA"):
+        return False
+
+    import threading as _th
+
+    result: dict = {}
+
+    def _try_import():
+        try:
+            from ollama import Client as _OC, ResponseError as _RE
+            result["client"] = _OC
+            result["error"] = _RE
+        except (ImportError, OSError) as exc:
+            result["exc"] = exc
+
+    t = _th.Thread(target=_try_import, daemon=True, name="ollama-import")
+    t.start()
+    t.join(timeout=3.0)
+
+    if t.is_alive():
+        logger.debug("Ollama import timed out (server likely down) — skipping")
+        return False
+
+    if "client" in result:
+        OllamaClient = result["client"]
+        ResponseError = result["error"]  # type: ignore[misc]
+        _HAS_OLLAMA = True
+        return True
+
+    logger.debug("Ollama import failed: %s", result.get("exc", "unknown"))
+    return False
 
 from jarvis_engine.gateway.audit import GatewayAudit
 from jarvis_engine.gateway.cli_providers import (
@@ -66,6 +111,7 @@ if TYPE_CHECKING:
     from jarvis_engine.gateway.budget import BudgetEnforcer
     from jarvis_engine.gateway.circuit_breaker import ProviderHealthTracker
     from jarvis_engine.gateway.costs import CostTracker
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +195,36 @@ class GatewayResponse:
     fallback_reason: str = ""
 
 
+# Model context window limits (tokens).
+# Used by _apply_context_guard to prevent oversized prompts.
+_MODEL_CONTEXT_LIMITS: dict[str, int] = {
+    # Local models (Ollama)
+    "gemma3:4b": 8_192,
+    "gemma3:12b": 8_192,
+    "llama3.2:3b": 8_192,
+    "phi-4": 16_384,
+    # Cloud models (Groq / Mistral / Z.ai)
+    "kimi-k2": 131_072,
+    "llama-3.3-70b": 128_000,
+    "devstral-2": 128_000,
+    "devstral-small-2": 128_000,
+    "glm-4.7": 128_000,
+    "glm-4.7-flash": 128_000,
+    # Anthropic
+    "claude-opus": 200_000,
+    "claude-sonnet": 200_000,
+    "claude-haiku": 200_000,
+    # CLI-based (generous limits since they manage their own context)
+    "claude-cli": 200_000,
+    "codex-cli": 128_000,
+    "gemini-cli": 1_000_000,
+    "kimi-cli": 131_072,
+}
+
+# Threshold fraction: warn/truncate when prompt exceeds this fraction of context.
+_CONTEXT_GUARD_THRESHOLD = 0.9
+
+
 # Route -> temperature mapping for _derive_temperature.
 # Covers all known intent routes; unknown routes default to 0.7.
 _ROUTE_TEMPERATURE: dict[str, float] = {
@@ -180,10 +256,12 @@ class ModelGateway:
         audit_path: Path | None = None,
         budget_enforcer: "BudgetEnforcer | None" = None,
         health_tracker: "ProviderHealthTracker | None" = None,
+        feedback_tracker: "ResponseFeedbackTracker | None" = None,
     ) -> None:
         self._closed = False
         self._budget = budget_enforcer
         self._health = health_tracker
+        self._feedback_tracker = feedback_tracker
         self._audit: GatewayAudit | None = (
             GatewayAudit(audit_path) if audit_path is not None else None
         )
@@ -198,7 +276,7 @@ class ModelGateway:
         else:
             self._anthropic = None
 
-        if _HAS_OLLAMA:
+        if _ensure_ollama():
             self._ollama = OllamaClient(host=ollama_host, timeout=120.0)
         else:
             self._ollama = None
@@ -232,7 +310,7 @@ class ModelGateway:
         available.extend(self._cloud_keys.keys())
         for key in self._cli_providers:
             available.append(f"{key}")
-        if _HAS_OLLAMA:
+        if self._ollama is not None:
             available.append("ollama")
         if not available:
             logger.warning("No LLM providers configured -- all calls will fail")
@@ -375,6 +453,101 @@ class ModelGateway:
                 logger.info("Anthropic unavailable, routing %s -> %s", model, best)
                 return best
         return model
+
+    @staticmethod
+    def _estimate_tokens(messages: list[dict[str, str]]) -> int:
+        """Rough token estimate: total chars / 4."""
+        return sum(len(m.get("content", "")) for m in messages) // 4
+
+    def _apply_context_guard(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+    ) -> tuple[list[dict[str, str]], str]:
+        """Guard against exceeding a model's context window.
+
+        If the estimated token count exceeds 90% of the model's context limit,
+        try to find a model with a larger context window.  If none is available
+        or the model is unknown, truncate the system prompt to fit.
+
+        Returns ``(possibly_modified_messages, possibly_remapped_model)``.
+        """
+        limit = _MODEL_CONTEXT_LIMITS.get(model)
+        if limit is None:
+            return messages, model
+
+        estimated = self._estimate_tokens(messages)
+        threshold = int(limit * _CONTEXT_GUARD_THRESHOLD)
+
+        if estimated <= threshold:
+            return messages, model
+
+        logger.warning(
+            "Prompt ~%d tokens exceeds %d%% of %s context (%d). "
+            "Attempting context guard.",
+            estimated, int(_CONTEXT_GUARD_THRESHOLD * 100), model, limit,
+        )
+
+        # Try to switch to a model with a larger context window
+        for candidate, candidate_limit in sorted(
+            _MODEL_CONTEXT_LIMITS.items(), key=lambda x: x[1], reverse=True,
+        ):
+            if candidate == model or candidate_limit <= limit:
+                continue
+            candidate_threshold = int(candidate_limit * _CONTEXT_GUARD_THRESHOLD)
+            if estimated <= candidate_threshold:
+                # Check that we can actually route to this candidate
+                provider = self._resolve_provider(candidate)
+                if provider != "ollama" or candidate == _get_local_model():
+                    logger.info(
+                        "Context guard: switching %s -> %s (limit %d -> %d)",
+                        model, candidate, limit, candidate_limit,
+                    )
+                    return messages, candidate
+
+        # No larger model available — truncate system messages to fit
+        excess_tokens = estimated - threshold
+        excess_chars = excess_tokens * 4  # reverse the estimate
+        truncated = []
+        chars_trimmed = 0
+        for msg in messages:
+            if msg.get("role") == "system" and chars_trimmed < excess_chars:
+                content = msg.get("content", "")
+                trim_amount = min(len(content), excess_chars - chars_trimmed)
+                new_content = content[: len(content) - trim_amount]
+                chars_trimmed += trim_amount
+                if new_content:
+                    truncated.append({"role": "system", "content": new_content})
+                # else: drop empty system message entirely
+            else:
+                truncated.append(msg)
+
+        logger.info(
+            "Context guard: truncated system prompt by ~%d chars for %s",
+            chars_trimmed, model,
+        )
+        return truncated, model
+
+    def _check_feedback_quality(self, route_reason: str) -> None:
+        """Log a warning if feedback satisfaction is low for the current route.
+
+        This is a soft signal — it does NOT change routing, just emits a warning
+        so operators can investigate quality issues.
+        """
+        if self._feedback_tracker is None or not route_reason:
+            return
+        try:
+            quality = self._feedback_tracker.get_route_quality(route_reason)
+            if quality["total"] >= 5 and quality["satisfaction_rate"] < 0.4:
+                logger.warning(
+                    "Low satisfaction (%.0f%%) for route '%s' over last %d feedback entries. "
+                    "Consider investigating model quality.",
+                    quality["satisfaction_rate"] * 100,
+                    route_reason,
+                    quality["total"],
+                )
+        except (OSError, ValueError, TypeError) as exc:
+            logger.debug("Feedback quality check failed: %s", exc)
 
     def _route_to_provider(
         self,
@@ -581,6 +754,15 @@ class ModelGateway:
 
         model = self._remap_model_if_needed(model)
 
+        # Feedback quality check (soft signal — logs warning, does not override)
+        self._check_feedback_quality(route_reason)
+
+        # Context window guard: truncate or switch model if prompt is too large
+        messages, model = self._apply_context_guard(messages, model)
+
+        # Record chain-level start time for cumulative fallback latency
+        t0_chain = time.monotonic()
+
         # Budget enforcement: check before making the call
         if self._budget is not None:
             try:
@@ -611,6 +793,9 @@ class ModelGateway:
 
         latency_ms = (time.perf_counter() - t0) * 1000
 
+        # Cumulative chain latency (spans all retries/fallbacks)
+        chain_latency_ms = (time.monotonic() - t0_chain) * 1000
+
         # Record provider health
         if self._health is not None:
             provider_name = response.provider
@@ -622,6 +807,13 @@ class ModelGateway:
             self._budget.record_cost(response.cost_usd, response.model, response.provider)
 
         self._log_completion(response, audit_reason, route_reason, latency_ms, privacy_routed)
+
+        # Log cumulative chain latency (useful when fallbacks added delay)
+        if response.fallback_used:
+            logger.info(
+                "Chain latency: %.1fms (provider latency: %.1fms, model=%s, provider=%s)",
+                chain_latency_ms, latency_ms, response.model, response.provider,
+            )
 
         return response
 
@@ -693,20 +885,55 @@ class ModelGateway:
 
         if resp.status_code == 429:
             headers = getattr(resp, "headers", None)
-            retry_after = (
+            retry_after_raw = (
                 headers.get("Retry-After", "unknown")
                 if headers is not None
                 else "unknown"
             )
-            logger.warning(
-                "Rate limited by %s (HTTP 429). Retry-After: %s",
-                cfg["provider_name"],
-                retry_after,
-            )
-            raise RuntimeError(
-                f"Rate limited by {cfg['provider_name']} (HTTP 429, "
-                f"Retry-After: {retry_after})"
-            )
+            # Short-wait retry: if Retry-After <= 5s, sleep and retry ONCE
+            try:
+                retry_after_s = float(retry_after_raw)
+            except (TypeError, ValueError):
+                retry_after_s = None
+
+            if retry_after_s is not None and 0 < retry_after_s <= 5.0:
+                logger.info(
+                    "Rate limited by %s (HTTP 429). Retry-After: %.1fs — short wait, retrying once.",
+                    cfg["provider_name"], retry_after_s,
+                )
+                time.sleep(retry_after_s)
+                resp = self._http.post(
+                    url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                # If retry also fails, fall through to error handling below
+                if resp.status_code == 429:
+                    logger.warning(
+                        "Retry after short wait still got 429 from %s",
+                        cfg["provider_name"],
+                    )
+                    raise RuntimeError(
+                        f"Rate limited by {cfg['provider_name']} (HTTP 429, "
+                        f"Retry-After: {retry_after_raw}, retried once)"
+                    )
+                elif resp.status_code != 200:
+                    error_text = resp.text[:200]
+                    raise RuntimeError(f"HTTP {resp.status_code}: {error_text}")
+                # else: retry succeeded, fall through to parse response
+            else:
+                logger.warning(
+                    "Rate limited by %s (HTTP 429). Retry-After: %s — too long or unknown, failing.",
+                    cfg["provider_name"],
+                    retry_after_raw,
+                )
+                raise RuntimeError(
+                    f"Rate limited by {cfg['provider_name']} (HTTP 429, "
+                    f"Retry-After: {retry_after_raw})"
+                )
 
         if resp.status_code != 200:
             error_text = resp.text[:200]
@@ -800,7 +1027,7 @@ class ModelGateway:
         On failure, returns ``(None, reason_string)`` describing the error.
         Handles all Ollama-specific exception classes in one place.
         """
-        if not _HAS_OLLAMA:
+        if self._ollama is None:
             return None, "ollama package is not installed"
         try:
             resp = self._ollama.chat(
@@ -874,6 +1101,8 @@ class ModelGateway:
             text=result.get("text", ""),
             model=model,
             provider=cli_key,
+            input_tokens=result.get("input_tokens", 0),
+            output_tokens=result.get("output_tokens", 0),
             cost_usd=result.get("cost_usd", 0.0),
         )
 
@@ -1018,7 +1247,7 @@ class ModelGateway:
 
     def check_ollama(self) -> bool:
         """Check if local Ollama server is reachable."""
-        if not _HAS_OLLAMA or self._ollama is None:
+        if self._ollama is None:
             return False
         try:
             self._ollama.list()
@@ -1059,7 +1288,7 @@ class ModelGateway:
         for cli_key in self._cli_providers:
             models.add(cli_key)
         # Ollama (local) — always add local model name
-        if _HAS_OLLAMA:
+        if self._ollama is not None:
             models.add(_get_local_model())
         return models
 

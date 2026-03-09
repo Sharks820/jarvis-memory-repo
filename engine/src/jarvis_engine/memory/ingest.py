@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Number of sentences from the end of chunk N to prepend to chunk N+1.
+# Ensures information spanning chunk boundaries isn't lost during retrieval.
+_CHUNK_OVERLAP_SENTENCES = 2
+
 
 class RecordDict(TypedDict):
     """Memory record dict built by :meth:`EnrichedIngestPipeline._build_record`."""
@@ -41,6 +45,50 @@ class RecordDict(TypedDict):
     tier: str
     access_count: int
     last_accessed: str
+
+
+# ---------------------------------------------------------------------------
+# Rule-based importance scoring
+# ---------------------------------------------------------------------------
+
+_IMPORTANCE_RULES: list[tuple[list[str], float]] = [
+    # (keywords, score) — first match wins, order matters
+    (["medication", "prescription", "allergy", "diagnosis", "doctor", "medical", "health"], 0.90),
+    (["password", "key", "credential", "token", "secret"], 0.88),
+    (["payment", "salary", "investment", "account", "budget", "financial"], 0.85),
+    (["remember", "don't forget", "dont forget", "important"], 0.85),
+    (["meeting", "appointment", "deadline", "due", "calendar", "schedule"], 0.82),
+]
+
+_GREETING_WORDS = {"hi", "hello", "hey", "yo", "sup", "howdy", "hiya", "greetings"}
+
+_DEFAULT_IMPORTANCE = 0.72
+
+
+def _score_importance(content: str) -> float:
+    """Return a rule-based importance score for *content*.
+
+    Checks keyword categories in priority order (medical > security > financial
+    > commitments > calendar).  Short greetings are down-scored.  Default 0.72.
+    """
+    if not content:
+        return _DEFAULT_IMPORTANCE
+
+    lowered = content.lower()
+
+    # Short greetings / small talk
+    if len(content) < 20:
+        words = set(lowered.split())
+        if words & _GREETING_WORDS:
+            return 0.50
+
+    # Category keyword matching (first match wins)
+    for keywords, score in _IMPORTANCE_RULES:
+        for kw in keywords:
+            if kw in lowered:
+                return score
+
+    return _DEFAULT_IMPORTANCE
 
 
 # Patterns for credential redaction (matches password, token, secret, api_key, etc.)
@@ -132,7 +180,7 @@ class EnrichedIngestPipeline:
             "tags": tag_str,
             "summary": summary,
             "content_hash": chunk_hash,
-            "confidence": 0.72,
+            "confidence": _score_importance(chunk),
             "tier": "warm",
             "access_count": 0,
             "last_accessed": "",
@@ -342,6 +390,8 @@ class EnrichedIngestPipeline:
         chunks: list[str] = []
         current_chunk: list[str] = []
         current_len = 0
+        # Track sentences per chunk for overlap computation
+        chunk_sentences: list[list[str]] = []
 
         for sentence in sentences:
             sentence_len = len(sentence)
@@ -351,16 +401,19 @@ class EnrichedIngestPipeline:
                 # Flush current chunk first
                 if current_chunk:
                     chunks.append(" ".join(current_chunk))
+                    chunk_sentences.append(list(current_chunk))
                     current_chunk = []
                     current_len = 0
                 # Hard-split the oversized sentence at max_chunk boundaries
                 for i in range(0, sentence_len, max_chunk):
                     chunks.append(sentence[i : i + max_chunk])
+                    chunk_sentences.append([])  # no sentence-level overlap for hard-splits
                 continue
 
             # If adding this sentence would exceed max_chunk, start a new chunk
             if current_len + sentence_len + 1 > max_chunk and current_chunk:
                 chunks.append(" ".join(current_chunk))
+                chunk_sentences.append(list(current_chunk))
                 current_chunk = []
                 current_len = 0
             current_chunk.append(sentence)
@@ -368,5 +421,23 @@ class EnrichedIngestPipeline:
 
         if current_chunk:
             chunks.append(" ".join(current_chunk))
+            chunk_sentences.append(list(current_chunk))
 
-        return chunks if chunks else [content]
+        if not chunks:
+            return [content]
+
+        # Apply overlap: prepend last N sentences of chunk i to chunk i+1
+        if _CHUNK_OVERLAP_SENTENCES > 0 and len(chunk_sentences) > 1:
+            overlapped: list[str] = [chunks[0]]
+            for i in range(1, len(chunk_sentences)):
+                prev_sents = chunk_sentences[i - 1]
+                cur_sents = chunk_sentences[i]
+                if prev_sents and cur_sents:
+                    overlap = prev_sents[-_CHUNK_OVERLAP_SENTENCES:]
+                    merged = overlap + cur_sents
+                    overlapped.append(" ".join(merged))
+                else:
+                    overlapped.append(chunks[i] if i < len(chunks) else "")
+            return [c for c in overlapped if c]
+
+        return chunks

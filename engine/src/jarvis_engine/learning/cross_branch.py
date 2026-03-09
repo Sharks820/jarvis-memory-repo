@@ -121,10 +121,27 @@ def cross_branch_query(
     }
 
 
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors (pure-Python fallback)."""
+    import math
+
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a < 1e-12 or norm_b < 1e-12:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+# Minimum cosine similarity for embedding-based cross-branch edge creation.
+_EMBEDDING_SIMILARITY_THRESHOLD = 0.75
+
+
 def create_cross_branch_edges(
     kg: "KnowledgeGraph",
     new_fact_id: str,
     record_id: str,
+    embed_service: "EmbeddingService | None" = None,
 ) -> int:
     """Create cross-branch edges between a new fact and existing facts in other branches.
 
@@ -157,6 +174,9 @@ def create_cross_branch_edges(
 
     edges_created = 0
     db = kg.db  # type: ignore[attr-defined]
+
+    # Track already-linked target IDs to avoid duplicate edges from keyword + embedding
+    linked_targets: set[str] = set()
 
     for keyword in keywords:
         # Escape SQL LIKE wildcards in keyword to prevent injection
@@ -195,6 +215,48 @@ def create_cross_branch_edges(
             )
             if was_created:
                 edges_created += 1
+                linked_targets.add(target_id)
+
+    # Supplementary: embedding-based similarity matching
+    if embed_service is not None and label:
+        try:
+            new_embedding = embed_service.embed(label, prefix="search_document")
+            # Fetch candidate nodes from other branches
+            with kg.db_lock:
+                cursor = db.execute(
+                    "SELECT node_id, label FROM kg_nodes LIMIT 200",
+                )
+                candidates = cursor.fetchall()
+
+            for candidate in candidates:
+                cand_id = candidate[0] if not isinstance(candidate, dict) else candidate["node_id"]
+                cand_label = candidate[1] if not isinstance(candidate, dict) else candidate["label"]
+                cand_branch = _extract_branch(cand_id)
+
+                # Skip same-branch, self, and already-linked
+                if cand_branch == source_branch or cand_id == new_fact_id:
+                    continue
+                if cand_id in linked_targets:
+                    continue
+                if not cand_label:
+                    continue
+
+                cand_embedding = embed_service.embed(cand_label, prefix="search_document")
+                sim = _cosine_similarity(new_embedding, cand_embedding)
+
+                if sim >= _EMBEDDING_SIMILARITY_THRESHOLD:
+                    was_created = kg.add_edge(
+                        source_id=new_fact_id,
+                        target_id=cand_id,
+                        relation="cross_branch_semantic",
+                        confidence=round(sim, 3),
+                        source_record=record_id,
+                    )
+                    if was_created:
+                        edges_created += 1
+                        linked_targets.add(cand_id)
+        except (RuntimeError, OSError, ValueError, ImportError) as exc:
+            logger.debug("Embedding-based cross-branch matching failed: %s", exc)
 
     return edges_created
 

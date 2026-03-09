@@ -667,12 +667,48 @@ def _transcribe_forced(
     return result
 
 
+# Higher confidence threshold for Parakeet when personal vocabulary is
+# expected — forces fallthrough to Deepgram which supports keyword boosting.
+_PARAKEET_PROPER_NOUN_THRESHOLD = 0.75
+
+
+def _parakeet_should_fallthrough(
+    result: TranscriptionResult,
+    entity_list: list[str] | None,
+) -> bool:
+    """Return True if Parakeet result should fall through due to proper noun heuristic.
+
+    When the caller provides an *entity_list* (personal names, places, etc.)
+    and none of those entities appear in the Parakeet transcript, we treat the
+    result as below-threshold even if confidence is >= 0.6.  Deepgram with its
+    keyword boosting is much better at proper nouns.
+    """
+    if not entity_list:
+        return False
+    if result.backend != "parakeet-tdt":
+        return False
+    if result.confidence >= _PARAKEET_PROPER_NOUN_THRESHOLD:
+        return False
+    lowered_text = result.text.lower()
+    for entity in entity_list:
+        if entity.lower() in lowered_text:
+            return False  # entity found — Parakeet got it right
+    # Entity list provided but none found in transcript — try Deepgram
+    logger.info(
+        "Parakeet proper-noun heuristic: entity_list=%s not found in '%s', "
+        "falling through to next backend",
+        entity_list[:5], result.text[:60],
+    )
+    return True
+
+
 def _transcribe_auto(
     audio: np.ndarray | str,
     *,
     language: str,
     prompt: str,
     root_dir: Path | None,
+    entity_list: list[str] | None = None,
 ) -> TranscriptionResult:
     """Walk the 4-tier fallback chain and return the best result."""
     import sys
@@ -699,6 +735,14 @@ def _transcribe_auto(
                 latency_ms=result.duration_seconds * 1000,
                 text_length=len(result.text),
             )
+
+            # Parakeet proper-noun heuristic: if caller expects specific
+            # entities but Parakeet didn't transcribe any, fall through to
+            # Deepgram which has keyword boosting.
+            if _parakeet_should_fallthrough(result, entity_list):
+                if best_so_far is None or result.confidence > best_so_far.confidence:
+                    best_so_far = result
+                continue
 
             if result.confidence >= CONFIDENCE_RETRY_THRESHOLD:
                 return result
@@ -803,9 +847,47 @@ def transcribe_smart(
     else:
         final = _transcribe_auto(
             audio, language=language, prompt=prompt, root_dir=root_dir,
+            entity_list=entity_list,
         )
 
     return _apply_postprocessing(final, gateway=gateway, entity_list=entity_list)
+
+
+def warmup_stt_backends() -> None:
+    """Pre-load STT models in the background to eliminate cold-start latency.
+
+    Intended to be called from the daemon startup path via a background
+    thread::
+
+        threading.Thread(target=warmup_stt_backends, daemon=True).start()
+
+    Currently warms up:
+    - Parakeet TDT 0.6B (the primary local backend)
+
+    Handles ``ImportError`` gracefully when ``onnx_asr`` is not installed.
+    """
+    global _parakeet_model
+    try:
+        import onnx_asr  # type: ignore[import-untyped]
+    except ImportError:
+        logger.debug("onnx_asr not installed; skipping Parakeet warmup")
+        return
+
+    with _parakeet_lock:
+        if _parakeet_model is not None:
+            logger.debug("Parakeet model already loaded; skipping warmup")
+            return
+        try:
+            logger.info("Warming up Parakeet TDT 0.6B model...")
+            model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2")
+            try:
+                model = model.with_timestamps()
+            except (AttributeError, RuntimeError, TypeError):
+                pass
+            _parakeet_model = model
+            logger.info("Parakeet TDT 0.6B model warmed up successfully")
+        except (RuntimeError, OSError, ValueError) as exc:
+            logger.warning("Parakeet warmup failed: %s", exc)
 
 
 def listen_and_transcribe(

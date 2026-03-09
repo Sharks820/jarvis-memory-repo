@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import math
+import os
 import sqlite3
 import sys
 import threading
@@ -20,6 +21,31 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+# Skip expensive embedding model warmup in tests — prevents xdist workers
+# from all loading the ~1.2GB nomic-bert model simultaneously.
+os.environ.setdefault("JARVIS_SKIP_EMBED_WARMUP", "1")
+os.environ.setdefault("JARVIS_SKIP_OLLAMA", "1")
+
+
+def pytest_unconfigure(config):
+    """Force-exit after pytest prints results to avoid hanging on daemon threads.
+
+    Some modules (sentence-transformers, activity_feed) spawn non-daemon
+    threads that prevent clean shutdown.  os._exit() bypasses thread join
+    and atexit handlers to exit immediately.
+
+    Uses pytest_unconfigure (runs AFTER terminal summary) instead of
+    pytest_sessionfinish (runs BEFORE) so test failures are always visible.
+
+    Skips force-exit for xdist workers (they need normal shutdown).
+    """
+    # Don't force-exit in xdist worker processes
+    if hasattr(config, "workerinput"):
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(getattr(config, "_exitstatus", 0))
 
 
 @pytest.fixture(autouse=True)

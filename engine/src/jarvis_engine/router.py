@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 
@@ -11,6 +12,11 @@ class RouteDecision:
 
 class ModelRouter:
     def __init__(self, cloud_burst_enabled: bool) -> None:
+        warnings.warn(
+            "ModelRouter is deprecated; use IntentClassifier + ModelGateway instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.cloud_burst_enabled = cloud_burst_enabled
 
     def route(self, risk: str, complexity: str) -> RouteDecision:

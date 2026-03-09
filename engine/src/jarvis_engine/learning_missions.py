@@ -197,7 +197,8 @@ def create_learning_mission(
     cleaned_topic = topic.strip()
     if not cleaned_topic:
         raise ValueError("topic is required")
-    mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+    import secrets
+    mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{secrets.token_hex(3)}"
     mission = {
         "mission_id": mission_id,
         "topic": cleaned_topic[:200],

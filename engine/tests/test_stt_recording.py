@@ -103,8 +103,10 @@ def test_record_microphone_vad_no_speech_records_full() -> None:
             drain_seconds=0.0,
         )
 
-    # No speech detected, so silence_frames never incremented -> records all 20 chunks
-    assert call_count[0] == 20
+    # No speech detected, so silence_frames never incremented -> records all 20 chunks.
+    # +1 for adaptive noise floor calibration (reads 500ms of ambient audio when
+    # Silero VAD is unavailable).
+    assert call_count[0] == 21
 
 
 # ---------------------------------------------------------------------------
@@ -327,9 +329,12 @@ def test_record_from_microphone_rms_uses_100ms_chunks() -> None:
          patch("jarvis_engine.stt_vad.get_vad_detector", return_value=mock_vad):
         stt_mod.record_from_microphone(drain_seconds=0.0)
 
-    # stream.read should be called with 1600 samples (100ms at 16kHz)
+    # First read is noise floor calibration (8000 samples = 500ms).
+    # Second read onward are the actual recording chunks (1600 samples = 100ms).
     first_read_arg = mock_stream.read.call_args_list[0][0][0]
-    assert first_read_arg == 1600
+    assert first_read_arg == 8000, "First read should be noise floor calibration"
+    second_read_arg = mock_stream.read.call_args_list[1][0][0]
+    assert second_read_arg == 1600, "Recording chunks should be 1600 samples (100ms)"
 
 
 # ---------------------------------------------------------------------------

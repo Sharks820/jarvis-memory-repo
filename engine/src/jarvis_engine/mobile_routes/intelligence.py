@@ -214,6 +214,24 @@ class IntelligenceRoutesMixin:
             parsed = urlparse(self.path)
             qs = parse_qs(parsed.query)
             full = qs.get("full", ["0"])[0] == "1"
+
+            # Full (unredacted) state requires master password verification.
+            if full:
+                master_pwd = qs.get("master_pwd", [""])[0]
+                if not master_pwd:
+                    self._write_json(HTTPStatus.FORBIDDEN, {
+                        "ok": False,
+                        "error": "Master password required for full conversation state.",
+                    })
+                    return
+                from jarvis_engine.owner_guard import verify_master_password
+                if not verify_master_password(self._root, master_pwd):
+                    self._write_json(HTTPStatus.FORBIDDEN, {
+                        "ok": False,
+                        "error": "Invalid master password.",
+                    })
+                    return
+
             self._write_json(HTTPStatus.OK, csm.get_state_snapshot(full=full))
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("conversation state endpoint failed: %s", exc)

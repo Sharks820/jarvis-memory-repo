@@ -320,15 +320,17 @@ class TestIngestChunking:
         assert chunks[0] == text
 
     def test_long_content_splits_at_sentences(self, pipeline: EnrichedIngestPipeline) -> None:
-        """Long content is split at sentence boundaries."""
+        """Long content is split at sentence boundaries with overlap."""
         sentences = [f"This is sentence {i}. " for i in range(50)]
         text = "".join(sentences)
         chunks = pipeline._chunk_content(text, max_chunk=200)
         assert len(chunks) > 1
-        # Each chunk should be <= max_chunk (approximately)
-        for chunk in chunks:
-            # Oversized single sentences are allowed to exceed max_chunk
-            assert len(chunk) <= 200 or len(chunk.split(". ")) <= 2
+        # Each chunk should be approximately <= max_chunk.  Overlap of 2
+        # sentences may add up to ~50 chars, so allow 1.5x buffer for
+        # chunks after the first (which has no overlap prepended).
+        assert len(chunks[0]) <= int(200 * 1.2)
+        for chunk in chunks[1:]:
+            assert len(chunk) <= int(200 * 1.5) or len(chunk.split(". ")) <= 4
 
     def test_paragraph_splitting(self, pipeline: EnrichedIngestPipeline) -> None:
         """Content with double newlines splits on paragraph boundaries."""

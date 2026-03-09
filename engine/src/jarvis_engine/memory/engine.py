@@ -583,6 +583,46 @@ class MemoryEngine:
                 except sqlite3.Error as exc:
                     logger.debug("Failed to close MemoryEngine database connection: %s", exc)
 
+    def rebuild_fts_with_prefix(self) -> bool:
+        """Recreate the FTS5 table with ``prefix='2,3'`` for faster prefix queries.
+
+        Copies all existing data from the old table, drops it, creates the new
+        one with the prefix parameter, and re-inserts the rows.  Returns True
+        on success, False on failure (original table left intact on error).
+        """
+        self._check_open()
+        with self._write_lock:
+            cur = self._db.cursor()
+            try:
+                # Read existing data
+                cur.execute("SELECT record_id, summary FROM fts_records")
+                rows = cur.fetchall()
+
+                # Drop and recreate with prefix
+                cur.execute("DROP TABLE IF EXISTS fts_records")
+                cur.execute(
+                    "CREATE VIRTUAL TABLE fts_records "
+                    "USING fts5(record_id, summary, prefix='2,3')"
+                )
+
+                # Re-insert data
+                for row in rows:
+                    cur.execute(
+                        "INSERT INTO fts_records(record_id, summary) VALUES (?, ?)",
+                        (row[0], row[1]),
+                    )
+
+                self._db.commit()
+                logger.info(
+                    "FTS5 table rebuilt with prefix='2,3' (%d rows migrated)",
+                    len(rows),
+                )
+                return True
+            except sqlite3.Error as exc:
+                self._db.rollback()
+                logger.warning("rebuild_fts_with_prefix failed: %s", exc)
+                return False
+
     def __enter__(self) -> "MemoryEngine":
         return self
 

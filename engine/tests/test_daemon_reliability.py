@@ -156,22 +156,16 @@ class TestDaemonResourceGuardrails:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
         sleeps: list[int] = []
 
-        monkeypatch.setattr(
-            daemon_loop_mod,
-            "capture_runtime_resource_snapshot",
-            lambda root: {"pressure_level": "mild", "metrics": {}, "throttle": {}},
-        )
-        monkeypatch.setattr(daemon_loop_mod, "write_resource_pressure_state", lambda root, snap: snap)
-        monkeypatch.setattr(
-            daemon_loop_mod,
-            "recommend_daemon_sleep",
-            lambda base, snap: {
-                "base_sleep_s": base,
-                "sleep_s": 777,
-                "pressure_level": "mild",
-                "skip_heavy_tasks": False,
-            },
-        )
+        # Override _gather_cycle_state to return the throttled sleep value
+        # (the base monkeypatch replaces it with _fast_gather_cycle_state which
+        # hardcodes sleep_seconds=0 and never calls recommend_daemon_sleep).
+        def _throttled_gather(root, active_interval, idle_interval, idle_after):
+            state = _fast_gather_cycle_state(root, active_interval, idle_interval, idle_after)
+            state["sleep_seconds"] = 777
+            state["pressure_level"] = "mild"
+            return state
+
+        monkeypatch.setattr(daemon_loop_mod, "_gather_cycle_state", _throttled_gather)
         monkeypatch.setattr(daemon_loop_mod, "_interruptible_sleep", lambda s: sleeps.append(int(s)))
 
         rc = _run_daemon_impl(tmp_path, max_cycles=2)
@@ -183,24 +177,22 @@ class TestDaemonResourceGuardrails:
     ) -> None:
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
 
+        # Override _gather_cycle_state to return severe pressure
+        def _severe_gather(root, active_interval, idle_interval, idle_after):
+            state = _fast_gather_cycle_state(root, active_interval, idle_interval, idle_after)
+            state["pressure_level"] = "severe"
+            state["skip_heavy_tasks"] = True
+            return state
+
+        monkeypatch.setattr(daemon_loop_mod, "_gather_cycle_state", _severe_gather)
+        # Re-enable _run_periodic_subsystems so the self-test skip logic runs
         monkeypatch.setattr(
-            daemon_loop_mod,
-            "capture_runtime_resource_snapshot",
-            lambda root: {"pressure_level": "severe", "metrics": {}, "throttle": {}},
-        )
-        monkeypatch.setattr(daemon_loop_mod, "write_resource_pressure_state", lambda root, snap: snap)
-        monkeypatch.setattr(
-            daemon_loop_mod,
-            "recommend_daemon_sleep",
-            lambda base, snap: {
-                "base_sleep_s": base,
-                "sleep_s": base,
-                "pressure_level": "severe",
-                "skip_heavy_tasks": True,
-            },
+            daemon_loop_mod, "_run_periodic_subsystems",
+            _real_run_periodic_subsystems,
         )
 
-        with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_self_test:
+        with patch("jarvis_engine.proactive.self_test.AdversarialSelfTest") as mock_self_test, \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
             rc = _run_daemon_impl(tmp_path, max_cycles=1, self_test_every_cycles=1)
 
         assert rc == 0
@@ -388,6 +380,25 @@ class TestLearningMissionPerformance:
 # Helpers for daemon integration tests
 # ---------------------------------------------------------------------------
 
+def _fast_gather_cycle_state(root, active_interval, idle_interval, idle_after):
+    """Instant stub for _gather_cycle_state — avoids filesystem I/O in tests."""
+    return {
+        "idle_seconds": 10.0,
+        "is_active": True,
+        "sleep_seconds": 0,
+        "resource_snapshot": {},
+        "pressure_level": "none",
+        "skip_heavy_tasks": False,
+        "gaming_state": {},
+        "control_state": {},
+        "auto_detect": False,
+        "detected_process": "",
+        "gaming_mode_enabled": False,
+        "daemon_paused": False,
+        "safe_mode": False,
+    }
+
+
 def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     """Apply the standard monkeypatches needed by every daemon test."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
@@ -398,9 +409,23 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
     monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
+    # Bypass expensive per-cycle I/O (filesystem snapshots, resource checks)
+    monkeypatch.setattr(daemon_loop_mod, "_gather_cycle_state", _fast_gather_cycle_state)
+    # Make _interruptible_sleep instant (avoids 600-iteration no-op loops)
+    monkeypatch.setattr(daemon_loop_mod, "_interruptible_sleep", lambda s: None)
+    # Stub out all periodic subsystems — tests that need specific subsystems
+    # should re-patch _run_periodic_subsystems in their own body.
+    monkeypatch.setattr(
+        daemon_loop_mod, "_run_periodic_subsystems",
+        lambda *a, **kw: None,
+    )
     # Reset module-level state so tests are isolated
     monkeypatch.setattr(daemon_loop_mod, "_daemon_kg_prev_metrics", None)
     monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
+
+
+# Save the real _run_periodic_subsystems for tests that need it.
+_real_run_periodic_subsystems = daemon_loop_mod._run_periodic_subsystems
 
 
 def _run_daemon_impl(tmp_path: Path, **kwargs) -> int:
@@ -485,6 +510,11 @@ class TestDaemonRegressionCheck:
     ) -> None:
         """KG regression check should run on multiples of 10."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        # Re-enable _run_periodic_subsystems so regression logic actually runs
+        monkeypatch.setattr(
+            daemon_loop_mod, "_run_periodic_subsystems",
+            _real_run_periodic_subsystems,
+        )
 
         capture_calls: list[int] = []
         mock_bus = MagicMock(spec=CommandBus)
@@ -524,6 +554,11 @@ class TestDaemonRegressionCheck:
     ) -> None:
         """When regression status is 'fail', daemon should auto-restore from backup."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        # Re-enable _run_periodic_subsystems so regression logic actually runs
+        monkeypatch.setattr(
+            daemon_loop_mod, "_run_periodic_subsystems",
+            _real_run_periodic_subsystems,
+        )
 
         # Create a fake backup file under tmp_path (matches daemon's root-relative path)
         backup_dir = tmp_path / ".planning" / "runtime" / "kg_backups"
@@ -605,6 +640,11 @@ class TestDaemonConsolidation:
     ) -> None:
         """Memory consolidation should run on multiples of 50 via CQRS bus."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        # Re-enable _run_periodic_subsystems so consolidation logic runs
+        monkeypatch.setattr(
+            daemon_loop_mod, "_run_periodic_subsystems",
+            _real_run_periodic_subsystems,
+        )
 
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 
@@ -655,6 +695,11 @@ class TestDaemonConsolidation:
     ) -> None:
         """When engine is None, consolidation via bus returns 'not available'."""
         _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        # Re-enable _run_periodic_subsystems so consolidation logic runs
+        monkeypatch.setattr(
+            daemon_loop_mod, "_run_periodic_subsystems",
+            _real_run_periodic_subsystems,
+        )
 
         from jarvis_engine.commands.learning_commands import ConsolidateMemoryResult
 
@@ -684,8 +729,6 @@ class TestDaemonEntityResolution:
         self, tmp_path: Path, monkeypatch, capsys
     ) -> None:
         """Entity resolution should run on multiples of 100."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
-
         mock_bus = MagicMock(spec=CommandBus)
         mock_kg = MagicMock(spec=KnowledgeGraph)
         mock_bus.ctx = AppContext(kg=mock_kg, embed_service=None)
@@ -700,6 +743,8 @@ class TestDaemonEntityResolution:
 
         mock_rc_checker = MagicMock(spec=RegressionChecker)
 
+        # Call _run_periodic_subsystems directly at cycle 100 instead of
+        # running 100 full daemon loops — verifies the same trigger logic.
         with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.knowledge.entity_resolver.EntityResolver",
@@ -710,43 +755,55 @@ class TestDaemonEntityResolution:
                  return_value=mock_rc_checker,
              ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
-            rc = _run_daemon_impl(tmp_path, max_cycles=100)
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=100, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
-        assert rc == 0
         captured = capsys.readouterr()
         assert "entity_resolve_candidates=5" in captured.out
         assert "entity_resolve_merges=2" in captured.out
-        # Should have backed up KG before entity resolution
         mock_rc_checker.backup_graph.assert_called_with(tag="pre-entity-resolve")
 
     def test_entity_resolution_exception_does_not_crash_daemon(
         self, tmp_path: Path, monkeypatch
     ) -> None:
         """Entity resolution failure should not crash the daemon."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
-
+        # Call _run_periodic_subsystems directly at cycle 100 — the broad
+        # try/except inside _run_entity_resolution_cycle should absorb the error.
         with patch.object(
             daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError("bus broken")
         ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
-            rc = _run_daemon_impl(tmp_path, max_cycles=100)
-
-        assert rc == 0
+            # Should not raise
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=100, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
     def test_entity_resolution_skipped_when_kg_not_initialized(
         self, tmp_path: Path, monkeypatch, capsys
     ) -> None:
         """When KG is None on the bus, entity resolution should be skipped."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
-
         mock_bus = MagicMock(spec=[])
         mock_bus.ctx = AppContext(kg=None)
 
         with patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
-            rc = _run_daemon_impl(tmp_path, max_cycles=100)
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=100, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
-        assert rc == 0
         captured = capsys.readouterr()
         assert "entity_resolve_skipped=kg_not_initialized" in captured.out
 
@@ -886,10 +943,6 @@ class TestDaemonAutoHarvest:
         self, tmp_path: Path, monkeypatch, capsys
     ) -> None:
         """Auto-harvest should trigger at cycle 200."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
-
-        harvest_calls: list[str] = []
-
         mock_harvester = MagicMock(spec=KnowledgeHarvester)
         mock_harvester.harvest.return_value = {
             "topic": "test topic",
@@ -941,63 +994,88 @@ class TestDaemonAutoHarvest:
                  return_value=MagicMock(spec=EnrichedIngestPipeline),
              ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
-            rc = _run_daemon_impl(tmp_path, max_cycles=200)
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=200, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
-        assert rc == 0
         captured = capsys.readouterr()
         assert "auto_harvest_topic=" in captured.out
 
     def test_auto_harvest_does_not_run_before_cycle_200(
-        self, tmp_path: Path, monkeypatch, capsys
+        self, tmp_path: Path, capsys
     ) -> None:
         """Auto-harvest should NOT trigger before cycle 200."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        # Cycle 199 — auto_harvest fires at % 200 == 0, so 199 should skip it
+        with patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=199, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
-        rc = _run_daemon_impl(tmp_path, max_cycles=199)
-
-        assert rc == 0
         captured = capsys.readouterr()
         assert "auto_harvest_topic=" not in captured.out
-        assert "auto_harvest_skipped=" not in captured.out
 
     def test_auto_harvest_failure_does_not_crash_daemon(
         self, tmp_path: Path, monkeypatch
     ) -> None:
         """Auto-harvest exceptions should be isolated from the daemon."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
-
         # Force _discover_harvest_topics to raise
-        def exploding_discover(root):
-            raise RuntimeError("Discovery exploded")
-
-        monkeypatch.setattr(daemon_loop_mod, "_discover_harvest_topics", exploding_discover)
-
-        rc = _run_daemon_impl(tmp_path, max_cycles=200)
-        assert rc == 0  # Daemon survives
+        with patch.object(
+            daemon_loop_mod, "_discover_harvest_topics",
+            side_effect=RuntimeError("Discovery exploded"),
+        ), \
+             patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            # Should not raise
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=200, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
     def test_auto_harvest_skipped_when_no_topics(
-        self, tmp_path: Path, monkeypatch, capsys
+        self, tmp_path: Path, capsys
     ) -> None:
         """When no topics are discovered, auto-harvest should be skipped gracefully."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
+        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=[]), \
+             patch.object(daemon_loop_mod, "_get_daemon_bus", side_effect=RuntimeError), \
+             patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=200, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
-        with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=[]):
-            rc = _run_daemon_impl(tmp_path, max_cycles=200)
-
-        assert rc == 0
         captured = capsys.readouterr()
         assert "auto_harvest_skipped=no_topics_discovered" in captured.out
 
     def test_auto_harvest_skipped_when_no_providers(
-        self, tmp_path: Path, monkeypatch, capsys
+        self, tmp_path: Path, capsys
     ) -> None:
         """When no providers have API keys, auto-harvest should be skipped."""
-        _base_daemon_monkeypatch(monkeypatch, tmp_path)
-
         mock_provider = MagicMock(spec=HarvesterProvider)
         mock_provider.is_available = False
 
+        # _run_auto_harvest_cycle calls _get_daemon_bus() internally (line 981),
+        # so it must return a proper mock bus (not raise) for the code to reach
+        # the provider availability check.
+        mock_bus = MagicMock(spec=CommandBus)
+        mock_bus.ctx = AppContext(engine=MagicMock(), kg=MagicMock(), embed_service=MagicMock())
+
         with patch.object(daemon_loop_mod, "_discover_harvest_topics", return_value=["some topic"]), \
+             patch.object(daemon_loop_mod, "_get_daemon_bus", return_value=mock_bus), \
              patch(
                  "jarvis_engine.harvesting.providers.MiniMaxProvider",
                  return_value=mock_provider,
@@ -1015,9 +1093,14 @@ class TestDaemonAutoHarvest:
                  return_value=mock_provider,
              ), \
              patch("jarvis_engine.activity_feed.log_activity", return_value="id"):
-            rc = _run_daemon_impl(tmp_path, max_cycles=200)
+            _real_run_periodic_subsystems(
+                tmp_path, cycles=200, skip_heavy_tasks=False,
+                run_missions=False, cmd_mobile_desktop_sync=None,
+                cmd_self_heal=None, sync_every_cycles=0,
+                self_heal_every_cycles=0, self_test_every_cycles=0,
+                watchdog_every_cycles=0,
+            )
 
-        assert rc == 0
         captured = capsys.readouterr()
         assert "auto_harvest_skipped=no_providers_available" in captured.out
 

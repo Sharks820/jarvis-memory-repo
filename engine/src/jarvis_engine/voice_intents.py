@@ -5,6 +5,7 @@ Split from voice_pipeline.py for separation of concerns.
 
 from __future__ import annotations
 
+import difflib
 import logging
 import os
 import threading
@@ -521,6 +522,40 @@ def _handle_system_status(ctx: _DispatchCtx) -> tuple[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Fuzzy matching helpers for voice command recognition
+# ---------------------------------------------------------------------------
+
+def _fuzzy_match(text: str, target: str, threshold: float = 0.80) -> bool:
+    """Return True if *text* contains a subsequence similar to *target*.
+
+    Uses ``difflib.SequenceMatcher`` to compute a similarity ratio.
+    Compares sliding windows of *target*-length words in *text* against
+    *target* so the match works even when *target* is embedded inside a
+    longer utterance.
+    """
+    if not text or not target:
+        return False
+    target_words = target.split()
+    text_words = text.split()
+    target_len = len(target_words)
+    if target_len == 0:
+        return False
+    for i in range(max(1, len(text_words) - target_len + 1)):
+        window = " ".join(text_words[i : i + target_len])
+        ratio = difflib.SequenceMatcher(None, window, target).ratio()
+        if ratio >= threshold:
+            return True
+    return False
+
+
+# Critical commands eligible for fuzzy matching as a fallback.
+# These are voice commands where a near-miss (STT error) should still
+# be recognised to avoid silently ignoring the user's intent.
+_CRITICAL_FUZZY_TARGETS: list[tuple[str, Callable[["_DispatchCtx"], tuple[str, int]]]] = []
+# Populated after _DISPATCH_RULES is defined (see below).
+
+
+# ---------------------------------------------------------------------------
 # Matcher helpers — build predicate functions declaratively
 # ---------------------------------------------------------------------------
 
@@ -676,6 +711,22 @@ _DISPATCH_RULES: list[_IntentRule] = [
                 "are you working", "are you running"),
      _handle_system_status),
 ]
+
+# Populate fuzzy targets for critical commands (pause, resume, safe mode,
+# stop, status).  These phrases are the most important to recognise even
+# when STT produces slight misheard variants (e.g. "paws jarvis").
+_CRITICAL_FUZZY_TARGETS.extend([
+    ("pause jarvis",    _handle_runtime_pause),
+    ("pause daemon",    _handle_runtime_pause),
+    ("resume jarvis",   _handle_runtime_resume),
+    ("resume daemon",   _handle_runtime_resume),
+    ("safe mode on",    _handle_runtime_safe_on),
+    ("safe mode off",   _handle_runtime_safe_off),
+    ("stop mission",    _handle_mission_cancel),
+    ("jarvis status",   _handle_system_status),
+    ("system status",   _handle_system_status),
+    ("runtime status",  _handle_runtime_status),
+])
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +957,16 @@ def _dispatch_voice_intent(
         if handler is _handle_phone_place_call and not _phone_place_call_has_number:
             continue
         if matcher(lowered):
+            return handler(ctx)
+
+    # Fuzzy fallback: try critical commands with similarity matching.
+    # Only reached when exact substring matching failed.
+    for target_phrase, handler in _CRITICAL_FUZZY_TARGETS:
+        if _fuzzy_match(lowered, target_phrase):
+            logger.info(
+                "Fuzzy match: '%s' matched critical command '%s'",
+                lowered[:60], target_phrase,
+            )
             return handler(ctx)
 
     rc = web_augmented_fn(
