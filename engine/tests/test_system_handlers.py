@@ -258,11 +258,21 @@ def test_self_heal_empty_note_defaults(mock_heal: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.desktop_widget.run_desktop_widget")
-def test_desktop_widget_success(mock_run: MagicMock) -> None:
-    handler = DesktopWidgetHandler(ROOT)
-    result = handler.handle(DesktopWidgetCommand())
+def test_desktop_widget_success() -> None:
+    """Handler calls run_desktop_widget and returns rc=0."""
+    import sys
+    import types
+
+    mock_run = MagicMock()
+    mock_widget_mod = types.ModuleType("jarvis_engine.desktop_widget")
+    mock_widget_mod.run_desktop_widget = mock_run  # type: ignore[attr-defined]
+
+    with patch.dict(sys.modules, {"jarvis_engine.desktop_widget": mock_widget_mod}):
+        handler = DesktopWidgetHandler(ROOT)
+        result = handler.handle(DesktopWidgetCommand())
+
     assert result.return_code == 0
+    mock_run.assert_called_once()
 
 
 def test_desktop_widget_import_error() -> None:

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from typing import TYPE_CHECKING
 
 from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
@@ -178,7 +179,13 @@ class IntentClassifier:
         self._privacy_re = re.compile(
             r"\b(?:" + "|".join(re.escape(kw) for kw in self.PRIVACY_KEYWORDS) + r")\b"
         )
-        self._centroids = self._precompute_routes()
+        # Centroids are computed lazily on the first classify() call to avoid
+        # blocking __init__ on model downloads (HuggingFace / Ollama) in
+        # offline/CI environments.  Thread-safe: _centroid_lock prevents
+        # double-computation when multiple threads call classify() concurrently
+        # before centroids are ready.
+        self._centroids: dict[str, object] | None = None
+        self._centroid_lock = threading.Lock()
 
     def set_feedback_tracker(self, tracker: "ResponseFeedbackTracker | None") -> None:
         """Set the feedback tracker for route quality penalty (late-binding).
@@ -188,6 +195,23 @@ class IntentClassifier:
         private ``_feedback_tracker`` attribute.
         """
         self._feedback_tracker = tracker
+
+    def _ensure_centroids(self) -> None:
+        """Ensure centroids are available, computing synchronously if needed.
+
+        Called at the start of classify() so centroids are guaranteed ready.
+        Falls back to an empty dict on failure so privacy-keyword routing
+        always works even when the embed service is offline.
+        """
+        if self._centroids is not None:
+            return
+        with self._centroid_lock:
+            if self._centroids is None:
+                try:
+                    self._centroids = self._precompute_routes()
+                except (ImportError, OSError, ValueError, RuntimeError, KeyError, MemoryError) as exc:
+                    logger.warning("Centroid init failed in classify(), using empty set: %s", exc)
+                    self._centroids = {}
 
     @staticmethod
     def _cache_dir() -> str:
@@ -236,13 +260,19 @@ class IntentClassifier:
             if os.path.exists(cache_path):
                 data = np.load(cache_path)
                 centroids = {k: data[k] for k in data.files}
-                # Validate cache completeness -- all routes must be present
-                if set(centroids.keys()) == set(self.ROUTES.keys()):
+                # Validate completeness and that every centroid has positive
+                # dimensionality (guards against stale cache written when the
+                # embed service was offline and returned empty arrays).
+                valid = (
+                    set(centroids.keys()) == set(self.ROUTES.keys())
+                    and all(c.ndim == 1 and c.shape[0] > 0 for c in centroids.values())
+                )
+                if valid:
                     logger.debug("Loaded cached centroids from %s", cache_path)
                     return centroids
                 else:
                     logger.warning(
-                        "Centroid cache incomplete (cached=%s, expected=%s), recomputing",
+                        "Centroid cache invalid or incomplete (cached=%s, expected=%s), recomputing",
                         sorted(centroids.keys()), sorted(self.ROUTES.keys()),
                     )
         except (OSError, ValueError, KeyError) as exc:
@@ -254,7 +284,15 @@ class IntentClassifier:
             for text in exemplars:
                 try:
                     vec = self._embed.embed(text, prefix="search_query")
-                    embeddings.append(np.array(vec))
+                    arr = np.array(vec)
+                    # Only keep embeddings with valid positive dimensionality
+                    if arr.ndim == 1 and arr.shape[0] > 0:
+                        embeddings.append(arr)
+                    else:
+                        logger.warning(
+                            "Embed returned invalid shape %s for route %r, skipping exemplar",
+                            arr.shape, route_name,
+                        )
                 except (RuntimeError, ValueError, OSError) as exc:
                     logger.warning("Failed to embed exemplar for route %r: %s (%s)", route_name, text[:80], exc)
             if embeddings:
@@ -341,6 +379,14 @@ class IntentClassifier:
         # Privacy check first -- always trumps embedding similarity
         if self._check_privacy(query):
             return ("simple_private", local_model, 1.0)
+
+        # Ensure centroids are ready (lazy-init on first call)
+        self._ensure_centroids()
+        assert self._centroids is not None  # guaranteed by _ensure_centroids
+
+        # If no centroids available (embed service offline), fall back to local
+        if not self._centroids:
+            return ("simple_private", local_model, 0.0)
 
         # Embed the query and find best route by cosine similarity
         try:

@@ -13,9 +13,36 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-07 (SoC splits: desktop_widget.py 5 large methods -> focused sub-methods, thread-safe locks on global singletons)
+Last activity: 2026-03-09 (completion accuracy audit; 5 bugs fixed across classifier, test harness; 5347 tests passing)
 
-Progress (v5.0): [██████░░░░] 55%
+Progress (v5.0 Phase 1 — code implementation): [████████░░] 75%
+Progress (v5.0 Phase 1 — formal requirement sign-off): [░░░░░░░░░░] 0% (no exit criteria verified yet)
+Progress (v5.0 overall — all 6 phases): [█░░░░░░░░░] 12%
+
+### Completion Accuracy Note (audited 2026-03-09)
+The prior "55%" figure was stale and applied only to plan 14-02 task implementation
+progress. Corrected breakdown:
+
+**Plan 14-01 (5 tasks):**
+- Tasks A–D: COMPLETE (command lifecycle, context checkpointing, resource guardrails, observability)
+- Task E (debt gate): PARTIAL — bandit 1 high finding, mypy ~105 errors remain
+
+**Plan 14-02 (8 tasks):**
+- Task A (Cross-LLM Context Continuity): COMPLETE — conversation_state.py (1503 lines) wired into voice_pipeline
+- Task B (Time/Date Grounding): COMPLETE — system prompt clock context injected; URL-to-domain TTS shorten
+- Task C (Voice Realtime + Widget): PARTIAL — voice_telemetry.py latency done; widget state animations not wired
+- Task D (Mission/Activity Transparency): COMPLETE — step-driven progress, /missions/* mobile endpoints
+- Task E (Self-Diagnosis): COMPLETE — self_diagnosis.py wired into ops_handlers
+- Task F (Memory Hygiene): COMPLETE — memory_hygiene.py wired into ops_handlers
+- Task G (Citation/Voice Link): COMPLETE — shorten_urls_for_speech in main.py
+- Task H (Desloppify 100): NOT DONE — score still at baseline 33.2/100
+
+**Unmet exit criteria (blocking Phase 1 close):**
+- REL-01/REL-02: 8-hour soak tests do not exist
+- PERF-04: 30-minute memory drift regression test does not exist
+- CTX-01..CTX-06: no formal provider-swap continuity test suite
+- 0/50 REQUIREMENTS.md checkboxes checked off
+- Desloppify strict score: 33.2/100 (target: 100)
 
 ## Performance Metrics
 
@@ -32,7 +59,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-07): 5077 passing, 4 skipped, 0 failures
+- Latest full test run (2026-03-09): 5347 passing, 10 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
@@ -88,7 +115,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: added explicit voice-listen lifecycle state emission (`arming`, `listening`, `processing`, `executing`, `idle`, `error`) to stdout and activity feed for real-time UX/telemetry trust, with focused regression tests for success/error transitions.
 - 2026-03-05: added model-switch continuity guardrails: system-prompt continuity contract is now injected when routed model changes with existing history, and model-switch events are logged to activity feed (`conversation_model_switch`) for observability and anti-reset diagnosis.
 - 2026-03-05: upgraded learning mission status surfaces with explicit active/inactive flags, active-count and per-status counters, mission status-detail emission, and richer response summaries to improve UI/voice mission transparency and operator trust.
-- 2026-03-06: **User engagement checkpoint** — owner (Conner) acknowledged positive signal and confirmed acceptance of the current main-branch state. Reliability, innovation, and optimization tracking continues as planned. No blocking issues raised; feedback is: the system is on the right trajectory and the workflow heartbeat is healthy. Workflow cadence continues under v5.0 Phase 1 with next focus on continuity, voice robustness, and desloppify burn-down.
+- 2026-03-09: **Completion accuracy audit + bug fixes** — prior 55% corrected to Phase 1 code ~75%, formal verified 0%, v5.0 overall ~12%. Fixed 5 bugs: (1) `IntentClassifier.__init__` synchronously called `_precompute_routes()` causing 30+ test timeouts in offline/CI — fixed with lazy centroid computation on first `classify()` call; (2) stale `(0,)`-shaped centroid cache entries not rejected on load — fixed with shape validation; (3) `test_desktop_widget_success` used `@patch` decorator that failed when tkinter unavailable — fixed with `sys.modules` injection; (4) `test_voice_dictate_respects_timeout` bare import failed without tkinter — fixed with `pytest.importorskip`; (5) `test_nonce_race_condition_protection` exhausted TCP backlog with 20 workers × 50 requests — fixed with 10 workers × 20 requests and None-safe result filtering. Test count: 5347 passing (up from 5077), 10 skipped.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -98,16 +125,13 @@ Progress (v5.0): [██████░░░░] 55%
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 - Security/typed quality debt still large despite functional pass baseline:
-  - mypy: 105 errors / 31 files
+  - mypy: ~105 errors / 31 files
   - bandit: 165 findings (1 high, 50 medium, 114 low)
-- Desloppify strict-score loop currently constrained by subjective batch tooling and scope management; continue debt gate with targeted next/scan cycles.
-- User-reported runtime issues persist in real-world usage:
-  - context truncation/HTTP failures on long replies
-  - stability degradation after short command sequences
-  - high memory intensity and mission/activity trust gaps
+- Desloppify strict-score: still at baseline 33.2/100, Task H not yet executed
+- Phase 1 exit criteria all unmet: no 8-hour soak, no memory drift test, no CTX formal test suite, 0/50 requirements verified
 
 ## Session Continuity
 
-Last session: 2026-03-07
-Stopped at: Phase 1 completion design approved. 22 bugs fixed + 5 rescan bugs fixed + flaky test replaced. 5077 tests clean. Design doc committed: docs/plans/2026-03-07-phase1-completion-design.md. Beginning GSD execution of 6 remaining tasks: Context Continuity, Voice UX, Mission Transparency, Self-Diagnosis, Memory Hygiene, Desloppify. Implementation order: A→C→D→E→F→H with test+scan gates between each.
+Last session: 2026-03-09
+Stopped at: Completion accuracy audit + 5 bug fixes. 5347 tests passing. Next: Phase 1 exit criteria — write 8-hour soak harness (REL-01/REL-02), memory drift test (PERF-04), CTX formal test suite, and desloppify Task H burn-down toward 100.
 Resume file: docs/plans/2026-03-07-phase1-completion-design.md
