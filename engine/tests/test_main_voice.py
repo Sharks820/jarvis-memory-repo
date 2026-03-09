@@ -304,6 +304,7 @@ class TestConversationHistory:
     def setup_method(self):
         """Reset module-level conversation history before each test."""
         voice_pipeline_mod._conversation_history.clear()
+        voice_pipeline_mod._conversation_history_loaded = True
 
     def test_add_to_history_appends_message(self):
         """_add_to_history appends a dict with role and content."""
