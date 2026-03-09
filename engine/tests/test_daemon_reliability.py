@@ -1426,7 +1426,7 @@ class TestImprovedTopicDiscovery:
 
     def test_extract_topic_phrases_utility(self) -> None:
         """_extract_topic_phrases should produce multi-word phrases from text."""
-        phrases = daemon_loop_mod._extract_topic_phrases(
+        phrases = harvest_discovery_mod._extract_topic_phrases(
             "How do Python async patterns work with coroutines and event loops"
         )
         assert len(phrases) >= 1
@@ -1436,14 +1436,14 @@ class TestImprovedTopicDiscovery:
 
     def test_extract_topic_phrases_filters_stopwords(self) -> None:
         """_extract_topic_phrases should filter common stop words."""
-        phrases = daemon_loop_mod._extract_topic_phrases("the is a an of in to for with on")
+        phrases = harvest_discovery_mod._extract_topic_phrases("the is a an of in to for with on")
         # All stop words — should produce no phrases
         assert phrases == []
 
     def test_extract_topic_phrases_handles_empty_input(self) -> None:
         """_extract_topic_phrases should handle empty and whitespace input."""
-        assert daemon_loop_mod._extract_topic_phrases("") == []
-        assert daemon_loop_mod._extract_topic_phrases("   ") == []
+        assert harvest_discovery_mod._extract_topic_phrases("") == []
+        assert harvest_discovery_mod._extract_topic_phrases("   ") == []
 
     def test_single_word_mission_topics_are_skipped(
         self, tmp_path: Path

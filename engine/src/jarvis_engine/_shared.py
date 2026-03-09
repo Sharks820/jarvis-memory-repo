@@ -13,9 +13,6 @@ Consolidates duplicated helpers to a single source of truth:
 - now_iso: UTC ISO-8601 timestamp (used by security modules)
 - make_thread_aware_repo_root: thread-local repo_root factory (used by mobile_api)
 
-Note: OllamaResponse and call_ollama_generate have been moved to
-``jarvis_engine.gateway.ollama_client`` and are re-exported here for
-backward compatibility.
 """
 
 from __future__ import annotations
@@ -62,12 +59,6 @@ from typing import Any, Callable, TypeVar
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-# Backward-compat re-exports (moved to gateway.ollama_client)
-from jarvis_engine.gateway.ollama_client import (  # noqa: E402, F401
-    OllamaResponse,
-    call_ollama_generate,
-)
 
 
 def now_iso() -> str:

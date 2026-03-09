@@ -9,6 +9,7 @@ checkpoint, stuck-mission cancellation).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -72,17 +73,7 @@ class DiagnosticIssue:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dictionary for JSON responses."""
-        return {
-            "id": self.id,
-            "severity": self.severity,
-            "component": self.component,
-            "description": self.description,
-            "suggested_fix": self.suggested_fix,
-            "auto_fixable": self.auto_fixable,
-            "fix_action": self.fix_action,
-            "evidence": self.evidence,
-            "timestamp": self.timestamp,
-        }
+        return dataclasses.asdict(self)
 
 
 def _issue_id() -> str:

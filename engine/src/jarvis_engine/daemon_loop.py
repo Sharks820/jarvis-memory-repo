@@ -37,36 +37,15 @@ from jarvis_engine.runtime_control import (
     write_resource_pressure_state,
 )
 
-# Gaming mode — convenience wrappers live in gaming_mode.py; imported here
-# so that existing callers and test patches using daemon_loop.X still work.
-from jarvis_engine.gaming_mode import (  # noqa: F401
+from jarvis_engine.gaming_mode import (
     GamingModeState,
     _windows_idle_seconds,
     detect_active_game_process,
-    gaming_mode_state_path,
-    gaming_processes_path,
     load_gaming_processes,
     read_gaming_mode_state,
     write_gaming_mode_state,
 )
-
-# Harvest discovery — all topic-discovery logic lives in harvest_discovery.py.
-# Re-imported here so existing callers and tests using daemon_loop_mod.X still work.
-from jarvis_engine.harvest_discovery import (  # noqa: F401
-    SQL_NODE_BY_RELATION,
-    SQL_RARE_RELATIONS,
-    SQL_RECENT_SUMMARIES,
-    SQL_SPARSE_NODES,
-    SQL_STRONG_LABELS,
-    _add_phrases,
-    _collect_from_activity_feed,
-    _collect_from_kg_gaps,
-    _collect_from_learning_missions,
-    _collect_from_recent_memories,
-    _collect_from_strong_kg_areas,
-    _extract_topic_phrases,
-    _get_recently_harvested_topics,
-    _try_add_candidate,
+from jarvis_engine.harvest_discovery import (
     discover_harvest_topics as _discover_harvest_topics,
 )
 

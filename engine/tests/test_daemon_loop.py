@@ -11,12 +11,6 @@ import pytest
 import jarvis_engine.daemon_loop as daemon_loop_mod
 import jarvis_engine.gaming_mode as gaming_mode_mod
 from jarvis_engine.daemon_loop import (
-    _try_add_candidate,
-    _add_phrases,
-    _collect_from_recent_memories,
-    _collect_from_kg_gaps,
-    _collect_from_strong_kg_areas,
-    _collect_from_learning_missions,
     _discover_harvest_topics,
     _handle_circuit_breaker,
     _print_cycle_status,
@@ -30,11 +24,21 @@ from jarvis_engine.daemon_loop import (
     _log_cycle_end,
     _run_db_optimize_cycle,
     _run_core_autopilot,
+    cmd_mission_run,
+)
+from jarvis_engine.gaming_mode import (
     gaming_mode_state_path,
     gaming_processes_path,
     read_gaming_mode_state,
     write_gaming_mode_state,
-    cmd_mission_run,
+)
+from jarvis_engine.harvest_discovery import (
+    _try_add_candidate,
+    _add_phrases,
+    _collect_from_recent_memories,
+    _collect_from_kg_gaps,
+    _collect_from_strong_kg_areas,
+    _collect_from_learning_missions,
 )
 
 
