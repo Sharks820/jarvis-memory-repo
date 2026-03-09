@@ -22,7 +22,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._constants import recency_weight as _recency_weight_core
+from jarvis_engine._shared import recency_weight as _recency_weight_core
 
 if TYPE_CHECKING:
     from jarvis_engine.memory.engine import MemoryEngine

@@ -175,7 +175,8 @@ def _init_gateway(
 
     Returns ``(gateway, intent_classifier, cost_tracker)`` — all ``None`` on failure.
     """
-    from jarvis_engine._constants import GATEWAY_AUDIT_LOG, runtime_dir as _runtime_dir
+    from jarvis_engine._constants import GATEWAY_AUDIT_LOG
+    from jarvis_engine._shared import runtime_dir as _runtime_dir
     try:
         from jarvis_engine.gateway.costs import CostTracker
         from jarvis_engine.gateway.models import ModelGateway
@@ -369,7 +370,7 @@ def _register_security_handlers(bus: CommandBus, root: Path) -> None:
 
 def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
     """Register defense command handlers with shared SecurityOrchestrator."""
-    from jarvis_engine._constants import runtime_dir as _runtime_dir
+    from jarvis_engine._shared import runtime_dir as _runtime_dir
     try:
         from jarvis_engine.commands.defense_commands import (
             BlockIPCommand,
@@ -396,9 +397,8 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
 
         _sec_db_path = root / ".planning" / "brain" / "security.db"
         _sec_db_path.parent.mkdir(parents=True, exist_ok=True)
-        _sec_db = sqlite3.connect(str(_sec_db_path), check_same_thread=False)
-        from jarvis_engine._db_pragmas import configure_sqlite
-        configure_sqlite(_sec_db)
+        from jarvis_engine._db_pragmas import connect_db
+        _sec_db = connect_db(_sec_db_path, check_same_thread=False)
         _sec_lock = threading.Lock()
         _sec_log_dir = _runtime_dir(root) / "forensic"
 
@@ -682,11 +682,11 @@ def create_app(root: Path) -> CommandBus:
 
     # Ensure required directories
     (root / ".planning" / "brain").mkdir(parents=True, exist_ok=True)
-    from jarvis_engine._constants import runtime_dir as _runtime_dir
+    from jarvis_engine._shared import runtime_dir as _runtime_dir
     (_runtime_dir(root) / "pids").mkdir(parents=True, exist_ok=True)
     (root / ".planning" / "logs").mkdir(parents=True, exist_ok=True)
 
-    from jarvis_engine._constants import memory_db_path as _memory_db_path
+    from jarvis_engine._shared import memory_db_path as _memory_db_path
     db_path = _memory_db_path(root)
 
     # Core subsystem init

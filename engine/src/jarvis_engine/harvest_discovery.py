@@ -14,10 +14,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import (
-    STOP_WORDS as _HARVEST_STOP_WORDS,
-    memory_db_path as _memory_db_path,
-)
+from jarvis_engine._constants import STOP_WORDS as _HARVEST_STOP_WORDS
+from jarvis_engine._shared import memory_db_path as _memory_db_path
 
 logger = logging.getLogger(__name__)
 

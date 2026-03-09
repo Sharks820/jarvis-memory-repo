@@ -114,8 +114,8 @@ from jarvis_engine.auto_ingest import (  # noqa: E402
 # Imports from _constants (only those used by remaining cmd_* functions)
 # ---------------------------------------------------------------------------
 from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_API_PORT  # noqa: E402
-from jarvis_engine._constants import memory_db_path as _memory_db_path  # noqa: E402
-from jarvis_engine._constants import make_task_id as _make_task_id  # noqa: E402
+from jarvis_engine._shared import memory_db_path as _memory_db_path  # noqa: E402
+from jarvis_engine._shared import make_task_id as _make_task_id  # noqa: E402
 from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME  # noqa: E402
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME  # noqa: E402
 from jarvis_engine._shared import set_process_title as _set_process_title  # noqa: E402
@@ -276,19 +276,6 @@ def cmd_route(risk: str, complexity: str) -> int:
     print(f"provider={result.provider}")
     print(f"reason={result.reason}")
     return 0
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def cmd_memory_snapshot(create: bool, verify_path: str | None, note: str) -> int:

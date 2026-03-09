@@ -10,8 +10,8 @@ from typing import Any
 from jarvis_engine._compat import UTC
 from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG
 from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
-from jarvis_engine._constants import memory_db_path as _memory_db_path
-from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import memory_db_path as _memory_db_path
+from jarvis_engine._shared import runtime_dir as _runtime_dir
 
 logger = logging.getLogger(__name__)
 
@@ -238,8 +238,6 @@ class IntelligenceRoutesMixin:
             self._write_json(HTTPStatus.OK, {"error": str(exc), "available": False})
 
     def _handle_get_learning_summary(self) -> None:
-        from jarvis_engine.mobile_routes._helpers import _configure_db
-
         if not self._validate_auth(b""):
             return
         db_path = _memory_db_path(self._root)
@@ -255,10 +253,9 @@ class IntelligenceRoutesMixin:
             return
         lrn_db = None
         try:
-            import sqlite3 as _lrn_sqlite3
+            from jarvis_engine._db_pragmas import connect_db as _connect_db
 
-            lrn_db = _lrn_sqlite3.connect(str(db_path), check_same_thread=False)
-            _configure_db(lrn_db)
+            lrn_db = _connect_db(db_path, full=True, check_same_thread=False)
             try:
                 from jarvis_engine.learning.preferences import PreferenceTracker
 
@@ -336,8 +333,6 @@ class IntelligenceRoutesMixin:
 
     def _handle_post_intelligence_export(self) -> None:
         """Export desktop knowledge for the phone's local intelligence."""
-        from jarvis_engine.mobile_routes._helpers import _configure_db
-
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
             return
@@ -348,12 +343,10 @@ class IntelligenceRoutesMixin:
             # Export from knowledge graph and user preferences
             db_path = _memory_db_path(self._root)
             if db_path.exists():
-                import sqlite3
+                from jarvis_engine._db_pragmas import connect_db as _connect_db
 
-                db = sqlite3.connect(str(db_path))
+                db = _connect_db(db_path, full=True)
                 try:
-                    _configure_db(db)
-
                     # KG nodes
                     try:
                         rows = db.execute(

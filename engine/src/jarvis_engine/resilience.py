@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 from typing import Any, TypedDict
 
-from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import runtime_dir as _runtime_dir
 
 logger = logging.getLogger(__name__)
 from jarvis_engine.brain_memory import brain_regression_report, brain_status

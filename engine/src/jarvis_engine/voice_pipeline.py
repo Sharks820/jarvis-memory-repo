@@ -25,8 +25,8 @@ from jarvis_engine.commands.learning_commands import LearnInteractionCommand
 from jarvis_engine.commands.task_commands import QueryCommand, QueryResult
 from jarvis_engine.config import repo_root
 
-from jarvis_engine._constants import (
-    ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY,
+from jarvis_engine._constants import ENV_MODEL_PRIORITY as _ENV_MODEL_PRIORITY
+from jarvis_engine._shared import (
     get_local_model as _get_local_model,
     is_privacy_sensitive as _is_privacy_sensitive,
     make_task_id as _make_task_id,

@@ -272,7 +272,7 @@ def build_narrative_brief(
 
     from jarvis_engine.temporal import get_datetime_prompt
 
-    from jarvis_engine._constants import get_local_model as _get_local_model
+    from jarvis_engine._shared import get_local_model as _get_local_model
     local_model = _get_local_model()
     # Sanitize memory_context to prevent prompt injection
     safe_context = (memory_context or "No additional context.")[:2000]

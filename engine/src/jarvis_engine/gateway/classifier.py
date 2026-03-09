@@ -19,10 +19,8 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import (
-    PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS,
-    get_fast_local_model as _get_fast_local_model,
-)
+from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
+from jarvis_engine._shared import get_fast_local_model as _get_fast_local_model
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +286,7 @@ class IntentClassifier:
         queries, and qwen3.5:latest (9B) for complex/math tasks needing deeper
         reasoning.  Cloud CLIs (Claude, Codex, Gemini) are fallbacks only.
         """
-        from jarvis_engine._constants import get_local_model as _get_local_model
+        from jarvis_engine._shared import get_local_model as _get_local_model
 
         # Local-first: pick the right local model based on task complexity
         if route in ("math_logic", "complex"):
@@ -337,7 +335,7 @@ class IntentClassifier:
         """
         import numpy as np
 
-        from jarvis_engine._constants import get_local_model as _get_local_model
+        from jarvis_engine._shared import get_local_model as _get_local_model
         local_model = _get_local_model()
 
         # Privacy check first -- always trumps embedding similarity

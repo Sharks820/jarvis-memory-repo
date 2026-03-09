@@ -39,7 +39,7 @@ _GRACEFUL_TIMEOUT_S = 5.0
 # ---------------------------------------------------------------------------
 
 def _pids_dir(root: Path) -> Path:
-    from jarvis_engine._constants import runtime_dir
+    from jarvis_engine._shared import runtime_dir
     return runtime_dir(root) / "pids"
 
 

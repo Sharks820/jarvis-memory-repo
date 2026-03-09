@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from jarvis_engine._constants import make_task_id as _make_task_id
+from jarvis_engine._shared import make_task_id as _make_task_id
 from pathlib import Path
 from typing import TYPE_CHECKING
 

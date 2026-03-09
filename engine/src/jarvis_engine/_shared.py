@@ -36,6 +36,14 @@ __all__ = [
     "set_process_title",
     "sha256_hex",
     "sha256_short",
+    "extract_keywords",
+    "get_fast_local_model",
+    "get_local_model",
+    "is_privacy_sensitive",
+    "make_task_id",
+    "memory_db_path",
+    "recency_weight",
+    "runtime_dir",
     "win_hidden_subprocess_kwargs",
 ]
 
@@ -507,3 +515,111 @@ def sanitize_fts_query(query: str) -> str:
     tokens = sanitized.split()
     tokens = [t for t in tokens if t.upper() not in FTS5_KEYWORDS]
     return " ".join(tokens).strip()
+
+# ---------------------------------------------------------------------------
+# Utilities moved from _constants.py (these are functions, not constants)
+# ---------------------------------------------------------------------------
+
+_PRIVACY_RE: re.Pattern[str] | None = None
+
+
+def _get_privacy_re() -> re.Pattern[str]:
+    """Lazily compile the privacy regex (avoids circular import at load time)."""
+    global _PRIVACY_RE
+    if _PRIVACY_RE is None:
+        from jarvis_engine._constants import PRIVACY_KEYWORDS
+        _PRIVACY_RE = re.compile(
+            r"\b(?:" + "|".join(
+                re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True)
+            ) + r")\b",
+            re.IGNORECASE,
+        )
+    return _PRIVACY_RE
+
+
+def is_privacy_sensitive(text: str) -> bool:
+    """Return *True* if *text* contains any privacy keyword (word-boundary match)."""
+    return bool(_get_privacy_re().search(text))
+
+
+def get_local_model() -> str:
+    """Return the configured local Ollama model name."""
+    from jarvis_engine._constants import DEFAULT_LOCAL_MODEL
+    return os.environ.get("JARVIS_LOCAL_MODEL", DEFAULT_LOCAL_MODEL)
+
+
+def get_fast_local_model() -> str:
+    """Return the configured fast local Ollama model name."""
+    from jarvis_engine._constants import FAST_LOCAL_MODEL
+    return os.environ.get("JARVIS_FAST_LOCAL_MODEL", FAST_LOCAL_MODEL)
+
+
+def memory_db_path(root: Path) -> Path:
+    """Return the canonical path to the main Jarvis memory database."""
+    return root / ".planning" / "brain" / "jarvis_memory.db"
+
+
+def runtime_dir(root: Path) -> Path:
+    """Return the canonical path to the runtime data directory."""
+    return root / ".planning" / "runtime"
+
+
+def extract_keywords(
+    text: str,
+    *,
+    stop_words: frozenset[str] | None = None,
+    min_length: int = 4,
+    pattern: str = r"[a-zA-Z]+",
+    deduplicate: bool = True,
+) -> list[str]:
+    """Extract meaningful keywords from *text*."""
+    if not text:
+        return []
+
+    if stop_words is None:
+        from jarvis_engine._constants import STOP_WORDS
+        stop_words = STOP_WORDS
+
+    words = re.findall(pattern, text.lower())
+    keywords = [w for w in words if len(w) >= min_length and w not in stop_words]
+
+    if deduplicate:
+        seen: set[str] = set()
+        unique: list[str] = []
+        for kw in keywords:
+            if kw not in seen:
+                seen.add(kw)
+                unique.append(kw)
+        return unique
+
+    return keywords
+
+
+def make_task_id(prefix: str) -> str:
+    """Generate a timestamped task ID like ``prefix-20260305143000``."""
+    from jarvis_engine._compat import UTC
+    return f"{prefix}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+
+
+def recency_weight(
+    ts_text: str,
+    *,
+    default: float = 0.0,
+    decay_hours: float = 168.0,
+) -> float:
+    """Compute exponential recency decay for a timestamp string.
+
+    Returns a value between 0.0 and 1.0 for valid timestamps (1.0 = just
+    created, decaying toward 0.0 with a half-life of approximately
+    *decay_hours* hours).  Returns *default* for empty or unparseable input.
+    """
+    import math
+
+    from jarvis_engine._compat import UTC
+
+    parsed = parse_iso_timestamp(ts_text)
+    if parsed is None:
+        return default
+    delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / 3600.0)
+    return math.exp(-delta_hours / decay_hours)
+

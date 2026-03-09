@@ -410,7 +410,7 @@ def hygiene_dashboard_metrics(root: Path) -> dict[str, Any]:
     Returns safe dict (never raises).
     """
     try:
-        from jarvis_engine._constants import runtime_dir
+        from jarvis_engine._shared import runtime_dir
         from jarvis_engine._shared import load_jsonl_tail
 
         history_path = runtime_dir(root) / "hygiene_history.jsonl"

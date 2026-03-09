@@ -59,7 +59,7 @@ class DaemonSleepRecommendation(TypedDict):
     skip_heavy_tasks: bool
 
 
-from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import runtime_dir as _runtime_dir
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
 

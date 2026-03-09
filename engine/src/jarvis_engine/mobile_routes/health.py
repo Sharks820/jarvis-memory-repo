@@ -48,7 +48,7 @@ class HealthRoutesMixin:
 
     def _handle_get_health(self) -> None:
         from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
-        from jarvis_engine._constants import runtime_dir as _runtime_dir
+        from jarvis_engine._shared import runtime_dir as _runtime_dir
 
         from jarvis_engine._shared import load_jsonl_tail
 
@@ -106,7 +106,7 @@ class HealthRoutesMixin:
     def _handle_get_processes(self) -> None:
         if not self._validate_auth(b""):
             return
-        from jarvis_engine._constants import runtime_dir as _runtime_dir
+        from jarvis_engine._shared import runtime_dir as _runtime_dir
         from jarvis_engine.process_manager import list_services
 
         services = list_services(self._root)

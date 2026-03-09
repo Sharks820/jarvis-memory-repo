@@ -33,8 +33,8 @@ if TYPE_CHECKING:
 
 from jarvis_engine._constants import ACTIONS_FILENAME as _ACTIONS_FILENAME
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
-from jarvis_engine._constants import memory_db_path as _memory_db_path
-from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import memory_db_path as _memory_db_path
+from jarvis_engine._shared import runtime_dir as _runtime_dir
 from jarvis_engine._shared import make_thread_aware_repo_root as _make_thread_aware_repo_root
 from jarvis_engine.ingest import IngestionPipeline
 from jarvis_engine.memory_store import MemoryStore
@@ -401,12 +401,11 @@ class MobileIngestServer(ThreadingHTTPServer):
         self._security_write_lock: threading.Lock | None = None
         self._security_degraded: bool = False
         try:
-            import sqlite3 as _sec_sqlite3
+            from jarvis_engine._db_pragmas import connect_db as _connect_db
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
             security_db_path = repo_root / ".planning" / "brain" / "security.db"
             security_db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._security_db = _sec_sqlite3.connect(str(security_db_path), check_same_thread=False)
-            _configure_db(self._security_db)
+            self._security_db = _connect_db(security_db_path, full=True, check_same_thread=False)
             self._security_write_lock = threading.Lock()
             forensic_dir = _runtime_dir(repo_root) / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
@@ -651,11 +650,10 @@ class MobileIngestServer(ThreadingHTTPServer):
                 from jarvis_engine.sync.engine import SyncEngine
                 from jarvis_engine.sync.transport import SyncTransport
 
-                import sqlite3 as _sqlite3
+                from jarvis_engine._db_pragmas import connect_db as _connect_sync_db
 
-                sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
+                sync_db = _connect_sync_db(db_path, full=True, check_same_thread=False)
                 try:
-                    _configure_db(sync_db)
                     sync_lock = threading.Lock()
                     install_changelog_triggers(sync_db, device_id="desktop")
                     # Load conflict strategy from auto-sync config
@@ -1894,12 +1892,11 @@ def _init_sync_engine(
         from jarvis_engine.sync.engine import SyncEngine
         from jarvis_engine.sync.transport import SyncTransport
 
-        import sqlite3 as _sqlite3
+        from jarvis_engine._db_pragmas import connect_db as _connect_db2
         import threading as _threading
 
-        sync_db = _sqlite3.connect(str(db_path), check_same_thread=False)
+        sync_db = _connect_db2(db_path, full=True, check_same_thread=False)
         try:
-            _configure_db(sync_db)
             sync_lock = _threading.Lock()
             install_changelog_triggers(sync_db, device_id="desktop")
             # Use conflict strategy from auto-sync config

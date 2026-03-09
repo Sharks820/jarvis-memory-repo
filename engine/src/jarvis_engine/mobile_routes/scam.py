@@ -6,7 +6,7 @@ import logging
 from http import HTTPStatus
 from typing import Any
 
-from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import runtime_dir as _runtime_dir
 
 logger = logging.getLogger(__name__)
 

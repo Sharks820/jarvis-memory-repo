@@ -15,7 +15,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import extract_keywords as _extract_keywords_core
+from jarvis_engine._shared import extract_keywords as _extract_keywords_core
 from jarvis_engine.knowledge._base import upsert_fts_kg, delete_fts_kg
 
 if TYPE_CHECKING:

@@ -18,9 +18,11 @@ from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._constants import (
     DEFAULT_API_PORT as _DEFAULT_API_PORT,
-    memory_db_path as _memory_db_path,
     KG_METRICS_LOG as _KG_METRICS_LOG,
     SELF_TEST_HISTORY as _SELF_TEST_HISTORY,
+)
+from jarvis_engine._shared import (
+    memory_db_path as _memory_db_path,
     runtime_dir as _runtime_dir,
 )
 from jarvis_engine._shared import set_process_title as _set_process_title
@@ -529,14 +531,11 @@ def _collect_kg_metrics(root: Path) -> None:
             metrics = collect_kg_metrics(kg)
         else:
             # Fallback: open a temporary connection when bus KG is unavailable
-            import sqlite3 as _sqlite3
-
             db_path = _memory_db_path(root)
             if db_path.exists():
-                _kg_conn = _sqlite3.connect(str(db_path), timeout=5)
-                from jarvis_engine._db_pragmas import configure_sqlite as _cfg_sql
+                from jarvis_engine._db_pragmas import connect_db as _connect_db
 
-                _cfg_sql(_kg_conn)
+                _kg_conn = _connect_db(db_path)
                 try:
                     class _KGShim:
                         def __init__(self, conn: _sqlite3.Connection) -> None:

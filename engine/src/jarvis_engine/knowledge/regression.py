@@ -171,9 +171,8 @@ class RegressionChecker:
         # in-flight WAL data is included in the backup atomically.
         import sqlite3
 
-        dst_db = sqlite3.connect(str(backup_path))
-        from jarvis_engine._db_pragmas import configure_sqlite
-        configure_sqlite(dst_db)
+        from jarvis_engine._db_pragmas import connect_db
+        dst_db = connect_db(backup_path)
         try:
             with self._kg.db_lock:
                 self._kg.db.backup(dst_db)
@@ -235,10 +234,8 @@ class RegressionChecker:
                 tmp_dst.unlink(missing_ok=True)
             except OSError as cleanup_exc:
                 logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
-            reopen_db = sqlite3.connect(str(dst_path), check_same_thread=False)
-            reopen_db.row_factory = sqlite3.Row
-            from jarvis_engine._db_pragmas import configure_sqlite
-            configure_sqlite(reopen_db, full=True)
+            from jarvis_engine._db_pragmas import connect_db
+            reopen_db = connect_db(dst_path, full=True, check_same_thread=False)
             self._kg._engine._db = reopen_db
             self._kg._db = reopen_db
             self._kg._lock_manager._db = reopen_db
@@ -247,10 +244,8 @@ class RegressionChecker:
     def _reopen_restored_db(self, dst_path: Path) -> None:
         """Open a fresh connection on the restored file with PRAGMAs and sqlite-vec."""
         import sqlite3
-        new_db = sqlite3.connect(str(dst_path), check_same_thread=False)
-        new_db.row_factory = sqlite3.Row
-        from jarvis_engine._db_pragmas import configure_sqlite
-        configure_sqlite(new_db, full=True)
+        from jarvis_engine._db_pragmas import connect_db
+        new_db = connect_db(dst_path, full=True, check_same_thread=False)
         try:
             import sqlite_vec
             new_db.enable_load_extension(True)

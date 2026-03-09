@@ -99,7 +99,7 @@ class DiagnosticEngine:
     def _get_db_path(self) -> Path:
         """Resolve the memory database path (single source of truth)."""
         try:
-            from jarvis_engine._constants import memory_db_path
+            from jarvis_engine._shared import memory_db_path
             return memory_db_path(self._root)
         except (ImportError, OSError, ValueError):
             return self._root / ".planning" / "brain" / "jarvis_memory.db"
@@ -229,10 +229,8 @@ class DiagnosticEngine:
 
         # Run integrity check
         try:
-            import sqlite3
-            conn = sqlite3.connect(str(db_path), timeout=5)
-            from jarvis_engine._db_pragmas import configure_sqlite
-            configure_sqlite(conn)
+            from jarvis_engine._db_pragmas import connect_db
+            conn = connect_db(db_path)
             try:
                 result = conn.execute("PRAGMA quick_check").fetchone()
                 if result and result[0] != "ok":
@@ -441,7 +439,8 @@ class DiagnosticEngine:
         issues: list[DiagnosticIssue] = []
         try:
             from jarvis_engine.proactive.kg_metrics import load_kg_history
-            from jarvis_engine._constants import runtime_dir, KG_METRICS_LOG
+            from jarvis_engine._constants import KG_METRICS_LOG
+            from jarvis_engine._shared import runtime_dir
             history_path = runtime_dir(self._root) / KG_METRICS_LOG
             history = load_kg_history(history_path, limit=5)
         except (ImportError, OSError, ValueError) as exc:
@@ -566,9 +565,8 @@ class DiagnosticEngine:
 
         try:
             import sqlite3
-            conn = sqlite3.connect(str(db_path), timeout=30)
-            from jarvis_engine._db_pragmas import configure_sqlite
-            configure_sqlite(conn)
+            from jarvis_engine._db_pragmas import connect_db
+            conn = connect_db(db_path, timeout=30)
             try:
                 conn.execute("VACUUM")
                 conn.execute("ANALYZE")
@@ -587,9 +585,8 @@ class DiagnosticEngine:
 
         try:
             import sqlite3
-            conn = sqlite3.connect(str(db_path), timeout=30)
-            from jarvis_engine._db_pragmas import configure_sqlite
-            configure_sqlite(conn)
+            from jarvis_engine._db_pragmas import connect_db
+            conn = connect_db(db_path, timeout=30)
             try:
                 conn.execute("INSERT INTO fts_records(fts_records) VALUES('rebuild')")
                 conn.commit()
@@ -608,9 +605,8 @@ class DiagnosticEngine:
 
         try:
             import sqlite3
-            conn = sqlite3.connect(str(db_path), timeout=30)
-            from jarvis_engine._db_pragmas import configure_sqlite
-            configure_sqlite(conn)
+            from jarvis_engine._db_pragmas import connect_db
+            conn = connect_db(db_path, timeout=30)
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             finally:

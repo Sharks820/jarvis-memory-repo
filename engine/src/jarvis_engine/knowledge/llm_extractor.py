@@ -132,7 +132,7 @@ class LLMFactExtractor:
         Returns (model_name, privacy_routed).
         """
         if self._contains_privacy_keyword(text):
-            from jarvis_engine._constants import get_local_model as _get_local_model
+            from jarvis_engine._shared import get_local_model as _get_local_model
             local_model = _get_local_model()
             return local_model, True
         return DEFAULT_CLOUD_MODEL, False

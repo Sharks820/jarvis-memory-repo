@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _MIN_KEYWORD_LEN = 4
 
 from jarvis_engine._constants import STOP_WORDS as _STOP_WORDS
-from jarvis_engine._constants import extract_keywords as _extract_keywords_core
+from jarvis_engine._shared import extract_keywords as _extract_keywords_core
 
 
 class CrossBranchQueryResult(TypedDict):

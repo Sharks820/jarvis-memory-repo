@@ -10,7 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
-from jarvis_engine._constants import runtime_dir as _runtime_dir
+from jarvis_engine._shared import runtime_dir as _runtime_dir
 from jarvis_engine._shared import now_iso as _now_iso
 from pathlib import Path
 from typing import Any, TypedDict
@@ -149,7 +149,7 @@ def _capture_kg_metrics(root_resolved: Path) -> dict[str, Any] | None:
         from jarvis_engine.knowledge.regression import RegressionChecker
         from jarvis_engine.knowledge.graph import KnowledgeGraph
         from jarvis_engine.memory.engine import MemoryEngine
-        from jarvis_engine._constants import memory_db_path as _memory_db_path
+        from jarvis_engine._shared import memory_db_path as _memory_db_path
 
         db_path = _memory_db_path(root_resolved)
         if not db_path.exists():
@@ -329,7 +329,7 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                 from jarvis_engine.knowledge.graph import KnowledgeGraph
                 from jarvis_engine.memory.engine import MemoryEngine
 
-                from jarvis_engine._constants import memory_db_path as _memory_db_path
+                from jarvis_engine._shared import memory_db_path as _memory_db_path
                 db_path = _memory_db_path(root)
                 if db_path.exists():
                     _kg_engine = MemoryEngine(db_path)

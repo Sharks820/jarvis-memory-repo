@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from jarvis_engine._constants import (
-    DEFAULT_CLOUD_MODEL,
+from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
+from jarvis_engine._shared import (
     get_fast_local_model as _get_fast_local_model,
     get_local_model as _get_local_model,
 )

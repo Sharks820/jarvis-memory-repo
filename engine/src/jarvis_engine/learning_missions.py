@@ -857,7 +857,7 @@ def auto_generate_missions(
     collector = _TopicCollector(max_new, existing_topics)
 
     if db_path is None:
-        from jarvis_engine._constants import memory_db_path as _memory_db_path
+        from jarvis_engine._shared import memory_db_path as _memory_db_path
         db_path = _memory_db_path(root)
 
     conn = None

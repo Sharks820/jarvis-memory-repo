@@ -87,7 +87,7 @@ class BrainStatusResult(TypedDict):
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import safe_float as _safe_float
 from jarvis_engine._shared import sha256_hex, sha256_short
-from jarvis_engine._constants import recency_weight as _recency_weight_core
+from jarvis_engine._shared import recency_weight as _recency_weight_core
 
 logger = logging.getLogger(__name__)
 

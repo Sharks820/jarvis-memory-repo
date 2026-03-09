@@ -5,10 +5,8 @@ import uuid
 from http import HTTPStatus
 from typing import Any
 
-from jarvis_engine._constants import (
-    OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME,
-    make_task_id as _make_task_id,
-)
+from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
+from jarvis_engine._shared import make_task_id as _make_task_id
 from jarvis_engine.mobile_routes._helpers import (
     _get_int_param,
     _parse_bool,

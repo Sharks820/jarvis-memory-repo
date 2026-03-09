@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from http import HTTPStatus
-from jarvis_engine._constants import memory_db_path as _memory_db_path
+from jarvis_engine._shared import memory_db_path as _memory_db_path
 from jarvis_engine.mobile_routes._helpers import (
     ALLOWED_KINDS,
     ALLOWED_SOURCES,
@@ -80,9 +80,8 @@ class DataRoutesMixin:
             return
         fb_db = None
         try:
-            import sqlite3 as _fb_sqlite3
-            fb_db = _fb_sqlite3.connect(str(db_path), check_same_thread=False)
-            _configure_db(fb_db)
+            from jarvis_engine._db_pragmas import connect_db as _connect_db
+            fb_db = _connect_db(db_path, full=True, check_same_thread=False)
             from jarvis_engine.learning.feedback import ResponseFeedbackTracker
             tracker = ResponseFeedbackTracker(fb_db)
             tracker.record_explicit_feedback(quality, route, comment)
