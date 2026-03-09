@@ -172,8 +172,8 @@ class TestAutoIngestSecurity:
             content="Test content"
         )
         
-        # Should return empty string when disabled
-        assert result == ""
+        # Should return None (fire-and-forget, no return value)
+        assert result is None
 
 
 class TestMissionSecurity:

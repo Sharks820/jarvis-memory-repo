@@ -137,7 +137,7 @@ class TestAutoIngestMemory:
         result = auto_ingest_mod.auto_ingest_memory(
             source=source, kind=kind, task_id="test", content=content,
         )
-        assert result == ""
+        assert result is None
 
 
 class TestGamingProcessHelpers:

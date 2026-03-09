@@ -136,57 +136,56 @@ def cmd_mission_status(last: int) -> int:
         print("learning_missions_active=false")
         print("learning_mission_count=0")
         print("response=No active learning missions at the moment.")
-        return 0
+    else:
+        counts = {"pending": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0, "other": 0}
+        active_count = 0
+        for mission in result.missions:
+            status = str(mission.get("status", "")).strip().lower()
+            if status in ("pending", "running"):
+                active_count += 1
+            if status in counts:
+                counts[status] += 1
+            else:
+                counts["other"] += 1
 
-    counts = {"pending": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0, "other": 0}
-    active_count = 0
-    for mission in result.missions:
-        status = str(mission.get("status", "")).strip().lower()
-        if status in ("pending", "running"):
-            active_count += 1
-        if status in counts:
-            counts[status] += 1
-        else:
-            counts["other"] += 1
+        print(f"learning_mission_count={result.total_count}")
+        print(f"learning_missions_active={'true' if active_count > 0 else 'false'}")
+        print(f"learning_missions_active_count={active_count}")
+        print(f"learning_missions_pending={counts['pending']}")
+        print(f"learning_missions_running={counts['running']}")
+        print(f"learning_missions_completed={counts['completed']}")
+        print(f"learning_missions_failed={counts['failed']}")
+        print(f"learning_missions_cancelled={counts['cancelled']}")
 
-    print(f"learning_mission_count={result.total_count}")
-    print(f"learning_missions_active={'true' if active_count > 0 else 'false'}")
-    print(f"learning_missions_active_count={active_count}")
-    print(f"learning_missions_pending={counts['pending']}")
-    print(f"learning_missions_running={counts['running']}")
-    print(f"learning_missions_completed={counts['completed']}")
-    print(f"learning_missions_failed={counts['failed']}")
-    print(f"learning_missions_cancelled={counts['cancelled']}")
+        summary_parts: list[str] = []
+        for mission in result.missions:
+            mission_id = str(mission.get("mission_id", ""))
+            status = str(mission.get("status", ""))
+            progress_pct = int(mission.get("progress_pct", 0) or 0)
+            topic = str(mission.get("topic", ""))
+            findings = int(mission.get("verified_findings", 0) or 0)
+            updated_utc = str(mission.get("updated_utc", ""))
+            status_detail = str(mission.get("status_detail", "")).strip()
 
-    summary_parts: list[str] = []
-    for mission in result.missions:
-        mission_id = str(mission.get("mission_id", ""))
-        status = str(mission.get("status", ""))
-        progress_pct = int(mission.get("progress_pct", 0) or 0)
-        topic = str(mission.get("topic", ""))
-        findings = int(mission.get("verified_findings", 0) or 0)
-        updated_utc = str(mission.get("updated_utc", ""))
-        status_detail = str(mission.get("status_detail", "")).strip()
+            print(
+                f"mission_id={mission_id} "
+                f"status={status} "
+                f"progress_pct={progress_pct} "
+                f"topic={topic} "
+                f"verified_findings={findings} "
+                f"updated_utc={updated_utc}"
+            )
+            if status_detail:
+                print(f"mission_status_detail={status_detail}")
+            if mission.get("progress_bar"):
+                print(f"progress_bar={mission.get('progress_bar', '')}")
 
-        print(
-            f"mission_id={mission_id} "
-            f"status={status} "
-            f"progress_pct={progress_pct} "
-            f"topic={topic} "
-            f"verified_findings={findings} "
-            f"updated_utc={updated_utc}"
-        )
-        if status_detail:
-            print(f"mission_status_detail={status_detail}")
-        if mission.get("progress_bar"):
-            print(f"progress_bar={mission.get('progress_bar', '')}")
+            summary = f"{topic} ({status}, {progress_pct}%, {findings} findings)"
+            if status_detail:
+                summary += f" — {status_detail}"
+            summary_parts.append(summary)
 
-        summary = f"{topic} ({status}, {progress_pct}%, {findings} findings)"
-        if status_detail:
-            summary += f" — {status_detail}"
-        summary_parts.append(summary)
-
-    print(f"response=Learning missions ({result.total_count} total, {active_count} active): " + " | ".join(summary_parts))
+        print(f"response=Learning missions ({result.total_count} total, {active_count} active): " + " | ".join(summary_parts))
     return 0
 
 

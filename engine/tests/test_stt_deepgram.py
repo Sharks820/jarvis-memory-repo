@@ -10,8 +10,7 @@ import numpy as np
 def _reset_keyterms_cache():
     """Reset personal vocab caches so tests start with a clean state."""
     import jarvis_engine._shared as shared_mod
-    shared_mod._personal_vocab_stripped_cache = None
-    shared_mod._personal_vocab_raw_cache = None
+    shared_mod._personal_vocab_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +48,7 @@ def test_load_keyterms_caching():
 
     # First call: loads from file
     terms1 = _load_keyterms()
-    assert shared_mod._personal_vocab_stripped_cache is not None
+    assert "stripped" in shared_mod._personal_vocab_cache
 
     # Second call: returns cached (same object from shared cache)
     terms2 = _load_keyterms()

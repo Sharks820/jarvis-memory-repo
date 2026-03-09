@@ -159,12 +159,12 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
     return rec.record_id
 
 
-def auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> str:
+def auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> None:
     """Fire-and-forget auto-ingest -- runs in a background thread to avoid blocking responses."""
     if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
-        return ""
+        return
     if source not in VALID_SOURCES or kind not in VALID_KINDS:
-        return ""
+        return
 
     def _bg() -> None:
         try:
@@ -174,6 +174,3 @@ def auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> st
 
     t = threading.Thread(target=_bg, daemon=True)
     t.start()
-    # Return empty -- the record ID is no longer available synchronously,
-    # but the ingest still happens in the background.
-    return ""

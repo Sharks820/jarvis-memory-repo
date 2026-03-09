@@ -544,7 +544,7 @@ class TestModel3DAdapter:
     def test_execute_oserror_write(self, tmp_path):
         adapter = self._make(tmp_path)
         out = str(tmp_path / "out.obj")
-        with patch.object(Path, "write_text", side_effect=OSError("disk full")):
+        with patch("jarvis_engine.adapters.tempfile.mkstemp", side_effect=OSError("disk full")):
             result = adapter.execute("a house", out, "balanced")
         assert result.ok is False
         assert "write" in result.reason.lower() or "disk" in result.reason.lower()

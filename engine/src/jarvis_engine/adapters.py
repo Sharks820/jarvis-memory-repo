@@ -6,6 +6,7 @@ import math
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from jarvis_engine._compat import UTC
@@ -253,7 +254,15 @@ class Model3DAdapter(AdapterBase):
         mesh_kind = _mesh_kind(prompt)
         try:
             obj, vertices, faces = _build_mesh_obj(prompt, quality_profile, mesh_kind)
-            out_path.write_text(obj, encoding="utf-8")
+            fd, tmp = tempfile.mkstemp(dir=str(out_path.parent), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(obj)
+                os.replace(tmp, str(out_path))
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
         except OSError as exc:
             return AdapterResult(
                 ok=False,
@@ -273,7 +282,15 @@ class Model3DAdapter(AdapterBase):
         }
         meta_note = f"metadata={meta_path.resolve()}"
         try:
-            meta_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
+            fd, tmp = tempfile.mkstemp(dir=str(meta_path.parent), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(metadata, ensure_ascii=True, indent=2))
+                os.replace(tmp, str(meta_path))
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
         except OSError as exc:
             logger.warning("Failed to write mesh metadata to %s: %s", meta_path, exc)
             meta_note = f"metadata_write_failed={exc}"

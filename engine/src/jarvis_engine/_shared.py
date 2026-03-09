@@ -280,8 +280,7 @@ def set_process_title(name: str) -> None:
 # Personal vocabulary loader (shared by stt.py and stt_postprocess.py)
 # ---------------------------------------------------------------------------
 
-_personal_vocab_raw_cache: list[str] | None = None
-_personal_vocab_stripped_cache: list[str] | None = None
+_personal_vocab_cache: dict[str, list[str]] = {}
 _personal_vocab_lock = threading.Lock()
 
 
@@ -302,39 +301,31 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
         whitespace only).  Used by the LLM post-correction vocab loader in
         :mod:`jarvis_engine.stt_postprocess`.
     """
-    global _personal_vocab_raw_cache, _personal_vocab_stripped_cache
+    cache_key = "stripped" if strip_parens else "raw"
 
     # Fast path: check cache without lock
-    if strip_parens:
-        if _personal_vocab_stripped_cache is not None:
-            return _personal_vocab_stripped_cache
-    else:
-        if _personal_vocab_raw_cache is not None:
-            return _personal_vocab_raw_cache
+    if cache_key in _personal_vocab_cache:
+        return _personal_vocab_cache[cache_key]
 
     with _personal_vocab_lock:
         # Re-check under lock (double-checked locking)
-        if strip_parens:
-            if _personal_vocab_stripped_cache is not None:
-                return _personal_vocab_stripped_cache
-        else:
-            if _personal_vocab_raw_cache is not None:
-                return _personal_vocab_raw_cache
+        if cache_key in _personal_vocab_cache:
+            return _personal_vocab_cache[cache_key]
 
         # Locate the file relative to the jarvis_engine package
         vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
         try:
             lines = vocab_path.read_text(encoding="utf-8").strip().splitlines()
         except OSError:
-            _personal_vocab_raw_cache = []
-            _personal_vocab_stripped_cache = []
+            _personal_vocab_cache["raw"] = []
+            _personal_vocab_cache["stripped"] = []
             return []
 
         # Build raw list (always needed)
         raw: list[str] = [line.strip() for line in lines if line.strip()]
 
-        if _personal_vocab_raw_cache is None:
-            _personal_vocab_raw_cache = raw
+        if "raw" not in _personal_vocab_cache:
+            _personal_vocab_cache["raw"] = raw
 
         # Build stripped list on demand
         if strip_parens:
@@ -347,10 +338,10 @@ def load_personal_vocab_lines(*, strip_parens: bool = False) -> list[str]:
                     term = entry
                 if term:
                     stripped.append(term)
-            _personal_vocab_stripped_cache = stripped
-            return _personal_vocab_stripped_cache
+            _personal_vocab_cache["stripped"] = stripped
+            return _personal_vocab_cache["stripped"]
 
-        return _personal_vocab_raw_cache
+        return _personal_vocab_cache["raw"]
 
 
 # ---------------------------------------------------------------------------
@@ -461,21 +452,20 @@ def sanitize_fts_query(query: str) -> str:
 # Utilities moved from _constants.py (these are functions, not constants)
 # ---------------------------------------------------------------------------
 
-_PRIVACY_RE: re.Pattern[str] | None = None
+_lazy_cache: dict[str, object] = {}
 
 
 def _get_privacy_re() -> re.Pattern[str]:
     """Lazily compile the privacy regex (avoids circular import at load time)."""
-    global _PRIVACY_RE
-    if _PRIVACY_RE is None:
+    if "privacy_re" not in _lazy_cache:
         from jarvis_engine._constants import PRIVACY_KEYWORDS
-        _PRIVACY_RE = re.compile(
+        _lazy_cache["privacy_re"] = re.compile(
             r"\b(?:" + "|".join(
                 re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True)
             ) + r")\b",
             re.IGNORECASE,
         )
-    return _PRIVACY_RE
+    return _lazy_cache["privacy_re"]  # type: ignore[return-value]
 
 
 def is_privacy_sensitive(text: str) -> bool:
