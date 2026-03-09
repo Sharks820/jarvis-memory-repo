@@ -260,8 +260,8 @@ def _try_deepgram(
             return None
 
         transcript, confidence, segments = _parse_deepgram_response(resp.json())
-        if not transcript and confidence == 0.0 and segments is None:
-            # _parse_deepgram_response already logged the warning
+        if not transcript:
+            # No usable transcript — let the caller fall through to next backend
             return None
 
         return TranscriptionResult(

@@ -105,8 +105,13 @@ class ConversationState:
             path = self._conversation_history_path()
             data = load_json_file(path, None, expected_type=list)
             if data is not None:
+                # Filter out non-dict entries from potentially corrupted files
+                valid = [
+                    m for m in data
+                    if isinstance(m, dict) and "role" in m and "content" in m
+                ]
                 self._conversation_history.clear()
-                self._conversation_history.extend(data[-((_CONVERSATION_MAX_TURNS * 2)):])
+                self._conversation_history.extend(valid[-(_CONVERSATION_MAX_TURNS * 2):])
 
     def save_conversation_history(self, *, force: bool = False) -> None:
         """Persist current conversation history to disk (atomic write).
@@ -753,7 +758,11 @@ def _prepare_history(
         logger.debug("Conversation state injection failed: %s", exc)
 
     system_prompt = "\n\n".join(system_parts)
-    hist_tuples = tuple((m["role"], m["content"]) for m in hist)
+    hist_tuples = tuple(
+        (m.get("role", "user"), m.get("content", ""))
+        for m in hist
+        if isinstance(m, dict)
+    )
     _add_to_history("user", text)
 
     # Track user turn in conversation state for cross-LLM continuity

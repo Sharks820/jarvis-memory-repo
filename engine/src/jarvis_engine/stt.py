@@ -288,8 +288,18 @@ def transcribe_groq(
     if isinstance(result, TranscriptionResult):
         return result
 
-    data = result.json()
     elapsed = time.monotonic() - t0
+    try:
+        data = result.json()
+    except (ValueError, TypeError) as exc:
+        logger.warning("Groq API returned non-JSON response: %s", exc)
+        return TranscriptionResult(
+            text="",
+            language=language,
+            confidence=0.0,
+            duration_seconds=round(elapsed, 3),
+            backend="groq-whisper",
+        )
 
     text, detected_lang, confidence, segments = _groq_parse_response(data, language)
 

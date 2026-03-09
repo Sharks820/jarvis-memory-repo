@@ -1032,7 +1032,8 @@ def cmd_voice_run_impl(
 ) -> int:
     """Implementation body for voice-run (called by handler via callback)."""
     cmd_fns, repo_root, _web_augmented_llm_conversation = _import_voice_commands()
-    lowered = text.lower().strip()
+    text = text.strip()  # Normalize whitespace so lowered-index math aligns with text
+    lowered = text.lower()
 
     params = VoiceRunParams(
         text=text, execute=execute, approve_privileged=approve_privileged,
