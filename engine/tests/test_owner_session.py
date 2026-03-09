@@ -4,6 +4,8 @@ Tests cover password hashing (Argon2id + PBKDF2 fallback), session lifecycle,
 idle timeout extension, lockout after failed attempts, and logout.
 
 Uses mocked ``time.monotonic`` to avoid real sleeps — deterministic and fast.
+Uses ``_pbkdf2_iterations=1`` on all tests except the PBKDF2-path test to
+avoid the 600 000-iteration cost that saturates CPUs in parallel test runs.
 """
 
 from __future__ import annotations
@@ -12,10 +14,21 @@ from unittest.mock import patch
 
 from jarvis_engine.security.owner_session import OwnerSessionManager
 
+# ---------------------------------------------------------------------------
+# Test-only helper: bypass the expensive PBKDF2 key-stretching for every test
+# that is exercising session lifecycle rather than cryptographic strength.
+# The production default of 600 000 iterations takes ~200 ms per hash call;
+# with 36+ calls across 12 tests running in 8 parallel workers that saturates
+# all CPU cores.  _pbkdf2_iterations=1 keeps the full code path while reducing
+# each hash to microseconds.
+# ---------------------------------------------------------------------------
+_FAST = {"force_pbkdf2": True, "_pbkdf2_iterations": 1}
+
 
 # ---------------------------------------------------------------------------
 # Helpers — deterministic clock
 # ---------------------------------------------------------------------------
+
 
 class _MockClock:
     """Deterministic replacement for ``time.monotonic``."""
@@ -36,7 +49,7 @@ class _MockClock:
 
 
 def test_set_and_verify_password():
-    mgr = OwnerSessionManager(force_pbkdf2=True)
+    mgr = OwnerSessionManager(**_FAST)
     mgr.set_password("hunter2")
     token = mgr.authenticate("hunter2")
     assert token is not None
@@ -52,7 +65,7 @@ def test_set_and_verify_password():
 
 
 def test_wrong_password_returns_none():
-    mgr = OwnerSessionManager(force_pbkdf2=True)
+    mgr = OwnerSessionManager(**_FAST)
     mgr.set_password("correct-password")
     result = mgr.authenticate("wrong-password")
     assert result is None
@@ -64,7 +77,7 @@ def test_wrong_password_returns_none():
 
 
 def test_session_valid_after_auth():
-    mgr = OwnerSessionManager(force_pbkdf2=True)
+    mgr = OwnerSessionManager(**_FAST)
     mgr.set_password("mypassword")
     token = mgr.authenticate("mypassword")
     assert token is not None
@@ -81,7 +94,7 @@ def test_session_invalid_after_timeout(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
 
-    mgr = OwnerSessionManager(session_timeout=1, force_pbkdf2=True)
+    mgr = OwnerSessionManager(session_timeout=1, **_FAST)
     mgr.set_password("pass")
     token = mgr.authenticate("pass")
     assert token is not None
@@ -101,7 +114,7 @@ def test_session_extends_on_activity(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
 
-    mgr = OwnerSessionManager(session_timeout=2, force_pbkdf2=True)
+    mgr = OwnerSessionManager(session_timeout=2, **_FAST)
     mgr.set_password("pass")
     token = mgr.authenticate("pass")
     assert token is not None
@@ -121,7 +134,7 @@ def test_session_extends_on_activity(mock_time):
 
 
 def test_lockout_after_failed_attempts():
-    mgr = OwnerSessionManager(max_failures=3, lockout_duration=300, force_pbkdf2=True)
+    mgr = OwnerSessionManager(max_failures=3, lockout_duration=300, **_FAST)
     mgr.set_password("correct")
 
     # 3 consecutive failures
@@ -142,7 +155,7 @@ def test_lockout_after_failed_attempts():
 
 
 def test_logout_invalidates_session():
-    mgr = OwnerSessionManager(force_pbkdf2=True)
+    mgr = OwnerSessionManager(**_FAST)
     mgr.set_password("pass")
     token = mgr.authenticate("pass")
     assert token is not None
@@ -158,7 +171,7 @@ def test_logout_invalidates_session():
 
 
 def test_pbkdf2_fallback_when_no_argon2():
-    mgr = OwnerSessionManager(force_pbkdf2=True)
+    mgr = OwnerSessionManager(**_FAST)
     mgr.set_password("secure-pass")
 
     # Should authenticate fine even without argon2
@@ -177,7 +190,7 @@ def test_pbkdf2_fallback_when_no_argon2():
 
 
 def test_session_status():
-    mgr = OwnerSessionManager(max_failures=5, force_pbkdf2=True)
+    mgr = OwnerSessionManager(max_failures=5, **_FAST)
     mgr.set_password("pass")
 
     status = mgr.session_status()
@@ -212,7 +225,7 @@ def test_session_status():
 
 
 def test_logout_all():
-    mgr = OwnerSessionManager(force_pbkdf2=True)
+    mgr = OwnerSessionManager(**_FAST)
     mgr.set_password("pass")
     t1 = mgr.authenticate("pass")
     t2 = mgr.authenticate("pass")
@@ -234,9 +247,7 @@ def test_lockout_exponential_backoff(mock_time):
     clock = _MockClock()
     mock_time.monotonic = clock
 
-    mgr = OwnerSessionManager(
-        max_failures=2, lockout_duration=1, force_pbkdf2=True
-    )
+    mgr = OwnerSessionManager(max_failures=2, lockout_duration=1, **_FAST)
     mgr.set_password("correct")
 
     # First lockout: 2 failures -> locked for 1s (base * 2^0 = 1s)
@@ -268,7 +279,7 @@ def test_lockout_exponential_backoff(mock_time):
 
 
 def test_successful_auth_resets_failures():
-    mgr = OwnerSessionManager(max_failures=3, force_pbkdf2=True)
+    mgr = OwnerSessionManager(max_failures=3, **_FAST)
     mgr.set_password("correct")
 
     # 2 failures (not enough for lockout)

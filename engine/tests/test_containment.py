@@ -6,10 +6,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jarvis_engine.security.containment import ContainmentEngine, ContainmentLevel, _hash_password
+from jarvis_engine.security.containment import (
+    ContainmentEngine,
+    ContainmentLevel,
+    _hash_password,
+)
 from jarvis_engine.security.forensic_logger import ForensicLogger
 from jarvis_engine.security.ip_tracker import IPTracker
 from jarvis_engine.security.session_manager import SessionManager
+
+# Pre-compute the test master-password hash once per worker using a single
+# PBKDF2 iteration.  Two @patch.dict decorators formerly each called
+# _hash_password("owner123") at class-definition time (import time), which
+# meant 2 × 600 000-iteration hashes per worker × 8 workers = 16 expensive
+# hashes just during collection.  Now: 1 fast hash, reused in both decorators.
+_FAST_OWNER_HASH = _hash_password("owner123", iterations=1)
+_FAST_ITERS = 1  # keep in sync with above
 
 
 # ---------------------------------------------------------------
@@ -18,8 +30,12 @@ from jarvis_engine.security.session_manager import SessionManager
 
 
 def _make_engine(**kwargs):
-    """Create a ContainmentEngine with optional mock collaborators."""
-    return ContainmentEngine(**kwargs)
+    """Create a ContainmentEngine with optional mock collaborators.
+
+    Uses a single PBKDF2 iteration so password-verification tests
+    complete in microseconds rather than hundreds of milliseconds.
+    """
+    return ContainmentEngine(_pbkdf2_iterations=_FAST_ITERS, **kwargs)
 
 
 # ---------------------------------------------------------------
@@ -154,7 +170,7 @@ class TestRecovery:
 
     @patch.dict(
         "os.environ",
-        {"JARVIS_MASTER_PASSWORD_HASH": _hash_password("owner123")},
+        {"JARVIS_MASTER_PASSWORD_HASH": _FAST_OWNER_HASH},
         clear=False,
     )
     def test_recover_level_4_with_password_succeeds(self) -> None:
@@ -167,7 +183,7 @@ class TestRecovery:
 
     @patch.dict(
         "os.environ",
-        {"JARVIS_MASTER_PASSWORD_HASH": _hash_password("owner123")},
+        {"JARVIS_MASTER_PASSWORD_HASH": _FAST_OWNER_HASH},
         clear=False,
     )
     def test_recover_level_5_with_password_succeeds(self) -> None:
@@ -184,6 +200,7 @@ class TestRecovery:
     def test_recover_level_4_no_env_hash_denied(self) -> None:
         """Without JARVIS_MASTER_PASSWORD_HASH set, recovery is denied."""
         import os
+
         os.environ.pop("JARVIS_MASTER_PASSWORD_HASH", None)
         eng = _make_engine()
         eng.contain("10.0.0.1", ContainmentLevel.LOCKDOWN, "test")
@@ -277,8 +294,7 @@ class TestForensicLoggerIntegration:
         # Should have containment + rotation log events
         assert mock_logger.log_event.call_count == 2
         event_types = [
-            call[0][0]["event_type"]
-            for call in mock_logger.log_event.call_args_list
+            call[0][0]["event_type"] for call in mock_logger.log_event.call_args_list
         ]
         assert "credential_rotation" in event_types
         assert "containment_executed" in event_types

@@ -77,11 +77,16 @@ _MASTER_CREDENTIAL_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
 _PBKDF2_ITERATIONS = 600_000
 
 
-def _hash_password(password: str, salt: bytes | None = None) -> str:
+def _hash_password(
+    password: str, salt: bytes | None = None, *, iterations: int = _PBKDF2_ITERATIONS
+) -> str:
     """Hash password with PBKDF2-SHA256.  Returns ``salt_hex:hash_hex``.
 
     When *salt* is ``None`` a random 32-byte salt is generated (use for
     creating new hashes).  Pass the original salt to verify.
+
+    *iterations* defaults to the production value (600 000).  Pass a small
+    integer (e.g. ``1``) only in unit tests to avoid CPU saturation.
     """
     if salt is None:
         salt = secrets.token_bytes(32)
@@ -89,7 +94,7 @@ def _hash_password(password: str, salt: bytes | None = None) -> str:
         "sha256",
         password.encode("utf-8"),
         salt,
-        _PBKDF2_ITERATIONS,
+        iterations,
     )
     return salt.hex() + ":" + dk.hex()
 
@@ -116,11 +121,13 @@ class ContainmentEngine:
         ip_tracker: object | None = None,
         session_manager: object | None = None,
         on_credential_rotate: object | None = None,
+        _pbkdf2_iterations: int = _PBKDF2_ITERATIONS,
     ) -> None:
         self._forensic_logger = forensic_logger
         self._ip_tracker = ip_tracker
         self._session_manager = session_manager
         self._on_credential_rotate = on_credential_rotate
+        self._pbkdf2_iters: int = _pbkdf2_iterations
         self._lock = threading.Lock()
 
         # State tracking
@@ -428,7 +435,9 @@ class ContainmentEngine:
             # New format: salt_hex:hash_hex
             salt_hex, _ = stored.split(":", 1)
             salt = bytes.fromhex(salt_hex)
-            computed = _hash_password(password, salt=salt)
+            computed = _hash_password(
+                password, salt=salt, iterations=self._pbkdf2_iters
+            )
             return _hmac_module.compare_digest(computed, stored)
         # Legacy: fixed salt, bare hash
         _LEGACY_SALT = b"jarvis-containment-recovery-v1"
@@ -436,7 +445,7 @@ class ContainmentEngine:
             "sha256",
             password.encode("utf-8"),
             _LEGACY_SALT,
-            _PBKDF2_ITERATIONS,
+            self._pbkdf2_iters,
         )
         return _hmac_module.compare_digest(dk.hex(), stored)
 
