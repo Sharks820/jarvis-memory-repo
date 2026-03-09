@@ -76,7 +76,7 @@ class CommandBus:
             raise ValueError(f"No handler for {type(command).__name__}")
         try:
             return handler(command)
-        except (RuntimeError, ValueError, TypeError, OSError, sqlite3.Error) as exc:
+        except Exception as exc:
             logger.exception(
                 "Handler for %s raised an exception: %s", type(command).__name__, exc
             )

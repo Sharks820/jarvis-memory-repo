@@ -731,7 +731,7 @@ class ModelGateway:
         self,
         messages: list[dict[str, str]],
         model: str = DEFAULT_CLOUD_MODEL,
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
         route_reason: str = "",
         privacy_routed: bool = False,
         temperature: float | None = None,

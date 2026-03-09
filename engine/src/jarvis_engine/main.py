@@ -335,8 +335,11 @@ def cmd_persona_config(
     cfg = result.config
 
     # Handler returns a dict with "error" key on conflicting flags
-    if isinstance(cfg, dict) and "error" in cfg:
-        print(f"error={cfg['error']}")
+    if isinstance(cfg, dict):
+        if "error" in cfg:
+            print(f"error={cfg['error']}")
+            return 1
+        print(f"error=unexpected dict result: {cfg}")
         return 1
 
     print("persona_config")

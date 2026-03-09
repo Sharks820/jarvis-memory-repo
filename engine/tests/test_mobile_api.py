@@ -19,6 +19,26 @@ from jarvis_engine.command_bus import CommandBus
 from jarvis_engine.owner_guard import set_master_password, trust_mobile_device, write_owner_guard
 
 
+def test_unescape_response_backslash_order() -> None:
+    """Backslashes must be unescaped before \\n/\\r to avoid corruption."""
+    from jarvis_engine.mobile_api import _unescape_response
+
+    # Basic escape sequences
+    assert _unescape_response("hello\\nworld") == "hello\nworld"
+    assert _unescape_response("hello\\rworld") == "hello\rworld"
+    assert _unescape_response("back\\\\slash") == "back\\slash"
+
+    # Critical: literal \\n in source should become backslash + n, not newline
+    assert _unescape_response("hello\\\\nworld") == "hello\\nworld"
+    assert _unescape_response("hello\\\\rworld") == "hello\\rworld"
+
+    # Double backslash alone
+    assert _unescape_response("\\\\") == "\\"
+
+    # No escapes
+    assert _unescape_response("plain text") == "plain text"
+
+
 def test_health_endpoint(mobile_server) -> None:
     code, body = http_request("GET", f"{mobile_server.base_url}/health")
     assert code == 200
@@ -1745,7 +1765,7 @@ def test_best_effort_learning_skips_success_with_response(mobile_server, monkeyp
 
 
 def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -> None:
-    """After 5 master password attempts, subsequent requests should be rate-limited."""
+    """After max failed master password attempts, subsequent requests should be rate-limited."""
     import unittest.mock as _mock
 
     write_owner_guard(mobile_server.root, enabled=True, owner_user_id="conner")
@@ -1754,7 +1774,8 @@ def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -
     # Clear any existing rate state
     mobile_server.server._master_pw_attempts.clear()
 
-    # Temporarily lower the limit to 3 for testing
+    # Temporarily lower the limit to 3 for testing — use WRONG password
+    # so failed attempts are counted against the rate limit.
     with _mock.patch.object(mobile_api._MASTER_PW_RATE, "max_attempts", 3):
         for i in range(5):
             payload = {
@@ -1766,7 +1787,7 @@ def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -
             raw = json.dumps(payload).encode("utf-8")
             headers = signed_headers(raw, mobile_server.auth_token, mobile_server.signing_key)
             headers["X-Jarvis-Device-Id"] = f"untrusted_device_{i}"
-            headers["X-Jarvis-Master-Password"] = "CorrectPassword123!"
+            headers["X-Jarvis-Master-Password"] = "WrongPassword999!"
             code, body = http_request("POST", f"{mobile_server.base_url}/ingest", raw, headers)
 
             if code == 429:
@@ -1775,7 +1796,7 @@ def test_master_password_rate_limiter_blocks_after_max_attempts(mobile_server) -
                 break
         else:
             # If we didn't break, the rate limiter didn't fire
-            pytest.fail("Rate limiter did not fire after max attempts")
+            pytest.fail("Rate limiter did not fire after max failed attempts")
 
 
 def test_master_password_rate_limiter_allows_normal_usage(mobile_server) -> None:

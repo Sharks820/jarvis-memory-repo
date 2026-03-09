@@ -83,6 +83,9 @@ from jarvis_engine.mobile_routes._helpers import (
     _parse_bool,
 )
 
+# Lock to serialize repo_root monkey-patching across threads
+_repo_root_patch_lock = threading.Lock()
+
 
 class _ThreadCapturingStdout:
     """Wraps real stdout, routing writes to per-thread StringIO when active.
@@ -315,6 +318,11 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
             logger.debug("Failed to clean up TLS extension file: %s", cleanup_exc)
 
     if cert_path.exists() and key_path.exists():
+        # Restrict private key to owner-read-only
+        try:
+            key_path.chmod(0o600)
+        except OSError as perm_exc:
+            logger.debug("Could not restrict TLS key permissions: %s", perm_exc)
         logger.info("Generated self-signed TLS certificate with SAN=%s: %s", san_string, cert_path)
         return str(cert_path), str(key_path)
 
@@ -322,8 +330,26 @@ def _ensure_tls_cert(security_dir: Path, *, extra_ips: list[str] | None = None) 
 
 
 def _unescape_response(text: str) -> str:
-    """Reverse the ``response=`` line escaping applied by the CLI."""
-    return text.replace("\\n", "\n").replace("\\r", "\r").replace("\\\\", "\\")
+    """Reverse the ``response=`` line escaping applied by the CLI.
+
+    Uses single-pass parsing to correctly handle adjacent escape sequences
+    (e.g. ``\\\\n`` → ``\\n``, not a newline).
+    """
+    _ESCAPE_MAP = {"n": "\n", "r": "\r", "\\": "\\"}
+    parts: list[str] = []
+    i = 0
+    length = len(text)
+    while i < length:
+        ch = text[i]
+        if ch == "\\" and i + 1 < length:
+            nxt = text[i + 1]
+            if nxt in _ESCAPE_MAP:
+                parts.append(_ESCAPE_MAP[nxt])
+                i += 2
+                continue
+        parts.append(ch)
+        i += 1
+    return "".join(parts)
 
 
 
@@ -684,7 +710,9 @@ class MobileIngestServer(ThreadingHTTPServer):
                     raise
             except Exception as exc:  # boundary: catch-all justified
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
-                # Do NOT set _sync_init_attempted so future calls can retry.
+                # Mark attempted to avoid retry spam on every request;
+                # server restart will allow re-initialization.
+                self._sync_init_attempted = True
             return self._sync_engine
 
     def ensure_memory_engine(self) -> MemoryEngine | None:
@@ -1111,15 +1139,13 @@ class MobileIngestHandler(
 
             # Thread-local repo_root override — no global lock needed.
             _thread_local.repo_root_override = root
-            original_repo_root = main_mod.repo_root
-            if not hasattr(main_mod, "_original_repo_root"):
-                main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
-
-            # Install thread-aware repo_root if not already done
-            if not getattr(main_mod, "_repo_root_patched", False):
-                _orig = main_mod._original_repo_root  # type: ignore[attr-defined]
-                main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
-                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+            # Install thread-aware repo_root if not already done (synchronized)
+            with _repo_root_patch_lock:
+                if not getattr(main_mod, "_repo_root_patched", False):
+                    original_repo_root = main_mod.repo_root
+                    main_mod._original_repo_root = original_repo_root  # type: ignore[attr-defined]
+                    main_mod.repo_root = _make_thread_aware_repo_root(original_repo_root, _thread_local)  # type: ignore[assignment]
+                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
 
             # Per-thread stdout capture — concurrent requests run in parallel.
             _ThreadCapturingStdout.install()
@@ -1517,10 +1543,11 @@ class MobileIngestHandler(
                 {"ok": False, "error": "Too many master password attempts. Try again later."},
             )
             return False
-        server.record_master_pw_attempt(client_ip)
         if verify_master_password(self._root, master_password):
             trust_mobile_device(self._root, device_id)
             return True
+        # Only count failed attempts against the rate limit
+        server.record_master_pw_attempt(client_ip)
         self._unauthorized("Untrusted mobile device.")
         return False
 
@@ -1807,8 +1834,8 @@ class MobileIngestHandler(
         return
 
     def log_message(self, fmt: str, *args: object) -> None:
-        # Keep mobile ingestion logs out of stdout unless explicitly logged via memory store.
-        return
+        # Log at DEBUG instead of discarding — useful for incident investigation.
+        logger.debug(fmt, *args)
 
 
 def _resolve_tls(
@@ -1982,12 +2009,13 @@ def _start_bus_prewarm(repo_root: Path) -> None:
 
             # Use thread-local override for prewarm thread
             _thread_local.repo_root_override = repo_root
-            # Install thread-aware repo_root once
-            if not getattr(main_mod, "_repo_root_patched", False):
-                _orig = main_mod.repo_root
-                main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
-                main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
-                main_mod._repo_root_patched = True  # type: ignore[attr-defined]
+            # Install thread-aware repo_root once (synchronized)
+            with _repo_root_patch_lock:
+                if not getattr(main_mod, "_repo_root_patched", False):
+                    _orig = main_mod.repo_root
+                    main_mod._original_repo_root = _orig  # type: ignore[attr-defined]
+                    main_mod.repo_root = _make_thread_aware_repo_root(_orig, _thread_local)  # type: ignore[assignment]
+                    main_mod._repo_root_patched = True  # type: ignore[attr-defined]
             try:
                 from jarvis_engine._bus import get_bus
 
@@ -2031,6 +2059,16 @@ def _shutdown_server(server: MobileIngestServer, store: MemoryStore) -> None:
             logger.info("MemoryEngine connection closed")
         except Exception as exc:  # boundary: catch-all justified
             logger.warning("Failed to close MemoryEngine: %s", exc)
+    # Close the embedding service if lazily initialized
+    embed_svc = getattr(server, "_embed_service", None)
+    if embed_svc is not None:
+        try:
+            close_fn = getattr(embed_svc, "close", None)
+            if close_fn is not None:
+                close_fn()
+                logger.info("Embedding service closed")
+        except Exception as exc:  # boundary: catch-all justified
+            logger.warning("Failed to close embedding service: %s", exc)
     # Close the MemoryStore (which holds its own SQLite connection)
     try:
         store.close()
