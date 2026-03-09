@@ -243,7 +243,7 @@ class ConversationMixin:
         popout_text.pack(fill=tk.BOTH, expand=True)
 
         # Configure the same chat tags on the pop-out widget
-        for tag in ("user", "jarvis", "system", "error", "separator", "timestamp"):
+        for tag in ("user", "jarvis", "system", "error", "separator", "timestamp", "thinking", "learned"):
             tag_opts = self.output.tag_configure(tag)
             if tag_opts:
                 resolved = {k: v[-1] for k, v in tag_opts.items() if v and v[-1]}
@@ -256,7 +256,7 @@ class ConversationMixin:
         if full_text.strip():
             popout_text.insert(tk.END, full_text)
             for tag in ("user", "jarvis", "system", "error", "separator",
-                        "timestamp", "thinking"):
+                        "timestamp", "thinking", "learned"):
                 try:
                     ranges = self.output.tag_ranges(tag)
                     for i in range(0, len(ranges), 2):
@@ -315,10 +315,10 @@ class ConversationMixin:
         popout_cmd = win._popout_cmd  # type: ignore[attr-defined]
         send_btn = win._send_btn  # type: ignore[attr-defined]
 
-        def _popout_send(event: tk.Event[Any] | None = None) -> None:
+        def _popout_send(event: tk.Event[Any] | None = None) -> str | None:
             text = popout_cmd.get("1.0", tk.END).strip()
             if not text:
-                return
+                return None
             popout_cmd.delete("1.0", tk.END)
             # Mirror to main command box and send
             self._set_command_text(text)

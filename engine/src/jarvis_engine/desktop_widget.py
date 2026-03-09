@@ -1326,10 +1326,12 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     self._log_async("No speech recognized.", role="system")
                     self._set_state_async("idle")
                     return
-                self._set_state_async("processing")
                 self._set_command_text_async(text)
                 self._log_async(f"dictated: {text}", role="system")
                 if auto_send:
+                    # Reset to idle first so _send_command_async doesn't
+                    # reject the command with "Still processing"
+                    self._set_state_async("idle")
                     self.after(0, self._send_command_async)
                 else:
                     self._set_state_async("idle")

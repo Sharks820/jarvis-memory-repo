@@ -486,7 +486,7 @@ def _collect_kg_metrics(root: Path) -> None:
                 _kg_conn = _connect_db(db_path)
                 try:
                     class _KGShim:
-                        def __init__(self, conn: _sqlite3.Connection) -> None:
+                        def __init__(self, conn: sqlite3.Connection) -> None:
                             self.db = conn
 
                     metrics = collect_kg_metrics(_KGShim(_kg_conn))

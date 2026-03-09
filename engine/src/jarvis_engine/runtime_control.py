@@ -94,8 +94,11 @@ def read_control_state(root: Path) -> ControlState:
     # Auto-expire mute if mute_until_utc has passed
     if state["muted"] and state["mute_until_utc"]:
         try:
-            mute_until_raw = str(state.get("mute_until_utc", ""))
+            mute_until_raw = str(state["mute_until_utc"])
             mute_until = datetime.fromisoformat(mute_until_raw)
+            # Ensure timezone-aware comparison: treat naive datetimes as UTC
+            if mute_until.tzinfo is None:
+                mute_until = mute_until.replace(tzinfo=UTC)
             if datetime.now(UTC) >= mute_until:
                 state["muted"] = False
                 state["mute_until_utc"] = ""
