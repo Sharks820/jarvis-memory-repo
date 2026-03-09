@@ -9,9 +9,11 @@ __all__ = [
     "PRIVACY_KEYWORDS",
     "is_privacy_sensitive",
     "DEFAULT_LOCAL_MODEL",
+    "FAST_LOCAL_MODEL",
     "DEFAULT_CLOUD_MODEL",
     "EMBEDDING_DIM",
     "get_local_model",
+    "get_fast_local_model",
     "STOP_WORDS",
     "DEFAULT_API_PORT",
     "ENV_MODEL_PRIORITY",
@@ -76,6 +78,14 @@ def is_privacy_sensitive(text: str) -> bool:
 DEFAULT_LOCAL_MODEL = "qwen3.5:latest"
 
 # ---------------------------------------------------------------------------
+# Fast local model — smaller/faster Ollama model for routine queries.
+# Used for quick responses (summarization, formatting, simple Q&A) instead
+# of cloud APIs, keeping everything local when possible.
+# ---------------------------------------------------------------------------
+
+FAST_LOCAL_MODEL = "qwen3.5:4b"
+
+# ---------------------------------------------------------------------------
 # Default cloud model (API-based, used by gateway/classifier/handlers)
 # ---------------------------------------------------------------------------
 
@@ -92,6 +102,11 @@ EMBEDDING_DIM: int = 768
 def get_local_model() -> str:
     """Return the configured local Ollama model name."""
     return os.environ.get("JARVIS_LOCAL_MODEL", DEFAULT_LOCAL_MODEL)
+
+
+def get_fast_local_model() -> str:
+    """Return the configured fast local Ollama model name."""
+    return os.environ.get("JARVIS_FAST_LOCAL_MODEL", FAST_LOCAL_MODEL)
 
 
 # ---------------------------------------------------------------------------

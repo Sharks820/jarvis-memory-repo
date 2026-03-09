@@ -1,14 +1,13 @@
 """IntentClassifier: embedding-based query routing with privacy keyword detection.
 
-Routes queries to the optimal model based on task type and model strengths:
-- Math/logic reasoning -> Codex CLI (GPT-5.3 high reasoning via Codex Pro plan)
-- Complex coding/architecture -> Claude CLI (Opus 4.6 via 20x Max plan)
-- Routine summarization/formatting -> Kimi K2 via Groq API (fast, cost-effective)
-- Creative writing/brainstorming -> Gemini CLI (strong creative capabilities)
-- Web research -> Gemini CLI (built-in grounding/search)
-- Private/personal data -> Local Ollama (never leaves device)
+Local-first strategy — all queries start with local Ollama models:
+- Math/logic + Complex tasks -> qwen3.5:latest (9B, deeper reasoning)
+- Routine/creative/web research -> qwen3.5:4b (fast, ~30 tok/s)
+- Private/personal data -> qwen3.5:latest (9B, never leaves device)
 
-Falls back through the chain if primary is unavailable.
+Cloud CLIs (Claude, Codex, Gemini) are fallbacks only — used when the
+local model fails or can't handle the query (e.g., web grounding).
+
 Privacy keywords force local routing regardless of embedding similarity.
 Low-confidence queries default to local (privacy-safe).
 """
@@ -20,7 +19,11 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
+from jarvis_engine._constants import (
+    DEFAULT_CLOUD_MODEL,
+    PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS,
+    get_fast_local_model as _get_fast_local_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,25 +141,24 @@ class IntentClassifier:
         ],
     }
 
-    # Primary model for each route — chosen for best performance per task type.
-    # Gateway falls back through the chain if primary is unavailable.
+    # Primary model for each route — local-first strategy.
+    # qwen3.5:4b (fast) handles routine/creative/web queries.
+    # qwen3.5:latest (9B) handles complex/math tasks requiring deeper reasoning.
+    # Cloud CLIs (Claude, Codex, Gemini) are fallbacks only — used when local
+    # models detect they can't handle the query or for web grounding.
+    # All routes resolved at runtime via _get_local_model / _get_fast_local_model.
     MODEL_MAP: dict[str, str] = {
-        "math_logic": "codex-cli",    # GPT-5.3 excels at math and logic reasoning
-        "complex": "claude-cli",      # Opus excels at coding, architecture, debugging
-        "routine": DEFAULT_CLOUD_MODEL,  # Fast API (Groq) for summarization, formatting
-        "creative": "gemini-cli",     # Gemini strong at creative writing, brainstorming
-        "web_research": "gemini-cli", # Gemini has built-in grounding and search
-        # simple_private: resolved at runtime via JARVIS_LOCAL_MODEL env var
+        # All routes resolved dynamically in _resolve_model_for_route
     }
 
-    # Fallback preferences per route if primary is unavailable.
-    # Tried in order; if none available, gateway's own fallback chain kicks in.
+    # Fallback preferences per route — cloud CLIs as escalation only.
+    # Tried in order when local model fails or returns low-quality response.
     MODEL_FALLBACKS: dict[str, list[str]] = {
-        "math_logic": ["claude-cli", DEFAULT_CLOUD_MODEL, "gemini-cli"],
-        "complex": ["codex-cli", DEFAULT_CLOUD_MODEL, "gemini-cli"],
-        "routine": ["gemini-cli", "claude-cli", "kimi-cli"],
-        "creative": ["claude-cli", DEFAULT_CLOUD_MODEL, "kimi-cli"],
-        "web_research": [DEFAULT_CLOUD_MODEL, "claude-cli", "kimi-cli"],
+        "math_logic": ["codex-cli", "claude-cli", "gemini-cli"],
+        "complex": ["claude-cli", "codex-cli", "gemini-cli"],
+        "routine": ["gemini-cli", "claude-cli"],
+        "creative": ["gemini-cli", "claude-cli"],
+        "web_research": ["gemini-cli", "claude-cli"],
     }
 
     PRIVACY_KEYWORDS: frozenset[str] = _CANONICAL_PRIVACY_KEYWORDS
@@ -283,26 +285,40 @@ class IntentClassifier:
     ) -> str:
         """Pick the best available model for a route.
 
-        Checks primary MODEL_MAP first, then MODEL_FALLBACKS in order.
-        If *available_models* is provided, only returns models in that set.
-        Falls back to 'kimi-k2' (fast API) if nothing else is available.
+        Local-first strategy: uses qwen3.5:4b (fast) for routine/creative/web
+        queries, and qwen3.5:latest (9B) for complex/math tasks needing deeper
+        reasoning.  Cloud CLIs (Claude, Codex, Gemini) are fallbacks only.
         """
-        primary = self.MODEL_MAP.get(route)
-        if primary and (available_models is None or primary in available_models):
+        from jarvis_engine._constants import get_local_model as _get_local_model
+
+        # Local-first: pick the right local model based on task complexity
+        if route in ("math_logic", "complex"):
+            # Heavy reasoning → full 9B model
+            primary = _get_local_model()
+        else:
+            # Routine, creative, web_research → fast 4B model
+            primary = _get_fast_local_model()
+
+        if available_models is None or primary in available_models:
             return primary
 
-        # Try fallback list in order
+        # Try static MODEL_MAP entry (empty by default in local-first mode)
+        static_primary = self.MODEL_MAP.get(route)
+        if static_primary and (available_models is None or static_primary in available_models):
+            return static_primary
+
+        # Escalate to cloud CLIs as fallback
         for fallback in self.MODEL_FALLBACKS.get(route, []):
             if available_models is None or fallback in available_models:
                 return fallback
 
-        # Ultimate fallback: default cloud model (API-based, always available with GROQ_API_KEY)
-        if available_models is None or DEFAULT_CLOUD_MODEL in available_models:
-            return DEFAULT_CLOUD_MODEL
-        # If default cloud model not available either, return first available model
+        # Ultimate fallback: any available local model
+        local = _get_local_model()
+        if available_models is None or local in available_models:
+            return local
         if available_models:
             return next(iter(available_models))
-        return DEFAULT_CLOUD_MODEL
+        return local
 
     def classify(
         self,

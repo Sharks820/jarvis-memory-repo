@@ -615,32 +615,32 @@ class TestClassifierModelResolution:
     """Test that IntentClassifier resolves models based on availability."""
 
     def test_resolve_model_uses_primary_when_available(self) -> None:
+        from jarvis_engine._constants import get_local_model
         from jarvis_engine.gateway.classifier import IntentClassifier
-        available = {"codex-cli", "kimi-k2", "gemini-cli"}
-        # _resolve_model_for_route is a method; test via class access
-        # We need an instance — use a mock embed service
+        local = get_local_model()
+        available = {local, "codex-cli", "gemini-cli"}
         mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 
         cls = IntentClassifier(mock_embed)
         model = cls._resolve_model_for_route("math_logic", available)
-        assert model == "codex-cli"  # Primary for math_logic
+        assert model == local  # Local 9B is primary for math_logic
 
     def test_resolve_model_falls_back_when_primary_unavailable(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
-        available = {"kimi-k2", "gemini-cli"}  # No codex-cli
+        # No local models available — should fall back to cloud CLIs
+        available = {"codex-cli", "gemini-cli"}
         mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
         mock_embed.embed_query.return_value = [0.0] * 384
 
         cls = IntentClassifier(mock_embed)
         model = cls._resolve_model_for_route("math_logic", available)
-        # Should fall back to claude-cli first, but that's not available either
-        # Next: kimi-k2 — which IS available
-        assert model == "kimi-k2"
+        assert model == "codex-cli"  # First cloud fallback for math_logic
 
     def test_resolve_model_ultimate_fallback(self) -> None:
+        from jarvis_engine._constants import get_local_model
         from jarvis_engine.gateway.classifier import IntentClassifier
         available: set[str] = set()  # Nothing available
         mock_embed = MagicMock(spec=EmbeddingService)
@@ -648,10 +648,8 @@ class TestClassifierModelResolution:
         mock_embed.embed_query.return_value = [0.0] * 384
 
         cls = IntentClassifier(mock_embed)
-        # Empty set: kimi-k2 not in available but available_models is empty
-        # so fallback returns first available (no items) -> kimi-k2 as last resort
         model = cls._resolve_model_for_route("math_logic", available)
-        assert model == "kimi-k2"  # Ultimate fallback
+        assert model == get_local_model()  # Ultimate fallback is local model
 
     def test_resolve_model_respects_available_set(self) -> None:
         from jarvis_engine.gateway.classifier import IntentClassifier
@@ -662,8 +660,8 @@ class TestClassifierModelResolution:
 
         cls = IntentClassifier(mock_embed)
         model = cls._resolve_model_for_route("math_logic", available)
-        # Primary codex-cli not available, fallback claude-cli not available,
-        # kimi-k2 not available, gemini-cli IS in fallback list and available
+        # Local not available, codex-cli not available, claude-cli not available,
+        # gemini-cli IS in fallback list and available
         assert model == "gemini-cli"
 
     def test_resolve_provider_unavailable_cli_falls_to_ollama(self) -> None:
@@ -681,6 +679,7 @@ class TestClassifierModelResolution:
                 gw.close()
 
     def test_resolve_model_no_available_set_uses_primary(self) -> None:
+        from jarvis_engine._constants import get_local_model
         from jarvis_engine.gateway.classifier import IntentClassifier
         mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384
@@ -688,4 +687,4 @@ class TestClassifierModelResolution:
 
         cls = IntentClassifier(mock_embed)
         model = cls._resolve_model_for_route("complex", None)
-        assert model == "claude-cli"  # Primary for complex
+        assert model == get_local_model()  # Local 9B for complex

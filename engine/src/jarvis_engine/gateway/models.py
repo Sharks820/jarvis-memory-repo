@@ -21,7 +21,11 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from jarvis_engine._constants import DEFAULT_CLOUD_MODEL, get_local_model as _get_local_model
+from jarvis_engine._constants import (
+    DEFAULT_CLOUD_MODEL,
+    get_fast_local_model as _get_fast_local_model,
+    get_local_model as _get_local_model,
+)
 
 try:
     from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
@@ -200,6 +204,7 @@ class GatewayResponse:
 _MODEL_CONTEXT_LIMITS: dict[str, int] = {
     # Local models (Ollama)
     "qwen3.5:latest": 32_768,
+    "qwen3.5:4b": 32_768,
     "qwen3:14b": 32_768,
     "qwen3:4b": 32_768,
     "gemma3:4b": 8_192,
@@ -501,7 +506,7 @@ class ModelGateway:
             if estimated <= candidate_threshold:
                 # Check that we can actually route to this candidate
                 provider = self._resolve_provider(candidate)
-                if provider != "ollama" or candidate == _get_local_model():
+                if provider != "ollama" or candidate in (_get_local_model(), _get_fast_local_model()):
                     logger.info(
                         "Context guard: switching %s -> %s (limit %d -> %d)",
                         model, candidate, limit, candidate_limit,
@@ -1297,9 +1302,10 @@ class ModelGateway:
         # CLI-based models
         for cli_key in self._cli_providers:
             models.add(cli_key)
-        # Ollama (local) — always add local model name
+        # Ollama (local) — always add both local model names
         if self._ollama is not None:
             models.add(_get_local_model())
+            models.add(_get_fast_local_model())
         return models
 
     def available_providers(self) -> list[str]:
