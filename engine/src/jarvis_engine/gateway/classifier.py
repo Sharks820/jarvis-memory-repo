@@ -20,7 +20,6 @@ import re
 from typing import TYPE_CHECKING
 
 from jarvis_engine._constants import (
-    DEFAULT_CLOUD_MODEL,
     PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS,
     get_fast_local_model as _get_fast_local_model,
 )
