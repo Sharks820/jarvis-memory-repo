@@ -26,6 +26,8 @@ tmp/
 .planning/events.jsonl
 MagicMock/
 engine/MagicMock/
+# Prevent MagicMock-named filesystem entries (created by tests calling mkdir on mock paths)
+engine/<MagicMock*
 .planning/cache/
 engine/.planning/
 ops_snapshot.live.json
