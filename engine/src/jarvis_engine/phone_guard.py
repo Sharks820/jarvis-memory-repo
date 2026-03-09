@@ -10,7 +10,7 @@ from jarvis_engine._compat import UTC
 from pathlib import Path
 from typing import Any
 
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
 from jarvis_engine._shared import safe_float as _safe_float
 
 _ACTIONS_LOCK = threading.Lock()
@@ -255,19 +255,7 @@ def _normalize_number(number: str) -> str:
     return ""
 
 
-def _parse_ts(value: Any) -> datetime | None:
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+_parse_ts = parse_iso_timestamp
 
 
 def _area_key(number: str) -> str:

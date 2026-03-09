@@ -349,22 +349,37 @@ class MobileIngestServer(ThreadingHTTPServer):
         self.pipeline = pipeline
         self.repo_root = repo_root
         self.tls_active = False
+        self._setup_sync_state()
+        self._setup_nonce_tracking(repo_root)
+        self._setup_rate_limiters()
+        self._setup_security(repo_root)
+        self._setup_owner_session()
+
+    # -- Private setup helpers ------------------------------------------------
+
+    def _setup_sync_state(self) -> None:
+        """Initialise sync engine and memory engine lazy-init state."""
         self._sync_engine: SyncEngine | None = None
         self._sync_transport: SyncTransport | None = None
         self._sync_init_attempted = False
         self._sync_init_lock = threading.Lock()
-        # Auto-sync config for relay URLs, sync scheduling, phone autonomy
         self._auto_sync_config: AutoSyncConfig | None = None
         self._memory_engine: MemoryEngine | None = None
         self._memory_engine_init_lock = threading.Lock()
         self._embed_service: EmbeddingService | None = None
         self._embed_init_lock = threading.Lock()
+
+    def _setup_nonce_tracking(self, repo_root: Path) -> None:
+        """Initialise HMAC nonce replay-protection state."""
         self.nonce_seen: dict[str, float] = {}
         self.nonce_lock = threading.RLock()
         self.next_nonce_cleanup_ts = 0.0
         self.nonce_cleanup_interval_s = 30.0
         self._nonce_cache_path = _runtime_dir(repo_root) / "nonce_cache.jsonl"
         self._load_nonces()
+
+    def _setup_rate_limiters(self) -> None:
+        """Initialise all rate-limiter buckets and locks."""
         # Bootstrap rate-limiter: {ip: [timestamp, ...]}
         self._bootstrap_attempts: dict[str, list[float]] = {}
         self._bootstrap_rate_lock = threading.Lock()
@@ -378,8 +393,9 @@ class MobileIngestServer(ThreadingHTTPServer):
         # Master password rate-limiter: {ip: [timestamp, ...]}
         self._master_pw_attempts: dict[str, list[float]] = {}
         self._master_pw_rate_lock = threading.Lock()
-        # Security orchestrator — FAIL CLOSED: if init fails, reject all
-        # non-essential requests (security subsystem must be operational).
+
+    def _setup_security(self, repo_root: Path) -> None:
+        """Initialise SecurityOrchestrator -- FAIL CLOSED on error."""
         self.security: SecurityOrchestrator | None = None
         self._security_db: sqlite3.Connection | None = None
         self._security_write_lock: threading.Lock | None = None
@@ -387,12 +403,12 @@ class MobileIngestServer(ThreadingHTTPServer):
         try:
             import sqlite3 as _sec_sqlite3
             from jarvis_engine.security.orchestrator import SecurityOrchestrator
-            security_db_path = self.repo_root / ".planning" / "brain" / "security.db"
+            security_db_path = repo_root / ".planning" / "brain" / "security.db"
             security_db_path.parent.mkdir(parents=True, exist_ok=True)
             self._security_db = _sec_sqlite3.connect(str(security_db_path), check_same_thread=False)
             _configure_db(self._security_db)
             self._security_write_lock = threading.Lock()
-            forensic_dir = _runtime_dir(self.repo_root) / "forensic"
+            forensic_dir = _runtime_dir(repo_root) / "forensic"
             forensic_dir.mkdir(parents=True, exist_ok=True)
             def _rotate_signing_key(new_key: str) -> None:
                 self.signing_key = new_key
@@ -410,8 +426,8 @@ class MobileIngestServer(ThreadingHTTPServer):
             self.security = None
             self._security_degraded = True
 
-        # Owner session manager — FAIL CLOSED: if init fails, reject
-        # session-dependent requests.
+    def _setup_owner_session(self) -> None:
+        """Initialise OwnerSessionManager -- FAIL CLOSED on error."""
         self.owner_session: OwnerSessionManager | None = None
         self._session_degraded: bool = False
         try:

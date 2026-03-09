@@ -32,18 +32,14 @@ from jarvis_engine._constants import (
     make_task_id as _make_task_id,
 )
 
-# ---------------------------------------------------------------------------
 # Imports from sub-modules used internally in this file
-# ---------------------------------------------------------------------------
 from jarvis_engine.voice_extractors import escape_response
 from jarvis_engine.voice_context import _build_smart_context, _build_system_parts
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Conversation history buffer for multi-turn context (persisted to disk)
-# ---------------------------------------------------------------------------
 
 _CONVERSATION_MAX_TURNS = _env_int("JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40)
 _CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
@@ -395,9 +391,7 @@ def _mark_routed_model(model: str, provider: str) -> None:
     _state.mark_routed_model(model, provider)
 
 
-# ---------------------------------------------------------------------------
 # LLM token budget and web search detection
-# ---------------------------------------------------------------------------
 
 _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
     "math_logic": 2048,
@@ -408,9 +402,7 @@ _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
     "web_research": 1024,
 }
 
-# ---------------------------------------------------------------------------
 # Web search need detection — identifies queries requiring current information
-# ---------------------------------------------------------------------------
 _WEB_SIGNAL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\b(?:latest|current|recent|today'?s|tonight'?s|yesterday'?s|this (?:week|month|year)'?s?)\b", re.I),
     re.compile(r"\b(?:right now|at the moment|as of (?:today|now|2\d{3}))\b", re.I),
@@ -528,9 +520,7 @@ def _classify_and_route(
     return route, llm_model
 
 
-# ---------------------------------------------------------------------------
 # Web-augmented LLM conversation — helpers
-# ---------------------------------------------------------------------------
 
 
 def _perform_web_search(
@@ -711,9 +701,7 @@ def _dispatch_and_handle_response(
         return 1
 
 
-# ---------------------------------------------------------------------------
 # Web-augmented LLM conversation
-# ---------------------------------------------------------------------------
 
 
 def _resolve_max_tokens(route: str, web_searched: bool, force_web: bool) -> int:

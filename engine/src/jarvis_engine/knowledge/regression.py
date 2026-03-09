@@ -172,6 +172,8 @@ class RegressionChecker:
         import sqlite3
 
         dst_db = sqlite3.connect(str(backup_path))
+        from jarvis_engine._db_pragmas import configure_sqlite
+        configure_sqlite(dst_db)
         try:
             with self._kg.db_lock:
                 self._kg.db.backup(dst_db)
@@ -235,6 +237,8 @@ class RegressionChecker:
                 logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
             reopen_db = sqlite3.connect(str(dst_path), check_same_thread=False)
             reopen_db.row_factory = sqlite3.Row
+            from jarvis_engine._db_pragmas import configure_sqlite
+            configure_sqlite(reopen_db, full=True)
             self._kg._engine._db = reopen_db
             self._kg._db = reopen_db
             self._kg._lock_manager._db = reopen_db

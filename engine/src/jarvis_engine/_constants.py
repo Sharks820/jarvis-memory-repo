@@ -36,10 +36,8 @@ from pathlib import Path
 
 from jarvis_engine._compat import UTC
 
-# ---------------------------------------------------------------------------
 # Privacy keywords — used by IntentClassifier and manual fallback routing
 # to ensure private queries never leave the local device.
-# ---------------------------------------------------------------------------
 
 PRIVACY_KEYWORDS: frozenset[str] = frozenset({
     # Identity / contact
@@ -71,31 +69,11 @@ def is_privacy_sensitive(text: str) -> bool:
     return bool(_PRIVACY_RE.search(text))
 
 
-# ---------------------------------------------------------------------------
-# Default local (Ollama) model
-# ---------------------------------------------------------------------------
+# Model constants
 
 DEFAULT_LOCAL_MODEL = "qwen3.5:latest"
-
-# ---------------------------------------------------------------------------
-# Fast local model — smaller/faster Ollama model for routine queries.
-# Used for quick responses (summarization, formatting, simple Q&A) instead
-# of cloud APIs, keeping everything local when possible.
-# ---------------------------------------------------------------------------
-
 FAST_LOCAL_MODEL = "qwen3.5:4b"
-
-# ---------------------------------------------------------------------------
-# Default cloud model (API-based, used by gateway/classifier/handlers)
-# ---------------------------------------------------------------------------
-
 DEFAULT_CLOUD_MODEL = "kimi-k2"
-
-# ---------------------------------------------------------------------------
-# Embedding dimension — nomic-ai/nomic-embed-text-v1.5 produces 768-dim vectors.
-# Used by memory/engine.py, knowledge/graph.py, and KG sub-managers.
-# ---------------------------------------------------------------------------
-
 EMBEDDING_DIM: int = 768
 
 
@@ -109,10 +87,8 @@ def get_fast_local_model() -> str:
     return os.environ.get("JARVIS_FAST_LOCAL_MODEL", FAST_LOCAL_MODEL)
 
 
-# ---------------------------------------------------------------------------
 # Stop words — superset used for keyword/topic extraction and cross-branch
 # matching.  Individual modules may extend with ``STOP_WORDS | {...}``.
-# ---------------------------------------------------------------------------
 
 STOP_WORDS: frozenset[str] = frozenset({
     # Articles / determiners
@@ -145,16 +121,9 @@ STOP_WORDS: frozenset[str] = frozenset({
 })
 
 
-# ---------------------------------------------------------------------------
-# Default Mobile API port
-# ---------------------------------------------------------------------------
+# Network and API constants
 
 DEFAULT_API_PORT: int = 8787
-
-
-# ---------------------------------------------------------------------------
-# Cloud model env-key fallback priority
-# ---------------------------------------------------------------------------
 
 ENV_MODEL_PRIORITY: list[tuple[str, str]] = [
     ("GROQ_API_KEY", DEFAULT_CLOUD_MODEL),
@@ -162,10 +131,7 @@ ENV_MODEL_PRIORITY: list[tuple[str, str]] = [
     ("ZAI_API_KEY", "glm-4.7-flash"),
 ]
 
-
-# ---------------------------------------------------------------------------
 # Runtime data filenames (used with runtime_dir())
-# ---------------------------------------------------------------------------
 
 SELF_TEST_HISTORY = "self_test_history.jsonl"
 GATEWAY_AUDIT_LOG = "gateway_audit.jsonl"
@@ -174,9 +140,7 @@ OPS_SNAPSHOT_FILENAME = "ops_snapshot.live.json"
 ACTIONS_FILENAME = "actions.generated.json"
 
 
-# ---------------------------------------------------------------------------
 # Common path helpers
-# ---------------------------------------------------------------------------
 
 def memory_db_path(root: Path) -> Path:
     """Return the canonical path to the main Jarvis memory database."""
@@ -188,15 +152,6 @@ def runtime_dir(root: Path) -> Path:
     return root / ".planning" / "runtime"
 
 
-# ---------------------------------------------------------------------------
-# Task ID generation
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Keyword extraction — shared core for pulling meaningful words from text.
-# Used by learning/correction_detector.py and learning/cross_branch.py.
-# ---------------------------------------------------------------------------
-
 def extract_keywords(
     text: str,
     *,
@@ -205,15 +160,7 @@ def extract_keywords(
     pattern: str = r"[a-zA-Z]+",
     deduplicate: bool = True,
 ) -> list[str]:
-    """Extract meaningful keywords from *text*.
-
-    Args:
-        text: Input text to extract keywords from.
-        stop_words: Words to filter out.  Defaults to :data:`STOP_WORDS`.
-        min_length: Minimum word length to keep (inclusive).
-        pattern: Regex pattern for tokenization (default: alpha-only).
-        deduplicate: If True, remove duplicate keywords while preserving order.
-    """
+    """Extract meaningful keywords from *text*."""
     if not text:
         return []
 
@@ -242,12 +189,6 @@ def make_task_id(prefix: str) -> str:
     return f"{prefix}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
 
-# ---------------------------------------------------------------------------
-# Recency weight helper — shared core for exponential time-decay scoring.
-# Used by memory/search.py (default=0.0, decay=168h) and brain_memory.py
-# (default=0.3, decay=96h).
-# ---------------------------------------------------------------------------
-
 def recency_weight(
     ts_text: str,
     *,
@@ -259,24 +200,13 @@ def recency_weight(
     Returns a value between 0.0 and 1.0 for valid timestamps (1.0 = just
     created, decaying toward 0.0 with a half-life of approximately
     *decay_hours* hours).  Returns *default* for empty or unparseable input.
-
-    Args:
-        ts_text: ISO-8601 timestamp string (may end with ``Z``).
-        default: Value returned for empty or invalid timestamps.
-        decay_hours: Exponential decay constant in hours (default 168 = 7 days).
     """
     import math
 
-    raw = str(ts_text).strip()
-    if not raw:
+    from jarvis_engine._shared import parse_iso_timestamp
+
+    parsed = parse_iso_timestamp(ts_text)
+    if parsed is None:
         return default
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return default
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    delta_hours = max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600.0)
+    delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / 3600.0)
     return math.exp(-delta_hours / decay_hours)

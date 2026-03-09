@@ -29,6 +29,7 @@ __all__ = [
     "load_personal_vocab_lines",
     "make_thread_aware_repo_root",
     "now_iso",
+    "parse_iso_timestamp",
     "safe_float",
     "safe_int",
     "sanitize_fts_query",
@@ -72,6 +73,26 @@ class OllamaResponse(TypedDict, total=False):
 def now_iso() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def parse_iso_timestamp(value: Any) -> datetime | None:
+    """Parse an ISO-8601 timestamp string, handling the ``Z`` UTC suffix.
+
+    Returns a timezone-aware ``datetime`` in UTC, or ``None`` for empty
+    or unparseable input.  Naive datetimes are assumed to be UTC.
+    """
+    raw = str(value).strip() if value else ""
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def make_thread_aware_repo_root(

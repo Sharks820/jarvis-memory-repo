@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from jarvis_engine._shared import now_iso as _now_iso, sha256_hex
+from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp, sha256_hex
 
 try:
     import numpy as np
@@ -30,23 +30,11 @@ from jarvis_engine._compat import UTC
 
 
 def _parse_days_since(raw_date_str: str, now: datetime, default: float = 365.0) -> float:
-    """Parse an ISO-8601 date string and return the number of days since *now*.
-
-    Handles the ``Z`` UTC suffix and naive datetimes (assumes UTC).
-    Returns *default* when the string is empty or unparseable.
-    """
-    raw = str(raw_date_str).strip() if raw_date_str else ""
-    if not raw:
+    """Parse an ISO-8601 date string and return the number of days since *now*."""
+    dt = parse_iso_timestamp(raw_date_str)
+    if dt is None:
         return default
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        dt = datetime.fromisoformat(raw)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        return max(0.0, (now - dt).total_seconds() / 86400.0)
-    except (ValueError, TypeError):
-        return default
+    return max(0.0, (now - dt).total_seconds() / 86400.0)
 
 
 if TYPE_CHECKING:

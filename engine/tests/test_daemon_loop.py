@@ -150,7 +150,7 @@ class TestTryAddCandidate:
 class TestAddPhrases:
     """Tests for _add_phrases() — extraction and accumulation."""
 
-    @patch("jarvis_engine.daemon_loop._extract_topic_phrases")
+    @patch("jarvis_engine.harvest_discovery._extract_topic_phrases")
     def test_adds_extracted_phrases(self, mock_extract) -> None:
         """Extracted phrases should be added as candidates."""
         mock_extract.return_value = ["data science", "neural network"]
@@ -161,7 +161,7 @@ class TestAddPhrases:
         assert "neural network" in candidates
         assert not result
 
-    @patch("jarvis_engine.daemon_loop._extract_topic_phrases")
+    @patch("jarvis_engine.harvest_discovery._extract_topic_phrases")
     def test_returns_true_when_full(self, mock_extract) -> None:
         """Should return True when candidates list is full."""
         mock_extract.return_value = ["topic aa", "topic bb", "topic cc"]
@@ -264,7 +264,7 @@ class TestCollectFromLearningMissions:
             {"mission_id": "m2", "topic": "single", "status": "completed"},  # 1 word
             {"mission_id": "m3", "topic": "rust programming", "status": "pending"},
         ]
-        with patch("jarvis_engine.daemon_loop.load_missions", return_value=missions):
+        with patch("jarvis_engine.learning_missions.load_missions", return_value=missions):
             candidates: list[str] = []
             seen: set[str] = set()
             _collect_from_learning_missions(root, candidates, seen, set(), 5)
@@ -273,7 +273,7 @@ class TestCollectFromLearningMissions:
 
     def test_handles_load_error(self, root) -> None:
         """Should handle load_missions errors gracefully."""
-        with patch("jarvis_engine.daemon_loop.load_missions", side_effect=OSError("disk")):
+        with patch("jarvis_engine.learning_missions.load_missions", side_effect=OSError("disk")):
             candidates: list[str] = []
             _collect_from_learning_missions(root, candidates, set(), set(), 5)
         assert candidates == []
@@ -289,8 +289,8 @@ class TestDiscoverHarvestTopics:
 
     def test_returns_list_up_to_3(self, root) -> None:
         """Should return at most 3 topics."""
-        with patch("jarvis_engine.daemon_loop._memory_db_path") as mock_db_path, \
-             patch("jarvis_engine.daemon_loop._get_recently_harvested_topics", return_value=set()):
+        with patch("jarvis_engine.harvest_discovery._memory_db_path") as mock_db_path, \
+             patch("jarvis_engine.harvest_discovery._get_recently_harvested_topics", return_value=set()):
             mock_db_path.return_value = root / "nonexistent.db"
             topics = _discover_harvest_topics(root)
         assert isinstance(topics, list)
@@ -298,8 +298,8 @@ class TestDiscoverHarvestTopics:
 
     def test_never_raises(self, root) -> None:
         """Should return empty list when DB does not exist and no other sources produce topics."""
-        with patch("jarvis_engine.daemon_loop._memory_db_path") as mock_db_path, \
-             patch("jarvis_engine.daemon_loop._get_recently_harvested_topics", return_value=set()):
+        with patch("jarvis_engine.harvest_discovery._memory_db_path") as mock_db_path, \
+             patch("jarvis_engine.harvest_discovery._get_recently_harvested_topics", return_value=set()):
             # Point to a nonexistent DB so the path.exists() check returns False
             mock_db_path.return_value = root / "nonexistent.db"
             topics = _discover_harvest_topics(root)

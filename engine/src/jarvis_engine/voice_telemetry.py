@@ -22,9 +22,7 @@ from typing import Any, TypedDict
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # TypedDicts for structured returns
-# ---------------------------------------------------------------------------
 
 
 class LatencyStatsDict(TypedDict):
@@ -60,9 +58,7 @@ class LatencyEndpointDict(TypedDict):
     health: dict[str, Any]
 
 
-# ---------------------------------------------------------------------------
 # Stage names (constants)
-# ---------------------------------------------------------------------------
 
 STAGE_VAD_SPEECH_ONSET = "vad_speech_onset_ts"
 STAGE_VAD_SPEECH_END = "vad_speech_end_ts"
@@ -89,9 +85,7 @@ ALL_STAGES = (
 )
 
 
-# ---------------------------------------------------------------------------
 # SLO targets
-# ---------------------------------------------------------------------------
 
 _SLO_CAPTURE_TO_TRANSCRIPT_P50_MS = 1500.0
 _SLO_CAPTURE_TO_TRANSCRIPT_P95_MS = 4000.0
@@ -103,9 +97,7 @@ _MAX_LATENCY_SAMPLES = 500
 _HEALTH_EMIT_INTERVAL = 100  # every N utterances
 
 
-# ---------------------------------------------------------------------------
 # Utterance record
-# ---------------------------------------------------------------------------
 
 
 class _UtteranceRecord:
@@ -120,9 +112,7 @@ class _UtteranceRecord:
         self.success: bool = True
 
 
-# ---------------------------------------------------------------------------
 # VoiceTelemetry
-# ---------------------------------------------------------------------------
 
 
 class VoiceTelemetry:
@@ -670,9 +660,7 @@ class VoiceTelemetry:
             self._consecutive_slo_breaches = 0
 
 
-# ---------------------------------------------------------------------------
 # Percentile calculation helper
-# ---------------------------------------------------------------------------
 
 
 def _percentile(data: list[float] | deque[float], pct: float) -> float:
@@ -704,9 +692,7 @@ def _percentile(data: list[float] | deque[float], pct: float) -> float:
     return sorted_data[lower] + frac * (sorted_data[upper] - sorted_data[lower])
 
 
-# ---------------------------------------------------------------------------
 # Module-level singleton
-# ---------------------------------------------------------------------------
 
 _telemetry: VoiceTelemetry | None = None
 _telemetry_lock = threading.Lock()

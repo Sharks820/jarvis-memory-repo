@@ -1,9 +1,4 @@
-"""mobile_routes — Route mixin classes for MobileIngestHandler.
-
-Each mixin groups related HTTP endpoint handlers by domain.
-MobileIngestHandler inherits from all mixins, gaining the handler
-methods while keeping the core HTTP plumbing in mobile_api.py.
-"""
+"""Route mixin classes for MobileIngestHandler."""
 
 from __future__ import annotations
 

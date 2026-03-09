@@ -37,9 +37,7 @@ from jarvis_engine.voice_extractors import (
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
 # Parameter bundle dataclasses
-# ---------------------------------------------------------------------------
 
 @dataclass
 class VoiceAuthContext:
@@ -78,9 +76,7 @@ class VoiceRunParams:
     skip_voice_auth_guard: bool = False
 
 
-# ---------------------------------------------------------------------------
 # Dispatch context — passed to each intent handler
-# ---------------------------------------------------------------------------
 
 class _DispatchCtx:
     """Holds all context needed by individual intent handlers."""
@@ -106,9 +102,7 @@ class _DispatchCtx:
     )
 
 
-# ---------------------------------------------------------------------------
 # Individual intent handlers
-# ---------------------------------------------------------------------------
 
 def _handle_connect_bootstrap(ctx: _DispatchCtx) -> tuple[str, int]:
     return "connect_bootstrap", ctx.cmd_connect_bootstrap(auto_open=ctx.execute)
@@ -521,9 +515,7 @@ def _handle_system_status(ctx: _DispatchCtx) -> tuple[str, int]:
     return "system_status", rc
 
 
-# ---------------------------------------------------------------------------
 # Fuzzy matching helpers for voice command recognition
-# ---------------------------------------------------------------------------
 
 def _fuzzy_match(text: str, target: str, threshold: float = 0.80) -> bool:
     """Return True if *text* contains a subsequence similar to *target*.
@@ -555,9 +547,7 @@ _CRITICAL_FUZZY_TARGETS: list[tuple[str, Callable[["_DispatchCtx"], tuple[str, i
 # Populated after _DISPATCH_RULES is defined (see below).
 
 
-# ---------------------------------------------------------------------------
 # Matcher helpers — build predicate functions declaratively
-# ---------------------------------------------------------------------------
 
 # Type alias for a matcher/handler pair
 _IntentRule = tuple[Callable[[str], bool], Callable[[_DispatchCtx], tuple[str, int]]]
@@ -729,9 +719,7 @@ _CRITICAL_FUZZY_TARGETS.extend([
 ])
 
 
-# ---------------------------------------------------------------------------
 # Main voice-run implementation
-# ---------------------------------------------------------------------------
 
 def _validate_voice_auth(auth: VoiceAuthContext) -> int | None:
     """Check owner-guard, voice-auth, and execution permission.

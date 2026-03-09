@@ -107,9 +107,7 @@ def _dpapi_decrypt(b64_cipher: str) -> str:
     return decrypted.decode("utf-8")
 
 
-# ---------------------------------------------------------------------------
 # WidgetConfig dataclass
-# ---------------------------------------------------------------------------
 
 @dataclass
 class WidgetConfig:
@@ -124,9 +122,7 @@ class WidgetConfig:
     launcher_y: int | None = None
 
 
-# ---------------------------------------------------------------------------
 # Path helpers
-# ---------------------------------------------------------------------------
 
 def _repo_root() -> Path:
     from jarvis_engine.config import repo_root
@@ -145,9 +141,7 @@ def _widget_cfg_path(root: Path) -> Path:
     return _security_dir(root) / "desktop_widget.json"
 
 
-# ---------------------------------------------------------------------------
 # Config load / save
-# ---------------------------------------------------------------------------
 
 def _load_mobile_api_cfg(root: Path) -> dict[str, str]:
     path = _mobile_api_cfg_path(root)
@@ -384,9 +378,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
     _atomic_write_json(_widget_cfg_path(root), payload)
 
 
-# ---------------------------------------------------------------------------
 # HTTP / signing helpers
-# ---------------------------------------------------------------------------
 
 def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -> dict[str, str]:
     ts = str(int(time.time()))
@@ -558,9 +550,7 @@ def _http_error_details(exc: HTTPError) -> str:
     return str(exc)
 
 
-# ---------------------------------------------------------------------------
 # Voice dictation helpers (Windows System.Speech fallback)
-# ---------------------------------------------------------------------------
 
 def _voice_dictate_once(timeout_s: int = 8) -> str:
     """Transcribe speech from microphone using faster-whisper (Whisper AI model).
@@ -645,9 +635,7 @@ def _detect_hotword_once(keyword: str = "jarvis", timeout_s: int = 2) -> bool:
     return proc.stdout.strip().lower() == keyword
 
 
-# ---------------------------------------------------------------------------
 # Windows toast notifications via PowerShell BalloonTip (no external deps)
-# ---------------------------------------------------------------------------
 
 _TOAST_ICON_TYPES = {"Info", "Warning", "Error"}
 _TOAST_MAX_TITLE = 64
@@ -712,9 +700,7 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         logger.debug("Failed to launch toast notification", exc_info=True)
 
 
-# ---------------------------------------------------------------------------
 # Tray icon, edge snapping, position helpers
-# ---------------------------------------------------------------------------
 
 def _create_tray_icon_image():
     """Create a 64x64 PIL Image with a blue background and white 'J' for the tray icon."""
@@ -792,9 +778,7 @@ def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
     return -100 <= x <= screen_w and -100 <= y <= screen_h
 
 
-# ---------------------------------------------------------------------------
 # Tooltip class
-# ---------------------------------------------------------------------------
 
 class _Tooltip:
     """Hover tooltip for tkinter widgets."""

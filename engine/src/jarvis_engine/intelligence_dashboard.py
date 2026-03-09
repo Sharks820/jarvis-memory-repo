@@ -4,7 +4,7 @@ import logging
 import math
 from datetime import datetime
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
@@ -105,19 +105,7 @@ MILESTONES: list[dict[str, Any]] = [
 _to_float = _safe_float
 
 
-def _safe_parse_ts(value: str) -> datetime | None:
-    raw = str(value).strip()
-    if not raw:
-        return None
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+_safe_parse_ts = parse_iso_timestamp
 
 
 def _targets_path(root: Path) -> Path:

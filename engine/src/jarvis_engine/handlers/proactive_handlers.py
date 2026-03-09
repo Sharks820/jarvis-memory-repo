@@ -178,11 +178,8 @@ class WakeWordStartHandler:
                     logger.info("No speech detected after wake word.")
                     return
                 # Strip "jarvis" prefix if present
-                lower = text.lower()
-                for prefix in ("jarvis ", "hey jarvis ", "jarvis, ", "hey jarvis, "):
-                    if lower.startswith(prefix):
-                        text = text[len(prefix):].strip()
-                        break
+                from jarvis_engine.voice_extractors import strip_wake_word
+                text = strip_wake_word(text)
                 if not text:
                     logger.info("Wake word only, no command.")
                     return

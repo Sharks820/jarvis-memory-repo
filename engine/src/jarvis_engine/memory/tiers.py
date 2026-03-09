@@ -16,7 +16,7 @@ from jarvis_engine._compat import UTC
 from enum import Enum
 from typing import TYPE_CHECKING, TypedDict
 
-from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine._shared import parse_iso_timestamp, safe_float as _safe_float
 from jarvis_engine._shared import safe_int as _safe_int
 
 if TYPE_CHECKING:
@@ -173,16 +173,8 @@ class TierManager:
     @staticmethod
     def _compute_age_hours(ts_str: str) -> float:
         """Compute age in hours from a timestamp string."""
-        if not ts_str:
+        parsed = parse_iso_timestamp(ts_str)
+        if parsed is None:
             return float("inf")
-        raw = ts_str
-        if raw.endswith("Z"):
-            raw = raw[:-1] + "+00:00"
-        try:
-            parsed = datetime.fromisoformat(raw)
-        except ValueError:
-            return float("inf")
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=UTC)
-        delta = datetime.now(UTC) - parsed.astimezone(UTC)
+        delta = datetime.now(UTC) - parsed
         return max(0.0, delta.total_seconds() / 3600.0)

@@ -46,6 +46,23 @@ def escape_response(msg: str) -> str:
     return msg.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
 
 
+# Wake word prefixes used for stripping "jarvis"/"hey jarvis" from transcribed text.
+_WAKE_WORD_PREFIXES = ("hey jarvis, ", "hey jarvis ", "jarvis, ", "jarvis ")
+
+
+def strip_wake_word(text: str) -> str:
+    """Remove a leading wake-word prefix (e.g. 'jarvis', 'hey jarvis') from *text*.
+
+    Returns the remainder with leading whitespace stripped, or the original
+    text unchanged if no wake-word prefix is found.
+    """
+    lower = text.lower()
+    for prefix in _WAKE_WORD_PREFIXES:
+        if lower.startswith(prefix):
+            return text[len(prefix):].strip()
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Extraction functions for voice commands
 # ---------------------------------------------------------------------------
@@ -92,10 +109,7 @@ def _extract_web_query(text: str) -> str:
         value = match.group(1).strip().rstrip("?.!,;:")
         if value:
             return value[:260]
-    cleaned = lowered
-    for prefix in ("jarvis,", "jarvis"):
-        if cleaned.startswith(prefix):
-            cleaned = cleaned[len(prefix) :].strip()
+    cleaned = strip_wake_word(lowered)
     return cleaned[:260]
 
 

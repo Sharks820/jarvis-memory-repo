@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from jarvis_engine._shared import parse_iso_timestamp
+
 logger = logging.getLogger(__name__)
 
 # Severity ordering (lower = more severe)
@@ -94,6 +96,14 @@ class DiagnosticEngine:
     def __init__(self, root: Path) -> None:
         self._root = root
 
+    def _get_db_path(self) -> Path:
+        """Resolve the memory database path (single source of truth)."""
+        try:
+            from jarvis_engine._constants import memory_db_path
+            return memory_db_path(self._root)
+        except (ImportError, OSError, ValueError):
+            return self._root / ".planning" / "brain" / "jarvis_memory.db"
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -163,11 +173,7 @@ class DiagnosticEngine:
     def _check_database_health(self) -> list[DiagnosticIssue]:
         """Check database integrity, WAL size, and total DB size."""
         issues: list[DiagnosticIssue] = []
-        try:
-            from jarvis_engine._constants import memory_db_path
-            db_path = memory_db_path(self._root)
-        except (ImportError, OSError, ValueError):
-            db_path = self._root / ".planning" / "brain" / "jarvis_memory.db"
+        db_path = self._get_db_path()
 
         # Check if DB exists
         if not db_path.exists():
@@ -225,6 +231,8 @@ class DiagnosticEngine:
         try:
             import sqlite3
             conn = sqlite3.connect(str(db_path), timeout=5)
+            from jarvis_engine._db_pragmas import configure_sqlite
+            configure_sqlite(conn)
             try:
                 result = conn.execute("PRAGMA quick_check").fetchone()
                 if result and result[0] != "ok":
@@ -328,7 +336,6 @@ class DiagnosticEngine:
                 ))
         except (ImportError, OSError, ValueError):
             logger.debug("Gateway config check failed during self-diagnosis")
-            pass
 
         # Check Ollama reachability
         try:
@@ -391,24 +398,12 @@ class DiagnosticEngine:
             started_at = str(mission.get("started_at", "") or mission.get("updated_utc", ""))
             if not started_at:
                 continue
-            try:
-                raw = started_at.strip()
-                if raw.endswith("Z"):
-                    raw = raw[:-1] + "+00:00"
-                started = datetime.fromisoformat(raw)
-                if started.tzinfo is None:
-                    try:
-                        from jarvis_engine._compat import UTC as _utc
-                        started = started.replace(tzinfo=_utc)
-                    except (ImportError, OSError):
-                        logger.debug("Failed to import UTC compat for mission timestamp")
-                        pass
-                delta_minutes = (now - started).total_seconds() / 60.0
-                if delta_minutes > _STUCK_MISSION_MINUTES:
-                    stuck_ids.append(str(mission.get("mission_id", "")))
-            except (ValueError, TypeError, OverflowError):
-                logger.debug("Failed to parse mission updated_utc for stuck detection")
+            started = parse_iso_timestamp(started_at)
+            if started is None:
                 continue
+            delta_minutes = (now - started).total_seconds() / 60.0
+            if delta_minutes > _STUCK_MISSION_MINUTES:
+                stuck_ids.append(str(mission.get("mission_id", "")))
 
         if stuck_ids:
             issues.append(DiagnosticIssue(
@@ -537,7 +532,6 @@ class DiagnosticEngine:
                     logger.debug("Personal vocab read failed: %s", exc)
         except (ImportError, OSError, ValueError):
             logger.debug("Voice pipeline check failed during self-diagnosis")
-            pass
 
         # Check if VAD model is importable
         try:
@@ -556,7 +550,6 @@ class DiagnosticEngine:
                 ))
         except (ImportError, OSError, ValueError):
             logger.debug("VAD model check failed during self-diagnosis")
-            pass
 
         return issues
 
@@ -566,12 +559,7 @@ class DiagnosticEngine:
 
     def _fix_vacuum_db(self) -> dict[str, Any]:
         """Run VACUUM + ANALYZE on memory.db."""
-        try:
-            import sqlite3
-            from jarvis_engine._constants import memory_db_path
-            db_path = memory_db_path(self._root)
-        except (ImportError, OSError, ValueError):
-            db_path = self._root / ".planning" / "brain" / "jarvis_memory.db"
+        db_path = self._get_db_path()
 
         if not db_path.exists():
             return {"applied": False, "result": "Database file does not exist"}
@@ -579,6 +567,8 @@ class DiagnosticEngine:
         try:
             import sqlite3
             conn = sqlite3.connect(str(db_path), timeout=30)
+            from jarvis_engine._db_pragmas import configure_sqlite
+            configure_sqlite(conn)
             try:
                 conn.execute("VACUUM")
                 conn.execute("ANALYZE")
@@ -590,12 +580,7 @@ class DiagnosticEngine:
 
     def _fix_rebuild_fts(self) -> dict[str, Any]:
         """Rebuild FTS5 index."""
-        try:
-            import sqlite3
-            from jarvis_engine._constants import memory_db_path
-            db_path = memory_db_path(self._root)
-        except (ImportError, OSError, ValueError):
-            db_path = self._root / ".planning" / "brain" / "jarvis_memory.db"
+        db_path = self._get_db_path()
 
         if not db_path.exists():
             return {"applied": False, "result": "Database file does not exist"}
@@ -603,6 +588,8 @@ class DiagnosticEngine:
         try:
             import sqlite3
             conn = sqlite3.connect(str(db_path), timeout=30)
+            from jarvis_engine._db_pragmas import configure_sqlite
+            configure_sqlite(conn)
             try:
                 conn.execute("INSERT INTO fts_records(fts_records) VALUES('rebuild')")
                 conn.commit()
@@ -614,12 +601,7 @@ class DiagnosticEngine:
 
     def _fix_prune_wal(self) -> dict[str, Any]:
         """Run WAL checkpoint (TRUNCATE) to reclaim WAL space."""
-        try:
-            import sqlite3
-            from jarvis_engine._constants import memory_db_path
-            db_path = memory_db_path(self._root)
-        except (ImportError, OSError, ValueError):
-            db_path = self._root / ".planning" / "brain" / "jarvis_memory.db"
+        db_path = self._get_db_path()
 
         if not db_path.exists():
             return {"applied": False, "result": "Database file does not exist"}
@@ -627,6 +609,8 @@ class DiagnosticEngine:
         try:
             import sqlite3
             conn = sqlite3.connect(str(db_path), timeout=30)
+            from jarvis_engine._db_pragmas import configure_sqlite
+            configure_sqlite(conn)
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             finally:
@@ -655,24 +639,17 @@ class DiagnosticEngine:
                 started_at = str(mission.get("started_at", "") or mission.get("updated_utc", ""))
                 if not started_at:
                     continue
-                try:
-                    raw = started_at.strip()
-                    if raw.endswith("Z"):
-                        raw = raw[:-1] + "+00:00"
-                    started = datetime.fromisoformat(raw)
-                    if started.tzinfo is None:
-                        started = started.replace(tzinfo=UTC)
-                    delta_minutes = (now - started).total_seconds() / 60.0
-                    if delta_minutes > 30.0:
-                        mid = str(mission.get("mission_id", ""))
-                        try:
-                            cancel_mission(self._root, mission_id=mid)
-                            cancelled_ids.append(mid)
-                        except (ValueError, OSError) as cancel_exc:
-                            logger.debug("Failed to cancel mission %s: %s", mid, cancel_exc)
-                except (ValueError, TypeError, OverflowError) as parse_exc:
-                    logger.debug("Skipping mission with unparseable ID: %s", parse_exc)
+                started = parse_iso_timestamp(started_at)
+                if started is None:
                     continue
+                delta_minutes = (now - started).total_seconds() / 60.0
+                if delta_minutes > 30.0:
+                    mid = str(mission.get("mission_id", ""))
+                    try:
+                        cancel_mission(self._root, mission_id=mid)
+                        cancelled_ids.append(mid)
+                    except (ValueError, OSError) as cancel_exc:
+                        logger.debug("Failed to cancel mission %s: %s", mid, cancel_exc)
 
             if cancelled_ids:
                 return {"applied": True, "result": f"Cancelled {len(cancelled_ids)} stuck mission(s): {cancelled_ids}"}

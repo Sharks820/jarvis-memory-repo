@@ -98,7 +98,6 @@ class ServeMobileHandler:
             )
         except KeyboardInterrupt:
             logger.debug("Mobile server stopped by KeyboardInterrupt")
-            pass
         except RuntimeError as exc:
             logger.warning("Mobile server RuntimeError: %s", exc)
             return ServeMobileResult(return_code=3)

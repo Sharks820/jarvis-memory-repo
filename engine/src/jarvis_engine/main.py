@@ -235,7 +235,6 @@ def cmd_serve_mobile(host: str, port: int, token: str | None, signing_key: str |
                     )
         except (ValueError, OSError, KeyError, TypeError):
             logger.debug("Non-fatal: could not parse mobile API config for age check")
-            pass
 
     # Set descriptive process title for Task Manager visibility
     _set_process_title("jarvis-mobile-api")

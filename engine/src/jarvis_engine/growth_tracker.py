@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from jarvis_engine._protocols import EmbedServiceProtocol
     from jarvis_engine.memory.engine import MemoryEngine
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +223,7 @@ def run_memory_eval(
         try:
             result = evaluate_memory_recall(task, engine, embed_service)
         except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
-            _logger.warning("Memory recall task %s failed: %s", task.task_id, exc)
+            logger.warning("Memory recall task %s failed: %s", task.task_id, exc)
             result = MemoryRecallResult(task_id=task.task_id, query=task.query)
         results.append(result)
     return results
@@ -488,7 +488,7 @@ def read_history(history_path: Path) -> list[dict[str, Any]]:
                 try:
                     out.append(json.loads(line))
                 except json.JSONDecodeError:
-                    _logger.debug("Skipping malformed growth history line")
+                    logger.debug("Skipping malformed growth history line")
                     continue
         return out
 

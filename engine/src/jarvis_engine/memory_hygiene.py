@@ -20,19 +20,15 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from jarvis_engine._compat import UTC
-from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Quality tiers
-# ---------------------------------------------------------------------------
 
 QUALITY_TIERS = ("high_signal", "contextual", "ephemeral", "junk")
 
-# ---------------------------------------------------------------------------
 # Keyword patterns for rule-based classification (Pass 1)
-# ---------------------------------------------------------------------------
 
 _HIGH_SIGNAL_KEYWORDS = re.compile(
     r"\b("
@@ -69,9 +65,7 @@ _GREETING_WORDS = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Classification result
-# ---------------------------------------------------------------------------
 
 
 class ClassificationResult(TypedDict):
@@ -83,9 +77,7 @@ class ClassificationResult(TypedDict):
     reason: str  # human-readable explanation
 
 
-# ---------------------------------------------------------------------------
 # Cleanup result
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -104,9 +96,7 @@ class HygieneReport:
     timestamp: str = field(default_factory=_now_iso)
 
 
-# ---------------------------------------------------------------------------
 # Rule-based classifier (Pass 1)
-# ---------------------------------------------------------------------------
 
 
 def classify_record(record: dict[str, Any]) -> ClassificationResult:
@@ -173,9 +163,7 @@ def classify_record(record: dict[str, Any]) -> ClassificationResult:
             "confidence": 0.60, "reason": "default classification"}
 
 
-# ---------------------------------------------------------------------------
 # Protection checks (anti-loss guardrails)
-# ---------------------------------------------------------------------------
 
 
 def is_protected(
@@ -225,26 +213,16 @@ def is_protected(
     # Cooling period
     ts = str(record.get("ts", ""))
     if ts:
-        try:
-            raw = ts.strip()
-            if raw.endswith("Z"):
-                raw = raw[:-1] + "+00:00"
-            record_time = datetime.fromisoformat(raw)
-            if record_time.tzinfo is None:
-                record_time = record_time.replace(tzinfo=UTC)
+        record_time = parse_iso_timestamp(ts)
+        if record_time is not None:
             age = datetime.now(UTC) - record_time
             if age < timedelta(days=min_age_days):
                 return True, f"within {min_age_days}-day cooling period"
-        except (ValueError, TypeError):
-            logger.debug("Failed to parse record timestamp for cooling period check: %s", ts)
-            pass
 
     return False, ""
 
 
-# ---------------------------------------------------------------------------
 # Memory Hygiene Engine
-# ---------------------------------------------------------------------------
 
 
 class MemoryHygieneEngine:
@@ -336,17 +314,9 @@ class MemoryHygieneEngine:
             ts = str(record.get("ts", ""))
             age_days = 0.0
             if ts:
-                try:
-                    raw = ts.strip()
-                    if raw.endswith("Z"):
-                        raw = raw[:-1] + "+00:00"
-                    record_time = datetime.fromisoformat(raw)
-                    if record_time.tzinfo is None:
-                        record_time = record_time.replace(tzinfo=UTC)
+                record_time = parse_iso_timestamp(ts)
+                if record_time is not None:
                     age_days = (now - record_time).total_seconds() / 86400.0
-                except (ValueError, TypeError):
-                    logger.debug("Failed to parse record timestamp for age calculation: %s", ts)
-                    pass
 
             threshold = (
                 self.JUNK_ARCHIVE_DAYS if quality == "junk"
@@ -431,9 +401,7 @@ class MemoryHygieneEngine:
         return report
 
 
-# ---------------------------------------------------------------------------
 # CQRS command support
-# ---------------------------------------------------------------------------
 
 
 def hygiene_dashboard_metrics(root: Path) -> dict[str, Any]:

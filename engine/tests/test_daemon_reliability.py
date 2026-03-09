@@ -9,6 +9,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import harvest_discovery as harvest_discovery_mod
 from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import _bus as bus_mod
@@ -846,7 +847,7 @@ class TestDaemonAutoHarvest:
             {"mission_id": "m-3", "topic": "pending topic review", "status": "pending"},
         ]), encoding="utf-8")
 
-        with patch.object(daemon_loop_mod, "load_missions", side_effect=lambda r: json.loads(
+        with patch("jarvis_engine.learning_missions.load_missions", side_effect=lambda r: json.loads(
             (r / ".planning" / "missions.json").read_text(encoding="utf-8")
         )):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
@@ -1246,7 +1247,7 @@ class TestImprovedTopicDiscovery:
 
         # Mock _get_recently_harvested_topics to return the same topic
         with patch.object(
-            daemon_loop_mod, "_get_recently_harvested_topics",
+            harvest_discovery_mod, "_get_recently_harvested_topics",
             return_value={"python async patterns"},
         ):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
@@ -1383,7 +1384,7 @@ class TestImprovedTopicDiscovery:
     ) -> None:
         """When only mission data exists, should fall through to source 5."""
 
-        with patch.object(daemon_loop_mod, "load_missions", return_value=[
+        with patch("jarvis_engine.learning_missions.load_missions", return_value=[
             {"mission_id": "m-1", "topic": "quantum computing fundamentals", "status": "completed"},
         ]):
             topics = daemon_loop_mod._discover_harvest_topics(tmp_path)
@@ -1443,7 +1444,7 @@ class TestImprovedTopicDiscovery:
         self, tmp_path: Path
     ) -> None:
         """Source 5 should skip single-word mission topics (poor quality)."""
-        with patch.object(daemon_loop_mod, "load_missions", return_value=[
+        with patch("jarvis_engine.learning_missions.load_missions", return_value=[
             {"mission_id": "m-1", "topic": "Python", "status": "completed"},
             {"mission_id": "m-2", "topic": "AI", "status": "done"},
         ]):

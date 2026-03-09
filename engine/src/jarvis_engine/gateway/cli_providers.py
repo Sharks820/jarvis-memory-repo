@@ -80,7 +80,6 @@ def _parse_token_usage(text: str) -> tuple[int, int]:
                         return (inp, out)
     except (json.JSONDecodeError, ValueError, TypeError):
         logger.debug("Token usage JSON parsing failed, falling back to regex")
-        pass
 
     # Try regex patterns on raw text
     for pattern in _TOKEN_PATTERNS:
