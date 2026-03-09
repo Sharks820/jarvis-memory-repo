@@ -12,7 +12,9 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
+from jarvis_engine import voice_extractors as voice_extractors_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import gaming_mode as gaming_mode_mod
 from jarvis_engine import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
 
@@ -32,7 +34,7 @@ class TestHelperFunctions:
         pytest.param("x" * 300 + "+14155551234", "", id="truncation_at_256_chars"),
     ])
     def test_extract_first_phone_number(self, text, expected):
-        assert voice_pipeline_mod._extract_first_phone_number(text) == expected
+        assert voice_extractors_mod._extract_first_phone_number(text) == expected
 
     @pytest.mark.parametrize("text,expected", [
         pytest.param("weather in Austin, TX", "Austin, TX", id="city_state"),
@@ -40,10 +42,10 @@ class TestHelperFunctions:
         pytest.param("forecast at Chicago", "Chicago", id="forecast_at"),
     ])
     def test_extract_weather_location(self, text, expected):
-        assert voice_pipeline_mod._extract_weather_location(text) == expected
+        assert voice_extractors_mod._extract_weather_location(text) == expected
 
     def test_extract_weather_location_strips_noise_words(self):
-        loc = voice_pipeline_mod._extract_weather_location("weather today")
+        loc = voice_extractors_mod._extract_weather_location("weather today")
         assert "today" not in loc.lower().split()
 
     @pytest.mark.parametrize("text,expected_substr", [
@@ -53,7 +55,7 @@ class TestHelperFunctions:
         pytest.param("find on the web react hooks", "react", id="find_on_web"),
     ])
     def test_extract_web_query(self, text, expected_substr):
-        assert expected_substr in voice_pipeline_mod._extract_web_query(text)
+        assert expected_substr in voice_extractors_mod._extract_web_query(text)
 
     @pytest.mark.parametrize("text,expected", [
         pytest.param("go to https://example.com", "https://example.com", id="https_url"),
@@ -62,7 +64,7 @@ class TestHelperFunctions:
         pytest.param("x" * 1300 + "https://late.com", "", id="truncation_at_1024_chars"),
     ])
     def test_extract_first_url(self, text, expected):
-        assert voice_pipeline_mod._extract_first_url(text) == expected
+        assert voice_extractors_mod._extract_first_url(text) == expected
 
     @pytest.mark.parametrize("text,execute,approve,expected", [
         pytest.param("runtime status", False, False, True, id="read_only_status"),
@@ -73,7 +75,7 @@ class TestHelperFunctions:
         pytest.param("what is the meaning of life", False, False, False, id="conversational_fallthrough"),
     ])
     def test_is_read_only_voice_request(self, text, execute, approve, expected):
-        assert voice_pipeline_mod._is_read_only_voice_request(
+        assert voice_extractors_mod._is_read_only_voice_request(
             text, execute=execute, approve_privileged=approve
         ) is expected
 
@@ -208,4 +210,4 @@ class TestGamingProcessHelpers:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"processes": []}), encoding="utf-8")
         processes = daemon_loop_mod.load_gaming_processes()
-        assert len(processes) == len(daemon_loop_mod.DEFAULT_GAMING_PROCESSES)
+        assert len(processes) == len(gaming_mode_mod.DEFAULT_GAMING_PROCESSES)

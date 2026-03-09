@@ -199,8 +199,8 @@ def check_path_within_root(path: Path, root: Path, label: str) -> None:
     resolved = path.resolve()
     try:
         resolved.relative_to(root.resolve())
-    except ValueError:
-        raise ValueError(f"{label} outside project root: {path}")
+    except ValueError as _val_exc:
+        raise ValueError(f"{label} outside project root: {path}") from _val_exc
 
 
 def win_hidden_subprocess_kwargs() -> dict[str, Any]:

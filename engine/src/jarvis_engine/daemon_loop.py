@@ -35,13 +35,8 @@ from jarvis_engine.runtime_control import (
     write_resource_pressure_state,
 )
 
-# Re-export gaming mode helpers for backward compatibility (tests patch these names)
-from jarvis_engine.gaming_mode import (  # noqa: F401
-    DEFAULT_GAMING_PROCESSES,
-    _game_detect_cache,
-    _GAME_DETECT_CACHE_TTL,
-    _windows_idle_seconds,
-)
+# Internal import — _windows_idle_seconds used by _gather_cycle_state
+from jarvis_engine.gaming_mode import _windows_idle_seconds
 from jarvis_engine.gaming_mode import (
     GamingModeState,
     detect_active_game_process as _gm_detect_active_game_process,
@@ -50,8 +45,8 @@ from jarvis_engine.gaming_mode import (
     write_gaming_mode_state as _gm_write_gaming_mode_state,
 )
 
-# Re-export harvest discovery helpers (used by _discover_harvest_topics below)
-from jarvis_engine.harvest_discovery import (  # noqa: F401
+# Harvest discovery helpers (used by _discover_harvest_topics below)
+from jarvis_engine.harvest_discovery import (
     _SQL_NODE_BY_RELATION,
     _SQL_RARE_RELATIONS,
     _SQL_RECENT_SUMMARIES,
@@ -1251,9 +1246,8 @@ def _should_skip_cycle(state: dict, idle_interval: int) -> str | None:
 
 def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
     """Implementation body for daemon-run (called by handler via callback)."""
-    from jarvis_engine.main import (
-        cmd_mobile_desktop_sync, cmd_self_heal, cmd_ops_autopilot,
-    )
+    from jarvis_engine.main import cmd_mobile_desktop_sync, cmd_self_heal
+    from jarvis_engine.cli_ops import cmd_ops_autopilot
 
     _set_process_title("jarvis-daemon")
     root = repo_root()

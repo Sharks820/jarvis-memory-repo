@@ -10,6 +10,7 @@ from __future__ import annotations
 import collections
 import logging
 import threading
+from typing import ClassVar
 
 from jarvis_engine._shared import now_iso as _now_iso
 
@@ -30,7 +31,7 @@ class ScopeEnforcer:
     # Class-level policy tables
     # ------------------------------------------------------------------
 
-    ALLOWED_SCOPES: dict[str, set[str]] = {
+    ALLOWED_SCOPES: ClassVar[dict[str, set[str]]] = {
         "memory": {"read", "write", "search", "delete_own"},
         "knowledge": {"read", "add_fact", "query", "update_fact"},
         "network": {"http_get", "http_post"},
@@ -40,7 +41,7 @@ class ScopeEnforcer:
         "security": {"read_status", "read_threats", "read_audit"},
     }
 
-    ESCALATION_REQUIRED: set[str] = {
+    ESCALATION_REQUIRED: ClassVar[set[str]] = {
         "notification.send_urgent",
         "security.modify_rules",
         "security.containment_override",

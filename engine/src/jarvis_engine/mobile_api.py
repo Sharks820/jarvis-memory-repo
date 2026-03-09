@@ -18,7 +18,7 @@ import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, TypedDict
+from typing import IO, TYPE_CHECKING, Any, ClassVar, TypedDict
 
 if TYPE_CHECKING:
     import sqlite3
@@ -443,12 +443,12 @@ class MobileIngestServer(ThreadingHTTPServer):
                     b"Connection: close\r\n\r\n"
                 )
             except OSError:
-                pass  # Client already disconnected; nothing to send
+                logger.debug("Client already disconnected; 503 not sent")
             finally:
                 try:
                     self.shutdown_request(request)
                 except OSError:
-                    pass  # Socket already closed during cleanup
+                    logger.debug("Socket already closed during cleanup")
             return
         # NOTE: super().process_request() spawns a thread and returns immediately.
         # We must release the semaphore AFTER the thread finishes, not here.
@@ -1580,7 +1580,7 @@ class MobileIngestHandler(
     # ------------------------------------------------------------------
 
     # Dispatch dict for GET routes — built once per class, O(1) lookup.
-    _GET_DISPATCH: dict[str, str] = {
+    _GET_DISPATCH: ClassVar[dict[str, str]] = {
         "/": "_handle_get_quick_panel",
         "/quick": "_handle_get_quick_panel",
         "/health": "_handle_get_health",
@@ -1706,7 +1706,7 @@ class MobileIngestHandler(
     # ── Scam Campaign Hunter endpoints ──────────────────────────────────
 
     # Dispatch dict for POST routes — built once per class, O(1) lookup.
-    _POST_DISPATCH: dict[str, str] = {
+    _POST_DISPATCH: ClassVar[dict[str, str]] = {
         "/bootstrap": "_handle_post_bootstrap",
         "/auth/login": "_handle_post_auth_login",
         "/auth/logout": "_handle_post_auth_logout",
@@ -1735,7 +1735,7 @@ class MobileIngestHandler(
 
     # Endpoint-specific POST body size limits (bytes).
     # /sync/push is allowed 2 MB; all others default to 1 MB.
-    _POST_BODY_LIMITS: dict[str, int] = {
+    _POST_BODY_LIMITS: ClassVar[dict[str, int]] = {
         "/sync/push": 2_000_000,
     }
     _DEFAULT_POST_BODY_LIMIT: int = 1_000_000

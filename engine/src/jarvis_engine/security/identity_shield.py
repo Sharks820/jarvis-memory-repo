@@ -381,9 +381,6 @@ class BreachMonitor:
 class TyposquatMonitor:
     """Generates typosquat domain variants and checks DNS registration."""
 
-    def __init__(self) -> None:
-        pass
-
     # ------------------------------------------------------------------
     # Variant generation
     # ------------------------------------------------------------------
@@ -514,9 +511,6 @@ class ImpersonationDetector:
     variants and checking if they exist on major platforms."""
 
     _TIMEOUT_SECONDS = 5
-
-    def __init__(self) -> None:
-        pass
 
     # ------------------------------------------------------------------
     # Variant generation

@@ -425,7 +425,7 @@ class MemoryHygieneEngine:
             try:
                 deleted = engine.delete_records_batch(ids_to_delete)
                 report.archived = deleted
-            except (RuntimeError, OSError, Exception) as exc:
+            except (RuntimeError, OSError, ValueError) as exc:
                 report.errors.append(f"Cleanup failed: {exc}")
 
         return report

@@ -358,7 +358,7 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         if value:
             try:
                 payload[f"{field}_protected"] = _dpapi_encrypt(value)
-            except Exception as exc:  # boundary: catch-all justified
+            except (OSError, ValueError, RuntimeError) as exc:
                 logger.debug("DPAPI encrypt failed for %s, storing plaintext: %s", field, exc)
                 payload[field] = value
 

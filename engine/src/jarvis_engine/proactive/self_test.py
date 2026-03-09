@@ -145,6 +145,7 @@ class AdversarialSelfTest:
                 try:
                     entries.append(json.loads(stripped))
                 except json.JSONDecodeError:
+                    logger.debug("Skipping non-JSON line in self-test history")
                     continue
 
         recent = entries[-window:]

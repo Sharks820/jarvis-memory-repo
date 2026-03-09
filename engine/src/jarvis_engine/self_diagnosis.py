@@ -670,8 +670,9 @@ class DiagnosticEngine:
                             cancelled_ids.append(mid)
                         except (ValueError, OSError) as cancel_exc:
                             logger.debug("Failed to cancel mission %s: %s", mid, cancel_exc)
-                except (ValueError, TypeError, OverflowError):
-                    continue  # Skip missions with unparseable IDs
+                except (ValueError, TypeError, OverflowError) as parse_exc:
+                    logger.debug("Skipping mission with unparseable ID: %s", parse_exc)
+                    continue
 
             if cancelled_ids:
                 return {"applied": True, "result": f"Cancelled {len(cancelled_ids)} stuck mission(s): {cancelled_ids}"}

@@ -14,6 +14,8 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
+from jarvis_engine import voice_context as voice_context_mod
+from jarvis_engine import voice_extractors as voice_extractors_mod
 from jarvis_engine.command_bus import AppContext, CommandBus
 from jarvis_engine.gateway.models import ModelGateway
 from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -37,7 +39,7 @@ def test_sanitize_memory_content_redacts_credentials() -> None:
 
 
 def test_current_datetime_prompt_line_includes_utc_and_epoch() -> None:
-    line = voice_pipeline_mod._current_datetime_prompt_line()
+    line = voice_context_mod._current_datetime_prompt_line()
     assert "Current date/time:" in line
     assert "UTC" in line
     assert "epoch" in line
@@ -46,7 +48,7 @@ def test_current_datetime_prompt_line_includes_utc_and_epoch() -> None:
 
 def testshorten_urls_for_speech_replaces_raw_url_with_domain_link() -> None:
     text = "Check this out: https://docs.example.com/guides/very/long/path?query=1"
-    shortened = voice_pipeline_mod.shorten_urls_for_speech(text)
+    shortened = voice_extractors_mod.shorten_urls_for_speech(text)
     assert "https://" not in shortened
     assert "[docs.example.com link]" in shortened
 

@@ -8,6 +8,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import auto_ingest as auto_ingest_mod
 from jarvis_engine import _bus as bus_mod
@@ -281,7 +282,7 @@ class TestDaemonSecurity:
             observed_approve = kwargs.get("approve_privileged", True)
             return 0
         
-        monkeypatch.setattr(main_mod, "cmd_ops_autopilot", capturing_autopilot)
+        monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", capturing_autopilot)
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         
         main_mod.cmd_daemon_run(
@@ -317,7 +318,7 @@ class TestDaemonSecurity:
             cycle_count += 1
             return 0
         
-        monkeypatch.setattr(main_mod, "cmd_ops_autopilot", counting_autopilot)
+        monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", counting_autopilot)
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         
         main_mod.cmd_daemon_run(

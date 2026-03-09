@@ -542,7 +542,7 @@ def _try_hybrid_search(
             return None
         results = hybrid_search(engine, query, query_embedding, k=max_items * 3)
         return results
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
         logger.debug("hybrid_search failed, falling back to JSONL: %s", exc)
         return None
 

@@ -33,30 +33,10 @@ from jarvis_engine._constants import (
 )
 
 # ---------------------------------------------------------------------------
-# Re-exports from sub-modules — keeps backward compatibility for tests,
-# handlers, mobile_api, and main.py that import from voice_pipeline.
+# Imports from sub-modules used internally in this file
 # ---------------------------------------------------------------------------
-from jarvis_engine.voice_extractors import (  # noqa: F401 — re-exports
-    PHONE_NUMBER_RE,
-    URL_RE,
-    shorten_urls_for_speech,
-    escape_response,
-    _extract_first_phone_number,
-    _extract_weather_location,
-    _extract_web_query,
-    _extract_first_url,
-    _is_read_only_voice_request,
-)
-
-from jarvis_engine.voice_context import (  # noqa: F401 — re-exports
-    _current_datetime_prompt_line,
-    _build_smart_context,
-    _build_system_parts,
-)
-
-from jarvis_engine.voice_intents import (  # noqa: F401 — re-exports
-    cmd_voice_run_impl,
-)
+from jarvis_engine.voice_extractors import escape_response
+from jarvis_engine.voice_context import _build_smart_context, _build_system_parts
 
 logger = logging.getLogger(__name__)
 

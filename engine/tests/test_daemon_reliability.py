@@ -9,6 +9,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext, CommandBus
@@ -47,7 +48,7 @@ class TestDaemonReliability:
             return 0
 
         sleeps: list[float] = []
-        monkeypatch.setattr(main_mod, "cmd_ops_autopilot", failing_autopilot)
+        monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", failing_autopilot)
         monkeypatch.setattr(daemon_loop_mod, "_interruptible_sleep", lambda s: sleeps.append(s))
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
 
@@ -87,7 +88,7 @@ class TestDaemonReliability:
             total_sleep[0] += s
             # All sleeps are no-ops in test
 
-        monkeypatch.setattr(main_mod, "cmd_ops_autopilot", always_failing_autopilot)
+        monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", always_failing_autopilot)
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", tracking_sleep)
 
         rc = main_mod.cmd_daemon_run(
@@ -127,7 +128,7 @@ class TestDaemonReliability:
         def failing_mission(*args, **kwargs) -> int:
             raise RuntimeError("Mission failed")
 
-        monkeypatch.setattr(main_mod, "cmd_ops_autopilot", working_autopilot)
+        monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", working_autopilot)
         monkeypatch.setattr(daemon_loop_mod, "_run_next_pending_mission", failing_mission)
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
 
@@ -406,7 +407,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
     monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
-    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
+    monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
     # Bypass expensive per-cycle I/O (filesystem snapshots, resource checks)
     monkeypatch.setattr(daemon_loop_mod, "_gather_cycle_state", _fast_gather_cycle_state)

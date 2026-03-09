@@ -190,7 +190,7 @@ class WakeWordStartHandler:
                            text, result.backend, result.duration_seconds)
                 # Dispatch through voice-run pipeline
                 try:
-                    from jarvis_engine.voice_pipeline import cmd_voice_run_impl
+                    from jarvis_engine.voice_intents import cmd_voice_run_impl
                     from jarvis_engine.config import repo_root
                     _root = repo_root()
                     cmd_voice_run_impl(

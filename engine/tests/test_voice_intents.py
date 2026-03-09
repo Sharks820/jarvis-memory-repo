@@ -95,11 +95,22 @@ def _call_impl(
         "cmd_status": _track("cmd_status"),
     }
 
+    # Map command names to their source modules after re-export removal
+    _CLI_OPS = "jarvis_engine.cli_ops"
+    _CLI_KNOWLEDGE = "jarvis_engine.cli_knowledge"
+    _CMD_MODULE = {
+        "cmd_ops_autopilot": _CLI_OPS, "cmd_ops_sync": _CLI_OPS,
+        "cmd_ops_brief": _CLI_OPS, "cmd_automation_run": _CLI_OPS,
+        "cmd_mission_cancel": _CLI_OPS, "cmd_mission_status": _CLI_OPS,
+        "cmd_brain_context": _CLI_KNOWLEDGE, "cmd_brain_status": _CLI_KNOWLEDGE,
+    }
+
     with ExitStack() as stack:
         for target, mock_val in patches.items():
             stack.enter_context(patch(target, mock_val))
         for cmd_name, cmd_fn in cmd_patches.items():
-            stack.enter_context(patch(f"{_MAIN}.{cmd_name}", cmd_fn))
+            mod = _CMD_MODULE.get(cmd_name, _MAIN)
+            stack.enter_context(patch(f"{mod}.{cmd_name}", cmd_fn))
 
         rc = cmd_voice_run_impl(
             text=text,

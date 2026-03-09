@@ -47,7 +47,7 @@ def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeyp
         assert isinstance(sleeps, list)
         sleeps.append(seconds)
 
-    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
+    monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", fake_ops_autopilot)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
@@ -89,7 +89,7 @@ def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path
         assert isinstance(sleeps, list)
         sleeps.append(seconds)
 
-    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
+    monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", fake_ops_autopilot)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
@@ -132,7 +132,7 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
         assert isinstance(sleeps, list)
         sleeps.append(seconds)
 
-    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
+    monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", fake_ops_autopilot)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
@@ -181,7 +181,7 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
         assert isinstance(sleeps, list)
         sleeps.append(seconds)
 
-    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
+    monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", fake_ops_autopilot)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", fake_sleep)
 
     rc = main_mod.cmd_daemon_run(
@@ -226,7 +226,7 @@ def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monke
         observed["approve_privileged"] = bool(kwargs.get("approve_privileged"))
         return 0
 
-    monkeypatch.setattr(main_mod, "cmd_ops_autopilot", fake_ops_autopilot)
+    monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", fake_ops_autopilot)
 
     rc = main_mod.cmd_daemon_run(
         interval_s=120,
@@ -687,7 +687,7 @@ class TestDaemonSelfTest:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(main_mod, "cmd_ops_autopilot", lambda **kw: 0)
+        monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", lambda **kw: 0)
         monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
         # Ensure runtime dir exists for self_test_history.jsonl
         (tmp_path / ".planning" / "runtime").mkdir(parents=True, exist_ok=True)

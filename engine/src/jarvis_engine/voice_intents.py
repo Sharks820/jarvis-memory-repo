@@ -898,12 +898,14 @@ def _import_voice_commands():
         cmd_connect_bootstrap, cmd_runtime_control,
         cmd_gaming_mode, cmd_weather, cmd_open_web,
         cmd_mobile_desktop_sync, cmd_self_heal,
-        cmd_ops_autopilot, cmd_phone_spam_guard,
-        cmd_phone_action, cmd_ops_sync, cmd_ops_brief,
-        cmd_automation_run, cmd_run_task, cmd_brain_context,
-        cmd_ingest, cmd_brain_status, cmd_mission_cancel,
-        cmd_mission_status, cmd_status,
+        cmd_phone_spam_guard, cmd_phone_action,
+        cmd_run_task, cmd_ingest, cmd_status,
     )
+    from jarvis_engine.cli_ops import (
+        cmd_ops_autopilot, cmd_ops_sync, cmd_ops_brief,
+        cmd_automation_run, cmd_mission_cancel, cmd_mission_status,
+    )
+    from jarvis_engine.cli_knowledge import cmd_brain_context, cmd_brain_status
     import jarvis_engine.voice_pipeline as _vp
 
     cmd_fns = {

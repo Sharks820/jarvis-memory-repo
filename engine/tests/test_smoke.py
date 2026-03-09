@@ -638,7 +638,7 @@ class TestVoicePipelineSmoke:
     """Voice pipeline text utilities must clean and prepare text for TTS."""
 
     def test_shorten_urls_extracts_domain(self):
-        from jarvis_engine.voice_pipeline import shorten_urls_for_speech
+        from jarvis_engine.voice_extractors import shorten_urls_for_speech
 
         result = shorten_urls_for_speech(
             "Check https://www.github.com/Sharks820 for details"
@@ -654,20 +654,20 @@ class TestVoicePipelineSmoke:
         )
 
     def test_shorten_urls_handles_www_prefix(self):
-        from jarvis_engine.voice_pipeline import shorten_urls_for_speech
+        from jarvis_engine.voice_extractors import shorten_urls_for_speech
 
         result = shorten_urls_for_speech("Visit www.example.com today")
         assert "www." not in result or "link" in result.lower()
 
     def test_shorten_urls_preserves_non_url_text(self):
-        from jarvis_engine.voice_pipeline import shorten_urls_for_speech
+        from jarvis_engine.voice_extractors import shorten_urls_for_speech
 
         text = "Call me at 555-1234 or meet at the coffee shop at noon"
         result = shorten_urls_for_speech(text)
         assert "555-1234" in result and "coffee shop" in result
 
     def test_shorten_urls_handles_multiple_urls(self):
-        from jarvis_engine.voice_pipeline import shorten_urls_for_speech
+        from jarvis_engine.voice_extractors import shorten_urls_for_speech
 
         result = shorten_urls_for_speech(
             "Visit https://example.com and https://google.com"
@@ -675,12 +675,12 @@ class TestVoicePipelineSmoke:
         assert "https://" not in result
 
     def test_escape_response_handles_empty(self):
-        from jarvis_engine.voice_pipeline import escape_response
+        from jarvis_engine.voice_extractors import escape_response
 
         assert isinstance(escape_response(""), str)
 
     def test_escape_response_preserves_content(self):
-        from jarvis_engine.voice_pipeline import escape_response
+        from jarvis_engine.voice_extractors import escape_response
 
         text = "Your meeting is at 3pm tomorrow"
         result = escape_response(text)
@@ -1088,7 +1088,7 @@ class TestPropertyBasedSmoke:
         pytest.importorskip("hypothesis", reason="hypothesis not installed")
         from hypothesis import given, settings
         from hypothesis.strategies import text
-        from jarvis_engine.voice_pipeline import shorten_urls_for_speech
+        from jarvis_engine.voice_extractors import shorten_urls_for_speech
 
         @given(text(max_size=2000))
         @settings(max_examples=50, deadline=5000)

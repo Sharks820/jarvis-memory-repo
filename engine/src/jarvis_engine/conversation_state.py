@@ -495,8 +495,10 @@ def _derive_fernet_key(signing_key: str, salt: bytes) -> bytes:
     try:
         from cryptography.hazmat.primitives import hashes as _hashes
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    except ImportError:
-        raise ImportError("cryptography package required for conversation state encryption")
+    except ImportError as _imp_exc:
+        raise ImportError(
+            "cryptography package required for conversation state encryption"
+        ) from _imp_exc
 
     kdf = PBKDF2HMAC(
         algorithm=_hashes.SHA256(),

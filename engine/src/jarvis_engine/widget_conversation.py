@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 import tkinter as tk
-from typing import Any
+from typing import Any, ClassVar
 
 from jarvis_engine.widget_helpers import _http_json
 
@@ -35,7 +35,7 @@ class ConversationMixin:
     """
 
     # Chat tag style definitions: (name, {config kwargs})
-    _CHAT_TAG_SPECS: list[tuple[str, dict]] = [
+    _CHAT_TAG_SPECS: ClassVar[list[tuple[str, dict]]] = [
         ("user", {"background": "#0c2d5e", "foreground": "#b8d4ff", "font": ("Consolas", 11, "bold"), "lmargin1": 40, "lmargin2": 40, "rmargin": 8, "spacing1": 4, "spacing3": 4}),
         ("jarvis", {"background": "#0d1e1e", "foreground": "#a8e6cf", "font": ("Consolas", 11), "lmargin1": 8, "lmargin2": 8, "rmargin": 40, "spacing1": 4, "spacing3": 4}),
         ("system", {"foreground": "#7a9abe", "font": ("Consolas", 10), "lmargin1": 8, "lmargin2": 8, "spacing1": 2, "spacing3": 2}),
@@ -168,7 +168,7 @@ class ConversationMixin:
         def worker() -> None:
             try:
                 _http_json(cfg, "/conversation/clear", method="POST", payload={})
-            except Exception as exc:  # boundary: catch-all justified
+            except (OSError, ValueError, KeyError, TimeoutError) as exc:
                 logger.debug("Best-effort conversation clear failed: %s", exc)
 
         self._thread(worker)

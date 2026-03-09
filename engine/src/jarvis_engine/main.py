@@ -67,9 +67,9 @@ logger = logging.getLogger(__name__)
 from jarvis_engine._bus import get_bus as _get_bus  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Re-exports from split modules (backward compat for callers)
+# Imports from split modules (used by CLI arg dispatch in this file)
 # ---------------------------------------------------------------------------
-from jarvis_engine.cli_ops import (  # noqa: E402,F401
+from jarvis_engine.cli_ops import (  # noqa: E402
     cmd_ops_brief,
     cmd_ops_export_actions,
     cmd_ops_sync,
@@ -84,7 +84,7 @@ from jarvis_engine.cli_ops import (  # noqa: E402,F401
     cmd_growth_audit,
     cmd_intelligence_dashboard,
 )
-from jarvis_engine.cli_knowledge import (  # noqa: E402,F401
+from jarvis_engine.cli_knowledge import (  # noqa: E402
     cmd_brain_status,
     cmd_brain_context,
     cmd_brain_compact,
@@ -123,7 +123,7 @@ from jarvis_engine._shared import set_process_title as _set_process_title  # noq
 # ---------------------------------------------------------------------------
 # Imports from extracted modules (only symbols used by cmd_* in this file)
 # ---------------------------------------------------------------------------
-from jarvis_engine.voice_pipeline import (  # noqa: E402
+from jarvis_engine.voice_extractors import (  # noqa: E402
     escape_response,
     shorten_urls_for_speech,
 )
