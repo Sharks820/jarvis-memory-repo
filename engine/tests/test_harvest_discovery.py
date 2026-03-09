@@ -11,11 +11,11 @@ from unittest.mock import MagicMock, patch
 from jarvis_engine.activity_feed import ActivityFeed
 
 from jarvis_engine.harvest_discovery import (
-    _SQL_NODE_BY_RELATION,
-    _SQL_RARE_RELATIONS,
-    _SQL_RECENT_SUMMARIES,
-    _SQL_SPARSE_NODES,
-    _SQL_STRONG_LABELS,
+    SQL_NODE_BY_RELATION,
+    SQL_RARE_RELATIONS,
+    SQL_RECENT_SUMMARIES,
+    SQL_SPARSE_NODES,
+    SQL_STRONG_LABELS,
     _extract_topic_phrases,
     _get_recently_harvested_topics,
 )
@@ -28,29 +28,29 @@ from jarvis_engine.harvest_discovery import (
 
 class TestSQLConstants:
     def test_recent_summaries_query(self) -> None:
-        assert "records" in _SQL_RECENT_SUMMARIES
-        assert "summary" in _SQL_RECENT_SUMMARIES
-        assert "LIMIT" in _SQL_RECENT_SUMMARIES
+        assert "records" in SQL_RECENT_SUMMARIES
+        assert "summary" in SQL_RECENT_SUMMARIES
+        assert "LIMIT" in SQL_RECENT_SUMMARIES
 
     def test_sparse_nodes_query(self) -> None:
-        assert "kg_nodes" in _SQL_SPARSE_NODES
-        assert "kg_edges" in _SQL_SPARSE_NODES
-        assert "HAVING" in _SQL_SPARSE_NODES
+        assert "kg_nodes" in SQL_SPARSE_NODES
+        assert "kg_edges" in SQL_SPARSE_NODES
+        assert "HAVING" in SQL_SPARSE_NODES
 
     def test_rare_relations_query(self) -> None:
-        assert "kg_edges" in _SQL_RARE_RELATIONS
-        assert "relation" in _SQL_RARE_RELATIONS
-        assert "GROUP BY" in _SQL_RARE_RELATIONS
+        assert "kg_edges" in SQL_RARE_RELATIONS
+        assert "relation" in SQL_RARE_RELATIONS
+        assert "GROUP BY" in SQL_RARE_RELATIONS
 
     def test_node_by_relation_query(self) -> None:
-        assert "kg_nodes" in _SQL_NODE_BY_RELATION
-        assert "kg_edges" in _SQL_NODE_BY_RELATION
-        assert "?" in _SQL_NODE_BY_RELATION  # parameterized
+        assert "kg_nodes" in SQL_NODE_BY_RELATION
+        assert "kg_edges" in SQL_NODE_BY_RELATION
+        assert "?" in SQL_NODE_BY_RELATION  # parameterized
 
     def test_strong_labels_query(self) -> None:
-        assert "kg_nodes" in _SQL_STRONG_LABELS
-        assert "confidence" in _SQL_STRONG_LABELS
-        assert "0.5" in _SQL_STRONG_LABELS
+        assert "kg_nodes" in SQL_STRONG_LABELS
+        assert "confidence" in SQL_STRONG_LABELS
+        assert "0.5" in SQL_STRONG_LABELS
 
 
 # ===========================================================================

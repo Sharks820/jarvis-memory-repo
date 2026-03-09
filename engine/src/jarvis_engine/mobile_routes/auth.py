@@ -7,7 +7,8 @@ from http import HTTPStatus
 from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine.daemon_loop import read_gaming_mode_state, write_gaming_mode_state
+from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine.gaming_mode import read_gaming_mode_state, write_gaming_mode_state
 from jarvis_engine.owner_guard import read_owner_guard, trust_mobile_device, verify_master_password
 from jarvis_engine.runtime_control import (
     read_control_state,
@@ -56,9 +57,13 @@ class AuthRoutesMixin:
             })
         return session
 
+    def _gaming_state_path(self):
+        """Return the gaming mode state file path relative to the server root."""
+        return _runtime_dir(self._root) / "gaming_mode.json"
+
     def _read_gaming_state(self) -> GamingState:
         """Read gaming mode state from the shared daemon_loop implementation."""
-        return dict(read_gaming_mode_state())
+        return dict(read_gaming_mode_state(state_path=self._gaming_state_path()))
 
     def _write_gaming_state(
         self,
@@ -75,7 +80,7 @@ class AuthRoutesMixin:
         if reason.strip():
             state["reason"] = reason.strip()[:200]
         state["updated_utc"] = _now_iso()
-        return dict(write_gaming_mode_state(state))
+        return dict(write_gaming_mode_state(state, state_path=self._gaming_state_path()))
 
     def _settings_payload(self) -> SettingsPayload:
         control = read_control_state(self._root)

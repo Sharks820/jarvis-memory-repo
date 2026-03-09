@@ -661,7 +661,7 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "What is Python?", ["python", "programming"])]
 
-        with patch("jarvis_engine._shared.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", return_value=self._mock_urlopen(response_data)):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test-model",
@@ -686,7 +686,7 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "What is Python?", ["python"])]
 
-        with patch("jarvis_engine._shared.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", return_value=self._mock_urlopen(response_data)):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -707,7 +707,7 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "What?", ["something"])]
 
-        with patch("jarvis_engine._shared.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", return_value=self._mock_urlopen(response_data)):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -740,7 +740,7 @@ class TestRunEval:
         tasks = [GoldenTask("t1", "test", ["token"])]
 
         from urllib.error import URLError
-        with patch("jarvis_engine._shared.urlopen", side_effect=URLError("connection refused")):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", side_effect=URLError("connection refused")):
             with pytest.raises(RuntimeError, match="Failed to reach Ollama"):
                 run_eval(
                     endpoint="http://localhost:11434",
@@ -758,7 +758,7 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "prompt", ["token"])]
 
-        with patch("jarvis_engine._shared.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", return_value=self._mock_urlopen(response_data)):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -777,7 +777,7 @@ class TestRunEval:
         }
         tasks = [GoldenTask("t1", "test prompt", [])]
 
-        with patch("jarvis_engine._shared.urlopen", return_value=self._mock_urlopen(response_data)):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", return_value=self._mock_urlopen(response_data)):
             result = run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -804,7 +804,7 @@ class TestRunEval:
             captured_payload["data"] = json.loads(req.data.decode("utf-8"))
             return self._mock_urlopen(response_data)
 
-        with patch("jarvis_engine._shared.urlopen", side_effect=mock_urlopen):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", side_effect=mock_urlopen):
             run_eval(
                 endpoint="http://localhost:11434",
                 model="test",
@@ -829,7 +829,7 @@ class TestRunEval:
             captured_payload["data"] = json.loads(req.data.decode("utf-8"))
             return self._mock_urlopen(response_data)
 
-        with patch("jarvis_engine._shared.urlopen", side_effect=mock_urlopen):
+        with patch("jarvis_engine.gateway.ollama_client.urlopen", side_effect=mock_urlopen):
             run_eval(
                 endpoint="http://localhost:11434",
                 model="test",

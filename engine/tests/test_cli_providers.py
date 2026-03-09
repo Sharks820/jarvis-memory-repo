@@ -615,7 +615,7 @@ class TestClassifierModelResolution:
     """Test that IntentClassifier resolves models based on availability."""
 
     def test_resolve_model_uses_primary_when_available(self) -> None:
-        from jarvis_engine._constants import get_local_model
+        from jarvis_engine._shared import get_local_model
         from jarvis_engine.gateway.classifier import IntentClassifier
         local = get_local_model()
         available = {local, "codex-cli", "gemini-cli"}
@@ -640,7 +640,7 @@ class TestClassifierModelResolution:
         assert model == "codex-cli"  # First cloud fallback for math_logic
 
     def test_resolve_model_ultimate_fallback(self) -> None:
-        from jarvis_engine._constants import get_local_model
+        from jarvis_engine._shared import get_local_model
         from jarvis_engine.gateway.classifier import IntentClassifier
         available: set[str] = set()  # Nothing available
         mock_embed = MagicMock(spec=EmbeddingService)
@@ -679,7 +679,7 @@ class TestClassifierModelResolution:
                 gw.close()
 
     def test_resolve_model_no_available_set_uses_primary(self) -> None:
-        from jarvis_engine._constants import get_local_model
+        from jarvis_engine._shared import get_local_model
         from jarvis_engine.gateway.classifier import IntentClassifier
         mock_embed = MagicMock(spec=EmbeddingService)
         mock_embed.embed.return_value = [0.0] * 384

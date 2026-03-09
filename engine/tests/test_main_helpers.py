@@ -131,6 +131,7 @@ class TestAutoIngestMemory:
             monkeypatch.delenv("JARVIS_AUTO_INGEST_DISABLE", raising=False)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         result = auto_ingest_mod.auto_ingest_memory(
@@ -145,69 +146,75 @@ class TestGamingProcessHelpers:
     def test_read_gaming_mode_default(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
-        state = daemon_loop_mod.read_gaming_mode_state()
+        state = gaming_mode_mod.read_gaming_mode_state()
         assert state["enabled"] is False
 
     def test_read_gaming_mode_corrupted(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         path = tmp_path / ".planning" / "runtime" / "gaming_mode.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("corrupt json!", encoding="utf-8")
-        state = daemon_loop_mod.read_gaming_mode_state()
+        state = gaming_mode_mod.read_gaming_mode_state()
         assert state["enabled"] is False
 
     def testload_gaming_processes_default(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
-        processes = daemon_loop_mod.load_gaming_processes()
+        processes = gaming_mode_mod.load_gaming_processes()
         assert len(processes) > 0
         assert any("FortniteClient" in p for p in processes)
 
     def testload_gaming_processes_from_env(self, monkeypatch):
         monkeypatch.setenv("JARVIS_GAMING_PROCESSES", "game1.exe,game2.exe")
-        processes = daemon_loop_mod.load_gaming_processes()
+        processes = gaming_mode_mod.load_gaming_processes()
         assert processes == ["game1.exe", "game2.exe"]
 
     def testload_gaming_processes_from_file_dict(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"processes": ["custom.exe"]}), encoding="utf-8")
-        processes = daemon_loop_mod.load_gaming_processes()
+        processes = gaming_mode_mod.load_gaming_processes()
         assert processes == ["custom.exe"]
 
     def testload_gaming_processes_from_file_list(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(["listgame.exe"]), encoding="utf-8")
-        processes = daemon_loop_mod.load_gaming_processes()
+        processes = gaming_mode_mod.load_gaming_processes()
         assert processes == ["listgame.exe"]
 
     def testload_gaming_processes_empty_falls_back(self, tmp_path, monkeypatch):
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.delenv("JARVIS_GAMING_PROCESSES", raising=False)
         path = tmp_path / ".planning" / "gaming_processes.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"processes": []}), encoding="utf-8")
-        processes = daemon_loop_mod.load_gaming_processes()
+        processes = gaming_mode_mod.load_gaming_processes()
         assert len(processes) == len(gaming_mode_mod.DEFAULT_GAMING_PROCESSES)

@@ -9,6 +9,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import gaming_mode as gaming_mode_mod
 from jarvis_engine import harvest_discovery as harvest_discovery_mod
 from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
@@ -33,6 +34,7 @@ class TestDaemonReliability:
         """C1: Daemon should not crash when a cycle raises an exception."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
@@ -74,6 +76,7 @@ class TestDaemonReliability:
         """C1: Daemon circuit breaker should cooldown (sleep) then reset, not exit."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
@@ -113,6 +116,7 @@ class TestDaemonReliability:
         """C1: Mission failure should not affect main cycle."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
@@ -404,6 +408,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     """Apply the standard monkeypatches needed by every daemon test."""
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)

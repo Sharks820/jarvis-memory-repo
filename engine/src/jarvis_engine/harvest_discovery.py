@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 # Named SQL constants for discover_harvest_topics() queries
 # ---------------------------------------------------------------------------
 
-_SQL_RECENT_SUMMARIES = """\
+SQL_RECENT_SUMMARIES = """\
 SELECT summary FROM records
 WHERE ts >= ? AND source = 'user'
 ORDER BY ts DESC
 LIMIT 30"""
 
-_SQL_SPARSE_NODES = """\
+SQL_SPARSE_NODES = """\
 SELECT n.label, COUNT(e.edge_id) AS edge_cnt
 FROM kg_nodes n
 LEFT JOIN kg_edges e ON n.node_id = e.source_id
@@ -39,7 +39,7 @@ HAVING edge_cnt BETWEEN 0 AND 1
 ORDER BY n.updated_at DESC
 LIMIT 10"""
 
-_SQL_RARE_RELATIONS = """\
+SQL_RARE_RELATIONS = """\
 SELECT relation, COUNT(*) AS cnt
 FROM kg_edges
 GROUP BY relation
@@ -47,13 +47,13 @@ HAVING cnt BETWEEN 1 AND 3
 ORDER BY cnt ASC
 LIMIT 5"""
 
-_SQL_NODE_BY_RELATION = """\
+SQL_NODE_BY_RELATION = """\
 SELECT n.label FROM kg_nodes n
 JOIN kg_edges e ON n.node_id = e.source_id
 WHERE e.relation = ?
 LIMIT 1"""
 
-_SQL_STRONG_LABELS = """\
+SQL_STRONG_LABELS = """\
 SELECT label
 FROM kg_nodes
 WHERE confidence >= 0.5"""
@@ -182,7 +182,7 @@ def _collect_from_recent_memories(
     """Source 1: Conversation-derived topics from recent memories (last 7 days)."""
     try:
         cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
-        rows = conn.execute(_SQL_RECENT_SUMMARIES, (cutoff,)).fetchall()
+        rows = conn.execute(SQL_RECENT_SUMMARIES, (cutoff,)).fetchall()
         for row in rows:
             summary = row["summary"] or ""
             if _add_phrases(summary, candidates, seen_lower, recently_harvested, max_topics):
@@ -201,7 +201,7 @@ def _collect_from_kg_gaps(
     """Source 2: KG gap analysis -- sparse nodes and rare relation types."""
     try:
         # 2a: Nodes with few outgoing edges (surface-level knowledge)
-        sparse_rows = conn.execute(_SQL_SPARSE_NODES).fetchall()
+        sparse_rows = conn.execute(SQL_SPARSE_NODES).fetchall()
         for row in sparse_rows:
             label = row["label"] or ""
             if _add_phrases(label, candidates, seen_lower, recently_harvested, max_topics):
@@ -209,11 +209,11 @@ def _collect_from_kg_gaps(
 
         # 2b: Relation types with few instances -- structural KG gaps
         if len(candidates) < max_topics:
-            rel_rows = conn.execute(_SQL_RARE_RELATIONS).fetchall()
+            rel_rows = conn.execute(SQL_RARE_RELATIONS).fetchall()
             for row in rel_rows:
                 relation = row["relation"] or ""
                 node_row = conn.execute(
-                    _SQL_NODE_BY_RELATION, (relation,),
+                    SQL_NODE_BY_RELATION, (relation,),
                 ).fetchone()
                 if node_row:
                     label = node_row["label"] or ""
@@ -232,7 +232,7 @@ def _collect_from_strong_kg_areas(
 ) -> None:
     """Source 3: Complementary topics -- expand strong KG areas with suffixes."""
     try:
-        label_rows = conn.execute(_SQL_STRONG_LABELS).fetchall()
+        label_rows = conn.execute(SQL_STRONG_LABELS).fetchall()
         prefix_counts: dict[str, int] = {}
         for row in label_rows:
             label = (row["label"] or "").strip()

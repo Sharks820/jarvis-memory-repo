@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import jarvis_engine.daemon_loop as daemon_loop_mod
+import jarvis_engine.gaming_mode as gaming_mode_mod
 from jarvis_engine.daemon_loop import (
     _try_add_candidate,
     _add_phrases,
@@ -316,26 +317,26 @@ class TestGamingModeIntegration:
 
     def test_gaming_mode_state_path(self, root) -> None:
         """Should construct correct path for gaming mode state."""
-        with patch.object(daemon_loop_mod, "repo_root", return_value=root):
+        with patch.object(gaming_mode_mod, "repo_root", return_value=root):
             path = gaming_mode_state_path()
         assert str(path).endswith("gaming_mode.json")
 
     def test_gaming_processes_path(self, root) -> None:
         """Should construct correct path for gaming processes config."""
-        with patch.object(daemon_loop_mod, "repo_root", return_value=root):
+        with patch.object(gaming_mode_mod, "repo_root", return_value=root):
             path = gaming_processes_path()
         assert str(path).endswith("gaming_processes.json")
 
     def test_read_gaming_mode_state_defaults(self, root) -> None:
         """Should return sensible defaults when no state file exists."""
-        with patch.object(daemon_loop_mod, "repo_root", return_value=root):
+        with patch.object(gaming_mode_mod, "repo_root", return_value=root):
             state = read_gaming_mode_state()
         assert state["enabled"] is False
         assert state["auto_detect"] is False
 
     def test_write_and_read_gaming_mode_state(self, root) -> None:
         """Should persist and read back gaming mode state."""
-        with patch.object(daemon_loop_mod, "repo_root", return_value=root):
+        with patch.object(gaming_mode_mod, "repo_root", return_value=root):
             write_gaming_mode_state({"enabled": True, "auto_detect": True, "reason": "test"})
             state = read_gaming_mode_state()
         assert state["enabled"] is True

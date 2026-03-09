@@ -12,14 +12,16 @@ Consolidates duplicated helpers to a single source of truth:
   (used by memory/engine.py and knowledge/graph.py)
 - now_iso: UTC ISO-8601 timestamp (used by security modules)
 - make_thread_aware_repo_root: thread-local repo_root factory (used by mobile_api)
+
+Note: OllamaResponse and call_ollama_generate have been moved to
+``jarvis_engine.gateway.ollama_client`` and are re-exported here for
+backward compatibility.
 """
 
 from __future__ import annotations
 
 __all__ = [
-    "OllamaResponse",
     "atomic_write_json",
-    "call_ollama_generate",
     "check_path_within_root",
     "env_int",
     "FTS5_KEYWORDS",
@@ -55,27 +57,17 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, TypedDict, TypeVar
-from urllib.request import urlopen
+from typing import Any, Callable, TypeVar
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
-
-class OllamaResponse(TypedDict, total=False):
-    """Shape returned by Ollama's ``/api/generate`` endpoint."""
-
-    model: str
-    response: str
-    done: bool
-    context: list[int]
-    total_duration: int
-    load_duration: int
-    prompt_eval_count: int
-    prompt_eval_duration: int
-    eval_count: int
-    eval_duration: int
+# Backward-compat re-exports (moved to gateway.ollama_client)
+from jarvis_engine.gateway.ollama_client import (  # noqa: E402, F401
+    OllamaResponse,
+    call_ollama_generate,
+)
 
 
 def now_iso() -> str:
@@ -273,57 +265,6 @@ def sha256_short(data: bytes, length: int = 32) -> str:
     """
     import hashlib
     return hashlib.sha256(data).hexdigest()[:length]
-
-
-def call_ollama_generate(
-    endpoint: str,
-    model: str,
-    prompt: str,
-    options: dict[str, Any],
-    *,
-    timeout_s: int = 120,
-) -> OllamaResponse:
-    """Send a non-streaming generate request to Ollama's ``/api/generate``.
-
-    Args:
-        endpoint: Ollama base URL (e.g. ``http://localhost:11434``).
-        model: Model name (e.g. ``qwen3:14b``).
-        prompt: The text prompt to send.
-        options: Ollama options dict (num_ctx, num_predict, temperature, etc.).
-        timeout_s: HTTP timeout in seconds.
-
-    Returns:
-        The parsed JSON response dict from Ollama.
-
-    Raises:
-        ValueError: If the endpoint fails the safety check or the response
-            is not a JSON object.
-        urllib.error.URLError: On network errors.
-        TimeoutError: On request timeout.
-    """
-    from jarvis_engine.security.net_policy import is_safe_ollama_endpoint
-    from urllib.request import Request
-
-    if not is_safe_ollama_endpoint(endpoint):
-        raise ValueError(f"Unsafe Ollama endpoint: {endpoint}")
-
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": options,
-    }
-    req = Request(
-        url=f"{endpoint.rstrip('/')}/api/generate",
-        method="POST",
-        headers={"Content-Type": "application/json"},
-        data=json.dumps(payload).encode("utf-8"),
-    )
-    with urlopen(req, timeout=timeout_s) as resp:  # nosec B310
-        data = json.loads(resp.read().decode("utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Expected JSON object from Ollama")
-    return data
 
 
 def set_process_title(name: str) -> None:

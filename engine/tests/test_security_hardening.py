@@ -8,6 +8,7 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import gaming_mode as gaming_mode_mod
 from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import auto_ingest as auto_ingest_mod
@@ -21,6 +22,7 @@ class TestPathTraversalProtection:
         """H4: Gaming state path should block traversal attempts."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
@@ -30,7 +32,7 @@ class TestPathTraversalProtection:
         
         # Try to create a file outside the repo (simulated)
         # The function should resolve and validate the path
-        path = daemon_loop_mod.gaming_mode_state_path()
+        path = gaming_mode_mod.gaming_mode_state_path()
         
         # Path should be within repo_root
         assert path.resolve().is_relative_to(tmp_path.resolve())
@@ -38,12 +40,13 @@ class TestPathTraversalProtection:
     def test_gaming_state_symlink_attack_detected(self, tmp_path: Path, monkeypatch) -> None:
         """H4: Gaming state should detect and reject symlink attacks."""
         import platform
-        
+
         if platform.system() == "Windows":
             pytest.skip("Symlink tests require admin on Windows")
-        
+
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
@@ -58,7 +61,7 @@ class TestPathTraversalProtection:
         gaming_file.symlink_to(outside_target)
         
         # Should detect the traversal
-        path = daemon_loop_mod.gaming_mode_state_path()
+        path = gaming_mode_mod.gaming_mode_state_path()
         resolved = path.resolve()
 
         # Verify resolved path is still within bounds
@@ -73,6 +76,7 @@ class TestGamingModeSecurity:
         """Gaming mode state file should have restricted permissions."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
@@ -102,7 +106,7 @@ class TestGamingModeSecurity:
         monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: SuspiciousTasklist())
         
         # Should not crash on suspicious process names
-        detected, process = daemon_loop_mod.detect_active_game_process()
+        detected, process = gaming_mode_mod.detect_active_game_process()
         
         # Should handle gracefully (either detect or not, but not crash)
         assert isinstance(detected, bool)
@@ -116,6 +120,7 @@ class TestAutoIngestSecurity:
         """Auto-ingest should sanitize passwords from content."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
@@ -133,6 +138,7 @@ class TestAutoIngestSecurity:
         """Auto-ingest dedupe should limit stored hashes."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
@@ -154,6 +160,7 @@ class TestAutoIngestSecurity:
         """Auto-ingest should respect JARVIS_AUTO_INGEST_DISABLE flag."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setenv("JARVIS_AUTO_INGEST_DISABLE", "true")
@@ -257,6 +264,7 @@ class TestDaemonSecurity:
         """Safe mode should force execute=False regardless of flags."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         
@@ -306,6 +314,7 @@ class TestDaemonSecurity:
         """Daemon should stop after max_cycles."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)

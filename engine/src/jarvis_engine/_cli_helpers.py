@@ -30,7 +30,10 @@ def cli_dispatch(
     * Otherwise ``return_code`` is ``0`` and the caller is responsible for
       printing any remaining key=value output.
     """
-    result = _get_bus().dispatch(command)
+    try:
+        result = _get_bus().dispatch(command)
+    except Exception as exc:  # noqa: BLE001
+        return f"Error: {exc}", 1
 
     # JSON output path -- used by the --json flag on many sub-commands.
     if as_json and json_field:

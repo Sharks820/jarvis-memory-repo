@@ -37,24 +37,27 @@ from jarvis_engine.runtime_control import (
     write_resource_pressure_state,
 )
 
-# Internal import — _windows_idle_seconds used by _gather_cycle_state
-from jarvis_engine.gaming_mode import _windows_idle_seconds
-from jarvis_engine.gaming_mode import (
+# Gaming mode — convenience wrappers live in gaming_mode.py; imported here
+# so that existing callers and test patches using daemon_loop.X still work.
+from jarvis_engine.gaming_mode import (  # noqa: F401
     GamingModeState,
-    detect_active_game_process as _gm_detect_active_game_process,
-    load_gaming_processes as _gm_load_gaming_processes,
-    read_gaming_mode_state as _gm_read_gaming_mode_state,
-    write_gaming_mode_state as _gm_write_gaming_mode_state,
+    _windows_idle_seconds,
+    detect_active_game_process,
+    gaming_mode_state_path,
+    gaming_processes_path,
+    load_gaming_processes,
+    read_gaming_mode_state,
+    write_gaming_mode_state,
 )
 
 # Harvest discovery — all topic-discovery logic lives in harvest_discovery.py.
 # Re-imported here so existing callers and tests using daemon_loop_mod.X still work.
 from jarvis_engine.harvest_discovery import (  # noqa: F401
-    _SQL_NODE_BY_RELATION,
-    _SQL_RARE_RELATIONS,
-    _SQL_RECENT_SUMMARIES,
-    _SQL_SPARSE_NODES,
-    _SQL_STRONG_LABELS,
+    SQL_NODE_BY_RELATION,
+    SQL_RARE_RELATIONS,
+    SQL_RECENT_SUMMARIES,
+    SQL_SPARSE_NODES,
+    SQL_STRONG_LABELS,
     _add_phrases,
     _collect_from_activity_feed,
     _collect_from_kg_gaps,
@@ -152,41 +155,7 @@ _daemon_kg_prev_metrics_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
-# Gaming mode helpers — thin wrappers around gaming_mode.py
-# ---------------------------------------------------------------------------
-# Tests patch ``daemon_loop_mod.repo_root``, so these wrappers call
-# ``repo_root()`` from *this* module's namespace (patchable) and forward the
-# resulting paths to the parameterised functions in ``gaming_mode.py``.
-
-
-def gaming_mode_state_path() -> Path:
-    """Return the path to the gaming mode JSON state file."""
-    return _runtime_dir(repo_root()) / "gaming_mode.json"
-
-
-def gaming_processes_path() -> Path:
-    """Return the path to the gaming processes JSON config file."""
-    return repo_root() / ".planning" / "gaming_processes.json"
-
-
-def read_gaming_mode_state() -> GamingModeState:
-    """Read gaming mode state using the daemon's repo_root."""
-    return _gm_read_gaming_mode_state(gaming_mode_state_path())
-
-
-def write_gaming_mode_state(state: dict[str, object]) -> GamingModeState:
-    """Write gaming mode state using the daemon's repo_root."""
-    return _gm_write_gaming_mode_state(state, gaming_mode_state_path())
-
-
-def load_gaming_processes() -> list[str]:
-    """Load gaming process list using the daemon's repo_root."""
-    return _gm_load_gaming_processes(gaming_processes_path())
-
-
-def detect_active_game_process() -> tuple[bool, str]:
-    """Detect active game processes using loaded process list."""
-    return _gm_detect_active_game_process(load_gaming_processes())
+# Gaming mode helpers — now live in gaming_mode.py, imported above.
 
 
 # ---------------------------------------------------------------------------

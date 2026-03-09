@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
 from jarvis_engine import daemon_loop as daemon_loop_mod
+from jarvis_engine import gaming_mode as gaming_mode_mod
 from jarvis_engine import _bus as bus_mod
 from jarvis_engine import cli_ops as cli_ops_mod
 from jarvis_engine.automation import ActionOutcome
@@ -32,6 +33,7 @@ from jarvis_engine.proactive.self_test import AdversarialSelfTest
 def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
@@ -73,6 +75,7 @@ def test_cmd_daemon_run_uses_active_interval_when_active(tmp_path: Path, monkeyp
 def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_gaming_mode(enable=True, reason="session", auto_detect="")
@@ -115,6 +118,7 @@ def test_cmd_daemon_run_skips_autopilot_while_gaming_mode_enabled(tmp_path: Path
 def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_gaming_mode(enable=False, reason="auto", auto_detect="on")
@@ -157,6 +161,7 @@ def test_cmd_daemon_run_skips_autopilot_when_auto_detect_finds_game(tmp_path: Pa
 def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_runtime_control(
@@ -206,6 +211,7 @@ def test_cmd_daemon_run_skips_autopilot_when_runtime_paused(tmp_path: Path, monk
 def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     main_mod.cmd_runtime_control(
@@ -248,6 +254,7 @@ def test_cmd_daemon_run_safe_mode_forces_non_execute_cycle(tmp_path: Path, monke
 def test_cmd_gaming_mode_persists_state(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc = main_mod.cmd_gaming_mode(enable=True, reason="gaming", auto_detect="")
@@ -268,6 +275,7 @@ def test_cmd_gaming_mode_persists_state(tmp_path: Path, monkeypatch) -> None:
 def test_cmd_runtime_control_persists_state(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     rc = main_mod.cmd_runtime_control(
@@ -602,6 +610,7 @@ class TestIntelligenceDashboard:
         bus = mock_bus(result)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         rc = main_mod.cmd_intelligence_dashboard(last_runs=20, output_path="", as_json=True)
@@ -623,6 +632,7 @@ class TestIntelligenceDashboard:
         bus = mock_bus(result)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         rc = main_mod.cmd_intelligence_dashboard(last_runs=20, output_path="", as_json=False)
@@ -644,6 +654,7 @@ class TestIntelligenceDashboardOutputPath:
         bus = mock_bus(result)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(cli_ops_mod, "repo_root", lambda: tmp_path)
@@ -662,6 +673,7 @@ class TestIntelligenceDashboardOutputPath:
         bus = mock_bus(result)
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(cli_ops_mod, "repo_root", lambda: tmp_path)
@@ -684,6 +696,7 @@ class TestDaemonSelfTest:
         """Helper: run cmd_daemon_run_impl with heavy mocking."""
         monkeypatch.setattr(main_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "repo_root", lambda: tmp_path)
+        monkeypatch.setattr(gaming_mode_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)

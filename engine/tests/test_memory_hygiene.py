@@ -369,7 +369,7 @@ class TestHygieneDashboardMetrics:
         }
         history.write_text(json.dumps(entry) + "\n")
 
-        with patch("jarvis_engine._constants.runtime_dir", return_value=runtime_dir):
+        with patch("jarvis_engine._shared.runtime_dir", return_value=runtime_dir):
             result = hygiene_dashboard_metrics(tmp_path)
         assert isinstance(result, dict)
         assert result.get("last_scan_utc") == "2026-03-08T00:00:00Z"

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
 
-from jarvis_engine._shared import call_ollama_generate
+from jarvis_engine.gateway.ollama_client import call_ollama_generate
 from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, VideoAdapter
 from jarvis_engine.capability import CapabilityGate
 from jarvis_engine.memory_store import MemoryStore

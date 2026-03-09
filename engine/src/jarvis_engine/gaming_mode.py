@@ -1,8 +1,9 @@
 """Gaming mode state management and game process detection.
 
-Functions in this module accept explicit paths rather than calling
-``repo_root()`` directly so that callers (and test monkey-patches) in
-``daemon_loop`` control the root location.
+Core functions accept an optional explicit path parameter; when omitted
+they resolve the default path via ``repo_root()``.  Convenience helpers
+``gaming_mode_state_path()`` and ``gaming_processes_path()`` expose the
+path resolution for callers that need it.
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ from __future__ import annotations
 __all__ = [
     "GamingModeState",
     "DEFAULT_GAMING_PROCESSES",
+    "gaming_mode_state_path",
+    "gaming_processes_path",
     "read_gaming_mode_state",
     "write_gaming_mode_state",
     "load_gaming_processes",
@@ -26,6 +29,8 @@ from pathlib import Path
 from typing import TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine.config import repo_root
 
 
 class GamingModeState(TypedDict):
@@ -81,8 +86,11 @@ DEFAULT_GAMING_PROCESSES = (
 )
 
 
-def read_gaming_mode_state(state_path: Path) -> GamingModeState:
+def read_gaming_mode_state(state_path: Path | None = None) -> GamingModeState:
     """Read gaming mode state from *state_path*.
+
+    When *state_path* is ``None``, resolves the default path via
+    :func:`gaming_mode_state_path`.
 
     Returns a dict with keys ``enabled``, ``auto_detect``, ``updated_utc``,
     ``reason`` (all typed).  Falls back to a safe default if the file is
@@ -90,6 +98,8 @@ def read_gaming_mode_state(state_path: Path) -> GamingModeState:
     """
     from jarvis_engine._shared import load_json_file
 
+    if state_path is None:
+        state_path = gaming_mode_state_path()
     default: GamingModeState = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
     raw = load_json_file(state_path, None, expected_type=dict)
     if raw is None:
@@ -102,10 +112,16 @@ def read_gaming_mode_state(state_path: Path) -> GamingModeState:
     }
 
 
-def write_gaming_mode_state(state: dict[str, object], state_path: Path) -> GamingModeState:
-    """Atomically write *state* to *state_path* and return the normalised payload."""
+def write_gaming_mode_state(state: dict[str, object], state_path: Path | None = None) -> GamingModeState:
+    """Atomically write *state* to *state_path* and return the normalised payload.
+
+    When *state_path* is ``None``, resolves the default path via
+    :func:`gaming_mode_state_path`.
+    """
     from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 
+    if state_path is None:
+        state_path = gaming_mode_state_path()
     payload: GamingModeState = {
         "enabled": bool(state.get("enabled", False)),
         "auto_detect": bool(state.get("auto_detect", False)),
@@ -116,8 +132,11 @@ def write_gaming_mode_state(state: dict[str, object], state_path: Path) -> Gamin
     return payload
 
 
-def load_gaming_processes(processes_path: Path) -> list[str]:
+def load_gaming_processes(processes_path: Path | None = None) -> list[str]:
     """Load the list of game executable names from *processes_path*.
+
+    When *processes_path* is ``None``, resolves the default path via
+    :func:`gaming_processes_path`.
 
     An environment variable ``JARVIS_GAMING_PROCESSES`` overrides the file.
     Falls back to ``DEFAULT_GAMING_PROCESSES`` if the file is missing or
@@ -126,6 +145,9 @@ def load_gaming_processes(processes_path: Path) -> list[str]:
     env_override = os.getenv("JARVIS_GAMING_PROCESSES", "").strip()
     if env_override:
         return [item.strip() for item in env_override.split(",") if item.strip()]
+
+    if processes_path is None:
+        processes_path = gaming_processes_path()
 
     from jarvis_engine._shared import load_json_file
 
@@ -228,3 +250,18 @@ def detect_active_game_process(processes: list[str] | None = None) -> tuple[bool
     with _game_detect_lock:
         _game_detect_cache = (time.monotonic(), False, "")
     return False, ""
+
+
+# ---------------------------------------------------------------------------
+# No-arg convenience wrappers (resolve paths via repo_root)
+# ---------------------------------------------------------------------------
+
+
+def gaming_mode_state_path() -> Path:
+    """Return the path to the gaming mode JSON state file."""
+    return _runtime_dir(repo_root()) / "gaming_mode.json"
+
+
+def gaming_processes_path() -> Path:
+    """Return the path to the gaming processes JSON config file."""
+    return repo_root() / ".planning" / "gaming_processes.json"

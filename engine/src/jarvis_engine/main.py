@@ -127,7 +127,7 @@ from jarvis_engine.voice_extractors import (  # noqa: E402
     escape_response,
     shorten_urls_for_speech,
 )
-from jarvis_engine.daemon_loop import gaming_processes_path  # noqa: E402
+from jarvis_engine.gaming_mode import gaming_processes_path  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

@@ -142,7 +142,7 @@ class TestIntentClassifierRouting:
             "solve this differential equation step by step"
         )
         assert route == "math_logic"
-        from jarvis_engine._constants import get_local_model
+        from jarvis_engine._shared import get_local_model
         assert model == get_local_model()  # Local 9B for deep reasoning
 
     def test_classify_complex_query(self, classifier):
@@ -150,7 +150,7 @@ class TestIntentClassifierRouting:
             "help me debug this race condition in Python"
         )
         assert route == "complex"
-        from jarvis_engine._constants import get_local_model
+        from jarvis_engine._shared import get_local_model
         assert model == get_local_model()  # Local 9B for complex tasks
 
     def test_classify_routine_query(self, classifier):
@@ -158,7 +158,7 @@ class TestIntentClassifierRouting:
             "summarize this meeting transcript for me"
         )
         assert route == "routine"
-        from jarvis_engine._constants import get_fast_local_model
+        from jarvis_engine._shared import get_fast_local_model
         assert model == get_fast_local_model()  # Fast local 4B for routine tasks
 
     def test_classify_simple_private_query(self, classifier):
@@ -173,7 +173,7 @@ class TestIntentClassifierRouting:
             "write a short story about a robot learning to paint"
         )
         assert route == "creative"
-        from jarvis_engine._constants import get_fast_local_model
+        from jarvis_engine._shared import get_fast_local_model
         assert model == get_fast_local_model()  # Fast local 4B for creative
 
     def test_classify_web_research_query(self, classifier):
@@ -181,7 +181,7 @@ class TestIntentClassifierRouting:
             "what is the latest news about artificial intelligence"
         )
         assert route == "web_research"
-        from jarvis_engine._constants import get_fast_local_model
+        from jarvis_engine._shared import get_fast_local_model
         assert model == get_fast_local_model()  # Fast local 4B for web research
 
     def test_classify_web_research_current_price(self, classifier):
@@ -189,7 +189,7 @@ class TestIntentClassifierRouting:
             "what is the current price of bitcoin today"
         )
         assert route == "web_research"
-        from jarvis_engine._constants import get_fast_local_model
+        from jarvis_engine._shared import get_fast_local_model
         assert model == get_fast_local_model()  # Fast local 4B for web research
 
 
