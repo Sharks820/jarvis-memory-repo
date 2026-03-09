@@ -107,7 +107,9 @@ class CodexIngestor:
             logger.warning("Permission denied accessing %s", self.SESSION_BASE)
             return []
         except FileNotFoundError:
-            logger.debug("Codex session base directory not found: %s", self.SESSION_BASE)
+            logger.debug(
+                "Codex session base directory not found: %s", self.SESSION_BASE
+            )
             return []
 
     def ingest_session(self, session_path: Path) -> list[str]:

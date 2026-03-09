@@ -63,9 +63,13 @@ class ContradictionListHandler:
             from jarvis_engine.knowledge.contradictions import ContradictionManager
         except ImportError as exc:
             logger.warning("contradictions module not available: %s", exc)
-            return ContradictionListResult(message="Contradictions module not available.")
+            return ContradictionListResult(
+                message="Contradictions module not available."
+            )
 
-        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
+        mgr = ContradictionManager(
+            self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg
+        )
         contradictions = mgr.list_all(
             status=cmd.status if cmd.status else None,
             limit=min(cmd.limit, 500),
@@ -94,7 +98,9 @@ class ContradictionResolveHandler:
                 message="Contradictions module not available.",
             )
 
-        mgr = ContradictionManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
+        mgr = ContradictionManager(
+            self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg
+        )
         result = mgr.resolve(
             contradiction_id=cmd.contradiction_id,
             resolution=cmd.resolution,
@@ -138,14 +144,18 @@ class FactLockHandler:
                 message="Locks module not available.",
             )
 
-        lock_mgr = FactLockManager(self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg)
+        lock_mgr = FactLockManager(
+            self._kg.db, self._kg.write_lock, self._kg.db_lock, kg=self._kg
+        )
         if cmd.action == "lock":
             success = lock_mgr.owner_confirm_lock(cmd.node_id)
             return FactLockResult(
                 success=success,
                 node_id=cmd.node_id,
                 locked=success,
-                message="Fact locked." if success else "Fact already locked or not found.",
+                message="Fact locked."
+                if success
+                else "Fact already locked or not found.",
             )
         else:
             success = lock_mgr.unlock_fact(cmd.node_id)
@@ -153,7 +163,9 @@ class FactLockHandler:
                 success=success,
                 node_id=cmd.node_id,
                 locked=not success,
-                message="Fact unlocked." if success else "Fact already unlocked or not found.",
+                message="Fact unlocked."
+                if success
+                else "Fact already unlocked or not found.",
             )
 
 
@@ -173,7 +185,10 @@ class KnowledgeRegressionHandler:
         except ImportError as exc:
             logger.warning("regression module not available: %s", exc)
             return KnowledgeRegressionResult(
-                report={"status": "error", "message": "Regression module not available."},
+                report={
+                    "status": "error",
+                    "message": "Regression module not available.",
+                },
             )
 
         checker = RegressionChecker(self._kg)

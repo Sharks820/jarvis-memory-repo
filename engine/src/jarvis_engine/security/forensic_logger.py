@@ -58,7 +58,9 @@ class ForensicLogger:
                 # Only advance hash chain after successful write
                 self._prev_hash = current_hash
             except OSError as exc:
-                logger.warning("Failed to write forensic log entry to %s: %s", self._path, exc)
+                logger.warning(
+                    "Failed to write forensic log entry to %s: %s", self._path, exc
+                )
 
     @staticmethod
     def verify_chain(path: Path) -> tuple[bool, int]:
@@ -96,7 +98,10 @@ class ForensicLogger:
                     prev_hash = sha256_hex(raw_line)
                     count += 1
         except OSError:
-            logger.debug("OSError reading forensic log during chain verification at entry %d", count)
+            logger.debug(
+                "OSError reading forensic log during chain verification at entry %d",
+                count,
+            )
             return (False, count)
 
         return (True, count)
@@ -151,7 +156,9 @@ class ForensicLogger:
                             try:
                                 entry = json.loads(raw_line)
                             except json.JSONDecodeError:
-                                logger.debug("Skipping malformed JSON line during forensic log export")
+                                logger.debug(
+                                    "Skipping malformed JSON line during forensic log export"
+                                )
                                 continue
                             ts = entry.get("timestamp_utc", "")
                             # Compare date prefix (YYYY-MM-DD)
@@ -163,7 +170,9 @@ class ForensicLogger:
                                 sev = entry.get("severity", "unknown")
                                 severities[sev] = severities.get(sev, 0) + 1
                 except OSError:
-                    logger.warning("Failed to read forensic log for export", exc_info=True)
+                    logger.warning(
+                        "Failed to read forensic log for export", exc_info=True
+                    )
 
         summary_lines = [
             "Forensic Log Export Summary",
@@ -183,7 +192,9 @@ class ForensicLogger:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("forensic_log.jsonl", ("\n".join(entries) + "\n") if entries else "")
+            zf.writestr(
+                "forensic_log.jsonl", ("\n".join(entries) + "\n") if entries else ""
+            )
             zf.writestr("summary.txt", "\n".join(summary_lines) + "\n")
 
     # ------------------------------------------------------------------
@@ -218,7 +229,9 @@ class ForensicLogger:
                             json.loads(line)
                             return sha256_hex(line)
                         except (json.JSONDecodeError, ValueError):
-                            logger.debug("Failed to parse forensic log line during hash recovery")
+                            logger.debug(
+                                "Failed to parse forensic log line during hash recovery"
+                            )
                             continue
                     if actual_read >= size:
                         # We've read the entire file and no line parses

@@ -56,6 +56,7 @@ class BudgetManager:
         self._closed = False
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(db_path, check_same_thread=False)
 
         self._init_schema()
@@ -107,7 +108,9 @@ class BudgetManager:
     ) -> None:
         """Set or update budget limit for a provider/period combination."""
         if period not in self._VALID_PERIODS:
-            raise ValueError(f"Invalid period {period!r}; must be one of {self._VALID_PERIODS}")
+            raise ValueError(
+                f"Invalid period {period!r}; must be one of {self._VALID_PERIODS}"
+            )
         if limit_usd < 0:
             raise ValueError(f"limit_usd must be >= 0, got {limit_usd}")
         if limit_requests < 0:
@@ -234,11 +237,13 @@ class BudgetManager:
             total_cost = 0.0
             for row in cur.fetchall():
                 row_cost = row["total_cost"] or 0.0
-                providers.append({
-                    "provider": row["provider"],
-                    "total_cost_usd": row_cost,
-                    "total_requests": row["total_requests"] or 0,
-                })
+                providers.append(
+                    {
+                        "provider": row["provider"],
+                        "total_cost_usd": row_cost,
+                        "total_requests": row["total_requests"] or 0,
+                    }
+                )
                 total_cost += row_cost
 
         return {
@@ -254,7 +259,9 @@ class BudgetManager:
             try:
                 self._db.close()
             except (OSError, RuntimeError) as exc:
-                logger.warning("Failed to close BudgetManager database connection: %s", exc)
+                logger.warning(
+                    "Failed to close BudgetManager database connection: %s", exc
+                )
 
     def __enter__(self) -> "BudgetManager":
         return self

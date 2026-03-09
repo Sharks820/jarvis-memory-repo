@@ -57,7 +57,9 @@ class TranscriptionResult:
 
 _stt_metrics_lock = threading.Lock()
 
-CONFIDENCE_RETRY_THRESHOLD = float(os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6"))
+CONFIDENCE_RETRY_THRESHOLD = float(
+    os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6")
+)
 GROQ_STT_MODEL = os.environ.get("JARVIS_GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
 # Default prompt biases local Whisper toward Jarvis-specific vocabulary
@@ -82,6 +84,7 @@ def _log_stt_metric(
     if root_dir is None:
         return
     from jarvis_engine._shared import runtime_dir
+
     metrics_path = runtime_dir(root_dir) / "stt_metrics.jsonl"
     record = {
         "ts": _now_iso(),
@@ -167,13 +170,19 @@ def _groq_api_call(
                     files={"file": (filename, audio_bytes, "audio/wav")},
                 )
                 if resp.status_code >= 500 or resp.status_code == 429:
-                    logger.warning("Groq API returned %d, attempt %d/2", resp.status_code, attempt + 1)
+                    logger.warning(
+                        "Groq API returned %d, attempt %d/2",
+                        resp.status_code,
+                        attempt + 1,
+                    )
                     if attempt < 1:
                         time.sleep(2 if resp.status_code == 429 else 1)
                         continue
                 break
             except httpx.TransportError as exc:
-                logger.warning("Groq API connection error: %s, attempt %d/2", exc, attempt + 1)
+                logger.warning(
+                    "Groq API connection error: %s, attempt %d/2", exc, attempt + 1
+                )
                 if attempt < 1:
                     time.sleep(1)
                     continue
@@ -222,12 +231,16 @@ def _groq_parse_response(
                 seg_start = seg.get("start")
                 seg_end = seg.get("end")
                 seg_text = seg.get("text", "")
-                if isinstance(seg_start, (int, float)) and isinstance(seg_end, (int, float)):
-                    parsed_segments.append({
-                        "start": float(seg_start),
-                        "end": float(seg_end),
-                        "text": str(seg_text).strip(),
-                    })
+                if isinstance(seg_start, (int, float)) and isinstance(
+                    seg_end, (int, float)
+                ):
+                    parsed_segments.append(
+                        {
+                            "start": float(seg_start),
+                            "end": float(seg_end),
+                            "text": str(seg_text).strip(),
+                        }
+                    )
 
         if logprobs:
             avg_logprob = sum(logprobs) / len(logprobs)
@@ -236,7 +249,7 @@ def _groq_parse_response(
             if no_speech_probs:
                 avg_no_speech = sum(no_speech_probs) / len(no_speech_probs)
                 if avg_no_speech > 0.5:
-                    confidence *= (1.0 - avg_no_speech)
+                    confidence *= 1.0 - avg_no_speech
             confidence = round(confidence, 4)
         else:
             confidence = 0.90  # fallback if segments lack logprobs
@@ -316,6 +329,7 @@ def transcribe_groq(
 # ---------------------------------------------------------------------------
 # Local faster-whisper STT (offline fallback)
 # ---------------------------------------------------------------------------
+
 
 class SpeechToText:
     """Whisper-grade speech-to-text with lazy model loading.
@@ -411,17 +425,20 @@ class SpeechToText:
             seg_start = getattr(segment, "start", None)
             seg_end = getattr(segment, "end", None)
             if seg_start is not None and seg_end is not None:
-                parsed_segments.append({
-                    "start": float(seg_start),
-                    "end": float(seg_end),
-                    "text": segment.text.strip(),
-                })
+                parsed_segments.append(
+                    {
+                        "start": float(seg_start),
+                        "end": float(seg_end),
+                        "text": segment.text.strip(),
+                    }
+                )
         elapsed = time.monotonic() - t0
         full_text = " ".join(texts).strip()
         # Compute confidence from segment avg_logprob (not language_probability which is always ~1.0 for English)
         logprobs = [
-            seg.avg_logprob for seg in segments
-            if hasattr(seg, 'avg_logprob') and math.isfinite(seg.avg_logprob)
+            seg.avg_logprob
+            for seg in segments
+            if hasattr(seg, "avg_logprob") and math.isfinite(seg.avg_logprob)
         ]
         if logprobs:
             avg_logprob = sum(logprobs) / len(logprobs)
@@ -442,6 +459,7 @@ class SpeechToText:
 # ---------------------------------------------------------------------------
 # Smart transcription (auto-selects best available backend)
 # ---------------------------------------------------------------------------
+
 
 def _try_groq(
     audio: np.ndarray | str, *, language: str, prompt: str
@@ -513,9 +531,7 @@ def _try_parakeet(
                     model = model.with_timestamps()
                     logger.debug("Parakeet timestamps model loaded")
                 except (AttributeError, RuntimeError, TypeError):
-                    logger.debug(
-                        "Parakeet timestamps not available, using base model"
-                    )
+                    logger.debug("Parakeet timestamps not available, using base model")
                 _parakeet_model = model
             loaded_model = _parakeet_model
 
@@ -546,7 +562,11 @@ def _try_parakeet(
                 logprobs = []
                 for tok in tokens:
                     lp = getattr(tok, "logprob", None) or getattr(tok, "log_prob", None)
-                    if lp is not None and isinstance(lp, (int, float)) and math.isfinite(lp):
+                    if (
+                        lp is not None
+                        and isinstance(lp, (int, float))
+                        and math.isfinite(lp)
+                    ):
                         logprobs.append(lp)
                 if logprobs:
                     avg_logprob = sum(logprobs) / len(logprobs)
@@ -596,10 +616,10 @@ def _try_local_emergency(
 # ---------------------------------------------------------------------------
 
 FALLBACK_CHAIN: list[str] = [
-    "parakeet",     # Best local: 6.05% WER
-    "deepgram",     # Best cloud: keyterm boosting
-    "groq",         # Existing cloud: free tier
-    "local",        # Emergency: faster-whisper large-v3
+    "parakeet",  # Best local: 6.05% WER
+    "deepgram",  # Best cloud: keyterm boosting
+    "groq",  # Existing cloud: free tier
+    "local",  # Emergency: faster-whisper large-v3
 ]
 
 _BACKEND_FN_MAP: dict[str, str] = {
@@ -611,7 +631,9 @@ _BACKEND_FN_MAP: dict[str, str] = {
 
 
 def _preprocess_audio_if_needed(
-    audio: np.ndarray | str, *, language: str,
+    audio: np.ndarray | str,
+    *,
+    language: str,
 ) -> tuple[np.ndarray | str, TranscriptionResult | None]:
     """Apply audio preprocessing when *audio* is a non-empty numpy array.
 
@@ -623,6 +645,7 @@ def _preprocess_audio_if_needed(
         return audio, None
     try:
         from jarvis_engine.stt_postprocess import preprocess_audio
+
         audio = preprocess_audio(audio)
         if len(audio) == 0:
             logger.info("Audio was pure silence after preprocessing")
@@ -656,15 +679,19 @@ def _transcribe_forced(
 
     try_fn = _forced_backends[backend]
     if backend == "deepgram":
-        result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+        result = try_fn(
+            audio, language=language, prompt=prompt, keyterms=_load_keyterms()
+        )
     else:
         result = try_fn(audio, language=language, prompt=prompt)
 
     if result is None:
         logger.warning("%s transcription returned None in forced mode", backend)
         return TranscriptionResult(
-            text="", language=language or "en",
-            confidence=0.0, duration_seconds=0.0,
+            text="",
+            language=language or "en",
+            confidence=0.0,
+            duration_seconds=0.0,
             backend=f"{backend}-failed",
         )
     _log_stt_metric(
@@ -707,7 +734,8 @@ def _parakeet_should_fallthrough(
     logger.info(
         "Parakeet proper-noun heuristic: entity_list=%s not found in '%s', "
         "falling through to next backend",
-        entity_list[:5], result.text[:60],
+        entity_list[:5],
+        result.text[:60],
     )
     return True
 
@@ -722,20 +750,25 @@ def _transcribe_auto(
 ) -> TranscriptionResult:
     """Walk the 4-tier fallback chain and return the best result."""
     import sys
+
     _this_module = sys.modules[__name__]
     best_so_far: TranscriptionResult | None = None
 
     for name in FALLBACK_CHAIN:
         try_fn = getattr(_this_module, _BACKEND_FN_MAP[name])
         if name == "deepgram":
-            result = try_fn(audio, language=language, prompt=prompt, keyterms=_load_keyterms())
+            result = try_fn(
+                audio, language=language, prompt=prompt, keyterms=_load_keyterms()
+            )
         else:
             result = try_fn(audio, language=language, prompt=prompt)
 
         if result is not None and result.text.strip():
             logger.info(
                 "%s STT: '%s' in %.2fs (confidence: %.3f)",
-                name, result.text[:60], result.duration_seconds,
+                name,
+                result.text[:60],
+                result.duration_seconds,
                 result.confidence,
             )
             _log_stt_metric(
@@ -788,6 +821,7 @@ def _apply_postprocessing(
         return result
     try:
         from jarvis_engine.stt_postprocess import postprocess_transcription
+
         processed = postprocess_transcription(
             result.text,
             result.confidence,
@@ -851,12 +885,18 @@ def transcribe_smart(
 
     if backend in _FORCED_NAMES:
         final = _transcribe_forced(
-            audio, backend=backend, language=language, prompt=prompt,
+            audio,
+            backend=backend,
+            language=language,
+            prompt=prompt,
             root_dir=root_dir,
         )
     else:
         final = _transcribe_auto(
-            audio, language=language, prompt=prompt, root_dir=root_dir,
+            audio,
+            language=language,
+            prompt=prompt,
+            root_dir=root_dir,
             entity_list=entity_list,
         )
 
@@ -893,7 +933,9 @@ def warmup_stt_backends() -> None:
             try:
                 model = model.with_timestamps()
             except (AttributeError, RuntimeError, TypeError):
-                logger.debug("Parakeet model does not support with_timestamps(), using without")
+                logger.debug(
+                    "Parakeet model does not support with_timestamps(), using without"
+                )
                 pass
             _parakeet_model = model
             logger.info("Parakeet TDT 0.6B model warmed up successfully")
@@ -916,6 +958,9 @@ def listen_and_transcribe(
     """
     audio = record_from_microphone(max_duration_seconds=max_duration_seconds)
     return transcribe_smart(
-        audio, language=language, root_dir=root_dir,
-        gateway=gateway, entity_list=entity_list,
+        audio,
+        language=language,
+        root_dir=root_dir,
+        gateway=gateway,
+        entity_list=entity_list,
     )

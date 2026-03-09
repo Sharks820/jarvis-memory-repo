@@ -110,7 +110,10 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         return feedback
 
     def record_explicit_feedback(
-        self, quality: str, route: str = "", comment: str = "",
+        self,
+        quality: str,
+        route: str = "",
+        comment: str = "",
     ) -> None:
         """Record an explicit feedback entry (e.g. from mobile client).
 
@@ -119,7 +122,9 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         *comment* instead of detecting sentiment from a user message.
         """
         if quality not in ("positive", "negative", "neutral"):
-            raise ValueError(f"quality must be 'positive', 'negative', or 'neutral', got {quality!r}")
+            raise ValueError(
+                f"quality must be 'positive', 'negative', or 'neutral', got {quality!r}"
+            )
         now_str = _now_iso()
         snippet = comment[:200] if comment else ""
         with self._write_lock:

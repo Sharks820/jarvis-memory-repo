@@ -78,7 +78,10 @@ def ensure_snapshot_key(root: Path) -> str:
         return key_path.read_text(encoding="utf-8").strip()
 
     key_path.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(os.urandom(64)).hexdigest() + hashlib.sha256(os.urandom(32)).hexdigest()
+    key = (
+        hashlib.sha256(os.urandom(64)).hexdigest()
+        + hashlib.sha256(os.urandom(32)).hexdigest()
+    )
     key_path.write_text(key, encoding="utf-8")
     try:
         os.chmod(key_path, 0o600)
@@ -104,7 +107,9 @@ def _collect_snapshot_files(
     file_count = 0
     archived_files: list[str] = []
 
-    with zipfile.ZipFile(snapshot_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(
+        snapshot_path, mode="w", compression=zipfile.ZIP_DEFLATED
+    ) as zf:
         for target in include_targets:
             if not target.exists():
                 continue
@@ -161,7 +166,14 @@ def _capture_kg_metrics(root_resolved: Path) -> dict[str, Any] | None:
             return _checker.capture_metrics()
         finally:
             _kg_engine.close()
-    except (ImportError, OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+    except (
+        ImportError,
+        OSError,
+        sqlite3.Error,
+        ValueError,
+        TypeError,
+        KeyError,
+    ) as exc:
         logger.warning("KG metrics capture failed: %s", exc)
         return None
 
@@ -183,7 +195,10 @@ def create_signed_snapshot(
 
     include_targets = targets if targets is not None else _default_targets(root)
     file_count, archived_files = _collect_snapshot_files(
-        include_targets, snapshot_path, snapshot_dir, root_resolved,
+        include_targets,
+        snapshot_path,
+        snapshot_dir,
+        root_resolved,
     )
 
     digest, signature = _sign_snapshot(snapshot_path, root)
@@ -202,7 +217,9 @@ def create_signed_snapshot(
     if kg_metrics is not None:
         metadata["kg_metrics"] = kg_metrics
 
-    metadata_path.write_text(json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8")
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=True, indent=2), encoding="utf-8"
+    )
     signature_path.write_text(signature, encoding="utf-8")
 
     try:
@@ -293,7 +310,9 @@ def verify_signed_snapshot(root: Path, snapshot_path: Path) -> SnapshotVerificat
     )
 
 
-def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note: str = "nightly") -> MemoryMaintenanceReport:
+def run_memory_maintenance(
+    root: Path, *, keep_recent: int = 1800, snapshot_note: str = "nightly"
+) -> MemoryMaintenanceReport:
     from jarvis_engine.brain_memory import brain_compact, brain_regression_report
 
     compact_result = brain_compact(root, keep_recent=keep_recent)
@@ -307,7 +326,9 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
         if snapshot_dir.exists():
             # Find most recent snapshot metadata with kg_metrics (skip the one we just created)
             prev_kg_metrics = None
-            meta_files = sorted(snapshot_dir.glob("brain-snapshot-*.json"), reverse=True)
+            meta_files = sorted(
+                snapshot_dir.glob("brain-snapshot-*.json"), reverse=True
+            )
             from jarvis_engine._shared import load_json_file
 
             for meta_file in meta_files:
@@ -321,7 +342,9 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                     break
 
             # Load current KG metrics from the snapshot we just created
-            current_meta = load_json_file(snapshot.metadata_path, {}, expected_type=dict)
+            current_meta = load_json_file(
+                snapshot.metadata_path, {}, expected_type=dict
+            )
             current_kg_metrics = current_meta.get("kg_metrics")
 
             if current_kg_metrics:
@@ -330,16 +353,27 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
                 from jarvis_engine.memory.engine import MemoryEngine
 
                 from jarvis_engine._shared import memory_db_path as _memory_db_path
+
                 db_path = _memory_db_path(root)
                 if db_path.exists():
                     _kg_engine = MemoryEngine(db_path)
                     try:
                         _kg = KnowledgeGraph(_kg_engine)
                         _checker = RegressionChecker(_kg)
-                        kg_regression = _checker.compare(prev_kg_metrics, current_kg_metrics)
+                        kg_regression = _checker.compare(
+                            prev_kg_metrics, current_kg_metrics
+                        )
                     finally:
                         _kg_engine.close()
-    except (ImportError, OSError, sqlite3.Error, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+    except (
+        ImportError,
+        OSError,
+        sqlite3.Error,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ) as exc:
         logger.warning("KG regression comparison failed: %s", exc)
 
     report = {
@@ -360,7 +394,11 @@ def run_memory_maintenance(root: Path, *, keep_recent: int = 1800, snapshot_note
 
     maintenance_dir = root / ".planning" / "brain" / "maintenance"
     maintenance_dir.mkdir(parents=True, exist_ok=True)
-    out_path = maintenance_dir / f"maintenance-{datetime.now(UTC).strftime('%Y%m%d')}.json"
-    out_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
+    out_path = (
+        maintenance_dir / f"maintenance-{datetime.now(UTC).strftime('%Y%m%d')}.json"
+    )
+    out_path.write_text(
+        json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8"
+    )
     report["report_path"] = str(out_path)
     return report

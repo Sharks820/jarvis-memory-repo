@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime
-from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -142,8 +141,10 @@ def _load_targets(root: Path) -> list[dict[str, Any]]:
                 continue
             values.append(
                 {
-                    "id": str(item.get("id", "")).strip() or f"target_{len(values) + 1}",
-                    "name": str(item.get("name", "")).strip() or f"Target {len(values) + 1}",
+                    "id": str(item.get("id", "")).strip()
+                    or f"target_{len(values) + 1}",
+                    "name": str(item.get("name", "")).strip()
+                    or f"Target {len(values) + 1}",
                     "target_score_pct": max(0.0, min(100.0, score_value)),
                 }
             )
@@ -209,7 +210,12 @@ def _score_slope_per_run(rows: list[dict[str, Any]], window: int = 12) -> float:
     return (end - start) / float(len(sample) - 1)
 
 
-def _estimate_eta(latest_score: float, slope_per_run: float, avg_days_per_run: float, target_score: float) -> ETAEstimate:
+def _estimate_eta(
+    latest_score: float,
+    slope_per_run: float,
+    avg_days_per_run: float,
+    target_score: float,
+) -> ETAEstimate:
     if latest_score >= target_score:
         return {"runs": 0, "days": 0.0, "status": "met"}
     if slope_per_run <= 0.0:
@@ -259,12 +265,15 @@ def _safe_learning_metrics(
     return result
 
 
-def _safe_knowledge_snapshot(kg: KnowledgeGraph | None = None, engine: MemoryEngine | None = None) -> dict[str, Any]:
+def _safe_knowledge_snapshot(
+    kg: KnowledgeGraph | None = None, engine: MemoryEngine | None = None
+) -> dict[str, Any]:
     """Capture live knowledge metrics (returns empty on failure)."""
     if kg is None and engine is None:
         return {}
     try:
         from jarvis_engine.learning.metrics import capture_knowledge_metrics
+
         return capture_knowledge_metrics(kg, engine)
     except (ImportError, AttributeError, OSError, ValueError) as exc:
         logger.debug("Knowledge snapshot capture failed: %s", exc)
@@ -272,8 +281,10 @@ def _safe_knowledge_snapshot(kg: KnowledgeGraph | None = None, engine: MemoryEng
 
 
 def _build_ranking_and_etas(
-    targets: list[dict[str, Any]], latest_score: float,
-    slope: float, avg_days: float,
+    targets: list[dict[str, Any]],
+    latest_score: float,
+    slope: float,
+    avg_days: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build the sorted ranking list and ETA entries from proxy targets."""
     ranking: list[dict[str, Any]] = [
@@ -304,19 +315,25 @@ def _build_ranking_and_etas(
                 "eta": eta,
             }
         )
-    ranking.sort(key=lambda item: _to_float(item.get("score_pct", 0.0), 0.0), reverse=True)
+    ranking.sort(
+        key=lambda item: _to_float(item.get("score_pct", 0.0), 0.0), reverse=True
+    )
     return ranking, etas
 
 
 def _check_milestone_unlocks(
-    root: Path, latest_score: float, now: str,
+    root: Path,
+    latest_score: float,
+    now: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return (new_unlocks, all_unlocked) after persisting any new milestones."""
     achievements = _load_achievements(root)
     unlocked = achievements.get("unlocked", [])
     if not isinstance(unlocked, list):
         unlocked = []
-    unlocked_ids = {str(item.get("id", "")) for item in unlocked if isinstance(item, dict)}
+    unlocked_ids = {
+        str(item.get("id", "")) for item in unlocked if isinstance(item, dict)
+    }
     new_unlocks: list[dict[str, Any]] = []
     for milestone in MILESTONES:
         milestone_score = _to_float(milestone.get("score", 0.0), 0.0)
@@ -354,7 +371,10 @@ def build_intelligence_dashboard(
     avg_days = _average_run_interval_days(history_rows, window=window)
 
     ranking, etas = _build_ranking_and_etas(
-        _load_targets(root), latest_score, slope, avg_days,
+        _load_targets(root),
+        latest_score,
+        slope,
+        avg_days,
     )
 
     now = _now_iso()
@@ -381,7 +401,9 @@ def build_intelligence_dashboard(
         "memory_regression": brain_regression_report(root),
         "knowledge_graph": _safe_kg_metrics(root),
         "gateway_audit": _safe_gateway_summary(root),
-        "learning": _safe_learning_metrics(pref_tracker, feedback_tracker, usage_tracker),
+        "learning": _safe_learning_metrics(
+            pref_tracker, feedback_tracker, usage_tracker
+        ),
         "knowledge_snapshot": _safe_knowledge_snapshot(kg, engine),
         "missions": _safe_mission_metrics(root),
         "memory_hygiene": _safe_hygiene_metrics(root),
@@ -399,6 +421,7 @@ def _safe_kg_metrics(root: Path) -> dict[str, Any]:
         from jarvis_engine.proactive.kg_metrics import load_kg_history, kg_growth_trend
         from jarvis_engine._constants import KG_METRICS_LOG
         from jarvis_engine._shared import runtime_dir
+
         history_path = runtime_dir(root) / KG_METRICS_LOG
         history = load_kg_history(history_path, limit=50)
         if history:
@@ -422,6 +445,7 @@ def _safe_mission_metrics(root: Path) -> dict[str, Any]:
     """Collect mission dashboard metrics safely."""
     try:
         from jarvis_engine.learning_missions import mission_dashboard_metrics
+
         return mission_dashboard_metrics(root)
     except (ImportError, OSError, ValueError, TypeError) as exc:
         logger.debug("Failed to collect mission metrics: %s", exc)
@@ -432,6 +456,7 @@ def _safe_hygiene_metrics(root: Path) -> dict[str, Any]:
     """Collect memory hygiene metrics safely."""
     try:
         from jarvis_engine.memory_hygiene import hygiene_dashboard_metrics
+
         return hygiene_dashboard_metrics(root)
     except (ImportError, OSError, ValueError, TypeError) as exc:
         logger.debug("Failed to collect hygiene metrics: %s", exc)
@@ -442,6 +467,7 @@ def _safe_diagnostics(root: Path) -> dict[str, Any]:
     """Run quick diagnostic scan safely (returns empty on failure)."""
     try:
         from jarvis_engine.self_diagnosis import DiagnosticEngine
+
         diag = DiagnosticEngine(root)
         issues = diag.run_quick_scan()
         score = diag.health_score(issues)
@@ -462,6 +488,7 @@ def _safe_gateway_summary(root: Path) -> dict[str, Any]:
         from jarvis_engine._constants import GATEWAY_AUDIT_LOG
         from jarvis_engine._shared import runtime_dir
         from jarvis_engine.gateway.audit import GatewayAudit
+
         audit_path = runtime_dir(root) / GATEWAY_AUDIT_LOG
         audit = GatewayAudit(audit_path)
         return audit.summary(hours=24)

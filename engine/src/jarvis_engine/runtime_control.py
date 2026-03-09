@@ -208,9 +208,9 @@ def capture_runtime_resource_snapshot(root: Path) -> ResourceSnapshot:
     conversation_buffer_mb = _file_size_mb(
         root / ".planning" / "brain" / "conversation_history.json"
     )
-    mission_state_mb = _file_size_mb(root / ".planning" / "missions.json") + _dir_size_mb(
-        root / ".planning" / "missions"
-    )
+    mission_state_mb = _file_size_mb(
+        root / ".planning" / "missions.json"
+    ) + _dir_size_mb(root / ".planning" / "missions")
 
     current = {
         "embedding_cache_mb": embedding_cache_mb,
@@ -251,17 +251,23 @@ def capture_runtime_resource_snapshot(root: Path) -> ResourceSnapshot:
     }
 
 
-def write_resource_pressure_state(root: Path, snapshot: dict[str, Any]) -> dict[str, Any]:
+def write_resource_pressure_state(
+    root: Path, snapshot: dict[str, Any]
+) -> dict[str, Any]:
     payload = snapshot if isinstance(snapshot, dict) else {}
     _atomic_write_json(resource_pressure_path(root), payload)
     return payload
 
 
-def recommend_daemon_sleep(base_sleep_s: int, snapshot: dict[str, Any]) -> DaemonSleepRecommendation:
+def recommend_daemon_sleep(
+    base_sleep_s: int, snapshot: dict[str, Any]
+) -> DaemonSleepRecommendation:
     level = str(snapshot.get("pressure_level", "none")).lower()
     throttle = snapshot.get("throttle", {})
     mild_scale = float(throttle.get("mild_scale", _DEFAULT_THROTTLE["mild_scale"]))
-    severe_scale = float(throttle.get("severe_scale", _DEFAULT_THROTTLE["severe_scale"]))
+    severe_scale = float(
+        throttle.get("severe_scale", _DEFAULT_THROTTLE["severe_scale"])
+    )
     max_sleep = int(throttle.get("max_sleep_s", _DEFAULT_THROTTLE["max_sleep_s"]))
     max_sleep = max(60, max_sleep)
     adjusted = int(base_sleep_s)

@@ -68,10 +68,14 @@ class OrbAnimationMixin:
         # Scanning sweep rotation
         sweep_angle = (t * 120) % 360
         try:
-            self.orb_canvas.coords(self.orb_id, cx - pulse, cy - pulse, cx + pulse, cy + pulse)
+            self.orb_canvas.coords(
+                self.orb_id, cx - pulse, cy - pulse, cx + pulse, cy + pulse
+            )
             self.orb_canvas.itemconfig(self.orb_id, fill=color)
             if self._orb_sweep is not None:
-                self.orb_canvas.itemconfig(self._orb_sweep, start=sweep_angle, outline=color)
+                self.orb_canvas.itemconfig(
+                    self._orb_sweep, start=sweep_angle, outline=color
+                )
             self._orb_after_id = self.after(33, self._animate_orb)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
             logger.debug("Orb animation stopped (widget may be destroyed)")
@@ -93,7 +97,11 @@ class OrbAnimationMixin:
         size = self._launcher_size
         # Restore saved launcher position or default to bottom-right
         lx, ly = self.cfg.launcher_x, self.cfg.launcher_y
-        if lx is not None and ly is not None and _is_position_on_screen(lx, ly, launcher):
+        if (
+            lx is not None
+            and ly is not None
+            and _is_position_on_screen(lx, ly, launcher)
+        ):
             x, y = lx, ly
         else:
             screen_w = launcher.winfo_screenwidth()
@@ -114,32 +122,68 @@ class OrbAnimationMixin:
         canvas.pack(fill=tk.BOTH, expand=True)
         cx, cy = size / 2, size / 2
         # Outer glow halo (breathing) — thicker for visibility
-        self._l_glow = canvas.create_oval(2, 2, size - 2, size - 2, outline="#0d3d36", width=3)
+        self._l_glow = canvas.create_oval(
+            2, 2, size - 2, size - 2, outline="#0d3d36", width=3
+        )
         # Arc 4: outermost decorative ring, thin, slow counter-rotate
         self._l_arc4 = canvas.create_arc(
-            1, 1, size - 1, size - 1, start=0, extent=60,
-            style=tk.ARC, outline="#2dd4bf", width=1,
+            1,
+            1,
+            size - 1,
+            size - 1,
+            start=0,
+            extent=60,
+            style=tk.ARC,
+            outline="#2dd4bf",
+            width=1,
         )
         # Rotating arc 1: outer ring, 240deg extent — thicker
         self._l_arc1 = canvas.create_arc(
-            6, 6, size - 6, size - 6, start=0, extent=240,
-            style=tk.ARC, outline="#2dd4bf", width=3,
+            6,
+            6,
+            size - 6,
+            size - 6,
+            start=0,
+            extent=240,
+            style=tk.ARC,
+            outline="#2dd4bf",
+            width=3,
         )
         # Rotating arc 2: mid ring, 160deg extent (counter-rotating)
         self._l_arc2 = canvas.create_arc(
-            14, 14, size - 14, size - 14, start=120, extent=160,
-            style=tk.ARC, outline="#0ea5e9", width=2,
+            14,
+            14,
+            size - 14,
+            size - 14,
+            start=120,
+            extent=160,
+            style=tk.ARC,
+            outline="#0ea5e9",
+            width=2,
         )
         # Rotating arc 3: inner fast ring, 90deg (processing indicator, hidden by default)
         self._l_arc3 = canvas.create_arc(
-            21, 21, size - 21, size - 21, start=0, extent=90,
-            style=tk.ARC, outline="#f59e0b", width=2, state=tk.HIDDEN,
+            21,
+            21,
+            size - 21,
+            size - 21,
+            start=0,
+            extent=90,
+            style=tk.ARC,
+            outline="#f59e0b",
+            width=2,
+            state=tk.HIDDEN,
         )
         # Core circle (breathing) with outline ring
         core_pad = 24
         self._l_core = canvas.create_oval(
-            core_pad, core_pad, size - core_pad, size - core_pad,
-            fill="#0f766e", outline="#2dd4bf", width=1,
+            core_pad,
+            core_pad,
+            size - core_pad,
+            size - core_pad,
+            fill="#0f766e",
+            outline="#2dd4bf",
+            width=1,
         )
         # Orbiting particles (5 dots at different orbit radii for richer effect)
         self._l_particles = []
@@ -147,7 +191,9 @@ class OrbAnimationMixin:
             pid = canvas.create_oval(0, 0, 5, 5, fill="#5eead4", outline="")
             self._l_particles.append(pid)
         # Center letter — larger, bolder
-        canvas.create_text(cx, cy, text="J", fill="#ecfeff", font=("Segoe UI", 20, "bold"))
+        canvas.create_text(
+            cx, cy, text="J", fill="#ecfeff", font=("Segoe UI", 20, "bold")
+        )
 
         canvas.bind("<ButtonPress-1>", self._launcher_start_drag)
         canvas.bind("<B1-Motion>", self._launcher_drag)
@@ -193,7 +239,9 @@ class OrbAnimationMixin:
         try:
             self.launcher_win.geometry(f"+{x}+{y}")
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
-            logger.debug("Failed to apply snapped launcher geometry (widget may be destroyed)")
+            logger.debug(
+                "Failed to apply snapped launcher geometry (widget may be destroyed)"
+            )
         self.cfg.launcher_x = x
         self.cfg.launcher_y = y
         try:
@@ -256,10 +304,14 @@ class OrbAnimationMixin:
             if state == "processing":
                 a3 = (t * 180 * speed) % 360
                 ext3 = 70 + 30 * math.sin(t * 3.0 * speed)
-                self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=ext3, state=tk.NORMAL)
+                self.launcher_canvas.itemconfig(
+                    self._l_arc3, start=a3, extent=ext3, state=tk.NORMAL
+                )
             elif state == "listening":
                 a3 = (t * 80 * speed) % 360
-                self.launcher_canvas.itemconfig(self._l_arc3, start=a3, extent=60, state=tk.NORMAL)
+                self.launcher_canvas.itemconfig(
+                    self._l_arc3, start=a3, extent=60, state=tk.NORMAL
+                )
             else:
                 self.launcher_canvas.itemconfig(self._l_arc3, state=tk.HIDDEN)
 
@@ -284,9 +336,13 @@ class OrbAnimationMixin:
         if self._l_glow is not None:
             glow_pulse = 0.5 + 0.5 * math.sin(t * 1.5 * speed)
             gpad = 1 + glow_pulse * 3
-            self.launcher_canvas.coords(self._l_glow, gpad, gpad, size - gpad, size - gpad)
+            self.launcher_canvas.coords(
+                self._l_glow, gpad, gpad, size - gpad, size - gpad
+            )
 
-    def _apply_launcher_colors(self, colors: tuple[str, str, str, str, str, str]) -> None:
+    def _apply_launcher_colors(
+        self, colors: tuple[str, str, str, str, str, str]
+    ) -> None:
         """Apply a color palette to all launcher canvas elements."""
         assert self.launcher_canvas is not None
         arc1_c, arc2_c, core_c, particle_c, glow_c, arc4_c = colors

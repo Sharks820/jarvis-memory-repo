@@ -23,11 +23,12 @@ logger = logging.getLogger(__name__)
 # Circuit breaker states
 # ---------------------------------------------------------------------------
 
+
 class CircuitState(Enum):
     """Three-state circuit breaker."""
 
-    CLOSED = "closed"        # Normal — requests flow through
-    OPEN = "open"            # Failing — skip this provider
+    CLOSED = "closed"  # Normal — requests flow through
+    OPEN = "open"  # Failing — skip this provider
     HALF_OPEN = "half_open"  # Testing — allow one probe request
 
 
@@ -37,9 +38,9 @@ class CircuitState(Enum):
 
 #: (consecutive_failures_threshold, cooldown_seconds)
 _BACKOFF_TIERS: list[tuple[int, float]] = [
-    (3, 30.0),     # After 3 failures: wait 30s
-    (5, 120.0),    # After 5 failures: wait 2 min
-    (10, 600.0),   # After 10 failures: wait 10 min
+    (3, 30.0),  # After 3 failures: wait 30s
+    (5, 120.0),  # After 5 failures: wait 2 min
+    (10, 600.0),  # After 10 failures: wait 10 min
 ]
 
 
@@ -56,6 +57,7 @@ def _cooldown_for_failures(consecutive: int) -> float:
 # ProviderHealth
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProviderHealth:
     """Real-time health metrics for a single LLM provider."""
@@ -66,12 +68,12 @@ class ProviderHealth:
     total_failures: int = 0
     consecutive_failures: int = 0
     avg_latency_ms: float = 0.0
-    last_success_ts: float = 0.0    # time.monotonic()
-    last_failure_ts: float = 0.0    # time.monotonic()
-    last_success_iso: str = ""      # ISO timestamp for display
-    last_failure_iso: str = ""      # ISO timestamp for display
+    last_success_ts: float = 0.0  # time.monotonic()
+    last_failure_ts: float = 0.0  # time.monotonic()
+    last_success_iso: str = ""  # ISO timestamp for display
+    last_failure_iso: str = ""  # ISO timestamp for display
     circuit_state: CircuitState = CircuitState.CLOSED
-    cooldown_until: float = 0.0     # time.monotonic() value
+    cooldown_until: float = 0.0  # time.monotonic() value
 
     @property
     def success_rate(self) -> float:
@@ -127,6 +129,7 @@ class ProviderHealthTracker:
 
     def _now_iso(self) -> str:
         from jarvis_engine._shared import now_iso
+
         return now_iso()
 
     def record_success(self, provider: str, latency_ms: float) -> None:
@@ -150,7 +153,9 @@ class ProviderHealthTracker:
             if h.circuit_state == CircuitState.HALF_OPEN:
                 h.circuit_state = CircuitState.CLOSED
                 h.cooldown_until = 0.0
-                logger.info("Circuit breaker for %s: HALF_OPEN -> CLOSED (recovered)", provider)
+                logger.info(
+                    "Circuit breaker for %s: HALF_OPEN -> CLOSED (recovered)", provider
+                )
 
     def record_failure(self, provider: str) -> None:
         """Record a failed request for a provider."""
@@ -168,7 +173,9 @@ class ProviderHealthTracker:
                 h.cooldown_until = time.monotonic() + cooldown
                 logger.warning(
                     "Circuit breaker for %s: -> OPEN (consecutive_failures=%d, cooldown=%.0fs)",
-                    provider, h.consecutive_failures, cooldown,
+                    provider,
+                    h.consecutive_failures,
+                    cooldown,
                 )
             elif h.circuit_state == CircuitState.HALF_OPEN:
                 # Failed during probe — back to OPEN with new cooldown
@@ -176,7 +183,8 @@ class ProviderHealthTracker:
                 new_cooldown = _cooldown_for_failures(h.consecutive_failures)
                 h.cooldown_until = time.monotonic() + max(new_cooldown, 30.0)
                 logger.warning(
-                    "Circuit breaker for %s: HALF_OPEN -> OPEN (probe failed)", provider,
+                    "Circuit breaker for %s: HALF_OPEN -> OPEN (probe failed)",
+                    provider,
                 )
 
     def should_skip(self, provider: str) -> bool:
@@ -201,7 +209,8 @@ class ProviderHealthTracker:
                 h.circuit_state = CircuitState.HALF_OPEN
                 h.reset_stats()  # Clear poisoned history so recovery is possible
                 logger.info(
-                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired, stats reset)", provider,
+                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired, stats reset)",
+                    provider,
                 )
                 return False  # Allow one probe
 
@@ -226,7 +235,8 @@ class ProviderHealthTracker:
                 h.circuit_state = CircuitState.HALF_OPEN
                 h.reset_stats()
                 logger.info(
-                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired via is_healthy)", provider,
+                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired via is_healthy)",
+                    provider,
                 )
 
             if h.total_requests >= 4 and h.success_rate < _MIN_SUCCESS_RATE:
@@ -271,6 +281,7 @@ class ProviderHealthTracker:
         Score = success_rate * (1 / (1 + avg_latency_ms/1000))
         Unknown providers get score 0.5 (neutral).
         """
+
         def _score(provider: str) -> float:
             with self._lock:
                 h = self._providers.get(provider)

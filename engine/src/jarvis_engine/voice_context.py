@@ -68,6 +68,7 @@ def _retrieve_memories_legacy(
     Returns a list of summary strings.  Returns empty list on failure.
     """
     import jarvis_engine.voice_pipeline as _vp
+
     repo_root = _vp.repo_root
 
     try:
@@ -112,11 +113,13 @@ def _inject_kg_facts(
         kg = bus.ctx.kg
         if kg is None:
             from jarvis_engine.knowledge.graph import KnowledgeGraph
+
             kg = KnowledgeGraph(engine)
 
         # Extract keywords from query for fact lookup
         words = [
-            w for w in re.findall(r"[a-zA-Z]{3,}", query.lower())
+            w
+            for w in re.findall(r"[a-zA-Z]{3,}", query.lower())
             if w not in _HARVEST_STOP_WORDS
         ][:10]
         if not words:
@@ -136,7 +139,12 @@ def _inject_kg_facts(
         # Semantic KG search (embedding-based) -- complements keyword FTS5
         if embed_service is not None:
             _inject_semantic_facts(
-                kg, embed_service, query, max_fact_items, fact_lines, seen_node_ids,
+                kg,
+                embed_service,
+                query,
+                max_fact_items,
+                fact_lines,
+                seen_node_ids,
             )
 
     except (ImportError, OSError, RuntimeError, KeyError) as exc:
@@ -156,8 +164,10 @@ def _inject_semantic_facts(
     """Append semantically-matched KG facts, deduplicating against *seen_node_ids*."""
     try:
         sem_facts = kg.query_relevant_facts_semantic(
-            query, embed_service=embed_service,
-            limit=max_fact_items, min_confidence=0.5,
+            query,
+            embed_service=embed_service,
+            limit=max_fact_items,
+            min_confidence=0.5,
         )
         for fact in sem_facts:
             nid = fact.get("node_id", "")
@@ -208,7 +218,7 @@ def _query_cross_branch(
             tgt_branch = conn.get("target_branch", "unknown")
             relation = conn.get("relation", "related")
             lines.append(
-                f"[{src_branch}] \"{src}\" relates to [{tgt_branch}] \"{tgt}\" via {relation}"
+                f'[{src_branch}] "{src}" relates to [{tgt_branch}] "{tgt}" via {relation}'
             )
         return lines
     except (ImportError, OSError, RuntimeError, ValueError) as exc:
@@ -264,7 +274,10 @@ def _build_smart_context(
     memory_lines: list[str] = []
     if engine is not None and embed_service is not None:
         memory_lines = _retrieve_memories_hybrid(
-            engine, embed_service, query, max_memory_items,
+            engine,
+            embed_service,
+            query,
+            max_memory_items,
         )
     if not memory_lines:
         memory_lines = _retrieve_memories_legacy(query, max_memory_items)
@@ -274,7 +287,11 @@ def _build_smart_context(
     kg = None
     if engine is not None:
         fact_lines, kg = _inject_kg_facts(
-            bus, engine, embed_service, query, max_fact_items,
+            bus,
+            engine,
+            embed_service,
+            query,
+            max_fact_items,
         )
 
     # Cross-branch connections
@@ -301,6 +318,7 @@ def _build_system_parts(
     """
     from jarvis_engine.persona import get_persona_prompt
     import jarvis_engine.voice_pipeline as _vp
+
     repo_root = _vp.repo_root
     persona = load_persona_config(repo_root())
     parts = [_current_datetime_prompt_line(), get_persona_prompt(persona)]

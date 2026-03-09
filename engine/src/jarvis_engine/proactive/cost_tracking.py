@@ -18,21 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 # Functional-form TypedDict because keys like "7d_local_pct" start with a digit.
-CostSnapshot = TypedDict("CostSnapshot", {
-    "date": str,
-    # 7-day window
-    "7d_local_pct": float,
-    "7d_cloud_cost_usd": float,
-    "7d_failed_count": int,
-    "7d_failed_cost_usd": float,
-    "7d_total_queries": int,
-    # 30-day window
-    "30d_local_pct": float,
-    "30d_cloud_cost_usd": float,
-    "30d_failed_count": int,
-    "30d_failed_cost_usd": float,
-    "30d_total_queries": int,
-})
+CostSnapshot = TypedDict(
+    "CostSnapshot",
+    {
+        "date": str,
+        # 7-day window
+        "7d_local_pct": float,
+        "7d_cloud_cost_usd": float,
+        "7d_failed_count": int,
+        "7d_failed_cost_usd": float,
+        "7d_total_queries": int,
+        # 30-day window
+        "30d_local_pct": float,
+        "30d_cloud_cost_usd": float,
+        "30d_failed_count": int,
+        "30d_failed_cost_usd": float,
+        "30d_total_queries": int,
+    },
+)
 
 
 class CostTrend(TypedDict):

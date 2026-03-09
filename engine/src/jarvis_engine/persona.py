@@ -67,11 +67,11 @@ def get_persona_prompt(cfg: "PersonaConfig") -> str:
     """
     if cfg.enabled:
         return (
-            PERSONA_BASE_PROMPT.rstrip()
-            + " You are witty, knowledgeable. "
+            PERSONA_BASE_PROMPT.rstrip() + " You are witty, knowledgeable. "
             "Never repeat the same phrases. Vary your language."
         )
     return PERSONA_DISABLED_PROMPT
+
 
 # Pre-computed reverse map: branch -> tone profile name
 _BRANCH_TO_TONE: dict[str, str] = {}
@@ -126,6 +126,7 @@ class PersonaConfig:
 
 def _persona_path(root: Path) -> Path:
     from jarvis_engine._shared import runtime_dir
+
     return runtime_dir(root) / "persona.json"
 
 
@@ -179,10 +180,14 @@ def save_persona_config(
     else:
         humor_val = current.humor_level
     payload = {
-        "mode": current.mode if mode is None else str(mode).strip()[:64] or current.mode,
+        "mode": current.mode
+        if mode is None
+        else str(mode).strip()[:64] or current.mode,
         "enabled": current.enabled if enabled is None else bool(enabled),
         "humor_level": humor_val,
-        "style": current.style if style is None else str(style).strip()[:80] or current.style,
+        "style": current.style
+        if style is None
+        else str(style).strip()[:80] or current.style,
         "updated_utc": _now_iso(),
     }
     _atomic_write_json(_persona_path(root), payload)

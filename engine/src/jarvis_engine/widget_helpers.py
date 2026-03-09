@@ -34,7 +34,9 @@ from urllib.request import Request, urlopen
 
 from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT
 from jarvis_engine._shared import env_int as _env_int
-from jarvis_engine._shared import win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs
+from jarvis_engine._shared import (
+    win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,10 @@ _DPAPI_AVAILABLE = sys.platform == "win32"
 
 
 class _DATA_BLOB(ctypes.Structure):
-    _fields_ = [("cbData", ctypes.wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+    _fields_ = [
+        ("cbData", ctypes.wintypes.DWORD),
+        ("pbData", ctypes.POINTER(ctypes.c_char)),
+    ]
 
 
 def _dpapi_encrypt(plaintext: str) -> str:
@@ -64,11 +69,11 @@ def _dpapi_encrypt(plaintext: str) -> str:
     output_blob = _DATA_BLOB()
     if not ctypes.windll.crypt32.CryptProtectData(  # type: ignore[attr-defined]
         ctypes.byref(input_blob),
-        None,   # description (optional)
-        None,   # optional entropy
-        None,   # reserved
-        None,   # prompt struct
-        0,      # flags
+        None,  # description (optional)
+        None,  # optional entropy
+        None,  # reserved
+        None,  # prompt struct
+        0,  # flags
         ctypes.byref(output_blob),
     ):
         raise OSError("CryptProtectData failed")
@@ -88,15 +93,17 @@ def _dpapi_decrypt(b64_cipher: str) -> str:
     if not _DPAPI_AVAILABLE:
         raise RuntimeError("DPAPI is only available on Windows")
     encrypted = base64.b64decode(b64_cipher)
-    input_blob = _DATA_BLOB(len(encrypted), ctypes.create_string_buffer(encrypted, len(encrypted)))
+    input_blob = _DATA_BLOB(
+        len(encrypted), ctypes.create_string_buffer(encrypted, len(encrypted))
+    )
     output_blob = _DATA_BLOB()
     if not ctypes.windll.crypt32.CryptUnprotectData(  # type: ignore[attr-defined]
         ctypes.byref(input_blob),
-        None,   # description out
-        None,   # optional entropy
-        None,   # reserved
-        None,   # prompt struct
-        0,      # flags
+        None,  # description out
+        None,  # optional entropy
+        None,  # reserved
+        None,  # prompt struct
+        0,  # flags
         ctypes.byref(output_blob),
     ):
         raise OSError("CryptUnprotectData failed")
@@ -108,6 +115,7 @@ def _dpapi_decrypt(b64_cipher: str) -> str:
 
 
 # WidgetConfig dataclass
+
 
 @dataclass
 class WidgetConfig:
@@ -124,8 +132,10 @@ class WidgetConfig:
 
 # Path helpers
 
+
 def _repo_root() -> Path:
     from jarvis_engine.config import repo_root
+
     return repo_root()
 
 
@@ -142,6 +152,7 @@ def _widget_cfg_path(root: Path) -> Path:
 
 
 # Config load / save
+
 
 def _load_mobile_api_cfg(root: Path) -> dict[str, str]:
     path = _mobile_api_cfg_path(root)
@@ -172,7 +183,9 @@ def _normalize_raw_config(raw: dict[str, Any]) -> None:
     raw.setdefault("device_id", "galaxy_s25_primary")
 
 
-def _resolve_dpapi_field(raw: dict[str, Any], field: str, fallback: str = "") -> tuple[str, bool]:
+def _resolve_dpapi_field(
+    raw: dict[str, Any], field: str, fallback: str = ""
+) -> tuple[str, bool]:
     """Resolve a DPAPI-protected or plaintext legacy credential field.
 
     Returns (resolved_value, needs_migration) where needs_migration is True
@@ -190,7 +203,8 @@ def _resolve_dpapi_field(raw: dict[str, Any], field: str, fallback: str = "") ->
 
 
 def _resolve_credentials(
-    raw: dict[str, Any], mobile: dict[str, str],
+    raw: dict[str, Any],
+    mobile: dict[str, str],
 ) -> tuple[str, str, str, bool, list[str]]:
     """Resolve master_password, token, and signing_key from config.
 
@@ -205,7 +219,9 @@ def _resolve_credentials(
         try:
             master_password = _dpapi_decrypt(b64)
         except (OSError, ValueError, RuntimeError):
-            logger.warning("Failed to decrypt protected credential via DPAPI; value unavailable")
+            logger.warning(
+                "Failed to decrypt protected credential via DPAPI; value unavailable"
+            )
     elif str(raw.get("master_password", "")).strip():
         master_password = str(raw.get("master_password", ""))
         if master_password:
@@ -216,7 +232,9 @@ def _resolve_credentials(
     token, token_needs = _resolve_dpapi_field(raw, "token", mobile.get("token", ""))
     if token_needs:
         migration_fields.append("token")
-    signing_key, sk_needs = _resolve_dpapi_field(raw, "signing_key", mobile.get("signing_key", ""))
+    signing_key, sk_needs = _resolve_dpapi_field(
+        raw, "signing_key", mobile.get("signing_key", "")
+    )
     if sk_needs:
         migration_fields.append("signing_key")
 
@@ -228,16 +246,15 @@ def _resolve_base_url(raw: dict[str, Any], root: Path) -> tuple[str, str, str]:
 
     Returns (base_url, saved_url, default_base) for stale-IP comparison.
     """
-    tls_available = (
-        (_security_dir(root) / "tls_cert.pem").exists()
-        and (_security_dir(root) / "tls_key.pem").exists()
-    )
+    tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (
+        _security_dir(root) / "tls_key.pem"
+    ).exists()
     default_scheme = "https" if tls_available else "http"
     default_base = f"{default_scheme}://127.0.0.1:{_DEFAULT_PORT}"
 
     saved_url = str(raw.get("base_url", "")).strip()
     if saved_url and tls_available and saved_url.startswith("http://"):
-        saved_url = "https://" + saved_url[len("http://"):]
+        saved_url = "https://" + saved_url[len("http://") :]
     base_url = saved_url or default_base
 
     return base_url, saved_url, default_base
@@ -262,10 +279,18 @@ def _auto_heal_stale_ip(base_url: str, default_scheme: str) -> str:
         with urlopen(Request(url=probe_url, method="GET"), timeout=3, context=ctx):
             pass  # Saved URL works fine
     except (OSError, ValueError) as exc:
-        logger.debug("Saved base_url %s unreachable: %s -- trying localhost", probe_url, exc)
+        logger.debug(
+            "Saved base_url %s unreachable: %s -- trying localhost", probe_url, exc
+        )
         try:
-            ctx_l = _make_ssl_context_for_self_signed() if default_scheme == "https" else None
-            with urlopen(Request(url=local_url, method="GET"), timeout=3, context=ctx_l):
+            ctx_l = (
+                _make_ssl_context_for_self_signed()
+                if default_scheme == "https"
+                else None
+            )
+            with urlopen(
+                Request(url=local_url, method="GET"), timeout=3, context=ctx_l
+            ):
                 stale = True
         except (OSError, ValueError) as exc2:
             logger.debug("Localhost fallback %s also unreachable: %s", local_url, exc2)
@@ -298,15 +323,21 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     _normalize_raw_config(raw)
 
     # Resolve credentials (master_password, token, signing_key)
-    master_password, resolved_token, resolved_signing_key, needs_migration, needs_migration_fields = (
-        _resolve_credentials(raw, mobile)
-    )
+    (
+        master_password,
+        resolved_token,
+        resolved_signing_key,
+        needs_migration,
+        needs_migration_fields,
+    ) = _resolve_credentials(raw, mobile)
 
     # Resolve base URL with TLS detection and scheme upgrade
     _base_url, _saved_url, _default_base = _resolve_base_url(raw, root)
 
     # Auto-heal stale non-localhost IPs
-    tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (_security_dir(root) / "tls_key.pem").exists()
+    tls_available = (_security_dir(root) / "tls_cert.pem").exists() and (
+        _security_dir(root) / "tls_key.pem"
+    ).exists()
     _default_scheme = "https" if tls_available else "http"
     _base_url = _auto_heal_stale_ip(_base_url, _default_scheme)
 
@@ -314,7 +345,8 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
         base_url=_base_url,
         token=resolved_token,
         signing_key=resolved_signing_key,
-        device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip() or "galaxy_s25_primary",
+        device_id=str(raw.get("device_id", "galaxy_s25_primary")).strip()
+        or "galaxy_s25_primary",
         master_password=master_password,
         panel_x=_int_or_none(raw, "panel_x"),
         panel_y=_int_or_none(raw, "panel_y"),
@@ -323,14 +355,16 @@ def _load_widget_cfg(root: Path) -> WidgetConfig:
     )
 
     # Migrate plaintext secrets -> DPAPI-protected; persist auto-healed base_url
-    _url_healed = (_base_url != (_saved_url or _default_base))
+    _url_healed = _base_url != (_saved_url or _default_base)
     if needs_migration or needs_migration_fields or _url_healed:
         try:
             _save_widget_cfg(root, cfg)
             if _url_healed:
                 logger.info("Persisted auto-healed base_url to config")
             if needs_migration or needs_migration_fields:
-                logger.info("Migrated legacy plaintext credentials to DPAPI-protected storage")
+                logger.info(
+                    "Migrated legacy plaintext credentials to DPAPI-protected storage"
+                )
         except (OSError, ValueError, TypeError):
             logger.warning("Failed to save config migration; will retry on next save")
 
@@ -353,7 +387,9 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
             try:
                 payload[f"{field}_protected"] = _dpapi_encrypt(value)
             except (OSError, ValueError, RuntimeError) as exc:
-                logger.debug("DPAPI encrypt failed for %s, storing plaintext: %s", field, exc)
+                logger.debug(
+                    "DPAPI encrypt failed for %s, storing plaintext: %s", field, exc
+                )
                 payload[field] = value
 
     # Persist window positions if set
@@ -371,7 +407,9 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
         try:
             payload["master_password_protected"] = _dpapi_encrypt(cfg.master_password)
         except (OSError, ValueError, RuntimeError):
-            logger.warning("DPAPI encryption unavailable; storing legacy credential in plaintext")
+            logger.warning(
+                "DPAPI encryption unavailable; storing legacy credential in plaintext"
+            )
             payload["master_password"] = cfg.master_password
     # Never write the plaintext key when DPAPI succeeds (no "master_password" key at all)
 
@@ -380,11 +418,16 @@ def _save_widget_cfg(root: Path, cfg: WidgetConfig) -> None:
 
 # HTTP / signing helpers
 
-def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -> dict[str, str]:
+
+def _signed_headers(
+    token: str, signing_key: str, body: bytes, device_id: str
+) -> dict[str, str]:
     ts = str(int(time.time()))
     nonce = uuid.uuid4().hex
     signing_material = ts.encode("utf-8") + b"\n" + nonce.encode("utf-8") + b"\n" + body
-    sig = hmac.new(signing_key.encode("utf-8"), signing_material, hashlib.sha256).hexdigest()
+    sig = hmac.new(
+        signing_key.encode("utf-8"), signing_material, hashlib.sha256
+    ).hexdigest()
     headers = {
         "Authorization": f"Bearer {token}",
         "X-Jarvis-Timestamp": ts,
@@ -403,6 +446,7 @@ _CGNAT_NETWORK = _ipaddress_mod.ip_network("100.64.0.0/10")
 
 def _is_safe_widget_base_url(url: str) -> bool:
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     host = (parsed.hostname or "").strip().lower()
     if parsed.scheme == "https":
@@ -444,6 +488,7 @@ def _make_ssl_context_for_self_signed() -> ssl.SSLContext:
 def _get_ssl_context(url: str) -> ssl.SSLContext | None:
     """Return an SSL context if the URL is HTTPS, else None."""
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     if parsed.scheme == "https":
         return _make_ssl_context_for_self_signed()
@@ -452,27 +497,43 @@ def _get_ssl_context(url: str) -> ssl.SSLContext | None:
 
 def _http_timeout_seconds(path: str) -> int:
     """Return HTTP timeout for a widget API path."""
-    default_timeout = _env_int("JARVIS_WIDGET_HTTP_TIMEOUT_S", 60, minimum=10, maximum=600)
-    long_timeout = _env_int("JARVIS_WIDGET_COMMAND_TIMEOUT_S", 300, minimum=30, maximum=900)
+    default_timeout = _env_int(
+        "JARVIS_WIDGET_HTTP_TIMEOUT_S", 60, minimum=10, maximum=600
+    )
+    long_timeout = _env_int(
+        "JARVIS_WIDGET_COMMAND_TIMEOUT_S", 300, minimum=30, maximum=900
+    )
     normalized = (path or "").strip().lower()
     if normalized.startswith("/command") or normalized.startswith("/self-heal"):
         return long_timeout
     return default_timeout
 
 
-def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def _http_json(
+    cfg: WidgetConfig,
+    path: str,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if not _is_safe_widget_base_url(cfg.base_url):
         raise RuntimeError("Widget base_url must use HTTPS for non-localhost hosts.")
-    body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    body = (
+        b""
+        if payload is None
+        else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    )
 
     # Try configured URL first, then auto-fallback to localhost if it fails
     # (handles stale Tailscale/VPN IPs gracefully)
     from urllib.parse import urlparse
+
     _parsed_url = urlparse(cfg.base_url)
     _is_localhost = _parsed_url.hostname in ("127.0.0.1", "localhost", "::1")
     _urls_to_try = [cfg.base_url]
     if not _is_localhost:
-        _fallback = f"{_parsed_url.scheme}://127.0.0.1:{_parsed_url.port or _DEFAULT_PORT}"
+        _fallback = (
+            f"{_parsed_url.scheme}://127.0.0.1:{_parsed_url.port or _DEFAULT_PORT}"
+        )
         _urls_to_try.append(_fallback)
 
     last_exc: Exception | None = None
@@ -484,10 +545,17 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
         headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
         if payload is not None:
             headers["Content-Type"] = "application/json"
-        req = Request(url=f"{base.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
+        req = Request(
+            url=f"{base.rstrip('/')}{path}",
+            method=method,
+            data=(None if payload is None else body),
+            headers=headers,
+        )
         ssl_ctx = _get_ssl_context(base)
         try:
-            with urlopen(req, timeout=_http_timeout_seconds(path), context=ssl_ctx) as resp:
+            with urlopen(
+                req, timeout=_http_timeout_seconds(path), context=ssl_ctx
+            ) as resp:
                 raw = resp.read().decode("utf-8")
             try:
                 parsed = json.loads(raw)
@@ -500,15 +568,21 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
             # HTTP errors (401, 403, 500, etc.) indicate the server IS
             # reachable but rejected the request.  Do NOT fall back to
             # localhost -- the issue is auth/server-side, not connectivity.
-            raise RuntimeError(f"HTTP request failed: HTTP {exc.code} {exc.reason}") from exc
+            raise RuntimeError(
+                f"HTTP request failed: HTTP {exc.code} {exc.reason}"
+            ) from exc
         except (URLError, TimeoutError, OSError) as exc:
             last_exc = RuntimeError(f"HTTP request failed: {exc}")
             if base != _urls_to_try[-1]:
-                logger.info("Primary URL %s unreachable, trying localhost fallback", base)
+                logger.info(
+                    "Primary URL %s unreachable, trying localhost fallback", base
+                )
     raise last_exc or RuntimeError("HTTP request failed")
 
 
-def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) -> dict[str, Any]:
+def _http_json_bootstrap(
+    base_url: str, master_password: str, device_id: str
+) -> dict[str, Any]:
     if not base_url.strip():
         raise RuntimeError("Base URL is required for bootstrap.")
     if not _is_safe_widget_base_url(base_url):
@@ -552,6 +626,7 @@ def _http_error_details(exc: HTTPError) -> str:
 
 # Voice dictation helpers (Windows System.Speech fallback)
 
+
 def _voice_dictate_once(timeout_s: int = 8) -> str:
     """Transcribe speech from microphone using faster-whisper (Whisper AI model).
 
@@ -560,6 +635,7 @@ def _voice_dictate_once(timeout_s: int = 8) -> str:
     """
     try:
         from jarvis_engine.stt import listen_and_transcribe
+
         result = listen_and_transcribe(
             max_duration_seconds=float(max(3, timeout_s)),
             language="en",
@@ -601,7 +677,9 @@ def _voice_dictate_system_speech(timeout_s: int = 8) -> str:
             proc.kill()
             proc.wait(timeout=5)
         except OSError as kill_exc:
-            logger.debug("Failed to kill timed-out voice dictation process: %s", kill_exc)
+            logger.debug(
+                "Failed to kill timed-out voice dictation process: %s", kill_exc
+            )
         raise RuntimeError("Voice dictation timed out") from exc
     if proc.returncode != 0:
         raise RuntimeError((stderr or "").strip() or "Voice dictation failed")
@@ -674,8 +752,18 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
         _last_toast_time = now
 
     # Escape PowerShell special characters to prevent injection
-    safe_title = title.replace("'", "''").replace("`", "``").replace("$", "`$").replace(";", "`;")
-    safe_message = message.replace("'", "''").replace("`", "``").replace("$", "`$").replace(";", "`;")
+    safe_title = (
+        title.replace("'", "''")
+        .replace("`", "``")
+        .replace("$", "`$")
+        .replace(";", "`;")
+    )
+    safe_message = (
+        message.replace("'", "''")
+        .replace("`", "``")
+        .replace("$", "`$")
+        .replace(";", "`;")
+    )
 
     script = (
         "Add-Type -AssemblyName System.Windows.Forms; "
@@ -701,6 +789,7 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
 
 
 # Tray icon, edge snapping, position helpers
+
 
 def _create_tray_icon_image():
     """Create a 64x64 PIL Image with a blue background and white 'J' for the tray icon."""
@@ -747,7 +836,9 @@ def _snap_to_edge(
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
     except (tk.TclError, RuntimeError):  # Widget may be destroyed
-        logger.debug("Cannot read screen dimensions for edge snap (widget may be destroyed)")
+        logger.debug(
+            "Cannot read screen dimensions for edge snap (widget may be destroyed)"
+        )
         return x, y
     # Left edge
     if 0 <= x <= snap_dist:
@@ -773,12 +864,15 @@ def _is_position_on_screen(x: int, y: int, tk_root: tk.Misc) -> bool:
         screen_w = tk_root.winfo_screenwidth()
         screen_h = tk_root.winfo_screenheight()
     except (tk.TclError, RuntimeError):  # Widget may be destroyed
-        logger.debug("Cannot read screen dimensions for position validation (widget may be destroyed)")
+        logger.debug(
+            "Cannot read screen dimensions for position validation (widget may be destroyed)"
+        )
         return False
     return -100 <= x <= screen_w and -100 <= y <= screen_h
 
 
 # Tooltip class
+
 
 class _Tooltip:
     """Hover tooltip for tkinter widgets."""
@@ -812,10 +906,16 @@ class _Tooltip:
         tw.wm_geometry(f"+{x}+{y}")
         tw.attributes("-topmost", True)
         label = tk.Label(
-            tw, text=self._text, justify=tk.LEFT,
-            background="#1e293b", foreground="#e2e8f0",
-            relief=tk.SOLID, borderwidth=1,
-            font=("Segoe UI", 9), padx=6, pady=3,
+            tw,
+            text=self._text,
+            justify=tk.LEFT,
+            background="#1e293b",
+            foreground="#e2e8f0",
+            relief=tk.SOLID,
+            borderwidth=1,
+            font=("Segoe UI", 9),
+            padx=6,
+            pady=3,
         )
         label.pack()
 

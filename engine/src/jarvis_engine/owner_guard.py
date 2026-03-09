@@ -54,10 +54,16 @@ def read_owner_guard(root: Path) -> OwnerGuardState:
     return {
         "enabled": bool(raw.get("enabled", False)),
         "owner_user_id": str(raw.get("owner_user_id", "")).strip()[:64],
-        "trusted_mobile_devices": [str(d).strip()[:128] for d in devices if str(d).strip()],
+        "trusted_mobile_devices": [
+            str(d).strip()[:128] for d in devices if str(d).strip()
+        ],
         "master_password_hash": str(raw.get("master_password_hash", "")).strip(),
-        "master_password_salt_b64": str(raw.get("master_password_salt_b64", "")).strip(),
-        "master_password_iterations": _safe_int(raw.get("master_password_iterations", 200000), 200000),
+        "master_password_salt_b64": str(
+            raw.get("master_password_salt_b64", "")
+        ).strip(),
+        "master_password_iterations": _safe_int(
+            raw.get("master_password_iterations", 200000), 200000
+        ),
         "updated_utc": str(raw.get("updated_utc", "")),
     }
 
@@ -88,7 +94,9 @@ def _hash_master_password(password: str, *, salt: bytes, iterations: int) -> str
     return digest.hex()
 
 
-def set_master_password(root: Path, password: str, *, iterations: int = 200000) -> OwnerGuardState:
+def set_master_password(
+    root: Path, password: str, *, iterations: int = 200000
+) -> OwnerGuardState:
     cleaned = password.strip()
     if len(cleaned) < 10:
         raise ValueError("master password must be at least 10 characters")
@@ -127,7 +135,9 @@ def verify_master_password(root: Path, password: str) -> bool:
     except ValueError as exc:
         logger.debug("Invalid master password salt encoding: %s", exc)
         return False
-    actual = _hash_master_password(password.strip(), salt=salt, iterations=max(100000, iterations))
+    actual = _hash_master_password(
+        password.strip(), salt=salt, iterations=max(100000, iterations)
+    )
     return hmac.compare_digest(actual, expected)
 
 
@@ -136,7 +146,11 @@ def trust_mobile_device(root: Path, device_id: str) -> OwnerGuardState:
     cleaned = device_id.strip()[:128]
     if not cleaned:
         raise ValueError("device_id is required")
-    trusted = {str(d).strip()[:128] for d in state.get("trusted_mobile_devices", []) if str(d).strip()}
+    trusted = {
+        str(d).strip()[:128]
+        for d in state.get("trusted_mobile_devices", [])
+        if str(d).strip()
+    }
     trusted.add(cleaned)
     return write_owner_guard(root, trusted_mobile_devices=sorted(trusted))
 

@@ -26,7 +26,9 @@ def shorten_urls_for_speech(text: str) -> str:
 
     def _replacement(match: re.Match[str]) -> str:
         raw = match.group(1).strip()
-        normalized = raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
+        normalized = (
+            raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
+        )
         parsed = urlparse(normalized)
         host = parsed.netloc.lower().strip()
         if host.startswith("www."):
@@ -59,7 +61,7 @@ def strip_wake_word(text: str) -> str:
     lower = text.lower()
     for prefix in _WAKE_WORD_PREFIXES:
         if lower.startswith(prefix):
-            return text[len(prefix):].strip()
+            return text[len(prefix) :].strip()
     return text
 
 
@@ -79,7 +81,9 @@ def _extract_first_phone_number(text: str) -> str:
 
 def _extract_weather_location(text: str) -> str:
     # Try explicit "in/for <location>" first
-    match = re.search(r"(?:weather|forecast)\s+(?:in|for|at)\s+(.+)", text, flags=re.IGNORECASE)
+    match = re.search(
+        r"(?:weather|forecast)\s+(?:in|for|at)\s+(.+)", text, flags=re.IGNORECASE
+    )
     if match:
         location = match.group(1).strip().rstrip("?.!,;:")
         return location[:120]
@@ -88,8 +92,23 @@ def _extract_weather_location(text: str) -> str:
     if not match:
         return ""
     location = match.group(1).strip().rstrip("?.!,;:")
-    noise = {"like", "today", "right", "now", "outside", "currently", "report",
-             "update", "check", "please", "is", "the", "what", "how", "look"}
+    noise = {
+        "like",
+        "today",
+        "right",
+        "now",
+        "outside",
+        "currently",
+        "report",
+        "update",
+        "check",
+        "please",
+        "is",
+        "the",
+        "what",
+        "how",
+        "look",
+    }
     words = [w for w in location.split() if w.lower() not in noise]
     return " ".join(words)[:120]
 
@@ -125,45 +144,127 @@ def _extract_first_url(text: str) -> str:
     return raw[:500]
 
 
-_MUTATION_MARKERS = frozenset([
-    "pause jarvis", "pause daemon", "pause autopilot", "go idle", "stand down",
-    "resume jarvis", "resume daemon", "resume autopilot",
-    "safe mode on", "enable safe mode", "safe mode off", "disable safe mode",
-    "auto gaming mode", "gaming mode on", "gaming mode off",
-    "self heal", "self-heal", "repair yourself", "diagnose yourself",
-    "sync mobile", "sync desktop", "cross-device sync", "sync devices",
-    "send text", "send message", "ignore call", "decline call", "reject call",
-    "place call", "make call", "dial ", "block likely spam", "automation run",
-    "open website", "open webpage", "open page", "open url", "browse to", "go to ",
-    "generate code", "generate image", "generate video", "generate 3d",
-])
+_MUTATION_MARKERS = frozenset(
+    [
+        "pause jarvis",
+        "pause daemon",
+        "pause autopilot",
+        "go idle",
+        "stand down",
+        "resume jarvis",
+        "resume daemon",
+        "resume autopilot",
+        "safe mode on",
+        "enable safe mode",
+        "safe mode off",
+        "disable safe mode",
+        "auto gaming mode",
+        "gaming mode on",
+        "gaming mode off",
+        "self heal",
+        "self-heal",
+        "repair yourself",
+        "diagnose yourself",
+        "sync mobile",
+        "sync desktop",
+        "cross-device sync",
+        "sync devices",
+        "send text",
+        "send message",
+        "ignore call",
+        "decline call",
+        "reject call",
+        "place call",
+        "make call",
+        "dial ",
+        "block likely spam",
+        "automation run",
+        "open website",
+        "open webpage",
+        "open page",
+        "open url",
+        "browse to",
+        "go to ",
+        "generate code",
+        "generate image",
+        "generate video",
+        "generate 3d",
+    ]
+)
 
-_READ_ONLY_MARKERS = frozenset([
-    "runtime status", "control status", "safe mode status",
-    "gaming mode status", "gaming mode state",
-    "what time", "time is it", "current time", "what date", "what day",
-    "weather", "forecast",
-    "search web", "search the web", "search internet", "search online",
-    "look up", "lookup", "research ",
-    "daily brief", "ops brief", "morning brief", "my brief", "brief me",
-    "give me a brief", "run brief",
-    "my schedule", "my calendar", "my meetings", "my agenda",
-    "my tasks", "my todo", "my to-do",
-    "what do you know", "what do you remember", "do you remember",
-    "search memory", "what did i tell you", "what have i said",
-    "knowledge status", "knowledge graph", "brain status", "memory status",
-    "mission status", "system status", "jarvis status",
-    "how are you", "status report", "health check",
-    "are you working", "are you running",
-])
+_READ_ONLY_MARKERS = frozenset(
+    [
+        "runtime status",
+        "control status",
+        "safe mode status",
+        "gaming mode status",
+        "gaming mode state",
+        "what time",
+        "time is it",
+        "current time",
+        "what date",
+        "what day",
+        "weather",
+        "forecast",
+        "search web",
+        "search the web",
+        "search internet",
+        "search online",
+        "look up",
+        "lookup",
+        "research ",
+        "daily brief",
+        "ops brief",
+        "morning brief",
+        "my brief",
+        "brief me",
+        "give me a brief",
+        "run brief",
+        "my schedule",
+        "my calendar",
+        "my meetings",
+        "my agenda",
+        "my tasks",
+        "my todo",
+        "my to-do",
+        "what do you know",
+        "what do you remember",
+        "do you remember",
+        "search memory",
+        "what did i tell you",
+        "what have i said",
+        "knowledge status",
+        "knowledge graph",
+        "brain status",
+        "memory status",
+        "mission status",
+        "system status",
+        "jarvis status",
+        "how are you",
+        "status report",
+        "health check",
+        "are you working",
+        "are you running",
+    ]
+)
 
-_GREETING_WAKE_WORDS = frozenset([
-    "jarvis", "hey jarvis", "hi jarvis", "hello jarvis",
-    "ok jarvis", "a jarvis", "ay jarvis", "jarvis activate",
-])
+_GREETING_WAKE_WORDS = frozenset(
+    [
+        "jarvis",
+        "hey jarvis",
+        "hi jarvis",
+        "hello jarvis",
+        "ok jarvis",
+        "a jarvis",
+        "ay jarvis",
+        "jarvis activate",
+    ]
+)
 
 
-def _is_read_only_voice_request(lowered: str, *, execute: bool, approve_privileged: bool) -> bool:
+def _is_read_only_voice_request(
+    lowered: str, *, execute: bool, approve_privileged: bool
+) -> bool:
     if execute or approve_privileged:
         return False
     if any(marker in lowered for marker in _MUTATION_MARKERS):

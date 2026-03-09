@@ -10,6 +10,7 @@ from jarvis_engine.web_fetch import (
     search_web as _search_web,
 )
 
+
 class WebResearchResult(TypedDict):
     """Result from :func:`run_web_research`."""
 

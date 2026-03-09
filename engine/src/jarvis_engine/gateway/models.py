@@ -29,6 +29,7 @@ from jarvis_engine._shared import (
 
 try:
     from anthropic import Anthropic, APIConnectionError, APIStatusError, RateLimitError
+
     _HAS_ANTHROPIC = True
 except ImportError:
     _HAS_ANTHROPIC = False
@@ -43,6 +44,7 @@ except ImportError:
     class RateLimitError(Exception):  # type: ignore[no-redef]
         pass
 
+
 try:
     from jarvis_engine.activity_feed import log_activity as _log_activity
 except ImportError:
@@ -56,6 +58,7 @@ OllamaClient = None  # type: ignore[assignment,misc]
 
 class ResponseError(Exception):  # type: ignore[no-redef]
     """Placeholder until real ollama.ResponseError is loaded."""
+
     pass
 
 
@@ -81,6 +84,7 @@ def _ensure_ollama() -> bool:
     def _try_import():
         try:
             from ollama import Client as _OC, ResponseError as _RE
+
             result["client"] = _OC
             result["error"] = _RE
         except (ImportError, OSError) as exc:
@@ -102,6 +106,7 @@ def _ensure_ollama() -> bool:
 
     logger.debug("Ollama import failed: %s", result.get("exc", "unknown"))
     return False
+
 
 from jarvis_engine.gateway.audit import GatewayAudit
 from jarvis_engine.gateway.cli_providers import (
@@ -275,7 +280,9 @@ class ModelGateway:
         )
         if anthropic_api_key is not None:
             if _HAS_ANTHROPIC:
-                self._anthropic: Anthropic | None = Anthropic(api_key=anthropic_api_key, timeout=60.0)
+                self._anthropic: Anthropic | None = Anthropic(
+                    api_key=anthropic_api_key, timeout=60.0
+                )
             else:
                 self._anthropic = None
                 logger.warning(
@@ -359,7 +366,10 @@ class ModelGateway:
     def _refresh_cli_providers(self, *, force: bool = False) -> None:
         """Refresh installed CLI provider availability without restarting."""
         now = time.monotonic()
-        if not force and (now - self._last_cli_refresh_monotonic) < self._cli_refresh_interval_s:
+        if (
+            not force
+            and (now - self._last_cli_refresh_monotonic) < self._cli_refresh_interval_s
+        ):
             return
         self._last_cli_refresh_monotonic = now
         try:
@@ -455,7 +465,11 @@ class ModelGateway:
 
     def _remap_model_if_needed(self, model: str) -> str:
         """Remap Claude API model to best cloud model if Anthropic is unavailable."""
-        if model.startswith("claude-") and model not in CLI_MODEL_MAP and self._anthropic is None:
+        if (
+            model.startswith("claude-")
+            and model not in CLI_MODEL_MAP
+            and self._anthropic is None
+        ):
             best = self._best_cloud_model()
             if best:
                 logger.info("Anthropic unavailable, routing %s -> %s", model, best)
@@ -493,12 +507,17 @@ class ModelGateway:
         logger.warning(
             "Prompt ~%d tokens exceeds %d%% of %s context (%d). "
             "Attempting context guard.",
-            estimated, int(_CONTEXT_GUARD_THRESHOLD * 100), model, limit,
+            estimated,
+            int(_CONTEXT_GUARD_THRESHOLD * 100),
+            model,
+            limit,
         )
 
         # Try to switch to a model with a larger context window
         for candidate, candidate_limit in sorted(
-            _MODEL_CONTEXT_LIMITS.items(), key=lambda x: x[1], reverse=True,
+            _MODEL_CONTEXT_LIMITS.items(),
+            key=lambda x: x[1],
+            reverse=True,
         ):
             if candidate == model or candidate_limit <= limit:
                 continue
@@ -506,10 +525,16 @@ class ModelGateway:
             if estimated <= candidate_threshold:
                 # Check that we can actually route to this candidate
                 provider = self._resolve_provider(candidate)
-                if provider != "ollama" or candidate in (_get_local_model(), _get_fast_local_model()):
+                if provider != "ollama" or candidate in (
+                    _get_local_model(),
+                    _get_fast_local_model(),
+                ):
                     logger.info(
                         "Context guard: switching %s -> %s (limit %d -> %d)",
-                        model, candidate, limit, candidate_limit,
+                        model,
+                        candidate,
+                        limit,
+                        candidate_limit,
                     )
                     return messages, candidate
 
@@ -532,7 +557,8 @@ class ModelGateway:
 
         logger.info(
             "Context guard: truncated system prompt by ~%d chars for %s",
-            chars_trimmed, model,
+            chars_trimmed,
+            model,
         )
         return truncated, model
 
@@ -576,20 +602,46 @@ class ModelGateway:
 
         if provider == "anthropic":
             return self._route_anthropic(
-                messages, model, max_tokens, temperature, route_reason, privacy_routed, t0,
+                messages,
+                model,
+                max_tokens,
+                temperature,
+                route_reason,
+                privacy_routed,
+                t0,
             )
         if provider.startswith("cloud:"):
             provider_key = provider.split(":", 1)[1]
             return self._route_cloud(
-                messages, model, max_tokens, temperature, route_reason, privacy_routed, t0, provider_key,
+                messages,
+                model,
+                max_tokens,
+                temperature,
+                route_reason,
+                privacy_routed,
+                t0,
+                provider_key,
             )
         if provider.startswith("cli:"):
             cli_key = provider.split(":", 1)[1]
             return self._route_cli(
-                messages, model, max_tokens, temperature, route_reason, privacy_routed, t0, cli_key,
+                messages,
+                model,
+                max_tokens,
+                temperature,
+                route_reason,
+                privacy_routed,
+                t0,
+                cli_key,
             )
         return self._route_ollama(
-            messages, model, max_tokens, temperature, route_reason, privacy_routed, t0,
+            messages,
+            model,
+            max_tokens,
+            temperature,
+            route_reason,
+            privacy_routed,
+            t0,
         )
 
     def _route_anthropic(
@@ -609,8 +661,17 @@ class ModelGateway:
         except (APIConnectionError, APIStatusError, RateLimitError) as exc:
             reason = f"{type(exc).__name__}"
             logger.warning("Anthropic API error, falling back: %s", exc)
-            t0 = self._audit_failed_attempt("anthropic", model, route_reason, t0, privacy_routed)
-            response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider="anthropic", privacy_routed=privacy_routed)
+            t0 = self._audit_failed_attempt(
+                "anthropic", model, route_reason, t0, privacy_routed
+            )
+            response = self._fallback_chain(
+                messages,
+                max_tokens,
+                reason,
+                temperature,
+                skip_provider="anthropic",
+                privacy_routed=privacy_routed,
+            )
             return response, f"fallback:{reason}", t0
 
     def _route_cloud(
@@ -626,13 +687,26 @@ class ModelGateway:
     ) -> tuple[GatewayResponse, str, float]:
         """Attempt cloud provider, falling back on errors."""
         try:
-            response = self._call_openai_compat(messages, model, max_tokens, provider_key, temperature)
+            response = self._call_openai_compat(
+                messages, model, max_tokens, provider_key, temperature
+            )
             return response, route_reason or f"primary:cloud:{provider_key}", t0
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             reason = f"{provider_key}: {type(exc).__name__}"
-            logger.warning("Cloud provider %s failed, falling back: %s", provider_key, exc)
-            t0 = self._audit_failed_attempt(provider_key, model, route_reason, t0, privacy_routed)
-            response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=provider_key, privacy_routed=privacy_routed)
+            logger.warning(
+                "Cloud provider %s failed, falling back: %s", provider_key, exc
+            )
+            t0 = self._audit_failed_attempt(
+                provider_key, model, route_reason, t0, privacy_routed
+            )
+            response = self._fallback_chain(
+                messages,
+                max_tokens,
+                reason,
+                temperature,
+                skip_provider=provider_key,
+                privacy_routed=privacy_routed,
+            )
             return response, f"fallback:{reason}", t0
 
     def _route_cli(
@@ -651,17 +725,35 @@ class ModelGateway:
             response = self._call_cli(messages, model, max_tokens, cli_key)
             audit_reason = route_reason or f"primary:cli:{cli_key}"
             if response.provider == "none":
-                t0 = self._audit_failed_attempt(cli_key, model, audit_reason, t0, privacy_routed)
+                t0 = self._audit_failed_attempt(
+                    cli_key, model, audit_reason, t0, privacy_routed
+                )
                 reason = response.fallback_reason or f"{cli_key}_failed"
-                response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
+                response = self._fallback_chain(
+                    messages,
+                    max_tokens,
+                    reason,
+                    temperature,
+                    skip_provider=cli_key,
+                    privacy_routed=privacy_routed,
+                )
                 return response, f"fallback:{reason}", t0
             return response, audit_reason, t0
         except (OSError, RuntimeError, ValueError) as exc:
             reason = f"{cli_key}: {type(exc).__name__}"
             logger.warning("CLI provider %s failed, falling back: %s", cli_key, exc)
             audit_reason = route_reason or f"primary:cli:{cli_key}"
-            t0 = self._audit_failed_attempt(cli_key, model, audit_reason, t0, privacy_routed)
-            response = self._fallback_chain(messages, max_tokens, reason, temperature, skip_provider=cli_key, privacy_routed=privacy_routed)
+            t0 = self._audit_failed_attempt(
+                cli_key, model, audit_reason, t0, privacy_routed
+            )
+            response = self._fallback_chain(
+                messages,
+                max_tokens,
+                reason,
+                temperature,
+                skip_provider=cli_key,
+                privacy_routed=privacy_routed,
+            )
             return response, f"fallback:{reason}", t0
 
     def _route_ollama(
@@ -678,10 +770,16 @@ class ModelGateway:
         response = self._call_ollama(messages, model, max_tokens, temperature)
         audit_reason = route_reason or "primary:ollama"
         if response.provider == "none" and self._cloud_keys and not privacy_routed:
-            t0 = self._audit_failed_attempt("ollama", model, audit_reason, t0, privacy_routed)
+            t0 = self._audit_failed_attempt(
+                "ollama", model, audit_reason, t0, privacy_routed
+            )
             response = self._fallback_chain(
-                messages, max_tokens, response.fallback_reason or "ollama_failed",
-                temperature, skip_ollama=True, privacy_routed=privacy_routed,
+                messages,
+                max_tokens,
+                response.fallback_reason or "ollama_failed",
+                temperature,
+                skip_ollama=True,
+                privacy_routed=privacy_routed,
             )
             audit_reason = "fallback:ollama_failed"
         return response, audit_reason, t0
@@ -721,9 +819,15 @@ class ModelGateway:
 
         if _log_activity is not None:
             try:
-                _log_activity("llm_routing", f"Routed to {response.model} via {response.provider}", {
-                    "model": response.model, "provider": response.provider, "fallback": response.fallback_used,
-                })
+                _log_activity(
+                    "llm_routing",
+                    f"Routed to {response.model} via {response.provider}",
+                    {
+                        "model": response.model,
+                        "provider": response.provider,
+                        "fallback": response.fallback_used,
+                    },
+                )
             except (OSError, ValueError, TypeError) as exc:
                 logger.debug("Activity feed logging failed: %s", exc)
 
@@ -776,28 +880,41 @@ class ModelGateway:
             try:
                 # Estimate cost: use prompt size for input, max_tokens for output
                 input_estimate = self._estimate_tokens(messages)
-                estimated = self._budget.estimate_cost(model, input_estimate, max_tokens)
+                estimated = self._budget.estimate_cost(
+                    model, input_estimate, max_tokens
+                )
                 self._budget.check_budget(estimated)
             except Exception as exc:  # noqa: BLE001 — budget check boundary
                 # Import here to avoid circular import at module level
                 from jarvis_engine.gateway.budget import BudgetExceededError
+
                 if isinstance(exc, BudgetExceededError):
                     logger.warning("Budget exceeded, routing to local Ollama: %s", exc)
                     fallback_model = _get_local_model()
-                    response = self._call_ollama(messages, fallback_model, max_tokens, temperature)
+                    response = self._call_ollama(
+                        messages, fallback_model, max_tokens, temperature
+                    )
                     response.fallback_used = True
                     response.fallback_reason = f"budget_exceeded:{exc.period}"
                     t0 = time.perf_counter()
                     latency_ms = 0.0
                     self._log_completion(
-                        response, f"budget_exceeded:{exc.period}",
-                        route_reason, latency_ms, privacy_routed,
+                        response,
+                        f"budget_exceeded:{exc.period}",
+                        route_reason,
+                        latency_ms,
+                        privacy_routed,
                     )
                     return response
                 raise  # re-raise non-budget exceptions
 
         response, audit_reason, t0 = self._route_to_provider(
-            messages, model, max_tokens, temperature, route_reason, privacy_routed,
+            messages,
+            model,
+            max_tokens,
+            temperature,
+            route_reason,
+            privacy_routed,
         )
 
         latency_ms = (time.perf_counter() - t0) * 1000
@@ -813,15 +930,22 @@ class ModelGateway:
 
         # Record cost in budget enforcer
         if self._budget is not None and response.cost_usd > 0:
-            self._budget.record_cost(response.cost_usd, response.model, response.provider)
+            self._budget.record_cost(
+                response.cost_usd, response.model, response.provider
+            )
 
-        self._log_completion(response, audit_reason, route_reason, latency_ms, privacy_routed)
+        self._log_completion(
+            response, audit_reason, route_reason, latency_ms, privacy_routed
+        )
 
         # Log cumulative chain latency (useful when fallbacks added delay)
         if response.fallback_used:
             logger.info(
                 "Chain latency: %.1fms (provider latency: %.1fms, model=%s, provider=%s)",
-                chain_latency_ms, latency_ms, response.model, response.provider,
+                chain_latency_ms,
+                latency_ms,
+                response.model,
+                response.provider,
             )
 
         return response
@@ -911,7 +1035,8 @@ class ModelGateway:
             if retry_after_s is not None and 0 < retry_after_s <= 5.0:
                 logger.info(
                     "Rate limited by %s (HTTP 429). Retry-After: %.1fs — short wait, retrying once.",
-                    cfg["provider_name"], retry_after_s,
+                    cfg["provider_name"],
+                    retry_after_s,
                 )
                 time.sleep(retry_after_s)
                 try:
@@ -924,7 +1049,9 @@ class ModelGateway:
                         },
                     )
                 except httpx.HTTPError as exc:
-                    raise RuntimeError(f"{cfg['provider_name']} retry request failed: {exc}") from exc
+                    raise RuntimeError(
+                        f"{cfg['provider_name']} retry request failed: {exc}"
+                    ) from exc
                 # If retry also fails, fall through to error handling below
                 if resp.status_code == 429:
                     logger.warning(
@@ -1012,10 +1139,16 @@ class ModelGateway:
                 provider="anthropic",
                 input_tokens=resp.usage.input_tokens,
                 output_tokens=resp.usage.output_tokens,
-                cost_usd=calculate_cost(model, resp.usage.input_tokens, resp.usage.output_tokens),
+                cost_usd=calculate_cost(
+                    model, resp.usage.input_tokens, resp.usage.output_tokens
+                ),
             )
         # Extract text from all TextBlocks (content may contain tool_use blocks)
-        text = "".join(block.text for block in resp.content if hasattr(block, "text") and block.text)
+        text = "".join(
+            block.text
+            for block in resp.content
+            if hasattr(block, "text") and block.text
+        )
         input_tokens = resp.usage.input_tokens
         output_tokens = resp.usage.output_tokens
         cost = calculate_cost(model, input_tokens, output_tokens)
@@ -1164,7 +1297,9 @@ class ModelGateway:
                 if model_alias is None:
                     continue
                 try:
-                    resp = self._call_openai_compat(messages, model_alias, max_tokens, pk, temperature)
+                    resp = self._call_openai_compat(
+                        messages, model_alias, max_tokens, pk, temperature
+                    )
                     resp.fallback_used = True
                     resp.fallback_reason = reason
                     # NOTE: Don't record_success here — complete() records it
@@ -1205,11 +1340,20 @@ class ModelGateway:
                 )
                 if not should_skip_anthropic:
                     try:
-                        resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
+                        resp = self._call_anthropic(
+                            messages, "claude-haiku", max_tokens, temperature
+                        )
                         resp.fallback_used = True
                         resp.fallback_reason = reason
                         return resp
-                    except (OSError, RuntimeError, ValueError, APIConnectionError, APIStatusError, RateLimitError) as exc:
+                    except (
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                        APIConnectionError,
+                        APIStatusError,
+                        RateLimitError,
+                    ) as exc:
                         logger.warning("Fallback to Anthropic also failed: %s", exc)
                         if self._health is not None:
                             self._health.record_failure("anthropic")
@@ -1242,12 +1386,16 @@ class ModelGateway:
         Returns a graceful error response if Ollama also fails.
         """
         fallback_model = _get_local_model()
-        resp, error = self._try_ollama_chat(messages, fallback_model, max_tokens, temperature)
+        resp, error = self._try_ollama_chat(
+            messages, fallback_model, max_tokens, temperature
+        )
         if resp is not None:
             resp.fallback_used = True
             resp.fallback_reason = reason
             return resp
-        full_reason = f"{reason} -> Ollama also failed" + (f": {error}" if error != "Ollama error" else "")
+        full_reason = f"{reason} -> Ollama also failed" + (
+            f": {error}" if error != "Ollama error" else ""
+        )
         logger.error("All providers failed: %s", full_reason)
         return GatewayResponse(
             text="",

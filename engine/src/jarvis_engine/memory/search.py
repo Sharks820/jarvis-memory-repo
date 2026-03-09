@@ -84,7 +84,10 @@ def _enqueue_access_updates(engine: "MemoryEngine", record_ids: list[str]) -> No
             _access_first_ts = time.monotonic()
         _access_pending.update(record_ids)
         elapsed = time.monotonic() - _access_first_ts if _access_first_ts else 0.0
-        if len(_access_pending) >= _ACCESS_BATCH_SIZE or elapsed >= _ACCESS_FLUSH_INTERVAL:
+        if (
+            len(_access_pending) >= _ACCESS_BATCH_SIZE
+            or elapsed >= _ACCESS_FLUSH_INTERVAL
+        ):
             flush_ids = list(_access_pending)
             _access_pending.clear()
             _access_first_ts = 0.0
@@ -168,7 +171,7 @@ def hybrid_search(
         # Avoids double-counting recency (already handled above)
         access_count = record.get("access_count", 0) or 0
         freq_factor = math.log1p(max(access_count, 0)) / math.log1p(10)
-        boosted_score *= (0.9 + 0.2 * min(freq_factor, 1.0))
+        boosted_score *= 0.9 + 0.2 * min(freq_factor, 1.0)
 
         scored_records.append((boosted_score, record))
 

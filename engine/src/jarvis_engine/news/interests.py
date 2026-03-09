@@ -6,6 +6,7 @@ of 30 days ensures stale interests fade naturally.
 
 Thread-safe via a module-level lock on the JSON backing store.
 """
+
 import logging
 import math
 import threading
@@ -35,6 +36,7 @@ class InterestLearner:
 
     def __init__(self, root: Path) -> None:
         from jarvis_engine._shared import runtime_dir
+
         self._path = runtime_dir(root) / "interests.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -98,7 +100,9 @@ class InterestLearner:
                     try:
                         dt = datetime.fromisoformat(entry["last_seen"])
                     except (ValueError, TypeError):
-                        logger.debug("Failed to parse last_seen timestamp in _decay_all")
+                        logger.debug(
+                            "Failed to parse last_seen timestamp in _decay_all"
+                        )
                         continue
                     entry["last_seen"] = (dt - timedelta(days=days)).isoformat()
             self._save(data)

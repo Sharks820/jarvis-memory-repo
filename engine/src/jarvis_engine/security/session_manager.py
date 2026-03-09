@@ -116,7 +116,10 @@ class SessionManager:
             )
             self._sessions[session_id] = session
             logger.info(
-                "Created session %s for device %s from %s", session_id[:8], device_id, ip
+                "Created session %s for device %s from %s",
+                session_id[:8],
+                device_id,
+                ip,
             )
             return session_id
 
@@ -157,7 +160,9 @@ class SessionManager:
 
             # Check fingerprint (constant-time comparison)
             current_fingerprint = _compute_fingerprint(ip, user_agent)
-            if not _hmac_module.compare_digest(current_fingerprint, session.fingerprint):
+            if not _hmac_module.compare_digest(
+                current_fingerprint, session.fingerprint
+            ):
                 logger.warning(
                     "HIJACK DETECTED on session %s: fingerprint changed (device=%s)",
                     session_id[:8],

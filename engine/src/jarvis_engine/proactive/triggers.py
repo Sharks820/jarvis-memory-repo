@@ -32,7 +32,9 @@ class TriggerAlert:
     timestamp: str = ""
 
 
-def check_medication_reminders(snapshot_data: dict, _now: datetime | None = None) -> list[str]:
+def check_medication_reminders(
+    snapshot_data: dict, _now: datetime | None = None
+) -> list[str]:
     """Check medications list for items with due_time within 30 minutes of now."""
     alerts: list[str] = []
     medications = snapshot_data.get("medications", [])
@@ -161,7 +163,9 @@ def check_contact_neglect(snapshot_data: dict) -> list[str]:
                     msg += f" — last discussed: {last_topic}"
                 alerts.append(msg)
         except (ValueError, TypeError):
-            logger.debug("Failed to parse contact last_contact_date: %s", last_contact_str)
+            logger.debug(
+                "Failed to parse contact last_contact_date: %s", last_contact_str
+            )
             continue
 
     return alerts[:3]  # Cap at 3 to avoid alert fatigue

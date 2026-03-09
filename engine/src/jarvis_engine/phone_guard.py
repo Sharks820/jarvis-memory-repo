@@ -45,7 +45,8 @@ def load_call_log(path: Path) -> list[dict[str, Any]]:
 
 
 def _group_calls_by_number(
-    call_log: list[dict[str, Any]], lookback: datetime,
+    call_log: list[dict[str, Any]],
+    lookback: datetime,
 ) -> dict[str, list[dict[str, Any]]]:
     """Group call log entries by normalized phone number within lookback window."""
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -54,7 +55,12 @@ def _group_calls_by_number(
         number = _normalize_number(raw_number)
         if not number:
             continue
-        ts = _parse_ts(item.get("timestamp_utc") or item.get("ts_utc") or item.get("date_utc") or item.get("date", ""))
+        ts = _parse_ts(
+            item.get("timestamp_utc")
+            or item.get("ts_utc")
+            or item.get("date_utc")
+            or item.get("date", "")
+        )
         if not ts or ts < lookback:
             continue
         grouped[number].append(item)
@@ -74,9 +80,15 @@ def _build_area_stats(
         area_distinct[area].add(number)
         for record in records:
             call_type = str(record.get("type", record.get("direction", ""))).lower()
-            duration = _safe_float(record.get("duration_sec", record.get("duration", 0.0)))
+            duration = _safe_float(
+                record.get("duration_sec", record.get("duration", 0.0))
+            )
             contact = str(record.get("contact_name", "")).strip()
-            if any(t in call_type for t in ["missed", "rejected", "declined"]) and duration <= 12 and not contact:
+            if (
+                any(t in call_type for t in ["missed", "rejected", "declined"])
+                and duration <= 12
+                and not contact
+            ):
                 area_suspicious[area] += 1
     return area_distinct, area_suspicious
 
@@ -100,14 +112,24 @@ def _score_number(
         total_duration += duration
         if any(t in call_type for t in ["missed", "rejected", "declined", "ignored"]):
             missed += 1
-        if any(t in call_type for t in ["incoming", "inbound", "missed", "rejected", "declined"]):
+        if any(
+            t in call_type
+            for t in ["incoming", "inbound", "missed", "rejected", "declined"]
+        ):
             inbound += 1
-        label = (str(r.get("caller_label", "")) + " " + str(r.get("contact_name", ""))).lower()
+        label = (
+            str(r.get("caller_label", "")) + " " + str(r.get("contact_name", ""))
+        ).lower()
         if any(t in label for t in ["spam", "scam", "telemarketer", "fraud"]):
             flagged_label = True
         if not str(r.get("contact_name", "")).strip():
             no_contact += 1
-        ts = _parse_ts(r.get("timestamp_utc") or r.get("ts_utc") or r.get("date_utc") or r.get("date", ""))
+        ts = _parse_ts(
+            r.get("timestamp_utc")
+            or r.get("ts_utc")
+            or r.get("date_utc")
+            or r.get("date", "")
+        )
         if ts:
             day_buckets[ts.date().isoformat()] += 1
 
@@ -120,33 +142,49 @@ def _score_number(
     score = 0.0
     reasons: list[str] = []
     if calls >= 4:
-        score += 0.32; reasons.append("high_repeat_volume")
+        score += 0.32
+        reasons.append("high_repeat_volume")
     elif calls >= 3:
-        score += 0.22; reasons.append("repeat_volume")
+        score += 0.22
+        reasons.append("repeat_volume")
     if missed_ratio >= 0.8 and avg_duration <= 15:
-        score += 0.24; reasons.append("mostly_missed_short_calls")
+        score += 0.24
+        reasons.append("mostly_missed_short_calls")
     if inbound_ratio >= 0.9 and no_contact_ratio >= 0.9:
-        score += 0.2; reasons.append("unknown_inbound_pattern")
+        score += 0.2
+        reasons.append("unknown_inbound_pattern")
     if peak_day >= 2:
-        score += 0.12; reasons.append("burst_day_pattern")
+        score += 0.12
+        reasons.append("burst_day_pattern")
     if flagged_label:
-        score += 0.35; reasons.append("spam_or_scam_label")
+        score += 0.35
+        reasons.append("spam_or_scam_label")
 
     area = _area_key(number)
-    if area and len(area_distinct.get(area, set())) >= 6 and area_suspicious.get(area, 0) >= 8:
-        score += 0.18; reasons.append("rotating_number_area_pattern")
+    if (
+        area
+        and len(area_distinct.get(area, set())) >= 6
+        and area_suspicious.get(area, 0) >= 8
+    ):
+        score += 0.18
+        reasons.append("rotating_number_area_pattern")
 
     score = min(score, 0.99)
     if score <= 0:
         return None
     return SpamCandidate(
-        number=number, score=round(score, 4), calls=calls,
-        missed_ratio=round(missed_ratio, 4), avg_duration_s=round(avg_duration, 2),
+        number=number,
+        score=round(score, 4),
+        calls=calls,
+        missed_ratio=round(missed_ratio, 4),
+        avg_duration_s=round(avg_duration, 2),
         reasons=reasons,
     )
 
 
-def detect_spam_candidates(call_log: list[dict[str, Any]], now_utc: datetime | None = None) -> list[SpamCandidate]:
+def detect_spam_candidates(
+    call_log: list[dict[str, Any]], now_utc: datetime | None = None
+) -> list[SpamCandidate]:
     now = now_utc or datetime.now(UTC)
     grouped = _group_calls_by_number(call_log, now - timedelta(days=14))
     area_distinct, area_suspicious = _build_area_stats(grouped)
@@ -195,8 +233,16 @@ def build_spam_block_actions(
     return actions
 
 
-def build_phone_action(action: str, number: str, message: str = "", reason: str = "voice_or_text_request") -> PhoneAction:
-    if action not in {"send_sms", "place_call", "ignore_call", "block_number", "silence_unknown_callers"}:
+def build_phone_action(
+    action: str, number: str, message: str = "", reason: str = "voice_or_text_request"
+) -> PhoneAction:
+    if action not in {
+        "send_sms",
+        "place_call",
+        "ignore_call",
+        "block_number",
+        "silence_unknown_callers",
+    }:
         raise ValueError(f"Unsupported action: {action}")
     normalized = _normalize_number(number)
     if action == "silence_unknown_callers":
@@ -222,7 +268,12 @@ def append_phone_actions(path: Path, actions: list[PhoneAction]) -> None:
                 handle.write(json.dumps(asdict(action), ensure_ascii=True) + "\n")
 
 
-def write_spam_report(path: Path, candidates: list[SpamCandidate], actions: list[PhoneAction], threshold: float) -> None:
+def write_spam_report(
+    path: Path,
+    candidates: list[SpamCandidate],
+    actions: list[PhoneAction],
+    threshold: float,
+) -> None:
     payload = {
         "generated_utc": _now_iso(),
         "threshold": threshold,

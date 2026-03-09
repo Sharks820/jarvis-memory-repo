@@ -46,6 +46,7 @@ VALID_KINDS = {"episodic", "semantic", "procedural"}
 # Internal helpers (ported verbatim from main.py)
 # ---------------------------------------------------------------------------
 
+
 def _get_auto_ingest_store() -> "MemoryStore":
     """Return a cached MemoryStore for auto-ingest, creating once on first call."""
     global _auto_ingest_store
@@ -65,9 +66,11 @@ def _auto_ingest_dedupe_path() -> Path:
 
 def sanitize_memory_content(content: str) -> str:
     """Redact credentials from memory content before storage."""
-    content = content[:100_000]  # Truncate before regex to prevent catastrophic backtracking
+    content = content[
+        :100_000
+    ]  # Truncate before regex to prevent catastrophic backtracking
     # Redact master password, tokens, API keys, secrets, signing keys, bearer tokens
-    _CRED_KEYS = r'(?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key'
+    _CRED_KEYS = r"(?:master[\s_-]*)?password|passwd|pwd|token|api[_-]?key|secret|signing[_-]?key"
     # JSON-style: "key": "value"
     cleaned = re.sub(
         rf'(?i)"({_CRED_KEYS})"\s*:\s*"[^"]*"',
@@ -107,6 +110,7 @@ def _store_auto_ingest_hashes(path: Path, hashes: list[str]) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) -> str:
     """Synchronous core of auto-ingest (runs in background thread)."""
     safe_content = sanitize_memory_content(content)
@@ -114,7 +118,9 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
         return ""
     safe_task_id = task_id[:128]
     dedupe_path = _auto_ingest_dedupe_path()
-    dedupe_material = f"{source}|{kind}|{safe_task_id}|{safe_content.lower()}".encode("utf-8")
+    dedupe_material = f"{source}|{kind}|{safe_task_id}|{safe_content.lower()}".encode(
+        "utf-8"
+    )
     dedupe_hash = hashlib.sha256(dedupe_material).hexdigest()
     # Lock prevents race condition when daemon + CLI ingest concurrently.
     # Check dedup under lock, but only persist hash AFTER successful ingestion
@@ -161,7 +167,11 @@ def auto_ingest_memory_sync(source: str, kind: str, task_id: str, content: str) 
 
 def auto_ingest_memory(source: str, kind: str, task_id: str, content: str) -> None:
     """Fire-and-forget auto-ingest -- runs in a background thread to avoid blocking responses."""
-    if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {"1", "true", "yes"}:
+    if os.getenv("JARVIS_AUTO_INGEST_DISABLE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
         return
     if source not in VALID_SOURCES or kind not in VALID_KINDS:
         return

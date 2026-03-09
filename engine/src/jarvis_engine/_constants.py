@@ -27,23 +27,66 @@ __all__ = [
 # Privacy keywords -- used by IntentClassifier and manual fallback routing
 # to ensure private queries never leave the local device.
 
-PRIVACY_KEYWORDS: frozenset[str] = frozenset({
-    # Identity / contact
-    "address", "phone number", "social security", "ssn",
-    # Financial
-    "account", "bank", "bank account", "bill", "bills", "credit card",
-    "credential", "income", "insurance", "payment", "pin", "salary",
-    # Medical / health
-    "allergy", "blood type", "diagnosis", "doctor", "health", "medical",
-    "medication", "medications", "medicine", "pill", "prescription",
-    "surgery", "symptom", "therapist", "therapy", "treatment",
-    # Family / personal
-    "appointment", "calendar", "daughter", "family", "husband", "son", "wife",
-    # Auth / secrets
-    "confidential", "password", "personal", "private", "secret",
-    # Sensitive content
-    "affair", "drug", "naked", "nude", "porn", "sex",
-})
+PRIVACY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        # Identity / contact
+        "address",
+        "phone number",
+        "social security",
+        "ssn",
+        # Financial
+        "account",
+        "bank",
+        "bank account",
+        "bill",
+        "bills",
+        "credit card",
+        "credential",
+        "income",
+        "insurance",
+        "payment",
+        "pin",
+        "salary",
+        # Medical / health
+        "allergy",
+        "blood type",
+        "diagnosis",
+        "doctor",
+        "health",
+        "medical",
+        "medication",
+        "medications",
+        "medicine",
+        "pill",
+        "prescription",
+        "surgery",
+        "symptom",
+        "therapist",
+        "therapy",
+        "treatment",
+        # Family / personal
+        "appointment",
+        "calendar",
+        "daughter",
+        "family",
+        "husband",
+        "son",
+        "wife",
+        # Auth / secrets
+        "confidential",
+        "password",
+        "personal",
+        "private",
+        "secret",
+        # Sensitive content
+        "affair",
+        "drug",
+        "naked",
+        "nude",
+        "porn",
+        "sex",
+    }
+)
 
 
 # Model constants
@@ -57,35 +100,124 @@ EMBEDDING_DIM: int = 768
 # Stop words -- superset used for keyword/topic extraction and cross-branch
 # matching.  Individual modules may extend with ``STOP_WORDS | {...}``.
 
-STOP_WORDS: frozenset[str] = frozenset({
-    # Articles / determiners
-    "the", "a", "an",
-    # Be / auxiliary
-    "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did",
-    # Modals
-    "will", "would", "could", "should", "may", "might", "shall", "can",
-    "need", "must",
-    # Prepositions
-    "of", "in", "to", "for", "with", "on", "at", "from", "by", "about",
-    "as", "into", "through", "during", "before", "after", "above", "below",
-    "between",
-    # Conjunctions / negation
-    "and", "but", "or", "nor", "not", "no", "so", "if", "then", "than",
-    # Adverbs / misc
-    "too", "very", "just", "also", "only",
-    # Pronouns / possessives
-    "that", "this", "it", "its", "my", "me", "i", "your", "his", "her",
-    "our", "their", "they", "them", "there", "what", "which", "who", "whom",
-    "how", "when", "where", "why",
-    # Quantifiers
-    "all", "each", "every", "both", "few", "more", "most", "other", "some",
-    "such", "own", "same",
-    # Adjectives / misc
-    "new", "old", "true", "false", "none", "null", "yes",
-    # Project-specific
-    "conner", "jarvis",
-})
+STOP_WORDS: frozenset[str] = frozenset(
+    {
+        # Articles / determiners
+        "the",
+        "a",
+        "an",
+        # Be / auxiliary
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        # Modals
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "need",
+        "must",
+        # Prepositions
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "from",
+        "by",
+        "about",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        # Conjunctions / negation
+        "and",
+        "but",
+        "or",
+        "nor",
+        "not",
+        "no",
+        "so",
+        "if",
+        "then",
+        "than",
+        # Adverbs / misc
+        "too",
+        "very",
+        "just",
+        "also",
+        "only",
+        # Pronouns / possessives
+        "that",
+        "this",
+        "it",
+        "its",
+        "my",
+        "me",
+        "i",
+        "your",
+        "his",
+        "her",
+        "our",
+        "their",
+        "they",
+        "them",
+        "there",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "how",
+        "when",
+        "where",
+        "why",
+        # Quantifiers
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "own",
+        "same",
+        # Adjectives / misc
+        "new",
+        "old",
+        "true",
+        "false",
+        "none",
+        "null",
+        "yes",
+        # Project-specific
+        "conner",
+        "jarvis",
+    }
+)
 
 
 # Network and API constants

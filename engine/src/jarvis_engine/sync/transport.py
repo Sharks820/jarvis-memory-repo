@@ -100,7 +100,9 @@ MAX_DECOMPRESSED_SIZE = 16 * 1024 * 1024  # 16 MiB
 
 
 def decrypt_sync_payload(
-    token: bytes, fernet_key: bytes, ttl: int = 3600,
+    token: bytes,
+    fernet_key: bytes,
+    ttl: int = 3600,
 ) -> dict[str, Any]:
     """Decrypt and decompress a sync payload.
 
@@ -121,7 +123,7 @@ def decrypt_sync_payload(
     block_size = 65536
     offset = 0
     while offset < len(compressed):
-        block = compressed[offset:offset + block_size]
+        block = compressed[offset : offset + block_size]
         remaining = MAX_DECOMPRESSED_SIZE - total_size
         if remaining <= 0:
             raise ValueError("Decompressed payload exceeds 16 MiB limit")

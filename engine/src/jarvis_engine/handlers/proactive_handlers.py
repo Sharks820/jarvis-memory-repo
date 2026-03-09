@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 class ProactiveCheckHandler:
     """Load snapshot data and evaluate proactive trigger rules."""
 
-    def __init__(self, root: Path, proactive_engine: Optional[ProactiveEngine] = None) -> None:
+    def __init__(
+        self, root: Path, proactive_engine: Optional[ProactiveEngine] = None
+    ) -> None:
         self._root = root
         self._engine = proactive_engine
 
@@ -46,17 +48,13 @@ class ProactiveCheckHandler:
         # Load snapshot data
         snapshot_path = cmd.snapshot_path
         if not snapshot_path:
-            snapshot_path = str(
-                self._root / ".planning" / OPS_SNAPSHOT_FILENAME
-            )
+            snapshot_path = str(self._root / ".planning" / OPS_SNAPSHOT_FILENAME)
 
         resolved_path = Path(snapshot_path).resolve()
         try:
             resolved_path.relative_to(self._root.resolve())
         except ValueError:
-            return ProactiveCheckResult(
-                message="Snapshot path outside project root."
-            )
+            return ProactiveCheckResult(message="Snapshot path outside project root.")
 
         try:
             with open(resolved_path, "r", encoding="utf-8") as f:
@@ -66,9 +64,7 @@ class ProactiveCheckHandler:
                 message=f"Snapshot file not found: {snapshot_path}"
             )
         except json.JSONDecodeError as exc:
-            return ProactiveCheckResult(
-                message=f"Invalid JSON in snapshot: {exc}"
-            )
+            return ProactiveCheckResult(message=f"Invalid JSON in snapshot: {exc}")
 
         # Evaluate triggers
         alerts = self._engine.evaluate(snapshot_data)
@@ -155,6 +151,7 @@ class WakeWordStartHandler:
             logger.info("Wake word detected! Listening for command...")
             try:
                 from jarvis_engine.stt import record_from_microphone, transcribe_smart
+
                 # Pause wake word mic stream to avoid dual-stream conflicts,
                 # then record on a fresh stream with buffer drain.
                 detector.pause()
@@ -168,9 +165,12 @@ class WakeWordStartHandler:
                     detector.resume()
                 # Load personal vocab for NER entity correction
                 from jarvis_engine.stt_postprocess import _load_personal_vocab
+
                 _entities = _load_personal_vocab()
                 result = transcribe_smart(
-                    audio, language="en", gateway=self._gateway,
+                    audio,
+                    language="en",
+                    gateway=self._gateway,
                     entity_list=_entities if _entities else None,
                 )
                 text = result.text.strip()
@@ -179,16 +179,22 @@ class WakeWordStartHandler:
                     return
                 # Strip "jarvis" prefix if present
                 from jarvis_engine.voice_extractors import strip_wake_word
+
                 text = strip_wake_word(text)
                 if not text:
                     logger.info("Wake word only, no command.")
                     return
-                logger.info("Voice command: '%s' (backend=%s, %.2fs)",
-                           text, result.backend, result.duration_seconds)
+                logger.info(
+                    "Voice command: '%s' (backend=%s, %.2fs)",
+                    text,
+                    result.backend,
+                    result.duration_seconds,
+                )
                 # Dispatch through voice-run pipeline
                 try:
                     from jarvis_engine.voice_intents import cmd_voice_run_impl
                     from jarvis_engine.config import repo_root
+
                     _root = repo_root()
                     cmd_voice_run_impl(
                         text=text,
@@ -256,7 +262,9 @@ class CostReductionHandler:
         history_path = self._root / ".planning" / "brain" / "cost_history.jsonl"
 
         summary = self._cost_tracker.local_vs_cloud_summary(days=cmd.days)
-        cost_reduction_snapshot(self._cost_tracker, history_path)  # side-effect: writes snapshot
+        cost_reduction_snapshot(
+            self._cost_tracker, history_path
+        )  # side-effect: writes snapshot
 
         history = load_cost_history(history_path)
         trend_info = cost_reduction_trend(history)
@@ -264,10 +272,7 @@ class CostReductionHandler:
         failed_cost_usd = float(summary.get("failed_cost_usd", 0.0) or 0.0)
         failed_fragment = ""
         if failed_count > 0:
-            failed_fragment = (
-                f", failed {failed_count} "
-                f"(${failed_cost_usd:.4f})"
-            )
+            failed_fragment = f", failed {failed_count} (${failed_cost_usd:.4f})"
 
         return CostReductionResult(
             local_pct=float(summary.get("local_pct", 0.0)),
@@ -288,7 +293,10 @@ class SelfTestHandler:
     """Run adversarial memory quiz, save result, and check for regression."""
 
     def __init__(
-        self, root: Path, engine: Optional[MemoryEngine] = None, embed_service: Optional[EmbeddingService] = None
+        self,
+        root: Path,
+        engine: Optional[MemoryEngine] = None,
+        embed_service: Optional[EmbeddingService] = None,
     ) -> None:
         self._root = root
         self._engine = engine
@@ -308,6 +316,7 @@ class SelfTestHandler:
 
         from jarvis_engine._constants import SELF_TEST_HISTORY
         from jarvis_engine._shared import runtime_dir
+
         history_path = runtime_dir(self._root) / SELF_TEST_HISTORY
 
         tester = AdversarialSelfTest(

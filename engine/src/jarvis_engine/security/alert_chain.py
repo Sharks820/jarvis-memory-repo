@@ -106,7 +106,9 @@ class AlertChain:
 
             # Periodic cleanup: evict stale entries when cache grows large
             if len(self._dedup_cache) > 1000:
-                stale = [k for k, v in self._dedup_cache.items() if now - v > _DEDUP_WINDOW_S]
+                stale = [
+                    k for k, v in self._dedup_cache.items() if now - v > _DEDUP_WINDOW_S
+                ]
                 for k in stale:
                     del self._dedup_cache[k]
 
@@ -122,16 +124,20 @@ class AlertChain:
         # Log to forensic logger
         if self._forensic_logger is not None:
             try:
-                self._forensic_logger.log_event({
-                    "event_type": "alert_dispatched",
-                    "level": level,
-                    "channel": channel,
-                    "summary": summary,
-                    "source_ip": source_ip,
-                    "deduped": False,
-                })
+                self._forensic_logger.log_event(
+                    {
+                        "event_type": "alert_dispatched",
+                        "level": level,
+                        "channel": channel,
+                        "summary": summary,
+                        "source_ip": source_ip,
+                        "deduped": False,
+                    }
+                )
             except (OSError, ValueError, RuntimeError) as exc:
-                logger.warning("Failed to write forensic log for alert dispatch: %s", exc)
+                logger.warning(
+                    "Failed to write forensic log for alert dispatch: %s", exc
+                )
 
         # Invoke registered dispatch callbacks (defensive copy for thread safety)
         with self._lock:
@@ -158,7 +164,9 @@ class AlertChain:
     # Dedup logic
     # ------------------------------------------------------------------
 
-    def _should_dedup(self, source_ip: str | None, level: int, now: float | None = None) -> bool:
+    def _should_dedup(
+        self, source_ip: str | None, level: int, now: float | None = None
+    ) -> bool:
         """Check if an alert from *source_ip* at *level* should be deduped.
 
         Returns True if the same (source_ip, level) was alerted within
@@ -208,8 +216,7 @@ class AlertChain:
 
         elif level == 5:
             logger.critical(
-                "[URGENT ALL DEVICES + ALARM + EMAIL] %s "
-                "(evidence: %s, action: %s)",
+                "[URGENT ALL DEVICES + ALARM + EMAIL] %s (evidence: %s, action: %s)",
                 summary,
                 evidence,
                 containment_action,

@@ -349,34 +349,42 @@ class VoiceTelemetry:
             p50 = _percentile(self._capture_to_transcript_ms, 50)
             p95 = _percentile(self._capture_to_transcript_ms, 95)
             if p50 > _SLO_CAPTURE_TO_TRANSCRIPT_P50_MS:
-                violations.append({
-                    "metric": "capture_to_transcript_p50",
-                    "target_ms": _SLO_CAPTURE_TO_TRANSCRIPT_P50_MS,
-                    "actual_ms": round(p50, 1),
-                })
+                violations.append(
+                    {
+                        "metric": "capture_to_transcript_p50",
+                        "target_ms": _SLO_CAPTURE_TO_TRANSCRIPT_P50_MS,
+                        "actual_ms": round(p50, 1),
+                    }
+                )
             if p95 > _SLO_CAPTURE_TO_TRANSCRIPT_P95_MS:
-                violations.append({
-                    "metric": "capture_to_transcript_p95",
-                    "target_ms": _SLO_CAPTURE_TO_TRANSCRIPT_P95_MS,
-                    "actual_ms": round(p95, 1),
-                })
+                violations.append(
+                    {
+                        "metric": "capture_to_transcript_p95",
+                        "target_ms": _SLO_CAPTURE_TO_TRANSCRIPT_P95_MS,
+                        "actual_ms": round(p95, 1),
+                    }
+                )
 
         # End-to-end SLO
         if len(self._end_to_end_ms) >= 2:
             p50 = _percentile(self._end_to_end_ms, 50)
             p95 = _percentile(self._end_to_end_ms, 95)
             if p50 > _SLO_END_TO_END_P50_MS:
-                violations.append({
-                    "metric": "end_to_end_p50",
-                    "target_ms": _SLO_END_TO_END_P50_MS,
-                    "actual_ms": round(p50, 1),
-                })
+                violations.append(
+                    {
+                        "metric": "end_to_end_p50",
+                        "target_ms": _SLO_END_TO_END_P50_MS,
+                        "actual_ms": round(p50, 1),
+                    }
+                )
             if p95 > _SLO_END_TO_END_P95_MS:
-                violations.append({
-                    "metric": "end_to_end_p95",
-                    "target_ms": _SLO_END_TO_END_P95_MS,
-                    "actual_ms": round(p95, 1),
-                })
+                violations.append(
+                    {
+                        "metric": "end_to_end_p95",
+                        "target_ms": _SLO_END_TO_END_P95_MS,
+                        "actual_ms": round(p95, 1),
+                    }
+                )
 
         alert_violations: list[dict[str, Any]] | None = None
 
@@ -423,15 +431,9 @@ class VoiceTelemetry:
     def _build_health_event_unlocked(self) -> HealthEventDict:
         """Build a health event dict.  Must be called while lock is held."""
         total = self._utterances_total
-        success_rate = (
-            self._utterances_success / total if total > 0 else 0.0
-        )
-        avg_confidence = (
-            self._total_confidence / total if total > 0 else 0.0
-        )
-        fallback_rate = (
-            self._fallback_triggers / total if total > 0 else 0.0
-        )
+        success_rate = self._utterances_success / total if total > 0 else 0.0
+        avg_confidence = self._total_confidence / total if total > 0 else 0.0
+        fallback_rate = self._fallback_triggers / total if total > 0 else 0.0
 
         avg_latency: dict[str, float] = {}
         for backend, count in self._backend_latency_counts.items():
@@ -512,7 +514,8 @@ class VoiceTelemetry:
         with self._lock:
             samples = list(self._end_to_end_ms)
             violations = [
-                v for v in self._slo_violations[-20:]
+                v
+                for v in self._slo_violations[-20:]
                 if v.get("metric", "").startswith("end_to_end")
             ]
 
@@ -554,12 +557,8 @@ class VoiceTelemetry:
         """
         with self._lock:
             total = self._utterances_total
-            success_rate = (
-                self._utterances_success / total if total > 0 else 0.0
-            )
-            avg_confidence = (
-                self._total_confidence / total if total > 0 else 0.0
-            )
+            success_rate = self._utterances_success / total if total > 0 else 0.0
+            avg_confidence = self._total_confidence / total if total > 0 else 0.0
             return {
                 "utterances_total": total,
                 "success_rate": round(success_rate, 4),
@@ -581,12 +580,8 @@ class VoiceTelemetry:
             violations = list(self._slo_violations[-20:])
             backend_dist = dict(self._backend_counts)
             total = self._utterances_total
-            success_rate = (
-                self._utterances_success / total if total > 0 else 0.0
-            )
-            avg_confidence = (
-                self._total_confidence / total if total > 0 else 0.0
-            )
+            success_rate = self._utterances_success / total if total > 0 else 0.0
+            avg_confidence = self._total_confidence / total if total > 0 else 0.0
 
         if not samples:
             p50 = p95 = p99 = 0.0

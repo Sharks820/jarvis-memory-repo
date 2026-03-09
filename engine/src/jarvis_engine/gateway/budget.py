@@ -34,11 +34,11 @@ logger = logging.getLogger(__name__)
 #: Estimated cost per 1K input+output tokens (blended) by provider.
 #: Lower is cheaper. Used to prefer cheaper providers for routine queries.
 PROVIDER_COST_PER_1K: dict[str, float] = {
-    "ollama": 0.0,           # free (local)
-    "groq": 0.002,           # free tier / very cheap
-    "zai": 0.0004,           # GLM free tier
-    "mistral": 0.001,        # cheap
-    "anthropic": 0.009,      # most expensive
+    "ollama": 0.0,  # free (local)
+    "groq": 0.002,  # free tier / very cheap
+    "zai": 0.0004,  # GLM free tier
+    "mistral": 0.001,  # cheap
+    "anthropic": 0.009,  # most expensive
     # CLI providers use subscription, effectively free per-call
     "claude-cli": 0.0,
     "codex-cli": 0.0,
@@ -128,6 +128,7 @@ class BudgetEnforcer:
         self._last_month: str = ""
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(db_path, check_same_thread=False)
         self._init_schema()
 
@@ -217,12 +218,17 @@ class BudgetEnforcer:
                 # Emit activity event
                 try:
                     from jarvis_engine.activity_feed import log_activity
-                    log_activity("cost_alert", msg, {
-                        "period": period,
-                        "threshold_pct": threshold_pct,
-                        "current_spend": round(spent, 4),
-                        "budget_limit": round(cap, 2),
-                    })
+
+                    log_activity(
+                        "cost_alert",
+                        msg,
+                        {
+                            "period": period,
+                            "threshold_pct": threshold_pct,
+                            "current_spend": round(spent, 4),
+                            "budget_limit": round(cap, 2),
+                        },
+                    )
                 except (ImportError, OSError, ValueError, TypeError) as exc:
                     logger.debug("Activity feed cost alert failed: %s", exc)
 
@@ -290,7 +296,9 @@ class BudgetEnforcer:
             daily = self._daily_spend()
             monthly = self._monthly_spend()
         daily_pct = (daily / self._daily_cap * 100) if self._daily_cap > 0 else 0.0
-        monthly_pct = (monthly / self._monthly_cap * 100) if self._monthly_cap > 0 else 0.0
+        monthly_pct = (
+            (monthly / self._monthly_cap * 100) if self._monthly_cap > 0 else 0.0
+        )
         return BudgetStatus(
             daily_spent=round(daily, 6),
             daily_cap=self._daily_cap,
@@ -339,6 +347,7 @@ class BudgetEnforcer:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _env_float(key: str, default: float) -> float:
     """Read a float from environment, falling back to default."""

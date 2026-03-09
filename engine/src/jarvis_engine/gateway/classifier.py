@@ -209,8 +209,17 @@ class IntentClassifier:
             if self._centroids is None:
                 try:
                     self._centroids = self._precompute_routes()
-                except (ImportError, OSError, ValueError, RuntimeError, KeyError, MemoryError) as exc:
-                    logger.warning("Centroid init failed in classify(), using empty set: %s", exc)
+                except (
+                    ImportError,
+                    OSError,
+                    ValueError,
+                    RuntimeError,
+                    KeyError,
+                    MemoryError,
+                ) as exc:
+                    logger.warning(
+                        "Centroid init failed in classify(), using empty set: %s", exc
+                    )
                     self._centroids = {}
 
     @staticmethod
@@ -223,17 +232,27 @@ class IntentClassifier:
         """
         # Prefer .planning/cache under the repo root (two levels up from gateway/)
         repo_cache = os.path.join(
-            os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
-            os.pardir, ".planning", "cache",
+            os.path.dirname(__file__),
+            os.pardir,
+            os.pardir,
+            os.pardir,
+            os.pardir,
+            ".planning",
+            "cache",
         )
         repo_cache = os.path.normpath(repo_cache)
         try:
             os.makedirs(repo_cache, exist_ok=True)
             return repo_cache
         except OSError as exc:
-            logger.debug("Cannot create repo cache dir %s, falling back to temp: %s", repo_cache, exc)
+            logger.debug(
+                "Cannot create repo cache dir %s, falling back to temp: %s",
+                repo_cache,
+                exc,
+            )
         # Fallback: system temp directory
         import tempfile
+
         return os.path.join(tempfile.gettempdir(), "jarvis_classifier_cache")
 
     def _precompute_routes(self) -> "dict[str, np.ndarray]":
@@ -263,9 +282,8 @@ class IntentClassifier:
                 # Validate completeness and that every centroid has positive
                 # dimensionality (guards against stale cache written when the
                 # embed service was offline and returned empty arrays).
-                valid = (
-                    set(centroids.keys()) == set(self.ROUTES.keys())
-                    and all(c.ndim == 1 and c.shape[0] > 0 for c in centroids.values())
+                valid = set(centroids.keys()) == set(self.ROUTES.keys()) and all(
+                    c.ndim == 1 and c.shape[0] > 0 for c in centroids.values()
                 )
                 if valid:
                     logger.debug("Loaded cached centroids from %s", cache_path)
@@ -273,7 +291,8 @@ class IntentClassifier:
                 else:
                     logger.warning(
                         "Centroid cache invalid or incomplete (cached=%s, expected=%s), recomputing",
-                        sorted(centroids.keys()), sorted(self.ROUTES.keys()),
+                        sorted(centroids.keys()),
+                        sorted(self.ROUTES.keys()),
                     )
         except (OSError, ValueError, KeyError) as exc:
             logger.debug("Failed to load centroid cache, recomputing: %s", exc)
@@ -291,15 +310,24 @@ class IntentClassifier:
                     else:
                         logger.warning(
                             "Embed returned invalid shape %s for route %r, skipping exemplar",
-                            arr.shape, route_name,
+                            arr.shape,
+                            route_name,
                         )
                 except (RuntimeError, ValueError, OSError) as exc:
-                    logger.warning("Failed to embed exemplar for route %r: %s (%s)", route_name, text[:80], exc)
+                    logger.warning(
+                        "Failed to embed exemplar for route %r: %s (%s)",
+                        route_name,
+                        text[:80],
+                        exc,
+                    )
             if embeddings:
                 centroid = np.mean(embeddings, axis=0)
                 centroids[route_name] = centroid
             else:
-                logger.error("All embeddings failed for route %r — route will be unreachable", route_name)
+                logger.error(
+                    "All embeddings failed for route %r — route will be unreachable",
+                    route_name,
+                )
 
         # Save to disk cache
         try:
@@ -316,7 +344,9 @@ class IntentClassifier:
         return bool(self._privacy_re.search(query.lower()))
 
     def _resolve_model_for_route(
-        self, route: str, available_models: set[str] | None = None,
+        self,
+        route: str,
+        available_models: set[str] | None = None,
     ) -> str:
         """Pick the best available model for a route.
 
@@ -339,7 +369,9 @@ class IntentClassifier:
 
         # Try static MODEL_MAP entry (empty by default in local-first mode)
         static_primary = self.MODEL_MAP.get(route)
-        if static_primary and (available_models is None or static_primary in available_models):
+        if static_primary and (
+            available_models is None or static_primary in available_models
+        ):
             return static_primary
 
         # Escalate to cloud CLIs as fallback
@@ -374,6 +406,7 @@ class IntentClassifier:
         import numpy as np
 
         from jarvis_engine._shared import get_local_model as _get_local_model
+
         local_model = _get_local_model()
 
         # Privacy check first -- always trumps embedding similarity
@@ -392,7 +425,10 @@ class IntentClassifier:
         try:
             query_vec = np.array(self._embed.embed_query(query))
         except (RuntimeError, ValueError, OSError) as exc:
-            logger.warning("Embedding service failed for classify(), falling back to local model: %s", exc)
+            logger.warning(
+                "Embedding service failed for classify(), falling back to local model: %s",
+                exc,
+            )
             return ("simple_private", local_model, 0.0)
 
         best_route = "simple_private"
@@ -411,7 +447,7 @@ class IntentClassifier:
                     quality = self._feedback_tracker.get_route_quality(route_name)
                     if quality["total"] >= 5:  # Minimum sample threshold
                         # Scale similarity by 0.5-1.0 based on satisfaction rate
-                        sim *= (0.5 + 0.5 * quality["satisfaction_rate"])
+                        sim *= 0.5 + 0.5 * quality["satisfaction_rate"]
                 except (KeyError, ValueError, AttributeError, RuntimeError) as exc:
                     logger.debug("Route quality penalty lookup failed: %s", exc)
             if sim > best_sim:

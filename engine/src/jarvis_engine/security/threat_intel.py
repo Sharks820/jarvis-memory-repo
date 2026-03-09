@@ -43,13 +43,12 @@ class ThreatIntelStatus(TypedDict):
     last_feed_update: float | None
     requests_total: int
 
+
 logger = logging.getLogger(__name__)
 
 _ABUSEIPDB_CHECK_URL = "https://api.abuseipdb.com/api/v2/check"
 _OTX_INDICATOR_URL = "https://otx.alienvault.com/api/v1/indicators/IPv4"
-_FEODO_BLOCKLIST_URL = (
-    "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
-)
+_FEODO_BLOCKLIST_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
 
 # AbuseIPDB confidence score at or above this threshold marks an IP as known bad.
 _ABUSEIPDB_BAD_THRESHOLD = 80
@@ -79,7 +78,9 @@ class ThreatIntelFeed:
 
         # In-memory LRU cache: ip -> (enrichment_dict, timestamp)
         # OrderedDict for O(1) eviction of oldest entry at capacity
-        self._cache: collections.OrderedDict[str, tuple[ThreatEnrichment, float]] = collections.OrderedDict()
+        self._cache: collections.OrderedDict[str, tuple[ThreatEnrichment, float]] = (
+            collections.OrderedDict()
+        )
         self._lock = threading.Lock()
 
         # Feodo blocklist (set of IPs), cached with its own timestamp
@@ -106,7 +107,9 @@ class ThreatIntelFeed:
         try:
             self._pool.shutdown(wait=False)
         except Exception:  # noqa: BLE001
-            logger.debug("Thread pool shutdown failed during ThreatIntelFeed garbage collection")
+            logger.debug(
+                "Thread pool shutdown failed during ThreatIntelFeed garbage collection"
+            )
             pass
 
     def __enter__(self) -> "ThreatIntelFeed":
@@ -157,7 +160,10 @@ class ThreatIntelFeed:
         if "abuseipdb" in futures:
             abuseipdb_score = futures["abuseipdb"].result()
             sources_checked.append("abuseipdb")
-            if abuseipdb_score is not None and abuseipdb_score >= _ABUSEIPDB_BAD_THRESHOLD:
+            if (
+                abuseipdb_score is not None
+                and abuseipdb_score >= _ABUSEIPDB_BAD_THRESHOLD
+            ):
                 known_bad = True
 
         if "otx" in futures:

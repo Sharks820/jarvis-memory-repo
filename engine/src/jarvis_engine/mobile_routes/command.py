@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 class CommandRoutesMixin:
     """Command, conversation, smart-reply, self-heal, mission, digest, and meeting-prep endpoints."""
 
-    def _best_effort_learn_command_result(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+    def _best_effort_learn_command_result(
+        self, payload: dict[str, Any], result: dict[str, Any]
+    ) -> None:
         """Record failed/empty command outcomes so learning does not stall on guard paths."""
         user_text = str(payload.get("text", "")).strip()
         if not user_text:
@@ -28,7 +30,10 @@ class CommandRoutesMixin:
         if bool(result.get("ok")) and str(result.get("response", "")).strip():
             return
         intent = str(result.get("intent", "")).strip() or "command_failed"
-        reason = str(result.get("reason", "")).strip() or str(result.get("error", "")).strip()
+        reason = (
+            str(result.get("reason", "")).strip()
+            or str(result.get("error", "")).strip()
+        )
         if not reason:
             reason = f"Command failed with exit code {result.get('command_exit_code', 'unknown')}."
         assistant_response = f"[{intent}] {reason}"
@@ -71,7 +76,9 @@ class CommandRoutesMixin:
         result = self._run_voice_command(payload, correlation_id=correlation_id)
         result.setdefault("correlation_id", correlation_id)
         result.setdefault("diagnostic_id", correlation_id[:12])
-        result.setdefault("lifecycle_state", "completed" if result.get("ok") else "failed")
+        result.setdefault(
+            "lifecycle_state", "completed" if result.get("ok") else "failed"
+        )
         result.setdefault("error_code", "")
         result.setdefault("category", "")
         result.setdefault("retryable", False)
@@ -95,7 +102,9 @@ class CommandRoutesMixin:
                 _output_check = _sec_orch.scan_output(_response_text)
                 if not _output_check["safe"]:
                     result["response"] = _output_check["filtered_text"]
-                    result["reason"] = "Output security-filtered: " + ", ".join(_output_check.get("findings", ["policy violation"]))
+                    result["reason"] = "Output security-filtered: " + ", ".join(
+                        _output_check.get("findings", ["policy violation"])
+                    )
                     result["stdout_tail"] = [_output_check["filtered_text"]]
                     result["security_filtered"] = True
                     normalized = self._normalize_command_output(
@@ -128,11 +137,24 @@ class CommandRoutesMixin:
             try:
                 _vp_mod.save_conversation_history()
             except (OSError, ValueError, TypeError) as save_exc:
-                logger.debug("Conversation history save-after-clear failed: %s", save_exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
-        except (ValueError, TypeError, OSError, ImportError, RuntimeError, AttributeError) as exc:  # narrowed from except Exception
+                logger.debug(
+                    "Conversation history save-after-clear failed: %s", save_exc
+                )
+            self._write_json(
+                HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."}
+            )
+        except (
+            ValueError,
+            TypeError,
+            OSError,
+            ImportError,
+            RuntimeError,
+            AttributeError,
+        ) as exc:  # narrowed from except Exception
             logger.error("Conversation history clear failed: %s", exc)
-            self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
+            self._write_json(
+                HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."}
+            )
 
     def _handle_post_smart_reply(self) -> None:
         """Generate a contextual auto-reply SMS for a missed call."""
@@ -177,13 +199,23 @@ class CommandRoutesMixin:
                     if rec:
                         contact_context = str(rec.get("summary", ""))[:200]
                         break
-        except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+        except (
+            ImportError,
+            RuntimeError,
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+        ) as exc:
             logger.debug("Contact context memory lookup failed: %s", exc)
-        self._write_json(HTTPStatus.OK, {
-            "ok": True,
-            "reply": reply,
-            "contact_context": contact_context,
-        })
+        self._write_json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "reply": reply,
+                "contact_context": contact_context,
+            },
+        )
 
     def _handle_post_self_heal(self) -> None:
         payload, _ = self._read_json_body(max_content_length=10_000)
@@ -191,14 +223,23 @@ class CommandRoutesMixin:
             return
         keep_recent_raw = payload.get("keep_recent", 1800)
         force_maintenance = _parse_bool(payload.get("force_maintenance", False))
-        snapshot_note = str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160] or "mobile-self-heal"
+        snapshot_note = (
+            str(payload.get("snapshot_note", "mobile-self-heal")).strip()[:160]
+            or "mobile-self-heal"
+        )
         snapshot_note = snapshot_note.lstrip("-") or "mobile-self-heal"
         try:
             keep_recent = int(keep_recent_raw)
         except (TypeError, ValueError):
             keep_recent = 1800
         keep_recent = max(200, min(keep_recent, 50000))
-        args = ["self-heal", "--keep-recent", str(keep_recent), "--snapshot-note", snapshot_note]
+        args = [
+            "self-heal",
+            "--keep-recent",
+            str(keep_recent),
+            "--snapshot-note",
+            snapshot_note,
+        ]
         if force_maintenance:
             args.append("--force-maintenance")
         result = self._run_main_cli(args, timeout_s=240)
@@ -211,13 +252,18 @@ class CommandRoutesMixin:
             return
         topic = str(payload.get("topic", "")).strip()
         if not topic:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "topic is required"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "topic is required"}
+            )
             return
         objective = str(payload.get("objective", "")).strip()[:400]
         sources = payload.get("sources")
         if sources is not None:
             if not isinstance(sources, list):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "sources must be a list"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": "sources must be a list"},
+                )
                 return
             sources = [str(s).strip() for s in sources if str(s).strip()][:6]
         try:
@@ -225,27 +271,47 @@ class CommandRoutesMixin:
             from jarvis_engine.commands.ops_commands import MissionCreateCommand
 
             bus = get_bus()
-            cmd = MissionCreateCommand(topic=topic, objective=objective, sources=sources or [], origin="phone")
+            cmd = MissionCreateCommand(
+                topic=topic, objective=objective, sources=sources or [], origin="phone"
+            )
             result = bus.dispatch(cmd)
             if result.return_code != 0:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Mission creation failed — invalid parameters."})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "ok": False,
+                        "error": "Mission creation failed — invalid parameters.",
+                    },
+                )
                 return
             mission = result.mission if hasattr(result, "mission") else {}
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "mission_id": mission.get("mission_id", ""),
-                "topic": mission.get("topic", ""),
-                "status": mission.get("status", "pending"),
-                "origin": mission.get("origin", "phone"),
-                "sources": mission.get("sources", []),
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "mission_id": mission.get("mission_id", ""),
+                    "topic": mission.get("topic", ""),
+                    "status": mission.get("status", "pending"),
+                    "origin": mission.get("origin", "phone"),
+                    "sources": mission.get("sources", []),
+                },
+            )
         except ValueError as exc:
             logger.warning("Mission create validation failed: %s", exc)
             sanitized = str(exc)[:200].replace("\n", " ")
             self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": sanitized})
-        except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+        except (
+            KeyError,
+            TypeError,
+            OSError,
+            ImportError,
+            RuntimeError,
+        ) as exc:  # narrowed from except Exception
             logger.error("Mission create failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Mission creation failed."},
+            )
 
     def _handle_get_missions_status(self) -> None:
         """Get learning mission status."""
@@ -261,28 +327,41 @@ class CommandRoutesMixin:
             result = bus.dispatch(MissionStatusCommand(last=last))
             missions = result.missions if hasattr(result, "missions") else []
             total = result.total_count if hasattr(result, "total_count") else 0
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "total": total,
-                "missions": [
-                    {
-                        "mission_id": m.get("mission_id", ""),
-                        "topic": m.get("topic", ""),
-                        "objective": m.get("objective", ""),
-                        "status": m.get("status", ""),
-                        "origin": m.get("origin", "desktop-manual"),
-                        "sources": m.get("sources", []),
-                        "verified_findings": m.get("verified_findings", 0),
-                        "created_utc": m.get("created_utc", ""),
-                        "updated_utc": m.get("updated_utc", ""),
-                    }
-                    for m in missions
-                    if isinstance(m, dict)
-                ],
-            })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:  # narrowed from except Exception
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "total": total,
+                    "missions": [
+                        {
+                            "mission_id": m.get("mission_id", ""),
+                            "topic": m.get("topic", ""),
+                            "objective": m.get("objective", ""),
+                            "status": m.get("status", ""),
+                            "origin": m.get("origin", "desktop-manual"),
+                            "sources": m.get("sources", []),
+                            "verified_findings": m.get("verified_findings", 0),
+                            "created_utc": m.get("created_utc", ""),
+                            "updated_utc": m.get("updated_utc", ""),
+                        }
+                        for m in missions
+                        if isinstance(m, dict)
+                    ],
+                },
+            )
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            OSError,
+            ImportError,
+            RuntimeError,
+        ) as exc:  # narrowed from except Exception
             logger.error("Mission status failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Mission status unavailable."},
+            )
 
     def _handle_get_missions_active(self) -> None:
         """Return all running/paused/pending missions."""
@@ -292,26 +371,39 @@ class CommandRoutesMixin:
             from jarvis_engine.learning_missions import get_active_missions
 
             missions = get_active_missions(self._root)
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "count": len(missions),
-                "missions": [
-                    {
-                        "mission_id": m.get("mission_id", ""),
-                        "topic": m.get("topic", ""),
-                        "status": m.get("status", ""),
-                        "progress_pct": int(m.get("progress_pct", 0)),
-                        "progress_bar": m.get("progress_bar", ""),
-                        "status_detail": m.get("status_detail", ""),
-                        "updated_utc": m.get("updated_utc", ""),
-                    }
-                    for m in missions
-                    if isinstance(m, dict)
-                ],
-            })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "count": len(missions),
+                    "missions": [
+                        {
+                            "mission_id": m.get("mission_id", ""),
+                            "topic": m.get("topic", ""),
+                            "status": m.get("status", ""),
+                            "progress_pct": int(m.get("progress_pct", 0)),
+                            "progress_bar": m.get("progress_bar", ""),
+                            "status_detail": m.get("status_detail", ""),
+                            "updated_utc": m.get("updated_utc", ""),
+                        }
+                        for m in missions
+                        if isinstance(m, dict)
+                    ],
+                },
+            )
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            OSError,
+            ImportError,
+            RuntimeError,
+        ) as exc:
             logger.error("Mission active list failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Active missions unavailable."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Active missions unavailable."},
+            )
 
     def _handle_get_missions_steps(self) -> None:
         """Return the step breakdown for a specific mission."""
@@ -320,20 +412,36 @@ class CommandRoutesMixin:
         qs = _parse_query_params(self.path)
         mission_id = str(qs.get("id", [""])[0]).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "id query parameter is required"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "id query parameter is required"},
+            )
             return
         try:
             from jarvis_engine.learning_missions import get_mission_steps
 
             steps = get_mission_steps(self._root, mission_id)
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "mission_id": mission_id,
-                "steps": steps,
-            })
-        except (ValueError, KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "mission_id": mission_id,
+                    "steps": steps,
+                },
+            )
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            OSError,
+            ImportError,
+            RuntimeError,
+        ) as exc:
             logger.error("Mission steps failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission steps unavailable."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Mission steps unavailable."},
+            )
 
     def _handle_post_missions_pause(self) -> None:
         """Pause a running mission."""
@@ -342,22 +450,32 @@ class CommandRoutesMixin:
             return
         mission_id = str(payload.get("mission_id", "")).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"}
+            )
             return
         try:
             from jarvis_engine.learning_missions import pause_mission
 
             mission = pause_mission(self._root, mission_id=mission_id)
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "mission_id": mission.get("mission_id", ""),
-                "status": mission.get("status", ""),
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "mission_id": mission.get("mission_id", ""),
+                    "status": mission.get("status", ""),
+                },
+            )
         except ValueError as exc:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]}
+            )
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
             logger.error("Mission pause failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission pause failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Mission pause failed."},
+            )
 
     def _handle_post_missions_resume(self) -> None:
         """Resume a paused mission."""
@@ -366,22 +484,32 @@ class CommandRoutesMixin:
             return
         mission_id = str(payload.get("mission_id", "")).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"}
+            )
             return
         try:
             from jarvis_engine.learning_missions import resume_mission
 
             mission = resume_mission(self._root, mission_id=mission_id)
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "mission_id": mission.get("mission_id", ""),
-                "status": mission.get("status", ""),
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "mission_id": mission.get("mission_id", ""),
+                    "status": mission.get("status", ""),
+                },
+            )
         except ValueError as exc:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]}
+            )
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
             logger.error("Mission resume failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission resume failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Mission resume failed."},
+            )
 
     def _handle_post_missions_restart(self) -> None:
         """Restart a failed/cancelled mission."""
@@ -390,22 +518,32 @@ class CommandRoutesMixin:
             return
         mission_id = str(payload.get("mission_id", "")).strip()
         if not mission_id:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "mission_id is required"}
+            )
             return
         try:
             from jarvis_engine.learning_missions import restart_mission
 
             mission = restart_mission(self._root, mission_id=mission_id)
-            self._write_json(HTTPStatus.OK, {
-                "ok": True,
-                "mission_id": mission.get("mission_id", ""),
-                "status": mission.get("status", ""),
-            })
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "mission_id": mission.get("mission_id", ""),
+                    "status": mission.get("status", ""),
+                },
+            )
         except ValueError as exc:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)[:200]}
+            )
         except (KeyError, TypeError, OSError, ImportError, RuntimeError) as exc:
             logger.error("Mission restart failed: %s", exc)
-            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission restart failed."})
+            self._write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Mission restart failed."},
+            )
 
     def _handle_get_digest(self) -> None:
         """Return a context-aware digest of what happened while user was busy."""
@@ -450,11 +588,13 @@ class CommandRoutesMixin:
                             start = start.astimezone()
                         diff_hours = (start - now).total_seconds() / 3600.0
                         if 0 <= diff_hours <= 2:
-                            upcoming.append({
-                                "title": ev.get("title", ""),
-                                "start_time": start_str,
-                                "minutes_until": int(diff_hours * 60),
-                            })
+                            upcoming.append(
+                                {
+                                    "title": ev.get("title", ""),
+                                    "start_time": start_str,
+                                    "minutes_until": int(diff_hours * 60),
+                                }
+                            )
                     except (ValueError, TypeError):
                         logger.debug("Skipping calendar event with invalid date")
                         continue
@@ -483,9 +623,14 @@ class CommandRoutesMixin:
 
         title = unquote(str(qs.get("title", [""])[0]).strip())
         att_raw = str(qs.get("attendees", [""])[0]).strip()
-        attendees: list[str] = [a.strip() for a in att_raw.split(",") if a.strip()] if att_raw else []
+        attendees: list[str] = (
+            [a.strip() for a in att_raw.split(",") if a.strip()] if att_raw else []
+        )
         if not title and not attendees:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "title or attendees required"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "title or attendees required"},
+            )
             return
         briefing: dict[str, Any] = {
             "title": title,
@@ -504,23 +649,47 @@ class CommandRoutesMixin:
                         try:
                             facts = kg.query_relevant_facts([person], limit=5)
                             for fact in facts:
-                                briefing["context_facts"].append({
-                                    "about": person,
-                                    "fact": fact.get("label", ""),
-                                    "confidence": round(float(fact.get("confidence", 0)), 2),
-                                })
-                        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
-                            logger.debug("KG person fact lookup failed for %s: %s", person, exc)
+                                briefing["context_facts"].append(
+                                    {
+                                        "about": person,
+                                        "fact": fact.get("label", ""),
+                                        "confidence": round(
+                                            float(fact.get("confidence", 0)), 2
+                                        ),
+                                    }
+                                )
+                        except (
+                            RuntimeError,
+                            OSError,
+                            ValueError,
+                            TypeError,
+                            KeyError,
+                        ) as exc:
+                            logger.debug(
+                                "KG person fact lookup failed for %s: %s", person, exc
+                            )
                     if title:
                         try:
-                            topic_facts = kg.query_relevant_facts(title.split()[:4], limit=5)
+                            topic_facts = kg.query_relevant_facts(
+                                title.split()[:4], limit=5
+                            )
                             for fact in topic_facts:
-                                briefing["context_facts"].append({
-                                    "about": title,
-                                    "fact": fact.get("label", ""),
-                                    "confidence": round(float(fact.get("confidence", 0)), 2),
-                                })
-                        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                                briefing["context_facts"].append(
+                                    {
+                                        "about": title,
+                                        "fact": fact.get("label", ""),
+                                        "confidence": round(
+                                            float(fact.get("confidence", 0)), 2
+                                        ),
+                                    }
+                                )
+                        except (
+                            RuntimeError,
+                            OSError,
+                            ValueError,
+                            TypeError,
+                            KeyError,
+                        ) as exc:
                             logger.debug("KG topic fact lookup failed: %s", exc)
                 keywords = attendees + ([title] if title else [])
                 # Batch: collect all record IDs first, then fetch in one query
@@ -530,24 +699,53 @@ class CommandRoutesMixin:
                         results = mem_engine.search_fts(keyword, limit=3)
                         for record_id, _score in results:
                             _keyword_record_ids.append((keyword, record_id))
-                    except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
-                        logger.debug("Memory search for meeting keyword %s failed: %s", keyword, exc)
+                    except (
+                        RuntimeError,
+                        OSError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                    ) as exc:
+                        logger.debug(
+                            "Memory search for meeting keyword %s failed: %s",
+                            keyword,
+                            exc,
+                        )
                 if _keyword_record_ids:
                     try:
                         all_ids = [rid for _, rid in _keyword_record_ids]
                         records_batch = mem_engine.get_records_batch(all_ids)
-                        rec_map = {str(r.get("record_id", "")): r for r in records_batch}
+                        rec_map = {
+                            str(r.get("record_id", "")): r for r in records_batch
+                        }
                         for keyword, record_id in _keyword_record_ids:
                             rec = rec_map.get(record_id)
                             if rec:
-                                briefing["recent_memories"].append({
-                                    "about": keyword,
-                                    "summary": str(rec.get("summary", ""))[:200],
-                                    "date": str(rec.get("ts", "")),
-                                })
-                    except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
-                        logger.debug("Batch record fetch for meeting prep failed: %s", exc)
-        except (ImportError, RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                                briefing["recent_memories"].append(
+                                    {
+                                        "about": keyword,
+                                        "summary": str(rec.get("summary", ""))[:200],
+                                        "date": str(rec.get("ts", "")),
+                                    }
+                                )
+                    except (
+                        RuntimeError,
+                        OSError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                    ) as exc:
+                        logger.debug(
+                            "Batch record fetch for meeting prep failed: %s", exc
+                        )
+        except (
+            ImportError,
+            RuntimeError,
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+        ) as exc:
             logger.debug("Meeting prep KG query failed: %s", exc)
         if briefing["context_facts"] or briefing["recent_memories"]:
             topics = set()

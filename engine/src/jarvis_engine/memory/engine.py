@@ -35,6 +35,7 @@ class OptimizeResult(TypedDict):
     vacuumed: bool
     errors: list[str]
 
+
 __all__ = [
     "MemoryEngine",
 ]
@@ -56,6 +57,7 @@ class MemoryEngine:
         self._closed = False
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(db_path, full=True, check_same_thread=False)
 
         # Load sqlite-vec extension (graceful degradation)
@@ -69,7 +71,9 @@ class MemoryEngine:
                 self._db.enable_load_extension(False)
         except (ImportError, OSError, sqlite3.Error) as exc:
             self._vec_available = False
-            logger.warning("sqlite-vec unavailable, falling back to FTS5-only search: %s", exc)
+            logger.warning(
+                "sqlite-vec unavailable, falling back to FTS5-only search: %s", exc
+            )
 
         self._init_schema()
 
@@ -321,7 +325,9 @@ class MemoryEngine:
 
             except (sqlite3.Error, OSError) as exc:
                 self._db.rollback()
-                logger.debug("delete_records_batch transaction failed, rolled back: %s", exc)
+                logger.debug(
+                    "delete_records_batch transaction failed, rolled back: %s", exc
+                )
                 raise
 
     def _get_record_by(self, column: str, value: str) -> dict | None:
@@ -387,7 +393,8 @@ class MemoryEngine:
             if len(query_embedding) != _EMBEDDING_DIM:
                 logger.warning(
                     "Vec search dimension mismatch: got %d, expected %d",
-                    len(query_embedding), _EMBEDDING_DIM,
+                    len(query_embedding),
+                    _EMBEDDING_DIM,
                 )
                 return []
             blob = struct.pack(f"{len(query_embedding)}f", *query_embedding)
@@ -524,7 +531,12 @@ class MemoryEngine:
                 "FROM records GROUP BY branch ORDER BY cnt DESC"
             ).fetchall()
         return [
-            {"branch": row[0], "count": row[1], "last_ts": row[2] or "", "last_summary": ""}
+            {
+                "branch": row[0],
+                "count": row[1],
+                "last_ts": row[2] or "",
+                "last_summary": "",
+            }
             for row in rows
         ]
 
@@ -594,7 +606,9 @@ class MemoryEngine:
                 try:
                     self._db.close()
                 except sqlite3.Error as exc:
-                    logger.debug("Failed to close MemoryEngine database connection: %s", exc)
+                    logger.debug(
+                        "Failed to close MemoryEngine database connection: %s", exc
+                    )
 
     def rebuild_fts_with_prefix(self) -> bool:
         """Recreate the FTS5 table with ``prefix='2,3'`` for faster prefix queries.

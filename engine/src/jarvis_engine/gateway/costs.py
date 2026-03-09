@@ -51,6 +51,7 @@ class LocalCloudSummary(TypedDict):
     cloud_cost_usd: float
     failed_cost_usd: float
 
+
 _BATCH_SIZE = 10
 _FLUSH_INTERVAL_S = 30.0
 
@@ -72,6 +73,7 @@ class CostTracker:
         self._flush_timer: threading.Timer | None = None
 
         from jarvis_engine._db_pragmas import connect_db
+
         self._db = connect_db(db_path, check_same_thread=False)
 
         self._init_schema()
@@ -169,16 +171,18 @@ class CostTracker:
         with self._write_lock:
             if getattr(self, "_closed", False):
                 return
-            self._buffer.append((
-                model,
-                provider,
-                input_tokens,
-                output_tokens,
-                cost_usd,
-                route_reason,
-                1 if fallback_used else 0,
-                query_hash,
-            ))
+            self._buffer.append(
+                (
+                    model,
+                    provider,
+                    input_tokens,
+                    output_tokens,
+                    cost_usd,
+                    route_reason,
+                    1 if fallback_used else 0,
+                    query_hash,
+                )
+            )
             if len(self._buffer) >= _BATCH_SIZE:
                 self._flush_locked()
 
@@ -218,13 +222,15 @@ class CostTracker:
         total_cost = 0.0
         for row in rows:
             row_cost = row["total_cost"] or 0.0
-            models.append({
-                "model": row["model"],
-                "count": row["count"],
-                "input_tokens": row["total_input_tokens"] or 0,
-                "output_tokens": row["total_output_tokens"] or 0,
-                "cost_usd": row_cost,
-            })
+            models.append(
+                {
+                    "model": row["model"],
+                    "count": row["count"],
+                    "input_tokens": row["total_input_tokens"] or 0,
+                    "output_tokens": row["total_output_tokens"] or 0,
+                    "cost_usd": row_cost,
+                }
+            )
             total_cost += row_cost
 
         return {

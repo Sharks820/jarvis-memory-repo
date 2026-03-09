@@ -28,6 +28,7 @@ class SessionStatus(TypedDict):
     locked_out: bool
     session_count: int
 
+
 # ---------------------------------------------------------------------------
 # Argon2id — optional, fall back to PBKDF2 if not installed
 # ---------------------------------------------------------------------------
@@ -39,7 +40,9 @@ try:
 
     _HAS_ARGON2 = True
 except ImportError:  # pragma: no cover
-    logger.debug("argon2-cffi not installed; falling back to PBKDF2 for password hashing")
+    logger.debug(
+        "argon2-cffi not installed; falling back to PBKDF2 for password hashing"
+    )
     pass
 
 # ---------------------------------------------------------------------------
@@ -319,7 +322,9 @@ class OwnerSessionManager:
         """Verify *password* against stored hash.  Caller must hold lock."""
         if self._hash_algo == "argon2":
             if not _HAS_ARGON2:
-                logger.error("Password stored with argon2 but argon2-cffi not installed")
+                logger.error(
+                    "Password stored with argon2 but argon2-cffi not installed"
+                )
                 return False
             ph = _Argon2Hasher(
                 memory_cost=65536,
