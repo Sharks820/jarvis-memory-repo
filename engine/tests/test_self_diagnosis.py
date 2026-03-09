@@ -5,12 +5,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import textwrap
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from jarvis_engine.self_diagnosis import (
     DiagnosticEngine,

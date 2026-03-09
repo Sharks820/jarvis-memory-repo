@@ -883,6 +883,7 @@ def warmup_stt_backends() -> None:
             try:
                 model = model.with_timestamps()
             except (AttributeError, RuntimeError, TypeError):
+                logger.debug("Parakeet model does not support with_timestamps(), using without")
                 pass
             _parakeet_model = model
             logger.info("Parakeet TDT 0.6B model warmed up successfully")

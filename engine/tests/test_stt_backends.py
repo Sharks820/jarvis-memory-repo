@@ -330,7 +330,6 @@ class TestRecordFromMicrophone:
         with patch.dict(sys.modules, {"sounddevice": mock_sd}), \
              patch("jarvis_engine.stt_backends.sd", mock_sd, create=True):
             # Patch the import inside the function
-            import jarvis_engine.stt_backends as stt_mod
             original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
 
             def _mock_sd(name, *args, **kwargs):

@@ -60,18 +60,10 @@ class BrainStatusHandler:
                 except sqlite3.Error as exc:
                     logger.warning("Failed to query KnowledgeGraph stats: %s", exc)
 
-            # Query branches with per-branch record counts
+            # Query branches via MemoryEngine domain method
             branches: list[dict] = []
             try:
-                with self._engine.db_lock:
-                    rows = self._engine.db.execute(
-                        "SELECT branch, COUNT(*) AS cnt, MAX(ts) AS last_ts "
-                        "FROM records GROUP BY branch ORDER BY cnt DESC"
-                    ).fetchall()
-                branches = [
-                    {"branch": row[0], "count": row[1], "last_ts": row[2] or "", "last_summary": ""}
-                    for row in rows
-                ]
+                branches = self._engine.get_branch_stats()
             except sqlite3.Error as exc:
                 logger.warning("Failed to query branches: %s", exc)
 

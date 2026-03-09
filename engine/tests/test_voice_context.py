@@ -8,8 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from jarvis_engine.knowledge.graph import KnowledgeGraph
 from jarvis_engine.learning.preferences import PreferenceTracker
 from jarvis_engine.memory.embeddings import EmbeddingService

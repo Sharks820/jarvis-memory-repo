@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
 from jarvis_engine._compat import UTC
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -54,6 +57,7 @@ def check_medication_reminders(snapshot_data: dict, _now: datetime | None = None
                 name = med.get("name", "medication")
                 alerts.append(f"Medication reminder: {name} due at {due_time_str}")
         except (ValueError, IndexError):
+            logger.debug("Failed to parse medication due_time: %s", due_time_str)
             continue
 
     return alerts
@@ -101,6 +105,7 @@ def check_calendar_prep(snapshot_data: dict) -> list[str]:
                 minutes = max(1, int(diff_hours * 60))
                 alerts.append(f"Calendar prep: {title} starts in {minutes} minutes")
         except (ValueError, TypeError):
+            logger.debug("Failed to parse calendar event start_time: %s", start_str)
             continue
 
     return alerts
@@ -134,6 +139,7 @@ def check_contact_neglect(snapshot_data: dict) -> list[str]:
         try:
             importance = float(contact.get("importance", 0))
         except (ValueError, TypeError):
+            logger.debug("Failed to parse contact importance value")
             continue
         if importance < 0.4:
             continue
@@ -155,6 +161,7 @@ def check_contact_neglect(snapshot_data: dict) -> list[str]:
                     msg += f" — last discussed: {last_topic}"
                 alerts.append(msg)
         except (ValueError, TypeError):
+            logger.debug("Failed to parse contact last_contact_date: %s", last_contact_str)
             continue
 
     return alerts[:3]  # Cap at 3 to avoid alert fatigue
@@ -192,6 +199,7 @@ def check_meeting_prep_intelligence(snapshot_data: dict) -> list[str]:
                     msg += f" | Context: {context}"
                 alerts.append(msg)
         except (ValueError, TypeError):
+            logger.debug("Failed to parse meeting start_time: %s", start_str)
             continue
 
     return alerts

@@ -8,7 +8,6 @@ Sub-modules (split for separation of concerns):
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -818,8 +817,6 @@ def _web_augmented_llm_conversation(
 
     Returns 0 on success, 1 on failure.
     """
-    from jarvis_engine.main import cmd_voice_say
-
     bus = get_bus()
 
     memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)

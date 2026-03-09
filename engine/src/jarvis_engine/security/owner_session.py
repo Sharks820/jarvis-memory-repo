@@ -39,6 +39,7 @@ try:
 
     _HAS_ARGON2 = True
 except ImportError:  # pragma: no cover
+    logger.debug("argon2-cffi not installed; falling back to PBKDF2 for password hashing")
     pass
 
 # ---------------------------------------------------------------------------

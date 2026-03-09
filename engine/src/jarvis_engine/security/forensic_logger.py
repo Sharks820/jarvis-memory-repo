@@ -96,6 +96,7 @@ class ForensicLogger:
                     prev_hash = sha256_hex(raw_line)
                     count += 1
         except OSError:
+            logger.debug("OSError reading forensic log during chain verification at entry %d", count)
             return (False, count)
 
         return (True, count)
@@ -150,6 +151,7 @@ class ForensicLogger:
                             try:
                                 entry = json.loads(raw_line)
                             except json.JSONDecodeError:
+                                logger.debug("Skipping malformed JSON line during forensic log export")
                                 continue
                             ts = entry.get("timestamp_utc", "")
                             # Compare date prefix (YYYY-MM-DD)
@@ -216,6 +218,7 @@ class ForensicLogger:
                             json.loads(line)
                             return sha256_hex(line)
                         except (json.JSONDecodeError, ValueError):
+                            logger.debug("Failed to parse forensic log line during hash recovery")
                             continue
                     if actual_read >= size:
                         # We've read the entire file and no line parses

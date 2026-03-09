@@ -515,6 +515,19 @@ class MemoryEngine:
             cur = self._db.execute("SELECT COUNT(*) FROM records")
             return cur.fetchone()[0]
 
+    def get_branch_stats(self) -> list[dict]:
+        """Return per-branch record counts and last timestamp."""
+        self._check_open()
+        with self._db_lock:
+            rows = self._db.execute(
+                "SELECT branch, COUNT(*) AS cnt, MAX(ts) AS last_ts "
+                "FROM records GROUP BY branch ORDER BY cnt DESC"
+            ).fetchall()
+        return [
+            {"branch": row[0], "count": row[1], "last_ts": row[2] or "", "last_summary": ""}
+            for row in rows
+        ]
+
     def wal_checkpoint(self) -> None:
         """Run a passive WAL checkpoint to prevent unbounded WAL growth.
 

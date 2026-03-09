@@ -443,12 +443,12 @@ class MobileIngestServer(ThreadingHTTPServer):
                     b"Connection: close\r\n\r\n"
                 )
             except OSError:
-                pass
+                pass  # Client already disconnected; nothing to send
             finally:
                 try:
                     self.shutdown_request(request)
                 except OSError:
-                    pass
+                    pass  # Socket already closed during cleanup
             return
         try:
             super().process_request(request, client_address)

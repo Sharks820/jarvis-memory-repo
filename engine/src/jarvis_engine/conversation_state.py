@@ -483,7 +483,7 @@ def _get_or_create_salt(salt_path: Path) -> bytes:
             try:
                 tmp.unlink()
             except OSError:
-                pass
+                logger.debug("Failed to clean up temporary salt file")
         if salt_path.exists():
             return salt_path.read_bytes()
         raise
@@ -1326,8 +1326,8 @@ class ConversationStateManager:
                     if self._fernet_key is not None:
                         try:
                             data = _decrypt_json(raw_bytes, self._fernet_key)
-                        except Exception:
-                            pass
+                        except Exception:  # noqa: BLE001 — last-resort decryption attempt
+                            logger.debug("Fernet decryption failed for conversation state file")
                     if data is None:
                         logger.warning("Could not parse conversation state file")
                         return

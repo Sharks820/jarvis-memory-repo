@@ -21,7 +21,6 @@ from jarvis_engine.widget_helpers import (
     _is_position_on_screen,
     _save_widget_cfg,
     _snap_to_edge,
-    _Tooltip,
 )
 
 logger = logging.getLogger(__name__)

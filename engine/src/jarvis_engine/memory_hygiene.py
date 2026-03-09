@@ -236,6 +236,7 @@ def is_protected(
             if age < timedelta(days=min_age_days):
                 return True, f"within {min_age_days}-day cooling period"
         except (ValueError, TypeError):
+            logger.debug("Failed to parse record timestamp for cooling period check: %s", ts)
             pass
 
     return False, ""
@@ -344,6 +345,7 @@ class MemoryHygieneEngine:
                         record_time = record_time.replace(tzinfo=UTC)
                     age_days = (now - record_time).total_seconds() / 86400.0
                 except (ValueError, TypeError):
+                    logger.debug("Failed to parse record timestamp for age calculation: %s", ts)
                     pass
 
             threshold = (

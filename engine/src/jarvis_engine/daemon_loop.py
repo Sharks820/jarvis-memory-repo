@@ -752,7 +752,7 @@ def _collect_kg_metrics(root: Path) -> None:
         try:
             bus = _get_daemon_bus()
             kg = getattr(bus.ctx, "kg", None)
-        except Exception:
+        except Exception:  # noqa: BLE001 — bus may not be initialized yet
             kg = None
 
         if kg is not None:

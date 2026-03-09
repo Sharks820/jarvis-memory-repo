@@ -12,9 +12,16 @@
     ".pytest_cache",
     ".ruff_cache",
     "MagicMock",
-    ".planning/runtime"
+    ".planning/runtime",
+    ".claude/worktrees",
+    ".factory",
+    "tmp2mdqy4q0.txt",
+    "test_out.txt",
+    "test_results.txt"
   ],
-  "ignore": [],
+  "ignore": [
+    ".claude/worktrees"
+  ],
   "ignore_metadata": {},
   "zone_overrides": {},
   "review_dimensions": [],

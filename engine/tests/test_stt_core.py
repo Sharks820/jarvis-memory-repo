@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

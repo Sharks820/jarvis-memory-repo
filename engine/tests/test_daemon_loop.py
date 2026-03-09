@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,7 +15,6 @@ from jarvis_engine.daemon_loop import (
     _collect_from_recent_memories,
     _collect_from_kg_gaps,
     _collect_from_strong_kg_areas,
-    _collect_from_activity_feed,
     _collect_from_learning_missions,
     _discover_harvest_topics,
     _handle_circuit_breaker,
@@ -32,15 +29,11 @@ from jarvis_engine.daemon_loop import (
     _log_cycle_end,
     _run_db_optimize_cycle,
     _run_core_autopilot,
-    _emit_cycle_status,
     gaming_mode_state_path,
     gaming_processes_path,
     read_gaming_mode_state,
     write_gaming_mode_state,
-    load_gaming_processes,
-    detect_active_game_process,
     cmd_mission_run,
-    GamingModeState,
 )
 
 

@@ -327,6 +327,7 @@ class DiagnosticEngine:
                     evidence={"key": "GROQ_API_KEY", "set": False},
                 ))
         except (ImportError, OSError, ValueError):
+            logger.debug("Gateway config check failed during self-diagnosis")
             pass
 
         # Check Ollama reachability
@@ -400,11 +401,13 @@ class DiagnosticEngine:
                         from jarvis_engine._compat import UTC as _utc
                         started = started.replace(tzinfo=_utc)
                     except (ImportError, OSError):
+                        logger.debug("Failed to import UTC compat for mission timestamp")
                         pass
                 delta_minutes = (now - started).total_seconds() / 60.0
                 if delta_minutes > _STUCK_MISSION_MINUTES:
                     stuck_ids.append(str(mission.get("mission_id", "")))
             except (ValueError, TypeError, OverflowError):
+                logger.debug("Failed to parse mission updated_utc for stuck detection")
                 continue
 
         if stuck_ids:
@@ -466,7 +469,6 @@ class DiagnosticEngine:
             # Use branch_counts to check for disconnected nodes if available.
             # Simple heuristic: if edge_count < node_count * 0.9 (10% orphan threshold)
             if node_count > 10 and edge_count < node_count * (1 - _ORPHAN_NODE_RATIO_THRESHOLD):
-                orphan_estimate = node_count - edge_count
                 ratio = max(0.0, 1.0 - (edge_count / node_count)) if node_count > 0 else 0.0
                 issues.append(DiagnosticIssue(
                     id=_issue_id(),
@@ -534,6 +536,7 @@ class DiagnosticEngine:
                 except OSError as exc:
                     logger.debug("Personal vocab read failed: %s", exc)
         except (ImportError, OSError, ValueError):
+            logger.debug("Voice pipeline check failed during self-diagnosis")
             pass
 
         # Check if VAD model is importable
@@ -552,6 +555,7 @@ class DiagnosticEngine:
                     evidence={"package": "silero_vad"},
                 ))
         except (ImportError, OSError, ValueError):
+            logger.debug("VAD model check failed during self-diagnosis")
             pass
 
         return issues
@@ -581,7 +585,7 @@ class DiagnosticEngine:
             finally:
                 conn.close()
             return {"applied": True, "result": "VACUUM and ANALYZE completed successfully"}
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, sqlite3.Error) as exc:
             return {"applied": False, "result": f"VACUUM failed: {exc}"}
 
     def _fix_rebuild_fts(self) -> dict[str, Any]:
@@ -628,7 +632,7 @@ class DiagnosticEngine:
             finally:
                 conn.close()
             return {"applied": True, "result": "WAL checkpoint (TRUNCATE) completed"}
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, sqlite3.Error) as exc:
             return {"applied": False, "result": f"WAL checkpoint failed: {exc}"}
 
     def _fix_clear_stuck_missions(self) -> dict[str, Any]:
@@ -667,7 +671,7 @@ class DiagnosticEngine:
                         except (ValueError, OSError) as cancel_exc:
                             logger.debug("Failed to cancel mission %s: %s", mid, cancel_exc)
                 except (ValueError, TypeError, OverflowError):
-                    continue
+                    continue  # Skip missions with unparseable IDs
 
             if cancelled_ids:
                 return {"applied": True, "result": f"Cancelled {len(cancelled_ids)} stuck mission(s): {cancelled_ids}"}

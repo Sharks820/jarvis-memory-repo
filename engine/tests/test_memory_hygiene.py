@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from jarvis_engine._compat import UTC
 from jarvis_engine.memory_hygiene import (
-    ClassificationResult,
     HygieneReport,
     MemoryHygieneEngine,
     classify_record,

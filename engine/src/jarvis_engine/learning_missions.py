@@ -991,6 +991,7 @@ def get_now_working_on(root: Path) -> dict[str, Any] | None:
                     created_dt = datetime.fromisoformat(created)
                     elapsed_s = int((datetime.now(UTC) - created_dt).total_seconds())
                 except (ValueError, TypeError):
+                    logger.debug("Failed to parse mission created_utc timestamp: %s", created)
                     pass
             artifacts = 0
             if isinstance(steps, list):

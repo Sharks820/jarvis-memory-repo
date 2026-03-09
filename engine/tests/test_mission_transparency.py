@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
-from jarvis_engine._compat import UTC
 from jarvis_engine._shared import now_iso
 from jarvis_engine.learning_missions import (
-    MissionStep,
     _compute_step_progress,
     _init_mission_steps,
     _update_step,

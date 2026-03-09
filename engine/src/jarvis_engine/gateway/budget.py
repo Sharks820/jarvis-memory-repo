@@ -13,13 +13,13 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jarvis_engine._compat import UTC
-from jarvis_engine.gateway.pricing import PRICING, calculate_cost
+from jarvis_engine.gateway.pricing import calculate_cost
 
 if TYPE_CHECKING:
     from jarvis_engine.gateway.audit import GatewayAudit
@@ -327,7 +327,7 @@ class BudgetEnforcer:
         try:
             self.close()
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("BudgetEnforcer.__del__ cleanup failed")
 
     def __enter__(self) -> "BudgetEnforcer":
         return self

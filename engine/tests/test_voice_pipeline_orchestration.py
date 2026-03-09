@@ -13,11 +13,8 @@ Also tests supporting helpers:
 from __future__ import annotations
 
 import json
-import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 _VP = "jarvis_engine.voice_pipeline"
 
@@ -267,7 +264,8 @@ class TestClassifyAndRoute:
         bus = self._make_bus()  # No classifier
         route, model = _classify_and_route(bus, "what is my bank account balance")
         assert route == "simple_private"
-        assert model == "gemma3:4b"  # DEFAULT_LOCAL_MODEL
+        from jarvis_engine._constants import DEFAULT_LOCAL_MODEL
+        assert model == DEFAULT_LOCAL_MODEL
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "key123", "MISTRAL_API_KEY": "", "ZAI_API_KEY": ""})
     def test_env_model_fallback_non_private(self) -> None:
@@ -283,7 +281,8 @@ class TestClassifyAndRoute:
         bus = self._make_bus(classifier_error=RuntimeError("embedding fail"))
         # Non-private query, no cloud keys -> local model
         route, model = _classify_and_route(bus, "tell me a joke")
-        assert model == "gemma3:4b"
+        from jarvis_engine._constants import DEFAULT_LOCAL_MODEL
+        assert model == DEFAULT_LOCAL_MODEL
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "", "MISTRAL_API_KEY": "mk", "ZAI_API_KEY": ""})
     def test_mistral_fallback_priority(self) -> None:

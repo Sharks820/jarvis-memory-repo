@@ -11,9 +11,6 @@ Covers:
 from __future__ import annotations
 
 import json
-import threading
-import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path

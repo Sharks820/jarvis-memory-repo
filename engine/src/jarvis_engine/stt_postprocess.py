@@ -94,7 +94,8 @@ def preprocess_audio(
         trimmed, _ = librosa.effects.trim(audio, top_db=abs(silence_threshold_db))
         audio = trimmed.astype(np.float32)
     except ImportError:
-        pass  # Already warned above
+        logger.debug("librosa not available for silence trimming")
+        pass
     except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.warning("Silence trimming failed, skipping: %s", exc)
 

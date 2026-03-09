@@ -365,7 +365,7 @@ def _capture_audio_loop(
     pre_speech_buffer: deque[np.ndarray] = deque(maxlen=pre_pad_chunks)
 
     # RC-3: post-speech padding (~300ms after VAD says speech ended)
-    post_pad_chunks = max(1, int(post_speech_pad_seconds / chunk_duration))
+    _post_pad_chunks = max(1, int(post_speech_pad_seconds / chunk_duration))  # noqa: F841 — reserved for post-speech padding
 
     frames: list[np.ndarray] = []
     speech_detected = False

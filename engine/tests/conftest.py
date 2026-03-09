@@ -45,6 +45,8 @@ def pytest_unconfigure(config):
         return
     sys.stdout.flush()
     sys.stderr.flush()
+    # Brief pause ensures terminal summary is fully written before force-exit
+    time.sleep(0.1)
     os._exit(getattr(config, "_exitstatus", 0))
 
 

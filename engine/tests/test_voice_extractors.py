@@ -6,8 +6,6 @@ and covers additional edge cases.
 """
 from __future__ import annotations
 
-import pytest
-
 from jarvis_engine.voice_extractors import (
     PHONE_NUMBER_RE,
     URL_RE,

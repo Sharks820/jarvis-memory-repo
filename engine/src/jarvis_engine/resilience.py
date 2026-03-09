@@ -119,7 +119,7 @@ def run_mobile_desktop_sync(root: Path) -> SyncReport:
         {"name": "widget_config_exists", "ok": widget_cfg_path.exists()},
         {"name": "owner_guard_device_ready", "ok": (not bool(owner_guard.get("enabled", False))) or trusted_count > 0 or has_master_password},
     ]
-    sync_ok = all(bool(item.get("ok", False)) for item in checks)
+    sync_ok = all(item.get("ok", False) for item in checks)
     report = {
         "sync_ok": sync_ok,
         "generated_utc": _now_iso(),
@@ -189,11 +189,11 @@ def run_self_heal(
     now = _now_iso()
     actions: list[str] = []
     security = _ensure_mobile_security_config(root)
-    if bool(security.get("repaired", False)):
+    if security.get("repaired", False):
         actions.append("repaired_mobile_security_config")
 
     sync_report = run_mobile_desktop_sync(root)
-    if not bool(sync_report.get("sync_ok", False)):
+    if not sync_report.get("sync_ok", False):
         actions.append("mobile_desktop_sync_attention")
 
     regression = brain_regression_report(root)
@@ -214,12 +214,10 @@ def run_self_heal(
 
     logs = _scan_recent_logs(root)
     issue_counts = logs.get("issues", {})
-    issue_total = 0
-    if isinstance(issue_counts, dict):
-        issue_total = sum(_safe_int(v) for v in issue_counts.values())
+    issue_total = sum(_safe_int(v) for v in issue_counts.values())
 
     overall = "ok"
-    if (not regression_healthy) or (isinstance(maintenance, dict) and maintenance.get("status") == "error"):
+    if (not regression_healthy) or maintenance.get("status") == "error":
         overall = "error"
     elif issue_total > 0 or not bool(sync_report.get("sync_ok", False)):
         overall = "attention"

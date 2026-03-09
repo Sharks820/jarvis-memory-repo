@@ -79,6 +79,7 @@ def _parse_token_usage(text: str) -> tuple[int, int]:
                     if inp or out:
                         return (inp, out)
     except (json.JSONDecodeError, ValueError, TypeError):
+        logger.debug("Token usage JSON parsing failed, falling back to regex")
         pass
 
     # Try regex patterns on raw text
@@ -90,6 +91,7 @@ def _parse_token_usage(text: str) -> tuple[int, int]:
                 out = int(match.group(2).replace(",", ""))
                 return (inp, out)
             except (ValueError, IndexError):
+                logger.debug("Failed to parse token counts from regex match")
                 continue
 
     return (0, 0)

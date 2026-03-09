@@ -68,7 +68,7 @@ class SyncPullHandler:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
         except _InvalidToken as exc:
-            logger.error("SyncPull encryption failed (invalid token): %s", exc)
+            logger.error("SyncPull encryption failed (invalid token): %s", type(exc).__name__)
             return SyncPullResult(message="error: encryption failed")
 
         return SyncPullResult(
@@ -106,7 +106,7 @@ class SyncPushHandler:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
         except _InvalidToken as exc:
-            logger.error("SyncPush decryption failed (invalid token): %s", exc)
+            logger.error("SyncPush decryption failed (invalid token): %s", type(exc).__name__)
             return SyncPushResult(message="error: decryption failed")
 
         try:

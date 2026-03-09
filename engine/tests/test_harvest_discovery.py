@@ -8,8 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from jarvis_engine.activity_feed import ActivityFeed
 
 from jarvis_engine.harvest_discovery import (

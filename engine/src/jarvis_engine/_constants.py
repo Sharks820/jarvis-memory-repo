@@ -73,7 +73,7 @@ def is_privacy_sensitive(text: str) -> bool:
 # Default local (Ollama) model
 # ---------------------------------------------------------------------------
 
-DEFAULT_LOCAL_MODEL = "gemma3:4b"
+DEFAULT_LOCAL_MODEL = "qwen3.5:latest"
 
 # ---------------------------------------------------------------------------
 # Default cloud model (API-based, used by gateway/classifier/handlers)

@@ -98,6 +98,7 @@ class InterestLearner:
                     try:
                         dt = datetime.fromisoformat(entry["last_seen"])
                     except (ValueError, TypeError):
+                        logger.debug("Failed to parse last_seen timestamp in _decay_all")
                         continue
                     entry["last_seen"] = (dt - timedelta(days=days)).isoformat()
             self._save(data)

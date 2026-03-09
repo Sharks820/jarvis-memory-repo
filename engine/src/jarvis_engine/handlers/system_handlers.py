@@ -97,6 +97,7 @@ class ServeMobileHandler:
                 tls=cmd.tls,
             )
         except KeyboardInterrupt:
+            logger.debug("Mobile server stopped by KeyboardInterrupt")
             pass
         except RuntimeError as exc:
             logger.warning("Mobile server RuntimeError: %s", exc)

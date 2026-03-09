@@ -17,7 +17,7 @@ import time
 import tkinter as tk
 from typing import Any
 
-from jarvis_engine.widget_helpers import _Tooltip, _http_json
+from jarvis_engine.widget_helpers import _http_json
 
 logger = logging.getLogger(__name__)
 

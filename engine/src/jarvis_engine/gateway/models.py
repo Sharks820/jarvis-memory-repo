@@ -199,6 +199,9 @@ class GatewayResponse:
 # Used by _apply_context_guard to prevent oversized prompts.
 _MODEL_CONTEXT_LIMITS: dict[str, int] = {
     # Local models (Ollama)
+    "qwen3.5:latest": 32_768,
+    "qwen3:14b": 32_768,
+    "qwen3:4b": 32_768,
     "gemma3:4b": 8_192,
     "gemma3:12b": 8_192,
     "llama3.2:3b": 8_192,
@@ -769,7 +772,7 @@ class ModelGateway:
                 # Estimate cost for a typical request (use max_tokens as output estimate)
                 estimated = self._budget.estimate_cost(model, max_tokens, max_tokens)
                 self._budget.check_budget(estimated)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — budget check boundary
                 # Import here to avoid circular import at module level
                 from jarvis_engine.gateway.budget import BudgetExceededError
                 if isinstance(exc, BudgetExceededError):
@@ -874,14 +877,17 @@ class ModelGateway:
             "temperature": temperature,
         }
 
-        resp = self._http.post(
-            url,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-        )
+        try:
+            resp = self._http.post(
+                url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"{cfg['provider_name']} request failed: {exc}") from exc
 
         if resp.status_code == 429:
             headers = getattr(resp, "headers", None)
@@ -902,14 +908,17 @@ class ModelGateway:
                     cfg["provider_name"], retry_after_s,
                 )
                 time.sleep(retry_after_s)
-                resp = self._http.post(
-                    url,
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                )
+                try:
+                    resp = self._http.post(
+                        url,
+                        json=payload,
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                    )
+                except httpx.HTTPError as exc:
+                    raise RuntimeError(f"{cfg['provider_name']} retry request failed: {exc}") from exc
                 # If retry also fails, fall through to error handling below
                 if resp.status_code == 429:
                     logger.warning(
@@ -1034,6 +1043,7 @@ class ModelGateway:
                 model=model,
                 messages=messages,
                 options={"num_predict": max_tokens, "temperature": temperature},
+                think=False,
             )
         except (ConnectionError, ResponseError, TimeoutError, OSError) as exc:
             logger.warning("Ollama call failed: %s", exc)
@@ -1197,7 +1207,7 @@ class ModelGateway:
                         if self._health is not None:
                             self._health.record_success("anthropic", 0.0)
                         return resp
-                    except (OSError, RuntimeError, ValueError) as exc:
+                    except (OSError, RuntimeError, ValueError, APIConnectionError, APIStatusError, RateLimitError) as exc:
                         logger.warning("Fallback to Anthropic also failed: %s", exc)
                         if self._health is not None:
                             self._health.record_failure("anthropic")

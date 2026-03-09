@@ -138,6 +138,7 @@ class GatewayAudit:
             try:
                 result.append(json.loads(line))
             except json.JSONDecodeError:
+                logger.debug("Skipping malformed audit log line")
                 continue
         return result
 
@@ -160,6 +161,7 @@ class GatewayAudit:
                 if ts >= cutoff:
                     recent.append(r)
             except (KeyError, ValueError):
+                logger.debug("Skipping audit record with missing/invalid timestamp")
                 continue
 
         provider_counts: dict[str, int] = {}

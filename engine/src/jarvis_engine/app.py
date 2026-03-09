@@ -223,7 +223,7 @@ def _register_with_fallback(
     """
     try:
         handler = handler_factory()
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError, TypeError) as exc:
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         logger.warning(
             "Handler factory for %s failed, using fallback: %s",
             command_type.__name__, exc,
@@ -295,7 +295,6 @@ def _register_memory_handlers(
     bus: CommandBus, root: Path, engine: Any, embed_service: Any,
     kg: Any, pipeline: Any,
 ) -> None:
-    """Register memory CQRS handlers."""
     bus.register(BrainStatusCommand, BrainStatusHandler(root, engine=engine, kg=kg).handle)
     bus.register(BrainContextCommand, BrainContextHandler(root, engine=engine, embed_service=embed_service).handle)
     bus.register(BrainCompactCommand, BrainCompactHandler(root).handle)
@@ -306,7 +305,6 @@ def _register_memory_handlers(
 
 
 def _register_voice_handlers(bus: CommandBus, root: Path, gateway: Any) -> None:
-    """Register voice CQRS handlers."""
     bus.register(VoiceListCommand, VoiceListHandler(root).handle)
     bus.register(VoiceSayCommand, VoiceSayHandler(root).handle)
     bus.register(VoiceEnrollCommand, VoiceEnrollHandler(root).handle)
@@ -316,7 +314,6 @@ def _register_voice_handlers(bus: CommandBus, root: Path, gateway: Any) -> None:
 
 
 def _register_system_handlers(bus: CommandBus, root: Path) -> None:
-    """Register system CQRS handlers."""
     bus.register(StatusCommand, StatusHandler(root).handle)
     bus.register(LogCommand, LogHandler(root).handle)
     bus.register(ServeMobileCommand, ServeMobileHandler(root).handle)
@@ -333,7 +330,6 @@ def _register_system_handlers(bus: CommandBus, root: Path) -> None:
 def _register_task_handlers(
     bus: CommandBus, root: Path, gateway: Any, intent_classifier: Any,
 ) -> None:
-    """Register task/query CQRS handlers."""
     bus.register(RunTaskCommand, RunTaskHandler(root).handle)
     bus.register(RouteCommand, RouteHandler(root, classifier=intent_classifier, gateway=gateway).handle)
     if gateway is not None:
@@ -357,7 +353,6 @@ def _register_task_handlers(
 def _register_ops_handlers(
     bus: CommandBus, root: Path, gateway: Any, pipeline: Any,
 ) -> None:
-    """Register ops CQRS handlers."""
     bus.register(OpsBriefCommand, OpsBriefHandler(root, gateway=gateway).handle)
     bus.register(OpsExportActionsCommand, OpsExportActionsHandler(root).handle)
     bus.register(OpsSyncCommand, OpsSyncHandler(root).handle)
@@ -450,14 +445,13 @@ def _register_defense_handlers(bus: CommandBus, root: Path) -> None:
         for _cmd_cls, _handler in _defense_registrations:
             try:
                 bus.register(_cmd_cls, cast(Callable[..., Any], _handler))
-            except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            except TypeError as exc:
                 logger.warning("Failed to register %s: %s", _cmd_cls.__name__, exc)
     except (ImportError, OSError, sqlite3.Error) as exc:
         logger.warning("Failed to import defense commands: %s", exc)
 
 
 def _register_knowledge_handlers(bus: CommandBus, root: Path, kg: Any) -> None:
-    """Register knowledge graph CQRS handlers."""
     bus.register(KnowledgeStatusCommand, KnowledgeStatusHandler(root, kg=kg).handle)
     bus.register(ContradictionListCommand, ContradictionListHandler(root, kg=kg).handle)
     bus.register(ContradictionResolveCommand, ContradictionResolveHandler(root, kg=kg).handle)
@@ -727,7 +721,7 @@ def create_app(root: Path) -> CommandBus:
             try:
                 embed_service.embed("warmup", prefix="search_document")
                 logger.info("Embedding model warmed up")
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001 — background warmup must not crash
                 logger.debug("Embedding warm-up failed (will load on first use): %s", exc)
 
         import threading as _threading

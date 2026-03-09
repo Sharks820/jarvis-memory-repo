@@ -117,6 +117,15 @@ class RegressionChecker:
                 graph_hash = _EMPTY_GRAPH_HASH
             else:
                 try:
+                    # Sanitize node/edge attributes to ASCII for WL hash
+                    for _nid, attrs in G.nodes(data=True):
+                        for k, v in attrs.items():
+                            if isinstance(v, str):
+                                attrs[k] = v.encode("ascii", errors="replace").decode("ascii")
+                    for _u, _v, attrs in G.edges(data=True):
+                        for k, val in attrs.items():
+                            if isinstance(val, str):
+                                attrs[k] = val.encode("ascii", errors="replace").decode("ascii")
                     graph_hash = nx.weisfeiler_lehman_graph_hash(
                         G,
                         node_attr="label",
@@ -124,7 +133,7 @@ class RegressionChecker:
                         iterations=3,
                         digest_size=16,
                     )
-                except (ValueError, nx.NetworkXError) as exc:
+                except (ValueError, nx.NetworkXError, UnicodeEncodeError) as exc:
                     logger.warning("WL hash computation failed: %s", exc)
                     graph_hash = _EMPTY_GRAPH_HASH
 

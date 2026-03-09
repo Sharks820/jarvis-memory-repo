@@ -54,5 +54,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-n4 --dist worksteal -q"
+addopts = "-n8 --dist worksteal -q"
 timeout = 30

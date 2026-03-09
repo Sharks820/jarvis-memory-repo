@@ -106,6 +106,7 @@ class ThreatIntelFeed:
         try:
             self._pool.shutdown(wait=False)
         except Exception:  # noqa: BLE001
+            logger.debug("Thread pool shutdown failed during ThreatIntelFeed garbage collection")
             pass
 
     def __enter__(self) -> "ThreatIntelFeed":

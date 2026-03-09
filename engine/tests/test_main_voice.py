@@ -7,7 +7,6 @@ _MAX_TOKENS_BY_ROUTE, QueryCommand.history, QueryHandler history injection.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,8 +14,6 @@ import pytest
 
 from jarvis_engine import main as main_mod
 from jarvis_engine import voice_pipeline as voice_pipeline_mod
-from jarvis_engine import daemon_loop as daemon_loop_mod
-from jarvis_engine import _bus as bus_mod
 from jarvis_engine.command_bus import AppContext, CommandBus
 from jarvis_engine.gateway.models import ModelGateway
 from jarvis_engine.knowledge.graph import KnowledgeGraph
