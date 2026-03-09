@@ -774,8 +774,9 @@ class ModelGateway:
         # Budget enforcement: check before making the call
         if self._budget is not None:
             try:
-                # Estimate cost for a typical request (use max_tokens as output estimate)
-                estimated = self._budget.estimate_cost(model, max_tokens, max_tokens)
+                # Estimate cost: use prompt size for input, max_tokens for output
+                input_estimate = self._estimate_tokens(messages)
+                estimated = self._budget.estimate_cost(model, input_estimate, max_tokens)
                 self._budget.check_budget(estimated)
             except Exception as exc:  # noqa: BLE001 — budget check boundary
                 # Import here to avoid circular import at module level
@@ -1241,7 +1242,7 @@ class ModelGateway:
     ) -> GatewayResponse:
         """Fall back to local Ollama after all cloud providers fail.
 
-        Uses JARVIS_LOCAL_MODEL env var if set, otherwise defaults to gemma3:4b.
+        Uses JARVIS_LOCAL_MODEL env var if set, otherwise defaults to qwen3.5:latest.
         Returns a graceful error response if Ollama also fails.
         """
         fallback_model = _get_local_model()

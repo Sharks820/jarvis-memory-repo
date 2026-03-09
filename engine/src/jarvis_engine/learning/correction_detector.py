@@ -315,13 +315,19 @@ class CorrectionDetector:
             "Correction merged: node %s retracted, existing node %s boosted to %.2f",
             old_node_id, new_node_id, merged_confidence,
         )
-        # Add superseded edge for historical audit trail
+        # Add superseded edge for historical audit trail.
+        # NOTE: We are already inside self._kg.write_lock (from apply_correction),
+        # so call the raw SQL insert directly instead of add_edge() which would
+        # deadlock (threading.Lock is non-reentrant).
         try:
-            self._kg.add_edge(
-                source_id=old_node_id,
-                target_id=new_node_id,
-                relation="superseded",
+            self._kg._db.execute(
+                """INSERT OR IGNORE INTO kg_edges
+                   (source_id, target_id, relation, confidence, source_record)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (old_node_id, new_node_id, "superseded", 1.0, "correction_merge"),
             )
+            self._kg._db.commit()
+            self._kg._mutation_counter += 1
         except (sqlite3.Error, ValueError) as exc:
             logger.debug("KG audit edge failed: %s", exc)
         return True

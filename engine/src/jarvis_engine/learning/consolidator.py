@@ -313,7 +313,7 @@ class MemoryConsolidator:
             messages=messages,
             max_tokens=256,
         )
-        text = response.text.strip()
+        text = (response.text or "").strip()
         return text if text else None
 
     # ------------------------------------------------------------------
