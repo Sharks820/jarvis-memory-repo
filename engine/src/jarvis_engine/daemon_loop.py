@@ -528,11 +528,18 @@ def _run_self_test_cycle(root: Path) -> None:
 
 
 def _run_db_optimize_cycle(cycles: int) -> None:
-    """Run SQLite ANALYZE (every 100 cycles) and VACUUM (every 500) (never raises)."""
+    """Run SQLite ANALYZE (every 100 cycles), VACUUM (every 500), WAL checkpoint (every 50) (never raises)."""
     try:
         bus = _get_daemon_bus()
         engine = bus.ctx.engine
         if engine is not None:
+            # WAL checkpoint every 50 cycles to prevent unbounded WAL growth
+            if cycles % 50 == 0:
+                try:
+                    engine.wal_checkpoint()
+                    print("db_wal_checkpoint=ok")
+                except (OSError, sqlite3.Error) as wal_exc:
+                    logger.debug("WAL checkpoint failed: %s", wal_exc)
             do_vacuum = (cycles % 500 == 0)
             opt_result = engine.optimize(vacuum=do_vacuum)
             print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
