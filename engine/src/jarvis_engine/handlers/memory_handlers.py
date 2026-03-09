@@ -119,7 +119,7 @@ class BrainContextHandler:
                     "source": record.get("source", ""),
                     "kind": record.get("kind", ""),
                     "ts": record.get("ts", ""),
-                    "score": 0.0,
+                    "score": record.get("_search_score", 0.0),
                 })
                 total_chars += len(summary)
             return BrainContextResult(packet={

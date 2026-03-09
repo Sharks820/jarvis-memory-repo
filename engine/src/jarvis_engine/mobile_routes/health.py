@@ -255,8 +255,8 @@ class HealthRoutesMixin:
             logger.debug("Diagnostics scan failed: %s", exc)
             self._write_json(HTTPStatus.OK, {
                 "ok": True,
-                "healthy": True,
-                "score": 100,
+                "healthy": False,
+                "score": 0,
                 "issues": [],
-                "error": str(exc),
+                "error": f"diagnostics engine failed: {exc}",
             })

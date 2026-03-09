@@ -605,36 +605,37 @@ class MemoryEngine:
         """
         self._check_open()
         with self._write_lock:
-            cur = self._db.cursor()
-            try:
-                # Read existing data
-                cur.execute("SELECT record_id, summary FROM fts_records")
-                rows = cur.fetchall()
+            with self._db_lock:
+                cur = self._db.cursor()
+                try:
+                    # Read existing data
+                    cur.execute("SELECT record_id, summary FROM fts_records")
+                    rows = cur.fetchall()
 
-                # Drop and recreate with prefix
-                cur.execute("DROP TABLE IF EXISTS fts_records")
-                cur.execute(
-                    "CREATE VIRTUAL TABLE fts_records "
-                    "USING fts5(record_id, summary, prefix='2,3')"
-                )
-
-                # Re-insert data
-                for row in rows:
+                    # Drop and recreate with prefix
+                    cur.execute("DROP TABLE IF EXISTS fts_records")
                     cur.execute(
-                        "INSERT INTO fts_records(record_id, summary) VALUES (?, ?)",
-                        (row[0], row[1]),
+                        "CREATE VIRTUAL TABLE fts_records "
+                        "USING fts5(record_id, summary, prefix='2,3')"
                     )
 
-                self._db.commit()
-                logger.info(
-                    "FTS5 table rebuilt with prefix='2,3' (%d rows migrated)",
-                    len(rows),
-                )
-                return True
-            except sqlite3.Error as exc:
-                self._db.rollback()
-                logger.warning("rebuild_fts_with_prefix failed: %s", exc)
-                return False
+                    # Re-insert data
+                    for row in rows:
+                        cur.execute(
+                            "INSERT INTO fts_records(record_id, summary) VALUES (?, ?)",
+                            (row[0], row[1]),
+                        )
+
+                    self._db.commit()
+                    logger.info(
+                        "FTS5 table rebuilt with prefix='2,3' (%d rows migrated)",
+                        len(rows),
+                    )
+                    return True
+                except sqlite3.Error as exc:
+                    self._db.rollback()
+                    logger.warning("rebuild_fts_with_prefix failed: %s", exc)
+                    return False
 
     def __enter__(self) -> "MemoryEngine":
         return self

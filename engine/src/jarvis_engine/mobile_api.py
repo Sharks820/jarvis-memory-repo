@@ -450,8 +450,14 @@ class MobileIngestServer(ThreadingHTTPServer):
                 except OSError:
                     pass  # Socket already closed during cleanup
             return
+        # NOTE: super().process_request() spawns a thread and returns immediately.
+        # We must release the semaphore AFTER the thread finishes, not here.
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        """Override to release semaphore after the request thread completes."""
         try:
-            super().process_request(request, client_address)
+            super().process_request_thread(request, client_address)
         finally:
             self._thread_semaphore.release()
 

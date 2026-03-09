@@ -1214,7 +1214,7 @@ def _handle_circuit_breaker(rc: int, consecutive_failures: int) -> int:
     print(f"consecutive_failures={consecutive_failures}")
     if consecutive_failures >= max_consecutive_failures:
         print("daemon_circuit_breaker_open=true cooldown=300s")
-        time.sleep(300)  # 5-minute cooldown instead of exit
+        _interruptible_sleep(300)  # 5-minute cooldown instead of exit
         return 0  # Reset counter after cooldown
     return consecutive_failures
 

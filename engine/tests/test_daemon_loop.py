@@ -384,7 +384,9 @@ class TestCycleManagement:
     def test_circuit_breaker_cooldown_at_max(self, mock_sleep) -> None:
         """Circuit breaker should trigger 300s cooldown at max failures."""
         result = _handle_circuit_breaker(1, 9)  # 9+1 = 10 = max
-        mock_sleep.assert_called_once_with(300)
+        # _interruptible_sleep(300) calls time.sleep in 1-second chunks
+        total_sleep = sum(call.args[0] for call in mock_sleep.call_args_list)
+        assert total_sleep == 300.0
         assert result == 0  # reset after cooldown
 
 

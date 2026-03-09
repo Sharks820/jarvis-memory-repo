@@ -174,7 +174,10 @@ def hybrid_search(
 
     # 6. Sort by combined score descending, take top-k
     scored_records.sort(key=lambda pair: pair[0], reverse=True)
-    results = [record for _score, record in scored_records[:k]]
+    results = []
+    for score, record in scored_records[:k]:
+        record["_search_score"] = round(score, 4)
+        results.append(record)
 
     # 7. Debounced access-count update (flushes every 100 IDs or 10 seconds)
     result_ids = [r["record_id"] for r in results if r.get("record_id")]

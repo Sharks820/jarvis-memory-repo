@@ -245,7 +245,7 @@ class BudgetEnforcer:
             self._db.commit()
             daily = self._daily_spend()
             monthly = self._monthly_spend()
-        self._emit_alerts(daily, monthly)
+            self._emit_alerts(daily, monthly)
 
     def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Estimate the cost of a request before making it."""

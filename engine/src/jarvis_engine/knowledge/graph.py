@@ -296,10 +296,12 @@ class KnowledgeGraph:
         for row in edges:
             G.add_edge(row[0], row[1], relation=row[2], confidence=row[3])
 
-        # Update cache (atomic under GIL; concurrent rebuilds are harmless
-        # since they produce identical results for the same gen)
-        self._cached_graph = G
-        self._cached_gen = gen
+        # Update cache under db_lock to prevent a concurrent invalidate_cache()
+        # from being overwritten by a stale graph built from pre-mutation data.
+        with self._db_lock:
+            if self._mutation_counter == gen:
+                self._cached_graph = G
+                self._cached_gen = gen
 
         return G.copy() if copy else G
 

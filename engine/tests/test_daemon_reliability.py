@@ -81,11 +81,10 @@ class TestDaemonReliability:
         def always_failing_autopilot(*args, **kwargs) -> int:
             raise RuntimeError("Always fails")
 
-        cooldown_sleeps: list[float] = []
+        total_sleep = [0.0]
 
         def tracking_sleep(s: float) -> None:
-            if s >= 300:
-                cooldown_sleeps.append(s)
+            total_sleep[0] += s
             # All sleeps are no-ops in test
 
         monkeypatch.setattr(main_mod, "cmd_ops_autopilot", always_failing_autopilot)
@@ -104,9 +103,9 @@ class TestDaemonReliability:
             run_missions=False,
         )
 
-        # Circuit breaker now does cooldown sleep instead of exiting
+        # Circuit breaker triggers _interruptible_sleep(300) in 1s chunks
         assert rc == 0  # Completes all cycles normally
-        assert len(cooldown_sleeps) >= 1  # At least one 300s cooldown triggered
+        assert total_sleep[0] >= 300  # At least one 300s cooldown triggered
 
     def test_daemon_isolated_mission_failure(self, tmp_path: Path, monkeypatch) -> None:
         """C1: Mission failure should not affect main cycle."""

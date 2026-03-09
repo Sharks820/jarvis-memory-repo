@@ -336,6 +336,9 @@ class TestCrossBranchSemanticMatching:
         embed_service.embed.side_effect = lambda text, prefix="search_document": (
             base_vec if "flu symptoms" in text else similar_vec
         )
+        embed_service.embed_batch.side_effect = lambda texts, prefix="search_document": [
+            base_vec if "flu symptoms" in t else similar_vec for t in texts
+        ]
 
         edges = create_cross_branch_edges(
             kg, "health.flu", "rec-001", embed_service=embed_service,

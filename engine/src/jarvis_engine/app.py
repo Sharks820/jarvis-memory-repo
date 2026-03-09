@@ -351,7 +351,7 @@ def _register_task_handlers(
 
 
 def _register_ops_handlers(
-    bus: CommandBus, root: Path, gateway: Any, pipeline: Any,
+    bus: CommandBus, root: Path, gateway: Any, pipeline: Any, engine: Any = None,
 ) -> None:
     bus.register(OpsBriefCommand, OpsBriefHandler(root, gateway=gateway).handle)
     bus.register(OpsExportActionsCommand, OpsExportActionsHandler(root).handle)
@@ -367,7 +367,7 @@ def _register_ops_handlers(
     bus.register(MissionRestartCommand, MissionRestartHandler(root).handle)
     bus.register(MissionStepsCommand, MissionStepsHandler(root).handle)
     bus.register(MissionActiveCommand, MissionActiveHandler(root).handle)
-    bus.register(MemoryHygieneCommand, MemoryHygieneHandler(root, engine=getattr(bus, '_engine', None)).handle)
+    bus.register(MemoryHygieneCommand, MemoryHygieneHandler(root, engine=engine).handle)
     bus.register(GrowthEvalCommand, GrowthEvalHandler(root).handle)
     bus.register(GrowthReportCommand, GrowthReportHandler(root).handle)
     bus.register(GrowthAuditCommand, GrowthAuditHandler(root).handle)
@@ -695,7 +695,7 @@ def create_app(root: Path) -> CommandBus:
     _register_voice_handlers(bus, root, gateway)
     _register_system_handlers(bus, root)
     _register_task_handlers(bus, root, gateway, intent_classifier)
-    _register_ops_handlers(bus, root, gateway, pipeline)
+    _register_ops_handlers(bus, root, gateway, pipeline, engine=engine)
     _register_security_handlers(bus, root)
     _register_knowledge_handlers(bus, root, kg)
 

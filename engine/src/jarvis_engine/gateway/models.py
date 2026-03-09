@@ -1167,8 +1167,8 @@ class ModelGateway:
                     resp = self._call_openai_compat(messages, model_alias, max_tokens, pk, temperature)
                     resp.fallback_used = True
                     resp.fallback_reason = reason
-                    if self._health is not None:
-                        self._health.record_success(pk, 0.0)
+                    # NOTE: Don't record_success here — complete() records it
+                    # with real latency to avoid double-counting.
                     return resp
                 except (OSError, RuntimeError, ValueError, KeyError) as exc:
                     logger.warning("Fallback to %s also failed: %s", pk, exc)
@@ -1189,8 +1189,6 @@ class ModelGateway:
                     if resp.provider != "none":
                         resp.fallback_used = True
                         resp.fallback_reason = reason
-                        if self._health is not None:
-                            self._health.record_success(cli_key, 0.0)
                         return resp
                     logger.warning("CLI fallback %s returned empty", cli_key)
                     if self._health is not None:
@@ -1210,8 +1208,6 @@ class ModelGateway:
                         resp = self._call_anthropic(messages, "claude-haiku", max_tokens, temperature)
                         resp.fallback_used = True
                         resp.fallback_reason = reason
-                        if self._health is not None:
-                            self._health.record_success("anthropic", 0.0)
                         return resp
                     except (OSError, RuntimeError, ValueError, APIConnectionError, APIStatusError, RateLimitError) as exc:
                         logger.warning("Fallback to Anthropic also failed: %s", exc)

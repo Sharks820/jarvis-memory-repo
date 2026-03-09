@@ -79,6 +79,12 @@ class ProviderHealth:
             return 1.0
         return self.total_successes / self.total_requests
 
+    def reset_stats(self) -> None:
+        """Reset counters so historical failures don't permanently poison rate."""
+        self.total_requests = 0
+        self.total_successes = 0
+        self.total_failures = 0
+
     def to_dict(self) -> dict[str, Any]:
         """Serialise for API responses."""
         return {
@@ -193,8 +199,9 @@ class ProviderHealthTracker:
             # OPEN: check if cooldown has expired
             if time.monotonic() >= h.cooldown_until:
                 h.circuit_state = CircuitState.HALF_OPEN
+                h.reset_stats()  # Clear poisoned history so recovery is possible
                 logger.info(
-                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired)", provider,
+                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired, stats reset)", provider,
                 )
                 return False  # Allow one probe
 
@@ -213,9 +220,14 @@ class ProviderHealthTracker:
                 return True  # Unknown = assume healthy
 
             if h.circuit_state == CircuitState.OPEN:
-                # Check if cooldown expired
                 if time.monotonic() < h.cooldown_until:
                     return False
+                # Cooldown expired — transition to HALF_OPEN (same as should_skip)
+                h.circuit_state = CircuitState.HALF_OPEN
+                h.reset_stats()
+                logger.info(
+                    "Circuit breaker for %s: OPEN -> HALF_OPEN (cooldown expired via is_healthy)", provider,
+                )
 
             if h.total_requests >= 4 and h.success_rate < _MIN_SUCCESS_RATE:
                 return False
@@ -262,9 +274,9 @@ class ProviderHealthTracker:
         def _score(provider: str) -> float:
             with self._lock:
                 h = self._providers.get(provider)
-            if h is None:
-                return 0.5
-            latency_factor = 1.0 / (1.0 + h.avg_latency_ms / 1000.0)
-            return h.success_rate * latency_factor
+                if h is None:
+                    return 0.5
+                latency_factor = 1.0 / (1.0 + h.avg_latency_ms / 1000.0)
+                return h.success_rate * latency_factor
 
         return sorted(providers, key=_score, reverse=True)
