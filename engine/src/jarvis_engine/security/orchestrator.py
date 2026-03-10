@@ -51,6 +51,7 @@ def _try_import(module_path: str, class_name: str) -> type | None:
     """Import *class_name* from *module_path*, returning ``None`` on failure."""
     try:
         import importlib
+
         mod = importlib.import_module(module_path)
         return getattr(mod, class_name)
     except (ImportError, AttributeError):  # pragma: no cover
@@ -60,16 +61,30 @@ def _try_import(module_path: str, class_name: str) -> type | None:
 ActionAuditor = _try_import("jarvis_engine.security.action_auditor", "ActionAuditor")
 ScopeEnforcer = _try_import("jarvis_engine.security.scope_enforcer", "ScopeEnforcer")
 HeartbeatMonitor = _try_import("jarvis_engine.security.heartbeat", "HeartbeatMonitor")
-ResourceMonitor = _try_import("jarvis_engine.security.resource_monitor", "ResourceMonitor")
+ResourceMonitor = _try_import(
+    "jarvis_engine.security.resource_monitor", "ResourceMonitor"
+)
 ThreatIntelFeed = _try_import("jarvis_engine.security.threat_intel", "ThreatIntelFeed")
-ThreatNeutralizer = _try_import("jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer")
-HomeNetworkMonitor = _try_import("jarvis_engine.security.network_defense", "HomeNetworkMonitor")
-KnownDeviceRegistry = _try_import("jarvis_engine.security.network_defense", "KnownDeviceRegistry")
+ThreatNeutralizer = _try_import(
+    "jarvis_engine.security.threat_neutralizer", "ThreatNeutralizer"
+)
+HomeNetworkMonitor = _try_import(
+    "jarvis_engine.security.network_defense", "HomeNetworkMonitor"
+)
+KnownDeviceRegistry = _try_import(
+    "jarvis_engine.security.network_defense", "KnownDeviceRegistry"
+)
 BreachMonitor = _try_import("jarvis_engine.security.identity_shield", "BreachMonitor")
 FamilyShield = _try_import("jarvis_engine.security.identity_shield", "FamilyShield")
-ImpersonationDetector = _try_import("jarvis_engine.security.identity_shield", "ImpersonationDetector")
-TyposquatMonitor = _try_import("jarvis_engine.security.identity_shield", "TyposquatMonitor")
-OwnerSessionManager = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
+ImpersonationDetector = _try_import(
+    "jarvis_engine.security.identity_shield", "ImpersonationDetector"
+)
+TyposquatMonitor = _try_import(
+    "jarvis_engine.security.identity_shield", "TyposquatMonitor"
+)
+OwnerSessionManager = _try_import(
+    "jarvis_engine.security.owner_session", "OwnerSessionManager"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +143,8 @@ _ESCALATION_LEVELS = frozenset({"HIGH", "CRITICAL"})
 
 # Map threat level -> containment severity (ContainmentEngine level)
 _THREAT_TO_CONTAINMENT: dict[str, int] = {
-    "HIGH": 2,       # BLOCK
-    "CRITICAL": 3,   # ISOLATE
+    "HIGH": 2,  # BLOCK
+    "CRITICAL": 3,  # ISOLATE
 }
 
 # Map threat level -> alert chain level
@@ -206,7 +221,8 @@ class SecurityOrchestrator:
         # Threat intelligence & response
         self._init_module("threat_intel", ThreatIntelFeed)
         self._init_module(
-            "threat_neutralizer", ThreatNeutralizer,
+            "threat_neutralizer",
+            ThreatNeutralizer,
             forensic_logger=self._forensic_logger,
             ip_tracker=self._ip_tracker,
             attack_memory=self._attack_memory,
@@ -243,7 +259,15 @@ class SecurityOrchestrator:
             return
         try:
             setattr(self, attr_name, cls(*args, **kwargs))
-        except (ImportError, AttributeError, TypeError, OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+        except (
+            ImportError,
+            AttributeError,
+            TypeError,
+            OSError,
+            ValueError,
+            RuntimeError,
+            sqlite3.Error,
+        ) as exc:
             setattr(self, attr_name, None)
             logger.warning("Failed to init %s: %s", cls.__name__, exc)
 
@@ -275,8 +299,12 @@ class SecurityOrchestrator:
     # ------------------------------------------------------------------
 
     def check_request(
-        self, path: str, source_ip: str, headers: dict,
-        body: str, user_agent: str = "",
+        self,
+        path: str,
+        source_ip: str,
+        headers: dict,
+        body: str,
+        user_agent: str = "",
     ) -> SecurityCheckResult:
         """Run the full security pipeline on an inbound request."""
         # Early-exit checks (honeypot, IP blocklist, threat intel)
@@ -289,12 +317,18 @@ class SecurityOrchestrator:
 
         # Threat detection + injection firewall
         assessment = self._check_threat_detection(
-            source_ip, path, body, user_agent, headers,
+            source_ip,
+            path,
+            body,
+            user_agent,
+            headers,
         )
         threat_level = assessment.threat_level
         injection_result = self._check_injection(body)
         injection_verdict = injection_result.verdict.value
-        self._log_assessment(path, source_ip, threat_level, injection_verdict, assessment)
+        self._log_assessment(
+            path, source_ip, threat_level, injection_verdict, assessment
+        )
 
         # Decision logic
         allowed = True
@@ -305,11 +339,19 @@ class SecurityOrchestrator:
             allowed = False
             reason = f"Threat level {threat_level} detected"
             containment_actions = self._handle_escalation(
-                source_ip, path, body, threat_level, assessment,
+                source_ip,
+                path,
+                body,
+                threat_level,
+                assessment,
             )
         if injection_verdict != "clean":
             verdict_result = self._handle_injection_verdict(
-                source_ip, path, body, injection_verdict, injection_result,
+                source_ip,
+                path,
+                body,
+                injection_verdict,
+                injection_result,
             )
             if not verdict_result["allowed"]:
                 allowed = False
@@ -329,18 +371,23 @@ class SecurityOrchestrator:
     # ------------------------------------------------------------------
 
     def _check_honeypot(
-        self, path: str, source_ip: str, headers: dict,
+        self,
+        path: str,
+        source_ip: str,
+        headers: dict,
     ) -> SecurityCheckResult | None:
         """Return a block result if *path* is a honeypot, else ``None``."""
         if not self._honeypot.is_honeypot_path(path):
             return None
 
         self._honeypot.record_hit(path, source_ip, headers)
-        self._forensic_logger.log_event({
-            "event_type": "honeypot_triggered",
-            "path": path,
-            "source_ip": source_ip,
-        })
+        self._forensic_logger.log_event(
+            {
+                "event_type": "honeypot_triggered",
+                "path": path,
+                "source_ip": source_ip,
+            }
+        )
         self._ip_tracker.record_attempt(source_ip, "honeypot_probe")
         self._adaptive_defense.record_detection(
             category="honeypot_probe",
@@ -358,15 +405,19 @@ class SecurityOrchestrator:
         }
 
     def _check_ip_blocklist(
-        self, source_ip: str, path: str,
+        self,
+        source_ip: str,
+        path: str,
     ) -> SecurityCheckResult | None:
         """Return a block result if *source_ip* is blocked or flagged by threat intel."""
         if self._ip_tracker.is_blocked(source_ip):
-            self._forensic_logger.log_event({
-                "event_type": "blocked_ip_rejected",
-                "source_ip": source_ip,
-                "path": path,
-            })
+            self._forensic_logger.log_event(
+                {
+                    "event_type": "blocked_ip_rejected",
+                    "source_ip": source_ip,
+                    "path": path,
+                }
+            )
             self._increment_counters(blocked=True)
             return {
                 "allowed": False,
@@ -381,12 +432,14 @@ class SecurityOrchestrator:
             try:
                 intel = self.threat_intel.enrich_ip(source_ip)
                 if intel.get("is_known_bad"):
-                    self._forensic_logger.log_event({
-                        "event_type": "threat_intel_bad_ip",
-                        "source_ip": source_ip,
-                        "path": path,
-                        "intel": intel,
-                    })
+                    self._forensic_logger.log_event(
+                        {
+                            "event_type": "threat_intel_bad_ip",
+                            "source_ip": source_ip,
+                            "path": path,
+                            "intel": intel,
+                        }
+                    )
                     self._ip_tracker.record_attempt(source_ip, "threat_intel_bad")
                     self._increment_counters(blocked=True)
                     return {
@@ -397,7 +450,9 @@ class SecurityOrchestrator:
                         "containment_actions": [],
                     }
             except (OSError, ValueError, TimeoutError, RuntimeError) as exc:
-                logger.debug("Threat intel enrichment failed for %s: %s", source_ip, exc)
+                logger.debug(
+                    "Threat intel enrichment failed for %s: %s", source_ip, exc
+                )
 
         return None
 
@@ -433,14 +488,16 @@ class SecurityOrchestrator:
         assessment: Any,
     ) -> None:
         """Write a forensic log entry for the completed assessment."""
-        self._forensic_logger.log_event({
-            "event_type": "request_assessed",
-            "path": path,
-            "source_ip": source_ip,
-            "threat_level": threat_level,
-            "injection_verdict": injection_verdict,
-            "signal_count": len(assessment.signals),
-        })
+        self._forensic_logger.log_event(
+            {
+                "event_type": "request_assessed",
+                "path": path,
+                "source_ip": source_ip,
+                "threat_level": threat_level,
+                "injection_verdict": injection_verdict,
+                "signal_count": len(assessment.signals),
+            }
+        )
 
     def _handle_escalation(
         self,
@@ -484,7 +541,10 @@ class SecurityOrchestrator:
         return containment_actions
 
     def _record_signals(
-        self, signals: list, payload: str, source_ip: str,
+        self,
+        signals: list,
+        payload: str,
+        source_ip: str,
     ) -> None:
         """Record each threat signal in attack memory and adaptive defense."""
         for signal in signals:
@@ -538,12 +598,14 @@ class SecurityOrchestrator:
             return {"allowed": False, "reason": reason}
 
         if injection_verdict == "suspicious":
-            self._forensic_logger.log_event({
-                "event_type": "suspicious_injection",
-                "source_ip": source_ip,
-                "path": path,
-                "patterns": injection_result.matched_patterns[:5],
-            })
+            self._forensic_logger.log_event(
+                {
+                    "event_type": "suspicious_injection",
+                    "source_ip": source_ip,
+                    "path": path,
+                    "patterns": injection_result.matched_patterns[:5],
+                }
+            )
 
         return {"allowed": True, "reason": ""}
 
@@ -601,16 +663,20 @@ class SecurityOrchestrator:
         result = self._output_scanner.scan_output(response_text, system_context)
 
         if not result.safe:
-            self._forensic_logger.log_event({
-                "event_type": "output_scan_failed",
-                "issues": result.issues,
-                "confidence": result.confidence,
-            })
+            self._forensic_logger.log_event(
+                {
+                    "event_type": "output_scan_failed",
+                    "issues": result.issues,
+                    "confidence": result.confidence,
+                }
+            )
 
         return {
             "safe": result.safe,
             "findings": result.issues,
-            "filtered_text": response_text if result.safe else "[REDACTED: security issues detected]",
+            "filtered_text": response_text
+            if result.safe
+            else "[REDACTED: security issues detected]",
         }
 
     # ------------------------------------------------------------------
@@ -686,7 +752,9 @@ class SecurityOrchestrator:
         """
         return self._adaptive_defense.generate_briefing()
 
-    def get_threat_report(self, ip: str | None = None) -> ThreatReport | AllThreatsReport:
+    def get_threat_report(
+        self, ip: str | None = None
+    ) -> ThreatReport | AllThreatsReport:
         """Retrieve threat report for a specific IP or all tracked IPs.
 
         Delegates to the internal ``IPTracker``.
@@ -770,20 +838,26 @@ class SecurityOrchestrator:
         if self.threat_neutralizer is not None and level >= 2:
             try:
                 self.threat_neutralizer.neutralize(
-                    source_ip, category, {"detail": detail},
+                    source_ip,
+                    category,
+                    {"detail": detail},
                 )
             except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
                 logger.debug("ThreatNeutralizer failed for %s: %s", source_ip, exc)
 
         # Log to forensic log
-        self._forensic_logger.log_event({
-            "event_type": "threat_escalated",
-            "source_ip": source_ip,
-            "category": category,
-            "containment_level": level,
-        })
+        self._forensic_logger.log_event(
+            {
+                "event_type": "threat_escalated",
+                "source_ip": source_ip,
+                "category": category,
+                "containment_level": level,
+            }
+        )
 
         logger.warning(
             "Threat escalated: %s from %s (containment level %d)",
-            category, source_ip, level,
+            category,
+            source_ip,
+            level,
         )

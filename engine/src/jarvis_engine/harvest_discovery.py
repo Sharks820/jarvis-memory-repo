@@ -74,7 +74,9 @@ def _extract_topic_phrases(text: str) -> list[str]:
     for frag in fragments:
         words = frag.strip().split()
         # Filter out stop words and very short tokens
-        meaningful = [w for w in words if w.lower() not in _HARVEST_STOP_WORDS and len(w) > 1]
+        meaningful = [
+            w for w in words if w.lower() not in _HARVEST_STOP_WORDS and len(w) > 1
+        ]
         if len(meaningful) < 2:
             continue
         # Take up to 5 consecutive meaningful words
@@ -162,7 +164,9 @@ def _add_phrases(
     """
     phrases = _extract_topic_phrases(text)
     for phrase in phrases:
-        if _try_add_candidate(phrase, candidates, seen_lower, recently_harvested, max_topics):
+        if _try_add_candidate(
+            phrase, candidates, seen_lower, recently_harvested, max_topics
+        ):
             return True
     return len(candidates) >= max_topics
 
@@ -185,7 +189,9 @@ def _collect_from_recent_memories(
         rows = conn.execute(SQL_RECENT_SUMMARIES, (cutoff,)).fetchall()
         for row in rows:
             summary = row["summary"] or ""
-            if _add_phrases(summary, candidates, seen_lower, recently_harvested, max_topics):
+            if _add_phrases(
+                summary, candidates, seen_lower, recently_harvested, max_topics
+            ):
                 return
     except sqlite3.OperationalError as exc:
         logger.debug("Memory tables may not exist yet: %s", exc)
@@ -204,7 +210,9 @@ def _collect_from_kg_gaps(
         sparse_rows = conn.execute(SQL_SPARSE_NODES).fetchall()
         for row in sparse_rows:
             label = row["label"] or ""
-            if _add_phrases(label, candidates, seen_lower, recently_harvested, max_topics):
+            if _add_phrases(
+                label, candidates, seen_lower, recently_harvested, max_topics
+            ):
                 return
 
         # 2b: Relation types with few instances -- structural KG gaps
@@ -213,11 +221,14 @@ def _collect_from_kg_gaps(
             for row in rel_rows:
                 relation = row["relation"] or ""
                 node_row = conn.execute(
-                    SQL_NODE_BY_RELATION, (relation,),
+                    SQL_NODE_BY_RELATION,
+                    (relation,),
                 ).fetchone()
                 if node_row:
                     label = node_row["label"] or ""
-                    if _add_phrases(label, candidates, seen_lower, recently_harvested, max_topics):
+                    if _add_phrases(
+                        label, candidates, seen_lower, recently_harvested, max_topics
+                    ):
                         return
     except sqlite3.OperationalError as exc:
         logger.debug("KG tables may not exist yet: %s", exc)
@@ -252,7 +263,9 @@ def _collect_from_strong_kg_areas(
         for prefix, _cnt in strong_prefixes:
             expanded = f"{prefix} {suffixes[suffix_idx % len(suffixes)]}"
             suffix_idx += 1
-            if _try_add_candidate(expanded, candidates, seen_lower, recently_harvested, max_topics):
+            if _try_add_candidate(
+                expanded, candidates, seen_lower, recently_harvested, max_topics
+            ):
                 return
             if len(candidates) >= max_topics:
                 return
@@ -278,10 +291,15 @@ def _collect_from_activity_feed(
             for ev in events:
                 summary = ev.summary or ""
                 if len(summary) > 5:
-                    if _add_phrases(summary, candidates, seen_lower, recently_harvested, max_topics):
+                    if _add_phrases(
+                        summary, candidates, seen_lower, recently_harvested, max_topics
+                    ):
                         return
     except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
-        logger.debug("Failed to extract harvest topics from activity feed fact summaries: %s", exc)
+        logger.debug(
+            "Failed to extract harvest topics from activity feed fact summaries: %s",
+            exc,
+        )
 
 
 def _collect_from_learning_missions(
@@ -301,10 +319,14 @@ def _collect_from_learning_missions(
             if status in ("completed", "done", "running"):
                 topic = str(m.get("topic", "")).strip()
                 if topic and len(topic.split()) >= 2:
-                    if _try_add_candidate(topic, candidates, seen_lower, recently_harvested, max_topics):
+                    if _try_add_candidate(
+                        topic, candidates, seen_lower, recently_harvested, max_topics
+                    ):
                         return
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        logger.debug("Failed to discover harvest topics from learning missions: %s", exc)
+        logger.debug(
+            "Failed to discover harvest topics from learning missions: %s", exc
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +360,7 @@ def discover_harvest_topics(root: Path) -> list[str]:
         if db_path.exists():
             try:
                 from jarvis_engine._db_pragmas import connect_db as _connect_db
+
                 conn = _connect_db(db_path)
             except (sqlite3.Error, OSError) as exc:
                 logger.debug("Failed to connect to memory DB: %s", exc)

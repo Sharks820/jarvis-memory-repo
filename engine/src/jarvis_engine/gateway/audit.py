@@ -32,6 +32,7 @@ class AuditSummary(TypedDict):
     failure_rate_pct: float
     privacy_routed_count: int
 
+
 # Maximum audit log size before rotation (5 MB)
 _MAX_AUDIT_LOG_BYTES = 5 * 1024 * 1024
 
@@ -104,7 +105,9 @@ class GatewayAudit:
         try:
             # Atomic replace — avoids TOCTOU race of exists()+unlink()+rename()
             self._path.replace(rotated)
-            logger.info("Rotated audit log %s -> %s (%d bytes)", self._path, rotated, size)
+            logger.info(
+                "Rotated audit log %s -> %s (%d bytes)", self._path, rotated, size
+            )
         except OSError as exc:
             logger.warning("Failed to rotate audit log: %s", exc)
 

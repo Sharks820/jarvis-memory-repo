@@ -60,38 +60,45 @@ class NetworkDefenseStatus(TypedDict):
 _DGA_ENTROPY_THRESHOLD = 3.5
 
 # Ports commonly associated with reverse shells / C2 traffic.
-_SUSPICIOUS_PORTS = frozenset({
-    4444,   # Metasploit default
-    5555,   # Android ADB / various RATs
-    6666,   # IRC backdoors
-    6667,   # IRC
-    8443,   # Alt HTTPS (some C2)
-    31337,  # Back Orifice
-    12345,  # NetBus
-    54321,  # Back Orifice 2000
-    1337,   # waste
-    9001,   # Tor default ORPort
-    9050,   # Tor SOCKS
-    9051,   # Tor control
-})
+_SUSPICIOUS_PORTS = frozenset(
+    {
+        4444,  # Metasploit default
+        5555,  # Android ADB / various RATs
+        6666,  # IRC backdoors
+        6667,  # IRC
+        8443,  # Alt HTTPS (some C2)
+        31337,  # Back Orifice
+        12345,  # NetBus
+        54321,  # Back Orifice 2000
+        1337,  # waste
+        9001,  # Tor default ORPort
+        9050,  # Tor SOCKS
+        9051,  # Tor control
+    }
+)
 
 # MAC for broadcast — always skip in "unknown device" alerts.
-_BROADCAST_MACS = frozenset({
-    "ff:ff:ff:ff:ff:ff",
-    "00:00:00:00:00:00",
-})
+_BROADCAST_MACS = frozenset(
+    {
+        "ff:ff:ff:ff:ff:ff",
+        "00:00:00:00:00:00",
+    }
+)
 
 # Regex: IP address (v4)
 _IP_RE = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
 
 # Regex: MAC address (Windows uses dashes, Linux uses colons)
-_MAC_RE = re.compile(r"([0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2}[:\-]"
-                      r"[0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2})")
+_MAC_RE = re.compile(
+    r"([0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2}[:\-]"
+    r"[0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2}[:\-][0-9a-fA-F]{2})"
+)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _normalize_mac(mac: str) -> str:
     """Normalize a MAC to lowercase colon-separated format."""
@@ -111,7 +118,10 @@ def _run_command(args: list[str]) -> str:
     """Run a subprocess command and return stdout, or empty string on failure."""
     try:
         result = subprocess.run(
-            args, capture_output=True, text=True, timeout=30,
+            args,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return result.stdout or ""
     except (OSError, SubprocessError) as exc:
@@ -122,6 +132,7 @@ def _run_command(args: list[str]) -> str:
 # ---------------------------------------------------------------------------
 # KnownDeviceRegistry
 # ---------------------------------------------------------------------------
+
 
 class KnownDeviceRegistry:
     """Persistent JSON registry of approved network devices.
@@ -149,7 +160,9 @@ class KnownDeviceRegistry:
                 if isinstance(data, dict):
                     self._devices = data
             except (json.JSONDecodeError, ValueError, OSError) as exc:
-                logger.warning("Failed to load device registry from %s: %s", self._path, exc)
+                logger.warning(
+                    "Failed to load device registry from %s: %s", self._path, exc
+                )
 
     def _save(self) -> None:
         """Persist registry to disk.  Must be called while holding ``_lock``."""
@@ -207,6 +220,7 @@ class KnownDeviceRegistry:
 # ---------------------------------------------------------------------------
 # HomeNetworkMonitor
 # ---------------------------------------------------------------------------
+
 
 class HomeNetworkMonitor:
     """Monitor home network for rogue devices, DGA domains, and suspicious connections.
@@ -308,13 +322,15 @@ class HomeNetworkMonitor:
                 if dev_match:
                     interface = dev_match.group(1)
 
-                entries.append({
-                    "ip": ip_match.group(1),
-                    "mac": mac,
-                    "interface": interface,
-                    "unknown": False,
-                    "arp_poisoning": False,
-                })
+                entries.append(
+                    {
+                        "ip": ip_match.group(1),
+                        "mac": mac,
+                        "interface": interface,
+                        "unknown": False,
+                        "arp_poisoning": False,
+                    }
+                )
 
         return entries
 
@@ -342,39 +358,45 @@ class HomeNetworkMonitor:
             if mac not in _BROADCAST_MACS:
                 if self._registry and not self._registry.is_known(mac):
                     entry["unknown"] = True
-                    self._fire_alert({
-                        "type": "unknown_device",
-                        "mac": mac,
-                        "ip": ip,
-                        "message": f"Unknown device {mac} at {ip}",
-                        "timestamp": time.time(),
-                    })
+                    self._fire_alert(
+                        {
+                            "type": "unknown_device",
+                            "mac": mac,
+                            "ip": ip,
+                            "message": f"Unknown device {mac} at {ip}",
+                            "timestamp": time.time(),
+                        }
+                    )
 
             # --- ARP poisoning: multiple MACs for same IP ---
             if len(ip_to_macs.get(ip, set())) > 1:
                 entry["arp_poisoning"] = True
                 if ip not in alerted_ip_macs:
                     alerted_ip_macs.add(ip)
-                    self._fire_alert({
-                        "type": "arp_poisoning",
-                        "ip": ip,
-                        "macs": sorted(ip_to_macs[ip]),
-                        "message": f"ARP poisoning suspected: {ip} resolves to multiple MACs",
-                        "timestamp": time.time(),
-                    })
+                    self._fire_alert(
+                        {
+                            "type": "arp_poisoning",
+                            "ip": ip,
+                            "macs": sorted(ip_to_macs[ip]),
+                            "message": f"ARP poisoning suspected: {ip} resolves to multiple MACs",
+                            "timestamp": time.time(),
+                        }
+                    )
 
             # --- ARP poisoning: multiple IPs for same MAC (not broadcast) ---
             if mac not in _BROADCAST_MACS and len(mac_to_ips.get(mac, set())) > 1:
                 entry["arp_poisoning"] = True
                 if mac not in alerted_mac_ips:
                     alerted_mac_ips.add(mac)
-                    self._fire_alert({
-                        "type": "arp_poisoning",
-                        "mac": mac,
-                        "ips": sorted(mac_to_ips[mac]),
-                        "message": f"ARP anomaly: {mac} claims multiple IPs",
-                        "timestamp": time.time(),
-                    })
+                    self._fire_alert(
+                        {
+                            "type": "arp_poisoning",
+                            "mac": mac,
+                            "ips": sorted(mac_to_ips[mac]),
+                            "message": f"ARP anomaly: {mac} claims multiple IPs",
+                            "timestamp": time.time(),
+                        }
+                    )
 
     # ------------------------------------------------------------------
     # DNS cache analysis
@@ -488,15 +510,17 @@ class HomeNetworkMonitor:
             process = pid_map.get(pid, "unknown")
             suspicious, reason = self._assess_connection(remote_addr)
 
-            conns.append({
-                "local_addr": local_addr,
-                "remote_addr": remote_addr,
-                "state": state,
-                "pid": pid,
-                "process": process,
-                "suspicious": suspicious,
-                "reason": reason,
-            })
+            conns.append(
+                {
+                    "local_addr": local_addr,
+                    "remote_addr": remote_addr,
+                    "state": state,
+                    "pid": pid,
+                    "process": process,
+                    "suspicious": suspicious,
+                    "reason": reason,
+                }
+            )
 
         with self._lock:
             self._suspicious_connections = sum(1 for c in conns if c["suspicious"])
@@ -527,7 +551,7 @@ class HomeNetworkMonitor:
             # Extract PID from process column: users:(("name",pid=1234,fd=50))
             pid = 0
             process = "unknown"
-            pid_match = re.search(r'pid=(\d+)', line)
+            pid_match = re.search(r"pid=(\d+)", line)
             name_match = re.search(r'"([^"]+)"', line)
             if pid_match:
                 pid = int(pid_match.group(1))
@@ -536,15 +560,17 @@ class HomeNetworkMonitor:
 
             suspicious, reason = self._assess_connection(remote_addr)
 
-            conns.append({
-                "local_addr": local_addr,
-                "remote_addr": remote_addr,
-                "state": state,
-                "pid": pid,
-                "process": process,
-                "suspicious": suspicious,
-                "reason": reason,
-            })
+            conns.append(
+                {
+                    "local_addr": local_addr,
+                    "remote_addr": remote_addr,
+                    "state": state,
+                    "pid": pid,
+                    "process": process,
+                    "suspicious": suspicious,
+                    "reason": reason,
+                }
+            )
 
         with self._lock:
             self._suspicious_connections = sum(1 for c in conns if c["suspicious"])

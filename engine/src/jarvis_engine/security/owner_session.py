@@ -28,6 +28,7 @@ class SessionStatus(TypedDict):
     locked_out: bool
     session_count: int
 
+
 # ---------------------------------------------------------------------------
 # Argon2id — optional, fall back to PBKDF2 if not installed
 # ---------------------------------------------------------------------------
@@ -39,7 +40,9 @@ try:
 
     _HAS_ARGON2 = True
 except ImportError:  # pragma: no cover
-    logger.debug("argon2-cffi not installed; falling back to PBKDF2 for password hashing")
+    logger.debug(
+        "argon2-cffi not installed; falling back to PBKDF2 for password hashing"
+    )
     pass
 
 # ---------------------------------------------------------------------------
@@ -71,6 +74,10 @@ class OwnerSessionManager:
     force_pbkdf2:
         When ``True``, always use PBKDF2 even if argon2 is available.
         Useful for testing without the optional dependency.
+    _pbkdf2_iterations:
+        Override the PBKDF2 iteration count.  ``None`` (default) uses the
+        production value of 600 000.  Pass a small integer (e.g. ``1``) only
+        in unit tests to avoid saturating CPUs with expensive hashing.
     """
 
     MAX_SESSIONS: int = 10
@@ -81,11 +88,15 @@ class OwnerSessionManager:
         max_failures: int = 5,
         lockout_duration: int = 300,
         force_pbkdf2: bool = False,
+        _pbkdf2_iterations: int | None = None,
     ) -> None:
         self._session_timeout = session_timeout
         self._max_failures = max(max_failures, 1)
         self._lockout_duration = lockout_duration
         self._force_pbkdf2 = force_pbkdf2
+        self._pbkdf2_iters: int = (
+            _pbkdf2_iterations if _pbkdf2_iterations is not None else _PBKDF2_ITERATIONS
+        )
         self._lock = threading.Lock()
 
         # Password state
@@ -143,7 +154,7 @@ class OwnerSessionManager:
                     "sha256",
                     password.encode("utf-8"),
                     salt,
-                    _PBKDF2_ITERATIONS,
+                    self._pbkdf2_iters,
                 )
                 self._password_hash = dk.hex()
                 self._password_salt = salt
@@ -319,7 +330,9 @@ class OwnerSessionManager:
         """Verify *password* against stored hash.  Caller must hold lock."""
         if self._hash_algo == "argon2":
             if not _HAS_ARGON2:
-                logger.error("Password stored with argon2 but argon2-cffi not installed")
+                logger.error(
+                    "Password stored with argon2 but argon2-cffi not installed"
+                )
                 return False
             ph = _Argon2Hasher(
                 memory_cost=65536,
@@ -336,7 +349,7 @@ class OwnerSessionManager:
                 "sha256",
                 password.encode("utf-8"),
                 self._password_salt,
-                _PBKDF2_ITERATIONS,
+                self._pbkdf2_iters,
             )
             return secrets.compare_digest(dk.hex(), self._password_hash)
         return False

@@ -29,6 +29,7 @@ except ImportError:  # cryptography not installed
     class _InvalidToken(Exception):  # type: ignore[no-redef]
         """Placeholder — never raised when cryptography is absent."""
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +37,10 @@ class SyncPullHandler:
     """Compute outgoing changes, encrypt, and return."""
 
     def __init__(
-        self, root: Path, sync_engine: SyncEngine | None = None, transport: SyncTransport | None = None,
+        self,
+        root: Path,
+        sync_engine: SyncEngine | None = None,
+        transport: SyncTransport | None = None,
     ) -> None:
         self._root = root
         self._sync_engine = sync_engine
@@ -57,8 +61,7 @@ class SyncPullHandler:
             return SyncPullResult(message="error: sync pull failed")
 
         has_more = any(
-            len(entries) >= 500
-            for entries in outgoing.get("changes", {}).values()
+            len(entries) >= 500 for entries in outgoing.get("changes", {}).values()
         )
 
         try:
@@ -68,7 +71,9 @@ class SyncPullHandler:
             logger.error("SyncPull encryption failed: %s", exc)
             return SyncPullResult(message="error: encryption failed")
         except _InvalidToken as exc:
-            logger.error("SyncPull encryption failed (invalid token): %s", type(exc).__name__)
+            logger.error(
+                "SyncPull encryption failed (invalid token): %s", type(exc).__name__
+            )
             return SyncPullResult(message="error: encryption failed")
 
         return SyncPullResult(
@@ -83,7 +88,10 @@ class SyncPushHandler:
     """Decrypt incoming payload and apply changes."""
 
     def __init__(
-        self, root: Path, sync_engine: SyncEngine | None = None, transport: SyncTransport | None = None,
+        self,
+        root: Path,
+        sync_engine: SyncEngine | None = None,
+        transport: SyncTransport | None = None,
     ) -> None:
         self._root = root
         self._sync_engine = sync_engine
@@ -106,7 +114,9 @@ class SyncPushHandler:
             logger.error("SyncPush decryption failed: %s", exc)
             return SyncPushResult(message="error: decryption failed")
         except _InvalidToken as exc:
-            logger.error("SyncPush decryption failed (invalid token): %s", type(exc).__name__)
+            logger.error(
+                "SyncPush decryption failed (invalid token): %s", type(exc).__name__
+            )
             return SyncPushResult(message="error: decryption failed")
 
         try:

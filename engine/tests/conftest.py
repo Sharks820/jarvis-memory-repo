@@ -198,7 +198,8 @@ def mock_bus(monkeypatch):
 
     def _factory(result_obj):
         bus = _make_bus_mock(result_obj)
-        _get_bus_fn = lambda: bus
+        def _get_bus_fn():
+            return bus
         monkeypatch.setattr(main_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_ops_mod, "_get_bus", _get_bus_fn)
         monkeypatch.setattr(cli_knowledge_mod, "_get_bus", _get_bus_fn)

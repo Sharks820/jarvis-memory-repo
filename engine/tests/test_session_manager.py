@@ -1,4 +1,5 @@
 """Tests for SessionManager — session tracking with hijack detection."""
+
 from __future__ import annotations
 
 import hashlib
@@ -105,12 +106,14 @@ class TestValidation:
 
     def test_updates_last_active(self, manager: SessionManager) -> None:
         sid = manager.create_session("device1", "10.0.0.1", "Mozilla/5.0")
-        # Access the internal session to check last_active
+        # Set last_active to a recent-but-past value (well within the 3600s idle
+        # timeout) so any real time.time() call in validate_session records a
+        # strictly later value — no sleep needed.
+        manager._sessions[sid].last_active = time.time() - 10
         before = manager._sessions[sid].last_active
-        time.sleep(0.05)
         manager.validate_session(sid, "10.0.0.1", "Mozilla/5.0")
         after = manager._sessions[sid].last_active
-        assert after >= before
+        assert after > before
 
 
 # ---------------------------------------------------------------------------
@@ -192,11 +195,14 @@ class TestHijackDetection:
 
 class TestEviction:
     def test_oldest_evicted_at_capacity(self, small_manager: SessionManager) -> None:
+        now = time.time()
         s1 = small_manager.create_session("device1", "10.0.0.1")
-        time.sleep(0.01)
+        # Use relative offsets so sessions are clearly NOT expired (absolute
+        # timeout is 7200s), but s1 is definitively older than s2.
+        small_manager._sessions[s1].created_at = now - 20  # older
         s2 = small_manager.create_session("device2", "10.0.0.2")
-        time.sleep(0.01)
-        # This should evict s1 (oldest)
+        small_manager._sessions[s2].created_at = now - 10  # newer
+        # Creating s3 triggers eviction of s1 (oldest by created_at)
         s3 = small_manager.create_session("device3", "10.0.0.3")
 
         assert s1 not in small_manager._sessions
@@ -206,10 +212,11 @@ class TestEviction:
     def test_active_sessions_count_after_eviction(
         self, small_manager: SessionManager
     ) -> None:
-        small_manager.create_session("d1", "10.0.0.1")
-        time.sleep(0.01)
-        small_manager.create_session("d2", "10.0.0.2")
-        time.sleep(0.01)
+        now = time.time()
+        s1 = small_manager.create_session("d1", "10.0.0.1")
+        small_manager._sessions[s1].created_at = now - 20  # older
+        s2 = small_manager.create_session("d2", "10.0.0.2")
+        small_manager._sessions[s2].created_at = now - 10  # newer
         small_manager.create_session("d3", "10.0.0.3")
         assert len(small_manager.get_active_sessions()) == 2
 

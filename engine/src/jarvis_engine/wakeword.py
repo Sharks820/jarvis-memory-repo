@@ -35,7 +35,9 @@ class WakeWordDetector:
         """Lazy-load the openwakeword model."""
         from openwakeword.model import Model  # type: ignore[import-untyped]
 
-        self._model = Model(wakeword_models=[self._model_name], inference_framework="onnx")
+        self._model = Model(
+            wakeword_models=[self._model_name], inference_framework="onnx"
+        )
 
     # ------------------------------------------------------------------
     # Private helpers for start() — setup, listen, process phases
@@ -63,6 +65,7 @@ class WakeWordDetector:
         # Initialize Silero VAD (lower threshold for wake word sensitivity)
         try:
             from jarvis_engine.stt_vad import SileroVADDetector
+
             self._vad = SileroVADDetector(threshold=0.3)
             self._vad_available = self._vad.available
         except (ImportError, RuntimeError, OSError, AttributeError) as exc:
@@ -79,6 +82,7 @@ class WakeWordDetector:
 
         try:
             import sounddevice as sd  # type: ignore[import-untyped]
+
             self._sd_module = sd
         except ImportError:
             logger.warning(
@@ -90,7 +94,10 @@ class WakeWordDetector:
         return True
 
     def _read_audio_chunk(
-        self, stream: object, chunk_size: int, mic_lock: threading.Lock | None,
+        self,
+        stream: object,
+        chunk_size: int,
+        mic_lock: threading.Lock | None,
     ) -> np.ndarray | None:
         """Read one audio chunk from *stream*, respecting *mic_lock*.
 
@@ -106,7 +113,9 @@ class WakeWordDetector:
             try:
                 audio_data, overflowed = stream.read(chunk_size)
             except (OSError, RuntimeError) as read_exc:
-                logger.debug("Wakeword stream read failed (may be closed): %s", read_exc)
+                logger.debug(
+                    "Wakeword stream read failed (may be closed): %s", read_exc
+                )
                 return None
         finally:
             if mic_lock is not None:
@@ -191,8 +200,11 @@ class WakeWordDetector:
                     blocksize=chunk_size,
                 )
                 self._stream.start()
-            logger.info("Wake word detection started (model=%s, threshold=%.2f)",
-                         self._model_name, self._threshold)
+            logger.info(
+                "Wake word detection started (model=%s, threshold=%.2f)",
+                self._model_name,
+                self._threshold,
+            )
 
             _was_silent = False
 
@@ -216,14 +228,18 @@ class WakeWordDetector:
                     self._model.reset()
                     _was_silent = False
 
-                audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(np.int16)
+                audio_int16 = np.clip(audio_data[:, 0] * 32767, -32768, 32767).astype(
+                    np.int16
+                )
                 self._model.predict(audio_int16)
 
                 target_key = self._model_name
                 if target_key in self._model.prediction_buffer:
                     scores = list(self._model.prediction_buffer[target_key])
                     if len(scores) >= 3 and sum(scores[-3:]) / 3 > self._threshold:
-                        logger.info("Wake word detected! (avg_score=%.3f)", sum(scores[-3:]) / 3)
+                        logger.info(
+                            "Wake word detected! (avg_score=%.3f)", sum(scores[-3:]) / 3
+                        )
                         self._process_detection(on_detected)
                         _was_silent = True
         except (OSError, RuntimeError, ValueError, TypeError) as exc:
@@ -267,12 +283,16 @@ class WakeWordDetector:
             if sd_module is None:
                 try:
                     import sounddevice as _sd  # type: ignore[import-untyped]
+
                     sd_module = _sd
                 except ImportError:
                     logger.debug("sounddevice not available; cannot start audio stream")
                     return
             self._stream = sd_module.InputStream(
-                samplerate=16000, channels=1, dtype="float32", blocksize=1280,
+                samplerate=16000,
+                channels=1,
+                dtype="float32",
+                blocksize=1280,
             )
             self._stream.start()
 

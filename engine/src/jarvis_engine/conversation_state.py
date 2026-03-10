@@ -56,9 +56,7 @@ _MAX_ENTITY_LENGTH = 200
 _MAX_ENTITIES_PER_TURN = 50
 _RE_CODE_BLOCK = re.compile(r"```")
 _RE_URL_ENCODED = re.compile(r"(?:%[0-9A-Fa-f]{2}){3,}")
-_RE_BASE64_BLOCK = re.compile(
-    r"^(?=[A-Za-z0-9+/]*[+/=])[A-Za-z0-9+/]{16,}={0,2}$"
-)
+_RE_BASE64_BLOCK = re.compile(r"^(?=[A-Za-z0-9+/]*[+/=])[A-Za-z0-9+/]{16,}={0,2}$")
 _RE_PROMPT_INJECTION = re.compile(
     r"(?:ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions?"
     r"|system\s*:\s*you\s+are"
@@ -74,9 +72,7 @@ _RE_PROMPT_INJECTION = re.compile(
 _RE_URL = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
 _RE_UNIX_PATH = re.compile(r"(?<!\w)(?:/[\w._-]+){2,}", re.ASCII)
 _RE_WIN_PATH = re.compile(r"[A-Z]:\\(?:[\w._-]+\\)*[\w._-]+", re.ASCII)
-_RE_DATE_ISO = re.compile(
-    r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?\b"
-)
+_RE_DATE_ISO = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?\b")
 _RE_DATE_SLASH = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
 _RE_DATE_WRITTEN = re.compile(
     r"\b(?:January|February|March|April|May|June|July|August|September|"
@@ -97,9 +93,7 @@ _RE_CAPITALIZED_SEQ = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b")
 # PII patterns — matches are masked before storage in anchor_entities
 # These are used with fullmatch() on extracted entity strings, so anchors
 # like \b are not needed (and would interfere with parenthesized phones).
-_RE_PII_PHONE = re.compile(
-    r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}"
-)
+_RE_PII_PHONE = re.compile(r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
 _RE_PII_SSN = re.compile(r"\d{3}-\d{2}-\d{4}")
 _RE_PII_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _RE_PII_CC = re.compile(r"\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}")
@@ -129,22 +123,109 @@ _RE_UNRESOLVED = re.compile(
 )
 
 # Common English words to exclude from capitalized-sequence entity detection
-_COMMON_WORDS = frozenset({
-    "The", "This", "That", "These", "Those", "What", "When", "Where",
-    "Which", "While", "With", "About", "After", "Before", "Between",
-    "Could", "Would", "Should", "Does", "Have", "Here", "There",
-    "However", "Also", "Each", "Every", "Some", "Many", "Much",
-    "Most", "Other", "Such", "Than", "Then", "Just", "Only",
-    "Very", "Still", "Even", "Already", "Once", "Both", "Either",
-    "Neither", "First", "Second", "Third", "Last", "Next", "Over",
-    "Under", "Into", "From", "Through", "During", "Since", "Until",
-    "Upon", "Within", "Without", "Along", "Among", "Across", "Around",
-    "Beyond", "Inside", "Outside", "Above", "Below", "Near", "Far",
-    "Well", "Good", "Great", "Better", "Best", "Sure", "Please",
-    "Thanks", "Thank", "Sorry", "Yes", "No", "Not", "But", "And",
-    "For", "Are", "Was", "Were", "Been", "Being", "Has", "Had",
-    "May", "Can", "Will", "Shall", "Might",
-})
+_COMMON_WORDS = frozenset(
+    {
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "What",
+        "When",
+        "Where",
+        "Which",
+        "While",
+        "With",
+        "About",
+        "After",
+        "Before",
+        "Between",
+        "Could",
+        "Would",
+        "Should",
+        "Does",
+        "Have",
+        "Here",
+        "There",
+        "However",
+        "Also",
+        "Each",
+        "Every",
+        "Some",
+        "Many",
+        "Much",
+        "Most",
+        "Other",
+        "Such",
+        "Than",
+        "Then",
+        "Just",
+        "Only",
+        "Very",
+        "Still",
+        "Even",
+        "Already",
+        "Once",
+        "Both",
+        "Either",
+        "Neither",
+        "First",
+        "Second",
+        "Third",
+        "Last",
+        "Next",
+        "Over",
+        "Under",
+        "Into",
+        "From",
+        "Through",
+        "During",
+        "Since",
+        "Until",
+        "Upon",
+        "Within",
+        "Without",
+        "Along",
+        "Among",
+        "Across",
+        "Around",
+        "Beyond",
+        "Inside",
+        "Outside",
+        "Above",
+        "Below",
+        "Near",
+        "Far",
+        "Well",
+        "Good",
+        "Great",
+        "Better",
+        "Best",
+        "Sure",
+        "Please",
+        "Thanks",
+        "Thank",
+        "Sorry",
+        "Yes",
+        "No",
+        "Not",
+        "But",
+        "And",
+        "For",
+        "Are",
+        "Was",
+        "Were",
+        "Been",
+        "Being",
+        "Has",
+        "Had",
+        "May",
+        "Can",
+        "Will",
+        "Shall",
+        "Might",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +271,9 @@ class ConversationSnapshot:
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered = {k: v for k, v in data.items() if k in valid_fields}
         # Convert anchor_entities from list (JSON) back to set
-        if "anchor_entities" in filtered and isinstance(filtered["anchor_entities"], list):
+        if "anchor_entities" in filtered and isinstance(
+            filtered["anchor_entities"], list
+        ):
             filtered["anchor_entities"] = set(filtered["anchor_entities"])
         return cls(**filtered)
 
@@ -296,7 +379,9 @@ class ConversationTimeline:
                     )
                     self._db.commit()
                 except sqlite3.Error as exc:
-                    logger.warning("Timeline DB write failed, storing in-memory: %s", exc)
+                    logger.warning(
+                        "Timeline DB write failed, storing in-memory: %s", exc
+                    )
                     self._in_memory.append(entry)
             else:
                 self._in_memory.append(entry)
@@ -343,7 +428,11 @@ class ConversationTimeline:
         with self._lock:
             if self._using_db and self._db is not None:
                 try:
-                    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    escaped = (
+                        query.replace("\\", "\\\\")
+                        .replace("%", "\\%")
+                        .replace("_", "\\_")
+                    )
                     rows = self._db.execute(
                         "SELECT timestamp, model, role, content_hash, "
                         "entities_extracted, summary_snippet "
@@ -395,9 +484,7 @@ class ConversationTimeline:
         """
         from datetime import datetime, timedelta, timezone
 
-        cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=max_age_days)
-        ).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
 
         with self._lock:
             if self._using_db and self._db is not None:
@@ -420,9 +507,7 @@ class ConversationTimeline:
                     return 0
             else:
                 before = len(self._in_memory)
-                self._in_memory = [
-                    e for e in self._in_memory if e.timestamp >= cutoff
-                ]
+                self._in_memory = [e for e in self._in_memory if e.timestamp >= cutoff]
                 return before - len(self._in_memory)
 
     def vacuum(self) -> None:
@@ -524,7 +609,7 @@ def _decrypt_json(data: bytes, fernet_key: bytes) -> dict[str, Any]:
     from cryptography.fernet import Fernet
 
     if data.startswith(_ENCRYPTED_HEADER):
-        data = data[len(_ENCRYPTED_HEADER):]
+        data = data[len(_ENCRYPTED_HEADER) :]
     f = Fernet(fernet_key)
     raw = f.decrypt(data)
     return json.loads(raw)
@@ -603,11 +688,15 @@ def filter_pii_entity(entity: str) -> PIIFilterResult:
 
     # Phone number
     if _RE_PII_PHONE.fullmatch(entity):
-        return PIIFilterResult(value=_mask_phone(entity), pii_detected=True, masked=True)
+        return PIIFilterResult(
+            value=_mask_phone(entity), pii_detected=True, masked=True
+        )
 
     # Email address
     if _RE_PII_EMAIL.fullmatch(entity):
-        return PIIFilterResult(value=_mask_email(entity), pii_detected=True, masked=True)
+        return PIIFilterResult(
+            value=_mask_email(entity), pii_detected=True, masked=True
+        )
 
     return PIIFilterResult(value=entity, pii_detected=False, masked=False)
 
@@ -836,18 +925,25 @@ def detect_goal_completion(text: str, goals: list[str]) -> list[str]:
     text_lower = text.lower()
     # Completion signal words that strengthen a match
     completion_signals = {
-        "done", "completed", "finished", "fixed", "resolved", "implemented",
-        "added", "created", "updated", "removed", "deployed", "shipped",
+        "done",
+        "completed",
+        "finished",
+        "fixed",
+        "resolved",
+        "implemented",
+        "added",
+        "created",
+        "updated",
+        "removed",
+        "deployed",
+        "shipped",
     }
     has_signal = any(s in text_lower for s in completion_signals)
 
     completed: list[str] = []
     for goal in goals:
         # Extract significant words from the goal (skip short/common words)
-        goal_words = {
-            w.lower()
-            for w in re.findall(r"\b\w{4,}\b", goal)
-        }
+        goal_words = {w.lower() for w in re.findall(r"\b\w{4,}\b", goal)}
         if not goal_words:
             continue
         # Check how many goal keywords appear in the text
@@ -949,7 +1045,9 @@ class ConversationStateManager:
                 self._snapshot.anchor_entities.update(new_entities)
                 # Cap anchor entities at a reasonable size
                 if len(self._snapshot.anchor_entities) > 200:
-                    self._snapshot.anchor_entities = set(sorted(self._snapshot.anchor_entities)[-200:])
+                    self._snapshot.anchor_entities = set(
+                        sorted(self._snapshot.anchor_entities)[-200:]
+                    )
 
             # Extract artifacts (URLs and file paths)
             urls = set(_RE_URL.findall(content))
@@ -960,7 +1058,9 @@ class ConversationStateManager:
             if new_artifacts:
                 self._snapshot.referenced_artifacts.extend(sorted(new_artifacts))
                 if len(self._snapshot.referenced_artifacts) > 200:
-                    self._snapshot.referenced_artifacts = self._snapshot.referenced_artifacts[-200:]
+                    self._snapshot.referenced_artifacts = (
+                        self._snapshot.referenced_artifacts[-200:]
+                    )
 
             # Extract decisions (from any role, but primarily useful for assistant)
             decisions = extract_decisions(content)
@@ -973,14 +1073,10 @@ class ConversationStateManager:
             # Detect goal completion on EXISTING goals before adding new
             # ones — prevents the same message from both creating and
             # immediately resolving a goal.
-            completed = detect_goal_completion(
-                content, self._snapshot.unresolved_goals
-            )
+            completed = detect_goal_completion(content, self._snapshot.unresolved_goals)
             if completed:
                 self._snapshot.unresolved_goals = [
-                    g
-                    for g in self._snapshot.unresolved_goals
-                    if g not in completed
+                    g for g in self._snapshot.unresolved_goals if g not in completed
                 ]
 
             # Extract new unresolved goals (after completion check)
@@ -1113,7 +1209,7 @@ class ConversationStateManager:
             overhead_per_msg = 15  # "[role] " + " | "
             budget = max(
                 total_content_len // 2,  # never exceed half the original
-                n_msgs * 20,             # but at least 20 chars each
+                n_msgs * 20,  # but at least 20 chars each
             )
             per_msg = max(20, (budget - n_msgs * overhead_per_msg) // n_msgs)
 
@@ -1137,9 +1233,7 @@ class ConversationStateManager:
             self._snapshot.rolling_summary = merged
 
             # Extract entities and decisions from dropped content
-            full_text = " ".join(
-                msg.get("content", "") for msg in dropped_messages
-            )
+            full_text = " ".join(msg.get("content", "") for msg in dropped_messages)
             entities = extract_entities(full_text)
             new_entities = entities - self._snapshot.anchor_entities
             if new_entities:
@@ -1270,7 +1364,9 @@ class ConversationStateManager:
 
         try:
             self._state_dir.mkdir(parents=True, exist_ok=True)
-            tmp = self._state_file.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
+            tmp = self._state_file.with_suffix(
+                f".tmp.{os.getpid()}.{threading.get_ident()}"
+            )
             if self._fernet_key is not None:
                 encrypted = _encrypt_json(payload, self._fernet_key)
                 tmp.write_bytes(encrypted)
@@ -1329,7 +1425,9 @@ class ConversationStateManager:
                         try:
                             data = _decrypt_json(raw_bytes, self._fernet_key)
                         except Exception:  # noqa: BLE001 — last-resort decryption attempt
-                            logger.debug("Fernet decryption failed for conversation state file")
+                            logger.debug(
+                                "Fernet decryption failed for conversation state file"
+                            )
                     if data is None:
                         logger.warning("Could not parse conversation state file")
                         return
@@ -1344,7 +1442,9 @@ class ConversationStateManager:
                 )
                 # S1: Graceful migration — encrypt plaintext file on first load
                 if was_plaintext and self._fernet_key is not None:
-                    logger.info("Migrating plaintext conversation state to encrypted format")
+                    logger.info(
+                        "Migrating plaintext conversation state to encrypted format"
+                    )
                     self.save()
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.warning("Could not load conversation state: %s", exc)

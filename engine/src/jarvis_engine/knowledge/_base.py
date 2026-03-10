@@ -25,9 +25,7 @@ def upsert_fts_kg(
     *conn*.  This function does NOT acquire any lock.
     """
     try:
-        conn.execute(
-            "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-        )
+        conn.execute("DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,))
         conn.execute(
             "INSERT INTO fts_kg_nodes(node_id, label) VALUES (?, ?)",
             (node_id, label),
@@ -54,9 +52,7 @@ def delete_fts_kg(
     *conn*.
     """
     try:
-        conn.execute(
-            "DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,)
-        )
+        conn.execute("DELETE FROM fts_kg_nodes WHERE node_id = ?", (node_id,))
     except sqlite3.OperationalError as exc:
         if "no such table" not in str(exc):
             raise

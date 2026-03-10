@@ -41,7 +41,9 @@ logger = logging.getLogger(__name__)
 
 # Conversation history buffer for multi-turn context (persisted to disk)
 
-_CONVERSATION_MAX_TURNS = _env_int("JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40)
+_CONVERSATION_MAX_TURNS = _env_int(
+    "JARVIS_CONVERSATION_MAX_TURNS", 12, minimum=4, maximum=40
+)
 _CONVERSATION_MAX_CHARS_PER_MESSAGE = _env_int(
     "JARVIS_CONVERSATION_MAX_CHARS",
     2000,
@@ -87,7 +89,9 @@ class ConversationState:
         Directories are created only in ``save_conversation_history()``.
         """
         if self._history_file is None:
-            self._history_file = repo_root() / ".planning" / "brain" / "conversation_history.json"
+            self._history_file = (
+                repo_root() / ".planning" / "brain" / "conversation_history.json"
+            )
         return self._history_file
 
     # -- load / save ---------------------------------------------------------
@@ -107,11 +111,14 @@ class ConversationState:
             if data is not None:
                 # Filter out non-dict entries from potentially corrupted files
                 valid = [
-                    m for m in data
+                    m
+                    for m in data
                     if isinstance(m, dict) and "role" in m and "content" in m
                 ]
                 self._conversation_history.clear()
-                self._conversation_history.extend(valid[-(_CONVERSATION_MAX_TURNS * 2):])
+                self._conversation_history.extend(
+                    valid[-(_CONVERSATION_MAX_TURNS * 2) :]
+                )
 
     def save_conversation_history(self, *, force: bool = False) -> None:
         """Persist current conversation history to disk (atomic write).
@@ -128,6 +135,7 @@ class ConversationState:
 
         try:
             import json as _json
+
             path = self._conversation_history_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             with self._conversation_history_lock:
@@ -138,7 +146,9 @@ class ConversationState:
                         return
                 snapshot = list(self._conversation_history)
                 tmp = path.with_suffix(f".tmp.{os.getpid()}")
-                tmp.write_text(_json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+                tmp.write_text(
+                    _json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
+                )
                 os.replace(str(tmp), str(path))
                 self._last_save_time = now
                 self._dirty = False
@@ -209,7 +219,9 @@ class ConversationState:
             except (ImportError, OSError, ValueError) as exc:
                 logger.debug("Conversation state model switch failed: %s", exc)
 
-    def conversation_continuity_instruction(self, target_model: str, history_len: int) -> str | None:
+    def conversation_continuity_instruction(
+        self, target_model: str, history_len: int
+    ) -> str | None:
         """Return continuity instruction when conversation switches models/providers."""
         if history_len <= 0:
             return None
@@ -363,13 +375,15 @@ def _learn_conversation(
 ) -> None:
     """Dispatch a LearnInteractionCommand with JSONL fallback on failure."""
     try:
-        bus.dispatch(LearnInteractionCommand(
-            user_message=text[:1000],
-            assistant_response=response[:1000],
-            task_id=_make_task_id(f"conv-{route}"),
-            route=route,
-            topic=text[:100],
-        ))
+        bus.dispatch(
+            LearnInteractionCommand(
+                user_message=text[:1000],
+                assistant_response=response[:1000],
+                task_id=_make_task_id(f"conv-{route}"),
+                route=route,
+                topic=text[:100],
+            )
+        )
     except (OSError, RuntimeError, ValueError) as exc_learn:
         logger.warning("Enriched learning failed for conversation: %s", exc_learn)
         try:
@@ -386,7 +400,9 @@ def _learn_conversation(
             logger.warning("Auto-ingest fallback also failed: %s", exc)
 
 
-def _conversation_continuity_instruction(target_model: str, history_len: int) -> str | None:
+def _conversation_continuity_instruction(
+    target_model: str, history_len: int
+) -> str | None:
     """Return continuity instruction when conversation switches models/providers."""
     return _state.conversation_continuity_instruction(target_model, history_len)
 
@@ -409,22 +425,39 @@ _MAX_TOKENS_BY_ROUTE: dict[str, int] = {
 
 # Web search need detection — identifies queries requiring current information
 _WEB_SIGNAL_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\b(?:latest|current|recent|today'?s|tonight'?s|yesterday'?s|this (?:week|month|year)'?s?)\b", re.I),
+    re.compile(
+        r"\b(?:latest|current|recent|today'?s|tonight'?s|yesterday'?s|this (?:week|month|year)'?s?)\b",
+        re.I,
+    ),
     re.compile(r"\b(?:right now|at the moment|as of (?:today|now|2\d{3}))\b", re.I),
     re.compile(r"\b(?:news|headlines|breaking|update|updates|happening)\b", re.I),
-    re.compile(r"\b(?:stock|price|market|cryptocurrency|bitcoin|crypto|eth|btc)\s*(?:price|value|worth|cost|today)?\b", re.I),
-    re.compile(r"\b(?:score|scores|game|match|playoff|championship|tournament|standings|results?)\b", re.I),
+    re.compile(
+        r"\b(?:stock|price|market|cryptocurrency|bitcoin|crypto|eth|btc)\s*(?:price|value|worth|cost|today)?\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:score|scores|game|match|playoff|championship|tournament|standings|results?)\b",
+        re.I,
+    ),
     re.compile(r"\b(?:weather|forecast|temperature|rain|snow|wind)\b", re.I),
     re.compile(r"\bwho (?:won|is winning|leads?|lost)\b", re.I),
     re.compile(r"\b(?:when (?:is|does|did|will)|what time (?:is|does))\b", re.I),
     re.compile(r"\b(?:release date|coming out|launched|announced|premiered)\b", re.I),
     re.compile(r"\b(?:how (?:much|many) (?:does|is|are|do))\b", re.I),
     re.compile(r"\b(?:look up|lookup|find out|check|search for)\b", re.I),
-    re.compile(r"\b(?:what (?:is|are|was|were) the (?:best|top|most|biggest|highest|lowest))\b", re.I),
+    re.compile(
+        r"\b(?:what (?:is|are|was|were) the (?:best|top|most|biggest|highest|lowest))\b",
+        re.I,
+    ),
     re.compile(r"\b(?:compared? to|vs\.?|versus)\b", re.I),
-    re.compile(r"\b(?:2024|2025|2026|2027)\b"),  # Queries mentioning recent/future years
+    re.compile(
+        r"\b(?:2024|2025|2026|2027)\b"
+    ),  # Queries mentioning recent/future years
     re.compile(r"\b(?:search|google|look up|find me|find out about)\b", re.I),
-    re.compile(r"\b(?:what(?:'s| is) (?:the |)(?:status|situation|deal) (?:with|of|about))\b", re.I),
+    re.compile(
+        r"\b(?:what(?:'s| is) (?:the |)(?:status|situation|deal) (?:with|of|about))\b",
+        re.I,
+    ),
     re.compile(r"\b(?:tell me about|info on|information about|details about)\b", re.I),
     re.compile(r"\b(?:where (?:can i|do i|is the|are the))\b", re.I),
     re.compile(r"\b(?:how (?:do i|can i|to))\b", re.I),
@@ -432,7 +465,10 @@ _WEB_SIGNAL_PATTERNS: list[re.Pattern[str]] = [
 
 # Exclusion patterns: queries that match web signals but are actually personal/private
 _WEB_EXCLUSION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bmy (?:calendar|medication|prescription|bill|password|appointment|meeting|schedule)\b", re.I),
+    re.compile(
+        r"\bmy (?:calendar|medication|prescription|bill|password|appointment|meeting|schedule)\b",
+        re.I,
+    ),
     re.compile(r"\b(?:remind me|set (?:a )?(?:reminder|alarm|timer))\b", re.I),
     re.compile(r"\b(?:what did (?:i|jarvis)|show me my|what'?s on my)\b", re.I),
 ]
@@ -460,8 +496,18 @@ def _requires_fresh_web_confirmation(query: str) -> bool:
     """True when the user explicitly asks for up-to-date/live web confirmation."""
     q = query.lower().strip()
     strict_markers = (
-        "latest", "current", "right now", "today", "tonight", "this week",
-        "live", "breaking", "as of", "up to date", "real-time", "real time",
+        "latest",
+        "current",
+        "right now",
+        "today",
+        "tonight",
+        "this week",
+        "live",
+        "breaking",
+        "as of",
+        "up to date",
+        "real-time",
+        "real time",
     )
     return any(m in q for m in strict_markers)
 
@@ -489,8 +535,12 @@ def _classify_and_route(
         avail_models = getattr(gw, "available_model_names", lambda: None)()
     if intent_cls is not None:
         try:
-            route, llm_model, conf = intent_cls.classify(text, available_models=avail_models)
-            logger.debug("Intent route: %s model=%s confidence=%.2f", route, llm_model, conf)
+            route, llm_model, conf = intent_cls.classify(
+                text, available_models=avail_models
+            )
+            logger.debug(
+                "Intent route: %s model=%s confidence=%.2f", route, llm_model, conf
+            )
         except (RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Intent classification failed: %s", exc)
             llm_model = None
@@ -502,19 +552,31 @@ def _classify_and_route(
             if embed is not None:
                 global _fallback_classifier, _fallback_classifier_embed_id  # noqa: PLW0603
                 with _fallback_classifier_lock:
-                    if _fallback_classifier is None or _fallback_classifier_embed_id != id(embed):
+                    if (
+                        _fallback_classifier is None
+                        or _fallback_classifier_embed_id != id(embed)
+                    ):
                         _fallback_classifier = IntentClassifier(embed)
                         _fallback_classifier_embed_id = id(embed)
                     cls = _fallback_classifier
-                route, llm_model, conf = cls.classify(text, available_models=avail_models)
-                logger.debug("Fallback route: %s model=%s confidence=%.2f", route, llm_model, conf)
+                route, llm_model, conf = cls.classify(
+                    text, available_models=avail_models
+                )
+                logger.debug(
+                    "Fallback route: %s model=%s confidence=%.2f",
+                    route,
+                    llm_model,
+                    conf,
+                )
         except (ImportError, RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Fallback IntentClassifier classification failed: %s", exc)
     if llm_model is None:
         if _is_privacy_sensitive(text):
             llm_model = _get_local_model()
             route = "simple_private"
-            logger.debug("Privacy fallback: classifier failed, forcing local for private query")
+            logger.debug(
+                "Privacy fallback: classifier failed, forcing local for private query"
+            )
         else:
             for env_key, model_alias in _ENV_MODEL_PRIORITY:
                 if os.environ.get(env_key, ""):
@@ -546,7 +608,10 @@ def _perform_web_search(
 
     try:
         from jarvis_engine.web_research import run_web_research
-        web_result = run_web_research(text, max_results=5, max_pages=3, max_summary_lines=4)
+
+        web_result = run_web_research(
+            text, max_results=5, max_pages=3, max_summary_lines=4
+        )
         web_lines = web_result.get("summary_lines", [])
         if web_lines:
             context_text = (
@@ -565,10 +630,16 @@ def _perform_web_search(
                         src = f"{row.get('domain', '')} {row.get('url', '')}".strip()
                         if src:
                             print(f"source_{idx}={src}")
-            logger.info("Web search augmented context for query: %s (%d results)", text[:80], len(web_lines))
+            logger.info(
+                "Web search augmented context for query: %s (%d results)",
+                text[:80],
+                len(web_lines),
+            )
             return True, True, web_result
         else:
-            logger.warning("Web search returned no summary lines for query: %s", text[:80])
+            logger.warning(
+                "Web search returned no summary lines for query: %s", text[:80]
+            )
             return False, True, web_result
     except (ImportError, OSError, RuntimeError, ValueError) as exc:
         logger.warning("Web search failed for query %r: %s", text[:80], exc)
@@ -631,33 +702,49 @@ def _dispatch_and_handle_response(
 
     # Telemetry: mark command dispatch
     try:
-        from jarvis_engine.voice_telemetry import STAGE_COMMAND_DISPATCH, get_voice_telemetry
+        from jarvis_engine.voice_telemetry import (
+            STAGE_COMMAND_DISPATCH,
+            get_voice_telemetry,
+        )
+
         get_voice_telemetry().mark_stage(STAGE_COMMAND_DISPATCH)
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Voice telemetry command_dispatch mark failed: %s", exc)
 
     try:
-        result: QueryResult = bus.dispatch(QueryCommand(
-            query=text,
-            system_prompt=system_prompt,
-            max_tokens=max_tokens,
-            model=llm_model,
-            history=history,
-        ))
+        result: QueryResult = bus.dispatch(
+            QueryCommand(
+                query=text,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                model=llm_model,
+                history=history,
+            )
+        )
         response = result.text.strip()
 
         # Telemetry: mark response ready
         try:
-            from jarvis_engine.voice_telemetry import STAGE_RESPONSE_READY, get_voice_telemetry
+            from jarvis_engine.voice_telemetry import (
+                STAGE_RESPONSE_READY,
+                get_voice_telemetry,
+            )
+
             get_voice_telemetry().mark_stage(STAGE_RESPONSE_READY)
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Voice telemetry response_ready mark failed: %s", exc)
 
         if result.return_code != 0:
             if web_searched:
-                fallback_lines = web_result.get("summary_lines", []) if isinstance(web_result, dict) else []
+                fallback_lines = (
+                    web_result.get("summary_lines", [])
+                    if isinstance(web_result, dict)
+                    else []
+                )
                 if isinstance(fallback_lines, list) and fallback_lines:
-                    fallback_text = "Based on live web results: " + " ".join(str(x) for x in fallback_lines[:3])
+                    fallback_text = "Based on live web results: " + " ".join(
+                        str(x) for x in fallback_lines[:3]
+                    )
                     print(f"response={escape_response(fallback_text)}")
                     if response_callback is not None:
                         response_callback(fallback_text)
@@ -718,7 +805,9 @@ def _resolve_max_tokens(route: str, web_searched: bool, force_web: bool) -> int:
 
 
 def _prepare_history(
-    system_parts: list[str], llm_model: str, text: str,
+    system_parts: list[str],
+    llm_model: str,
+    text: str,
 ) -> tuple[str, tuple[tuple[str, str], ...]]:
     """Assemble conversation history and finalize the system prompt.
 
@@ -751,9 +840,7 @@ def _prepare_history(
             )
         decisions = injection.get("prior_decisions", [])
         if decisions:
-            system_parts.append(
-                f"Prior decisions made: {'; '.join(decisions)}"
-            )
+            system_parts.append(f"Prior decisions made: {'; '.join(decisions)}")
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Conversation state injection failed: %s", exc)
 
@@ -796,16 +883,27 @@ def _web_augmented_llm_conversation(
     """
     bus = get_bus()
 
-    memory_lines, fact_lines, cross_branch_lines, preference_lines = _build_smart_context(bus, text)
-    system_parts = _build_system_parts(memory_lines, fact_lines, cross_branch_lines, preference_lines)
+    memory_lines, fact_lines, cross_branch_lines, preference_lines = (
+        _build_smart_context(bus, text)
+    )
+    system_parts = _build_system_parts(
+        memory_lines, fact_lines, cross_branch_lines, preference_lines
+    )
 
     _route, _llm_model = _classify_and_route(
-        bus, text, default_route=default_route, try_fallback_classifier=try_fallback_classifier,
+        bus,
+        text,
+        default_route=default_route,
+        try_fallback_classifier=try_fallback_classifier,
     )
 
     # Telemetry: mark intent classification complete
     try:
-        from jarvis_engine.voice_telemetry import STAGE_INTENT_CLASSIFICATION, get_voice_telemetry
+        from jarvis_engine.voice_telemetry import (
+            STAGE_INTENT_CLASSIFICATION,
+            get_voice_telemetry,
+        )
+
         get_voice_telemetry().mark_stage(STAGE_INTENT_CLASSIFICATION)
     except (ImportError, OSError, ValueError) as exc:
         logger.debug("Voice telemetry intent_classification mark failed: %s", exc)
@@ -815,20 +913,33 @@ def _web_augmented_llm_conversation(
         logger.debug("Model overridden by user selection: %s", model_override)
 
     _web_searched, _web_attempted, _web_result = _perform_web_search(
-        text, system_parts, force=force_web_search, route=_route,
+        text,
+        system_parts,
+        force=force_web_search,
+        route=_route,
     )
     _append_final_instructions(system_parts, _web_searched, _web_attempted)
 
     if _web_attempted and not _web_searched and _requires_fresh_web_confirmation(text):
         print("intent=web_confirmation_unavailable")
-        print("reason=Unable to fetch current web results right now. Please retry or check network access.")
+        print(
+            "reason=Unable to fetch current web results right now. Please retry or check network access."
+        )
         return 1
 
     _max_tokens = _resolve_max_tokens(_route, _web_searched, force_web_search)
     system_prompt, _hist_tuples = _prepare_history(system_parts, _llm_model, text)
 
     return _dispatch_and_handle_response(
-        bus, text, system_prompt, _max_tokens, _llm_model, _hist_tuples,
-        speak=speak, web_searched=_web_searched, web_result=_web_result,
-        route=_route, response_callback=response_callback,
+        bus,
+        text,
+        system_prompt,
+        _max_tokens,
+        _llm_model,
+        _hist_tuples,
+        speak=speak,
+        web_searched=_web_searched,
+        web_result=_web_result,
+        route=_route,
+        response_callback=response_callback,
     )

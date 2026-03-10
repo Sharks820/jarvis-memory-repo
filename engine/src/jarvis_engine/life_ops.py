@@ -61,18 +61,37 @@ def load_snapshot(path: Path) -> OpsSnapshot:
 
 
 def build_daily_brief(snapshot: OpsSnapshot) -> str:
-    urgent_tasks = [t for t in snapshot.tasks if str(t.get("priority", "")).lower() in {"high", "urgent"}]
+    urgent_tasks = [
+        t
+        for t in snapshot.tasks
+        if str(t.get("priority", "")).lower() in {"high", "urgent"}
+    ]
     unread_important = [
         e
         for e in snapshot.emails
-        if (not _safe_bool(e.get("read", False))) and str(e.get("importance", "")).lower() in {"high", "urgent"}
+        if (not _safe_bool(e.get("read", False)))
+        and str(e.get("importance", "")).lower() in {"high", "urgent"}
     ]
-    due_bills = [b for b in snapshot.bills if str(b.get("status", "")).lower() in {"due", "overdue"}]
-    costly_subs = [s for s in snapshot.subscriptions if _safe_float(s.get("monthly_cost", 0.0)) >= 20.0]
+    due_bills = [
+        b
+        for b in snapshot.bills
+        if str(b.get("status", "")).lower() in {"due", "overdue"}
+    ]
+    costly_subs = [
+        s
+        for s in snapshot.subscriptions
+        if _safe_float(s.get("monthly_cost", 0.0)) >= 20.0
+    ]
     due_meds = [m for m in snapshot.medications if _is_due_item(m, snapshot.date)]
-    urgent_school = [s for s in snapshot.school_items if _is_urgent_item(s, snapshot.date)]
-    urgent_family = [f for f in snapshot.family_items if _is_urgent_item(f, snapshot.date)]
-    urgent_projects = [p for p in snapshot.projects if _is_urgent_item(p, snapshot.date)]
+    urgent_school = [
+        s for s in snapshot.school_items if _is_urgent_item(s, snapshot.date)
+    ]
+    urgent_family = [
+        f for f in snapshot.family_items if _is_urgent_item(f, snapshot.date)
+    ]
+    urgent_projects = [
+        p for p in snapshot.projects if _is_urgent_item(p, snapshot.date)
+    ]
 
     lines = [
         f"Jarvis Daily Brief for {snapshot.date}",
@@ -107,7 +126,9 @@ def suggest_actions(snapshot: OpsSnapshot) -> list[str]:
             actions.append(f"Complete high-priority task: {t.get('title', 'Untitled')}")
 
     for e in snapshot.emails:
-        if (not _safe_bool(e.get("read", False))) and str(e.get("importance", "")).lower() in {"high", "urgent"}:
+        if (not _safe_bool(e.get("read", False))) and str(
+            e.get("importance", "")
+        ).lower() in {"high", "urgent"}:
             actions.append(f"Reply to critical email: {e.get('subject', 'No subject')}")
 
     for b in snapshot.bills:
@@ -134,7 +155,9 @@ def suggest_actions(snapshot: OpsSnapshot) -> list[str]:
             detail = f" ({dose})" if dose else ""
             if due_at:
                 detail += f" at {due_at}"
-            actions.append(f"Take medication: {m.get('name', 'Unnamed medication')}{detail}")
+            actions.append(
+                f"Take medication: {m.get('name', 'Unnamed medication')}{detail}"
+            )
 
     for s in snapshot.school_items:
         if _is_urgent_item(s, snapshot.date):
@@ -146,11 +169,15 @@ def suggest_actions(snapshot: OpsSnapshot) -> list[str]:
 
     for p in snapshot.projects:
         if _is_urgent_item(p, snapshot.date):
-            actions.append(f"Advance project milestone: {p.get('title', 'Untitled project task')}")
+            actions.append(
+                f"Advance project milestone: {p.get('title', 'Untitled project task')}"
+            )
 
     for ev in snapshot.calendar_events:
         if str(ev.get("prep_needed", "")).lower() in {"yes", "true", "1"}:
-            actions.append(f"Prepare for calendar event: {ev.get('title', 'Untitled event')}")
+            actions.append(
+                f"Prepare for calendar event: {ev.get('title', 'Untitled event')}"
+            )
 
     return actions
 
@@ -160,7 +187,9 @@ def export_actions_json(actions: list[str], path: Path) -> None:
     records = []
     for action in actions:
         action_class = "bounded_write"
-        if action.startswith("Pay bill now:") or action.startswith("Review/cancel low-usage subscription:"):
+        if action.startswith("Pay bill now:") or action.startswith(
+            "Review/cancel low-usage subscription:"
+        ):
             action_class = "privileged"
         records.append(
             {
@@ -194,7 +223,9 @@ def _assemble_data_summary(snapshot: OpsSnapshot) -> str:
         priority_order = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
         sorted_tasks = sorted(
             snapshot.tasks,
-            key=lambda t: priority_order.get(str(t.get("priority", "normal")).lower(), 2),
+            key=lambda t: priority_order.get(
+                str(t.get("priority", "normal")).lower(), 2
+            ),
         )
         lines = ["Tasks:"]
         for t in sorted_tasks[:10]:
@@ -209,7 +240,9 @@ def _assemble_data_summary(snapshot: OpsSnapshot) -> str:
         importance_order = {"high": 0, "urgent": 0, "normal": 1}
         sorted_emails = sorted(
             unread,
-            key=lambda e: importance_order.get(str(e.get("importance", "normal")).lower(), 1),
+            key=lambda e: importance_order.get(
+                str(e.get("importance", "normal")).lower(), 1
+            ),
         )
         lines = ["Unread Emails:"]
         for e in sorted_emails[:10]:
@@ -241,7 +274,11 @@ def _assemble_data_summary(snapshot: OpsSnapshot) -> str:
 
     # Bills due
     if snapshot.bills:
-        due_bills = [b for b in snapshot.bills if str(b.get("status", "")).lower() in {"due", "overdue"}]
+        due_bills = [
+            b
+            for b in snapshot.bills
+            if str(b.get("status", "")).lower() in {"due", "overdue"}
+        ]
         if due_bills:
             lines = ["Bills Due:"]
             for b in due_bills[:8]:
@@ -273,6 +310,7 @@ def build_narrative_brief(
     from jarvis_engine.temporal import get_datetime_prompt
 
     from jarvis_engine._shared import get_local_model as _get_local_model
+
     local_model = _get_local_model()
     # Sanitize memory_context to prevent prompt injection
     safe_context = (memory_context or "No additional context.")[:2000]

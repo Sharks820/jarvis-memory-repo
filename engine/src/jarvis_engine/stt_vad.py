@@ -35,6 +35,7 @@ def _check_torch() -> bool:
             if _torch_available is None:
                 try:
                     import torch  # noqa: F401
+
                     _torch_available = True
                 except ImportError:
                     _torch_available = False
@@ -48,6 +49,7 @@ def _check_silero() -> bool:
             if _silero_available is None:
                 try:
                     import silero_vad  # noqa: F401
+
                     _silero_available = True
                 except ImportError:
                     _silero_available = False
@@ -95,8 +97,12 @@ class SileroVADDetector:
     ) -> None:
         self._threshold = threshold
         # RC-2: split onset/offset thresholds for hysteresis
-        self._onset_threshold = onset_threshold if onset_threshold is not None else threshold
-        self._offset_threshold = offset_threshold if offset_threshold is not None else 0.6
+        self._onset_threshold = (
+            onset_threshold if onset_threshold is not None else threshold
+        )
+        self._offset_threshold = (
+            offset_threshold if offset_threshold is not None else 0.6
+        )
         self._sampling_rate = sampling_rate
         self._model = None  # lazy-loaded
         self._threads_set = False
@@ -168,6 +174,7 @@ class SileroVADDetector:
             return 0.0
         try:
             import torch
+
             tensor = torch.FloatTensor(audio_chunk)
             return float(self._model(tensor, self._sampling_rate).item())
         except (RuntimeError, ValueError, TypeError, OSError) as exc:
@@ -200,7 +207,9 @@ class SileroVADDetector:
             offset += _SILERO_WINDOW_SAMPLES
 
         # Apply hysteresis at the chunk level
-        active_threshold = (1.0 - self._offset_threshold) if self._in_speech else self._onset_threshold
+        active_threshold = (
+            (1.0 - self._offset_threshold) if self._in_speech else self._onset_threshold
+        )
         if max_conf > active_threshold:
             self._in_speech = True
         elif self._in_speech and max_conf < (1.0 - self._offset_threshold):

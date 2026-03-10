@@ -53,7 +53,18 @@ class RecordDict(TypedDict):
 
 _IMPORTANCE_RULES: list[tuple[list[str], float]] = [
     # (keywords, score) — first match wins, order matters
-    (["medication", "prescription", "allergy", "diagnosis", "doctor", "medical", "health"], 0.90),
+    (
+        [
+            "medication",
+            "prescription",
+            "allergy",
+            "diagnosis",
+            "doctor",
+            "medical",
+            "health",
+        ],
+        0.90,
+    ),
     (["password", "key", "credential", "token", "secret"], 0.88),
     (["payment", "salary", "investment", "account", "budget", "financial"], 0.85),
     (["remember", "don't forget", "dont forget", "important"], 0.85),
@@ -94,7 +105,9 @@ def _score_importance(content: str) -> float:
 # Patterns for credential redaction (matches password, token, secret, api_key, etc.)
 _CREDENTIAL_PATTERNS = [
     re.compile(r"(password|passwd|pwd)\s*[:=]\s*\S+", re.IGNORECASE),
-    re.compile(r"(token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+", re.IGNORECASE),
+    re.compile(
+        r"(token|api[_-]?key|secret|signing[_-]?key)\s*[:=]\s*\S+", re.IGNORECASE
+    ),
     re.compile(r"(bearer)\s+\S+", re.IGNORECASE),
 ]
 
@@ -137,7 +150,9 @@ class EnrichedIngestPipeline:
                     valid_chunks, prefix="search_document"
                 )
             except (RuntimeError, OSError, ValueError) as exc:
-                logger.debug("Batch embedding failed, falling back to individual: %s", exc)
+                logger.debug(
+                    "Batch embedding failed, falling back to individual: %s", exc
+                )
         return [
             self._embed_service.embed(chunk, prefix="search_document")
             for chunk in valid_chunks
@@ -265,14 +280,23 @@ class EnrichedIngestPipeline:
         inserted_ids: list[str] = []
         for chunk, embedding in zip(valid_chunks, all_embeddings):
             record = self._build_record(
-                chunk, embedding, source, kind, task_id, ts, tag_str,
+                chunk,
+                embedding,
+                source,
+                kind,
+                task_id,
+                ts,
+                tag_str,
             )
             was_inserted = self._engine.insert_record(record, embedding=embedding)
             if was_inserted:
                 record_id = record["record_id"]
                 inserted_ids.append(record_id)
                 self._extract_all_facts(
-                    chunk, source, record["branch"], record_id,
+                    chunk,
+                    source,
+                    record["branch"],
+                    record_id,
                 )
 
         return inserted_ids
@@ -289,7 +313,9 @@ class EnrichedIngestPipeline:
             self._llm_extractor = LLMFactExtractor(gateway=self._gateway)
             return self._llm_extractor
         except ImportError:
-            logger.debug("LLMFactExtractor unavailable (knowledge.llm_extractor not installed)")
+            logger.debug(
+                "LLMFactExtractor unavailable (knowledge.llm_extractor not installed)"
+            )
             return None
 
     def _extract_facts(
@@ -305,6 +331,7 @@ class EnrichedIngestPipeline:
         """
         if self._fact_extractor is None:
             from jarvis_engine.knowledge.facts import FactExtractor
+
             self._fact_extractor = FactExtractor()
 
         triples = self._fact_extractor.extract(content, source, branch)
@@ -407,7 +434,9 @@ class EnrichedIngestPipeline:
                 # Hard-split the oversized sentence at max_chunk boundaries
                 for i in range(0, sentence_len, max_chunk):
                     chunks.append(sentence[i : i + max_chunk])
-                    chunk_sentences.append([])  # no sentence-level overlap for hard-splits
+                    chunk_sentences.append(
+                        []
+                    )  # no sentence-level overlap for hard-splits
                 continue
 
             # If adding this sentence would exceed max_chunk, start a new chunk

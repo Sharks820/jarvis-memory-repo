@@ -15,6 +15,7 @@ from typing import Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
+
 class MetricSnapshot(TypedDict):
     """Per-metric snapshot in :class:`ResourceStatus`."""
 
@@ -64,7 +65,9 @@ class ResourceMonitor:
         z_threshold: float = 3.0,
         window_size: int = 100,
     ) -> None:
-        self._caps: dict[str, float] = dict(caps) if caps is not None else dict(_DEFAULT_CAPS)
+        self._caps: dict[str, float] = (
+            dict(caps) if caps is not None else dict(_DEFAULT_CAPS)
+        )
         self._z_threshold = z_threshold
         self._window_size = window_size
 

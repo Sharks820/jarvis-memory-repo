@@ -92,8 +92,11 @@ class TaskOrchestrator:
         errors: list[str] = []
         for model in candidate_models:
             raw, err = self._call_ollama(
-                endpoint=endpoint, model=model, prompt=prompt,
-                options=options, timeout_s=timeout_s,
+                endpoint=endpoint,
+                model=model,
+                prompt=prompt,
+                options=options,
+                timeout_s=timeout_s,
             )
             if err:
                 errors.append(f"{model}: {err}")
@@ -105,22 +108,42 @@ class TaskOrchestrator:
             if output:
                 return output, model, errors
             raw_error = str(raw.get("error", "")).strip()
-            errors.append(f"{model}: {raw_error}" if raw_error else f"{model}: empty model output.")
+            errors.append(
+                f"{model}: {raw_error}"
+                if raw_error
+                else f"{model}: empty model output."
+            )
         return "", "", errors
 
-    def _refine_code_output(self, endpoint: str, model: str, request: TaskRequest, output: str) -> str:
+    def _refine_code_output(
+        self, endpoint: str, model: str, request: TaskRequest, output: str
+    ) -> str:
         """Apply critique-revise cycle and syntax fixing for max_quality."""
         critique = self._single_pass_generate(
-            endpoint=endpoint, model=model,
+            endpoint=endpoint,
+            model=model,
             prompt=self._critique_prompt(output),
-            options={"num_ctx": 32768, "num_predict": 1200, "temperature": 0.0, "top_p": 0.9},
+            options={
+                "num_ctx": 32768,
+                "num_predict": 1200,
+                "temperature": 0.0,
+                "top_p": 0.9,
+            },
             timeout_s=240,
         )
         if critique:
             revised = self._single_pass_generate(
-                endpoint=endpoint, model=model,
-                prompt=self._revision_prompt(original=request.prompt, draft_code=output, critique=critique),
-                options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.03, "top_p": 0.9},
+                endpoint=endpoint,
+                model=model,
+                prompt=self._revision_prompt(
+                    original=request.prompt, draft_code=output, critique=critique
+                ),
+                options={
+                    "num_ctx": 32768,
+                    "num_predict": 3072,
+                    "temperature": 0.03,
+                    "top_p": 0.9,
+                },
                 timeout_s=360,
             )
             if revised:
@@ -130,9 +153,15 @@ class TaskOrchestrator:
             syntax_issue = self._python_syntax_issue(output)
             if syntax_issue:
                 fixed = self._single_pass_generate(
-                    endpoint=endpoint, model=model,
+                    endpoint=endpoint,
+                    model=model,
                     prompt=self._python_fix_prompt(output, syntax_issue),
-                    options={"num_ctx": 32768, "num_predict": 3072, "temperature": 0.0, "top_p": 0.85},
+                    options={
+                        "num_ctx": 32768,
+                        "num_predict": 3072,
+                        "temperature": 0.0,
+                        "top_p": 0.85,
+                    },
                     timeout_s=240,
                 )
                 if fixed and not self._python_syntax_issue(fixed):
@@ -146,35 +175,50 @@ class TaskOrchestrator:
             f"with model fallback chain={candidate_models}."
         )
         if not request.execute:
-            return TaskResult(allowed=True, provider="ollama",
-                              plan=plan + " Dry-run only.", reason="Set --execute to run generation.")
+            return TaskResult(
+                allowed=True,
+                provider="ollama",
+                plan=plan + " Dry-run only.",
+                reason="Set --execute to run generation.",
+            )
 
         timeout_s = 360 if request.quality_profile == "max_quality" else 180
         output, chosen_model, errors = self._try_generate_with_fallback(
-            request.endpoint, candidate_models,
+            request.endpoint,
+            candidate_models,
             self._compose_code_prompt(request.prompt, request.quality_profile),
-            self._quality_options(request.quality_profile), timeout_s,
+            self._quality_options(request.quality_profile),
+            timeout_s,
         )
         if not output:
             reason = " | ".join(errors[:4]) if errors else "No model produced output."
-            return TaskResult(allowed=False, provider="ollama", plan=plan, reason=reason)
+            return TaskResult(
+                allowed=False, provider="ollama", plan=plan, reason=reason
+            )
 
         if request.quality_profile == "max_quality":
-            output = self._refine_code_output(request.endpoint, chosen_model, request, output)
+            output = self._refine_code_output(
+                request.endpoint, chosen_model, request, output
+            )
 
         path = request.output_path or ""
         if path and output:
             try:
                 p = self._safe_output_path(path)
             except ValueError as exc:
-                return TaskResult(allowed=False, provider="ollama", plan=plan, reason=str(exc))
+                return TaskResult(
+                    allowed=False, provider="ollama", plan=plan, reason=str(exc)
+                )
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(output, encoding="utf-8")
             path = str(p)
 
         return TaskResult(
-            allowed=True, provider="ollama", plan=plan,
-            output_text=output, output_path=path,
+            allowed=True,
+            provider="ollama",
+            plan=plan,
+            output_text=output,
+            output_path=path,
             reason=f"Code generation completed with model={chosen_model}.",
         )
 
@@ -209,7 +253,9 @@ class TaskOrchestrator:
                     reason=str(exc),
                 )
 
-        result = adapter.execute(request.prompt, safe_output_path, request.quality_profile)
+        result = adapter.execute(
+            request.prompt, safe_output_path, request.quality_profile
+        )
         return TaskResult(
             allowed=result.ok,
             provider=result.provider,
@@ -222,7 +268,9 @@ class TaskOrchestrator:
     def _model_candidates(self, primary: str) -> list[str]:
         raw_fallbacks = os.getenv("JARVIS_CODE_MODEL_FALLBACKS", "")
         env_fallbacks = [x.strip() for x in raw_fallbacks.split(",") if x.strip()]
-        candidates = [primary.strip()] + (env_fallbacks if env_fallbacks else DEFAULT_FALLBACK_MODELS)
+        candidates = [primary.strip()] + (
+            env_fallbacks if env_fallbacks else DEFAULT_FALLBACK_MODELS
+        )
         seen: set[str] = set()
         out: list[str] = []
         for candidate in candidates:
@@ -311,6 +359,7 @@ class TaskOrchestrator:
 
     def _python_syntax_issue(self, code: str) -> str:
         import ast
+
         try:
             ast.parse(code, filename="<jarvis_generated>")
             return ""
@@ -352,7 +401,11 @@ class TaskOrchestrator:
     ) -> tuple[dict[str, Any] | None, str]:
         try:
             data = call_ollama_generate(
-                endpoint, model, prompt, options, timeout_s=timeout_s,
+                endpoint,
+                model,
+                prompt,
+                options,
+                timeout_s=timeout_s,
             )
             return data, ""
         except json.JSONDecodeError:
@@ -379,7 +432,9 @@ class TaskOrchestrator:
         try:
             resolved.relative_to(self._root)
         except ValueError:
-            raise ValueError("Security policy: output path must remain inside the repository root.")
+            raise ValueError(
+                "Security policy: output path must remain inside the repository root."
+            )
         return resolved
 
     def _log(self, request: TaskRequest, result: TaskResult) -> None:
@@ -395,7 +450,10 @@ _PRIVILEGED_SHELL_ALLOWLIST = {"python", "python3", "pip", "pip3"}
 
 
 def run_shell_command(
-    command: str, timeout_s: int = 60, *, has_explicit_approval: bool = False,
+    command: str,
+    timeout_s: int = 60,
+    *,
+    has_explicit_approval: bool = False,
 ) -> tuple[int, str, str]:
     try:
         args = shlex.split(command, posix=False)
@@ -406,12 +464,20 @@ def run_shell_command(
     executable = Path(args[0]).stem.lower()
     if executable in _PRIVILEGED_SHELL_ALLOWLIST:
         if not has_explicit_approval:
-            return 2, "", (
-                f"Command '{args[0]}' requires explicit approval "
-                f"(privileged allowlist: {sorted(_PRIVILEGED_SHELL_ALLOWLIST)})"
+            return (
+                2,
+                "",
+                (
+                    f"Command '{args[0]}' requires explicit approval "
+                    f"(privileged allowlist: {sorted(_PRIVILEGED_SHELL_ALLOWLIST)})"
+                ),
             )
     elif executable not in _SHELL_COMMAND_ALLOWLIST:
-        return 2, "", f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST | _PRIVILEGED_SHELL_ALLOWLIST)}"
+        return (
+            2,
+            "",
+            f"Command '{args[0]}' not in allowlist: {sorted(_SHELL_COMMAND_ALLOWLIST | _PRIVILEGED_SHELL_ALLOWLIST)}",
+        )
     try:
         proc = subprocess.run(
             args,

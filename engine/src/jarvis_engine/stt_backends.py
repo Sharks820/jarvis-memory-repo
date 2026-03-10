@@ -57,7 +57,7 @@ def _calibrate_noise_floor(
         logger.debug("Noise floor calibration read failed: %s", exc)
         return 0.01  # fall back to original default
 
-    ambient_rms = float(np.sqrt(np.mean(ambient_chunk ** 2)))
+    ambient_rms = float(np.sqrt(np.mean(ambient_chunk**2)))
     threshold = ambient_rms * _NOISE_FLOOR_MULTIPLIER
     clamped = max(_NOISE_FLOOR_MIN, min(_NOISE_FLOOR_MAX, threshold))
     logger.debug(
@@ -73,6 +73,7 @@ def _calibrate_noise_floor(
 # Shared WAV conversion utility
 # ---------------------------------------------------------------------------
 
+
 def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
     """Convert a mono float32 numpy array to WAV bytes for API upload."""
     audio_int16 = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
@@ -85,11 +86,11 @@ def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
     buf.write(b"WAVE")
     buf.write(b"fmt ")
     buf.write(struct.pack("<I", 16))  # chunk size
-    buf.write(struct.pack("<H", 1))   # PCM format
-    buf.write(struct.pack("<H", 1))   # mono
+    buf.write(struct.pack("<H", 1))  # PCM format
+    buf.write(struct.pack("<H", 1))  # mono
     buf.write(struct.pack("<I", sample_rate))
     buf.write(struct.pack("<I", sample_rate * 2))  # byte rate
-    buf.write(struct.pack("<H", 2))   # block align
+    buf.write(struct.pack("<H", 2))  # block align
     buf.write(struct.pack("<H", 16))  # bits per sample
     buf.write(b"data")
     buf.write(struct.pack("<I", data_size))
@@ -100,6 +101,7 @@ def _numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16000) -> bytes:
 # ---------------------------------------------------------------------------
 # Keyterm loading for Deepgram prompting
 # ---------------------------------------------------------------------------
+
 
 def _load_keyterms() -> list[str]:
     """Load keyterms from personal_vocab.txt for Deepgram prompting.
@@ -112,6 +114,7 @@ def _load_keyterms() -> list[str]:
     Results are cached in ``_shared.load_personal_vocab_lines``.
     """
     from jarvis_engine._shared import load_personal_vocab_lines
+
     return load_personal_vocab_lines(strip_parens=True)
 
 
@@ -131,7 +134,8 @@ def _prepare_deepgram_audio(audio: np.ndarray | str) -> tuple[bytes, str]:
 
 
 def _build_deepgram_params(
-    language: str, keyterms: list[str] | None,
+    language: str,
+    keyterms: list[str] | None,
 ) -> list[tuple[str, str]]:
     """Build Deepgram REST API query params with keyword prompting."""
     if keyterms is None:
@@ -183,11 +187,13 @@ def _parse_deepgram_response(data: dict) -> tuple[str, float, list[dict] | None]
             w_end = word_info.get("end")
             w_word = word_info.get("word", "")
             if isinstance(w_start, (int, float)) and isinstance(w_end, (int, float)):
-                parsed_segments.append({
-                    "start": float(w_start),
-                    "end": float(w_end),
-                    "text": str(w_word),
-                })
+                parsed_segments.append(
+                    {
+                        "start": float(w_start),
+                        "end": float(w_end),
+                        "text": str(w_word),
+                    }
+                )
 
     return transcript, confidence, parsed_segments if parsed_segments else None
 
@@ -296,6 +302,7 @@ def _init_vad(sample_rate: int) -> tuple[object | None, bool]:
     use_silero = False
     try:
         from jarvis_engine.stt_vad import get_vad_detector
+
         vad_detector = get_vad_detector(sampling_rate=sample_rate)
         use_silero = vad_detector.available
     except (ImportError, OSError, RuntimeError) as exc:
@@ -304,9 +311,7 @@ def _init_vad(sample_rate: int) -> tuple[object | None, bool]:
     if use_silero:
         logger.info("Using Silero VAD for speech detection")
     else:
-        logger.warning(
-            "Silero VAD not available, falling back to energy-based VAD"
-        )
+        logger.warning("Silero VAD not available, falling back to energy-based VAD")
     return vad_detector, use_silero
 
 
@@ -321,7 +326,7 @@ def _detect_speech(
         mono = chunk[:, 0] if chunk.ndim > 1 else chunk
         return vad_detector.process_chunk(mono)
     # RMS energy fallback
-    rms = float(np.sqrt(np.mean(chunk ** 2)))
+    rms = float(np.sqrt(np.mean(chunk**2)))
     return rms > silence_threshold
 
 
@@ -375,7 +380,10 @@ def _capture_audio_loop(
         chunk, _ = stream.read(samples_per_chunk)
 
         is_speech = _detect_speech(
-            chunk, vad_detector, use_silero, silence_threshold,
+            chunk,
+            vad_detector,
+            use_silero,
+            silence_threshold,
         )
 
         if is_speech:
@@ -405,7 +413,7 @@ def _capture_audio_loop(
 
 
 # RC-1: silence timeout defaults by mode
-_SILENCE_DURATION_COMMAND = 0.8   # fast cutoff for voice commands
+_SILENCE_DURATION_COMMAND = 0.8  # fast cutoff for voice commands
 _SILENCE_DURATION_DICTATION = 2.0  # longer pause tolerance for dictation
 
 
@@ -457,8 +465,7 @@ def record_from_microphone(
         import sounddevice as sd  # type: ignore[import-untyped]
     except ImportError as exc:
         raise RuntimeError(
-            "sounddevice is not installed. "
-            "Install with: pip install sounddevice"
+            "sounddevice is not installed. Install with: pip install sounddevice"
         ) from exc
 
     # RC-1: apply mode-specific silence duration if caller used the default
@@ -475,7 +482,9 @@ def record_from_microphone(
             mode,
         )
 
-        with sd.InputStream(samplerate=sample_rate, channels=1, dtype="float32") as stream:
+        with sd.InputStream(
+            samplerate=sample_rate, channels=1, dtype="float32"
+        ) as stream:
             # Adaptive noise floor: calibrate from ambient audio when using
             # RMS fallback (not Silero VAD).  Re-calibrates every 60 seconds.
             if not use_silero:

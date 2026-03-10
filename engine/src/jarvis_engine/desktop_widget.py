@@ -13,7 +13,10 @@ from urllib.request import Request, urlopen
 import tkinter as tk
 from tkinter import messagebox
 
-from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT, DEFAULT_CLOUD_MODEL
+from jarvis_engine._constants import (
+    DEFAULT_API_PORT as _DEFAULT_PORT,
+    DEFAULT_CLOUD_MODEL,
+)
 from jarvis_engine._shared import env_int as _env_int
 from jarvis_engine.widget_conversation import ConversationMixin
 from jarvis_engine.widget_orb import OrbAnimationMixin
@@ -107,25 +110,37 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._drag_offset_x = 0
         self._drag_offset_y = 0
         self._launcher_dragged = False
-        self._hotword_active = threading.Event()  # Guards against multiple hotword loops
+        self._hotword_active = (
+            threading.Event()
+        )  # Guards against multiple hotword loops
         self._orb_after_id: str | None = None
         self._launcher_after_id: str | None = None
-        self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
+        self._prev_svc_running: dict[
+            str, bool
+        ] = {}  # Track service state for crash detection
         self._widget_state: str = "idle"  # idle | listening | processing | error
         self._thinking_after_id: str | None = None  # after() id for dot animation
         self._thinking_dots: int = 3
         self._thinking_start_time: float = 0.0  # When thinking started (time.time())
-        self._cmd_generation: int = 0  # Generation counter for race condition prevention
-        self._processing_timeout_id: str | None = None  # Safety timeout for stuck processing
+        self._cmd_generation: int = (
+            0  # Generation counter for race condition prevention
+        )
+        self._processing_timeout_id: str | None = (
+            None  # Safety timeout for stuck processing
+        )
         self._cancel_event = threading.Event()  # Set to cancel current command
         self._welcome_shown: bool = False  # One-time welcome message flag
-        self._error_clear_id: str | None = None  # after() id for auto-clearing error state
+        self._error_clear_id: str | None = (
+            None  # after() id for auto-clearing error state
+        )
         self._position_save_id: str | None = None  # debounce timer for position save
         self._SNAP_DISTANCE = 20  # pixels from screen edge to trigger snap
         self._tray_icon: Any = None  # pystray.Icon instance (or None if unavailable)
         self._model_index: int = 0  # Index into MODEL_ROTATION (0 = Auto)
         self._model_label: tk.Label | None = None  # Model indicator label widget
-        self._seen_event_ids: dict[str, None] = {}  # Ordered dedup for activity feed events
+        self._seen_event_ids: dict[
+            str, None
+        ] = {}  # Ordered dedup for activity feed events
         self._processing_timeout_ms = _env_int(
             "JARVIS_WIDGET_PROCESSING_TIMEOUT_MS",
             300_000,
@@ -178,26 +193,37 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Kill mobile API and daemon processes spawned alongside the widget."""
         try:
             from jarvis_engine.process_manager import read_pid_file, kill_service
+
             root = self.root_path if hasattr(self, "root_path") else _repo_root()
             for service in ("mobile_api", "daemon"):
                 try:
                     info = read_pid_file(service, root)
                     if info is not None:
                         kill_service(service, root)
-                        logger.info("Killed %s (pid=%s) on widget shutdown.", service, info.get("pid"))
+                        logger.info(
+                            "Killed %s (pid=%s) on widget shutdown.",
+                            service,
+                            info.get("pid"),
+                        )
                 except (OSError, ValueError) as exc:
                     logger.debug("Failed to kill %s on shutdown: %s", service, exc)
         except ImportError:
             # Fallback: kill by command line pattern
             try:
                 import subprocess
+
                 subprocess.run(
-                    ["powershell", "-NoProfile", "-Command",
-                     "Get-CimInstance Win32_Process | Where-Object {"
-                     "($_.Name -eq 'python.exe') -and "
-                     "$_.CommandLine -match 'jarvis_engine.main\\s+(daemon-run|serve-mobile)'"
-                     "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
-                    capture_output=True, timeout=10,
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-Command",
+                        "Get-CimInstance Win32_Process | Where-Object {"
+                        "($_.Name -eq 'python.exe') -and "
+                        "$_.CommandLine -match 'jarvis_engine.main\\s+(daemon-run|serve-mobile)'"
+                        "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+                    ],
+                    capture_output=True,
+                    timeout=10,
                 )
             except (OSError, subprocess.SubprocessError) as exc:
                 logger.debug("Fallback process kill failed: %s", exc)
@@ -255,11 +281,15 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             try:
                 self.launcher_win.destroy()
             except Exception as exc:  # boundary: catch-all justified
-                logger.debug("Failed to destroy launcher window during shutdown: %s", exc)
+                logger.debug(
+                    "Failed to destroy launcher window during shutdown: %s", exc
+                )
         try:
             self.destroy()
         except Exception as exc:  # boundary: catch-all justified
-            logger.debug("Failed to destroy main widget window during shutdown: %s", exc)
+            logger.debug(
+                "Failed to destroy main widget window during shutdown: %s", exc
+            )
 
     def _bind_shortcuts(self) -> None:
         self.bind("<Control-space>", lambda _e: self._toggle_min())
@@ -304,7 +334,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             try:
                 self.after_cancel(self._position_save_id)
             except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                logger.debug("Failed to cancel position save timer (widget may be destroyed)")
+                logger.debug(
+                    "Failed to cancel position save timer (widget may be destroyed)"
+                )
         self._position_save_id = self.after(300, self._save_panel_position)
 
     def _save_panel_position(self) -> None:
@@ -320,7 +352,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         try:
             self.geometry(f"+{x}+{y}")
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
-            logger.debug("Failed to apply snapped panel geometry (widget may be destroyed)")
+            logger.debug(
+                "Failed to apply snapped panel geometry (widget may be destroyed)"
+            )
         self.cfg.panel_x = x
         self.cfg.panel_y = y
         try:
@@ -334,7 +368,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         self._build_toolbar(shell)
 
-        body = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
+        body = tk.Frame(
+            shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1
+        )
         body.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
 
         self._build_command_area(body)
@@ -348,12 +384,20 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _build_toolbar(self, shell: tk.Frame) -> None:
         """Build the header toolbar with title, buttons, status orb, and intel label."""
-        header = tk.Frame(shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
+        header = tk.Frame(
+            shell, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1
+        )
         header.pack(fill=tk.X)
 
         top = tk.Frame(header, bg=self.PANEL)
         top.pack(fill=tk.X, padx=10, pady=(8, 4))
-        tk.Label(top, text="Jarvis Unlimited", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 14, "bold")).pack(side=tk.LEFT)
+        tk.Label(
+            top,
+            text="Jarvis Unlimited",
+            bg=self.PANEL,
+            fg=self.TEXT,
+            font=("Segoe UI", 14, "bold"),
+        ).pack(side=tk.LEFT)
         tk.Button(
             top,
             text="Minimize",
@@ -390,20 +434,49 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         status_row = tk.Frame(header, bg=self.PANEL)
         status_row.pack(fill=tk.X, padx=10, pady=(0, 8))
-        self.orb_canvas = tk.Canvas(status_row, width=30, height=30, bg=self.PANEL, highlightthickness=0)
+        self.orb_canvas = tk.Canvas(
+            status_row, width=30, height=30, bg=self.PANEL, highlightthickness=0
+        )
         self.orb_canvas.pack(side=tk.LEFT)
         self._orb_sweep = self.orb_canvas.create_arc(
-            2, 2, 28, 28, start=0, extent=90,
-            style=tk.ARC, outline=self.ACCENT, width=1,
+            2,
+            2,
+            28,
+            28,
+            start=0,
+            extent=90,
+            style=tk.ARC,
+            outline=self.ACCENT,
+            width=1,
         )
-        self.orb_id = self.orb_canvas.create_oval(9, 9, 21, 21, fill="#6366f1", outline="")
+        self.orb_id = self.orb_canvas.create_oval(
+            9, 9, 21, 21, fill="#6366f1", outline=""
+        )
         self.status_var = tk.StringVar(value="CONNECTING...")
-        self.status_label = tk.Label(status_row, textvariable=self.status_var, bg=self.PANEL, fg="#a5b4fc", font=("Segoe UI", 10, "bold"))
+        self.status_label = tk.Label(
+            status_row,
+            textvariable=self.status_var,
+            bg=self.PANEL,
+            fg="#a5b4fc",
+            font=("Segoe UI", 10, "bold"),
+        )
         self.status_label.pack(side=tk.LEFT, padx=(6, 0))
         self.intel_var = tk.StringVar(value="")
-        self.intel_label = tk.Label(status_row, textvariable=self.intel_var, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9, "bold"))
+        self.intel_label = tk.Label(
+            status_row,
+            textvariable=self.intel_var,
+            bg=self.PANEL,
+            fg=self.MUTED,
+            font=("Segoe UI", 9, "bold"),
+        )
         self.intel_label.pack(side=tk.RIGHT, padx=(0, 8))
-        tk.Label(status_row, text="Hotword: say 'Jarvis'", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
+        tk.Label(
+            status_row,
+            text="Hotword: say 'Jarvis'",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            font=("Segoe UI", 9),
+        ).pack(side=tk.RIGHT)
 
     def _build_command_area(self, body: tk.Frame) -> None:
         """Build the session config, command input, flags, action buttons, and quick actions."""
@@ -416,7 +489,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _build_session_config(self, body: tk.Frame) -> None:
         """Build the Secure Session config section with URL, password, and advanced fields."""
-        sec = tk.LabelFrame(body, text="Secure Session", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        sec = tk.LabelFrame(
+            body,
+            text="Secure Session",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            bd=1,
+            relief=tk.GROOVE,
+        )
         sec.pack(fill=tk.X, padx=10, pady=(10, 8))
 
         self.base_var = tk.StringVar(value=self.cfg.base_url)
@@ -434,7 +514,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         adv_toggle.pack(fill=tk.X, padx=6, pady=(2, 0))
         self._adv_toggle_btn = tk.Button(
             adv_toggle,
-            text="\u25B6 Advanced",
+            text="\u25b6 Advanced",
             bg=self.PANEL,
             fg=self.MUTED,
             activebackground=self.PANEL,
@@ -474,7 +554,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Build the command text area with model indicator row."""
         cmd_block = tk.Frame(body, bg=self.PANEL)
         cmd_block.pack(fill=tk.X, padx=10)
-        tk.Label(cmd_block, text="Command", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        tk.Label(
+            cmd_block,
+            text="Command",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w")
         self.command_text = tk.Text(
             cmd_block,
             height=5,
@@ -516,22 +602,34 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self.auto_send_var = tk.BooleanVar(value=True)
         self.hotword_var = tk.BooleanVar(value=False)
         self.notify_var = tk.BooleanVar(value=True)
-        self._check(flags, "Allow PC Actions", self.execute_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Auto-Approve", self.priv_var).pack(side=tk.LEFT, padx=(0, 10))
+        self._check(flags, "Allow PC Actions", self.execute_var).pack(
+            side=tk.LEFT, padx=(0, 10)
+        )
+        self._check(flags, "Auto-Approve", self.priv_var).pack(
+            side=tk.LEFT, padx=(0, 10)
+        )
         self._check(flags, "Speak", self.speak_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Auto Send", self.auto_send_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed).pack(side=tk.LEFT, padx=(0, 10))
+        self._check(flags, "Auto Send", self.auto_send_var).pack(
+            side=tk.LEFT, padx=(0, 10)
+        )
+        self._check(
+            flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed
+        ).pack(side=tk.LEFT, padx=(0, 10))
         self._check(flags, "Notifications", self.notify_var).pack(side=tk.LEFT)
 
     def _build_action_buttons(self, body: tk.Frame) -> None:
         """Build the Voice Dictate, Send, and Stop action buttons."""
         row = tk.Frame(body, bg=self.PANEL)
         row.pack(fill=tk.X, padx=10, pady=(8, 0))
-        self._voice_btn = self._btn(row, "Voice Dictate", self._dictate_async, self.ACCENT_2)
+        self._voice_btn = self._btn(
+            row, "Voice Dictate", self._dictate_async, self.ACCENT_2
+        )
         self._voice_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self._send_btn = self._btn(row, "Send", self._send_command_async, self.ACCENT)
         self._send_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self._cancel_btn = self._btn(row, "\u25A0 Stop", self._cancel_command, "#c0392b")
+        self._cancel_btn = self._btn(
+            row, "\u25a0 Stop", self._cancel_command, "#c0392b"
+        )
         self._cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._cancel_btn.pack_forget()  # Hidden by default, shown during processing
 
@@ -539,49 +637,120 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Build the Pause, Resume, and Safe Mode quick action buttons."""
         quick = tk.Frame(body, bg=self.PANEL)
         quick.pack(fill=tk.X, padx=10, pady=(8, 0))
-        _pause_btn = self._btn(quick, "\u23F8 Pause", lambda: self._quick_phrase("Jarvis, pause daemon"), self.WARN)
+        _pause_btn = self._btn(
+            quick,
+            "\u23f8 Pause",
+            lambda: self._quick_phrase("Jarvis, pause daemon"),
+            self.WARN,
+        )
         _pause_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        _Tooltip(_pause_btn, "Pause the Jarvis daemon.\nStops background tasks, proactive alerts, and auto-learning.\nUse Resume to restart.")
-        _resume_btn = self._btn(quick, "\u25B6 Resume", lambda: self._quick_phrase("Jarvis, resume daemon"), self.ACCENT)
+        _Tooltip(
+            _pause_btn,
+            "Pause the Jarvis daemon.\nStops background tasks, proactive alerts, and auto-learning.\nUse Resume to restart.",
+        )
+        _resume_btn = self._btn(
+            quick,
+            "\u25b6 Resume",
+            lambda: self._quick_phrase("Jarvis, resume daemon"),
+            self.ACCENT,
+        )
         _resume_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        _Tooltip(_resume_btn, "Resume the Jarvis daemon.\nRestarts background tasks, proactive alerts, and auto-learning.")
-        _safe_btn = self._btn(quick, "\U0001F6E1 Safe Mode", lambda: self._quick_phrase("Jarvis, enable safe mode"), self.ACCENT_2)
+        _Tooltip(
+            _resume_btn,
+            "Resume the Jarvis daemon.\nRestarts background tasks, proactive alerts, and auto-learning.",
+        )
+        _safe_btn = self._btn(
+            quick,
+            "\U0001f6e1 Safe Mode",
+            lambda: self._quick_phrase("Jarvis, enable safe mode"),
+            self.ACCENT_2,
+        )
         _safe_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        _Tooltip(_safe_btn, "Enable Safe Mode.\nForces all queries through local Ollama (no cloud).\nUse for private/sensitive conversations.")
+        _Tooltip(
+            _safe_btn,
+            "Enable Safe Mode.\nForces all queries through local Ollama (no cloud).\nUse for private/sensitive conversations.",
+        )
 
     def _build_fetch_buttons(self, body: tk.Frame) -> None:
         """Build the Refresh, Diagnose, and Activity fetch buttons."""
         fetch = tk.Frame(body, bg=self.PANEL)
         fetch.pack(fill=tk.X, padx=10, pady=(8, 0))
-        _refresh_btn = self._btn(fetch, "\U0001F504 Refresh", self._refresh_dashboard_async, "#35517a")
+        _refresh_btn = self._btn(
+            fetch, "\U0001f504 Refresh", self._refresh_dashboard_async, "#35517a"
+        )
         _refresh_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        _Tooltip(_refresh_btn, "Refresh the dashboard.\nShows intelligence score, memory stats, and growth trends.")
-        _diag_btn = self._btn(fetch, "\U0001F527 Diagnose", self._diagnose_repair_async, "#1f5f88")
+        _Tooltip(
+            _refresh_btn,
+            "Refresh the dashboard.\nShows intelligence score, memory stats, and growth trends.",
+        )
+        _diag_btn = self._btn(
+            fetch, "\U0001f527 Diagnose", self._diagnose_repair_async, "#1f5f88"
+        )
         _diag_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        _Tooltip(_diag_btn, "Run self-healing diagnostics.\nChecks DB integrity, repairs broken indexes,\nand creates a recovery snapshot.")
-        _activity_btn = self._btn_lg(fetch, "\U0001F4CA Activity", self._view_activity_async, "#4a3570")
+        _Tooltip(
+            _diag_btn,
+            "Run self-healing diagnostics.\nChecks DB integrity, repairs broken indexes,\nand creates a recovery snapshot.",
+        )
+        _activity_btn = self._btn_lg(
+            fetch, "\U0001f4ca Activity", self._view_activity_async, "#4a3570"
+        )
         _activity_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        _Tooltip(_activity_btn, "View recent activity log.\nShows last 20 events: commands, learning,\nalerts, and system actions.")
+        _Tooltip(
+            _activity_btn,
+            "View recent activity log.\nShows last 20 events: commands, learning,\nalerts, and system actions.",
+        )
 
     def _build_status_bar(self, body: tk.Frame) -> None:
         """Build the Running Services and Brain Growth status sections."""
         # Running Services section
-        svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        svc_frame = tk.LabelFrame(
+            body,
+            text="Running Services",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            bd=1,
+            relief=tk.GROOVE,
+        )
         svc_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._svc_labels: dict[str, tuple[tk.Label, tk.Label]] = {}
-        for svc_name, display_name in [("daemon", "Assistant"), ("mobile_api", "Mobile API"), ("widget", "Widget")]:
+        for svc_name, display_name in [
+            ("daemon", "Assistant"),
+            ("mobile_api", "Mobile API"),
+            ("widget", "Widget"),
+        ]:
             row_f = tk.Frame(svc_frame, bg=self.PANEL)
             row_f.pack(fill=tk.X, padx=6, pady=2)
-            dot = tk.Label(row_f, text="\u25CB", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10))
+            dot = tk.Label(
+                row_f,
+                text="\u25cb",
+                bg=self.PANEL,
+                fg=self.MUTED,
+                font=("Segoe UI", 10),
+            )
             dot.pack(side=tk.LEFT)
-            tk.Label(row_f, text=display_name, bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(4, 0))
-            uptime_lbl = tk.Label(row_f, text="--", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9))
+            tk.Label(
+                row_f,
+                text=display_name,
+                bg=self.PANEL,
+                fg=self.TEXT,
+                font=("Segoe UI", 9),
+            ).pack(side=tk.LEFT, padx=(4, 0))
+            uptime_lbl = tk.Label(
+                row_f, text="--", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)
+            )
             uptime_lbl.pack(side=tk.RIGHT)
             self._svc_labels[svc_name] = (dot, uptime_lbl)
         self._refresh_services()
 
         # Brain Growth section
-        growth_frame = tk.LabelFrame(body, text="Brain Growth", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        growth_frame = tk.LabelFrame(
+            body,
+            text="Brain Growth",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            bd=1,
+            relief=tk.GROOVE,
+        )
         growth_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
         self._growth_labels: dict[str, tk.Label] = {}
         for key, display in [
@@ -594,8 +763,23 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         ]:
             row_f = tk.Frame(growth_frame, bg=self.PANEL)
             row_f.pack(fill=tk.X, padx=6, pady=1)
-            tk.Label(row_f, text=display, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9), width=10, anchor="w").pack(side=tk.LEFT)
-            val = tk.Label(row_f, text="--", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 9, "bold"), anchor="w")
+            tk.Label(
+                row_f,
+                text=display,
+                bg=self.PANEL,
+                fg=self.MUTED,
+                font=("Segoe UI", 9),
+                width=10,
+                anchor="w",
+            ).pack(side=tk.LEFT)
+            val = tk.Label(
+                row_f,
+                text="--",
+                bg=self.PANEL,
+                fg=self.TEXT,
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            )
             val.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
             self._growth_labels[key] = val
 
@@ -604,14 +788,20 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if self._adv_visible.get():
             self._adv_frame.pack_forget()
             self._adv_visible.set(False)
-            self._adv_toggle_btn.config(text="\u25B6 Advanced")
+            self._adv_toggle_btn.config(text="\u25b6 Advanced")
         else:
-            self._adv_frame.pack(fill=tk.X, padx=0, pady=(0, 0), before=self._sec_buttons)
+            self._adv_frame.pack(
+                fill=tk.X, padx=0, pady=(0, 0), before=self._sec_buttons
+            )
             self._adv_visible.set(True)
-            self._adv_toggle_btn.config(text="\u25BC Advanced")
+            self._adv_toggle_btn.config(text="\u25bc Advanced")
 
-    def _entry(self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None) -> None:
-        tk.Label(parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=6, pady=(4, 0))
+    def _entry(
+        self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None
+    ) -> None:
+        tk.Label(
+            parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)
+        ).pack(anchor="w", padx=6, pady=(4, 0))
         tk.Entry(
             parent,
             textvariable=var,
@@ -624,7 +814,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             highlightthickness=1,
         ).pack(fill=tk.X, padx=6, pady=(2, 0))
 
-    def _check(self, parent: tk.Widget, text: str, variable: tk.BooleanVar, cmd: Callable[[], None] | None = None) -> tk.Checkbutton:
+    def _check(
+        self,
+        parent: tk.Widget,
+        text: str,
+        variable: tk.BooleanVar,
+        cmd: Callable[[], None] | None = None,
+    ) -> tk.Checkbutton:
         return tk.Checkbutton(
             parent,
             text=text,
@@ -639,7 +835,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             font=("Segoe UI", 9),
         )
 
-    def _btn(self, parent: tk.Widget, text: str, command: Callable[[], None], color: str) -> tk.Button:
+    def _btn(
+        self, parent: tk.Widget, text: str, command: Callable[[], None], color: str
+    ) -> tk.Button:
         return tk.Button(
             parent,
             text=text,
@@ -655,7 +853,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             cursor="hand2",
         )
 
-    def _btn_lg(self, parent: tk.Widget, text: str, command: Callable[[], None], color: str) -> tk.Button:
+    def _btn_lg(
+        self, parent: tk.Widget, text: str, command: Callable[[], None], color: str
+    ) -> tk.Button:
         """Larger variant of _btn for primary action buttons."""
         return tk.Button(
             parent,
@@ -683,7 +883,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         try:
             if self.notify_var.get():
                 _show_toast(title, message, icon)
-        except (tk.TclError, RuntimeError):  # Widget may be destroyed; toast is best-effort
+        except (
+            tk.TclError,
+            RuntimeError,
+        ):  # Widget may be destroyed; toast is best-effort
             logger.debug("Toast notification failed (widget may be destroyed)")
 
     def _set_command_text(self, value: str) -> None:
@@ -734,20 +937,31 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         def worker() -> None:
             try:
-                data = _http_json_bootstrap(cfg.base_url, cfg.master_password, cfg.device_id)
+                data = _http_json_bootstrap(
+                    cfg.base_url, cfg.master_password, cfg.device_id
+                )
                 ok = bool(data.get("ok", False))
                 session = data.get("session", {})
                 if (not ok) or (not isinstance(session, dict)):
-                    raise RuntimeError(str(data.get("error", "Bootstrap returned no session data.")))
+                    raise RuntimeError(
+                        str(data.get("error", "Bootstrap returned no session data."))
+                    )
                 self.after(0, self._apply_session_update, session)
                 trusted = bool(session.get("trusted_device", False))
-                self._log_async(f"Bootstrap complete. trusted_device={trusted}", role="jarvis")
+                self._log_async(
+                    f"Bootstrap complete. trusted_device={trusted}", role="jarvis"
+                )
                 self.after(0, self._show_welcome)
             except HTTPError as exc:
-                self._log_async(f"Connect failed: {_http_error_details(exc)}", role="error")
+                self._log_async(
+                    f"Connect failed: {_http_error_details(exc)}", role="error"
+                )
             except URLError:
                 self._log_async("Cannot reach Jarvis server.", role="error")
-                self._log_async("Make sure the Mobile API is running and the Base URL is correct.", role="error")
+                self._log_async(
+                    "Make sure the Mobile API is running and the Base URL is correct.",
+                    role="error",
+                )
             except (RuntimeError, TimeoutError) as exc:
                 self._log_async(f"Connect failed: {exc}", role="error")
             except Exception as exc:  # noqa: BLE001
@@ -762,12 +976,19 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         try:
             health_data = _http_json(cfg, "/health", method="GET")
             health_ok = bool(health_data.get("ok", False))
-            self._log_async(f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis")
+            self._log_async(
+                f"  API: {'ONLINE' if health_ok else 'DEGRADED'}", role="jarvis"
+            )
             return True
         except Exception as exc:  # boundary: catch-all justified
             logger.debug("Diagnostics health check failed: %s", exc)
-            self._log_async("  API: OFFLINE - cannot reach Jarvis services", role="error")
-            self._log_async("  Make sure Mobile API is running (jarvis-engine serve-mobile)", role="system")
+            self._log_async(
+                "  API: OFFLINE - cannot reach Jarvis services", role="error"
+            )
+            self._log_async(
+                "  Make sure Mobile API is running (jarvis-engine serve-mobile)",
+                role="system",
+            )
             return False
 
     def _diag_check_sync(self, cfg: WidgetConfig) -> None:
@@ -777,7 +998,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             sync_data = _http_json(cfg, "/sync/status", method="GET")
             sync_ok = bool(sync_data.get("ok", False))
             last_sync = sync_data.get("last_sync_utc", "unknown")
-            self._log_async(f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis")
+            self._log_async(
+                f"  Sync: {'OK' if sync_ok else 'Issues detected'}", role="jarvis"
+            )
             self._log_async(f"  Last sync: {last_sync}", role="jarvis")
         except Exception as exc:  # boundary: catch-all justified
             logger.debug("Diagnostics sync check failed: %s", exc)
@@ -792,7 +1015,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             mem_count = dash_data.get("memory_count", "?")
             fact_count = dash_data.get("fact_count", "?")
             self._log_async(f"  Intelligence score: {score}", role="jarvis")
-            self._log_async(f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis")
+            self._log_async(
+                f"  Memories: {mem_count}, Facts: {fact_count}", role="jarvis"
+            )
         except Exception as exc:  # boundary: catch-all justified
             logger.debug("Diagnostics intelligence check failed: %s", exc)
             self._log_async(f"  Intelligence: unavailable ({exc})", role="error")
@@ -816,7 +1041,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if heal_ok:
             self._log_async("  Self-heal: completed successfully", role="jarvis")
         else:
-            self._log_async(f"  Self-heal: finished with issues (exit={heal_exit})", role="error")
+            self._log_async(
+                f"  Self-heal: finished with issues (exit={heal_exit})", role="error"
+            )
         if isinstance(heal_lines, list) and heal_lines:
             for line in heal_lines[-5:]:
                 s = str(line).strip()
@@ -827,8 +1054,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if heal_ok:
             self._log_async("\u2705 All systems healthy.", role="jarvis")
         else:
-            self._log_async("\u26A0 Some issues detected. Check details above.", role="error")
-            self._notify_toast("Jarvis Self-Heal", f"Self-heal finished with issues (exit={heal_exit})", "Warning")
+            self._log_async(
+                "\u26a0 Some issues detected. Check details above.", role="error"
+            )
+            self._notify_toast(
+                "Jarvis Self-Heal",
+                f"Self-heal finished with issues (exit={heal_exit})",
+                "Warning",
+            )
 
     def _diagnose_repair_async(self) -> None:
         cfg = self._current_cfg()  # Read tkinter vars on main thread
@@ -836,7 +1069,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         def worker() -> None:
             try:
                 self._log_async("\u2500" * 40, role="system")
-                self._log_async("\U0001F527 JARVIS DIAGNOSTICS", role="system")
+                self._log_async("\U0001f527 JARVIS DIAGNOSTICS", role="system")
                 self._log_async("\u2500" * 40, role="system")
 
                 if not self._diag_check_connection(cfg):
@@ -845,11 +1078,15 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self._diag_check_intelligence(cfg)
                 self._diag_run_self_heal(cfg)
             except HTTPError as exc:
-                self._log_async(f"Diagnose failed: {_http_error_details(exc)}", role="error")
+                self._log_async(
+                    f"Diagnose failed: {_http_error_details(exc)}", role="error"
+                )
                 self._notify_toast("Jarvis", "Diagnose & Repair failed", "Error")
             except URLError:
                 self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+                self._log_async(
+                    "Make sure the Assistant and Mobile API are running.", role="error"
+                )
                 self._log_async("Start with: jarvis-engine daemon", role="system")
             except (RuntimeError, TimeoutError) as exc:
                 self._log_async(f"Diagnose failed: {exc}", role="error")
@@ -898,17 +1135,23 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         # Kill any running TTS processes
         try:
             import subprocess
+
             # Kill edge-tts and PowerShell speech processes
             for proc_name in ["edge-tts", "edge-playback"]:
                 subprocess.run(
                     ["taskkill", "/F", "/IM", f"{proc_name}.exe"],
-                    capture_output=True, timeout=5,
+                    capture_output=True,
+                    timeout=5,
                 )
             # Kill PowerShell speech synthesis if running
             subprocess.run(
-                ["powershell", "-Command",
-                 "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
-                capture_output=True, timeout=5,
+                [
+                    "powershell",
+                    "-Command",
+                    "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue",
+                ],
+                capture_output=True,
+                timeout=5,
             )
         except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to kill TTS/speech processes during cancel: %s", exc)
@@ -931,7 +1174,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if self._widget_state == "processing":
             self._hide_thinking()
             timeout_s = max(1, self._processing_timeout_ms // 1000)
-            self._log(f"Command timed out ({timeout_s}s). Ready for new commands.", role="error")
+            self._log(
+                f"Command timed out ({timeout_s}s). Ready for new commands.",
+                role="error",
+            )
             self.command_text.config(state=tk.NORMAL)
             self._set_state("idle")
 
@@ -948,7 +1194,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         (empty, already processing, or conversation-ending phrase).
         """
         if getattr(self, "_widget_state", "idle") == "processing":
-            self._log("Still processing previous command. Please wait...", role="system")
+            self._log(
+                "Still processing previous command. Please wait...", role="system"
+            )
             return None
         self._cancel_event.clear()
         text = self.command_text.get("1.0", tk.END).strip()
@@ -956,7 +1204,15 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._log("No command text.")
             return None
         lower = text.lower().strip()
-        if lower in ("done", "end conversation", "bye", "goodbye", "that's all", "thats all", "end"):
+        if lower in (
+            "done",
+            "end conversation",
+            "bye",
+            "goodbye",
+            "that's all",
+            "thats all",
+            "end",
+        ):
             self.command_text.delete("1.0", tk.END)
             self._end_conversation()
             return None
@@ -964,6 +1220,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _make_worker_cleanup(self, gen: int) -> Callable[[], None]:
         """Create a cleanup callback for a command worker tied to a generation counter."""
+
         def _cleanup() -> None:
             if self._cmd_generation != gen:
                 return  # Stale worker -- a newer command owns the state
@@ -975,6 +1232,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 logger.debug("Failed to re-enable command input after processing")
             if self._widget_state == "processing":
                 self._set_state("idle")
+
         return _cleanup
 
     def _send_command_async(self) -> None:
@@ -990,7 +1248,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._cmd_generation += 1
         gen = self._cmd_generation
         self._cancel_processing_timeout()
-        self._processing_timeout_id = self.after(self._processing_timeout_ms, self._processing_timed_out)
+        self._processing_timeout_id = self.after(
+            self._processing_timeout_ms, self._processing_timed_out
+        )
         cfg = self._current_cfg()
         execute = bool(self.execute_var.get())
         approve_privileged = bool(self.priv_var.get())
@@ -1016,10 +1276,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.after(0, self._cancel_processing_timeout)
                 self._process_worker_response(data, cfg)
             except HTTPError as exc:
-                self._handle_command_error(f"Command failed: {_http_error_details(exc)}")
+                self._handle_command_error(
+                    f"Command failed: {_http_error_details(exc)}"
+                )
             except URLError:
                 self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+                self._log_async(
+                    "Make sure the Assistant and Mobile API are running.", role="error"
+                )
                 self._set_error_briefly_async()
             except (RuntimeError, TimeoutError) as exc:
                 self._handle_command_error(f"Command failed: {exc}")
@@ -1031,7 +1295,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     try:
                         self.after(0, cleanup)
                     except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                        logger.debug("Failed to schedule post-command cleanup (widget may be destroyed)")
+                        logger.debug(
+                            "Failed to schedule post-command cleanup (widget may be destroyed)"
+                        )
 
         self._thread(worker)
 
@@ -1057,13 +1323,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             for line in lines:
                 s = str(line)
                 if s.startswith("response="):
-                    response_text = s[len("response="):]
+                    response_text = s[len("response=") :]
                     _in_response = True
                 elif s.startswith("reason=") and not reason_text:
-                    reason_text = s[len("reason="):]
+                    reason_text = s[len("reason=") :]
                     _in_response = False
                 elif s.startswith("error=") and not error_text:
-                    error_text = s[len("error="):]
+                    error_text = s[len("error=") :]
                     _in_response = False
                 elif s.startswith("source_"):
                     parts = s.split("=", 1)
@@ -1071,24 +1337,29 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         source_urls.append(parts[1].strip())
                     _in_response = False
                 elif s.startswith("model="):
-                    model_name = s[len("model="):]
+                    model_name = s[len("model=") :]
                     _in_response = False
                 elif s.startswith("provider="):
-                    provider_name = s[len("provider="):]
+                    provider_name = s[len("provider=") :]
                     _in_response = False
                 elif s == "web_search_used=true":
                     web_search_used = True
                     _in_response = False
                 elif s.startswith("intent="):
-                    thinking_steps.append(f"Intent: {s[len('intent='):]}")
+                    thinking_steps.append(f"Intent: {s[len('intent=') :]}")
                     _in_response = False
                 elif s.startswith("finding_"):
                     _in_response = False
                 elif _in_response and not any(
-                    s.startswith(p) for p in [
-                        "status_code=", "voice=", "wav=",
-                        "auto_ingest_record_id=", "web_search",
-                        "query=", "scanned_url_count=",
+                    s.startswith(p)
+                    for p in [
+                        "status_code=",
+                        "voice=",
+                        "wav=",
+                        "auto_ingest_record_id=",
+                        "web_search",
+                        "query=",
+                        "scanned_url_count=",
                     ]
                 ):
                     response_text += "\n" + s
@@ -1147,42 +1418,61 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self._log_async(" | ".join(str(x) for x in lines[-6:]), role="jarvis")
 
         if source_urls:
-            self._log_async("\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system")
+            self._log_async(
+                "\U0001f310 Sources: " + " | ".join(source_urls[:4]), role="system"
+            )
 
-    def _handle_post_response_actions(self, parsed: dict[str, Any], cfg: WidgetConfig) -> None:
+    def _handle_post_response_actions(
+        self, parsed: dict[str, Any], cfg: WidgetConfig
+    ) -> None:
         """Handle learned indicators, dashboard refresh, and state updates after a response."""
         intent = parsed["intent"]
         ok = parsed["ok"]
 
         _LEARNED_INTENTS = (
-            "memory_ingest", "memory_forget", "llm_conversation",
-            "mission_create", "mission_run",
-            "harvest", "fact_extracted",
+            "memory_ingest",
+            "memory_forget",
+            "llm_conversation",
+            "mission_create",
+            "mission_run",
+            "harvest",
+            "fact_extracted",
         )
         if ok and intent in _LEARNED_INTENTS:
             self.after(0, self._show_learned_indicator)
 
         _REFRESH_INTENTS = (
-            "mission_cancel", "mission_create", "mission_run",
-            "brain_status", "memory_ingest", "memory_forget",
+            "mission_cancel",
+            "mission_create",
+            "mission_run",
+            "brain_status",
+            "memory_ingest",
+            "memory_forget",
             "harvest",
         )
         if ok and intent in _REFRESH_INTENTS:
             try:
                 ws = _http_json(cfg, "/widget-status", method="GET")
                 growth_data = ws.get("growth") if isinstance(ws, dict) else None
-                recent_evts = ws.get("recent_events", []) if isinstance(ws, dict) else []
+                recent_evts = (
+                    ws.get("recent_events", []) if isinstance(ws, dict) else []
+                )
                 self.after(0, self._update_growth_labels, growth_data)
                 if recent_evts:
                     self.after(0, self._update_activity_events, recent_evts)
             except Exception as exc:  # boundary: catch-all justified
-                logger.debug("Best-effort dashboard refresh after command failed: %s", exc)
+                logger.debug(
+                    "Best-effort dashboard refresh after command failed: %s", exc
+                )
 
         if not ok:
             self._set_error_briefly_async()
         else:
             self._set_state_async("idle")
-        self._log_async("Ready for next command. Say 'done' or click End Conversation when finished.", role="system")
+        self._log_async(
+            "Ready for next command. Say 'done' or click End Conversation when finished.",
+            role="system",
+        )
 
     def _process_worker_response(self, data: dict[str, Any], cfg: WidgetConfig) -> None:
         """Parse and display the response from a /command API call.
@@ -1219,6 +1509,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             return
         try:
             from jarvis_engine.process_manager import list_services
+
             root = _repo_root()
             services = list_services(root)
             for svc in services:
@@ -1236,11 +1527,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     else:
                         uptime_lbl.config(text=f"{s // 3600}h {(s % 3600) // 60}m")
                 else:
-                    dot.config(text="\u25CB", fg=self.MUTED)
+                    dot.config(text="\u25cb", fg=self.MUTED)
                     uptime_lbl.config(text="stopped")
                     # Notify if service was previously running (crash detected)
                     if self._prev_svc_running.get(name, False):
-                        self._notify_toast("Jarvis Service Down", f"{name} has stopped", "Warning")
+                        self._notify_toast(
+                            "Jarvis Service Down", f"{name} has stopped", "Warning"
+                        )
                 self._prev_svc_running[name] = svc["running"]
         except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to refresh service status: %s", exc)
@@ -1255,7 +1548,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 data = _http_json(cfg, "/dashboard", method="GET")
                 dash = data.get("dashboard", {})
                 jar = dash.get("jarvis", {}) if isinstance(dash, dict) else {}
-                mem = dash.get("memory_regression", {}) if isinstance(dash, dict) else {}
+                mem = (
+                    dash.get("memory_regression", {}) if isinstance(dash, dict) else {}
+                )
                 self._log_async(
                     f"score={jar.get('score_pct', 0.0)} delta={jar.get('delta_vs_prev_pct', 0.0)} "
                     f"memory={mem.get('status', 'unknown')}",
@@ -1263,7 +1558,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 )
             except URLError:
                 self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+                self._log_async(
+                    "Make sure the Assistant and Mobile API are running.", role="error"
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("Dashboard refresh failed: %s", exc)
                 self._log_async(f"Dashboard failed: {exc}", role="error")
@@ -1292,7 +1589,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 stats = data.get("stats", {})
                 if stats:
                     parts = [f"{k}:{v}" for k, v in stats.items()]
-                    self._log_async(f"Activity (24h): {', '.join(parts)}", role="jarvis")
+                    self._log_async(
+                        f"Activity (24h): {', '.join(parts)}", role="jarvis"
+                    )
                 if not events:
                     self._log_async("No recent activity events.", role="system")
                     return
@@ -1302,10 +1601,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     cat = str(evt.get("category", ""))
                     summary = str(evt.get("summary", ""))
                     role = "error" if cat == "error" else "jarvis"
-                    self._log_async(f"[{ts_short}] [{cat.upper()}] {summary}", role=role)
+                    self._log_async(
+                        f"[{ts_short}] [{cat.upper()}] {summary}", role=role
+                    )
             except URLError:
                 self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+                self._log_async(
+                    "Make sure the Assistant and Mobile API are running.", role="error"
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("Activity log load failed: %s", exc)
                 self._log_async(f"Could not load activity: {exc}", role="error")
@@ -1377,7 +1680,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             try:
                 self.after(0, _read)
             except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                logger.debug("Cannot schedule hotword state read (widget may be destroyed)")
+                logger.debug(
+                    "Cannot schedule hotword state read (widget may be destroyed)"
+                )
                 return False
             ready.wait(timeout=2.0)
             return result[0]
@@ -1391,7 +1696,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         self._log_async("Wake word detected.")
                         self.after(0, self._dictate_async)
                     except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                        logger.debug("Cannot schedule wake word actions (widget may be destroyed)")
+                        logger.debug(
+                            "Cannot schedule wake word actions (widget may be destroyed)"
+                        )
                         return
             except Exception as exc:  # boundary: catch-all justified
                 logger.warning("Hotword detection error: %s", exc)
@@ -1404,13 +1711,18 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _start_status_workers(self) -> None:
         self._thread(self._health_loop)
 
-    def _probe_health_endpoints(self, cfg: WidgetConfig) -> tuple[bool, dict[str, Any] | None]:
+    def _probe_health_endpoints(
+        self, cfg: WidgetConfig
+    ) -> tuple[bool, dict[str, Any] | None]:
         """Probe health endpoints with localhost fallback. Returns (ok, intel_data)."""
         from urllib.parse import urlparse as _urlparse
+
         _pu = _urlparse(cfg.base_url)
         _health_urls = [f"{cfg.base_url.rstrip('/')}/health"]
         if _pu.hostname not in ("127.0.0.1", "localhost", "::1"):
-            _health_urls.append(f"{_pu.scheme}://127.0.0.1:{_pu.port or _DEFAULT_PORT}/health")
+            _health_urls.append(
+                f"{_pu.scheme}://127.0.0.1:{_pu.port or _DEFAULT_PORT}/health"
+            )
 
         resp = None
         ok = False
@@ -1426,10 +1738,16 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         try:
                             body = resp.read().decode("utf-8")
                             health_payload = json.loads(body)
-                            if isinstance(health_payload, dict) and "intelligence" in health_payload:
+                            if (
+                                isinstance(health_payload, dict)
+                                and "intelligence" in health_payload
+                            ):
                                 intel_data = health_payload["intelligence"]
                         except Exception as exc:  # boundary: catch-all justified
-                            logger.debug("Failed to parse intelligence from health response: %s", exc)
+                            logger.debug(
+                                "Failed to parse intelligence from health response: %s",
+                                exc,
+                            )
                     resp.close()
                     resp = None
                     if ok:
@@ -1442,7 +1760,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         try:
                             resp.close()
                         except Exception as exc:  # boundary: catch-all justified
-                            logger.debug("Failed to close health poll HTTP response: %s", exc)
+                            logger.debug(
+                                "Failed to close health poll HTTP response: %s", exc
+                            )
                         resp = None
                 if self.stop_event.is_set():
                     break
@@ -1451,7 +1771,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 break
         return ok, intel_data
 
-    def _fetch_widget_status(self, cfg: WidgetConfig) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    def _fetch_widget_status(
+        self, cfg: WidgetConfig
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         """Fetch growth, alerts, and recent events via /widget-status. Returns (growth_data, recent_events)."""
         growth_data: dict[str, Any] | None = None
         recent_events: list[dict[str, Any]] = []
@@ -1462,7 +1784,11 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             recent_events = ws.get("recent_events", []) if isinstance(ws, dict) else []
             if isinstance(alerts, list):
                 for alert in alerts:
-                    msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
+                    msg = (
+                        str(alert.get("message", ""))
+                        if isinstance(alert, dict)
+                        else str(alert)
+                    )
                     if msg:
                         self._notify_toast("Jarvis Alert", msg, "Warning")
                         break  # One toast per poll cycle
@@ -1491,7 +1817,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             try:
                 self.after(0, _read_cfg)
             except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                logger.debug("Cannot schedule config read for health loop (widget may be destroyed)")
+                logger.debug(
+                    "Cannot schedule config read for health loop (widget may be destroyed)"
+                )
                 return
             ready.wait(timeout=5.0)
             cfg = cfg_holder[0]
@@ -1503,7 +1831,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 try:
                     self.after(0, self._set_online, False)
                 except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                    logger.debug("Cannot schedule offline state (widget may be destroyed)")
+                    logger.debug(
+                        "Cannot schedule offline state (widget may be destroyed)"
+                    )
                     return
                 if self._health_sleep():
                     return
@@ -1518,15 +1848,23 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
+                    self.after(
+                        0, self._set_online, ok, intel_data, growth_data, recent_events
+                    )
                 except (tk.TclError, RuntimeError):  # Widget may be destroyed
-                    logger.debug("Cannot schedule online state update (widget may be destroyed)")
+                    logger.debug(
+                        "Cannot schedule online state update (widget may be destroyed)"
+                    )
                     return
             self._health_sleep()
 
-    def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None,
-                    growth_data: dict[str, Any] | None = None,
-                    recent_events: list[dict[str, Any]] | None = None) -> None:
+    def _set_online(
+        self,
+        value: bool,
+        intel_data: dict[str, Any] | None = None,
+        growth_data: dict[str, Any] | None = None,
+        recent_events: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Update online state and refresh status — always call on main thread."""
         self.online = value
         self._update_intelligence_label(intel_data)
@@ -1552,37 +1890,71 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             trend = str(m.get("growth_trend", "stable"))
 
             self._growth_labels["facts"].config(
-                text=f"{facts_total} (+{facts_7d} 7d)", fg=self.TEXT)
+                text=f"{facts_total} (+{facts_7d} 7d)", fg=self.TEXT
+            )
             self._growth_labels["kg"].config(
-                text=f"{kg_nodes} nodes / {kg_edges} edges", fg=self.TEXT)
+                text=f"{kg_nodes} nodes / {kg_edges} edges", fg=self.TEXT
+            )
             self._growth_labels["memory"].config(
-                text=f"{mem_records} records", fg=self.TEXT)
+                text=f"{mem_records} records", fg=self.TEXT
+            )
 
             # Learning missions (API now pre-filters to active only)
             missions = m.get("active_missions", [])
             if isinstance(missions, list):
-                missions = [mi for mi in missions if isinstance(mi, dict) and mi.get("status", "") not in ("completed", "failed", "cancelled", "exhausted")]
-            mission_count = int(m.get("mission_count", len(missions) if isinstance(missions, list) else 0))
+                missions = [
+                    mi
+                    for mi in missions
+                    if isinstance(mi, dict)
+                    and mi.get("status", "")
+                    not in ("completed", "failed", "cancelled", "exhausted")
+                ]
+            mission_count = int(
+                m.get(
+                    "mission_count", len(missions) if isinstance(missions, list) else 0
+                )
+            )
             if mission_count > 0 and isinstance(missions, list) and missions:
                 topics = [str(mi.get("topic", "?"))[:20] for mi in missions[:3]]
                 self._growth_labels["missions"].config(
-                    text=f"{mission_count} active: {', '.join(topics)}", fg=self.ACCENT)
+                    text=f"{mission_count} active: {', '.join(topics)}", fg=self.ACCENT
+                )
             elif mission_count > 0:
                 self._growth_labels["missions"].config(
-                    text=f"{mission_count} active", fg=self.ACCENT)
+                    text=f"{mission_count} active", fg=self.ACCENT
+                )
             else:
                 self._growth_labels["missions"].config(
-                    text="None active", fg=self.MUTED)
+                    text="None active", fg=self.MUTED
+                )
 
             score_pct = round(score * 100)
-            score_color = self.ACCENT if score_pct >= 70 else "#eab308" if score_pct >= 50 else self.WARN
-            self._growth_labels["score"].config(
-                text=f"{score_pct}%", fg=score_color)
+            score_color = (
+                self.ACCENT
+                if score_pct >= 70
+                else "#eab308"
+                if score_pct >= 50
+                else self.WARN
+            )
+            self._growth_labels["score"].config(text=f"{score_pct}%", fg=score_color)
 
-            trend_symbol = "\u25B2" if trend == "increasing" else "\u25BC" if trend == "declining" else "\u25C6"
-            trend_color = "#22c55e" if trend == "increasing" else self.WARN if trend == "declining" else "#eab308"
+            trend_symbol = (
+                "\u25b2"
+                if trend == "increasing"
+                else "\u25bc"
+                if trend == "declining"
+                else "\u25c6"
+            )
+            trend_color = (
+                "#22c55e"
+                if trend == "increasing"
+                else self.WARN
+                if trend == "declining"
+                else "#eab308"
+            )
             self._growth_labels["trend"].config(
-                text=f"{trend_symbol} {trend}", fg=trend_color)
+                text=f"{trend_symbol} {trend}", fg=trend_color
+            )
         except (TypeError, ValueError, KeyError):
             logger.debug("Failed to parse growth dashboard data; resetting labels")
             for lbl in self._growth_labels.values():
@@ -1668,7 +2040,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         try:
             self.after(0, self._set_state, state)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
-            logger.debug("Failed to schedule state change to %r (widget may be destroyed)", state)
+            logger.debug(
+                "Failed to schedule state change to %r (widget may be destroyed)", state
+            )
 
     def _set_error_briefly(self) -> None:
         """Set error state for 2 seconds, then revert to idle."""
@@ -1688,7 +2062,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         try:
             self.after(0, self._set_error_briefly)
         except (tk.TclError, RuntimeError):  # Widget may be destroyed
-            logger.debug("Failed to schedule error-briefly state (widget may be destroyed)")
+            logger.debug(
+                "Failed to schedule error-briefly state (widget may be destroyed)"
+            )
 
     def _refresh_status_view(self) -> None:
         state = self._widget_state
@@ -1696,7 +2072,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self.status_var.set("LISTENING...")
             self.status_label.config(fg=self.ACCENT_2)
         elif state == "processing":
-            label = "ONLINE - Processing..." if self.online else "OFFLINE - Processing..."
+            label = (
+                "ONLINE - Processing..." if self.online else "OFFLINE - Processing..."
+            )
             self.status_var.set(label)
             self.status_label.config(fg="#ff9f43")
         elif state == "error":

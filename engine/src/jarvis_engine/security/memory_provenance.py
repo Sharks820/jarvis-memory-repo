@@ -39,7 +39,6 @@ QUARANTINED = "QUARANTINED"
 _VALID_TRUST_LEVELS = {OWNER_INPUT, VERIFIED_EXTERNAL, UNVERIFIED_EXTERNAL, QUARANTINED}
 
 
-
 class MemoryProvenance:
     """In-memory provenance tracker for memory records.
 
@@ -94,9 +93,7 @@ class MemoryProvenance:
             )
 
         verification = (
-            "verified"
-            if trust_level in (OWNER_INPUT, VERIFIED_EXTERNAL)
-            else "pending"
+            "verified" if trust_level in (OWNER_INPUT, VERIFIED_EXTERNAL) else "pending"
         )
 
         prov: dict[str, Any] = {

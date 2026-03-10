@@ -105,13 +105,13 @@ class KnowledgeHarvester:
     def available_providers(self) -> list[str]:
         """Return names of providers with valid API keys."""
         return [
-            name
-            for name, provider in self._providers.items()
-            if provider.is_available
+            name for name, provider in self._providers.items() if provider.is_available
         ]
 
     def _check_provider_readiness(
-        self, name: str, provider: object,
+        self,
+        name: str,
+        provider: object,
     ) -> dict | None:
         """Return a skip-result dict if the provider is unavailable or over budget.
 
@@ -138,7 +138,10 @@ class KnowledgeHarvester:
         return None
 
     def _record_harvest_cost(
-        self, name: str, result: HarvestResult, topic: str,
+        self,
+        name: str,
+        result: HarvestResult,
+        topic: str,
     ) -> None:
         """Record spend in budget manager and log cost to tracker."""
         if self._budget is not None:
@@ -218,9 +221,7 @@ class KnowledgeHarvester:
             Dict with topic, results list (per-provider status, records, cost).
         """
         if cmd.providers is not None:
-            provider_names = [
-                n for n in cmd.providers if n in self._providers
-            ]
+            provider_names = [n for n in cmd.providers if n in self._providers]
         else:
             provider_names = self.available_providers()
 
@@ -244,20 +245,32 @@ class KnowledgeHarvester:
                 )
                 self._record_harvest_cost(name, result, cmd.topic)
                 entry = self._ingest_harvest_result(
-                    result, provider, topic_tag, cmd.topic, seen_hashes,
+                    result,
+                    provider,
+                    topic_tag,
+                    cmd.topic,
+                    seen_hashes,
                 )
                 results.append(entry)
 
-            except (ConnectionError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
+            except (
+                ConnectionError,
+                TimeoutError,
+                ValueError,
+                OSError,
+                RuntimeError,
+            ) as exc:
                 logger.warning("Harvest from %s failed: %s", name, exc)
-                results.append({
-                    "provider": name,
-                    "status": "error",
-                    "error": str(exc),
-                    "records_created": 0,
-                    "cost_usd": 0.0,
-                    "skipped_dedup": False,
-                })
+                results.append(
+                    {
+                        "provider": name,
+                        "status": "error",
+                        "error": str(exc),
+                        "records_created": 0,
+                        "cost_usd": 0.0,
+                        "skipped_dedup": False,
+                    }
+                )
 
         return {
             "topic": cmd.topic,

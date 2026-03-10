@@ -1,4 +1,5 @@
 """Knowledge graph integrity and growth metrics for anti-regression monitoring."""
+
 from __future__ import annotations
 
 import json
@@ -84,7 +85,12 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
         "confidence_distribution": {"high": 0, "medium": 0, "low": 0},
         "locked_facts": 0,
         "expired_facts": 0,
-        "temporal_breakdown": {"permanent": 0, "time_sensitive": 0, "expired": 0, "unknown": 0},
+        "temporal_breakdown": {
+            "permanent": 0,
+            "time_sensitive": 0,
+            "expired": 0,
+            "unknown": 0,
+        },
     }
 
     try:
@@ -131,9 +137,7 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
             }
 
         # Locked facts
-        row = db.execute(
-            "SELECT COUNT(*) FROM kg_nodes WHERE locked = 1"
-        ).fetchone()
+        row = db.execute("SELECT COUNT(*) FROM kg_nodes WHERE locked = 1").fetchone()
         metrics["locked_facts"] = row[0] if row else 0
 
         # Temporal breakdown (temporal_type column may not exist)
@@ -159,7 +163,9 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
             try:
                 db.execute("ROLLBACK")
             except sqlite3.Error as rollback_exc:
-                logger.debug("ROLLBACK failed during KG metrics collection: %s", rollback_exc)
+                logger.debug(
+                    "ROLLBACK failed during KG metrics collection: %s", rollback_exc
+                )
         logger.warning("Failed to collect KG metrics: %s", exc)
 
     return metrics

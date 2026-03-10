@@ -78,6 +78,7 @@ class ComparisonResult(TypedDict, total=False):
     previous: KGSnapshot | None
     node_diff: NodeDiff
 
+
 _MAX_BACKUPS = 10
 
 # Consistent hash for empty graphs (SHA-256 of "empty_knowledge_graph")
@@ -113,7 +114,9 @@ class RegressionChecker:
             try:
                 import networkx as nx
             except ImportError as exc:
-                logger.warning("WL hash computation failed (networkx unavailable): %s", exc)
+                logger.warning(
+                    "WL hash computation failed (networkx unavailable): %s", exc
+                )
                 graph_hash = _EMPTY_GRAPH_HASH
             else:
                 try:
@@ -121,11 +124,15 @@ class RegressionChecker:
                     for _nid, attrs in G.nodes(data=True):
                         for k, v in attrs.items():
                             if isinstance(v, str):
-                                attrs[k] = v.encode("ascii", errors="replace").decode("ascii")
+                                attrs[k] = v.encode("ascii", errors="replace").decode(
+                                    "ascii"
+                                )
                     for _u, _v, attrs in G.edges(data=True):
                         for k, val in attrs.items():
                             if isinstance(val, str):
-                                attrs[k] = val.encode("ascii", errors="replace").decode("ascii")
+                                attrs[k] = val.encode("ascii", errors="replace").decode(
+                                    "ascii"
+                                )
                     graph_hash = nx.weisfeiler_lehman_graph_hash(
                         G,
                         node_attr="label",
@@ -169,9 +176,8 @@ class RegressionChecker:
 
         # Use sqlite3 backup API instead of shutil.copy2 so that
         # in-flight WAL data is included in the backup atomically.
-        import sqlite3
-
         from jarvis_engine._db_pragmas import connect_db
+
         dst_db = connect_db(backup_path)
         try:
             with self._kg.db_lock:
@@ -212,6 +218,7 @@ class RegressionChecker:
     def _close_old_and_clean_wal(self, dst_path: Path) -> None:
         """Close the live DB connection and remove stale WAL/SHM files."""
         import sqlite3
+
         old_db = self._kg._engine._db
         try:
             old_db.close()
@@ -225,7 +232,6 @@ class RegressionChecker:
 
     def _swap_temp_to_live(self, tmp_dst: Path, dst_path: Path) -> None:
         """Move the temp copy into the live path; recover on failure."""
-        import sqlite3
         try:
             shutil.move(str(tmp_dst), str(dst_path))
         except OSError as exc:
@@ -233,8 +239,13 @@ class RegressionChecker:
             try:
                 tmp_dst.unlink(missing_ok=True)
             except OSError as cleanup_exc:
-                logger.debug("Failed to remove temp file %s during swap recovery: %s", tmp_dst, cleanup_exc)
+                logger.debug(
+                    "Failed to remove temp file %s during swap recovery: %s",
+                    tmp_dst,
+                    cleanup_exc,
+                )
             from jarvis_engine._db_pragmas import connect_db
+
             reopen_db = connect_db(dst_path, full=True, check_same_thread=False)
             self._kg._engine._db = reopen_db
             self._kg._db = reopen_db
@@ -245,9 +256,11 @@ class RegressionChecker:
         """Open a fresh connection on the restored file with PRAGMAs and sqlite-vec."""
         import sqlite3
         from jarvis_engine._db_pragmas import connect_db
+
         new_db = connect_db(dst_path, full=True, check_same_thread=False)
         try:
             import sqlite_vec
+
             new_db.enable_load_extension(True)
             try:
                 sqlite_vec.load(new_db)
@@ -272,6 +285,7 @@ class RegressionChecker:
             return False
 
         import sqlite3
+
         dst_path = self._kg.db_path
         try:
             with self._kg.write_lock:
@@ -309,9 +323,7 @@ class RegressionChecker:
         before_ids = set(before_labels.keys())
         after_ids = set(after_labels.keys())
 
-        added = sorted(
-            f"{nid}:{after_labels[nid]}" for nid in (after_ids - before_ids)
-        )
+        added = sorted(f"{nid}:{after_labels[nid]}" for nid in (after_ids - before_ids))
         removed = sorted(
             f"{nid}:{before_labels[nid]}" for nid in (before_ids - after_ids)
         )
@@ -348,51 +360,59 @@ class RegressionChecker:
         prev_nodes = _safe_int(previous.get("node_count", 0))
         curr_nodes = _safe_int(current.get("node_count", 0))
         if curr_nodes < prev_nodes:
-            discrepancies.append({
-                "type": "node_loss",
-                "severity": "fail",
-                "previous": prev_nodes,
-                "current": curr_nodes,
-                "lost": prev_nodes - curr_nodes,
-                "message": f"Node count decreased from {prev_nodes} to {curr_nodes} (lost {prev_nodes - curr_nodes})",
-            })
+            discrepancies.append(
+                {
+                    "type": "node_loss",
+                    "severity": "fail",
+                    "previous": prev_nodes,
+                    "current": curr_nodes,
+                    "lost": prev_nodes - curr_nodes,
+                    "message": f"Node count decreased from {prev_nodes} to {curr_nodes} (lost {prev_nodes - curr_nodes})",
+                }
+            )
 
         prev_edges = _safe_int(previous.get("edge_count", 0))
         curr_edges = _safe_int(current.get("edge_count", 0))
         if curr_edges < prev_edges:
-            discrepancies.append({
-                "type": "edge_loss",
-                "severity": "fail",
-                "previous": prev_edges,
-                "current": curr_edges,
-                "lost": prev_edges - curr_edges,
-                "message": f"Edge count decreased from {prev_edges} to {curr_edges} (lost {prev_edges - curr_edges})",
-            })
+            discrepancies.append(
+                {
+                    "type": "edge_loss",
+                    "severity": "fail",
+                    "previous": prev_edges,
+                    "current": curr_edges,
+                    "lost": prev_edges - curr_edges,
+                    "message": f"Edge count decreased from {prev_edges} to {curr_edges} (lost {prev_edges - curr_edges})",
+                }
+            )
 
         prev_locked = _safe_int(previous.get("locked_count", 0))
         curr_locked = _safe_int(current.get("locked_count", 0))
         if curr_locked < prev_locked:
-            discrepancies.append({
-                "type": "locked_fact_loss",
-                "severity": "critical",
-                "previous": prev_locked,
-                "current": curr_locked,
-                "lost": prev_locked - curr_locked,
-                "message": f"Locked fact count decreased from {prev_locked} to {curr_locked} (CRITICAL: lost {prev_locked - curr_locked} locked facts)",
-            })
+            discrepancies.append(
+                {
+                    "type": "locked_fact_loss",
+                    "severity": "critical",
+                    "previous": prev_locked,
+                    "current": curr_locked,
+                    "lost": prev_locked - curr_locked,
+                    "message": f"Locked fact count decreased from {prev_locked} to {curr_locked} (CRITICAL: lost {prev_locked - curr_locked} locked facts)",
+                }
+            )
 
         prev_hash = previous.get("graph_hash", "")
         curr_hash = current.get("graph_hash", "")
         if prev_hash and curr_hash and prev_hash != curr_hash:
             # Hash changed -- check if counts also increased (expected growth)
             if curr_nodes <= prev_nodes and curr_edges <= prev_edges:
-                discrepancies.append({
-                    "type": "graph_hash_change",
-                    "severity": "warn",
-                    "previous_hash": prev_hash,
-                    "current_hash": curr_hash,
-                    "message": "Graph hash changed without count increase -- possible modification of existing data",
-                })
+                discrepancies.append(
+                    {
+                        "type": "graph_hash_change",
+                        "severity": "warn",
+                        "previous_hash": prev_hash,
+                        "current_hash": curr_hash,
+                        "message": "Graph hash changed without count increase -- possible modification of existing data",
+                    }
+                )
 
         # Determine overall status
         if not discrepancies:

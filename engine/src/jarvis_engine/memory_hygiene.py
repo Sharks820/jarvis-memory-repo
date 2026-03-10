@@ -61,8 +61,15 @@ _JUNK_PATTERNS = [
 ]
 
 _GREETING_WORDS = {
-    "hi", "hello", "hey", "greetings", "howdy", "sup",
-    "morning", "evening", "night",
+    "hi",
+    "hello",
+    "hey",
+    "greetings",
+    "howdy",
+    "sup",
+    "morning",
+    "evening",
+    "night",
 }
 
 
@@ -87,9 +94,14 @@ class HygieneReport:
 
     scanned: int = 0
     classified: int = 0
-    distribution: dict[str, int] = field(default_factory=lambda: {
-        "high_signal": 0, "contextual": 0, "ephemeral": 0, "junk": 0,
-    })
+    distribution: dict[str, int] = field(
+        default_factory=lambda: {
+            "high_signal": 0,
+            "contextual": 0,
+            "ephemeral": 0,
+            "junk": 0,
+        }
+    )
     cleanup_candidates: int = 0
     archived: int = 0
     protected: int = 0
@@ -116,55 +128,99 @@ def classify_record(record: dict[str, Any]) -> ClassificationResult:
 
     # --- Junk detection ---
     if not content.strip():
-        return {"record_id": record_id, "quality": "junk",
-                "confidence": 0.95, "reason": "empty content"}
+        return {
+            "record_id": record_id,
+            "quality": "junk",
+            "confidence": 0.95,
+            "reason": "empty content",
+        }
 
     for pattern in _JUNK_PATTERNS:
         if pattern.search(content):
-            return {"record_id": record_id, "quality": "junk",
-                    "confidence": 0.85, "reason": f"matches junk pattern: {pattern.pattern[:40]}"}
+            return {
+                "record_id": record_id,
+                "quality": "junk",
+                "confidence": 0.85,
+                "reason": f"matches junk pattern: {pattern.pattern[:40]}",
+            }
 
     # --- Ephemeral detection (before length check — "ok", "hi" are ephemeral, not junk) ---
     if _EPHEMERAL_KEYWORDS.match(content.strip()):
-        return {"record_id": record_id, "quality": "ephemeral",
-                "confidence": 0.90, "reason": "greeting/acknowledgment"}
+        return {
+            "record_id": record_id,
+            "quality": "ephemeral",
+            "confidence": 0.90,
+            "reason": "greeting/acknowledgment",
+        }
 
     words = content.split()
     if len(words) <= 3 and any(w.lower() in _GREETING_WORDS for w in words):
-        return {"record_id": record_id, "quality": "ephemeral",
-                "confidence": 0.80, "reason": "short greeting"}
+        return {
+            "record_id": record_id,
+            "quality": "ephemeral",
+            "confidence": 0.80,
+            "reason": "short greeting",
+        }
 
     if len(content) < 5:
-        return {"record_id": record_id, "quality": "junk",
-                "confidence": 0.80, "reason": "content too short (<5 chars)"}
+        return {
+            "record_id": record_id,
+            "quality": "junk",
+            "confidence": 0.80,
+            "reason": "content too short (<5 chars)",
+        }
 
     if len(content) < 20 and confidence_val < 0.6:
-        return {"record_id": record_id, "quality": "ephemeral",
-                "confidence": 0.70, "reason": "short low-confidence content"}
+        return {
+            "record_id": record_id,
+            "quality": "ephemeral",
+            "confidence": 0.70,
+            "reason": "short low-confidence content",
+        }
 
     # --- High signal detection ---
     high_matches = _HIGH_SIGNAL_KEYWORDS.findall(content)
     if len(high_matches) >= 2:
-        return {"record_id": record_id, "quality": "high_signal",
-                "confidence": 0.90, "reason": f"multiple high-signal keywords: {', '.join(high_matches[:3])}"}
+        return {
+            "record_id": record_id,
+            "quality": "high_signal",
+            "confidence": 0.90,
+            "reason": f"multiple high-signal keywords: {', '.join(high_matches[:3])}",
+        }
 
     if high_matches:
-        return {"record_id": record_id, "quality": "high_signal",
-                "confidence": 0.75, "reason": f"high-signal keyword: {high_matches[0]}"}
+        return {
+            "record_id": record_id,
+            "quality": "high_signal",
+            "confidence": 0.75,
+            "reason": f"high-signal keyword: {high_matches[0]}",
+        }
 
     if confidence_val >= 0.90:
-        return {"record_id": record_id, "quality": "high_signal",
-                "confidence": 0.70, "reason": "high confidence score"}
+        return {
+            "record_id": record_id,
+            "quality": "high_signal",
+            "confidence": 0.70,
+            "reason": "high confidence score",
+        }
 
     # --- User-pinned detection ---
     if isinstance(tags_raw, str):
         if "user_pinned" in tags_raw or "remember" in tags_raw.lower():
-            return {"record_id": record_id, "quality": "high_signal",
-                    "confidence": 0.95, "reason": "user-pinned content"}
+            return {
+                "record_id": record_id,
+                "quality": "high_signal",
+                "confidence": 0.95,
+                "reason": "user-pinned content",
+            }
 
     # --- Default: contextual ---
-    return {"record_id": record_id, "quality": "contextual",
-            "confidence": 0.60, "reason": "default classification"}
+    return {
+        "record_id": record_id,
+        "quality": "contextual",
+        "confidence": 0.60,
+        "reason": "default classification",
+    }
 
 
 # Protection checks (anti-loss guardrails)
@@ -276,8 +332,11 @@ class MemoryHygieneEngine:
                     continue
                 results.append(classify_record(full))
             except (KeyError, TypeError, RuntimeError) as exc:
-                logger.debug("Failed to classify record %s: %s",
-                             record.get("record_id", "?"), exc)
+                logger.debug(
+                    "Failed to classify record %s: %s",
+                    record.get("record_id", "?"),
+                    exc,
+                )
 
         return results
 
@@ -326,17 +385,20 @@ class MemoryHygieneEngine:
                     age_days = (now - record_time).total_seconds() / 86400.0
 
             threshold = (
-                self.JUNK_ARCHIVE_DAYS if quality == "junk"
+                self.JUNK_ARCHIVE_DAYS
+                if quality == "junk"
                 else self.EPHEMERAL_ARCHIVE_DAYS
             )
 
             if age_days >= threshold:
-                candidates.append({
-                    "record_id": record_id,
-                    "quality": quality,
-                    "reason": cls["reason"],
-                    "age_days": round(age_days, 1),
-                })
+                candidates.append(
+                    {
+                        "record_id": record_id,
+                        "quality": quality,
+                        "reason": cls["reason"],
+                        "age_days": round(age_days, 1),
+                    }
+                )
 
         return candidates
 
@@ -372,8 +434,11 @@ class MemoryHygieneEngine:
                 report.distribution[q] += 1
 
         # Step 2: Build records lookup for candidate checking
-        record_ids = [c["record_id"] for c in classifications
-                      if c["quality"] in ("junk", "ephemeral")]
+        record_ids = [
+            c["record_id"]
+            for c in classifications
+            if c["quality"] in ("junk", "ephemeral")
+        ]
         if not record_ids:
             return report
 

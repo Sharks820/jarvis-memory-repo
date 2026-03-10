@@ -4,6 +4,7 @@ Records action type, detail, trigger, resource usage and an input hash for
 each action the bot takes.  Entries persist to a JSONL file and are kept in
 a fixed-size in-memory ring buffer for fast dashboard queries.
 """
+
 from __future__ import annotations
 
 import collections
@@ -25,6 +26,7 @@ class DailySummary(TypedDict):
     total_actions: int
     by_type: dict[str, int]
     by_trigger: dict[str, int]
+
 
 _RING_BUFFER_SIZE = 500
 
@@ -92,9 +94,13 @@ class ActionAuditor:
             self._total_count += 1
             try:
                 with open(self._path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry, separators=(",", ":"), sort_keys=True) + "\n")
+                    f.write(
+                        json.dumps(entry, separators=(",", ":"), sort_keys=True) + "\n"
+                    )
             except OSError as exc:
-                logger.warning("Failed to write action audit entry to %s: %s", self._path, exc)
+                logger.warning(
+                    "Failed to write action audit entry to %s: %s", self._path, exc
+                )
 
     def action_count(self) -> int:
         """Return total actions logged this session."""

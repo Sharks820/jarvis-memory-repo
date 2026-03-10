@@ -81,7 +81,9 @@ class KnowledgeGraph:
         # Initialize lock manager for auto-lock after fact updates
         from jarvis_engine.knowledge.locks import FactLockManager
 
-        self._lock_manager = FactLockManager(self._db, self._write_lock, self._db_lock, kg=self)
+        self._lock_manager = FactLockManager(
+            self._db, self._write_lock, self._db_lock, kg=self
+        )
 
     # ------------------------------------------------------------------
     # Public accessors (for handlers -- avoids direct access to private attrs)
@@ -227,12 +229,12 @@ class KnowledgeGraph:
                     )
                 logger.info("Backfilled %d nodes into fts_kg_nodes", len(missing))
         except sqlite3.Error as exc:
-            logger.warning("FTS5 backfill failed (non-fatal, %s): %s", type(exc).__name__, exc)
+            logger.warning(
+                "FTS5 backfill failed (non-fatal, %s): %s", type(exc).__name__, exc
+            )
 
         # Bump schema version to 2
-        self._db.execute(
-            "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"
-        )
+        self._db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (2)")
         self._db.commit()
 
     # ------------------------------------------------------------------
@@ -258,13 +260,19 @@ class KnowledgeGraph:
         # Fast path: check cache under lock to prevent torn reads on
         # _cached_graph/_cached_gen pair across threads.
         with self._db_lock:
-            if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
+            if (
+                self._cached_graph is not None
+                and self._cached_gen == self._mutation_counter
+            ):
                 return self._cached_graph.copy() if copy else self._cached_graph
 
         # Read data from SQLite under _db_lock (minimal lock scope)
         with self._db_lock:
             # Re-check cache inside lock to prevent thundering herd
-            if self._cached_graph is not None and self._cached_gen == self._mutation_counter:
+            if (
+                self._cached_graph is not None
+                and self._cached_gen == self._mutation_counter
+            ):
                 return self._cached_graph.copy() if copy else self._cached_graph
 
             cur = self._db.execute(
@@ -346,8 +354,12 @@ class KnowledgeGraph:
         if is_locked:
             if label != existing_label:
                 self._quarantine_contradiction(
-                    node_id, existing_label, label,
-                    existing_conf, confidence, source=source_record,
+                    node_id,
+                    existing_label,
+                    label,
+                    existing_conf,
+                    confidence,
+                    source=source_record,
                 )
                 self._db.commit()
                 return False
@@ -362,15 +374,18 @@ class KnowledgeGraph:
                    confidence = MAX(confidence, ?),
                    sources = ?, updated_at = datetime('now')
                WHERE node_id = ?""",
-            (label, node_type, confidence,
-             json.dumps(existing_sources[-50:]), node_id),
+            (label, node_type, confidence, json.dumps(existing_sources[-50:]), node_id),
         )
         upsert_fts_kg(self._db, node_id, label)
         return None  # continue
 
     def _insert_new_node(
-        self, node_id: str, label: str, node_type: str,
-        confidence: float, source_record: str,
+        self,
+        node_id: str,
+        label: str,
+        node_type: str,
+        confidence: float,
+        source_record: str,
     ) -> None:
         """INSERT a brand-new fact node + FTS5 entry."""
         sources = [source_record] if source_record else []
@@ -421,12 +436,19 @@ class KnowledgeGraph:
 
                 if existing is not None:
                     result = self._handle_existing_node(
-                        node_id, label, confidence, source_record, node_type, existing,
+                        node_id,
+                        label,
+                        confidence,
+                        source_record,
+                        node_type,
+                        existing,
                     )
                     if result is not None:
                         return result
                 else:
-                    self._insert_new_node(node_id, label, node_type, confidence, source_record)
+                    self._insert_new_node(
+                        node_id, label, node_type, confidence, source_record
+                    )
 
                 self._upsert_vec_index(node_id, embedding_blob)
                 self._db.commit()
@@ -678,7 +700,8 @@ class KnowledgeGraph:
             if len(query_embedding) != _EMBEDDING_DIM:
                 logger.warning(
                     "KG semantic search dimension mismatch: got %d, expected %d",
-                    len(query_embedding), _EMBEDDING_DIM,
+                    len(query_embedding),
+                    _EMBEDDING_DIM,
                 )
                 return []
 

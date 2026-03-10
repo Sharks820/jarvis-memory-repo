@@ -87,6 +87,7 @@ def _get_or_create_orchestrator(
             # Also create the shared MemoryProvenance
             if _shared_provenance is None:
                 from jarvis_engine.security.memory_provenance import MemoryProvenance
+
                 _shared_provenance = MemoryProvenance()
             _shared_orchestrator = orch
             _shared_orchestrator_key = key
@@ -123,7 +124,9 @@ class _DefenseHandlerBase:
         """Return the shared orchestrator, creating one if needed."""
         if self._orchestrator is None:
             self._orchestrator = _get_or_create_orchestrator(
-                self._db, self._write_lock, self._log_dir,
+                self._db,
+                self._write_lock,
+                self._log_dir,
             )
         return self._orchestrator
 
@@ -218,6 +221,7 @@ class ExportForensicsHandler(_DefenseHandlerBase):
             end_date = cmd.end_date or datetime.now(UTC).strftime("%Y-%m-%d")
 
             from jarvis_engine._shared import runtime_dir
+
             export_dir = runtime_dir(self._root) / "forensic_exports"
             export_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -315,7 +319,9 @@ class BlockIPHandler(_DefenseHandlerBase):
                 )
             duration = cmd.duration_hours if cmd.duration_hours > 0 else None
             orch.block_ip(cmd.ip, duration_hours=duration)
-            duration_str = f"{cmd.duration_hours}h" if cmd.duration_hours > 0 else "permanent"
+            duration_str = (
+                f"{cmd.duration_hours}h" if cmd.duration_hours > 0 else "permanent"
+            )
             return BlockIPResult(
                 success=True,
                 message=f"IP {cmd.ip} blocked for {duration_str}.",
@@ -386,6 +392,7 @@ class ReviewQuarantineHandler(_DefenseHandlerBase):
             if provenance is None:
                 # Last resort: create one via the singleton path
                 from jarvis_engine.security.memory_provenance import MemoryProvenance
+
                 with _shared_orchestrator_lock:
                     if _shared_provenance is None:
                         _shared_provenance = MemoryProvenance()

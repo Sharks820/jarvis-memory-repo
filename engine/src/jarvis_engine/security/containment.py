@@ -77,16 +77,24 @@ _MASTER_CREDENTIAL_HASH_ENV = "JARVIS_MASTER_PASSWORD_HASH"
 _PBKDF2_ITERATIONS = 600_000
 
 
-def _hash_password(password: str, salt: bytes | None = None) -> str:
+def _hash_password(
+    password: str, salt: bytes | None = None, *, iterations: int = _PBKDF2_ITERATIONS
+) -> str:
     """Hash password with PBKDF2-SHA256.  Returns ``salt_hex:hash_hex``.
 
     When *salt* is ``None`` a random 32-byte salt is generated (use for
     creating new hashes).  Pass the original salt to verify.
+
+    *iterations* defaults to the production value (600 000).  Pass a small
+    integer (e.g. ``1``) only in unit tests to avoid CPU saturation.
     """
     if salt is None:
         salt = secrets.token_bytes(32)
     dk = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt, _PBKDF2_ITERATIONS,
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        iterations,
     )
     return salt.hex() + ":" + dk.hex()
 
@@ -113,11 +121,13 @@ class ContainmentEngine:
         ip_tracker: object | None = None,
         session_manager: object | None = None,
         on_credential_rotate: object | None = None,
+        _pbkdf2_iterations: int = _PBKDF2_ITERATIONS,
     ) -> None:
         self._forensic_logger = forensic_logger
         self._ip_tracker = ip_tracker
         self._session_manager = session_manager
         self._on_credential_rotate = on_credential_rotate
+        self._pbkdf2_iters: int = _pbkdf2_iterations
         self._lock = threading.Lock()
 
         # State tracking
@@ -135,7 +145,9 @@ class ContainmentEngine:
     # ------------------------------------------------------------------
 
     def _apply_containment_actions(
-        self, ip: str, level: int,
+        self,
+        ip: str,
+        level: int,
     ) -> tuple[list[str], bool, bool, bool]:
         """Apply containment state changes under the lock.
 
@@ -180,8 +192,13 @@ class ContainmentEngine:
         return actions, do_block_ip, credentials_rotated, do_terminate_sessions
 
     def _run_post_containment(
-        self, ip: str, level: int, reason: str,
-        actions: list[str], do_block_ip: bool, do_rotate: bool,
+        self,
+        ip: str,
+        level: int,
+        reason: str,
+        actions: list[str],
+        do_block_ip: bool,
+        do_rotate: bool,
         do_terminate_sessions: bool = False,
     ) -> None:
         """Run side-effects outside the lock after containment."""
@@ -199,14 +216,19 @@ class ContainmentEngine:
         self._log_forensic(
             "containment_executed",
             severity="CRITICAL" if level >= ContainmentLevel.LOCKDOWN else "HIGH",
-            ip=ip, level=level,
+            ip=ip,
+            level=level,
             level_name=ContainmentLevel(level).name,
-            reason=reason, actions=actions,
+            reason=reason,
+            actions=actions,
         )
 
         logger.warning(
             "Containment level %d (%s) executed against %s: %s",
-            level, ContainmentLevel(level).name, ip, reason,
+            level,
+            ContainmentLevel(level).name,
+            ip,
+            reason,
         )
 
     def contain(self, ip: str, level: int, reason: str) -> ContainResult:
@@ -219,7 +241,9 @@ class ContainmentEngine:
             raise ValueError(f"Invalid containment level: {level}")
 
         with self._lock:
-            actions, do_block_ip, credentials_rotated, do_terminate = self._apply_containment_actions(ip, level)
+            actions, do_block_ip, credentials_rotated, do_terminate = (
+                self._apply_containment_actions(ip, level)
+            )
 
             result: ContainResult = {
                 "ip": ip,
@@ -233,7 +257,9 @@ class ContainmentEngine:
                 result["credentials_rotated"] = True
             self._containment_history.append(result)
 
-        self._run_post_containment(ip, level, reason, actions, do_block_ip, credentials_rotated, do_terminate)
+        self._run_post_containment(
+            ip, level, reason, actions, do_block_ip, credentials_rotated, do_terminate
+        )
         return result
 
     def get_containment_status(self) -> ContainmentStatus:
@@ -258,7 +284,9 @@ class ContainmentEngine:
             }
 
     def _verify_recovery_password(
-        self, level: int, master_password: str | None,
+        self,
+        level: int,
+        master_password: str | None,
     ) -> RecoveryResult | None:
         """Gate recovery behind master password for levels 4-5.
 
@@ -269,14 +297,21 @@ class ContainmentEngine:
             return None
         if master_password is None:
             self._log_forensic(
-                "recovery_denied", severity="HIGH",
-                level=level, reason="master password not provided",
+                "recovery_denied",
+                severity="HIGH",
+                level=level,
+                reason="master password not provided",
             )
-            return {"recovered": False, "reason": "Master password required for level 4+ recovery"}
+            return {
+                "recovered": False,
+                "reason": "Master password required for level 4+ recovery",
+            }
         if not self._verify_master_password(master_password):
             self._log_forensic(
-                "recovery_denied", severity="CRITICAL",
-                level=level, reason="invalid master password",
+                "recovery_denied",
+                severity="CRITICAL",
+                level=level,
+                reason="invalid master password",
             )
             return {"recovered": False, "reason": "Invalid master password"}
         return None
@@ -346,7 +381,9 @@ class ContainmentEngine:
 
         self._unblock_recovered_ips(ips_to_unblock)
 
-        self._log_forensic("recovery_executed", severity="INFO", level=level, actions=actions)
+        self._log_forensic(
+            "recovery_executed", severity="INFO", level=level, actions=actions
+        )
         logger.info("Recovery from level %d completed: %s", level, actions)
 
         return {"recovered": True, "level_recovered": level, "actions": actions}
@@ -398,12 +435,17 @@ class ContainmentEngine:
             # New format: salt_hex:hash_hex
             salt_hex, _ = stored.split(":", 1)
             salt = bytes.fromhex(salt_hex)
-            computed = _hash_password(password, salt=salt)
+            computed = _hash_password(
+                password, salt=salt, iterations=self._pbkdf2_iters
+            )
             return _hmac_module.compare_digest(computed, stored)
         # Legacy: fixed salt, bare hash
         _LEGACY_SALT = b"jarvis-containment-recovery-v1"
         dk = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), _LEGACY_SALT, _PBKDF2_ITERATIONS,
+            "sha256",
+            password.encode("utf-8"),
+            _LEGACY_SALT,
+            self._pbkdf2_iters,
         )
         return _hmac_module.compare_digest(dk.hex(), stored)
 

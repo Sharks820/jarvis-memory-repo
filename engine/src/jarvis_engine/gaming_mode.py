@@ -41,6 +41,7 @@ class GamingModeState(TypedDict):
     updated_utc: str
     reason: str
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,7 +101,12 @@ def read_gaming_mode_state(state_path: Path | None = None) -> GamingModeState:
 
     if state_path is None:
         state_path = gaming_mode_state_path()
-    default: GamingModeState = {"enabled": False, "auto_detect": False, "updated_utc": "", "reason": ""}
+    default: GamingModeState = {
+        "enabled": False,
+        "auto_detect": False,
+        "updated_utc": "",
+        "reason": "",
+    }
     raw = load_json_file(state_path, None, expected_type=dict)
     if raw is None:
         return default
@@ -112,7 +118,9 @@ def read_gaming_mode_state(state_path: Path | None = None) -> GamingModeState:
     }
 
 
-def write_gaming_mode_state(state: dict[str, object], state_path: Path | None = None) -> GamingModeState:
+def write_gaming_mode_state(
+    state: dict[str, object], state_path: Path | None = None
+) -> GamingModeState:
     """Atomically write *state* to *state_path* and return the normalised payload.
 
     When *state_path* is ``None``, resolves the default path via

@@ -3,9 +3,13 @@ immediate dashboard refresh, response= output (UI-01 through UI-05)."""
 
 from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from jarvis_engine.command_bus import CommandBus
+
+# Skip the entire module when tkinter is not installed (headless CI environments)
+pytest.importorskip("tkinter", reason="tkinter not available in this environment")
 
 
 

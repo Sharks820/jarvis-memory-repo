@@ -23,6 +23,7 @@ _QUEUE_LOCK = threading.Lock()
 
 def _queue_path(root: Path) -> Path:
     from jarvis_engine._shared import runtime_dir
+
     return runtime_dir(root) / "pending_alerts.jsonl"
 
 
@@ -96,7 +97,9 @@ def enqueue_alert(
             try:
                 tmp.unlink(missing_ok=True)
             except OSError as cleanup_exc:
-                logger.debug("Failed to clean up alert queue temp file: %s", cleanup_exc)
+                logger.debug(
+                    "Failed to clean up alert queue temp file: %s", cleanup_exc
+                )
             raise
 
     logger.info("Queued alert: %s — %s", record["type"], record["title"])

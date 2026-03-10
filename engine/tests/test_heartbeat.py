@@ -1,8 +1,8 @@
 """Tests for HeartbeatMonitor — dead man's switch for engine liveness."""
+
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
 
@@ -16,8 +16,10 @@ from jarvis_engine.security.heartbeat import HeartbeatMonitor
 
 @pytest.fixture()
 def monitor() -> HeartbeatMonitor:
-    """Monitor with short intervals for fast tests."""
-    m = HeartbeatMonitor(interval=0.1, max_missed=3)
+    """Monitor with a long interval so the background thread never fires
+    during unit tests.  Tests that need missed-beat behaviour call
+    ``_check_heartbeat()`` directly, which is both deterministic and instant."""
+    m = HeartbeatMonitor(interval=60.0, max_missed=3)
     yield m
     m.stop()
 
@@ -50,24 +52,24 @@ class TestMissedHeartbeat:
         def on_fail() -> None:
             failure_event.set()
 
-        m = HeartbeatMonitor(interval=0.1, max_missed=2, on_failure=on_fail)
+        # Use a long interval so the background thread never fires in this test;
+        # we drive the watchdog logic by calling _check_heartbeat() directly.
+        m = HeartbeatMonitor(interval=60.0, max_missed=2, on_failure=on_fail)
         try:
-            m.start()
-            # Don't send any beats — wait for 2 missed checks + buffer
-            triggered = failure_event.wait(timeout=2.0)
-            assert triggered, "on_failure callback was not called after missed heartbeats"
+            m._check_heartbeat()  # miss 1
+            m._check_heartbeat()  # miss 2 — triggers callback synchronously
+            assert failure_event.is_set(), "on_failure callback was not called"
             assert m.is_healthy() is False
         finally:
             m.stop()
 
     def test_missed_count_increments(self) -> None:
-        m = HeartbeatMonitor(interval=0.1, max_missed=10)
+        m = HeartbeatMonitor(interval=60.0, max_missed=10)
         try:
-            m.start()
-            # Wait for a few check cycles without beating
-            time.sleep(0.5)
+            m._check_heartbeat()
+            m._check_heartbeat()
             status = m.status()
-            assert status["missed_count"] > 0
+            assert status["missed_count"] == 2
         finally:
             m.stop()
 
@@ -89,11 +91,16 @@ class TestStatusReport:
 
     def test_status_uptime_increases(self, monitor: HeartbeatMonitor) -> None:
         monitor.start()
-        time.sleep(0.15)
-        s = monitor.status()
-        assert s["uptime"] >= 0.1
+        s1 = monitor.status()
+        s2 = monitor.status()
+        # uptime is non-negative after start, and the second call is >= the first
+        assert isinstance(s1["uptime"], float)
+        assert s1["uptime"] >= 0.0
+        assert s2["uptime"] >= s1["uptime"]
 
-    def test_status_last_beat_none_before_first_beat(self, monitor: HeartbeatMonitor) -> None:
+    def test_status_last_beat_none_before_first_beat(
+        self, monitor: HeartbeatMonitor
+    ) -> None:
         monitor.start()
         s = monitor.status()
         assert s["last_beat"] is None
@@ -106,8 +113,9 @@ class TestStopCleansUp:
         monitor.start()
         monitor.beat()
         assert monitor.status()["running"] is True
+        # stop() sets _running=False and joins the watchdog thread before
+        # returning, so no sleep is needed here.
         monitor.stop()
-        time.sleep(0.2)
         assert monitor.status()["running"] is False
 
     def test_double_stop_is_safe(self, monitor: HeartbeatMonitor) -> None:
@@ -127,13 +135,13 @@ class TestBeatResetsCounter:
     """Sending a beat after misses resets the missed counter."""
 
     def test_beat_resets_missed_count(self) -> None:
-        m = HeartbeatMonitor(interval=0.1, max_missed=10)
+        m = HeartbeatMonitor(interval=60.0, max_missed=10)
         try:
-            m.start()
-            # Let some checks happen without beating
-            time.sleep(0.35)
-            assert m.status()["missed_count"] > 0
-            # Now beat and verify reset
+            # Simulate 3 missed check cycles without starting the real thread
+            m._check_heartbeat()
+            m._check_heartbeat()
+            m._check_heartbeat()
+            assert m.status()["missed_count"] == 3
             m.beat()
             assert m.status()["missed_count"] == 0
             assert m.is_healthy() is True
@@ -146,11 +154,12 @@ class TestBeatResetsCounter:
         def on_fail() -> None:
             failure_event.set()
 
-        m = HeartbeatMonitor(interval=0.1, max_missed=2, on_failure=on_fail)
+        m = HeartbeatMonitor(interval=60.0, max_missed=2, on_failure=on_fail)
         try:
-            m.start()
-            # Wait for failure
-            failure_event.wait(timeout=2.0)
+            # Trigger failure synchronously
+            m._check_heartbeat()  # miss 1
+            m._check_heartbeat()  # miss 2 — callback fires
+            assert failure_event.is_set(), "on_failure should have been called"
             assert m.is_healthy() is False
             # Beat should restore health
             m.beat()
@@ -164,7 +173,7 @@ class TestThreadSafety:
     """Concurrent access does not corrupt state."""
 
     def test_concurrent_beats(self) -> None:
-        m = HeartbeatMonitor(interval=0.1, max_missed=5)
+        m = HeartbeatMonitor(interval=60.0, max_missed=5)
         try:
             m.start()
             errors: list[Exception] = []

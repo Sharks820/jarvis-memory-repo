@@ -61,11 +61,14 @@ class ContradictionManager(KGManagerBase):
             return None
         try:
             import struct
+
             embedding = embed_service.embed(label, prefix="search_document")
             if len(embedding) == _EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
-            logger.debug("Vec embedding pre-compute for label %r failed: %s", label[:50], exc)
+            logger.debug(
+                "Vec embedding pre-compute for label %r failed: %s", label[:50], exc
+            )
         return None
 
     def _write_vec_embedding(self, node_id: str, blob: bytes | None) -> None:
@@ -79,9 +82,7 @@ class ContradictionManager(KGManagerBase):
         if blob is None:
             return
         try:
-            self._db.execute(
-                "DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,)
-            )
+            self._db.execute("DELETE FROM vec_kg_nodes WHERE node_id = ?", (node_id,))
             self._db.execute(
                 "INSERT INTO vec_kg_nodes(node_id, embedding) VALUES (?, ?)",
                 (node_id, blob),
@@ -197,12 +198,14 @@ class ContradictionManager(KGManagerBase):
         )
         self._update_fts_index(node_id, incoming_value)
         self._write_vec_embedding(node_id, vec_blob)
-        history.append({
-            "action": "accept_new",
-            "previous_value": current_label,
-            "new_value": incoming_value,
-            "resolved_at": now,
-        })
+        history.append(
+            {
+                "action": "accept_new",
+                "previous_value": current_label,
+                "new_value": incoming_value,
+                "resolved_at": now,
+            }
+        )
 
     def _apply_keep_old(
         self,
@@ -215,12 +218,14 @@ class ContradictionManager(KGManagerBase):
 
         Contract: caller MUST hold ``_write_lock``.
         """
-        history.append({
-            "action": "keep_old",
-            "previous_value": current_label,
-            "new_value": incoming_value,
-            "resolved_at": now,
-        })
+        history.append(
+            {
+                "action": "keep_old",
+                "previous_value": current_label,
+                "new_value": incoming_value,
+                "resolved_at": now,
+            }
+        )
 
     def _apply_merge(
         self,
@@ -244,19 +249,23 @@ class ContradictionManager(KGManagerBase):
         )
         self._update_fts_index(node_id, merge_value)
         self._write_vec_embedding(node_id, vec_blob)
-        history.append({
-            "action": "merge",
-            "previous_value": current_label,
-            "new_value": merge_value,
-            "resolved_at": now,
-        })
+        history.append(
+            {
+                "action": "merge",
+                "previous_value": current_label,
+                "new_value": merge_value,
+                "resolved_at": now,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Resolution
     # ------------------------------------------------------------------
 
     def _validate_resolution_args(
-        self, resolution: str, merge_value: str,
+        self,
+        resolution: str,
+        merge_value: str,
     ) -> ResolutionResult | None:
         """Validate resolution type and merge_value.
 
@@ -280,7 +289,10 @@ class ContradictionManager(KGManagerBase):
         return None
 
     def _precompute_resolution_embedding(
-        self, resolution: str, contradiction_id: int, merge_value: str,
+        self,
+        resolution: str,
+        contradiction_id: int,
+        merge_value: str,
     ) -> bytes | None:
         """Pre-compute vec embedding OUTSIDE the write lock.
 
@@ -300,7 +312,10 @@ class ContradictionManager(KGManagerBase):
         return None
 
     def _load_node_for_resolution(
-        self, node_id: str, resolution: str, existing_value: str,
+        self,
+        node_id: str,
+        resolution: str,
+        existing_value: str,
     ) -> tuple[sqlite3.Row | None, str, list] | ResolutionResult:
         """Fetch the KG node and parse its history for resolution.
 
@@ -334,8 +349,12 @@ class ContradictionManager(KGManagerBase):
         return node_row, current_label, history
 
     def _finalize_resolution(
-        self, contradiction_id: int, resolution: str,
-        node_row, node_id: str, history: list,
+        self,
+        contradiction_id: int,
+        resolution: str,
+        node_row,
+        node_id: str,
+        history: list,
     ) -> None:
         """Persist history, mark contradiction resolved, and invalidate caches.
 
@@ -380,7 +399,9 @@ class ContradictionManager(KGManagerBase):
         now = _now_iso()
 
         node_result = self._load_node_for_resolution(
-            node_id, resolution, contradiction["existing_value"],
+            node_id,
+            resolution,
+            contradiction["existing_value"],
         )
         if isinstance(node_result, dict):
             return node_result  # type: ignore[return-value]
@@ -388,21 +409,37 @@ class ContradictionManager(KGManagerBase):
 
         if resolution == "accept_new":
             self._apply_accept_new(
-                node_id, contradiction["incoming_value"],
+                node_id,
+                contradiction["incoming_value"],
                 contradiction["incoming_confidence"],
-                current_label, history, now, vec_blob,
+                current_label,
+                history,
+                now,
+                vec_blob,
             )
         elif resolution == "keep_old":
             self._apply_keep_old(
-                current_label, contradiction["incoming_value"], history, now,
+                current_label,
+                contradiction["incoming_value"],
+                history,
+                now,
             )
         elif resolution == "merge":
             self._apply_merge(
-                node_id, merge_value, current_label, history, now, vec_blob,
+                node_id,
+                merge_value,
+                current_label,
+                history,
+                now,
+                vec_blob,
             )
 
         self._finalize_resolution(
-            contradiction_id, resolution, node_row, node_id, history,
+            contradiction_id,
+            resolution,
+            node_row,
+            node_id,
+            history,
         )
 
         return {
@@ -470,18 +507,25 @@ class ContradictionManager(KGManagerBase):
             return validation_error
 
         vec_blob = self._precompute_resolution_embedding(
-            resolution, contradiction_id, merge_value,
+            resolution,
+            contradiction_id,
+            merge_value,
         )
 
         with self._write_lock:
             result = self._apply_resolution_and_commit(
-                contradiction_id, resolution, merge_value, vec_blob,
+                contradiction_id,
+                resolution,
+                merge_value,
+                vec_blob,
             )
 
         if result["success"]:
             logger.info(
                 "Contradiction %d resolved: %s for node %s",
-                contradiction_id, resolution, result["node_id"],
+                contradiction_id,
+                resolution,
+                result["node_id"],
             )
 
         return result

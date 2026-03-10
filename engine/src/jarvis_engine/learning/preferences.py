@@ -34,9 +34,19 @@ class PreferenceTracker(LearningTrackerBase):
     }
 
     _NEGATIVE_PATTERNS: dict[str, list[str]] = {
-        "communication_style": ["don't be", "stop being", "less formal", "too formal", "too casual"],
+        "communication_style": [
+            "don't be",
+            "stop being",
+            "less formal",
+            "too formal",
+            "too casual",
+        ],
         "format_preferences": ["no bullet", "no list", "don't use", "stop using"],
-        "time_preferences": ["not in the morning", "don't remind me", "stop scheduling"],
+        "time_preferences": [
+            "not in the morning",
+            "don't remind me",
+            "stop scheduling",
+        ],
     }
 
     # Maximum score to prevent unbounded growth
@@ -122,14 +132,17 @@ class PreferenceTracker(LearningTrackerBase):
     def _update_preference(self, category: str, preference: str) -> None:
         now = _now_iso()
         with self._write_lock:
-            self._db.execute("""
+            self._db.execute(
+                """
                 INSERT INTO user_preferences (category, preference, score, evidence_count, last_observed)
                 VALUES (?, ?, 1.0, 1, ?)
                 ON CONFLICT(category, preference) DO UPDATE SET
                     score = MIN(score + 0.1, ?),
                     evidence_count = evidence_count + 1,
                     last_observed = ?
-            """, (category, preference, now, self._MAX_SCORE, now))
+            """,
+                (category, preference, now, self._MAX_SCORE, now),
+            )
             self._db.commit()
 
     @staticmethod
@@ -162,13 +175,17 @@ class PreferenceTracker(LearningTrackerBase):
             rows = cur.fetchall()
 
         # Compute decayed scores and pick the best per category
-        best: dict[str, tuple[str, float]] = {}  # category -> (preference, decayed_score)
+        best: dict[
+            str, tuple[str, float]
+        ] = {}  # category -> (preference, decayed_score)
         for row in rows:
             category, preference, score, last_observed = row[0], row[1], row[2], row[3]
             dt = self._parse_iso_timestamp(last_observed)
             if dt is not None:
                 days_since = (now - dt).total_seconds() / 86400
-                decayed_score = score * math.exp(-0.023 * days_since)  # 30-day half-life
+                decayed_score = score * math.exp(
+                    -0.023 * days_since
+                )  # 30-day half-life
             else:
                 decayed_score = score
             if category not in best or decayed_score > best[category][1]:

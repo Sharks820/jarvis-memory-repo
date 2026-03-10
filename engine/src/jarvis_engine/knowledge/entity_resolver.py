@@ -194,14 +194,24 @@ class EntityResolver:
 
         try:
             import numpy as _np
+
             self._find_neighbours_numpy(
-                _np, embedded_ids, embedded_vecs, label_map,
-                top_k, seen_pairs, candidates,
+                _np,
+                embedded_ids,
+                embedded_vecs,
+                label_map,
+                top_k,
+                seen_pairs,
+                candidates,
             )
         except ImportError:
             self._find_neighbours_python(
-                embedded_ids, embedded_vecs, label_map,
-                top_k, seen_pairs, candidates,
+                embedded_ids,
+                embedded_vecs,
+                label_map,
+                top_k,
+                seen_pairs,
+                candidates,
             )
 
         # Also check nodes that failed embedding -- compare them string-only
@@ -231,13 +241,17 @@ class EntityResolver:
                 for node_id, label in members:
                     embed_cache[node_id] = self._embed_service.embed(label)
         except (RuntimeError, ValueError, OSError) as exc:
-            logger.debug("Batch embedding failed, falling back to individual calls: %s", exc)
+            logger.debug(
+                "Batch embedding failed, falling back to individual calls: %s", exc
+            )
             embed_cache.clear()
             for node_id, label in members:
                 try:
                     embed_cache[node_id] = self._embed_service.embed(label)
                 except (RuntimeError, ValueError, OSError) as exc2:
-                    logger.debug("Embedding failed for node %s (%r): %s", node_id, label, exc2)
+                    logger.debug(
+                        "Embedding failed for node %s (%r): %s", node_id, label, exc2
+                    )
         return embed_cache
 
     def _evaluate_pair(
@@ -307,8 +321,12 @@ class EntityResolver:
 
             for j in top_indices:
                 self._evaluate_pair(
-                    id_a, embedded_ids[j], float(row[j]),
-                    label_map, seen_pairs, candidates,
+                    id_a,
+                    embedded_ids[j],
+                    float(row[j]),
+                    label_map,
+                    seen_pairs,
+                    candidates,
                 )
 
     def _find_neighbours_python(
@@ -338,8 +356,12 @@ class EntityResolver:
 
             for embed_sim, j in top_neighbours:
                 self._evaluate_pair(
-                    id_a, embedded_ids[j], embed_sim,
-                    label_map, seen_pairs, candidates,
+                    id_a,
+                    embedded_ids[j],
+                    embed_sim,
+                    label_map,
+                    seen_pairs,
+                    candidates,
                 )
 
     def _find_duplicates_string(
@@ -380,10 +402,13 @@ class EntityResolver:
         Returns packed blob ready for DB insertion, or ``None`` when the
         embedding service is unavailable or the computation fails.
         """
-        if self._embed_service is None or not getattr(self._kg, "_vec_available", False):
+        if self._embed_service is None or not getattr(
+            self._kg, "_vec_available", False
+        ):
             return None
         try:
             import struct
+
             embedding = self._embed_service.embed(label, prefix="search_document")
             if len(embedding) == _EMBEDDING_DIM:
                 return struct.pack(f"{len(embedding)}f", *embedding)
@@ -437,7 +462,8 @@ class EntityResolver:
             embedding_blob = self._precompute_merge_embedding(embed_label)
 
         return self._merge_nodes_impl(
-            keep_id, remove_id,
+            keep_id,
+            remove_id,
             canonical_label=canonical_label,
             _lock_held=_lock_held,
             _embedding_blob=embedding_blob,
@@ -454,9 +480,19 @@ class EntityResolver:
     ) -> bool:
         """Internal merge implementation. Acquires _write_lock unless _lock_held."""
         if _lock_held:
-            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label, _embedding_blob=_embedding_blob)
+            return self._merge_nodes_core(
+                keep_id,
+                remove_id,
+                canonical_label=canonical_label,
+                _embedding_blob=_embedding_blob,
+            )
         with self._kg.write_lock:
-            return self._merge_nodes_core(keep_id, remove_id, canonical_label=canonical_label, _embedding_blob=_embedding_blob)
+            return self._merge_nodes_core(
+                keep_id,
+                remove_id,
+                canonical_label=canonical_label,
+                _embedding_blob=_embedding_blob,
+            )
 
     def _merge_nodes_core(
         self,
@@ -497,8 +533,12 @@ class EntityResolver:
 
         # Record in merge history, commit, and invalidate cache
         self._record_merge_history(
-            keep_id, remove_id, keep_label, remove_label,
-            canonical_label, edges_transferred,
+            keep_id,
+            remove_id,
+            keep_label,
+            remove_label,
+            canonical_label,
+            edges_transferred,
         )
 
         logger.info(
@@ -534,7 +574,10 @@ class EntityResolver:
         if keep_row[2] or remove_row[2]:
             logger.warning(
                 "Refusing to merge locked nodes: keep=%s (locked=%s), remove=%s (locked=%s)",
-                keep_id, bool(keep_row[2]), remove_id, bool(remove_row[2]),
+                keep_id,
+                bool(keep_row[2]),
+                remove_id,
+                bool(remove_row[2]),
             )
             return (None, None)
 
@@ -609,7 +652,9 @@ class EntityResolver:
                     (keep_id, embedding_blob),
                 )
             except (sqlite3.Error, ValueError) as exc:
-                logger.debug("Vec embedding update for merged node %s failed: %s", keep_id, exc)
+                logger.debug(
+                    "Vec embedding update for merged node %s failed: %s", keep_id, exc
+                )
 
     def _delete_merged_node(self, remove_id: str) -> None:
         """Delete the merged-away node and all its edge/index entries."""
@@ -625,11 +670,13 @@ class EntityResolver:
                     "DELETE FROM vec_kg_nodes WHERE node_id = ?", (remove_id,)
                 )
             except sqlite3.Error as exc:
-                logger.debug("Vec embedding delete for removed node %s failed: %s", remove_id, exc)
+                logger.debug(
+                    "Vec embedding delete for removed node %s failed: %s",
+                    remove_id,
+                    exc,
+                )
 
-        self._kg.db.execute(
-            "DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,)
-        )
+        self._kg.db.execute("DELETE FROM kg_nodes WHERE node_id = ?", (remove_id,))
 
     def _record_merge_history(
         self,
@@ -718,11 +765,15 @@ class EntityResolver:
                 # TOCTOU race where node data changes between selection and merge.
                 with self._kg.write_lock:
                     keep_id, remove_id = self._pick_keeper_unlocked(
-                        cand.node_a_id, cand.node_b_id,
+                        cand.node_a_id,
+                        cand.node_b_id,
                     )
                     ok = self._merge_nodes_core(
-                        keep_id, remove_id,
-                        _embedding_blob=embedding_blob if keep_id == keeper_id else None,
+                        keep_id,
+                        remove_id,
+                        _embedding_blob=embedding_blob
+                        if keep_id == keeper_id
+                        else None,
                     )
                 if ok:
                     result.merges_applied += 1
@@ -792,6 +843,7 @@ class EntityResolver:
             return 0.0
         try:
             import numpy as np
+
             a_arr = np.array(a, dtype=np.float32)
             b_arr = np.array(b, dtype=np.float32)
             norm_a = np.linalg.norm(a_arr)

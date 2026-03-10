@@ -102,7 +102,15 @@ _brain_io_lock = threading.RLock()
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{2,}")
 
 BRANCH_RULES: dict[str, tuple[str, ...]] = {
-    "ops": ("calendar", "email", "bill", "subscription", "schedule", "meeting", "brief"),
+    "ops": (
+        "calendar",
+        "email",
+        "bill",
+        "subscription",
+        "schedule",
+        "meeting",
+        "brief",
+    ),
     "coding": ("code", "python", "bug", "test", "refactor", "api", "deploy", "build"),
     "health": ("med", "prescription", "doctor", "health", "pharmacy", "dose"),
     "finance": ("budget", "bank", "invoice", "payment", "expense", "finance"),
@@ -208,7 +216,11 @@ def _load_index(root: Path) -> dict[str, Any]:
     from jarvis_engine._shared import load_json_file
 
     path = _index_path(root)
-    default: dict[str, Any] = {"branches": {}, "hash_to_record_id": {}, "updated_utc": ""}
+    default: dict[str, Any] = {
+        "branches": {},
+        "hash_to_record_id": {},
+        "updated_utc": "",
+    }
     raw = load_json_file(path, None, expected_type=dict)
     if raw is None:
         return default
@@ -262,18 +274,28 @@ def _extract_fact_candidates(text: str, branch: str) -> list[dict[str, Any]]:
                 add("runtime.gaming_mode_auto", "enabled", 0.8)
             elif any(x in lowered for x in ["disable", "off", "stop"]):
                 add("runtime.gaming_mode_auto", "disabled", 0.8)
-    if ("pause" in lowered and any(x in lowered for x in ["daemon", "autopilot", "jarvis"])):
+    if "pause" in lowered and any(
+        x in lowered for x in ["daemon", "autopilot", "jarvis"]
+    ):
         add("runtime.daemon_paused", "true", 0.82)
-    if any(x in lowered for x in ["resume daemon", "resume autopilot", "resume jarvis"]):
+    if any(
+        x in lowered for x in ["resume daemon", "resume autopilot", "resume jarvis"]
+    ):
         add("runtime.daemon_paused", "false", 0.82)
-    if ("spam" in lowered and "call" in lowered and any(x in lowered for x in ["block", "guard", "stop"])):
+    if (
+        "spam" in lowered
+        and "call" in lowered
+        and any(x in lowered for x in ["block", "guard", "stop"])
+    ):
         add("phone.spam_guard", "enabled", 0.77)
     if "owner guard" in lowered:
         if any(x in lowered for x in ["enable", "on"]):
             add("security.owner_guard", "enabled", 0.88)
         elif any(x in lowered for x in ["disable", "off"]):
             add("security.owner_guard", "disabled", 0.88)
-    if "organize" in lowered and any(x in lowered for x in ["day", "today", "schedule"]):
+    if "organize" in lowered and any(
+        x in lowered for x in ["day", "today", "schedule"]
+    ):
         add("ops.daily_autopilot", "preferred", 0.7)
 
     if not out and branch != "general":
@@ -372,8 +394,12 @@ def _update_fact_store(
 
 
 def _check_dedup(
-    index: dict[str, Any], content_hash: str,
-    source: str, kind: str, task_id: str, confidence: float,
+    index: dict[str, Any],
+    content_hash: str,
+    source: str,
+    kind: str,
+    task_id: str,
+    confidence: float,
 ) -> BrainRecord | None:
     """Return an existing BrainRecord if *content_hash* is already known."""
     known = index.get("hash_to_record_id", {})
@@ -394,9 +420,13 @@ def _check_dedup(
 
 
 def _build_brain_record(
-    cleaned: str, content_hash: str,
-    source: str, kind: str, task_id: str,
-    tags: list[str] | None, confidence: float,
+    cleaned: str,
+    content_hash: str,
+    source: str,
+    kind: str,
+    task_id: str,
+    tags: list[str] | None,
+    confidence: float,
 ) -> BrainRecord:
     """Construct a new BrainRecord from cleaned content."""
     tokens = _tokenize(cleaned)
@@ -433,8 +463,11 @@ def _persist_record(root: Path, record: BrainRecord) -> None:
 
 
 def _update_index(
-    root: Path, index: dict[str, Any], record: BrainRecord,
-    content_hash: str, summary: str,
+    root: Path,
+    index: dict[str, Any],
+    record: BrainRecord,
+    content_hash: str,
+    summary: str,
 ) -> None:
     """Update branches and hash_to_record_id in the index, then save."""
     branches = index.get("branches", {})
@@ -460,7 +493,10 @@ def _update_index(
     hash_map[content_hash] = record.record_id
     if len(hash_map) > 6000:
         recent = _load_records(root, limit=1200)
-        keep = {str(item.get("content_hash", "")): str(item.get("record_id", "")) for item in recent}
+        keep = {
+            str(item.get("content_hash", "")): str(item.get("record_id", ""))
+            for item in recent
+        }
         hash_map = {k: v for k, v in keep.items() if k and v}
     index["hash_to_record_id"] = hash_map
     _save_index(root, index)
@@ -489,7 +525,13 @@ def ingest_brain_record(
             return existing
 
         record = _build_brain_record(
-            cleaned, content_hash, source, kind, task_id, tags, confidence,
+            cleaned,
+            content_hash,
+            source,
+            kind,
+            task_id,
+            tags,
+            confidence,
         )
         _persist_record(root, record)
         _update_index(root, index, record, content_hash, record.summary)
@@ -534,7 +576,9 @@ def _try_hybrid_search(
 
     try:
         # embed_service may expose embed() or embed_query() depending on the interface
-        embed_fn = getattr(embed_service, "embed_query", None) or getattr(embed_service, "embed", None)
+        embed_fn = getattr(embed_service, "embed_query", None) or getattr(
+            embed_service, "embed", None
+        )
         if embed_fn is None:
             return None
         query_embedding = embed_fn(query)
@@ -548,7 +592,9 @@ def _try_hybrid_search(
 
 
 def _jsonl_keyword_search(
-    root: Path, query: str, max_items: int,
+    root: Path,
+    query: str,
+    max_items: int,
 ) -> tuple[list[tuple[float, dict[str, Any]]], int]:
     """Legacy JSONL-based keyword overlap scorer. Returns (scored_rows, total_scanned)."""
     with _brain_io_lock:
@@ -582,7 +628,9 @@ def build_context_packet(
     embed_service: Any = None,
 ) -> ContextPacket:
     # --- Primary path: try hybrid_search (FTS5 + sqlite-vec) ---
-    hybrid_results = _try_hybrid_search(query, max_items, engine=engine, embed_service=embed_service)
+    hybrid_results = _try_hybrid_search(
+        query, max_items, engine=engine, embed_service=embed_service
+    )
 
     if hybrid_results is not None:
         # hybrid_search returned ranked records — use them directly
@@ -650,7 +698,13 @@ def build_context_packet(
                     "overlap": overlap,
                 }
             )
-    canonical_facts.sort(key=lambda item: (_to_float(item.get("confidence", 0.0), 0.0), int(item.get("overlap", 0))), reverse=True)
+    canonical_facts.sort(
+        key=lambda item: (
+            _to_float(item.get("confidence", 0.0), 0.0),
+            int(item.get("overlap", 0)),
+        ),
+        reverse=True,
+    )
 
     return {
         "query": query,
@@ -727,7 +781,9 @@ def _brain_compact_locked(root: Path, *, keep_recent: int = 1800) -> BrainCompac
         if content_hash and rec_id:
             hash_map[content_hash] = rec_id
 
-        state = branch_state.get(branch, {"record_ids": [], "count": 0, "last_ts": "", "last_summary": ""})
+        state = branch_state.get(
+            branch, {"record_ids": [], "count": 0, "last_ts": "", "last_summary": ""}
+        )
         ids = state.get("record_ids", [])
         if not isinstance(ids, list):
             ids = []
@@ -762,7 +818,13 @@ def brain_regression_report(root: Path) -> RegressionReport:
         facts_state = _load_facts(root)
 
     total = len(records)
-    unique_hashes = len({str(r.get("content_hash", "")) for r in records if str(r.get("content_hash", ""))})
+    unique_hashes = len(
+        {
+            str(r.get("content_hash", ""))
+            for r in records
+            if str(r.get("content_hash", ""))
+        }
+    )
     duplicate_ratio = 0.0
     if total > 0:
         duplicate_ratio = max(0.0, min(1.0, 1.0 - (unique_hashes / total)))

@@ -24,4 +24,3 @@ class PolicyEngine:
         if not tokens:
             return False
         return tokens[0].lower() in self._allowed_commands
-
