@@ -451,9 +451,13 @@ class TestWatchdogCycleTimeout:
         import jarvis_engine.daemon_loop as dl
         old_start = dl._cycle_start
         try:
-            # Simulate a cycle that started 700 seconds ago
-            dl._cycle_start = time.monotonic() - 700
-            result = dl._watchdog_check()
+            # Use a fixed "now" so the test is robust on freshly-booted machines
+            # where time.monotonic() < 700 (making monotonic() - 700 negative,
+            # which would trip the "not started" guard and return healthy=True).
+            fake_now = 10_000.0
+            dl._cycle_start = fake_now - 700  # 700 seconds ago
+            with patch.object(dl.time, "monotonic", return_value=fake_now):
+                result = dl._watchdog_check()
             assert result["healthy"] is False
             assert result["elapsed_s"] >= 699.0
         finally:
