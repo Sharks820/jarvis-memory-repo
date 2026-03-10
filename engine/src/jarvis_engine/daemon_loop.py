@@ -40,7 +40,7 @@ from jarvis_engine.gaming_mode import (
     _windows_idle_seconds,
     detect_active_game_process,
     read_gaming_mode_state,
-    write_gaming_mode_state,
+    write_gaming_mode_state,  # noqa: F401  (used via module attribute in system_handlers.py)
 )
 from jarvis_engine.harvest_discovery import (
     discover_harvest_topics as _discover_harvest_topics,

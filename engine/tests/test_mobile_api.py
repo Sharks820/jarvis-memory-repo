@@ -1083,8 +1083,6 @@ def _make_handler_stub(server):
 
 def test_read_gaming_state_file_missing(mobile_server) -> None:
     """_read_gaming_state returns defaults when file does not exist."""
-    from unittest.mock import patch
-
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state_path = runtime_dir / "gaming_mode.json"

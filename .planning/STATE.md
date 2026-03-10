@@ -59,7 +59,7 @@ progress. Corrected breakdown:
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-09): 5347 passing, 10 skipped, 0 failures
+- Latest full test run (2026-03-10): 5349 passing, 10 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 31 files
 - Security scan baseline: bandit 165 findings (1 high, 50 medium, 114 low)
@@ -115,7 +115,7 @@ progress. Corrected breakdown:
 - 2026-03-05: added explicit voice-listen lifecycle state emission (`arming`, `listening`, `processing`, `executing`, `idle`, `error`) to stdout and activity feed for real-time UX/telemetry trust, with focused regression tests for success/error transitions.
 - 2026-03-05: added model-switch continuity guardrails: system-prompt continuity contract is now injected when routed model changes with existing history, and model-switch events are logged to activity feed (`conversation_model_switch`) for observability and anti-reset diagnosis.
 - 2026-03-05: upgraded learning mission status surfaces with explicit active/inactive flags, active-count and per-status counters, mission status-detail emission, and richer response summaries to improve UI/voice mission transparency and operator trust.
-- 2026-03-09: **Completion accuracy audit + bug fixes** — prior 55% corrected to Phase 1 code ~75%, formal verified 0%, v5.0 overall ~12%. Fixed 5 bugs: (1) `IntentClassifier.__init__` synchronously called `_precompute_routes()` causing 30+ test timeouts in offline/CI — fixed with lazy centroid computation on first `classify()` call; (2) stale `(0,)`-shaped centroid cache entries not rejected on load — fixed with shape validation; (3) `test_desktop_widget_success` used `@patch` decorator that failed when tkinter unavailable — fixed with `sys.modules` injection; (4) `test_voice_dictate_respects_timeout` bare import failed without tkinter — fixed with `pytest.importorskip`; (5) `test_nonce_race_condition_protection` exhausted TCP backlog with 20 workers × 50 requests — fixed with 10 workers × 20 requests and None-safe result filtering. Test count: 5347 passing (up from 5077), 10 skipped.
+- 2026-03-10: **Bug fixes + ruff clean** — Fixed 2 runtime bugs: (1) `daemon_loop.py` missing `write_gaming_mode_state` import (5 tests `AttributeError`); (2) `test_watchdog_unhealthy_after_timeout` fragile on fresh-boot CI runners where `time.monotonic() < 700` — fixed with mocked monotonic. Fixed 4 ruff lint issues: noqa for module-attribute re-export, E731 lambda→def in conftest, and 2 unused imports in test files. Test count: 5349 passing, 10 skipped.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -132,6 +132,6 @@ progress. Corrected breakdown:
 
 ## Session Continuity
 
-Last session: 2026-03-09
-Stopped at: Completion accuracy audit + 5 bug fixes. 5347 tests passing. Next: Phase 1 exit criteria — write 8-hour soak harness (REL-01/REL-02), memory drift test (PERF-04), CTX formal test suite, and desloppify Task H burn-down toward 100.
+Last session: 2026-03-10
+Stopped at: Bug fixes + ruff clean. 5349 tests passing. Ruff: 0 errors. Bandit: 1 high (B310 urlopen in desktop_widget, pre-existing), 50 medium, 114 low. Next: Phase 1 exit criteria — write 8-hour soak harness (REL-01/REL-02), memory drift test (PERF-04), CTX formal test suite, and desloppify Task H burn-down toward 100.
 Resume file: docs/plans/2026-03-07-phase1-completion-design.md

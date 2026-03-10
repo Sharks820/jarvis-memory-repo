@@ -186,7 +186,7 @@ class TestFuzzyMatching:
 
         Verifies that 'pause jarvis' hits the exact path, not the fuzzy path.
         """
-        from jarvis_engine.voice_intents import _DISPATCH_RULES, _CRITICAL_FUZZY_TARGETS
+        from jarvis_engine.voice_intents import _DISPATCH_RULES
 
         lowered = "pause jarvis"
         exact_matched = False
