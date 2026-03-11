@@ -12,6 +12,7 @@ from typing import TypedDict
 from jarvis_engine._compat import UTC
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
+from jarvis_engine.learning.trust import classify_learning_subject
 
 logger = logging.getLogger(__name__)
 
@@ -64,12 +65,34 @@ class UsagePatternTracker(LearningTrackerBase):
         hour = ts.hour
         day_of_week = ts.weekday()  # 0=Monday, 6=Sunday
         with self._write_lock:
-            self._db.execute(
+            cur = self._db.execute(
                 "INSERT INTO usage_patterns (hour, day_of_week, route, topic, recorded_at) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (hour, day_of_week, route, topic, ts.isoformat()),
             )
             self._db.commit()
+        subject_id = str(cur.lastrowid)
+        provenance = classify_learning_subject(
+            subject_type="usage_pattern",
+            subject_id=subject_id,
+            source_channel="user",
+            content=f"{route} {topic}".strip() or f"{hour}:{day_of_week}",
+            mission_id=route,
+        )
+        self._provenance_store.record_subject(
+            subject_type="usage_pattern",
+            subject_id=subject_id,
+            metadata=provenance,
+        )
+        self._provenance_store.record_policy_event(
+            subject_type="usage_pattern",
+            subject_id=subject_id,
+            action="observe",
+            verdict=provenance["promotion_state"],
+            policy_mode=provenance["policy_mode"],
+            reason="usage_pattern_recorded",
+            metadata={"route": route, "topic": topic, "hour": hour, "day_of_week": day_of_week},
+        )
 
     def predict_context(self, hour: int, day_of_week: int) -> ContextPrediction:
         """Predict likely user context based on historical patterns.

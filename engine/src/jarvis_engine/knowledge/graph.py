@@ -49,6 +49,20 @@ RELATION_SYNONYMS: dict[str, str] = {
 }
 
 
+def _placeholder_csv(count: int) -> str:
+    """Return a bounded SQLite placeholder list for IN clauses."""
+    if count <= 0 or count > 900:
+        raise ValueError(f"placeholder count must be between 1 and 900, got {count}")
+    return ",".join("?" for _ in range(count))
+
+
+def _keyword_like_where(count: int) -> str:
+    """Return a repeated LIKE-clause disjunction with bound parameters."""
+    if count <= 0 or count > 20:
+        raise ValueError(f"keyword count must be between 1 and 20, got {count}")
+    return " OR ".join(["label LIKE ? ESCAPE '\\'"] * count)
+
+
 def _normalize_relation(rel: str) -> str:
     """Normalize a relation string to its canonical form.
 
@@ -631,21 +645,20 @@ class KnowledgeGraph:
             return fts_results
 
         # --- LIKE fallback (handles partial/substring matches FTS5 misses) ---
-        clauses = []
         params: list[object] = []
         for kw in keywords[:20]:
             if not kw or not kw.strip():
                 continue
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            clauses.append("label LIKE ? ESCAPE '\\'")
             params.append(f"%{sanitized}%")
-        if not clauses:
+        if not params:
             return []
         params.append(min_confidence)
         params.append(limit)
+        where_clause = _keyword_like_where(len(params) - 2)
         sql = (
             "SELECT node_id, label, node_type, confidence, locked, updated_at "
-            "FROM kg_nodes WHERE (" + " OR ".join(clauses) + ") "
+            "FROM kg_nodes WHERE (" + where_clause + ") "  # nosec B608
             "AND confidence >= ? "
             "ORDER BY confidence DESC LIMIT ?"
         )
@@ -706,16 +719,13 @@ class KnowledgeGraph:
                 dist_map = {r[0]: r[1] for r in knn_results}
 
                 # Filter out retracted facts and apply min_confidence
-                placeholders = ",".join("?" for _ in candidate_ids)
-                cur2 = self._db.execute(
-                    f"""
-                    SELECT node_id, label, node_type, confidence, locked, updated_at
-                    FROM kg_nodes
-                    WHERE node_id IN ({placeholders})
-                      AND confidence >= ?
-                    """,
-                    candidate_ids + [min_confidence],
+                placeholders = _placeholder_csv(len(candidate_ids))
+                select_sql = (
+                    "SELECT node_id, label, node_type, confidence, locked, updated_at "
+                    "FROM kg_nodes "
+                    "WHERE node_id IN (" + placeholders + ") AND confidence >= ?"  # nosec B608
                 )
+                cur2 = self._db.execute(select_sql, candidate_ids + [min_confidence])
                 rows = cur2.fetchall()
 
             # Sort by distance (closest first), preserving KNN order
@@ -778,22 +788,20 @@ class KnowledgeGraph:
         filtered = [kw for kw in keywords[:20] if kw and kw.strip()]
         if not filtered:
             return 0
-        clauses = []
         like_params: list[str] = []
         for kw in filtered:
             sanitized = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            clauses.append("label LIKE ? ESCAPE '\\'")
             like_params.append(f"%{sanitized}%")
         now = _now_iso()
 
-        where_clause = " OR ".join(clauses)
+        where_clause = _keyword_like_where(len(like_params))
 
         with self._write_lock:
             try:
                 # Collect node_ids that will be retracted (for FTS5/vec cleanup)
                 select_sql = (
                     "SELECT node_id FROM kg_nodes "
-                    "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
+                    "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"  # nosec B608
                 )
                 cur = self._db.execute(select_sql, like_params)
                 retracted_ids = [row[0] for row in cur.fetchall()]
@@ -804,7 +812,7 @@ class KnowledgeGraph:
                 # Update confidence to 0
                 update_sql = (
                     "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
-                    "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"
+                    "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"  # nosec B608
                 )
                 all_params: list[object] = [now] + like_params
                 cur = self._db.execute(update_sql, all_params)
@@ -814,15 +822,15 @@ class KnowledgeGraph:
                 # chunked at 900 to stay under SQLite's 999-variable limit).
                 for i in range(0, len(retracted_ids), 900):
                     chunk = retracted_ids[i : i + 900]
-                    placeholders = ",".join("?" for _ in chunk)
+                    placeholders = _placeholder_csv(len(chunk))
                     self._db.execute(
-                        f"DELETE FROM fts_kg_nodes WHERE node_id IN ({placeholders})",
+                        "DELETE FROM fts_kg_nodes WHERE node_id IN (" + placeholders + ")",  # nosec B608
                         chunk,
                     )
                     if self._vec_available:
                         try:
                             self._db.execute(
-                                f"DELETE FROM vec_kg_nodes WHERE node_id IN ({placeholders})",
+                                "DELETE FROM vec_kg_nodes WHERE node_id IN (" + placeholders + ")",  # nosec B608
                                 chunk,
                             )
                         except sqlite3.Error as exc:

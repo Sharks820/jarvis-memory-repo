@@ -107,3 +107,13 @@ class TestUsagePatternTracker:
         tracker.record_interaction(route="test")
         cur = db.execute("SELECT COUNT(*) FROM usage_patterns")
         assert cur.fetchone()[0] == 1
+
+    def test_usage_pattern_writes_learning_provenance(self, db, tracker):
+        tracker.record_interaction(route="routine", topic="calendar")
+        row = db.execute(
+            "SELECT trust_level, promotion_state FROM learning_provenance "
+            "WHERE subject_type = 'usage_pattern' ORDER BY CAST(subject_id AS INTEGER) DESC LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "T3_trusted"
+        assert row[1] == "trusted"

@@ -19,7 +19,9 @@ import hmac
 import ipaddress as _ipaddress_mod
 import json
 import logging
+import os
 import re
+import shutil
 import ssl
 import subprocess
 import sys
@@ -251,6 +253,9 @@ def _auto_heal_stale_ip(base_url: str, default_scheme: str) -> str:
     from urllib.parse import urlparse as _ul_parse
 
     parsed = _ul_parse(base_url)
+    if (parsed.scheme or "").lower() not in _ALLOWED_WIDGET_SCHEMES:
+        logger.warning("Skipping stale-IP probe for unsupported base_url scheme: %s", parsed.scheme)
+        return base_url
     if parsed.hostname in ("127.0.0.1", "localhost", "::1", None):
         return base_url
 
@@ -258,16 +263,18 @@ def _auto_heal_stale_ip(base_url: str, default_scheme: str) -> str:
     local_url = f"{default_scheme}://127.0.0.1:{parsed.port or _DEFAULT_PORT}/health"
     stale = False
     try:
+        probe_url = _validated_widget_request_url(probe_url)
         ctx = _make_ssl_context_for_self_signed() if parsed.scheme == "https" else None
-        with urlopen(Request(url=probe_url, method="GET"), timeout=3, context=ctx):
+        with _safe_urlopen(Request(url=probe_url, method="GET"), timeout=3, context=ctx):
             pass  # Saved URL works fine
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         logger.debug("Saved base_url %s unreachable: %s -- trying localhost", probe_url, exc)
         try:
+            local_url = _validated_widget_request_url(local_url)
             ctx_l = _make_ssl_context_for_self_signed() if default_scheme == "https" else None
-            with urlopen(Request(url=local_url, method="GET"), timeout=3, context=ctx_l):
+            with _safe_urlopen(Request(url=local_url, method="GET"), timeout=3, context=ctx_l):
                 stale = True
-        except (OSError, ValueError) as exc2:
+        except (OSError, ValueError, RuntimeError) as exc2:
             logger.debug("Localhost fallback %s also unreachable: %s", local_url, exc2)
 
     if stale:
@@ -399,13 +406,17 @@ def _signed_headers(token: str, signing_key: str, body: bytes, device_id: str) -
 # Pre-built network object for CGNAT/Tailscale range check (RFC 6598).
 # Module-level to avoid re-parsing on every call to _is_safe_widget_base_url.
 _CGNAT_NETWORK = _ipaddress_mod.ip_network("100.64.0.0/10")
+_ALLOWED_WIDGET_SCHEMES = {"http", "https"}
 
 
 def _is_safe_widget_base_url(url: str) -> bool:
     from urllib.parse import urlparse
     parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_WIDGET_SCHEMES:
+        return False
     host = (parsed.hostname or "").strip().lower()
-    if parsed.scheme == "https":
+    if scheme == "https":
         return True
     if host in {"127.0.0.1", "localhost", "::1"}:
         return True
@@ -450,6 +461,44 @@ def _get_ssl_context(url: str) -> ssl.SSLContext | None:
     return None
 
 
+def _validated_widget_request_url(url: str) -> str:
+    """Return *url* when it uses an allowed transport and host policy."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_WIDGET_SCHEMES:
+        raise RuntimeError("Widget request URL must use http or https.")
+    if not _is_safe_widget_base_url(url):
+        raise RuntimeError("Widget URL must use HTTPS for non-localhost hosts.")
+    return url
+
+
+def _safe_urlopen(req: Request, *, timeout: int | float, context: ssl.SSLContext | None):
+    """Open a request only after explicit HTTP(S) scheme validation."""
+    _validated_widget_request_url(req.full_url)
+    return urlopen(req, timeout=timeout, context=context)  # nosec B310
+
+
+def _windows_system_executable(relative_path: str, fallback: str) -> str:
+    """Resolve a Windows system executable to an absolute path when possible."""
+    if os.name != "nt":
+        return fallback
+    candidate = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / relative_path
+    if candidate.exists():
+        return str(candidate)
+    return shutil.which(fallback) or fallback
+
+
+def _powershell_executable() -> str:
+    """Return the preferred PowerShell executable path."""
+    return _windows_system_executable("WindowsPowerShell/v1.0/powershell.exe", "powershell")
+
+
+def _taskkill_executable() -> str:
+    """Return the preferred taskkill executable path."""
+    return _windows_system_executable("taskkill.exe", "taskkill")
+
+
 def _http_timeout_seconds(path: str) -> int:
     """Return HTTP timeout for a widget API path."""
     default_timeout = _env_int("JARVIS_WIDGET_HTTP_TIMEOUT_S", 60, minimum=10, maximum=600)
@@ -481,13 +530,14 @@ def _http_json(cfg: WidgetConfig, path: str, method: str = "GET", payload: dict[
         # produces a unique nonce so that if the primary URL's server consumes
         # the nonce (even on an HTTP error or timeout), the fallback URL gets
         # its own valid nonce instead of being rejected as a replay.
+        request_url = _validated_widget_request_url(f"{base.rstrip('/')}{path}")
         headers = _signed_headers(cfg.token, cfg.signing_key, body, cfg.device_id)
         if payload is not None:
             headers["Content-Type"] = "application/json"
-        req = Request(url=f"{base.rstrip('/')}{path}", method=method, data=(None if payload is None else body), headers=headers)
+        req = Request(url=request_url, method=method, data=(None if payload is None else body), headers=headers)
         ssl_ctx = _get_ssl_context(base)
         try:
-            with urlopen(req, timeout=_http_timeout_seconds(path), context=ssl_ctx) as resp:
+            with _safe_urlopen(req, timeout=_http_timeout_seconds(path), context=ssl_ctx) as resp:
                 raw = resp.read().decode("utf-8")
             try:
                 parsed = json.loads(raw)
@@ -520,14 +570,15 @@ def _http_json_bootstrap(base_url: str, master_password: str, device_id: str) ->
         "device_id": device_id.strip(),
     }
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request_url = _validated_widget_request_url(f"{base_url.rstrip('/')}/bootstrap")
     req = Request(
-        url=f"{base_url.rstrip('/')}/bootstrap",
+        url=request_url,
         method="POST",
         data=body,
         headers={"Content-Type": "application/json"},
     )
     ssl_ctx = _get_ssl_context(base_url)
-    with urlopen(req, timeout=35, context=ssl_ctx) as resp:
+    with _safe_urlopen(req, timeout=35, context=ssl_ctx) as resp:
         raw = resp.read().decode("utf-8")
     try:
         parsed = json.loads(raw)
@@ -586,7 +637,7 @@ def _voice_dictate_system_speech(timeout_s: int = 8) -> str:
     )
     try:
         proc = subprocess.Popen(
-            ["powershell", "-NoProfile", "-Command", script],
+            [_powershell_executable(), "-NoProfile", "-Command", script],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -624,7 +675,7 @@ def _detect_hotword_once(keyword: str = "jarvis", timeout_s: int = 2) -> bool:
         "if ($res) { $res.Text }"
     )
     proc = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", script],
+        [_powershell_executable(), "-NoProfile", "-Command", script],
         capture_output=True,
         text=True,
         timeout=15,
@@ -688,7 +739,7 @@ def _show_toast(title: str, message: str, icon: str = "Info") -> None:
     )
     try:
         subprocess.run(
-            ["powershell", "-NoProfile", "-Command", script],
+            [_powershell_executable(), "-NoProfile", "-Command", script],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=30,

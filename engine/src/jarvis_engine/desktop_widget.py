@@ -8,7 +8,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 import tkinter as tk
 from tkinter import messagebox
@@ -36,20 +36,26 @@ from jarvis_engine.widget_helpers import (  # noqa: F401 -- re-exported for test
     _http_json_bootstrap,
     _is_position_on_screen,
     _is_safe_widget_base_url,
+    _powershell_executable,
     _load_mobile_api_cfg,
     _load_widget_cfg,
     _mobile_api_cfg_path,
     _repo_root,
     _save_widget_cfg,
+    _safe_urlopen,
     _security_dir,
     _show_toast,
     _signed_headers,
     _snap_to_edge,
+    _taskkill_executable,
+    _validated_widget_request_url,
     _voice_dictate_once,
     _widget_cfg_path,
 )
 
 logger = logging.getLogger(__name__)
+
+_REMOTE_WIDGET_ERRORS = (HTTPError, URLError, RuntimeError, TimeoutError)
 
 
 class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk):
@@ -192,7 +198,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             try:
                 import subprocess
                 subprocess.run(
-                    ["powershell", "-NoProfile", "-Command",
+                    [_powershell_executable(), "-NoProfile", "-Command",
                      "Get-CimInstance Win32_Process | Where-Object {"
                      "($_.Name -eq 'python.exe') -and "
                      "$_.CommandLine -match 'jarvis_engine.main\\s+(daemon-run|serve-mobile)'"
@@ -743,16 +749,18 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 trusted = bool(session.get("trusted_device", False))
                 self._log_async(f"Bootstrap complete. trusted_device={trusted}", role="jarvis")
                 self.after(0, self._show_welcome)
-            except HTTPError as exc:
-                self._log_async(f"Connect failed: {_http_error_details(exc)}", role="error")
-            except URLError:
-                self._log_async("Cannot reach Jarvis server.", role="error")
-                self._log_async("Make sure the Mobile API is running and the Base URL is correct.", role="error")
-            except (RuntimeError, TimeoutError) as exc:
-                self._log_async(f"Connect failed: {exc}", role="error")
+            except _REMOTE_WIDGET_ERRORS as exc:
+                self._handle_transport_failure(
+                    "Connect",
+                    exc,
+                    hints=(("Make sure the Mobile API is running and the Base URL is correct.", "error"),),
+                )
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Widget connect failed: %s", exc)
-                self._log_async(f"Connect failed: {exc}", role="error")
+                self._handle_transport_failure(
+                    "Connect",
+                    exc,
+                    hints=(("Make sure the Mobile API is running and the Base URL is correct.", "error"),),
+                )
 
         self._thread(worker)
 
@@ -844,23 +852,62 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self._diag_check_sync(cfg)
                 self._diag_check_intelligence(cfg)
                 self._diag_run_self_heal(cfg)
-            except HTTPError as exc:
-                self._log_async(f"Diagnose failed: {_http_error_details(exc)}", role="error")
-                self._notify_toast("Jarvis", "Diagnose & Repair failed", "Error")
-            except URLError:
-                self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
-                self._log_async("Start with: jarvis-engine daemon", role="system")
-            except (RuntimeError, TimeoutError) as exc:
-                self._log_async(f"Diagnose failed: {exc}", role="error")
+            except _REMOTE_WIDGET_ERRORS as exc:
+                self._handle_transport_failure(
+                    "Diagnose",
+                    exc,
+                    hints=(
+                        ("Make sure the Assistant and Mobile API are running.", "error"),
+                        ("Start with: jarvis-engine daemon", "system"),
+                    ),
+                    notify_toast=("Jarvis", "Diagnose & Repair failed", "Error"),
+                )
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Diagnose and repair failed: %s", exc)
-                self._log_async(f"Diagnose failed: {exc}", role="error")
+                self._handle_transport_failure(
+                    "Diagnose",
+                    exc,
+                    hints=(
+                        ("Make sure the Assistant and Mobile API are running.", "error"),
+                        ("Start with: jarvis-engine daemon", "system"),
+                    ),
+                    notify_toast=("Jarvis", "Diagnose & Repair failed", "Error"),
+                )
 
         self._thread(worker)
 
     def _thread(self, fn: Callable[..., Any]) -> None:
         threading.Thread(target=fn, daemon=True).start()
+
+    def _handle_transport_failure(
+        self,
+        action: str,
+        exc: Exception,
+        *,
+        hints: tuple[tuple[str, str], ...] = (),
+        notify_toast: tuple[str, str, str] | None = None,
+        command_mode: bool = False,
+    ) -> None:
+        """Map common transport failures to consistent widget output."""
+        if isinstance(exc, HTTPError):
+            message = f"{action} failed: {_http_error_details(exc)}"
+        elif isinstance(exc, URLError):
+            message = "Cannot reach Jarvis server." if action == "Connect" else "Cannot connect to Jarvis services."
+        elif isinstance(exc, (RuntimeError, TimeoutError)):
+            message = f"{action} failed: {exc}"
+        else:
+            logger.debug("%s failed: %s", action, exc)
+            message = f"{action} failed: {exc}"
+
+        if command_mode:
+            self._handle_command_error(message)
+        else:
+            self._log_async(message, role="error")
+
+        for hint, role in hints:
+            self._log_async(hint, role=role)
+        if notify_toast is not None:
+            title, body, level = notify_toast
+            self._notify_toast(title, body, level)
 
     def _on_tab_cycle_model(self, event: tk.Event[Any] | None = None) -> str:
         """Tab key in command text: cycle through model rotation."""
@@ -901,12 +948,12 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             # Kill edge-tts and PowerShell speech processes
             for proc_name in ["edge-tts", "edge-playback"]:
                 subprocess.run(
-                    ["taskkill", "/F", "/IM", f"{proc_name}.exe"],
+                    [_taskkill_executable(), "/F", "/IM", f"{proc_name}.exe"],
                     capture_output=True, timeout=5,
                 )
             # Kill PowerShell speech synthesis if running
             subprocess.run(
-                ["powershell", "-Command",
+                [_powershell_executable(), "-Command",
                  "Get-Process | Where-Object {$_.MainWindowTitle -eq '' -and $_.ProcessName -eq 'powershell'} | Stop-Process -Force -ErrorAction SilentlyContinue"],
                 capture_output=True, timeout=5,
             )
@@ -1015,17 +1062,20 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.after(0, self._hide_thinking)
                 self.after(0, self._cancel_processing_timeout)
                 self._process_worker_response(data, cfg)
-            except HTTPError as exc:
-                self._handle_command_error(f"Command failed: {_http_error_details(exc)}")
-            except URLError:
-                self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
-                self._set_error_briefly_async()
-            except (RuntimeError, TimeoutError) as exc:
-                self._handle_command_error(f"Command failed: {exc}")
+            except _REMOTE_WIDGET_ERRORS as exc:
+                self._handle_transport_failure(
+                    "Command",
+                    exc,
+                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                    command_mode=True,
+                )
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Command execution failed: %s", exc)
-                self._handle_command_error(f"Command failed: {exc}")
+                self._handle_transport_failure(
+                    "Command",
+                    exc,
+                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                    command_mode=True,
+                )
             finally:
                 if not self._cancel_event.is_set():
                     try:
@@ -1261,12 +1311,18 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     f"memory={mem.get('status', 'unknown')}",
                     role="jarvis",
                 )
-            except URLError:
-                self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+            except _REMOTE_WIDGET_ERRORS as exc:
+                self._handle_transport_failure(
+                    "Dashboard",
+                    exc,
+                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                )
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Dashboard refresh failed: %s", exc)
-                self._log_async(f"Dashboard failed: {exc}", role="error")
+                self._handle_transport_failure(
+                    "Dashboard",
+                    exc,
+                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                )
 
         self._thread(worker)
 
@@ -1303,12 +1359,18 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                     summary = str(evt.get("summary", ""))
                     role = "error" if cat == "error" else "jarvis"
                     self._log_async(f"[{ts_short}] [{cat.upper()}] {summary}", role=role)
-            except URLError:
-                self._log_async("Cannot connect to Jarvis services.", role="error")
-                self._log_async("Make sure the Assistant and Mobile API are running.", role="error")
+            except _REMOTE_WIDGET_ERRORS as exc:
+                self._handle_transport_failure(
+                    "Activity load",
+                    exc,
+                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                )
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Activity log load failed: %s", exc)
-                self._log_async(f"Could not load activity: {exc}", role="error")
+                self._handle_transport_failure(
+                    "Activity load",
+                    exc,
+                    hints=(("Make sure the Assistant and Mobile API are running.", "error"),),
+                )
 
         self._thread(worker)
 
@@ -1419,8 +1481,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             ssl_ctx = _get_ssl_context(url)
             for _attempt in range(2):
                 try:
-                    req = Request(url=url, method="GET")
-                    resp = urlopen(req, timeout=5, context=ssl_ctx)
+                    safe_url = _validated_widget_request_url(url)
+                    req = Request(url=safe_url, method="GET")
+                    resp = _safe_urlopen(req, timeout=5, context=ssl_ctx)
                     ok = resp.status == 200
                     if ok:
                         try:

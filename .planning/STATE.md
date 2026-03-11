@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-07 (SoC splits: desktop_widget.py 5 large methods -> focused sub-methods, thread-safe locks on global singletons)
+Last activity: 2026-03-11 (completed phase-1 security hardening tranche, fixed KG retract SQL regression, and landed phase-2 error-consistency helpers across mobile_api/daemon_loop/desktop_widget; phase-3 typing tranche queued but paused)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -89,6 +89,19 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-05: added model-switch continuity guardrails: system-prompt continuity contract is now injected when routed model changes with existing history, and model-switch events are logged to activity feed (`conversation_model_switch`) for observability and anti-reset diagnosis.
 - 2026-03-05: upgraded learning mission status surfaces with explicit active/inactive flags, active-count and per-status counters, mission status-detail emission, and richer response summaries to improve UI/voice mission transparency and operator trust.
 - 2026-03-06: **User engagement checkpoint** — owner (Conner) acknowledged positive signal and confirmed acceptance of the current main-branch state. Reliability, innovation, and optimization tracking continues as planned. No blocking issues raised; feedback is: the system is on the right trajectory and the workflow heartbeat is healthy. Workflow cadence continues under v5.0 Phase 1 with next focus on continuity, voice robustness, and desloppify burn-down.
+- 2026-03-11: drafted and expanded `.planning/phases/14-world-class-assistant-reliability/14-09-PLAN.md` for always-on learning security architecture. Core invariant: semantic learning remains always-on; security hardening works by trust-layered promotion, quarantine of raw external artifacts, shadow-mode policy gates, trust-aware retrieval, taint inheritance for derived outputs, tamper-evident trust transitions, and mobile sync/queue integrity fixes.
+- 2026-03-11: ran external Gemini review via Git Bash + Gemini CLI and recorded adjudication in `.planning/GEMINI_14-09_REVIEW_2026-03-11.md`. Accepted additions: taint tracking, bounded approval scopes, quarantine TTL, hardened summary path, mobile queue/backpressure limits, approval friction telemetry, explicit sync conflict protocol, and emergency glass-break trust revocation.
+- 2026-03-11: executed 14-09A in engine learning paths. Added `learning_provenance` + `trust_policy_events` dual-write plumbing, trust classification helpers, JSONL provenance tags on legacy ingest, and provenance writes for preferences, feedback, usage, and enriched memory ingest. Targeted regression gate: 111 tests passed, ruff clean on changed files.
+- 2026-03-11: executed 14-09B shadow quarantine tranche. Added `artifact_quarantine` + `threat_memory_indicators`, deterministic artifact/threat classification, safe quarantine summaries, and regression tests for observed assistant artifacts and dangerous command patterns. Targeted regression gate: 113 tests passed, ruff clean on changed files.
+- 2026-03-11: executed 14-09C shadow retrieval tranche. Added batch provenance lookup in `MemoryEngine`, trust annotations and shadow down-rank telemetry in `hybrid_search`, trust fields surfaced through `BrainContextHandler`, `brain_memory.build_context_packet`, and `cross_branch_query`, without changing ranking order. Targeted regression gate: 133 tests passed, ruff clean on changed files.
+- 2026-03-11: hardened local test gating utility `run_tests.py` to fail closed on actual pytest exit status instead of summary-text matching, and fixed the concrete `mobile_api.py` `_sqlite3.Connection` annotation path bug found by repo-wide linting.
+- 2026-03-11: repo-wide scan after 14-09C: direct pytest full suite passed (`5545 passed, 14 skipped, 15 warnings` in 5m58s). Repo-wide mechanical debt remains: ruff 26 findings, mypy 779 errors / 87 files, bandit 116 findings (63 low, 52 medium, 1 high), desloppify strict 76.8 / overall 76.9 with `Error consistency` still weakest at 58.0.
+- 2026-03-11: stabilized `run_tests.py` wrapper to use direct `subprocess.run()` capture + timeout semantics, verified pass/fail exit behavior, and re-ran the full suite through the wrapper successfully (`5545 passed, 14 skipped, 15 warnings` in 6m08s) with no post-run hang.
+- 2026-03-11: hardened widget/desktop transport edges by validating widget request URLs before `urlopen` call sites and resolving `powershell.exe` / `taskkill.exe` via Windows system paths instead of partial executable names. Focused regression gate: widget tests passed (`179 passed, 3 skipped`), ruff clean on changed files.
+- 2026-03-11: repo-wide scan after widget hardening: full suite via repaired wrapper passed (`5544 passed, 15 skipped, 15 warnings` in 6m08s). Static debt snapshot: ruff 26 findings, mypy 778 errors / 87 files, bandit 110 findings (57 low, 52 medium, 1 high), desloppify strict 76.8 / overall 76.9.
+- 2026-03-11: completed repo-wide security tranche on `identity_shield`, `activity_feed`, `harvesting/budget`, `memory/engine`, `knowledge/graph`, `sync/changelog`, and `sync/engine`. Removed the prior Bandit high finding, reduced repo-wide Bandit totals to `57 low / 9 medium / 0 high`, and fixed the follow-on `knowledge/graph` retract regression (`ESCAPE` clause emitted two characters instead of one) after the first full-suite gate caught it.
+- 2026-03-11: landed phase-2 error-consistency refactors without changing endpoint contracts: `mobile_api.py` now routes common boundary failures through shared JSON error helpers, `daemon_loop.py` uses a shared subsystem failure emitter for log/stdout parity, and `desktop_widget.py` centralizes transport-failure messaging across connect/diagnose/command/dashboard/activity flows. Focused gate passed: `desktop_widget`, `mobile_api`, and `daemon_loop` tests green; repo-wide phase-2 rescan started, with interim snapshot showing `ruff` improved from `26` to `22` findings while `bandit` remained `57 low / 9 medium / 0 high` and `desloppify` remained `76.9 / 76.8`.
+- 2026-03-11: phase-3 typing/function tranche was prepared around `voice_intents.py`, `mobile_routes/sync.py`, and the remaining `mobile_api.py` typing fault, but implementation was intentionally paused for a user checkpoint/commit before edits landed.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -105,6 +118,13 @@ Progress (v5.0): [██████░░░░] 55%
   - context truncation/HTTP failures on long replies
   - stability degradation after short command sequences
   - high memory intensity and mission/activity trust gaps
+- New audit evidence (2026-03-11):
+  - repo `desloppify status`: strict 76.8 / overall 76.9, with `Error consistency` the weakest subjective dimension (58.0)
+  - Android audit surfaced concrete integrity/security risks:
+    - duplicate command queue flush path under concurrent loops
+    - learned facts marked synced before network success
+    - non-idempotent auto-sync startup callback registration
+    - cleartext bootstrap path while carrying master-password material
 
 ## Session Continuity
 

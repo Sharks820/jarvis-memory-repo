@@ -10,6 +10,7 @@ from typing import TypedDict
 from jarvis_engine._shared import now_iso as _now_iso
 
 from jarvis_engine.learning._tracker_base import LearningTrackerBase
+from jarvis_engine.learning.trust import classify_learning_subject
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +102,34 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         now = _now_iso()
         snippet = user_message[:200]
         with self._write_lock:
-            self._db.execute(
+            cur = self._db.execute(
                 "INSERT INTO response_feedback (route, feedback, user_message_snippet, recorded_at) "
                 "VALUES (?, ?, ?, ?)",
                 (route, feedback, snippet, now),
             )
             self._db.commit()
+        subject_id = str(cur.lastrowid)
+        provenance = classify_learning_subject(
+            subject_type="feedback",
+            subject_id=subject_id,
+            source_channel="user",
+            content=snippet or feedback,
+            mission_id=route,
+        )
+        self._provenance_store.record_subject(
+            subject_type="feedback",
+            subject_id=subject_id,
+            metadata=provenance,
+        )
+        self._provenance_store.record_policy_event(
+            subject_type="feedback",
+            subject_id=subject_id,
+            action="observe",
+            verdict=provenance["promotion_state"],
+            policy_mode=provenance["policy_mode"],
+            reason="implicit_feedback_recorded",
+            metadata={"route": route, "feedback": feedback},
+        )
         return feedback
 
     def record_explicit_feedback(
@@ -123,12 +146,34 @@ class ResponseFeedbackTracker(LearningTrackerBase):
         now_str = _now_iso()
         snippet = comment[:200] if comment else ""
         with self._write_lock:
-            self._db.execute(
+            cur = self._db.execute(
                 "INSERT INTO response_feedback (route, feedback, user_message_snippet, recorded_at) "
                 "VALUES (?, ?, ?, ?)",
                 (route, quality, snippet, now_str),
             )
             self._db.commit()
+        subject_id = str(cur.lastrowid)
+        provenance = classify_learning_subject(
+            subject_type="feedback",
+            subject_id=subject_id,
+            source_channel="user",
+            content=snippet or quality,
+            mission_id=route,
+        )
+        self._provenance_store.record_subject(
+            subject_type="feedback",
+            subject_id=subject_id,
+            metadata=provenance,
+        )
+        self._provenance_store.record_policy_event(
+            subject_type="feedback",
+            subject_id=subject_id,
+            action="observe",
+            verdict=provenance["promotion_state"],
+            policy_mode=provenance["policy_mode"],
+            reason="explicit_feedback_recorded",
+            metadata={"route": route, "feedback": quality},
+        )
 
     def get_route_quality(self, route: str, last_n: int = 20) -> RouteQuality:
         """Get quality metrics for a specific route.

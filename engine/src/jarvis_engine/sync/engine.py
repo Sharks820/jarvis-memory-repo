@@ -13,6 +13,7 @@ from typing import Any, TypedDict
 
 from jarvis_engine.sync.changelog import (
     _TRACKED_TABLES,
+    _sql_ident,
     _safe_json_loads,
     compute_diff,
     get_sync_cursor,
@@ -323,10 +324,11 @@ class SyncEngine:
         """
         if table_name not in _TRACKED_TABLES:
             raise ValueError(f"Unknown table: {table_name}")
-        if not table_name.isidentifier():
-            raise ValueError(f"Invalid table name: {table_name}")
+        _sql_ident(table_name)
 
         pk_cols: list[str] = pk if isinstance(pk, list) else [pk]
+        for column in pk_cols:
+            _sql_ident(column)
         is_composite = len(pk_cols) > 1
 
         if is_composite:
@@ -340,7 +342,7 @@ class SyncEngine:
         else:
             pk_values = [row_id]
 
-        where_clause = " AND ".join(col + " = ?" for col in pk_cols)
+        where_clause = " AND ".join(f"{_sql_ident(col)} = ?" for col in pk_cols)
         allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
         allowed_fields.update(pk_cols)
         return pk_cols, pk_values, where_clause, allowed_fields
@@ -357,13 +359,15 @@ class SyncEngine:
             return
         pk_set = set(pk_cols)
         extra_cols = [k for k in safe_values if k not in pk_set]
+        for column in extra_cols:
+            _sql_ident(column)
         cols = pk_cols + extra_cols
         placeholders = ", ".join(["?"] * len(cols))
-        col_names = ", ".join(cols)
+        col_names = ", ".join(_sql_ident(col) for col in cols)
         values = pk_values + [safe_values[k] for k in extra_cols]
         self._db.execute(
-            "INSERT OR IGNORE INTO " + table_name
-            + " (" + col_names + ") VALUES (" + placeholders + ")",
+            "INSERT OR IGNORE INTO " + _sql_ident(table_name)
+            + " (" + col_names + ") VALUES (" + placeholders + ")",  # nosec B608
             values,
         )
 
@@ -381,17 +385,13 @@ class SyncEngine:
             if field not in allowed_fields:
                 continue
             if field in new_values:
-                set_parts.append(field + " = ?")
+                set_parts.append(_sql_ident(field) + " = ?")
                 values.append(new_values[field])
         if not set_parts:
             return
         values.extend(pk_values)
-        self._db.execute(
-            "UPDATE " + table_name + " SET "
-            + ", ".join(set_parts)
-            + " WHERE " + where_clause,
-            values,
-        )
+        sql = "UPDATE " + _sql_ident(table_name) + " SET " + ", ".join(set_parts) + " WHERE " + where_clause  # nosec B608
+        self._db.execute(sql, values)
 
     def _apply_single_change(
         self, table_name: str, pk: str | list[str], entry: dict[str, Any],
@@ -424,7 +424,7 @@ class SyncEngine:
             )
         elif operation == "DELETE":
             self._db.execute(
-                "DELETE FROM " + table_name + " WHERE " + where_clause,
+                "DELETE FROM " + _sql_ident(table_name) + " WHERE " + where_clause,  # nosec B608
                 pk_values,
             )
         else:

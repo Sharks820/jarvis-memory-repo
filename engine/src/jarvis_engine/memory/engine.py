@@ -27,6 +27,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_RECORD_LOOKUP_SQL = {
+    "record_id": "SELECT * FROM records WHERE record_id = ?",
+    "content_hash": "SELECT * FROM records WHERE content_hash = ?",
+}
+
+
+def _placeholder_csv(count: int) -> str:
+    """Return a bounded SQLite placeholder list for IN clauses."""
+    if count <= 0 or count > 900:
+        raise ValueError(f"placeholder count must be between 1 and 900, got {count}")
+    return ",".join("?" for _ in range(count))
+
 
 class OptimizeResult(TypedDict):
     """Result from :meth:`MemoryEngine.optimize`."""
@@ -297,22 +309,22 @@ class MemoryEngine:
                 deleted = 0
                 for i in range(0, len(record_ids), 900):
                     chunk = record_ids[i : i + 900]
-                    placeholders = ",".join("?" for _ in chunk)
+                    placeholders = _placeholder_csv(len(chunk))
 
                     cur.execute(
-                        f"DELETE FROM records WHERE record_id IN ({placeholders})",
+                        "DELETE FROM records WHERE record_id IN (" + placeholders + ")",  # nosec B608
                         chunk,
                     )
                     deleted += cur.rowcount
 
                     cur.execute(
-                        f"DELETE FROM fts_records WHERE record_id IN ({placeholders})",
+                        "DELETE FROM fts_records WHERE record_id IN (" + placeholders + ")",  # nosec B608
                         chunk,
                     )
 
                     if self._vec_available:
                         cur.execute(
-                            f"DELETE FROM vec_records WHERE record_id IN ({placeholders})",
+                            "DELETE FROM vec_records WHERE record_id IN (" + placeholders + ")",  # nosec B608
                             chunk,
                         )
 
@@ -327,10 +339,12 @@ class MemoryEngine:
     def _get_record_by(self, column: str, value: str) -> dict | None:
         """Fetch a single record by *column* = *value*."""
         self._check_open()
-        # column is always a literal from our code, never user input
+        sql = _RECORD_LOOKUP_SQL.get(column)
+        if sql is None:
+            raise ValueError(f"Unsupported record lookup column: {column!r}")
         with self._db_lock:
             cur = self._db.execute(
-                f"SELECT * FROM records WHERE {column} = ?",
+                sql,
                 (value,),
             )
             row = cur.fetchone()
@@ -484,12 +498,43 @@ class MemoryEngine:
         with self._db_lock:
             for i in range(0, len(record_ids), 900):
                 chunk = record_ids[i : i + 900]
-                placeholders = ",".join("?" for _ in chunk)
+                placeholders = _placeholder_csv(len(chunk))
                 cur = self._db.execute(
-                    f"SELECT * FROM records WHERE record_id IN ({placeholders})",
+                    "SELECT * FROM records WHERE record_id IN (" + placeholders + ")",  # nosec B608
                     chunk,
                 )
                 results.extend(dict(row) for row in cur.fetchall())
+        return results
+
+    def get_learning_provenance_batch(self, record_ids: list[str]) -> dict[str, dict]:
+        """Fetch trust metadata for multiple records, if the table exists."""
+        self._check_open()
+        if not record_ids:
+            return {}
+
+        results: dict[str, dict] = {}
+        try:
+            with self._db_lock:
+                for i in range(0, len(record_ids), 900):
+                    chunk = record_ids[i : i + 900]
+                    placeholders = _placeholder_csv(len(chunk))
+                    cur = self._db.execute(
+                        "SELECT subject_id, learning_lane, trust_level, promotion_state, "
+                        "artifact_kind, policy_mode FROM learning_provenance "
+                        "WHERE subject_type = 'memory_record' AND subject_id IN (" + placeholders + ")",  # nosec B608
+                        chunk,
+                    )
+                    for row in cur.fetchall():
+                        results[row[0]] = {
+                            "learning_lane": row[1],
+                            "trust_level": row[2],
+                            "promotion_state": row[3],
+                            "artifact_kind": row[4],
+                            "policy_mode": row[5],
+                        }
+        except sqlite3.Error:
+            logger.debug("learning_provenance lookup unavailable", exc_info=True)
+            return {}
         return results
 
     def get_all_records_for_tier_maintenance(self) -> list[dict]:

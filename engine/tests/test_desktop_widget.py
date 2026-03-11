@@ -178,6 +178,9 @@ class TestIsSafeWidgetBaseUrl:
         # urlparse without scheme puts everything in path, hostname is None
         assert _is_safe_widget_base_url("127.0.0.1:8787") is False
 
+    def test_non_http_scheme_unsafe(self):
+        assert _is_safe_widget_base_url("file://127.0.0.1:8787") is False
+
 
 # ---- Config loading ---------------------------------------------------------
 
@@ -959,7 +962,7 @@ class TestShowToast:
         mock_popen.assert_called_once()
         args = mock_popen.call_args
         cmd_list = args[0][0]
-        assert cmd_list[0] == "powershell"
+        assert cmd_list[0].lower().endswith("powershell.exe") or cmd_list[0] == "powershell"
         assert "-NoProfile" in cmd_list
         # The script should contain our title and message
         script = cmd_list[-1]

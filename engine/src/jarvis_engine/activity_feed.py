@@ -157,26 +157,38 @@ class ActivityFeed:
         since: str | None = None,
     ) -> list[ActivityEvent]:
         """Query recent events, newest first.  Optional category and since filters."""
-        clauses: list[str] = []
-        params: list[str | int] = []
-
-        if category is not None:
-            clauses.append("category = ?")
-            params.append(category)
-        if since is not None:
-            clauses.append("timestamp >= ?")
-            params.append(since)
-
-        where = ""
-        if clauses:
-            where = "WHERE " + " AND ".join(clauses)
-
-        sql = (
-            f"SELECT id, timestamp, category, summary, details "
-            f"FROM activity_log {where} "
-            f"ORDER BY timestamp DESC LIMIT ?"
-        )
-        params.append(limit)
+        params: list[str | int]
+        if category is not None and since is not None:
+            sql = (
+                "SELECT id, timestamp, category, summary, details "
+                "FROM activity_log "
+                "WHERE category = ? AND timestamp >= ? "
+                "ORDER BY timestamp DESC LIMIT ?"
+            )
+            params = [category, since, limit]
+        elif category is not None:
+            sql = (
+                "SELECT id, timestamp, category, summary, details "
+                "FROM activity_log "
+                "WHERE category = ? "
+                "ORDER BY timestamp DESC LIMIT ?"
+            )
+            params = [category, limit]
+        elif since is not None:
+            sql = (
+                "SELECT id, timestamp, category, summary, details "
+                "FROM activity_log "
+                "WHERE timestamp >= ? "
+                "ORDER BY timestamp DESC LIMIT ?"
+            )
+            params = [since, limit]
+        else:
+            sql = (
+                "SELECT id, timestamp, category, summary, details "
+                "FROM activity_log "
+                "ORDER BY timestamp DESC LIMIT ?"
+            )
+            params = [limit]
 
         with self._lock:
             self._check_open()

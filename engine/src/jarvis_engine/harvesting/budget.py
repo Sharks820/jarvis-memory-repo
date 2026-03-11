@@ -148,16 +148,24 @@ class BudgetManager:
             limit_requests = budget["limit_requests"]
 
             if period == "daily":
-                where_clause = "provider = ? AND ts >= date('now')"
+                sql = (
+                    "SELECT COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
+                    "COALESCE(SUM(request_count), 0) AS total_requests "
+                    "FROM harvest_spend "
+                    "WHERE provider = ? AND ts >= date('now')"
+                )
             elif period == "monthly":
-                where_clause = "provider = ? AND ts >= date('now', 'start of month')"
+                sql = (
+                    "SELECT COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
+                    "COALESCE(SUM(request_count), 0) AS total_requests "
+                    "FROM harvest_spend "
+                    "WHERE provider = ? AND ts >= date('now', 'start of month')"
+                )
             else:
                 continue
 
             row = self._db.execute(
-                f"SELECT COALESCE(SUM(cost_usd), 0.0) AS total_cost, "
-                f"COALESCE(SUM(request_count), 0) AS total_requests "
-                f"FROM harvest_spend WHERE {where_clause}",
+                sql,
                 (provider,),
             ).fetchone()
 

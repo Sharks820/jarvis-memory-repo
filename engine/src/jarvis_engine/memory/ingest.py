@@ -15,6 +15,13 @@ import re
 from typing import TYPE_CHECKING, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso, sha256_hex, sha256_short
+from jarvis_engine.learning.provenance import LearningProvenanceStore
+from jarvis_engine.learning.trust import (
+    artifact_requires_quarantine,
+    classify_learning_subject,
+    detect_threat_indicators,
+    safe_artifact_summary,
+)
 
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
@@ -117,6 +124,11 @@ class EnrichedIngestPipeline:
         self._gateway = gateway
         self._fact_extractor = None  # Lazy-initialized on first use
         self._llm_extractor = None  # Lazy-initialized on first use
+        self._provenance_store = LearningProvenanceStore(
+            db=engine.db,
+            write_lock=engine.write_lock,
+            db_lock=engine.db_lock,
+        )
 
     def set_gateway(self, gateway: "object | None") -> None:
         """Set the LLM gateway for fact extraction (late-binding).
@@ -271,6 +283,76 @@ class EnrichedIngestPipeline:
             if was_inserted:
                 record_id = record["record_id"]
                 inserted_ids.append(record_id)
+                provenance = classify_learning_subject(
+                    subject_type="memory_record",
+                    subject_id=record_id,
+                    source_channel=source,
+                    content=chunk,
+                    tags=tag_list,
+                    mission_id=task_id,
+                )
+                self._provenance_store.record_subject(
+                    subject_type="memory_record",
+                    subject_id=record_id,
+                    metadata=provenance,
+                )
+                self._provenance_store.record_policy_event(
+                    subject_type="memory_record",
+                    subject_id=record_id,
+                    action="observe",
+                    verdict=provenance["promotion_state"],
+                    policy_mode=provenance["policy_mode"],
+                    reason="phase_14_09a_dual_write",
+                    metadata={
+                        "source": source,
+                        "kind": kind,
+                        "artifact_kind": provenance["artifact_kind"],
+                    },
+                )
+                if artifact_requires_quarantine(provenance):
+                    summary = safe_artifact_summary(chunk)
+                    self._provenance_store.quarantine_artifact(
+                        subject_type="memory_record",
+                        subject_id=record_id,
+                        source_hash=provenance["source_hash"],
+                        source_channel=provenance["source_channel"],
+                        artifact_kind=provenance["artifact_kind"],
+                        safe_summary=summary,
+                        quarantine_reason="shadow_artifact_observed",
+                        metadata={
+                            "policy_mode": provenance["policy_mode"],
+                            "mission_id": task_id,
+                        },
+                        raw_preview=summary,
+                    )
+                    self._provenance_store.record_policy_event(
+                        subject_type="memory_record",
+                        subject_id=record_id,
+                        action="shadow_quarantine",
+                        verdict="quarantined",
+                        policy_mode=provenance["policy_mode"],
+                        reason="artifact_requires_verification",
+                        metadata={"artifact_kind": provenance["artifact_kind"]},
+                    )
+                for indicator in detect_threat_indicators(chunk, tag_list):
+                    self._provenance_store.record_threat_indicator(
+                        indicator_type=indicator,
+                        indicator_value=record_id,
+                        subject_type="memory_record",
+                        subject_id=record_id,
+                        source_hash=provenance["source_hash"],
+                        reason="artifact_signal_detected",
+                        metadata={"source": source, "kind": kind},
+                    )
+                    self._provenance_store.record_policy_event(
+                        subject_type="memory_record",
+                        subject_id=record_id,
+                        action="threat_indicator",
+                        verdict=indicator,
+                        policy_mode=provenance["policy_mode"],
+                        reason="deterministic_pattern_match",
+                        metadata={"indicator": indicator},
+                    )
                 self._extract_all_facts(
                     chunk, source, record["branch"], record_id,
                 )

@@ -21,6 +21,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEVICE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+_SQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _TRACKED_TABLES: dict[str, dict[str, Any]] = {
     "records": {
@@ -129,43 +130,71 @@ def _pk_expr(pk: str | list[str], alias: str) -> str:
     names for composite keys (``["category", "preference"]``).
     *alias* is ``"NEW"`` or ``"OLD"`` — the trigger row alias.
     """
+    if alias not in {"NEW", "OLD"}:
+        raise ValueError(f"Invalid trigger alias: {alias!r}")
     if isinstance(pk, list):
-        return " || ':' || ".join(f"{alias}.{col}" for col in pk)
-    return f"{alias}.{pk}"
+        return " || ':' || ".join(f'{alias}.{_sql_ident(col)}' for col in pk)
+    return f"{alias}.{_sql_ident(pk)}"
+
+
+def _sql_ident(name: str) -> str:
+    """Quote a validated SQLite identifier."""
+    if not _SQL_IDENTIFIER_RE.match(name):
+        raise ValueError(f"Invalid SQL identifier: {name!r}")
+    return f'"{name}"'
+
+
+def _sql_literal(value: str) -> str:
+    """Return a single-quoted SQL string literal."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _validate_trigger_spec(table: str, pk: str | list[str], fields: list[str]) -> None:
+    """Validate trigger SQL identifiers before dynamic DDL generation."""
+    _sql_ident(table)
+    pk_cols = pk if isinstance(pk, list) else [pk]
+    for column in pk_cols + fields:
+        _sql_ident(column)
 
 
 def _build_insert_trigger(table: str, pk: str | list[str], fields: list[str], device_id: str) -> str:
     """Generate AFTER INSERT trigger SQL for *table*."""
+    _validate_trigger_spec(table, pk, fields)
     fields_json = json.dumps(fields)
     new_values_expr = (
         "'{' || "
         + " || ',' || ".join(
-            "'\"" + f + "\":' || json_quote(NEW." + f + ")"
+            _sql_literal(f'"{f}":') + " || json_quote(NEW." + _sql_ident(f) + ")"
             for f in fields
         )
         + " || '}'"
     )
     # Atomic version increment via UPDATE on the sequence table, then read
-    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
-    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
-    return (
-        "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_insert "
-        "AFTER INSERT ON " + table + " "
-        "BEGIN "
-        + version_update
-        + "INSERT INTO _sync_changelog "
-        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
-        "VALUES ("
-        "'" + table + "', "
-        "CAST(" + _pk_expr(pk, "NEW") + " AS TEXT), "
-        "'INSERT', "
-        "'" + fields_json + "', "
-        "'{}', "
-        + new_values_expr + ", "
-        "'" + device_id + "', "
-        + version_expr
-        + "); END;"
-    )
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = " + _sql_literal(table) + "; "  # nosec B608
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = " + _sql_literal(table) + ")"  # nosec B608
+    return "".join([  # nosec B608
+        "CREATE TRIGGER IF NOT EXISTS ",
+        _sql_ident(f"_sync_trg_{table}_insert"),
+        " AFTER INSERT ON ",
+        _sql_ident(table),
+        " BEGIN ",
+        version_update,
+        "INSERT INTO _sync_changelog ",
+        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) ",
+        "VALUES (",
+        _sql_literal(table),
+        ", CAST(",
+        _pk_expr(pk, "NEW"),
+        " AS TEXT), 'INSERT', ",
+        _sql_literal(fields_json),
+        ", '{}', ",
+        new_values_expr,
+        ", ",
+        _sql_literal(device_id),
+        ", ",
+        version_expr,
+        "); END;",
+    ])
 
 
 def _clean_json_sql(expr: str) -> str:
@@ -271,10 +300,11 @@ def _build_update_trigger(
     table: str, pk: str | list[str], fields: list[str], noise_fields: list[str], device_id: str,
 ) -> str:
     """Generate AFTER UPDATE trigger SQL for *table*."""
+    _validate_trigger_spec(table, pk, fields)
     # WHEN clause: fire only if at least one non-noise field actually changed
     significant_fields = [f for f in fields if f not in noise_fields]
     if significant_fields:
-        when_parts = ["OLD." + f + " IS NOT NEW." + f for f in significant_fields]
+        when_parts = [f"OLD.{_sql_ident(f)} IS NOT NEW.{_sql_ident(f)}" for f in significant_fields]
         when_clause = "WHEN " + " OR ".join(when_parts) + " "
     else:
         when_clause = ""
@@ -283,8 +313,10 @@ def _build_update_trigger(
     raw_fields_changed = (
         "'[' || "
         + " || ',' || ".join(
-            "CASE WHEN OLD." + f + " IS NOT NEW." + f
-            + " THEN '\"" + f + "\"' ELSE '' END"
+            f"CASE WHEN OLD.{_sql_ident(f)} IS NOT NEW.{_sql_ident(f)} "
+            + "THEN "
+            + _sql_literal(f'"{f}"')
+            + " ELSE '' END"
             for f in fields
         )
         + " || ']'"
@@ -294,8 +326,12 @@ def _build_update_trigger(
     raw_old_values = (
         "'{' || "
         + " || ',' || ".join(
-            "CASE WHEN OLD." + f + " IS NOT NEW." + f
-            + " THEN '\"" + f + "\":' || json_quote(OLD." + f + ") ELSE '' END"
+            f"CASE WHEN OLD.{_sql_ident(f)} IS NOT NEW.{_sql_ident(f)} "
+            + "THEN "
+            + _sql_literal(f'"{f}":')
+            + " || json_quote(OLD."
+            + _sql_ident(f)
+            + ") ELSE '' END"
             for f in fields
         )
         + " || '}'"
@@ -305,68 +341,84 @@ def _build_update_trigger(
     raw_new_values = (
         "'{' || "
         + " || ',' || ".join(
-            "CASE WHEN OLD." + f + " IS NOT NEW." + f
-            + " THEN '\"" + f + "\":' || json_quote(NEW." + f + ") ELSE '' END"
+            f"CASE WHEN OLD.{_sql_ident(f)} IS NOT NEW.{_sql_ident(f)} "
+            + "THEN "
+            + _sql_literal(f'"{f}":')
+            + " || json_quote(NEW."
+            + _sql_ident(f)
+            + ") ELSE '' END"
             for f in fields
         )
         + " || '}'"
     )
     new_values_expr = _clean_json_obj_sql(raw_new_values)
     # Atomic version increment via UPDATE on the sequence table, then read
-    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
-    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
-    return (
-        "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_update "
-        "AFTER UPDATE ON " + table + " "
-        + when_clause
-        + "BEGIN "
-        + version_update
-        + "INSERT INTO _sync_changelog "
-        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
-        "VALUES ("
-        "'" + table + "', "
-        "CAST(" + _pk_expr(pk, "NEW") + " AS TEXT), "
-        "'UPDATE', "
-        + fields_changed_expr + ", "
-        + old_values_expr + ", "
-        + new_values_expr + ", "
-        "'" + device_id + "', "
-        + version_expr
-        + "); END;"
-    )
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = " + _sql_literal(table) + "; "  # nosec B608
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = " + _sql_literal(table) + ")"  # nosec B608
+    return "".join([  # nosec B608
+        "CREATE TRIGGER IF NOT EXISTS ",
+        _sql_ident(f"_sync_trg_{table}_update"),
+        " AFTER UPDATE ON ",
+        _sql_ident(table),
+        " ",
+        when_clause,
+        "BEGIN ",
+        version_update,
+        "INSERT INTO _sync_changelog ",
+        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) ",
+        "VALUES (",
+        _sql_literal(table),
+        ", CAST(",
+        _pk_expr(pk, "NEW"),
+        " AS TEXT), 'UPDATE', ",
+        fields_changed_expr,
+        ", ",
+        old_values_expr,
+        ", ",
+        new_values_expr,
+        ", ",
+        _sql_literal(device_id),
+        ", ",
+        version_expr,
+        "); END;",
+    ])
 
 
 def _build_delete_trigger(table: str, pk: str | list[str], fields: list[str], device_id: str) -> str:
     """Generate AFTER DELETE trigger SQL for *table*."""
+    _validate_trigger_spec(table, pk, fields)
     old_values_expr = (
         "'{' || "
         + " || ',' || ".join(
-            "'\"" + f + "\":' || json_quote(OLD." + f + ")"
+            _sql_literal(f'"{f}":') + " || json_quote(OLD." + _sql_ident(f) + ")"
             for f in fields
         )
         + " || '}'"
     )
     # Atomic version increment via UPDATE on the sequence table, then read
-    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = '" + table + "'; "
-    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = '" + table + "')"
-    return (
-        "CREATE TRIGGER IF NOT EXISTS _sync_trg_" + table + "_delete "
-        "AFTER DELETE ON " + table + " "
-        "BEGIN "
-        + version_update
-        + "INSERT INTO _sync_changelog "
-        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) "
-        "VALUES ("
-        "'" + table + "', "
-        "CAST(" + _pk_expr(pk, "OLD") + " AS TEXT), "
-        "'DELETE', "
-        "'[]', "
-        + old_values_expr + ", "
-        "'{}', "
-        "'" + device_id + "', "
-        + version_expr
-        + "); END;"
-    )
+    version_update = "UPDATE _sync_version_seq SET next_version = next_version + 1 WHERE table_name = " + _sql_literal(table) + "; "  # nosec B608
+    version_expr = "(SELECT next_version - 1 FROM _sync_version_seq WHERE table_name = " + _sql_literal(table) + ")"  # nosec B608
+    return "".join([  # nosec B608
+        "CREATE TRIGGER IF NOT EXISTS ",
+        _sql_ident(f"_sync_trg_{table}_delete"),
+        " AFTER DELETE ON ",
+        _sql_ident(table),
+        " BEGIN ",
+        version_update,
+        "INSERT INTO _sync_changelog ",
+        "(table_name, row_id, operation, fields_changed, old_values, new_values, device_id, __version) ",
+        "VALUES (",
+        _sql_literal(table),
+        ", CAST(",
+        _pk_expr(pk, "OLD"),
+        " AS TEXT), 'DELETE', '[]', ",
+        old_values_expr,
+        ", '{}', ",
+        _sql_literal(device_id),
+        ", ",
+        version_expr,
+        "); END;",
+    ])
 
 
 # ---------------------------------------------------------------------------

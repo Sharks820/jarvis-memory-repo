@@ -62,6 +62,7 @@ def cross_branch_query(
 
     # Step 2: Vector search
     vec_results = engine.search_vec(embedding, limit=k * 2)
+    provenance_by_id = engine.get_learning_provenance_batch([record_id for record_id, _ in vec_results[:k]])
 
     # Step 3: Build direct results and find cross-branch connections
     G = kg.to_networkx(copy=False)
@@ -70,9 +71,13 @@ def cross_branch_query(
     branches_seen: set[str] = set()
 
     for record_id, distance in vec_results[:k]:
+        trust_meta = provenance_by_id.get(record_id, {})
         direct_results.append({
             "record_id": record_id,
             "distance": distance,
+            "trust_level": trust_meta.get("trust_level", "unknown"),
+            "learning_lane": trust_meta.get("learning_lane", "unknown"),
+            "promotion_state": trust_meta.get("promotion_state", "unknown"),
         })
 
         # Look for KG neighbors in other branches

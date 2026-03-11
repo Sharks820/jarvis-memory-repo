@@ -120,3 +120,13 @@ class TestResponseFeedbackTracker:
         cur = db.execute("SELECT user_message_snippet FROM response_feedback")
         snippet = cur.fetchone()[0]
         assert len(snippet) == 200
+
+    def test_feedback_writes_learning_provenance(self, db, tracker):
+        tracker.record_explicit_feedback("positive", route="routine", comment="looks good")
+        row = db.execute(
+            "SELECT trust_level, promotion_state FROM learning_provenance "
+            "WHERE subject_type = 'feedback' ORDER BY CAST(subject_id AS INTEGER) DESC LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "T3_trusted"
+        assert row[1] == "trusted"

@@ -120,6 +120,12 @@ class BrainContextHandler:
                     "kind": record.get("kind", ""),
                     "ts": record.get("ts", ""),
                     "score": record.get("_search_score", 0.0),
+                    "trust_level": record.get("trust_level", "unknown"),
+                    "learning_lane": record.get("learning_lane", "unknown"),
+                    "promotion_state": record.get("promotion_state", "unknown"),
+                    "artifact_kind": record.get("artifact_kind", ""),
+                    "trust_shadow_score": record.get("_trust_shadow_score", record.get("_search_score", 0.0)),
+                    "would_downrank": record.get("_trust_would_downrank", False),
                 })
                 total_chars += len(summary)
             return BrainContextResult(packet={

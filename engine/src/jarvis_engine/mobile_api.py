@@ -79,7 +79,6 @@ class CLIResult(TypedDict, total=False):
 # so route mixin modules (e.g. command.py) and this file see the same object.
 from jarvis_engine.mobile_routes._helpers import (
     _thread_local,
-    _configure_db,
     _parse_bool,
 )
 
@@ -397,7 +396,7 @@ class MobileIngestServer(ThreadingHTTPServer):
     def _setup_security(self, repo_root: Path) -> None:
         """Initialise SecurityOrchestrator -- FAIL CLOSED on error."""
         self.security: SecurityOrchestrator | None = None
-        self._security_db: sqlite3.Connection | None = None
+        self._security_db: _sqlite3.Connection | None = None
         self._security_write_lock: threading.Lock | None = None
         self._security_degraded: bool = False
         try:
@@ -730,6 +729,7 @@ class MobileIngestHandler(
     _BODY_SCAN_EXEMPT_PATHS = frozenset(
         {"/bootstrap", "/auth/login", "/auth/logout", "/auth/lock", "/sync/push"}
     )
+    _cached_post_body: bytes | None = None
 
     @property
     def _root(self) -> Path:
@@ -803,6 +803,25 @@ class MobileIngestHandler(
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _error_payload(
+        self,
+        message: str,
+        *,
+        ok: bool = False,
+        **extra: Any,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"ok": ok, "error": message}
+        payload.update(extra)
+        return payload
+
+    def _write_error(
+        self,
+        status: int,
+        message: str,
+        **extra: Any,
+    ) -> None:
+        self._write_json(status, self._error_payload(message, **extra))
 
     def _command_failure_result(
         self,
@@ -1325,7 +1344,7 @@ class MobileIngestHandler(
         }
 
     def _unauthorized(self, message: str) -> None:
-        self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": message})
+        self._write_error(HTTPStatus.UNAUTHORIZED, message)
 
     def _read_json_body(
         self, *, max_content_length: int, auth: bool = True,
@@ -1341,23 +1360,23 @@ class MobileIngestHandler(
             try:
                 content_length = int(raw_content_length)
             except (TypeError, ValueError):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
+                self._write_error(HTTPStatus.BAD_REQUEST, "Invalid content length.")
                 return None, None
 
             try:
                 self.connection.settimeout(15.0)
             except OSError:
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection closed."})
+                self._write_error(HTTPStatus.BAD_REQUEST, "Connection closed.")
                 return None, None
             try:
                 body = self.rfile.read(content_length) if content_length > 0 else b"{}"
             except (OSError, ConnectionError):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Connection reset during read."})
+                self._write_error(HTTPStatus.BAD_REQUEST, "Connection reset during read.")
                 return None, None
 
         min_length = 1 if auth else 0
         if content_length < min_length or content_length > max_content_length:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid content length."})
+            self._write_error(HTTPStatus.BAD_REQUEST, "Invalid content length.")
             return None, None
 
         if auth and not self._validate_auth(body):
@@ -1366,13 +1385,13 @@ class MobileIngestHandler(
         try:
             payload = json.loads(body.decode("utf-8"))
         except UnicodeDecodeError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid UTF-8 body."})
+            self._write_error(HTTPStatus.BAD_REQUEST, "Invalid UTF-8 body.")
             return None, None
         except json.JSONDecodeError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON."})
+            self._write_error(HTTPStatus.BAD_REQUEST, "Invalid JSON.")
             return None, None
         if not isinstance(payload, dict):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON payload."})
+            self._write_error(HTTPStatus.BAD_REQUEST, "Invalid JSON payload.")
             return None, None
         return payload, body
 
@@ -1512,9 +1531,9 @@ class MobileIngestHandler(
         client_ip = str(self.client_address[0]).strip()
         server = self.server
         if server.check_master_pw_rate(client_ip):
-            self._write_json(
+            self._write_error(
                 HTTPStatus.TOO_MANY_REQUESTS,
-                {"ok": False, "error": "Too many master password attempts. Try again later."},
+                "Too many master password attempts. Try again later.",
             )
             return False
         server.record_master_pw_attempt(client_ip)
@@ -1559,10 +1578,10 @@ class MobileIngestHandler(
             session_token = self.headers.get("X-Jarvis-Session", "").strip()
             if session_token:
                 # Session was explicitly provided but subsystem is down
-                self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
-                    "error": "Service unavailable: session subsystem failed to initialize",
-                })
+                self._write_error(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "Service unavailable: session subsystem failed to initialize",
+                )
                 return False
             # No session token — fall through to HMAC auth
             return self._validate_auth(body)
@@ -1652,16 +1671,13 @@ class MobileIngestHandler(
             )
             if not _sec_check["allowed"]:
                 logger.warning("Security pipeline blocked %s: %s", path, _sec_check.get("reason", "unknown"))
-                self._write_json(HTTPStatus.FORBIDDEN, {
-                    "ok": False,
-                    "error": "Request blocked by security policy",
-                })
+                self._write_error(HTTPStatus.FORBIDDEN, "Request blocked by security policy")
                 return False
         elif getattr(self.server, "_security_degraded", False) and path not in ("/health", "/auth/login"):
-            self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                "ok": False,
-                "error": "Service unavailable: security subsystem failed to initialize",
-            })
+            self._write_error(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "Service unavailable: security subsystem failed to initialize",
+            )
             return False
         return True
 
@@ -1688,7 +1704,7 @@ class MobileIngestHandler(
         if handler_name:
             getattr(self, handler_name)()
             return
-        self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
+        self._write_error(HTTPStatus.NOT_FOUND, "Not found")
         return
 
     def _check_rate_limit(self, path: str) -> bool:
@@ -1696,9 +1712,9 @@ class MobileIngestHandler(
         client_ip = str(self.client_address[0]).strip()
         server = self.server
         if server.check_api_rate(client_ip, path):
-            self._write_json(
+            self._write_error(
                 HTTPStatus.TOO_MANY_REQUESTS,
-                {"ok": False, "error": "Rate limit exceeded. Try again later."},
+                "Rate limit exceeded. Try again later.",
             )
             return False
         return True
@@ -1762,17 +1778,17 @@ class MobileIngestHandler(
         # Enforce endpoint-specific Content-Length limits before reading
         # the full body to reject oversized payloads early.
         max_body = self._POST_BODY_LIMITS.get(path, self._DEFAULT_POST_BODY_LIMIT)
-        self._cached_post_body: bytes | None = None
+        self._cached_post_body = None
         raw_cl = self.headers.get("Content-Length", "0")
         try:
             cl = int(raw_cl)
         except (TypeError, ValueError):
             cl = 0
         if cl > max_body:
-            self._write_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {
-                "ok": False,
-                "error": f"Request body too large (limit {max_body} bytes).",
-            })
+            self._write_error(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                f"Request body too large (limit {max_body} bytes).",
+            )
             return
         if cl > 0:
             try:
@@ -1783,19 +1799,10 @@ class MobileIngestHandler(
                 self._cached_post_body = self.rfile.read(cl)
             except (OSError, ConnectionError) as exc:
                 logger.warning("POST body read failed: %s", exc)
-                self._write_json(HTTPStatus.BAD_REQUEST, {
-                    "ok": False,
-                    "error": "Failed to read request body.",
-                })
+                self._write_error(HTTPStatus.BAD_REQUEST, "Failed to read request body.")
                 return
         # Security orchestrator pipeline check (with actual body)
-        _body_text = ""
-        if self._cached_post_body:
-            try:
-                _body_text = self._cached_post_body.decode("utf-8", errors="replace")
-            except Exception as exc:  # boundary: catch-all justified
-                logger.debug("POST body decode failed: %s", exc)
-                _body_text = ""
+        _body_text = self._cached_post_body.decode("utf-8", errors="replace") if self._cached_post_body else ""
         if not self._run_security_check(path, body=_body_text):
             return
         # O(1) dispatch for POST routes
@@ -1803,7 +1810,7 @@ class MobileIngestHandler(
         if handler_name:
             getattr(self, handler_name)()
             return
-        self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
+        self._write_error(HTTPStatus.NOT_FOUND, "Not found")
         return
 
     def log_message(self, fmt: str, *args: object) -> None:
