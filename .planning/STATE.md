@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-12 (Gemini-reviewed desktop continuity tranche shipped; transcript status strip + continuity rail now surface live reasoning context; full repo suite green at 5580 passed)
+Last activity: 2026-03-12 (Gemini-reviewed desktop diagnostics tranche shipped; live health pulse + repair drawer now surface quick-scan trust state; full repo suite green at 5581 passed)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -32,7 +32,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-12): 5580 passing, 14 skipped, 0 failures
+- Latest full test run (2026-03-12): 5581 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 477 errors across 79 files
 - Security scan baseline: bandit 66 findings (0 high, 9 medium, 57 low)
@@ -115,6 +115,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-12: completed the follow-on desktop compact-controls tranche. `desktop_widget.py` now renders the posture toggles as a responsive 3-column grid on compact screens instead of a single overflowing horizontal strip, which keeps the desktop control surface legible without stealing additional height from the conversation pane. Focused `ruff`, focused desktop `mypy`, and focused desktop pytest gates stayed green, and the full repo suite passed via `python run_tests.py` at `5576 passed, 14 skipped, 15 warnings` in 6m33s.
 - 2026-03-12: added an inline transcript-status strip so the conversation surface itself explains what Jarvis is doing instead of forcing the user to infer it from side telemetry. `widget_conversation.py` now renders a persistent execution-status banner above the transcript, and `desktop_widget.py` now drives it from controller-owned live state with route-aware copy for listening, processing, recovery, and ready states. Focused `ruff`, focused desktop `mypy`, and focused desktop pytest gates stayed green, and the full repo suite passed via `python run_tests.py` at `5577 passed, 15 skipped, 15 warnings` in 5m43s.
 - 2026-03-12: executed the first Gemini-reviewed desktop UI tranche and accepted Gemini’s recommendation to expose backend continuity state directly in the widget. `desktop_controller.py` now carries a typed `DesktopContinuitySnapshot`, `desktop_widget.py` now renders a compact-friendly `Continuity Rail` backed by `conversation_state` entities/goals/decisions/timeline truth, and compact mode keeps it collapsed by default so transcript space still wins on shorter displays. Focused `ruff`, focused desktop `mypy`, and focused desktop pytest gates stayed green, and the full repo suite passed via `python run_tests.py` at `5580 passed, 14 skipped, 15 warnings` in 5m49s.
+- 2026-03-12: executed the next Gemini-reviewed desktop UI tranche on top of the continuity baseline and chose the system-health surface as the safest high-trust follow-on. `desktop_controller.py` now carries a typed `DesktopDiagnosticsSnapshot`, `desktop_widget.py` now renders a live `Health` pulse chip in the hero surface plus a compact diagnostics drawer with quick-scan summary and direct `Diagnose & Repair` entry point, and the widget now polls `/diagnostics/status` on a bounded cadence instead of inventing a new diagnostics path. Focused `ruff`, focused desktop `mypy`, and focused desktop pytest gates stayed green, and the full repo suite passed via `python run_tests.py` at `5581 passed, 15 skipped, 15 warnings` in 5m42s.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second

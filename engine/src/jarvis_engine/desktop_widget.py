@@ -160,6 +160,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             minimum=30_000,
             maximum=1_800_000,
         )
+        self._last_diag_poll_at: float = 0.0
         self._ensure_controller()
 
         self.title("Jarvis Unlimited")
@@ -455,6 +456,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._build_command_area(body)
         self._build_status_bar(body)
         self._build_continuity_rail(body)
+        self._build_diagnostics_section(body)
         self._build_chat_area(body)
 
         # Tooltips on key controls
@@ -543,6 +545,22 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             anchor="w",
         )
         self._live_mode_label.pack(side=tk.LEFT)
+        self._health_chip_var = tk.StringVar(value="Health --")
+        self._health_chip_btn = tk.Button(
+            top_row,
+            textvariable=self._health_chip_var,
+            bg="#1f2937",
+            fg="#d1d5db",
+            activebackground="#1f2937",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            padx=8,
+            pady=3,
+            command=self._toggle_diagnostics_section,
+        )
+        self._health_chip_btn.pack(side=tk.RIGHT, padx=(0, 6))
         self._mission_chip_var = tk.StringVar(value="No live missions")
         self._mission_chip_label = tk.Label(
             top_row,
@@ -1080,6 +1098,74 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._apply_continuity_section_state()
 
+    def _build_diagnostics_section(self, body: tk.Frame) -> None:
+        """Build a compact diagnostics drawer for health issues and repair actions."""
+        panel = tk.LabelFrame(body, text="System Health", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        panel.pack(fill=tk.X, padx=10, pady=(8, 0))
+        self._diagnostics_section = panel
+
+        header = tk.Frame(panel, bg=self.PANEL)
+        header.pack(fill=tk.X, padx=6, pady=(4, 0))
+        self._diagnostics_summary_var = tk.StringVar(value="Health status will appear here after the first quick scan.")
+        self._diagnostics_summary_label = tk.Label(
+            header,
+            textvariable=self._diagnostics_summary_var,
+            bg=self.PANEL,
+            fg=self.MUTED,
+            font=("Segoe UI", 8, "bold"),
+            anchor="w",
+        )
+        self._diagnostics_summary_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._diagnostics_collapsed = tk.BooleanVar(value=self._compact_layout)
+        self._diagnostics_toggle_btn = tk.Button(
+            header,
+            text="Show Health" if self._diagnostics_collapsed.get() else "Hide Health",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            activebackground=self.PANEL,
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            command=self._toggle_diagnostics_section,
+        )
+        self._diagnostics_toggle_btn.pack(side=tk.RIGHT)
+
+        self._diagnostics_body = tk.Frame(panel, bg=self.PANEL)
+        self._diagnostics_detail_var = tk.StringVar(
+            value="Quick diagnostics have not run yet. Use the health chip or Diagnose button to refresh."
+        )
+        self._diagnostics_detail_label = tk.Label(
+            self._diagnostics_body,
+            textvariable=self._diagnostics_detail_var,
+            bg=self.PANEL,
+            fg=self.TEXT,
+            font=("Segoe UI", 8),
+            justify=tk.LEFT,
+            wraplength=385,
+            anchor="w",
+        )
+        self._diagnostics_detail_label.pack(fill=tk.X, padx=6, pady=(4, 6))
+        self._diagnostics_issue_var = tk.StringVar(value="No quick-scan issues recorded yet.")
+        self._diagnostics_issue_label = tk.Label(
+            self._diagnostics_body,
+            textvariable=self._diagnostics_issue_var,
+            bg=self.PANEL,
+            fg="#d7e6ff",
+            font=("Segoe UI", 8),
+            justify=tk.LEFT,
+            wraplength=385,
+            anchor="w",
+        )
+        self._diagnostics_issue_label.pack(fill=tk.X, padx=6, pady=(0, 6))
+        actions = tk.Frame(self._diagnostics_body, bg=self.PANEL)
+        actions.pack(fill=tk.X, padx=6, pady=(0, 8))
+        self._diagnostics_refresh_btn = self._btn(actions, "Refresh Health", self._refresh_diagnostics_async, "#35517a")
+        self._diagnostics_refresh_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self._diagnostics_repair_btn = self._btn(actions, "Diagnose & Repair", self._diagnose_repair_async, "#1f5f88")
+        self._diagnostics_repair_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._apply_diagnostics_section_state()
+
     def _toggle_advanced(self) -> None:
         """Show/hide advanced session fields (token, signing key, device ID)."""
         if self._adv_visible.get():
@@ -1150,6 +1236,21 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Toggle the continuity rail body."""
         self._continuity_collapsed.set(not bool(self._continuity_collapsed.get()))
         self._apply_continuity_section_state()
+
+    def _apply_diagnostics_section_state(self) -> None:
+        """Expand or collapse the diagnostics drawer body."""
+        collapsed = bool(self._diagnostics_collapsed.get())
+        if collapsed:
+            self._diagnostics_body.pack_forget()
+            self._diagnostics_toggle_btn.config(text="Show Health")
+        else:
+            self._diagnostics_body.pack(fill=tk.X, padx=0, pady=(0, 0))
+            self._diagnostics_toggle_btn.config(text="Hide Health")
+
+    def _toggle_diagnostics_section(self) -> None:
+        """Toggle the diagnostics drawer body."""
+        self._diagnostics_collapsed.set(not bool(self._diagnostics_collapsed.get()))
+        self._apply_diagnostics_section_state()
 
     def _entry(self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None) -> None:
         tk.Label(parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=6, pady=(4, 0))
@@ -1417,6 +1518,38 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         self._thread(worker)
 
+    def _refresh_diagnostics_async(self) -> None:
+        """Refresh quick diagnostics state for the health pulse/drawer."""
+        cfg = self._current_cfg()
+
+        def worker() -> None:
+            data = self._fetch_diagnostics_status(cfg)
+            if data is None:
+                self._log_async("Quick health scan unavailable right now.", role="error")
+                return
+            raw_issues = data.get("issues")
+            issue_list: list[dict[str, Any]]
+            if isinstance(raw_issues, list):
+                issue_list = [item for item in raw_issues if isinstance(item, dict)]
+            else:
+                issue_list = []
+            score = data.get("score") if isinstance(data.get("score"), int) else None
+            healthy = bool(data.get("healthy", False))
+            self.after(
+                0,
+                lambda: self._ensure_controller().apply_diagnostics_snapshot(
+                    score=score,
+                    healthy=healthy,
+                    issues=issue_list,
+                    error=str(data.get("error", "")),
+                ),
+            )
+            self.after(0, self._render_live_snapshot)
+            summary = "healthy" if healthy else f"{len(issue_list)} issue(s) flagged"
+            self._log_async(f"Quick health scan refreshed: {summary}.", role="system")
+
+        self._thread(worker)
+
     def _thread(self, fn: Callable[..., Any]) -> None:
         threading.Thread(target=fn, daemon=True).start()
 
@@ -1491,10 +1624,24 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if intel_chip_label is not None:
             intel_chip_label.config(bg=intel_chip_bg, fg=intel_chip_fg)
 
+        health_chip_var = getattr(self, "_health_chip_var", None)
+        health_chip_btn = getattr(self, "_health_chip_btn", None)
+        health_chip_text, health_chip_bg, health_chip_fg = self._snapshot_health_chip(snapshot)
+        if health_chip_var is not None:
+            health_chip_var.set(health_chip_text)
+        if health_chip_btn is not None:
+            health_chip_btn.config(
+                bg=health_chip_bg,
+                fg=health_chip_fg,
+                activebackground=health_chip_bg,
+                activeforeground="#ffffff",
+            )
+
         self._render_session_snapshot(snapshot)
         self._render_mission_progress(snapshot)
         self._render_growth_snapshot(snapshot)
         self._render_continuity_snapshot(snapshot)
+        self._render_diagnostics_snapshot(snapshot)
 
     def _apply_controller_state(self, state: DesktopWidgetState) -> None:
         """Render a controller-owned state transition into widget UI state."""
@@ -1641,6 +1788,56 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         remainder = len(materialized) - len(visible)
         suffix = f" +{remainder} more" if remainder > 0 else ""
         return " · ".join(visible) + suffix
+
+    def _snapshot_health_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return the health pulse chip content and palette."""
+        diagnostics = snapshot.diagnostics
+        if diagnostics.score is None:
+            return "Health --", "#1f2937", "#d1d5db"
+        if diagnostics.healthy and diagnostics.issue_count == 0:
+            return f"Health {diagnostics.score}", "#123624", "#b7f0cf"
+        if diagnostics.score >= 70:
+            return f"Health {diagnostics.score} · {diagnostics.issue_count}", "#3a2a12", "#fde68a"
+        return f"Health {diagnostics.score} · {diagnostics.issue_count}", "#3b1212", "#fecaca"
+
+    def _render_diagnostics_snapshot(self, snapshot: Any) -> None:
+        """Render the diagnostics drawer content from controller-owned truth."""
+        diagnostics = snapshot.diagnostics
+        summary_var = getattr(self, "_diagnostics_summary_var", None)
+        detail_var = getattr(self, "_diagnostics_detail_var", None)
+        issue_var = getattr(self, "_diagnostics_issue_var", None)
+        summary_label = getattr(self, "_diagnostics_summary_label", None)
+        issue_label = getattr(self, "_diagnostics_issue_label", None)
+
+        if diagnostics.score is None:
+            summary_text = "Health status will appear here after the first quick scan."
+            detail_text = "Quick diagnostics have not run yet. Use the health chip or Diagnose button to refresh."
+            issue_text = "No quick-scan issues recorded yet."
+            summary_color = self.MUTED
+            issue_color = "#d7e6ff"
+        elif diagnostics.healthy and diagnostics.issue_count == 0:
+            summary_text = f"Quick health score {diagnostics.score}. No active issues detected."
+            detail_text = "Database, memory pressure, and gateway quick checks are within the healthy range."
+            issue_text = "No quick-scan issues recorded."
+            summary_color = self.ACCENT
+            issue_color = "#bff8f0"
+        else:
+            summary_text = f"Quick health score {diagnostics.score}. {diagnostics.issue_count} issue(s) need attention."
+            detail_text = diagnostics.top_issue or "Diagnostics reported issues but did not provide detail."
+            issue_text = "Open Diagnose & Repair for a deeper scan and auto-fix options."
+            summary_color = "#fde68a" if diagnostics.score >= 70 else "#fecaca"
+            issue_color = "#fde68a" if diagnostics.score >= 70 else "#fecaca"
+
+        if summary_var is not None:
+            summary_var.set(summary_text)
+        if detail_var is not None:
+            detail_var.set(detail_text)
+        if issue_var is not None:
+            issue_var.set(issue_text)
+        if summary_label is not None:
+            summary_label.config(fg=summary_color)
+        if issue_label is not None:
+            issue_label.config(fg=issue_color)
 
     def _snapshot_intel_chip(self, snapshot: Any) -> tuple[str, str, str]:
         """Return the compact intelligence pill in the live capsule."""
@@ -2651,6 +2848,22 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             logger.debug("Failed to fetch widget-status: %s", exc)
         return growth_data, recent_events, now_working_on
 
+    def _should_poll_diagnostics(self) -> bool:
+        """Return whether the quick diagnostics endpoint should be refreshed."""
+        now = time.monotonic()
+        last = getattr(self, "_last_diag_poll_at", 0.0)
+        return (now - last) >= 45.0
+
+    def _fetch_diagnostics_status(self, cfg: WidgetConfig) -> dict[str, Any] | None:
+        """Fetch quick diagnostics status for the desktop health pulse."""
+        try:
+            data = _http_json(cfg, "/diagnostics/status", method="GET")
+        except Exception as exc:  # boundary: catch-all justified
+            logger.debug("Failed to fetch diagnostics status: %s", exc)
+            return None
+        self._last_diag_poll_at = time.monotonic()
+        return data if isinstance(data, dict) else None
+
     def _health_sleep(self) -> bool:
         """Sleep for 8 seconds in small increments. Returns True if stop_event was set."""
         for _ in range(16):
@@ -2695,12 +2908,24 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             growth_data: dict[str, Any] | None = None
             recent_events: list[dict[str, Any]] = []
             now_working_on: dict[str, Any] | None = None
+            diagnostics_data: dict[str, Any] | None = None
             if ok and cfg.token and cfg.signing_key:
                 growth_data, recent_events, now_working_on = self._fetch_widget_status(cfg)
+                if self._should_poll_diagnostics():
+                    diagnostics_data = self._fetch_diagnostics_status(cfg)
 
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._set_online, ok, intel_data, growth_data, recent_events, now_working_on)
+                    self.after(
+                        0,
+                        self._set_online,
+                        ok,
+                        intel_data,
+                        growth_data,
+                        recent_events,
+                        now_working_on,
+                        diagnostics_data,
+                    )
                 except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     logger.debug("Cannot schedule online state update (widget may be destroyed)")
                     return
@@ -2709,7 +2934,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None,
                     growth_data: dict[str, Any] | None = None,
                     recent_events: list[dict[str, Any]] | None = None,
-                    now_working_on: dict[str, Any] | None = None) -> None:
+                    now_working_on: dict[str, Any] | None = None,
+                    diagnostics_data: dict[str, Any] | None = None) -> None:
         """Update online state and refresh status — always call on main thread."""
         self.online = value
         controller = self._ensure_controller()
@@ -2721,6 +2947,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             now_working_on=now_working_on,
             clear_missing=True,
         )
+        if diagnostics_data is not None:
+            controller.apply_diagnostics_snapshot(
+                score=diagnostics_data.get("score") if isinstance(diagnostics_data.get("score"), int) else None,
+                healthy=bool(diagnostics_data.get("healthy", False)),
+                issues=diagnostics_data.get("issues") if isinstance(diagnostics_data.get("issues"), list) else [],
+                error=str(diagnostics_data.get("error", "")),
+            )
         if new_events:
             self._mark_launcher_attention(new_events)
             self._log_activity_events(new_events)

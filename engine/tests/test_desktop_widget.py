@@ -1638,6 +1638,24 @@ class TestWidgetStateMachine:
 
         assert text == "Qwen 3.5 9B · Desktop redesign · March 12, 2026 +1 more"
 
+    def test_snapshot_health_chip_flags_issue_count(self):
+        """Health chip should surface quick-scan degradations compactly."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_diagnostics_snapshot(
+            score=68,
+            healthy=False,
+            issues=[{"id": "diag-1", "description": "WAL file is large"}],
+        )
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_health_chip(widget, controller.snapshot())
+
+        assert text == "Health 68 · 1"
+        assert bg == "#3b1212"
+        assert fg == "#fecaca"
+
     def test_snapshot_intelligence_text_uses_below_target_copy(self):
         """Regression flag should read as a below-target score, not a percent regression drop."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
@@ -1663,6 +1681,7 @@ class TestWidgetStateMachine:
             activity=snapshot.activity,
             session=snapshot.session,
             continuity=snapshot.continuity,
+            diagnostics=snapshot.diagnostics,
         )
 
         text, color = JarvisDesktopWidget._snapshot_intelligence_text(widget, snapshot)
@@ -1692,6 +1711,7 @@ class TestWidgetStateMachine:
             activity=snapshot.activity,
             session=snapshot.session,
             continuity=snapshot.continuity,
+            diagnostics=snapshot.diagnostics,
         )
 
         palette = JarvisDesktopWidget._mission_progress_palette(widget, snapshot)

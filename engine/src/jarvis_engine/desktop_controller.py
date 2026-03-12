@@ -76,6 +76,16 @@ class DesktopContinuitySnapshot:
 
 
 @dataclass(frozen=True)
+class DesktopDiagnosticsSnapshot:
+    """Quick diagnostic state surfaced to the desktop UI."""
+
+    score: int | None = None
+    healthy: bool = False
+    issue_count: int = 0
+    top_issue: str = ""
+
+
+@dataclass(frozen=True)
 class DesktopLiveSnapshot:
     """Single desktop truth model for status, missions, and live activity."""
 
@@ -94,6 +104,7 @@ class DesktopLiveSnapshot:
     activity: DesktopActivitySnapshot = field(default_factory=DesktopActivitySnapshot)
     session: DesktopSessionSnapshot = field(default_factory=DesktopSessionSnapshot)
     continuity: DesktopContinuitySnapshot = field(default_factory=DesktopContinuitySnapshot)
+    diagnostics: DesktopDiagnosticsSnapshot = field(default_factory=DesktopDiagnosticsSnapshot)
 
 
 class DesktopInteractionController:
@@ -129,6 +140,7 @@ class DesktopInteractionController:
         self._activity = DesktopActivitySnapshot()
         self._session = DesktopSessionSnapshot()
         self._continuity = DesktopContinuitySnapshot()
+        self._diagnostics = DesktopDiagnosticsSnapshot()
         self._seen_activity_event_ids: dict[str, None] = {}
 
     @property
@@ -171,6 +183,7 @@ class DesktopInteractionController:
                 activity=self._activity,
                 session=self._session,
                 continuity=self._continuity,
+                diagnostics=self._diagnostics,
             )
 
     def can_begin_command(self) -> bool:
@@ -298,6 +311,30 @@ class DesktopInteractionController:
                 unresolved_goals=tuple(str(item).strip() for item in unresolved_goals if str(item).strip()),
                 prior_decisions=tuple(str(item).strip() for item in prior_decisions if str(item).strip()),
                 timeline_count=max(int(timeline_count), 0),
+            )
+
+    def apply_diagnostics_snapshot(
+        self,
+        *,
+        score: int | None,
+        healthy: bool,
+        issues: list[dict[str, Any]] | None = None,
+        error: str = "",
+    ) -> None:
+        """Update controller-owned diagnostic health state."""
+        issue_items = issues or []
+        top_issue = ""
+        if issue_items:
+            first = issue_items[0]
+            top_issue = str(first.get("description", "")).strip()
+        elif error.strip():
+            top_issue = error.strip()
+        with self._lock:
+            self._diagnostics = DesktopDiagnosticsSnapshot(
+                score=score if isinstance(score, int) else None,
+                healthy=bool(healthy),
+                issue_count=len(issue_items),
+                top_issue=top_issue[:160],
             )
 
     def _apply_intelligence_locked(self, intel_data: dict[str, Any] | None) -> None:

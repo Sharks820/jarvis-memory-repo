@@ -183,3 +183,22 @@ def test_apply_continuity_snapshot_tracks_entities_goals_and_decisions() -> None
     )
     assert snapshot.continuity.prior_decisions == ("Use compact layout on short displays",)
     assert snapshot.continuity.timeline_count == 18
+
+
+def test_apply_diagnostics_snapshot_tracks_health_score_and_top_issue() -> None:
+    controller = DesktopInteractionController()
+
+    controller.apply_diagnostics_snapshot(
+        score=68,
+        healthy=False,
+        issues=[{
+            "id": "diag-1",
+            "description": "WAL file is 82.1 MB (threshold: 50 MB)",
+        }],
+    )
+
+    snapshot = controller.snapshot()
+    assert snapshot.diagnostics.score == 68
+    assert snapshot.diagnostics.healthy is False
+    assert snapshot.diagnostics.issue_count == 1
+    assert snapshot.diagnostics.top_issue == "WAL file is 82.1 MB (threshold: 50 MB)"
