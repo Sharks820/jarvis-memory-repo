@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
 
-from jarvis_engine.gateway.ollama_client import call_ollama_generate
+from jarvis_engine.gateway.ollama_client import OllamaResponse, call_ollama_generate
 from jarvis_engine.adapters import ImageAdapter, Model3DAdapter, VideoAdapter
 from jarvis_engine.capability import CapabilityGate
 from jarvis_engine.memory_store import MemoryStore
@@ -317,7 +317,7 @@ class TaskOrchestrator:
         except SyntaxError as exc:
             return f"{exc.msg} (line {exc.lineno})"
 
-    def _extract_output(self, raw: dict[str, Any]) -> str:
+    def _extract_output(self, raw: OllamaResponse) -> str:
         response = str(raw.get("response", "")).strip()
         return response
 
@@ -349,7 +349,7 @@ class TaskOrchestrator:
         prompt: str,
         options: dict[str, Any],
         timeout_s: int,
-    ) -> tuple[dict[str, Any] | None, str]:
+    ) -> tuple[OllamaResponse | None, str]:
         try:
             data = call_ollama_generate(
                 endpoint, model, prompt, options, timeout_s=timeout_s,
@@ -426,3 +426,4 @@ def run_shell_command(
         stderr = exc.stderr if isinstance(exc.stderr, str) else ""
         detail = stderr or f"Command timed out after {timeout_s}s."
         return 124, stdout, detail
+

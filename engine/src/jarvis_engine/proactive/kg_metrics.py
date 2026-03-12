@@ -5,7 +5,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from jarvis_engine._shared import now_iso as _now_iso
 
@@ -74,7 +74,7 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
         - expired_facts: count of expired temporal facts
         - temporal_breakdown: {permanent: N, time_sensitive: N, expired: N, unknown: N}
     """
-    metrics: dict = {
+    metrics: KGMetrics = {
         "ts": _now_iso(),
         "node_count": 0,
         "edge_count": 0,
@@ -142,10 +142,18 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
                 "SELECT COALESCE(temporal_type, 'unknown'), COUNT(*) "
                 "FROM kg_nodes GROUP BY temporal_type"
             ).fetchall()
-            tb = {"permanent": 0, "time_sensitive": 0, "expired": 0, "unknown": 0}
+            tb: TemporalBreakdown = {"permanent": 0, "time_sensitive": 0, "expired": 0, "unknown": 0}
             for r in rows:
-                key = r[0] if r[0] in tb else "unknown"
-                tb[key] += r[1]
+                key = str(r[0])
+                count = int(r[1])
+                if key == "permanent":
+                    tb["permanent"] += count
+                elif key == "time_sensitive":
+                    tb["time_sensitive"] += count
+                elif key == "expired":
+                    tb["expired"] += count
+                else:
+                    tb["unknown"] += count
             metrics["temporal_breakdown"] = tb
             metrics["expired_facts"] = tb.get("expired", 0)
         except sqlite3.OperationalError as exc:
@@ -162,7 +170,7 @@ def collect_kg_metrics(kg: Any) -> KGMetrics:
                 logger.debug("ROLLBACK failed during KG metrics collection: %s", rollback_exc)
         logger.warning("Failed to collect KG metrics: %s", exc)
 
-    return metrics
+    return cast(KGMetrics, metrics)
 
 
 def append_kg_metrics(metrics: dict, history_path: Path) -> None:
@@ -223,3 +231,4 @@ def kg_growth_trend(history: list[dict]) -> KGGrowthTrend:
         "last_snapshot": last.get("ts", ""),
         "snapshots_analyzed": len(history),
     }
+

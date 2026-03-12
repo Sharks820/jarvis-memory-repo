@@ -20,7 +20,7 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 if TYPE_CHECKING:
     from jarvis_engine.security.owner_session import OwnerSessionManager
@@ -69,7 +69,7 @@ BreachMonitor = _try_import("jarvis_engine.security.identity_shield", "BreachMon
 FamilyShield = _try_import("jarvis_engine.security.identity_shield", "FamilyShield")
 ImpersonationDetector = _try_import("jarvis_engine.security.identity_shield", "ImpersonationDetector")
 TyposquatMonitor = _try_import("jarvis_engine.security.identity_shield", "TyposquatMonitor")
-OwnerSessionManager = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
+_OwnerSessionManagerClass = _try_import("jarvis_engine.security.owner_session", "OwnerSessionManager")
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,11 @@ class SecurityOrchestrator:
         self._total_requests = 0
         self._total_blocked = 0
         self._lock = threading.Lock()
+        self.action_auditor: Any | None = None
+        self.scope_enforcer: Any | None = None
+        self.resource_monitor: Any | None = None
+        self.threat_intel: Any | None = None
+        self.threat_neutralizer: Any | None = None
 
         # --- New modules (gracefully skip if import failed) ---
 
@@ -657,7 +662,7 @@ class SecurityOrchestrator:
             if value is not None:
                 result[key] = value
 
-        return result
+        return cast(SecurityStatus, result)
 
     # ------------------------------------------------------------------
     # Public delegation methods for CQRS handlers
@@ -686,14 +691,14 @@ class SecurityOrchestrator:
         """
         return self._adaptive_defense.generate_briefing()
 
-    def get_threat_report(self, ip: str | None = None) -> ThreatReport | AllThreatsReport:
+    def get_threat_report(self, ip: str | None = None) -> ThreatReport | AllThreatsReport | None:
         """Retrieve threat report for a specific IP or all tracked IPs.
 
         Delegates to the internal ``IPTracker``.
         """
         if ip:
             report = self._ip_tracker.get_threat_report(ip)
-            return report if report is not None else {}
+            return report
         all_threats = self._ip_tracker.get_all_threats(min_score=0.0)
         return {"total_tracked": len(all_threats), "threats": all_threats}
 

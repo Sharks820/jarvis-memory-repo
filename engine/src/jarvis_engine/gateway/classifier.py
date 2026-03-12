@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from jarvis_engine._constants import PRIVACY_KEYWORDS as _CANONICAL_PRIVACY_KEYWORDS
 from jarvis_engine._shared import get_fast_local_model as _get_fast_local_model
@@ -27,8 +27,17 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     import numpy as np
 
-    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
+class EmbedServiceProtocol(Protocol):
+    def embed(self, text: str, *, prefix: str = "") -> list[float]:
+        ...
+
+    def embed_query(self, query: str) -> list[float]:
+        ...
+
+class FeedbackTrackerProtocol(Protocol):
+    def get_route_quality(self, route_name: str) -> dict[str, Any]:
+        ...
 
 class IntentClassifier:
     """Classify user queries into routing categories using embedding similarity."""
@@ -164,8 +173,8 @@ class IntentClassifier:
 
     def __init__(
         self,
-        embed_service: object,
-        feedback_tracker: "ResponseFeedbackTracker | None" = None,
+        embed_service: EmbedServiceProtocol,
+        feedback_tracker: FeedbackTrackerProtocol | None = None,
     ) -> None:
         """Initialize with an EmbeddingService instance.
 
@@ -173,14 +182,14 @@ class IntentClassifier:
             embed_service: Must implement embed(text, prefix) and embed_query(query).
             feedback_tracker: Optional feedback tracker for route quality penalty (LEARN-02).
         """
-        self._embed = embed_service
-        self._feedback_tracker = feedback_tracker
+        self._embed: EmbedServiceProtocol = embed_service
+        self._feedback_tracker: FeedbackTrackerProtocol | None = feedback_tracker
         self._privacy_re = re.compile(
             r"\b(?:" + "|".join(re.escape(kw) for kw in self.PRIVACY_KEYWORDS) + r")\b"
         )
         self._centroids = self._precompute_routes()
 
-    def set_feedback_tracker(self, tracker: "ResponseFeedbackTracker | None") -> None:
+    def set_feedback_tracker(self, tracker: FeedbackTrackerProtocol | None) -> None:
         """Set the feedback tracker for route quality penalty (late-binding).
 
         Called by the composition root when the learning subsystem is
@@ -234,16 +243,16 @@ class IntentClassifier:
         cache_path = os.path.join(cache_dir, f"centroids_{exemplar_hash}.npz")
         try:
             if os.path.exists(cache_path):
-                data = np.load(cache_path)
-                centroids = {k: data[k] for k in data.files}
+                data = cast(Any, np.load(cache_path))
+                cached_centroids = {k: data[k] for k in data.files}
                 # Validate cache completeness -- all routes must be present
-                if set(centroids.keys()) == set(self.ROUTES.keys()):
+                if set(cached_centroids.keys()) == set(self.ROUTES.keys()):
                     logger.debug("Loaded cached centroids from %s", cache_path)
-                    return centroids
+                    return cached_centroids
                 else:
                     logger.warning(
                         "Centroid cache incomplete (cached=%s, expected=%s), recomputing",
-                        sorted(centroids.keys()), sorted(self.ROUTES.keys()),
+                        sorted(cached_centroids.keys()), sorted(self.ROUTES.keys()),
                     )
         except (OSError, ValueError, KeyError) as exc:
             logger.debug("Failed to load centroid cache, recomputing: %s", exc)
@@ -266,7 +275,7 @@ class IntentClassifier:
         # Save to disk cache
         try:
             os.makedirs(cache_dir, exist_ok=True)
-            np.savez(cache_path, **centroids)
+            cast(Any, np.savez)(cache_path, **centroids)
             logger.debug("Saved centroid cache to %s", cache_path)
         except OSError as exc:
             logger.debug("Failed to save centroid cache: %s", exc)
@@ -399,3 +408,4 @@ class IntentClassifier:
             return 0.0
         result = dot / (norm_a * norm_b)
         return result if np.isfinite(result) else 0.0
+

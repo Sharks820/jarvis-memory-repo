@@ -442,7 +442,7 @@ class SyncEngine:
             "SELECT device_id, table_name, last_version, last_sync_ts "
             "FROM _sync_cursor ORDER BY device_id, table_name",
         )
-        cursors: list[dict[str, Any]] = []
+        cursors: list[SyncCursorEntry] = []
         for row in cur.fetchall():
             cursors.append({
                 "device_id": row[0],

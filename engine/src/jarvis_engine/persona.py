@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from jarvis_engine._shared import atomic_write_json as _atomic_write_json
 from jarvis_engine._shared import now_iso as _now_iso
@@ -11,7 +12,12 @@ from jarvis_engine._shared import now_iso as _now_iso
 # Tone profiles: map branch domains to personality instructions
 # ---------------------------------------------------------------------------
 
-TONE_PROFILES: dict[str, dict[str, object]] = {
+class ToneProfile(TypedDict):
+    branches: list[str]
+    instruction: str
+
+
+TONE_PROFILES: dict[str, ToneProfile] = {
     "professional": {
         "branches": ["health", "finance", "security"],
         "instruction": (
@@ -76,7 +82,7 @@ def get_persona_prompt(cfg: "PersonaConfig") -> str:
 # Pre-computed reverse map: branch -> tone profile name
 _BRANCH_TO_TONE: dict[str, str] = {}
 for _tone_name, _profile in TONE_PROFILES.items():
-    for _branch in _profile["branches"]:  # type: ignore[union-attr]
+    for _branch in _profile["branches"]:
         _BRANCH_TO_TONE[str(_branch)] = _tone_name
 
 
@@ -98,7 +104,7 @@ def compose_persona_system_prompt(
         return ""
 
     tone_name = _resolve_tone(branch)
-    tone_instruction = str(TONE_PROFILES[tone_name]["instruction"])
+    tone_instruction = TONE_PROFILES[tone_name]["instruction"]
 
     parts: list[str] = [PERSONA_BASE_PROMPT, tone_instruction]
 
@@ -248,3 +254,4 @@ def compose_persona_reply(
     if cfg.humor_level > 0:
         base += " " + random.choice(warning_suffixes)
     return base
+

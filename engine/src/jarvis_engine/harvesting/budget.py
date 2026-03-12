@@ -238,7 +238,7 @@ class BudgetManager:
                     (f"-{days} days",),
                 )
 
-            providers = []
+            providers: list[ProviderSpend] = []
             total_cost = 0.0
             for row in cur.fetchall():
                 row_cost = row["total_cost"] or 0.0

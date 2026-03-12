@@ -12,7 +12,7 @@ import sqlite3
 from datetime import datetime
 from jarvis_engine._compat import UTC
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> CostSnapsh
             "total_count": 0,
         }
 
-    snapshot = {
+    snapshot: CostSnapshot = {
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         "7d_local_pct": round(float(summary_7d.get("local_pct", 0.0)), 4),
         "30d_local_pct": round(float(summary_30d.get("local_pct", 0.0)), 4),
@@ -90,7 +90,7 @@ def cost_reduction_snapshot(cost_tracker: Any, history_path: Path) -> CostSnapsh
     with history_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(snapshot, ensure_ascii=True) + "\n")
 
-    return snapshot
+    return cast(CostSnapshot, snapshot)
 
 
 def load_cost_history(history_path: Path, limit: int = 90) -> list[dict]:
@@ -140,3 +140,4 @@ def cost_reduction_trend(history: list[dict]) -> CostTrend:
         "change_pct": change,
         "trend": trend,
     }
+

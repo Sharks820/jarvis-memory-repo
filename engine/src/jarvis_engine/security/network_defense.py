@@ -40,7 +40,7 @@ class DNSCacheAnalysis(TypedDict):
 
 class NetworkScanResult(TypedDict):
     arp: list[dict]
-    dns: dict
+    dns: DNSCacheAnalysis
     connections: list[dict]
     scan_time: float | None
 
@@ -386,7 +386,7 @@ class HomeNetworkMonitor:
         Only works on Windows (``ipconfig /displaydns``).  Returns a dict:
         ``{total_entries, suspicious_domains, dga_candidates, entropy_alerts}``.
         """
-        result: dict[str, Any] = {
+        result: DNSCacheAnalysis = {
             "total_entries": 0,
             "suspicious_domains": [],
             "dga_candidates": [],

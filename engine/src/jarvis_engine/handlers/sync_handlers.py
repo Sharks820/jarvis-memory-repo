@@ -7,7 +7,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from jarvis_engine.sync.engine import SyncEngine
@@ -62,7 +62,12 @@ class SyncPullHandler:
         )
 
         try:
-            encrypted = self._transport.encrypt(outgoing)
+            cursors = outgoing.get("cursors", {})
+            payload: dict[str, Any] = {
+                "changes": outgoing["changes"],
+                "cursors": cursors,
+            }
+            encrypted = self._transport.encrypt(payload)
             encoded = base64.b64encode(encrypted).decode("ascii")
         except (ValueError, TypeError, OSError) as exc:
             logger.error("SyncPull encryption failed: %s", exc)
@@ -73,7 +78,7 @@ class SyncPullHandler:
 
         return SyncPullResult(
             encrypted_payload=encoded,
-            new_cursors=json.dumps(outgoing.get("cursors", {})),
+            new_cursors=json.dumps(cursors),
             has_more=has_more,
             message="ok",
         )

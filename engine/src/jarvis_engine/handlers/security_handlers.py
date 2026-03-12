@@ -74,7 +74,7 @@ class RuntimeControlHandler(_SecurityHandlerBase):
                 )
             else:
                 state = read_control_state(self._root)
-        return RuntimeControlResult(state=state)
+        return RuntimeControlResult(state=dict(state))
 
 
 class OwnerGuardHandler(_SecurityHandlerBase):
@@ -110,7 +110,7 @@ class OwnerGuardHandler(_SecurityHandlerBase):
         except ValueError as exc:
             logger.warning("OwnerGuard operation failed: %s", exc)
             return OwnerGuardResult(return_code=2)
-        return OwnerGuardResult(state=state, return_code=0)
+        return OwnerGuardResult(state=dict(state), return_code=0)
 
 
 class ConnectStatusHandler(_SecurityHandlerBase):

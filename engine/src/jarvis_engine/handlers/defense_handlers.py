@@ -19,7 +19,7 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from jarvis_engine._compat import UTC
 from jarvis_engine.commands.defense_commands import (
@@ -188,12 +188,16 @@ class ThreatReportHandler(_DefenseHandlerBase):
                     report={},
                     message=f"No threat data found for IP {cmd.ip}.",
                 )
-            msg = (
-                f"Threat report for {cmd.ip} retrieved."
-                if cmd.ip
-                else f"Found {report.get('total_tracked', 0)} tracked IP(s)."
+            if cmd.ip:
+                return ThreatReportResult(
+                    report=report,
+                    message=f"Threat report for {cmd.ip} retrieved.",
+                )
+            tracked_report = cast(dict[str, Any], report) if isinstance(report, dict) else {}
+            return ThreatReportResult(
+                report=tracked_report,
+                message=f"Found {tracked_report.get('total_tracked', 0)} tracked IP(s).",
             )
-            return ThreatReportResult(report=report, message=msg)
         except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
             logger.warning("ThreatReportHandler failed: %s", exc)
             return ThreatReportResult(

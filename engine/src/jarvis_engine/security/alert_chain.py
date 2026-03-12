@@ -26,9 +26,9 @@ class AlertRecord(TypedDict):
     level: int
     channel: str
     summary: str
-    evidence: str
-    containment_action: str
-    source_ip: str
+    evidence: str | None
+    containment_action: str | None
+    source_ip: str | None
     deduped: bool
 
 
@@ -58,7 +58,7 @@ class AlertChain:
     def __init__(self, forensic_logger: ForensicLoggerProtocol | None = None) -> None:
         self._forensic_logger = forensic_logger
         self._lock = threading.Lock()
-        self._alerts: deque[dict] = deque(maxlen=10000)
+        self._alerts: deque[AlertRecord] = deque(maxlen=10000)
         # Dedup tracking: (source_ip, level) -> last_alert_timestamp
         self._dedup_cache: dict[tuple[str | None, int], float] = {}
         self._dispatch_callbacks: list = []
@@ -87,7 +87,7 @@ class AlertChain:
             # Check dedup (pass pre-computed timestamp for consistency)
             deduped = self._should_dedup(source_ip, level, now)
 
-            alert_record = {
+            alert_record: AlertRecord = {
                 "timestamp": now,
                 "level": level,
                 "channel": channel,
@@ -148,7 +148,7 @@ class AlertChain:
 
         return alert_record
 
-    def get_alert_history(self, limit: int = 50) -> list[dict]:
+    def get_alert_history(self, limit: int = 50) -> list[AlertRecord]:
         """Return the most recent *limit* alerts (newest first)."""
         with self._lock:
             items = list(self._alerts)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from typing import TypedDict
+from typing import TypeGuard, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._constants import EMBEDDING_DIM as _EMBEDDING_DIM
@@ -27,6 +27,28 @@ class ResolutionResult(TypedDict):
     node_id: str
     resolution: str
     message: str
+
+
+class PendingContradiction(TypedDict):
+    """Normalized contradiction payload used during resolution."""
+
+    status: str
+    node_id: str
+    existing_value: str
+    incoming_value: str
+    incoming_confidence: float
+
+
+def _is_resolution_error(
+    result: ResolutionResult | PendingContradiction,
+) -> TypeGuard[ResolutionResult]:
+    return "success" in result
+
+
+def _is_pending_contradiction(
+    result: ResolutionResult | PendingContradiction,
+) -> TypeGuard[PendingContradiction]:
+    return "success" not in result
 
 
 class ContradictionManager(KGManagerBase):
@@ -133,7 +155,7 @@ class ContradictionManager(KGManagerBase):
         self,
         contradiction_id: int,
         resolution: str,
-    ) -> ResolutionResult | dict:
+    ) -> ResolutionResult | PendingContradiction:
         """Load and validate a contradiction record.
 
         Contract: caller MUST hold ``_write_lock``.
@@ -155,15 +177,16 @@ class ContradictionManager(KGManagerBase):
                 "message": f"Contradiction {contradiction_id} not found.",
             }
 
-        contradiction = dict(row)
-        contradiction["status"] = str(contradiction.get("status", "")).strip()
-        contradiction["node_id"] = str(contradiction.get("node_id", ""))
-        contradiction["existing_value"] = str(contradiction.get("existing_value", ""))
-        contradiction["incoming_value"] = str(contradiction.get("incoming_value", ""))
-        contradiction["incoming_confidence"] = float(
-            contradiction.get("incoming_confidence", 0.0) or 0.0,
-        )
-
+        raw_contradiction = dict(row)
+        contradiction: PendingContradiction = {
+            "status": str(raw_contradiction.get("status", "")).strip(),
+            "node_id": str(raw_contradiction.get("node_id", "")),
+            "existing_value": str(raw_contradiction.get("existing_value", "")),
+            "incoming_value": str(raw_contradiction.get("incoming_value", "")),
+            "incoming_confidence": float(
+                raw_contradiction.get("incoming_confidence", 0.0) or 0.0,
+            ),
+        }
         if contradiction["status"] != "pending":
             return {
                 "success": False,
@@ -372,8 +395,10 @@ class ContradictionManager(KGManagerBase):
         Contract: caller MUST hold ``_write_lock``.
         """
         result = self._load_contradiction(contradiction_id, resolution)
-        if "success" in result:
-            return result  # type: ignore[return-value]
+        if _is_resolution_error(result):
+            return result
+        if not _is_pending_contradiction(result):
+            raise AssertionError("unreachable contradiction result type")
         contradiction = result
 
         node_id = contradiction["node_id"]
@@ -383,7 +408,7 @@ class ContradictionManager(KGManagerBase):
             node_id, resolution, contradiction["existing_value"],
         )
         if isinstance(node_result, dict):
-            return node_result  # type: ignore[return-value]
+            return node_result
         node_row, current_label, history = node_result
 
         if resolution == "accept_new":
@@ -485,3 +510,4 @@ class ContradictionManager(KGManagerBase):
             )
 
         return result
+

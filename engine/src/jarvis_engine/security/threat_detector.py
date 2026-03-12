@@ -14,6 +14,9 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from typing import Protocol
+
+from jarvis_engine.security.ip_tracker import ThreatReport
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +127,14 @@ _SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 # ---------------------------------------------------------------------------
 
 
+class _IPTrackerProtocol(Protocol):
+    def get_threat_report(self, ip: str) -> ThreatReport | None:
+        ...
+
+    def is_blocked(self, ip: str) -> bool:
+        ...
+
+
 class ThreatDetector:
     """Run pluggable detection rules and aggregate into an assessment.
 
@@ -138,7 +149,7 @@ class ThreatDetector:
     def __init__(
         self,
         *,
-        ip_tracker: object | None = None,
+        ip_tracker: "_IPTrackerProtocol | None" = None,
         nonce_ttl: int = 300,
     ) -> None:
         self._ip_tracker = ip_tracker

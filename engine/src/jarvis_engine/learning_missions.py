@@ -199,7 +199,7 @@ def create_learning_mission(
         raise ValueError("topic is required")
     import secrets
     mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{secrets.token_hex(3)}"
-    mission = {
+    mission: MissionRecord = {
         "mission_id": mission_id,
         "topic": cleaned_topic[:200],
         "objective": objective.strip()[:400],
@@ -216,7 +216,7 @@ def create_learning_mission(
     }
     with _MISSIONS_LOCK:
         missions = load_missions(root)
-        missions.append(mission)
+        missions.append(dict(mission))
         _save_missions(root, missions)
     _log_mission_activity(
         mission_id=mission_id,
@@ -300,7 +300,7 @@ def _keywords(text: str) -> set[str]:
     return {w for w in words if w not in STOPWORDS}
 
 
-def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]:
+def _verify_candidates(candidates: list[dict[str, str]]) -> list[VerifiedFinding]:
     """Cross-reference candidates across sources to verify factual claims.
 
     Verification tiers:
@@ -310,7 +310,7 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
     # Precompute keywords for all candidates to avoid redundant O(n) _keywords() calls
     candidate_keys = [_keywords(c.get("statement", "")) for c in candidates]
 
-    verified: list[dict[str, Any]] = []
+    verified: list[VerifiedFinding] = []
     seen_statements: set[str] = set()
     for idx, item in enumerate(candidates):
         statement = item.get("statement", "").strip()
@@ -441,8 +441,8 @@ def _fetch_mission_content(
 def _finalize_mission(
     root: Path,
     mission_id: str,
-    verified: list[dict],
-    report: dict,
+    verified: list[VerifiedFinding],
+    report: MissionReport,
     report_path: Path,
 ) -> None:
     """Update mission status under lock and log the final activity event."""
@@ -568,7 +568,7 @@ def run_learning_mission(
     _update_step(root, mission_id, "finalize", status="running")
 
     # Build and persist report
-    report = {
+    report: MissionReport = {
         "mission_id": mission_id,
         "topic": topic,
         "objective": objective,
@@ -818,7 +818,7 @@ def _create_missions_from_topics(
                 objective=objective,
                 origin="daemon",
             )
-            created.append(mission)
+            created.append(dict(mission))
             logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
         except (OSError, ValueError, sqlite3.Error) as exc:
             logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
@@ -1143,3 +1143,4 @@ def mission_dashboard_metrics(root: Path) -> dict[str, Any]:
         "total_missions": len(missions),
         "active_count": sum(1 for m in missions if str(m.get("status", "")).lower() in ("running", "paused", "pending")),
     }
+

@@ -15,6 +15,7 @@ import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -528,8 +529,7 @@ class DiagnosticEngine:
 
         # Check if VAD model is importable
         try:
-            import importlib
-            spec = importlib.util.find_spec("silero_vad")
+            spec = find_spec("silero_vad")
             if spec is None:
                 issues.append(DiagnosticIssue(
                     id=_issue_id(),

@@ -468,7 +468,7 @@ class TyposquatMonitor:
             entry: BreachLookupResult = {"variant": variant, "registered": False, "ips": []}
             try:
                 infos = socket.getaddrinfo(variant, 80, socket.AF_INET, socket.SOCK_STREAM)
-                ips = list({info[4][0] for info in infos})
+                ips = sorted({str(info[4][0]) for info in infos})
                 if ips:
                     entry["registered"] = True
                     entry["ips"] = ips
@@ -484,7 +484,7 @@ class TyposquatMonitor:
                     pool.submit(_lookup, v): i
                     for i, v in enumerate(variants)
                 }
-                ordered = [None] * len(variants)
+                ordered: list[BreachLookupResult | None] = [None] * len(variants)
                 for future in as_completed(future_to_idx):
                     idx = future_to_idx[future]
                     ordered[idx] = future.result()
@@ -641,7 +641,7 @@ class ImpersonationDetector:
                         pool.submit(self.check_platform, v, p): i
                         for i, (v, p) in enumerate(tasks)
                     }
-                    ordered = [None] * len(tasks)
+                    ordered: list[PlatformCheckResult | None] = [None] * len(tasks)
                     for future in as_completed(futures):
                         idx = futures[future]
                         try:
