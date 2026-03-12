@@ -122,6 +122,7 @@ class CommandRoutesMixin:
             return
         try:
             import jarvis_engine.voice_pipeline as _vp_mod
+            from jarvis_engine.conversation_state import get_conversation_state
 
             _vp_mod._state.clear_history()
             _vp_mod._conversation_history_loaded = True
@@ -129,6 +130,11 @@ class CommandRoutesMixin:
                 _vp_mod.save_conversation_history()
             except (OSError, ValueError, TypeError) as save_exc:
                 logger.debug("Conversation history save-after-clear failed: %s", save_exc)
+            try:
+                csm = get_conversation_state()
+                csm.reset()
+            except (OSError, ValueError, TypeError, RuntimeError) as reset_exc:
+                logger.debug("Conversation continuity reset failed during clear: %s", reset_exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Conversation history cleared."})
         except (ValueError, TypeError, OSError, ImportError, RuntimeError, AttributeError) as exc:  # narrowed from except Exception
             logger.error("Conversation history clear failed: %s", exc)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import threading
 import time
 from pathlib import Path
@@ -13,8 +14,17 @@ from urllib.request import Request
 import tkinter as tk
 from tkinter import messagebox
 
-from jarvis_engine._constants import DEFAULT_API_PORT as _DEFAULT_PORT, DEFAULT_CLOUD_MODEL
+from jarvis_engine._constants import (
+    DEFAULT_API_PORT as _DEFAULT_PORT,
+    DEFAULT_CLOUD_MODEL,
+    DEFAULT_LOCAL_MODEL,
+    FAST_LOCAL_MODEL,
+)
 from jarvis_engine._shared import env_int as _env_int
+from jarvis_engine.desktop_controller import (
+    DesktopInteractionController,
+    DesktopWidgetState,
+)
 from jarvis_engine.widget_conversation import ConversationMixin
 from jarvis_engine.widget_orb import OrbAnimationMixin
 from jarvis_engine.widget_tray import TrayMixin
@@ -68,12 +78,19 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     ACCENT_2 = "#1aa3ff"
     WARN = "#d15a5a"
     LAUNCHER_TRANSPARENT = "#010203"
+    PANEL_DEFAULT_WIDTH = 470
+    PANEL_DEFAULT_HEIGHT = 840
+    PANEL_MIN_WIDTH = 340
+    PANEL_MIN_HEIGHT = 460
 
     # Model rotation: (alias, display_name, best_use_title, accent_color)
     # "auto" lets IntentClassifier decide; others override the model choice.
     # Immutable tuple-of-tuples to prevent accidental mutation of shared state.
     MODEL_ROTATION: tuple[tuple[str, str, str, str], ...] = (
         ("auto", "Auto", "Smart Router", "#12c9b1"),
+        (FAST_LOCAL_MODEL, "Qwen 3.5 4B", "Fast Local · Everyday Desktop", "#22c55e"),
+        (DEFAULT_LOCAL_MODEL, "Qwen 3.5 9B", "Deep Local · Reasoning & Privacy", "#38bdf8"),
+        ("qwen3-coder:30b", "Qwen Coder 30B", "Heavy Local · Code Specialist", "#0ea5e9"),
         # CLI-based models (subscription plans, no API keys needed)
         ("claude-cli", "Claude CLI", "Opus 4.6 · Code & Architecture", "#d946ef"),
         ("codex-cli", "Codex CLI", "GPT-5.3 · Math & Logic", "#10b981"),
@@ -108,22 +125,27 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._l_arc4: int | None = None
         self._l_core: int | None = None
         self._l_glow: int | None = None
+        self._l_badge_bg: int | None = None
+        self._l_badge_text: int | None = None
         self._l_particles: list[int] = []
         self._orb_sweep: int | None = None
         self._drag_offset_x = 0
         self._drag_offset_y = 0
         self._launcher_dragged = False
-        self._hotword_active = threading.Event()  # Guards against multiple hotword loops
+        self._launcher_attention_until: float = 0.0
         self._orb_after_id: str | None = None
         self._launcher_after_id: str | None = None
+        self._live_capsule_after_id: str | None = None
         self._prev_svc_running: dict[str, bool] = {}  # Track service state for crash detection
-        self._widget_state: str = "idle"  # idle | listening | processing | error
+        self._widget_state: str = DesktopWidgetState.IDLE.value
         self._thinking_after_id: str | None = None  # after() id for dot animation
         self._thinking_dots: int = 3
         self._thinking_start_time: float = 0.0  # When thinking started (time.time())
-        self._cmd_generation: int = 0  # Generation counter for race condition prevention
         self._processing_timeout_id: str | None = None  # Safety timeout for stuck processing
-        self._cancel_event = threading.Event()  # Set to cancel current command
+        self._controller: DesktopInteractionController | None = None
+        self._cmd_generation: int = 0  # Generation counter for race condition prevention
+        self._cancel_event = threading.Event()
+        self._hotword_active = threading.Event()
         self._welcome_shown: bool = False  # One-time welcome message flag
         self._error_clear_id: str | None = None  # after() id for auto-clearing error state
         self._position_save_id: str | None = None  # debounce timer for position save
@@ -138,15 +160,11 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             minimum=30_000,
             maximum=1_800_000,
         )
+        self._ensure_controller()
 
         self.title("Jarvis Unlimited")
-        # Restore saved panel position if available and on-screen
-        _px, _py = self.cfg.panel_x, self.cfg.panel_y
-        if _px is not None and _py is not None:
-            self.geometry(f"470x840+{_px}+{_py}")
-        else:
-            self.geometry("470x840+40+60")
-        self.minsize(420, 620)
+        self._fit_panel_to_screen()
+        self._compact_layout = self._use_compact_layout(self.winfo_screenheight())
         self.configure(bg=self.BG)
         self.attributes("-topmost", True)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -158,6 +176,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._start_status_workers()
         self._animate_orb()
         self._animate_launcher()
+        self._animate_live_capsule()
         self._hide_panel()
         self._log("Jarvis Widget started. Checking connection...", role="system")
         self._log("Enter sends command, Shift+Enter inserts newline.", role="system")
@@ -253,6 +272,12 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.after_cancel(self._launcher_after_id)
             except (tk.TclError, RuntimeError) as exc:
                 logger.debug("Failed to cancel launcher animation callback: %s", exc)
+        live_capsule_after_id = getattr(self, "_live_capsule_after_id", None)
+        if live_capsule_after_id is not None:
+            try:
+                self.after_cancel(live_capsule_after_id)
+            except (tk.TclError, RuntimeError) as exc:
+                logger.debug("Failed to cancel live capsule animation callback: %s", exc)
         # Wait briefly for background threads to finish
         for t in threading.enumerate():
             if t.daemon and t.is_alive() and t is not threading.current_thread():
@@ -280,11 +305,95 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         else:
             self._hide_panel()
 
+    def _panel_visible(self) -> bool:
+        """Return whether the main widget panel is currently viewable."""
+        try:
+            return self.state() not in {"withdrawn", "iconic"} and bool(self.winfo_viewable())
+        except (tk.TclError, RuntimeError):
+            return False
+
+    @classmethod
+    def _panel_size_for_screen(cls, screen_w: int, screen_h: int) -> tuple[int, int]:
+        """Return a widget size that always fits on the active screen."""
+        max_w = max(cls.PANEL_MIN_WIDTH, screen_w - 32)
+        max_h = max(cls.PANEL_MIN_HEIGHT, screen_h - 88)
+        width = min(cls.PANEL_DEFAULT_WIDTH, max_w)
+        height = min(cls.PANEL_DEFAULT_HEIGHT, max_h)
+        return max(cls.PANEL_MIN_WIDTH, width), max(cls.PANEL_MIN_HEIGHT, height)
+
+    @classmethod
+    def _use_compact_layout(cls, screen_h: int) -> bool:
+        """Return whether the desktop widget should tighten vertical layout."""
+        return screen_h < 900
+
+    @staticmethod
+    def _command_box_height(compact_layout: bool) -> int:
+        """Return the command input height for the current layout density."""
+        return 3 if compact_layout else 5
+
+    @staticmethod
+    def _collapse_live_details_by_default(compact_layout: bool) -> bool:
+        """Return whether the live-detail block should start collapsed."""
+        return compact_layout
+
+    @staticmethod
+    def _collapse_system_snapshot_by_default(compact_layout: bool) -> bool:
+        """Return whether the system snapshot block should start collapsed."""
+        return compact_layout
+
+    @staticmethod
+    def _flag_grid_columns(compact_layout: bool) -> int:
+        """Return the number of columns for the command posture controls."""
+        return 3 if compact_layout else 6
+
+    def _fit_panel_to_screen(self) -> tuple[int, int]:
+        """Clamp widget size and position so the panel stays usable on small screens."""
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width, height = self._panel_size_for_screen(screen_w, screen_h)
+        self.maxsize(max(self.PANEL_MIN_WIDTH, screen_w - 12), max(self.PANEL_MIN_HEIGHT, screen_h - 48))
+        self.minsize(min(width, 420), min(height, 560))
+        x = self.cfg.panel_x if self.cfg.panel_x is not None else 40
+        y = self.cfg.panel_y if self.cfg.panel_y is not None else 60
+        x = min(max(x, 0), max(0, screen_w - width))
+        y = min(max(y, 0), max(0, screen_h - 40 - height))
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        return width, height
+
+    def _launcher_visible(self) -> bool:
+        """Return whether the floating launcher orb is currently visible."""
+        launcher = getattr(self, "launcher_win", None)
+        if launcher is None:
+            return False
+        try:
+            return launcher.state() != "withdrawn" and bool(launcher.winfo_viewable())
+        except (tk.TclError, RuntimeError):
+            return False
+
+    def _mark_launcher_attention(self, events: list[dict[str, Any]]) -> None:
+        """Extend launcher attention pulse when important hidden-panel events arrive."""
+        if not events:
+            return
+        duration = 0.0
+        for event in events:
+            category = str(event.get("category", "")).strip().lower()
+            if category in {"error", "security"}:
+                duration = max(duration, 12.0)
+            elif category in {"voice", "voice_pipeline", "mission", "learning", "command"}:
+                duration = max(duration, 6.0)
+        if duration <= 0:
+            return
+        self._launcher_attention_until = max(
+            getattr(self, "_launcher_attention_until", 0.0),
+            time.monotonic() + duration,
+        )
+
+    def _launcher_attention_active(self) -> bool:
+        """Return whether the launcher should currently pulse for attention."""
+        return time.monotonic() < getattr(self, "_launcher_attention_until", 0.0)
+
     def _show_panel(self) -> None:
-        # Restore saved position if valid
-        px, py = self.cfg.panel_x, self.cfg.panel_y
-        if px is not None and py is not None and _is_position_on_screen(px, py, self):
-            self.geometry(f"+{px}+{py}")
+        self._fit_panel_to_screen()
         self.deiconify()
         self.lift()
         self.focus_force()
@@ -411,6 +520,237 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self.intel_label.pack(side=tk.RIGHT, padx=(0, 8))
         tk.Label(status_row, text="Hotword: say 'Jarvis'", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
+        self._build_live_capsule(header)
+        self._render_live_snapshot()
+
+    def _build_live_capsule(self, header: tk.Frame) -> None:
+        """Build the live desktop capsule that reflects controller-owned truth."""
+        capsule = tk.Frame(header, bg="#0a1424", highlightbackground="#1f3558", highlightthickness=1)
+        capsule.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self._live_capsule = capsule
+
+        top_row = tk.Frame(capsule, bg="#0a1424")
+        top_row.pack(fill=tk.X, padx=10, pady=(8, 2))
+        self._live_capsule_top = top_row
+        self._live_mode_var = tk.StringVar(value="READY ON DESKTOP")
+        self._live_mode_label = tk.Label(
+            top_row,
+            textvariable=self._live_mode_var,
+            bg="#0a1424",
+            fg=self.ACCENT,
+            font=("Segoe UI", 11, "bold"),
+            anchor="w",
+        )
+        self._live_mode_label.pack(side=tk.LEFT)
+        self._mission_chip_var = tk.StringVar(value="No live missions")
+        self._mission_chip_label = tk.Label(
+            top_row,
+            textvariable=self._mission_chip_var,
+            bg="#12304d",
+            fg="#c7e6ff",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._mission_chip_label.pack(side=tk.RIGHT, padx=(0, 6))
+        self._live_detail_collapsed = tk.BooleanVar(
+            value=self._collapse_live_details_by_default(self._compact_layout)
+        )
+        self._live_detail_toggle_btn = tk.Button(
+            top_row,
+            text="Expand Live View" if self._live_detail_collapsed.get() else "Collapse Live View",
+            bg="#0a1424",
+            fg=self.MUTED,
+            activebackground="#0a1424",
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            command=self._toggle_live_detail_section,
+        )
+        self._live_detail_toggle_btn.pack(side=tk.RIGHT, padx=(0, 6))
+        self._live_detail_body = tk.Frame(capsule, bg="#0a1424")
+
+        self._live_context_var = tk.StringVar(
+            value="Voice, missions, and desktop context stay synchronized here."
+        )
+        self._live_context_label = tk.Label(
+            self._live_detail_body,
+            textvariable=self._live_context_var,
+            bg="#0a1424",
+            fg="#d8e7ff",
+            font=("Segoe UI", 10),
+            justify=tk.LEFT,
+            wraplength=330 if self._compact_layout else 385,
+            anchor="w",
+        )
+        self._live_context_label.pack(fill=tk.X, padx=10, pady=(0, 6))
+
+        progress_row = tk.Frame(self._live_detail_body, bg="#0a1424")
+        progress_row.pack(fill=tk.X, padx=10, pady=(0, 8))
+        self._mission_progress_var = tk.StringVar(value="Continuity primed")
+        self._mission_progress_label = tk.Label(
+            progress_row,
+            textvariable=self._mission_progress_var,
+            bg="#0a1424",
+            fg="#8fb4d8",
+            font=("Segoe UI", 8, "bold"),
+            anchor="w",
+        )
+        self._mission_progress_label.pack(side=tk.LEFT)
+        self._mission_progress_pct_var = tk.StringVar(value="0%")
+        self._mission_progress_pct_label = tk.Label(
+            progress_row,
+            textvariable=self._mission_progress_pct_var,
+            bg="#0a1424",
+            fg="#8fb4d8",
+            font=("Segoe UI", 8, "bold"),
+            anchor="e",
+        )
+        self._mission_progress_pct_label.pack(side=tk.RIGHT)
+
+        self._mission_progress_canvas = tk.Canvas(
+            self._live_detail_body,
+            width=390,
+            height=16,
+            bg="#0a1424",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._mission_progress_canvas.pack(fill=tk.X, padx=10, pady=(0, 8))
+        self._mission_progress_track = self._mission_progress_canvas.create_rectangle(
+            1,
+            3,
+            389,
+            13,
+            fill="#13243d",
+            outline="#214162",
+            width=1,
+        )
+        self._mission_progress_fill = self._mission_progress_canvas.create_rectangle(
+            2,
+            4,
+            2,
+            12,
+            fill="#34d3ba",
+            outline="",
+        )
+        self._mission_progress_glow = self._mission_progress_canvas.create_rectangle(
+            2,
+            4,
+            2,
+            12,
+            fill="#7dd3fc",
+            outline="",
+            stipple="gray50",
+        )
+
+        self._build_live_ops_rail(self._live_detail_body)
+
+        bottom_row = tk.Frame(capsule, bg="#0a1424")
+        bottom_row.pack(fill=tk.X, padx=10, pady=(0, 8))
+        self._live_capsule_bottom = bottom_row
+        self._live_signal_canvas = tk.Canvas(
+            bottom_row,
+            width=58,
+            height=20,
+            bg="#0a1424",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._live_signal_canvas.pack(side=tk.LEFT, padx=(0, 8))
+        self._live_signal_bars = [
+            self._live_signal_canvas.create_rectangle(
+                4 + index * 10,
+                10,
+                10 + index * 10,
+                18,
+                fill="#34d3ba",
+                outline="",
+            )
+            for index in range(5)
+        ]
+        self._activity_chip_var = tk.StringVar(value="No fresh signals yet")
+        self._activity_chip_label = tk.Label(
+            bottom_row,
+            textvariable=self._activity_chip_var,
+            bg="#132238",
+            fg=self.MUTED,
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+            anchor="w",
+        )
+        self._activity_chip_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._intel_chip_var = tk.StringVar(value="Intel --")
+        self._intel_chip_label = tk.Label(
+            bottom_row,
+            textvariable=self._intel_chip_var,
+            bg="#123624",
+            fg="#b7f0cf",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._intel_chip_label.pack(side=tk.RIGHT)
+        self._apply_live_detail_state()
+
+    def _build_live_ops_rail(self, capsule: tk.Frame) -> None:
+        """Build the controller-backed posture chips inside the live capsule."""
+        rail = tk.Frame(capsule, bg="#0a1424")
+        rail.pack(fill=tk.X, padx=10, pady=(0, 8))
+        self._live_ops_rail = rail
+
+        top_row = tk.Frame(rail, bg="#0a1424")
+        top_row.pack(fill=tk.X, pady=(0, 4))
+        self._route_chip_var = tk.StringVar(value="Auto Router")
+        self._route_chip_label = tk.Label(
+            top_row,
+            textvariable=self._route_chip_var,
+            bg="#123624",
+            fg="#b7f0cf",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._route_chip_label.pack(side=tk.LEFT)
+        self._control_chip_var = tk.StringVar(value="Advisory only")
+        self._control_chip_label = tk.Label(
+            top_row,
+            textvariable=self._control_chip_var,
+            bg="#1b2940",
+            fg="#d7e6ff",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._control_chip_label.pack(side=tk.LEFT, padx=(6, 0))
+
+        bottom_row = tk.Frame(rail, bg="#0a1424")
+        bottom_row.pack(fill=tk.X)
+        self._approval_chip_var = tk.StringVar(value="Approval required")
+        self._approval_chip_label = tk.Label(
+            bottom_row,
+            textvariable=self._approval_chip_var,
+            bg="#3a2a12",
+            fg="#fde68a",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._approval_chip_label.pack(side=tk.LEFT)
+        self._voice_chip_var = tk.StringVar(value="Push to talk")
+        self._voice_chip_label = tk.Label(
+            bottom_row,
+            textvariable=self._voice_chip_var,
+            bg="#172554",
+            fg="#bfdbfe",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=3,
+        )
+        self._voice_chip_label.pack(side=tk.LEFT, padx=(6, 0))
+
     def _build_command_area(self, body: tk.Frame) -> None:
         """Build the session config, command input, flags, action buttons, and quick actions."""
         self._build_session_config(body)
@@ -424,6 +764,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Build the Secure Session config section with URL, password, and advanced fields."""
         sec = tk.LabelFrame(body, text="Secure Session", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
         sec.pack(fill=tk.X, padx=10, pady=(10, 8))
+        self._session_section = sec
 
         self.base_var = tk.StringVar(value=self.cfg.base_url)
         self.token_var = tk.StringVar(value=self.cfg.token)
@@ -431,12 +772,30 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self.device_var = tk.StringVar(value=self.cfg.device_id)
         self.master_var = tk.StringVar(value=self.cfg.master_password)
 
-        self._entry(sec, "Base URL", self.base_var)
-        self._entry(sec, "Master password", self.master_var, show="*")
+        session_header = tk.Frame(sec, bg=self.PANEL)
+        session_header.pack(fill=tk.X, padx=6, pady=(4, 0))
+        self._session_toggle_btn = tk.Button(
+            session_header,
+            text="Show Session" if self._compact_layout else "Hide Session",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            activebackground=self.PANEL,
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            command=self._toggle_session_section,
+        )
+        self._session_toggle_btn.pack(side=tk.RIGHT)
+        self._session_body = tk.Frame(sec, bg=self.PANEL)
+        self._session_collapsed = tk.BooleanVar(value=self._compact_layout)
+
+        self._entry(self._session_body, "Base URL", self.base_var)
+        self._entry(self._session_body, "Master password", self.master_var, show="*")
 
         # Advanced fields (hidden by default)
         self._adv_visible = tk.BooleanVar(value=False)
-        adv_toggle = tk.Frame(sec, bg=self.PANEL)
+        adv_toggle = tk.Frame(self._session_body, bg=self.PANEL)
         adv_toggle.pack(fill=tk.X, padx=6, pady=(2, 0))
         self._adv_toggle_btn = tk.Button(
             adv_toggle,
@@ -451,13 +810,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             command=self._toggle_advanced,
         )
         self._adv_toggle_btn.pack(side=tk.LEFT)
-        self._adv_frame = tk.Frame(sec, bg=self.PANEL)
+        self._adv_frame = tk.Frame(self._session_body, bg=self.PANEL)
         self._entry(self._adv_frame, "Bearer token", self.token_var)
         self._entry(self._adv_frame, "Signing key", self.key_var)
         self._entry(self._adv_frame, "Device ID", self.device_var)
         # Advanced frame hidden by default (not packed)
 
-        self._sec_buttons = tk.Frame(sec, bg=self.PANEL)
+        self._sec_buttons = tk.Frame(self._session_body, bg=self.PANEL)
         self._sec_buttons.pack(fill=tk.X, padx=6, pady=(4, 8))
         tk.Button(
             self._sec_buttons,
@@ -475,6 +834,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             relief=tk.FLAT,
             command=self._bootstrap_session_async,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._apply_session_section_state()
 
     def _build_command_input(self, body: tk.Frame) -> None:
         """Build the command text area with model indicator row."""
@@ -483,7 +843,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         tk.Label(cmd_block, text="Command", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10, "bold")).pack(anchor="w")
         self.command_text = tk.Text(
             cmd_block,
-            height=5,
+            height=self._command_box_height(self._compact_layout),
             wrap=tk.WORD,
             bg="#081127",
             fg=self.TEXT,
@@ -522,12 +882,30 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self.auto_send_var = tk.BooleanVar(value=True)
         self.hotword_var = tk.BooleanVar(value=False)
         self.notify_var = tk.BooleanVar(value=True)
-        self._check(flags, "Allow PC Actions", self.execute_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Auto-Approve", self.priv_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Speak", self.speak_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Auto Send", self.auto_send_var).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Wake Word", self.hotword_var, cmd=self._hotword_changed).pack(side=tk.LEFT, padx=(0, 10))
-        self._check(flags, "Notifications", self.notify_var).pack(side=tk.LEFT)
+        toggles = [
+            self._check(flags, "Allow PC Actions", self.execute_var, cmd=self._on_posture_toggle),
+            self._check(flags, "Auto-Approve", self.priv_var, cmd=self._on_posture_toggle),
+            self._check(flags, "Speak", self.speak_var, cmd=self._on_posture_toggle),
+            self._check(flags, "Auto Send", self.auto_send_var, cmd=self._on_posture_toggle),
+            self._check(flags, "Wake Word", self.hotword_var, cmd=self._on_hotword_toggle),
+            self._check(flags, "Notifications", self.notify_var, cmd=self._on_posture_toggle),
+        ]
+        if self._compact_layout:
+            columns = self._flag_grid_columns(True)
+            for column in range(columns):
+                flags.grid_columnconfigure(column, weight=1)
+            for index, toggle in enumerate(toggles):
+                toggle.grid(
+                    row=index // columns,
+                    column=index % columns,
+                    sticky="w",
+                    padx=(0, 8),
+                    pady=(0, 2),
+                )
+        else:
+            for index, toggle in enumerate(toggles):
+                toggle.pack(side=tk.LEFT, padx=(0, 10 if index < len(toggles) - 1 else 0))
+        self._push_session_snapshot()
 
     def _build_action_buttons(self, body: tk.Frame) -> None:
         """Build the Voice Dictate, Send, and Stop action buttons."""
@@ -571,9 +949,32 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _build_status_bar(self, body: tk.Frame) -> None:
         """Build the Running Services and Brain Growth status sections."""
+        status_shell = tk.LabelFrame(body, text="System Snapshot", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        status_shell.pack(fill=tk.X, padx=10, pady=(8, 0))
+        self._status_section = status_shell
+        status_header = tk.Frame(status_shell, bg=self.PANEL)
+        status_header.pack(fill=tk.X, padx=6, pady=(4, 0))
+        self._status_collapsed = tk.BooleanVar(
+            value=self._collapse_system_snapshot_by_default(self._compact_layout)
+        )
+        self._status_toggle_btn = tk.Button(
+            status_header,
+            text="Show Snapshot" if self._status_collapsed.get() else "Hide Snapshot",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            activebackground=self.PANEL,
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            command=self._toggle_status_section,
+        )
+        self._status_toggle_btn.pack(side=tk.RIGHT)
+        self._status_body = tk.Frame(status_shell, bg=self.PANEL)
+
         # Running Services section
-        svc_frame = tk.LabelFrame(body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
-        svc_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
+        svc_frame = tk.LabelFrame(self._status_body, text="Running Services", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        svc_frame.pack(fill=tk.X, padx=6, pady=(4, 0))
         self._svc_labels: dict[str, tuple[tk.Label, tk.Label]] = {}
         for svc_name, display_name in [("daemon", "Assistant"), ("mobile_api", "Mobile API"), ("widget", "Widget")]:
             row_f = tk.Frame(svc_frame, bg=self.PANEL)
@@ -587,8 +988,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._refresh_services()
 
         # Brain Growth section
-        growth_frame = tk.LabelFrame(body, text="Brain Growth", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
-        growth_frame.pack(fill=tk.X, padx=10, pady=(8, 0))
+        growth_frame = tk.LabelFrame(self._status_body, text="Brain Growth", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        growth_frame.pack(fill=tk.X, padx=6, pady=(8, 8))
         self._growth_labels: dict[str, tk.Label] = {}
         for key, display in [
             ("facts", "Facts"),
@@ -604,6 +1005,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             val = tk.Label(row_f, text="--", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 9, "bold"), anchor="w")
             val.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
             self._growth_labels[key] = val
+        self._apply_status_section_state()
 
     def _toggle_advanced(self) -> None:
         """Show/hide advanced session fields (token, signing key, device ID)."""
@@ -615,6 +1017,51 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._adv_frame.pack(fill=tk.X, padx=0, pady=(0, 0), before=self._sec_buttons)
             self._adv_visible.set(True)
             self._adv_toggle_btn.config(text="\u25BC Advanced")
+
+    def _apply_session_section_state(self) -> None:
+        """Expand or collapse the Secure Session body."""
+        collapsed = bool(self._session_collapsed.get())
+        if collapsed:
+            self._session_body.pack_forget()
+            self._session_toggle_btn.config(text="Show Session")
+        else:
+            self._session_body.pack(fill=tk.X, padx=0, pady=(0, 0))
+            self._session_toggle_btn.config(text="Hide Session")
+
+    def _toggle_session_section(self) -> None:
+        """Toggle the compact Secure Session section."""
+        self._session_collapsed.set(not bool(self._session_collapsed.get()))
+        self._apply_session_section_state()
+
+    def _apply_live_detail_state(self) -> None:
+        """Expand or collapse the live-detail block."""
+        collapsed = bool(self._live_detail_collapsed.get())
+        if collapsed:
+            self._live_detail_body.pack_forget()
+            self._live_detail_toggle_btn.config(text="Expand Live View")
+        else:
+            self._live_detail_body.pack(fill=tk.X, padx=0, pady=(0, 0), before=self._live_capsule_bottom)
+            self._live_detail_toggle_btn.config(text="Collapse Live View")
+
+    def _toggle_live_detail_section(self) -> None:
+        """Toggle the live-detail block."""
+        self._live_detail_collapsed.set(not bool(self._live_detail_collapsed.get()))
+        self._apply_live_detail_state()
+
+    def _apply_status_section_state(self) -> None:
+        """Expand or collapse the system snapshot block."""
+        collapsed = bool(self._status_collapsed.get())
+        if collapsed:
+            self._status_body.pack_forget()
+            self._status_toggle_btn.config(text="Show Snapshot")
+        else:
+            self._status_body.pack(fill=tk.X, padx=0, pady=(0, 0))
+            self._status_toggle_btn.config(text="Hide Snapshot")
+
+    def _toggle_status_section(self) -> None:
+        """Toggle the system snapshot block."""
+        self._status_collapsed.set(not bool(self._status_collapsed.get()))
+        self._apply_status_section_state()
 
     def _entry(self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None) -> None:
         tk.Label(parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=6, pady=(4, 0))
@@ -635,7 +1082,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             parent,
             text=text,
             variable=variable,
-            command=cmd,
+            command=cmd or "",
             bg=self.PANEL,
             fg=self.MUTED,
             selectcolor="#1a2742",
@@ -679,7 +1126,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         )
 
     def _on_command_enter(self, event: tk.Event[Any]) -> str | None:
-        if event.state & 0x0001:  # Shift key pressed
+        state_bits = event.state if isinstance(event.state, int) else 0
+        if state_bits & 0x0001:  # Shift key pressed
             return None
         self._send_command_async()
         return "break"
@@ -713,6 +1161,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         cfg = self._current_cfg()
         _save_widget_cfg(self.root_path, cfg)
         self._log("Session saved locally.")
+        if self._compact_layout:
+            self._session_collapsed.set(True)
+            self._apply_session_section_state()
 
     def _apply_session_update(self, session: dict[str, Any]) -> None:
         base_url = str(session.get("base_url", "")).strip()
@@ -746,6 +1197,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 if (not ok) or (not isinstance(session, dict)):
                     raise RuntimeError(str(data.get("error", "Bootstrap returned no session data.")))
                 self.after(0, self._apply_session_update, session)
+                if self._compact_layout:
+                    self.after(0, lambda: self._session_collapsed.set(True))
+                    self.after(0, self._apply_session_section_state)
                 trusted = bool(session.get("trusted_device", False))
                 self._log_async(f"Bootstrap complete. trusted_device={trusted}", role="jarvis")
                 self.after(0, self._show_welcome)
@@ -878,6 +1332,469 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _thread(self, fn: Callable[..., Any]) -> None:
         threading.Thread(target=fn, daemon=True).start()
 
+    def _ensure_controller(self) -> DesktopInteractionController:
+        """Return the authoritative desktop interaction controller."""
+        controller = getattr(self, "_controller", None)
+        if not isinstance(controller, DesktopInteractionController):
+            controller = DesktopInteractionController(
+                on_state_change=lambda state: JarvisDesktopWidget._apply_controller_state(self, state),
+            )
+            self._controller = controller
+            self._cancel_event = controller.cancel_event
+            self._hotword_active = controller.hotword_event
+            self._cmd_generation = controller.command_generation
+        return controller
+
+    def _render_live_snapshot(self) -> None:
+        """Render the controller-owned live desktop snapshot into the UI."""
+        snapshot = self._ensure_controller().snapshot()
+        mode_text, mode_color = self._snapshot_mode_text(snapshot)
+        self.status_var.set(mode_text)
+        self.status_label.config(fg=mode_color)
+
+        intel_text, intel_color = self._snapshot_intelligence_text(snapshot)
+        self.intel_var.set(intel_text)
+        self.intel_label.config(fg=intel_color)
+
+        live_mode_var = getattr(self, "_live_mode_var", None)
+        live_mode_label = getattr(self, "_live_mode_label", None)
+        if live_mode_var is not None:
+            live_mode_var.set(mode_text.upper())
+        if live_mode_label is not None:
+            live_mode_label.config(fg=mode_color)
+
+        mission_chip_var = getattr(self, "_mission_chip_var", None)
+        mission_chip_label = getattr(self, "_mission_chip_label", None)
+        mission_text, mission_bg, mission_fg = self._snapshot_mission_chip(snapshot)
+        if mission_chip_var is not None:
+            mission_chip_var.set(mission_text)
+        if mission_chip_label is not None:
+            mission_chip_label.config(bg=mission_bg, fg=mission_fg)
+
+        context_var = getattr(self, "_live_context_var", None)
+        context_label = getattr(self, "_live_context_label", None)
+        context_text, context_fg = self._snapshot_context_line(snapshot)
+        if context_var is not None:
+            context_var.set(context_text)
+        if context_label is not None:
+            context_label.config(fg=context_fg)
+
+        activity_var = getattr(self, "_activity_chip_var", None)
+        activity_label = getattr(self, "_activity_chip_label", None)
+        activity_text, activity_bg, activity_fg = self._snapshot_activity_chip(snapshot)
+        if activity_var is not None:
+            activity_var.set(activity_text)
+        if activity_label is not None:
+            activity_label.config(bg=activity_bg, fg=activity_fg)
+
+        intel_chip_var = getattr(self, "_intel_chip_var", None)
+        intel_chip_label = getattr(self, "_intel_chip_label", None)
+        intel_chip_text, intel_chip_bg, intel_chip_fg = self._snapshot_intel_chip(snapshot)
+        if intel_chip_var is not None:
+            intel_chip_var.set(intel_chip_text)
+        if intel_chip_label is not None:
+            intel_chip_label.config(bg=intel_chip_bg, fg=intel_chip_fg)
+
+        self._render_session_snapshot(snapshot)
+        self._render_mission_progress(snapshot)
+        self._render_growth_snapshot(snapshot)
+
+    def _apply_controller_state(self, state: DesktopWidgetState) -> None:
+        """Render a controller-owned state transition into widget UI state."""
+        self._widget_state = state.value
+        cancel_btn = getattr(self, "_cancel_btn", None)
+        if cancel_btn is not None:
+            try:
+                if state is DesktopWidgetState.PROCESSING:
+                    cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                else:
+                    cancel_btn.pack_forget()
+            except tk.TclError:
+                logger.debug("Failed to update cancel button visibility")
+        self._refresh_status_view()
+
+    def _snapshot_mode_text(self, snapshot: Any) -> tuple[str, str]:
+        """Build headline status text and tone from the desktop snapshot."""
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            return "Listening now", self.ACCENT_2
+        if snapshot.state is DesktopWidgetState.PROCESSING:
+            prefix = "Online" if snapshot.online else "Offline"
+            return f"{prefix} · Thinking", "#ff9f43"
+        if snapshot.state is DesktopWidgetState.ERROR:
+            return "Recovery mode", self.WARN
+        if snapshot.online:
+            return "Ready on desktop", self.ACCENT
+        return "Offline", "#a5b4fc"
+
+    def _snapshot_intelligence_text(self, snapshot: Any) -> tuple[str, str]:
+        """Return the compact intelligence readout shown in the toolbar."""
+        if snapshot.intelligence_score_pct is None:
+            return "", self.MUTED
+        if snapshot.intelligence_regression:
+            return f"Intel: {snapshot.intelligence_score_pct}% · Below Target", self.WARN
+        if snapshot.intelligence_score_pct >= 70:
+            return f"Intel: {snapshot.intelligence_score_pct}%", self.ACCENT
+        if snapshot.intelligence_score_pct >= 50:
+            return f"Intel: {snapshot.intelligence_score_pct}%", "#eab308"
+        return f"Intel: {snapshot.intelligence_score_pct}%", self.WARN
+
+    def _snapshot_mission_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return mission-chip text and palette for the live capsule."""
+        mission = snapshot.mission
+        if mission.current_topic:
+            topic = mission.current_topic[:22]
+            progress = f" {mission.progress_pct}%" if mission.progress_pct > 0 else ""
+            return f"{topic}{progress}", "#163857", "#d7ebff"
+        if mission.count > 0:
+            return f"{mission.count} live mission{'s' if mission.count != 1 else ''}", "#163857", "#d7ebff"
+        return "No live missions", "#1a2030", self.MUTED
+
+    def _snapshot_context_line(self, snapshot: Any) -> tuple[str, str]:
+        """Return the main descriptive line inside the live capsule."""
+        mission = snapshot.mission
+        activity = snapshot.activity
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            return "Wake word or dictation is active. Jarvis is waiting for your voice input.", "#cae1ff"
+        if snapshot.state is DesktopWidgetState.PROCESSING:
+            if mission.current_step:
+                return f"Working on {mission.current_topic or 'active mission'}: {mission.current_step}", "#ffe2b6"
+            return "Reasoning through the current request with continuity and mission context intact.", "#ffe2b6"
+        if mission.current_step:
+            topic = mission.current_topic or "Current mission"
+            return f"{topic}: {mission.current_step}", "#d8e7ff"
+        if mission.count > 0 and mission.topics:
+            return f"Live mission focus: {', '.join(mission.topics)}", "#d8e7ff"
+        if activity.summary:
+            return activity.summary, "#d8e7ff"
+        if snapshot.online:
+            return "Desktop assistant is live. Voice, activity, and learning surfaces are synchronized.", "#d8e7ff"
+        return "Desktop services are unreachable. The launcher stays available while the brain reconnects.", "#c4d1e9"
+
+    def _snapshot_activity_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return activity-chip content and palette based on recent signals."""
+        activity = snapshot.activity
+        if not activity.summary:
+            return "No fresh signals yet", "#132238", self.MUTED
+        prefix = activity.category.upper() if activity.category else "EVENT"
+        ts = f"{activity.timestamp} · " if activity.timestamp else ""
+        text = f"{ts}{prefix}: {activity.summary[:72]}"
+        if activity.category in {"error", "security"}:
+            return text, "#33181b", "#fecaca"
+        if activity.category in {"voice", "voice_pipeline"}:
+            return text, "#1c1b3a", "#d7ccff"
+        return text, "#132238", "#d7e6ff"
+
+    def _snapshot_intel_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return the compact intelligence pill in the live capsule."""
+        if snapshot.intelligence_score_pct is None:
+            return "Intel --", "#1f2937", "#d1d5db"
+        if snapshot.intelligence_regression:
+            return f"Intel {snapshot.intelligence_score_pct}% LOW", "#3b1212", "#fecaca"
+        if snapshot.intelligence_score_pct >= 70:
+            return f"Intel {snapshot.intelligence_score_pct}%", "#123624", "#b7f0cf"
+        if snapshot.intelligence_score_pct >= 50:
+            return f"Intel {snapshot.intelligence_score_pct}%", "#3a2a12", "#fde68a"
+        return f"Intel {snapshot.intelligence_score_pct}%", "#3b1212", "#fecaca"
+
+    def _render_session_snapshot(self, snapshot: Any) -> None:
+        """Render route/security/voice posture chips from the controller snapshot."""
+        session = snapshot.session
+        route_chip_var = getattr(self, "_route_chip_var", None)
+        route_chip_label = getattr(self, "_route_chip_label", None)
+        route_text, route_bg, route_fg = self._snapshot_route_chip(snapshot)
+        if route_chip_var is not None:
+            route_chip_var.set(route_text)
+        if route_chip_label is not None:
+            route_chip_label.config(
+                bg=route_bg,
+                fg=route_fg,
+                highlightbackground=session.route_accent,
+                highlightcolor=session.route_accent,
+                highlightthickness=1,
+            )
+
+        control_chip_var = getattr(self, "_control_chip_var", None)
+        control_chip_label = getattr(self, "_control_chip_label", None)
+        control_text, control_bg, control_fg = self._snapshot_control_chip(snapshot)
+        if control_chip_var is not None:
+            control_chip_var.set(control_text)
+        if control_chip_label is not None:
+            control_chip_label.config(bg=control_bg, fg=control_fg)
+
+        approval_chip_var = getattr(self, "_approval_chip_var", None)
+        approval_chip_label = getattr(self, "_approval_chip_label", None)
+        approval_text, approval_bg, approval_fg = self._snapshot_approval_chip(snapshot)
+        if approval_chip_var is not None:
+            approval_chip_var.set(approval_text)
+        if approval_chip_label is not None:
+            approval_chip_label.config(bg=approval_bg, fg=approval_fg)
+
+        voice_chip_var = getattr(self, "_voice_chip_var", None)
+        voice_chip_label = getattr(self, "_voice_chip_label", None)
+        voice_text, voice_bg, voice_fg = self._snapshot_voice_chip(snapshot)
+        if voice_chip_var is not None:
+            voice_chip_var.set(voice_text)
+        if voice_chip_label is not None:
+            voice_chip_label.config(bg=voice_bg, fg=voice_fg)
+
+        if session.speech_enabled and voice_chip_label is not None:
+            voice_chip_label.config(highlightthickness=0)
+
+    def _snapshot_route_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return route-chip text and palette for the current model posture."""
+        session = snapshot.session
+        label = session.route_label[:22] or "Auto Router"
+        family = session.route_family
+        if family == "cli":
+            return label, "#1f3b2d", "#c9f7e3"
+        if family == "cloud":
+            return label, "#3a2610", "#fde7c3"
+        return label, "#123624", "#b7f0cf"
+
+    def _snapshot_control_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return desktop-action posture chip content."""
+        session = snapshot.session
+        if session.control_armed:
+            return session.control_mode, "#163857", "#d7ebff"
+        return session.control_mode, "#1b2940", "#d7e6ff"
+
+    def _snapshot_approval_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return approval-mode chip content."""
+        session = snapshot.session
+        if session.auto_approve:
+            return session.approval_mode, "#3b1212", "#fecaca"
+        return session.approval_mode, "#3a2a12", "#fde68a"
+
+    def _snapshot_voice_chip(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return voice-mode chip content."""
+        session = snapshot.session
+        text = session.voice_mode
+        if not session.speech_enabled:
+            text = f"{text} · Silent"
+        if session.wakeword_enabled:
+            return text, "#0f2b5b", "#bfdbfe"
+        return text, "#172554", "#bfdbfe"
+
+    def _render_mission_progress(self, snapshot: Any) -> None:
+        """Render the live mission progress track inside the hero capsule."""
+        progress_var = getattr(self, "_mission_progress_var", None)
+        pct_var = getattr(self, "_mission_progress_pct_var", None)
+        progress_label = getattr(self, "_mission_progress_label", None)
+        pct_label = getattr(self, "_mission_progress_pct_label", None)
+        progress_canvas = getattr(self, "_mission_progress_canvas", None)
+        progress_fill = getattr(self, "_mission_progress_fill", None)
+        progress_glow = getattr(self, "_mission_progress_glow", None)
+        if progress_canvas is None or progress_fill is None or progress_glow is None:
+            return
+
+        mission = snapshot.mission
+        progress_pct = max(0, min(100, int(mission.progress_pct or 0)))
+        if mission.current_topic:
+            detail = f"{mission.artifacts_so_far} artifacts" if mission.artifacts_so_far else "live mission"
+            text = f"{mission.current_topic[:28]} · {detail}"
+        elif mission.count > 0:
+            text = f"{mission.count} live mission{'s' if mission.count != 1 else ''} staged"
+        elif snapshot.online:
+            text = "Continuity primed"
+        else:
+            text = "Waiting for desktop brain"
+        if progress_var is not None:
+            progress_var.set(text)
+        if pct_var is not None:
+            pct_var.set(f"{progress_pct}%")
+
+        fill_color, glow_color, label_color = self._mission_progress_palette(snapshot)
+        if progress_label is not None:
+            progress_label.config(fg=label_color)
+        if pct_label is not None:
+            pct_label.config(fg=label_color)
+        width = max(int(progress_canvas.winfo_width() or 390), 120)
+        fill_width = 2 + int((width - 4) * (progress_pct / 100.0))
+        fill_width = max(fill_width, 2 if progress_pct <= 0 else 6)
+        try:
+            progress_canvas.itemconfig(self._mission_progress_track, fill="#13243d", outline="#214162")
+            progress_canvas.itemconfig(progress_fill, fill=fill_color)
+            progress_canvas.itemconfig(progress_glow, fill=glow_color)
+            progress_canvas.coords(self._mission_progress_track, 1, 3, width - 1, 13)
+            progress_canvas.coords(progress_fill, 2, 4, fill_width, 12)
+            glow_start = max(2, fill_width - 42)
+            progress_canvas.coords(progress_glow, glow_start, 4, fill_width, 12)
+        except (tk.TclError, RuntimeError):
+            logger.debug("Mission progress render skipped (widget may be destroyed)")
+
+    def _mission_progress_palette(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return fill/glow/label colors for the mission progress track."""
+        if snapshot.state is DesktopWidgetState.PROCESSING:
+            return "#ffb347", "#ffe2a6", "#ffe2b6"
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            return "#4da9ff", "#93c5fd", "#cae1ff"
+        if snapshot.state is DesktopWidgetState.ERROR:
+            return "#f87171", "#fecaca", "#fecaca"
+        if snapshot.mission.current_topic:
+            return "#34d3ba", "#9cefe1", "#bff8f0"
+        if snapshot.online:
+            return "#34d3ba", "#8ee6d7", "#8fb4d8"
+        return "#6b7280", "#9ca3af", "#94a3b8"
+
+    def _render_growth_snapshot(self, snapshot: Any) -> None:
+        """Render Brain Growth metrics from the controller-owned snapshot."""
+        growth_labels = getattr(self, "_growth_labels", None)
+        if not growth_labels:
+            return
+        growth_labels["facts"].config(
+            text=f"{snapshot.facts_total} (+{snapshot.facts_last_7d} 7d)" if snapshot.online else "--",
+            fg=self.TEXT if snapshot.online else self.MUTED,
+        )
+        growth_labels["kg"].config(
+            text=f"{snapshot.kg_nodes} nodes / {snapshot.kg_edges} edges" if snapshot.online else "--",
+            fg=self.TEXT if snapshot.online else self.MUTED,
+        )
+        growth_labels["memory"].config(
+            text=f"{snapshot.memory_records} records" if snapshot.online else "--",
+            fg=self.TEXT if snapshot.online else self.MUTED,
+        )
+        mission = snapshot.mission
+        if mission.current_topic:
+            detail = mission.current_step or "Running"
+            growth_labels["missions"].config(
+                text=f"{mission.current_topic}: {detail[:36]}",
+                fg=self.ACCENT_2,
+            )
+        elif mission.count > 0 and mission.topics:
+            growth_labels["missions"].config(
+                text=f"{mission.count} active: {', '.join(mission.topics)}",
+                fg=self.ACCENT,
+            )
+        elif mission.count > 0:
+            growth_labels["missions"].config(text=f"{mission.count} active", fg=self.ACCENT)
+        else:
+            growth_labels["missions"].config(text="None active", fg=self.MUTED)
+        score_pct = snapshot.self_test_score_pct
+        score_color = self.MUTED
+        score_text = "--"
+        if score_pct is not None:
+            score_text = f"{score_pct}%"
+            score_color = self.ACCENT if score_pct >= 70 else "#eab308" if score_pct >= 50 else self.WARN
+        growth_labels["score"].config(text=score_text, fg=score_color)
+        trend = snapshot.growth_trend
+        trend_symbol = "\u25B2" if trend == "increasing" else "\u25BC" if trend == "declining" else "\u25C6"
+        trend_color = "#22c55e" if trend == "increasing" else self.WARN if trend == "declining" else "#eab308"
+        growth_labels["trend"].config(text=f"{trend_symbol} {trend}", fg=trend_color)
+
+    def _live_capsule_palette(self) -> tuple[str, str]:
+        """Return animated base/accent colors for the live capsule."""
+        snapshot = self._ensure_controller().snapshot()
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            return "#0b1d33", "#4da9ff"
+        if snapshot.state is DesktopWidgetState.PROCESSING:
+            return "#261707", "#ffb347"
+        if snapshot.state is DesktopWidgetState.ERROR:
+            return "#2a1014", "#ff7b7b"
+        if snapshot.online:
+            return "#0a1828", "#34d3ba"
+        return "#12172a", "#8b9dff"
+
+    def _live_signal_palette(self, snapshot: Any) -> tuple[str, str]:
+        """Return base/fill colors for the animated signal bars."""
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            return "#16324f", "#4da9ff"
+        if snapshot.state is DesktopWidgetState.PROCESSING:
+            return "#3b250e", "#ffb347"
+        if snapshot.state is DesktopWidgetState.ERROR:
+            return "#34151a", "#f87171"
+        if snapshot.online:
+            return "#163328", "#34d3ba"
+        return "#20263a", "#8b9dff"
+
+    def _animate_live_signal_bars(self, snapshot: Any, pulse: float) -> None:
+        """Animate the compact signal meter inside the live capsule."""
+        signal_canvas = getattr(self, "_live_signal_canvas", None)
+        bars = getattr(self, "_live_signal_bars", None)
+        if signal_canvas is None or not isinstance(bars, list):
+            return
+        base_color, fill_color = self._live_signal_palette(snapshot)
+        amplitude = 0.18
+        speed = 1.0
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            amplitude = 0.72
+            speed = 1.9
+        elif snapshot.state is DesktopWidgetState.PROCESSING:
+            amplitude = 0.92
+            speed = 2.5
+        elif snapshot.state is DesktopWidgetState.ERROR:
+            amplitude = 0.42
+            speed = 0.8
+        elif snapshot.online:
+            amplitude = 0.4
+            speed = 1.2
+        for index, bar_id in enumerate(bars):
+            phase = (time.monotonic() - self._anim_t0) * speed + index * 0.6
+            bar_height = 4 + int((14 * amplitude) * (0.35 + 0.65 * (0.5 + 0.5 * math.sin(phase))))
+            x1 = 4 + index * 10
+            x2 = x1 + 6
+            y2 = 18
+            y1 = y2 - bar_height
+            signal_canvas.itemconfig(bar_id, fill=fill_color, outline="")
+            signal_canvas.coords(bar_id, x1, y1, x2, y2)
+        signal_canvas.config(bg=self._live_capsule.cget("bg"))
+        if pulse > 0.7:
+            signal_canvas.configure(highlightthickness=1, highlightbackground=base_color)
+        else:
+            signal_canvas.configure(highlightthickness=0)
+
+    def _animate_live_capsule(self) -> None:
+        """Animate the live capsule border so desktop status feels alive."""
+        if self.stop_event.is_set():
+            return
+        capsule = getattr(self, "_live_capsule", None)
+        if capsule is None:
+            self._live_capsule_after_id = self.after(120, self._animate_live_capsule)
+            return
+        interval = self._live_capsule_animation_interval()
+        if not self._panel_visible():
+            self._live_capsule_after_id = self.after(interval, self._animate_live_capsule)
+            return
+        try:
+            snapshot = self._ensure_controller().snapshot()
+            base_color, accent_color = self._live_capsule_palette()
+            pulse = 0.5 + 0.5 * math.sin((time.monotonic() - self._anim_t0) * 2.2)
+            thickness = 1 if pulse < 0.55 else 2
+            capsule.config(
+                bg=base_color,
+                highlightbackground=accent_color,
+                highlightcolor=accent_color,
+                highlightthickness=thickness,
+            )
+            for widget_name in (
+                "_live_capsule_top",
+                "_live_capsule_bottom",
+                "_live_detail_body",
+                "_live_ops_rail",
+                "_live_mode_label",
+                "_live_context_label",
+                "_mission_progress_label",
+                "_mission_progress_pct_label",
+            ):
+                widget = getattr(self, widget_name, None)
+                if widget is not None:
+                    widget.config(bg=base_color)
+            progress_canvas = getattr(self, "_mission_progress_canvas", None)
+            if progress_canvas is not None:
+                progress_canvas.config(bg=base_color)
+            self._animate_live_signal_bars(snapshot, pulse)
+            self._live_capsule_after_id = self.after(interval, self._animate_live_capsule)
+        except (tk.TclError, RuntimeError):
+            logger.debug("Live capsule animation stopped (widget may be destroyed)")
+
+    def _live_capsule_animation_interval(self) -> int:
+        """Return the hero-surface animation cadence for the current visibility/state."""
+        if not self._panel_visible():
+            return 280
+        snapshot = self._ensure_controller().snapshot()
+        if snapshot.state in {DesktopWidgetState.LISTENING, DesktopWidgetState.PROCESSING}:
+            return 75
+        return 110
+
     def _handle_transport_failure(
         self,
         action: str,
@@ -913,6 +1830,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Tab key in command text: cycle through model rotation."""
         self._model_index = (self._model_index + 1) % len(self.MODEL_ROTATION)
         self._update_model_label()
+        self._push_session_snapshot()
         return "break"  # Prevent Tab from inserting a tab character
 
     def _update_model_label(self) -> None:
@@ -930,6 +1848,46 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         alias = self.MODEL_ROTATION[self._model_index][0]
         return "" if alias == "auto" else alias
 
+    def _selected_model_snapshot(self) -> tuple[str, str, str]:
+        """Return label/accent/family metadata for the selected model route."""
+        alias, display_name, best_use, accent = self.MODEL_ROTATION[self._model_index]
+        if alias == "auto":
+            return "Auto Router", accent, "auto"
+        if alias.endswith("-cli") or alias == "planner-cli":
+            return display_name, accent, "cli"
+        return display_name, accent, "cloud"
+
+    def _push_session_snapshot(self, *, render: bool = True) -> None:
+        """Push local desktop posture into the controller-owned snapshot."""
+        controller = getattr(self, "_controller", None)
+        if controller is None:
+            controller = JarvisDesktopWidget._ensure_controller(self)
+        route_label, route_accent, route_family = JarvisDesktopWidget._selected_model_snapshot(self)
+        execute_var = getattr(self, "execute_var", None)
+        priv_var = getattr(self, "priv_var", None)
+        hotword_var = getattr(self, "hotword_var", None)
+        speak_var = getattr(self, "speak_var", None)
+        controller.apply_session_snapshot(
+            route_label=route_label,
+            route_accent=route_accent,
+            route_family=route_family,
+            control_armed=bool(execute_var.get()) if execute_var is not None else False,
+            auto_approve=bool(priv_var.get()) if priv_var is not None else False,
+            wakeword_enabled=bool(hotword_var.get()) if hotword_var is not None else False,
+            speech_enabled=bool(speak_var.get()) if speak_var is not None else True,
+        )
+        if render:
+            self._render_live_snapshot()
+
+    def _on_posture_toggle(self) -> None:
+        """Refresh the controller snapshot after desktop posture toggles change."""
+        self._push_session_snapshot()
+
+    def _on_hotword_toggle(self) -> None:
+        """Update hotword execution and refresh desktop posture surfaces."""
+        self._hotword_changed()
+        self._push_session_snapshot()
+
     def _on_escape(self) -> None:
         """ESC key handler: cancel command if processing, otherwise minimize."""
         if self._widget_state == "processing":
@@ -939,7 +1897,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _cancel_command(self) -> None:
         """Cancel the current in-progress command, stop TTS, and reset state."""
-        self._cancel_event.set()
+        JarvisDesktopWidget._ensure_controller(self).cancel_command()
         self._cancel_processing_timeout()
         self._hide_thinking()
         # Kill any running TTS processes
@@ -961,7 +1919,6 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             logger.debug("Failed to kill TTS/speech processes during cancel: %s", exc)
         self.command_text.config(state=tk.NORMAL)
         self._log("Command cancelled.", role="system")
-        self._set_state("idle")
 
     def _cancel_processing_timeout(self) -> None:
         """Cancel the safety timeout for stuck processing state."""
@@ -975,12 +1932,11 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _processing_timed_out(self) -> None:
         """Safety net: force-reset stuck processing state after configured timeout."""
         self._processing_timeout_id = None
-        if self._widget_state == "processing":
+        if JarvisDesktopWidget._ensure_controller(self).processing_timed_out():
             self._hide_thinking()
             timeout_s = max(1, self._processing_timeout_ms // 1000)
             self._log(f"Command timed out ({timeout_s}s). Ready for new commands.", role="error")
             self.command_text.config(state=tk.NORMAL)
-            self._set_state("idle")
 
     def _handle_command_error(self, message: str) -> None:
         """Log a command error with a ready prompt and briefly flash the error state."""
@@ -994,10 +1950,9 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         Returns the command text if valid, or None if the command was handled
         (empty, already processing, or conversation-ending phrase).
         """
-        if getattr(self, "_widget_state", "idle") == "processing":
+        if not JarvisDesktopWidget._ensure_controller(self).can_begin_command():
             self._log("Still processing previous command. Please wait...", role="system")
             return None
-        self._cancel_event.clear()
         text = self.command_text.get("1.0", tk.END).strip()
         if not text:
             self._log("No command text.")
@@ -1012,7 +1967,8 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
     def _make_worker_cleanup(self, gen: int) -> Callable[[], None]:
         """Create a cleanup callback for a command worker tied to a generation counter."""
         def _cleanup() -> None:
-            if self._cmd_generation != gen:
+            controller = JarvisDesktopWidget._ensure_controller(self)
+            if not controller.owns_generation(gen):
                 return  # Stale worker -- a newer command owns the state
             self._cancel_processing_timeout()
             self._hide_thinking()
@@ -1020,22 +1976,24 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 self.command_text.config(state=tk.NORMAL)
             except tk.TclError:
                 logger.debug("Failed to re-enable command input after processing")
-            if self._widget_state == "processing":
-                self._set_state("idle")
+            controller.complete_command(gen)
         return _cleanup
 
     def _send_command_async(self) -> None:
         text = self._validate_and_prepare_command()
         if text is None:
             return
+        controller = JarvisDesktopWidget._ensure_controller(self)
         # Clear command text immediately after reading
         self.command_text.delete("1.0", tk.END)
         self._log(text, role="user")
-        self._set_state("processing")
+        gen = controller.begin_command()
+        if gen is None:
+            self._log("Still processing previous command. Please wait...", role="system")
+            return
+        self._cmd_generation = controller.command_generation
         self._show_thinking()
         self.command_text.config(state=tk.DISABLED)
-        self._cmd_generation += 1
-        gen = self._cmd_generation
         self._cancel_processing_timeout()
         self._processing_timeout_id = self.after(self._processing_timeout_ms, self._processing_timed_out)
         cfg = self._current_cfg()
@@ -1376,27 +2334,27 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _dictate_async(self) -> None:
         # Guard: skip if already listening or processing to prevent overlapping voice
-        if getattr(self, "_widget_state", "idle") in ("listening", "processing"):
+        controller = JarvisDesktopWidget._ensure_controller(self)
+        if not controller.begin_dictation():
             return
         auto_send = bool(self.auto_send_var.get())
-        self._set_state("listening")
 
         def worker() -> None:
             try:
                 text = _voice_dictate_once(timeout_s=8)
                 if not text:
                     self._log_async("No speech recognized.", role="system")
-                    self._set_state_async("idle")
+                    self._set_state_async(DesktopWidgetState.IDLE.value)
                     return
                 self._set_command_text_async(text)
                 self._log_async(f"dictated: {text}", role="system")
                 if auto_send:
                     # Reset to idle first so _send_command_async doesn't
                     # reject the command with "Still processing"
-                    self._set_state_async("idle")
+                    self._set_state_async(DesktopWidgetState.IDLE.value)
                     self.after(0, self._send_command_async)
                 else:
-                    self._set_state_async("idle")
+                    self._set_state_async(DesktopWidgetState.IDLE.value)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("Voice dictation failed: %s", exc)
                 self._log_async(f"dictation failed: {exc}", role="error")
@@ -1406,7 +2364,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _hotword_changed(self) -> None:
         if self.hotword_var.get():
-            if self._hotword_active.is_set():
+            if not JarvisDesktopWidget._ensure_controller(self).try_start_hotword_loop():
                 self._log("Wake Word loop already running.")
                 return
             self._log("Wake Word enabled. Say 'Jarvis' to trigger dictation.")
@@ -1415,13 +2373,10 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._log("Wake Word disabled.")
 
     def _hotword_loop(self) -> None:
-        if self._hotword_active.is_set():
-            return  # Another loop is already running
-        self._hotword_active.set()
         try:
             self._hotword_loop_inner()
         finally:
-            self._hotword_active.clear()
+            JarvisDesktopWidget._ensure_controller(self).finish_hotword_loop()
 
     def _hotword_loop_inner(self) -> None:
         def _read_hotword_var() -> bool:
@@ -1514,15 +2469,20 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                 break
         return ok, intel_data
 
-    def _fetch_widget_status(self, cfg: WidgetConfig) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-        """Fetch growth, alerts, and recent events via /widget-status. Returns (growth_data, recent_events)."""
+    def _fetch_widget_status(
+        self,
+        cfg: WidgetConfig,
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], dict[str, Any] | None]:
+        """Fetch growth, recent events, and current mission focus via /widget-status."""
         growth_data: dict[str, Any] | None = None
         recent_events: list[dict[str, Any]] = []
+        now_working_on: dict[str, Any] | None = None
         try:
             ws = _http_json(cfg, "/widget-status", method="GET")
             growth_data = ws.get("growth") if isinstance(ws, dict) else None
             alerts = ws.get("alerts", []) if isinstance(ws, dict) else []
             recent_events = ws.get("recent_events", []) if isinstance(ws, dict) else []
+            now_working_on = ws.get("now_working_on") if isinstance(ws, dict) else None
             if isinstance(alerts, list):
                 for alert in alerts:
                     msg = str(alert.get("message", "")) if isinstance(alert, dict) else str(alert)
@@ -1531,7 +2491,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
                         break  # One toast per poll cycle
         except Exception as exc:  # boundary: catch-all justified
             logger.debug("Failed to fetch widget-status: %s", exc)
-        return growth_data, recent_events
+        return growth_data, recent_events, now_working_on
 
     def _health_sleep(self) -> bool:
         """Sleep for 8 seconds in small increments. Returns True if stop_event was set."""
@@ -1576,12 +2536,13 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
             growth_data: dict[str, Any] | None = None
             recent_events: list[dict[str, Any]] = []
+            now_working_on: dict[str, Any] | None = None
             if ok and cfg.token and cfg.signing_key:
-                growth_data, recent_events = self._fetch_widget_status(cfg)
+                growth_data, recent_events, now_working_on = self._fetch_widget_status(cfg)
 
             if not self.stop_event.is_set():
                 try:
-                    self.after(0, self._set_online, ok, intel_data, growth_data, recent_events)
+                    self.after(0, self._set_online, ok, intel_data, growth_data, recent_events, now_working_on)
                 except (tk.TclError, RuntimeError):  # Widget may be destroyed
                     logger.debug("Cannot schedule online state update (widget may be destroyed)")
                     return
@@ -1589,89 +2550,88 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
     def _set_online(self, value: bool, intel_data: dict[str, Any] | None = None,
                     growth_data: dict[str, Any] | None = None,
-                    recent_events: list[dict[str, Any]] | None = None) -> None:
+                    recent_events: list[dict[str, Any]] | None = None,
+                    now_working_on: dict[str, Any] | None = None) -> None:
         """Update online state and refresh status — always call on main thread."""
         self.online = value
-        self._update_intelligence_label(intel_data)
-        self._update_growth_labels(growth_data)
-        if recent_events:
-            self._update_activity_events(recent_events)
-        self._refresh_status_view()
+        controller = self._ensure_controller()
+        new_events = controller.apply_health_snapshot(
+            online=value,
+            intel_data=intel_data,
+            growth_data=growth_data,
+            recent_events=recent_events,
+            now_working_on=now_working_on,
+            clear_missing=True,
+        )
+        if new_events:
+            self._mark_launcher_attention(new_events)
+            self._log_activity_events(new_events)
+        self._render_live_snapshot()
 
     def _update_growth_labels(self, growth_data: dict[str, Any] | None) -> None:
-        """Update Brain Growth labels from /intelligence/growth metrics."""
-        if growth_data is None or not isinstance(growth_data, dict):
-            for lbl in self._growth_labels.values():
-                lbl.config(text="--", fg=self.MUTED)
-            return
-        try:
-            m = growth_data.get("metrics", growth_data)
-            facts_total = int(m.get("facts_total", 0))
-            facts_7d = int(m.get("facts_last_7d", 0))
-            kg_nodes = int(m.get("kg_nodes", 0))
-            kg_edges = int(m.get("kg_edges", 0))
-            mem_records = int(m.get("memory_records", 0))
-            score = float(m.get("last_self_test_score", 0.0))
-            trend = str(m.get("growth_trend", "stable"))
-
-            self._growth_labels["facts"].config(
-                text=f"{facts_total} (+{facts_7d} 7d)", fg=self.TEXT)
-            self._growth_labels["kg"].config(
-                text=f"{kg_nodes} nodes / {kg_edges} edges", fg=self.TEXT)
-            self._growth_labels["memory"].config(
-                text=f"{mem_records} records", fg=self.TEXT)
-
-            # Learning missions (API now pre-filters to active only)
-            missions = m.get("active_missions", [])
-            if isinstance(missions, list):
-                missions = [mi for mi in missions if isinstance(mi, dict) and mi.get("status", "") not in ("completed", "failed", "cancelled", "exhausted")]
-            mission_count = int(m.get("mission_count", len(missions) if isinstance(missions, list) else 0))
-            if mission_count > 0 and isinstance(missions, list) and missions:
-                topics = [str(mi.get("topic", "?"))[:20] for mi in missions[:3]]
-                self._growth_labels["missions"].config(
-                    text=f"{mission_count} active: {', '.join(topics)}", fg=self.ACCENT)
-            elif mission_count > 0:
-                self._growth_labels["missions"].config(
-                    text=f"{mission_count} active", fg=self.ACCENT)
-            else:
-                self._growth_labels["missions"].config(
-                    text="None active", fg=self.MUTED)
-
-            score_pct = round(score * 100)
-            score_color = self.ACCENT if score_pct >= 70 else "#eab308" if score_pct >= 50 else self.WARN
-            self._growth_labels["score"].config(
-                text=f"{score_pct}%", fg=score_color)
-
-            trend_symbol = "\u25B2" if trend == "increasing" else "\u25BC" if trend == "declining" else "\u25C6"
-            trend_color = "#22c55e" if trend == "increasing" else self.WARN if trend == "declining" else "#eab308"
-            self._growth_labels["trend"].config(
-                text=f"{trend_symbol} {trend}", fg=trend_color)
-        except (TypeError, ValueError, KeyError):
-            logger.debug("Failed to parse growth dashboard data; resetting labels")
-            for lbl in self._growth_labels.values():
-                lbl.config(text="--", fg=self.MUTED)
+        """Update Brain Growth labels through the controller-owned snapshot."""
+        controller = self._ensure_controller()
+        controller.apply_health_snapshot(
+            online=self.online,
+            growth_data=growth_data,
+        )
+        self._render_live_snapshot()
 
     def _update_activity_events(self, events: list[dict[str, Any]]) -> None:
-        """Display new activity events in the conversation output (deduped by event_id)."""
+        """Update controller-owned activity digest and display any new events."""
+        controller = getattr(self, "_controller", None)
+        if not isinstance(controller, DesktopInteractionController):
+            JarvisDesktopWidget._update_activity_events_legacy(self, events)
+            return
+
+        new_events = self._ensure_controller().apply_health_snapshot(
+            online=self.online,
+            recent_events=events,
+        )
+        if new_events:
+            self._mark_launcher_attention(new_events)
+            self._log_activity_events(new_events)
+        self._render_live_snapshot()
+
+    def _update_activity_events_legacy(self, events: list[dict[str, Any]]) -> None:
+        """Legacy dedupe/log path used by lightweight unit-test stubs."""
         _CAT_ROLE = {
             "error": "error",
             "security": "error",
         }
+        seen_event_ids = getattr(self, "_seen_event_ids", {})
         new_events = []
         for evt in events:
             eid = str(evt.get("event_id", ""))
-            if eid and eid in self._seen_event_ids:
+            if eid and eid in seen_event_ids:
                 continue
             if eid:
-                self._seen_event_ids[eid] = None
+                seen_event_ids[eid] = None
             new_events.append(evt)
-        # Cap seen dict to prevent unbounded growth (keeps most recent 400)
-        if len(self._seen_event_ids) > 500:
-            keys = list(self._seen_event_ids.keys())
+        if len(seen_event_ids) > 500:
+            keys = list(seen_event_ids.keys())
             self._seen_event_ids = dict.fromkeys(keys[-400:])
+        else:
+            self._seen_event_ids = seen_event_ids
         if not new_events:
             return
-        for evt in reversed(new_events):  # Oldest first
+        for evt in reversed(new_events):
+            ts_raw = str(evt.get("timestamp", ""))
+            ts_short = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
+            cat = str(evt.get("category", ""))
+            summary = str(evt.get("summary", ""))
+            role = _CAT_ROLE.get(cat, "system")
+            self._log(f"\u26a1 [{ts_short}] [{cat.upper()}] {summary}", role=role)
+
+    def _log_activity_events(self, events: list[dict[str, Any]]) -> None:
+        """Display deduped activity events in the conversation output."""
+        _CAT_ROLE = {
+            "error": "error",
+            "security": "error",
+        }
+        if not events:
+            return
+        for evt in reversed(events):  # Oldest first
             ts_raw = str(evt.get("timestamp", ""))
             ts_short = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
             cat = str(evt.get("category", ""))
@@ -1680,49 +2640,16 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._log(f"\u26a1 [{ts_short}] [{cat.upper()}] {summary}", role=role)
 
     def _update_intelligence_label(self, intel_data: dict[str, Any] | None) -> None:
-        """Update the intelligence score label from /health response data."""
-        if intel_data is None:
-            self.intel_var.set("")
-            self.intel_label.config(fg=self.MUTED)
-            return
-        try:
-            score = float(intel_data.get("score", 0.0))
-            regression = bool(intel_data.get("regression", False))
-            score_pct = round(score * 100)
-            if regression:
-                self.intel_var.set(f"Intel: {score_pct}% REGRESSION")
-                self.intel_label.config(fg=self.WARN)
-            elif score_pct >= 70:
-                self.intel_var.set(f"Intel: {score_pct}%")
-                self.intel_label.config(fg=self.ACCENT)
-            elif score_pct >= 50:
-                self.intel_var.set(f"Intel: {score_pct}%")
-                self.intel_label.config(fg="#eab308")  # yellow/warn
-            else:
-                self.intel_var.set(f"Intel: {score_pct}%")
-                self.intel_label.config(fg=self.WARN)
-        except (TypeError, ValueError):
-            logger.debug("Failed to parse intelligence score data; clearing display")
-            self.intel_var.set("")
-            self.intel_label.config(fg=self.MUTED)
+        """Update the intelligence score via the controller-owned snapshot."""
+        self._ensure_controller().apply_health_snapshot(
+            online=self.online,
+            intel_data=intel_data,
+        )
+        self._render_live_snapshot()
 
     def _set_state(self, state: str) -> None:
         """Update the visual state machine: idle | listening | processing | error."""
-        if state not in ("idle", "listening", "processing", "error"):
-            state = "idle"
-        self._widget_state = state
-        # Show/hide cancel button based on state
-        cancel_btn = getattr(self, "_cancel_btn", None)
-        if cancel_btn is not None:
-            try:
-                if state == "processing":
-                    cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-                else:
-                    cancel_btn.pack_forget()
-                    self._cancel_event.clear()
-            except tk.TclError:
-                logger.debug("Failed to update cancel button visibility")
-        self._refresh_status_view()
+        JarvisDesktopWidget._ensure_controller(self).set_state(state)
 
     def _set_state_async(self, state: str) -> None:
         """Schedule state change on the main tkinter thread."""
@@ -1754,23 +2681,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             logger.debug("Failed to schedule error-briefly state (widget may be destroyed)")
 
     def _refresh_status_view(self) -> None:
-        state = self._widget_state
-        if state == "listening":
-            self.status_var.set("LISTENING...")
-            self.status_label.config(fg=self.ACCENT_2)
-        elif state == "processing":
-            label = "ONLINE - Processing..." if self.online else "OFFLINE - Processing..."
-            self.status_var.set(label)
-            self.status_label.config(fg="#ff9f43")
-        elif state == "error":
-            self.status_var.set("ERROR")
-            self.status_label.config(fg=self.WARN)
-        elif self.online:
-            self.status_var.set("ONLINE - Idle")
-            self.status_label.config(fg=self.ACCENT)
-        else:
-            self.status_var.set("OFFLINE")
-            self.status_label.config(fg="#a5b4fc")
+        self._render_live_snapshot()
 
 
 def run_desktop_widget() -> None:
