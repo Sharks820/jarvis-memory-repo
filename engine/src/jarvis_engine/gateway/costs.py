@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from jarvis_engine.gateway.pricing import calculate_cost
 
@@ -51,7 +51,6 @@ class LocalCloudSummary(TypedDict):
     cloud_cost_usd: float
     failed_cost_usd: float
 
-
 _BATCH_SIZE = 10
 _FLUSH_INTERVAL_S = 30.0
 
@@ -73,7 +72,6 @@ class CostTracker:
         self._flush_timer: threading.Timer | None = None
 
         from jarvis_engine._db_pragmas import connect_db
-
         self._db = connect_db(db_path, check_same_thread=False)
 
         self._init_schema()
@@ -171,18 +169,16 @@ class CostTracker:
         with self._write_lock:
             if getattr(self, "_closed", False):
                 return
-            self._buffer.append(
-                (
-                    model,
-                    provider,
-                    input_tokens,
-                    output_tokens,
-                    cost_usd,
-                    route_reason,
-                    1 if fallback_used else 0,
-                    query_hash,
-                )
-            )
+            self._buffer.append((
+                model,
+                provider,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                route_reason,
+                1 if fallback_used else 0,
+                query_hash,
+            ))
             if len(self._buffer) >= _BATCH_SIZE:
                 self._flush_locked()
 
@@ -218,19 +214,17 @@ class CostTracker:
             )
             rows = cur.fetchall()
 
-        models = []
+        models: list[ModelCostEntry] = []
         total_cost = 0.0
         for row in rows:
-            row_cost = row["total_cost"] or 0.0
-            models.append(
-                {
-                    "model": row["model"],
-                    "count": row["count"],
-                    "input_tokens": row["total_input_tokens"] or 0,
-                    "output_tokens": row["total_output_tokens"] or 0,
-                    "cost_usd": row_cost,
-                }
-            )
+            row_cost = float(row["total_cost"] or 0.0)
+            models.append({
+                "model": str(row["model"]),
+                "count": int(row["count"]),
+                "input_tokens": int(row["total_input_tokens"] or 0),
+                "output_tokens": int(row["total_output_tokens"] or 0),
+                "cost_usd": row_cost,
+            })
             total_cost += row_cost
 
         return {
@@ -252,7 +246,7 @@ class CostTracker:
         - cloud_cost_usd: float
         - failed_cost_usd: float
         """
-        empty = {
+        empty: LocalCloudSummary = {
             "period_days": 0,
             "local_count": 0,
             "cloud_count": 0,
@@ -264,14 +258,14 @@ class CostTracker:
         }
         days = max(1, min(days, 3650))
         if getattr(self, "_closed", False):
-            closed = dict(empty)
-            closed["period_days"] = days
-            return closed
+            closed_summary = cast(LocalCloudSummary, dict(empty))
+            closed_summary["period_days"] = days
+            return closed_summary
         with self._write_lock:
             if getattr(self, "_closed", False):
-                closed = dict(empty)
-                closed["period_days"] = days
-                return closed
+                closed_summary = cast(LocalCloudSummary, dict(empty))
+                closed_summary["period_days"] = days
+                return closed_summary
             self._flush_locked()
             cur = self._db.execute(
                 """
@@ -352,3 +346,4 @@ class CostTracker:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
+

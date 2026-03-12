@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 from urllib.request import Request, urlopen
 
 __all__ = ["OllamaResponse", "call_ollama_generate"]
@@ -78,4 +78,6 @@ def call_ollama_generate(
         data = json.loads(resp.read().decode("utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Expected JSON object from Ollama")
-    return data
+    return cast(OllamaResponse, data)
+
+

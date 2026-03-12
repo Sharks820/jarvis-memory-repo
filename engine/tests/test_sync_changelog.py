@@ -434,13 +434,13 @@ class TestCompactChangelog:
 class TestTriggerBuilders:
     def test_build_insert_trigger_sql(self) -> None:
         sql = _build_insert_trigger("records", "record_id", ["ts", "source"], "desktop")
-        assert "AFTER INSERT ON records" in sql
+        assert 'AFTER INSERT ON "records"' in sql
         assert "'INSERT'" in sql
         assert "_sync_trg_records_insert" in sql
 
     def test_build_update_trigger_sql(self) -> None:
         sql = _build_update_trigger("records", "record_id", ["ts", "source"], [], "desktop")
-        assert "AFTER UPDATE ON records" in sql
+        assert 'AFTER UPDATE ON "records"' in sql
         assert "'UPDATE'" in sql
         assert "WHEN" in sql
 
@@ -449,7 +449,7 @@ class TestTriggerBuilders:
         sql = _build_update_trigger("records", "record_id", ["a"], ["a"], "desktop")
         # The trigger body uses CASE WHEN, but there should be no top-level WHEN guard
         # between "AFTER UPDATE ON records" and "BEGIN"
-        after_update_idx = sql.index("AFTER UPDATE ON records")
+        after_update_idx = sql.index('AFTER UPDATE ON "records"')
         begin_idx = sql.index("BEGIN")
         preamble = sql[after_update_idx:begin_idx]
         # Should NOT have a standalone "WHEN" clause (like "WHEN OLD.x IS NOT NEW.x")
@@ -457,7 +457,7 @@ class TestTriggerBuilders:
 
     def test_build_delete_trigger_sql(self) -> None:
         sql = _build_delete_trigger("records", "record_id", ["ts", "source"], "desktop")
-        assert "AFTER DELETE ON records" in sql
+        assert 'AFTER DELETE ON "records"' in sql
         assert "'DELETE'" in sql
 
     def test_clean_json_sql_collapses_commas(self) -> None:

@@ -998,6 +998,7 @@ class ConversationStateManager:
         self._state_file = self._state_dir / _STATE_FILENAME
 
         # S1: Fernet encryption key (lazy derive from env if not explicitly given)
+        self._fernet_key: bytes | None
         if encryption_key is ...:
             self._fernet_key = _get_encryption_key(self._state_dir)
         else:

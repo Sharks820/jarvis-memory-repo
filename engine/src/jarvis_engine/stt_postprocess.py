@@ -14,12 +14,73 @@ from __future__ import annotations
 import logging
 import re
 import zlib
+from importlib import import_module
+from typing import Any, Protocol, cast
 
 import numpy as np
 
 from jarvis_engine._constants import DEFAULT_CLOUD_MODEL
 
 logger = logging.getLogger(__name__)
+
+
+class _LLMCompletionResponse(Protocol):
+    text: str
+
+
+class _LLMCompletionGateway(Protocol):
+    def complete(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int,
+        route_reason: str,
+    ) -> _LLMCompletionResponse: ...
+
+
+class _LibrosaDecomposeModule(Protocol):
+    def hpss(self, stft: np.ndarray, margin: float = 1.0) -> tuple[np.ndarray, np.ndarray]: ...
+
+
+class _LibrosaEffectsModule(Protocol):
+    def trim(self, audio: np.ndarray, top_db: float) -> tuple[np.ndarray, Any]: ...
+
+
+class _LibrosaModule(Protocol):
+    decompose: _LibrosaDecomposeModule
+    effects: _LibrosaEffectsModule
+
+    def stft(self, audio: np.ndarray) -> np.ndarray: ...
+    def istft(self, harmonic: np.ndarray, *, length: int) -> np.ndarray: ...
+
+
+class _NoiseReduceModule(Protocol):
+    def reduce_noise(
+        self,
+        *,
+        y: np.ndarray,
+        sr: int,
+        prop_decrease: float,
+        stationary: bool,
+    ) -> np.ndarray: ...
+
+
+class _JellyfishModule(Protocol):
+    def metaphone(self, value: str) -> str: ...
+    def jaro_winkler_similarity(self, left: str, right: str) -> float: ...
+
+
+def _load_librosa() -> _LibrosaModule:
+    return cast(_LibrosaModule, import_module("librosa"))
+
+
+def _load_noisereduce() -> _NoiseReduceModule:
+    return cast(_NoiseReduceModule, import_module("noisereduce"))
+
+
+def _load_jellyfish() -> _JellyfishModule:
+    return cast(_JellyfishModule, import_module("jellyfish"))
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +127,7 @@ def preprocess_audio(
         )
     else:
         try:
-            import librosa
+            librosa = _load_librosa()
 
             stft = librosa.stft(audio)
             harmonic, _ = librosa.decompose.hpss(stft, margin=3.0)
@@ -79,7 +140,7 @@ def preprocess_audio(
 
     # 3. Spectral noise reduction
     try:
-        import noisereduce as nr
+        nr = _load_noisereduce()
 
         audio = nr.reduce_noise(
             y=audio, sr=sample_rate, prop_decrease=0.6, stationary=True
@@ -92,7 +153,7 @@ def preprocess_audio(
 
     # 4. Trim silence
     try:
-        import librosa
+        librosa = _load_librosa()
 
         trimmed, _ = librosa.effects.trim(audio, top_db=abs(silence_threshold_db))
         audio = trimmed.astype(np.float32)
@@ -329,7 +390,7 @@ def _load_personal_vocab() -> list[str]:
 
 def correct_with_llm(
     text: str,
-    gateway: object | None,
+    gateway: _LLMCompletionGateway | None,
     *,
     vocab_lines: list[str] | None = None,
 ) -> str:
@@ -394,7 +455,7 @@ def correct_entities(text: str, entity_list: list[str]) -> str:
         return text
 
     try:
-        import jellyfish
+        jellyfish = _load_jellyfish()
     except ImportError:
         logger.warning("jellyfish not installed, skipping entity correction")
         return text
@@ -518,7 +579,11 @@ def postprocess_transcription(
 
     # Stage 3: LLM post-correction
     if gateway is not None:
-        text = correct_with_llm(text, gateway, vocab_lines=vocab_lines)
+        text = correct_with_llm(
+            text,
+            cast(_LLMCompletionGateway, gateway),
+            vocab_lines=vocab_lines,
+        )
 
     # Stage 4: NER entity correction
     if entity_list:

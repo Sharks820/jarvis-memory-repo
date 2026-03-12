@@ -15,6 +15,7 @@ import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -55,11 +56,11 @@ class DiagnosticIssue:
     """A single diagnostic finding."""
 
     id: str
-    severity: str  # critical / high / medium / low / info
-    component: str  # "memory", "database", "gateway", "missions", "voice", "security", "knowledge_graph"
-    description: str  # human-readable
-    suggested_fix: str  # what to do
-    auto_fixable: bool  # can be auto-fixed
+    severity: str          # critical / high / medium / low / info
+    component: str         # "memory", "database", "gateway", "missions", "voice", "security", "knowledge_graph"
+    description: str       # human-readable
+    suggested_fix: str     # what to do
+    auto_fixable: bool     # can be auto-fixed
     fix_action: str | None  # "vacuum_db", "rebuild_fts", etc.
     evidence: dict = field(default_factory=dict)
     timestamp: str = ""
@@ -70,7 +71,6 @@ class DiagnosticIssue:
                 from jarvis_engine._compat import UTC
             except ImportError:
                 from datetime import timezone as _tz
-
                 UTC = _tz.utc
             self.timestamp = datetime.now(UTC).isoformat()
 
@@ -94,7 +94,6 @@ class DiagnosticEngine:
         """Resolve the memory database path (single source of truth)."""
         try:
             from jarvis_engine._shared import memory_db_path
-
             return memory_db_path(self._root)
         except (ImportError, OSError, ValueError):
             return self._root / ".planning" / "brain" / "jarvis_memory.db"
@@ -172,18 +171,16 @@ class DiagnosticEngine:
 
         # Check if DB exists
         if not db_path.exists():
-            issues.append(
-                DiagnosticIssue(
-                    id=_issue_id(),
-                    severity="critical",
-                    component="database",
-                    description="Memory database file does not exist",
-                    suggested_fix="Run a command that initializes the database (e.g. ingest or query)",
-                    auto_fixable=False,
-                    fix_action=None,
-                    evidence={"path": str(db_path)},
-                )
-            )
+            issues.append(DiagnosticIssue(
+                id=_issue_id(),
+                severity="critical",
+                component="database",
+                description="Memory database file does not exist",
+                suggested_fix="Run a command that initializes the database (e.g. ingest or query)",
+                auto_fixable=False,
+                fix_action=None,
+                evidence={"path": str(db_path)},
+            ))
             return issues
 
         # Check DB size
@@ -191,18 +188,16 @@ class DiagnosticEngine:
             db_size_bytes = db_path.stat().st_size
             db_size_mb = db_size_bytes / (1024.0 * 1024.0)
             if db_size_mb > _DB_SIZE_WARN_MB:
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="medium",
-                        component="database",
-                        description=f"Database size is {db_size_mb:.1f} MB (threshold: {_DB_SIZE_WARN_MB} MB)",
-                        suggested_fix="Run VACUUM to reclaim space",
-                        auto_fixable=True,
-                        fix_action="vacuum_db",
-                        evidence={"size_mb": round(db_size_mb, 2)},
-                    )
-                )
+                issues.append(DiagnosticIssue(
+                    id=_issue_id(),
+                    severity="medium",
+                    component="database",
+                    description=f"Database size is {db_size_mb:.1f} MB (threshold: {_DB_SIZE_WARN_MB} MB)",
+                    suggested_fix="Run VACUUM to reclaim space",
+                    auto_fixable=True,
+                    fix_action="vacuum_db",
+                    evidence={"size_mb": round(db_size_mb, 2)},
+                ))
         except OSError as exc:
             logger.debug("DB size check failed: %s", exc)
 
@@ -213,57 +208,50 @@ class DiagnosticEngine:
                 wal_size_bytes = wal_path.stat().st_size
                 wal_size_mb = wal_size_bytes / (1024.0 * 1024.0)
                 if wal_size_mb > _WAL_SIZE_WARN_MB:
-                    issues.append(
-                        DiagnosticIssue(
-                            id=_issue_id(),
-                            severity="high",
-                            component="database",
-                            description=f"WAL file is {wal_size_mb:.1f} MB (threshold: {_WAL_SIZE_WARN_MB} MB)",
-                            suggested_fix="Run WAL checkpoint to truncate",
-                            auto_fixable=True,
-                            fix_action="prune_wal",
-                            evidence={"wal_size_mb": round(wal_size_mb, 2)},
-                        )
-                    )
+                    issues.append(DiagnosticIssue(
+                        id=_issue_id(),
+                        severity="high",
+                        component="database",
+                        description=f"WAL file is {wal_size_mb:.1f} MB (threshold: {_WAL_SIZE_WARN_MB} MB)",
+                        suggested_fix="Run WAL checkpoint to truncate",
+                        auto_fixable=True,
+                        fix_action="prune_wal",
+                        evidence={"wal_size_mb": round(wal_size_mb, 2)},
+                    ))
             except OSError as exc:
                 logger.debug("WAL size check failed: %s", exc)
 
         # Run integrity check
         try:
             from jarvis_engine._db_pragmas import connect_db
-
             conn = connect_db(db_path)
             try:
                 result = conn.execute("PRAGMA quick_check").fetchone()
                 if result and result[0] != "ok":
-                    issues.append(
-                        DiagnosticIssue(
-                            id=_issue_id(),
-                            severity="critical",
-                            component="database",
-                            description=f"Database integrity check failed: {result[0]}",
-                            suggested_fix="Database may need repair or restore from backup",
-                            auto_fixable=False,
-                            fix_action=None,
-                            evidence={"check_result": str(result[0])},
-                        )
-                    )
+                    issues.append(DiagnosticIssue(
+                        id=_issue_id(),
+                        severity="critical",
+                        component="database",
+                        description=f"Database integrity check failed: {result[0]}",
+                        suggested_fix="Database may need repair or restore from backup",
+                        auto_fixable=False,
+                        fix_action=None,
+                        evidence={"check_result": str(result[0])},
+                    ))
             finally:
                 conn.close()
         except (ImportError, OSError, ValueError, sqlite3.Error) as exc:
             logger.debug("Integrity check failed: %s", exc)
-            issues.append(
-                DiagnosticIssue(
-                    id=_issue_id(),
-                    severity="high",
-                    component="database",
-                    description=f"Could not run integrity check: {exc}",
-                    suggested_fix="Ensure database is not locked by another process",
-                    auto_fixable=False,
-                    fix_action=None,
-                    evidence={"error": str(exc)},
-                )
-            )
+            issues.append(DiagnosticIssue(
+                id=_issue_id(),
+                severity="high",
+                component="database",
+                description=f"Could not run integrity check: {exc}",
+                suggested_fix="Ensure database is not locked by another process",
+                auto_fixable=False,
+                fix_action=None,
+                evidence={"error": str(exc)},
+            ))
 
         return issues
 
@@ -272,7 +260,6 @@ class DiagnosticEngine:
         issues: list[DiagnosticIssue] = []
         try:
             from jarvis_engine.runtime_control import read_resource_pressure_state
-
             pressure = read_resource_pressure_state(self._root)
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Resource pressure read failed: %s", exc)
@@ -284,18 +271,16 @@ class DiagnosticEngine:
         # Check pressure level
         pressure_level = str(pressure.get("pressure_level", "none")).lower()
         if pressure_level in ("high", "critical"):
-            issues.append(
-                DiagnosticIssue(
-                    id=_issue_id(),
-                    severity="high" if pressure_level == "critical" else "medium",
-                    component="memory",
-                    description=f"Resource pressure level is '{pressure_level}'",
-                    suggested_fix="Reduce memory usage or increase resource budgets",
-                    auto_fixable=False,
-                    fix_action=None,
-                    evidence={"pressure_level": pressure_level},
-                )
-            )
+            issues.append(DiagnosticIssue(
+                id=_issue_id(),
+                severity="high" if pressure_level == "critical" else "medium",
+                component="memory",
+                description=f"Resource pressure level is '{pressure_level}'",
+                suggested_fix="Reduce memory usage or increase resource budgets",
+                auto_fixable=False,
+                fix_action=None,
+                evidence={"pressure_level": pressure_level},
+            ))
 
         # Check process memory
         metrics = pressure.get("metrics", {})
@@ -310,18 +295,16 @@ class DiagnosticEngine:
             except (TypeError, ValueError):
                 current_mb = 0.0
             if current_mb > _MEMORY_PRESSURE_MB:
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="high",
-                        component="memory",
-                        description=f"Process memory usage is {current_mb:.0f} MB (threshold: {_MEMORY_PRESSURE_MB:.0f} MB)",
-                        suggested_fix="Restart daemon to free memory, or investigate leaks",
-                        auto_fixable=False,
-                        fix_action=None,
-                        evidence={"process_memory_mb": round(current_mb, 1)},
-                    )
-                )
+                issues.append(DiagnosticIssue(
+                    id=_issue_id(),
+                    severity="high",
+                    component="memory",
+                    description=f"Process memory usage is {current_mb:.0f} MB (threshold: {_MEMORY_PRESSURE_MB:.0f} MB)",
+                    suggested_fix="Restart daemon to free memory, or investigate leaks",
+                    auto_fixable=False,
+                    fix_action=None,
+                    evidence={"process_memory_mb": round(current_mb, 1)},
+                ))
 
         return issues
 
@@ -330,60 +313,52 @@ class DiagnosticEngine:
         issues: list[DiagnosticIssue] = []
         try:
             import os
-
             # Check for API keys
             groq_key = os.environ.get("GROQ_API_KEY", "")
             if not groq_key:
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="info",
-                        component="gateway",
-                        description="GROQ_API_KEY is not set",
-                        suggested_fix="Set GROQ_API_KEY environment variable for cloud LLM access",
-                        auto_fixable=False,
-                        fix_action=None,
-                        evidence={"key": "GROQ_API_KEY", "set": False},
-                    )
-                )
+                issues.append(DiagnosticIssue(
+                    id=_issue_id(),
+                    severity="info",
+                    component="gateway",
+                    description="GROQ_API_KEY is not set",
+                    suggested_fix="Set GROQ_API_KEY environment variable for cloud LLM access",
+                    auto_fixable=False,
+                    fix_action=None,
+                    evidence={"key": "GROQ_API_KEY", "set": False},
+                ))
         except (ImportError, OSError, ValueError):
             logger.debug("Gateway config check failed during self-diagnosis")
 
         # Check Ollama reachability
         try:
             import urllib.request
-
             req = urllib.request.Request(
                 "http://localhost:11434/api/tags",
                 method="GET",
             )
             with urllib.request.urlopen(req, timeout=2) as resp:
                 if resp.status != 200:
-                    issues.append(
-                        DiagnosticIssue(
-                            id=_issue_id(),
-                            severity="medium",
-                            component="gateway",
-                            description=f"Ollama returned non-200 status: {resp.status}",
-                            suggested_fix="Check Ollama service status",
-                            auto_fixable=False,
-                            fix_action=None,
-                            evidence={"status": resp.status},
-                        )
-                    )
+                    issues.append(DiagnosticIssue(
+                        id=_issue_id(),
+                        severity="medium",
+                        component="gateway",
+                        description=f"Ollama returned non-200 status: {resp.status}",
+                        suggested_fix="Check Ollama service status",
+                        auto_fixable=False,
+                        fix_action=None,
+                        evidence={"status": resp.status},
+                    ))
         except (ImportError, OSError, ValueError) as exc:
-            issues.append(
-                DiagnosticIssue(
-                    id=_issue_id(),
-                    severity="info",
-                    component="gateway",
-                    description=f"Ollama is not reachable at localhost:11434: {exc}",
-                    suggested_fix="Start Ollama service or verify it is running",
-                    auto_fixable=False,
-                    fix_action=None,
-                    evidence={"error": str(exc)},
-                )
-            )
+            issues.append(DiagnosticIssue(
+                id=_issue_id(),
+                severity="info",
+                component="gateway",
+                description=f"Ollama is not reachable at localhost:11434: {exc}",
+                suggested_fix="Start Ollama service or verify it is running",
+                auto_fixable=False,
+                fix_action=None,
+                evidence={"error": str(exc)},
+            ))
 
         return issues
 
@@ -392,7 +367,6 @@ class DiagnosticEngine:
         issues: list[DiagnosticIssue] = []
         try:
             from jarvis_engine.learning_missions import load_missions
-
             missions = load_missions(self._root)
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("Mission health check failed: %s", exc)
@@ -406,7 +380,6 @@ class DiagnosticEngine:
             from jarvis_engine._compat import UTC
         except ImportError:
             from datetime import timezone as _tz
-
             UTC = _tz.utc
         now = datetime.now(UTC)
 
@@ -415,9 +388,7 @@ class DiagnosticEngine:
             status = str(mission.get("status", "")).lower()
             if status != "running":
                 continue
-            started_at = str(
-                mission.get("started_at", "") or mission.get("updated_utc", "")
-            )
+            started_at = str(mission.get("started_at", "") or mission.get("updated_utc", ""))
             if not started_at:
                 continue
             started = parse_iso_timestamp(started_at)
@@ -428,43 +399,33 @@ class DiagnosticEngine:
                 stuck_ids.append(str(mission.get("mission_id", "")))
 
         if stuck_ids:
-            issues.append(
-                DiagnosticIssue(
-                    id=_issue_id(),
-                    severity="medium",
-                    component="missions",
-                    description=f"{len(stuck_ids)} mission(s) stuck in 'running' for > {_STUCK_MISSION_MINUTES:.0f} minutes",
-                    suggested_fix="Cancel stuck missions or wait for completion",
-                    auto_fixable=True,
-                    fix_action="clear_stuck_missions",
-                    evidence={"stuck_mission_ids": stuck_ids},
-                )
-            )
+            issues.append(DiagnosticIssue(
+                id=_issue_id(),
+                severity="medium",
+                component="missions",
+                description=f"{len(stuck_ids)} mission(s) stuck in 'running' for > {_STUCK_MISSION_MINUTES:.0f} minutes",
+                suggested_fix="Cancel stuck missions or wait for completion",
+                auto_fixable=True,
+                fix_action="clear_stuck_missions",
+                evidence={"stuck_mission_ids": stuck_ids},
+            ))
 
         # Check failure rate of recent missions
         recent = missions[-10:] if len(missions) >= 10 else missions
         if len(recent) >= 3:
-            failed = sum(
-                1 for m in recent if str(m.get("status", "")).lower() == "failed"
-            )
+            failed = sum(1 for m in recent if str(m.get("status", "")).lower() == "failed")
             rate = failed / len(recent)
             if rate > _MISSION_FAILURE_RATE_THRESHOLD:
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="medium",
-                        component="missions",
-                        description=f"High mission failure rate: {rate:.0%} of last {len(recent)} missions failed",
-                        suggested_fix="Investigate mission failure reasons, check web access and API keys",
-                        auto_fixable=False,
-                        fix_action=None,
-                        evidence={
-                            "failure_rate": round(rate, 2),
-                            "failed": failed,
-                            "total": len(recent),
-                        },
-                    )
-                )
+                issues.append(DiagnosticIssue(
+                    id=_issue_id(),
+                    severity="medium",
+                    component="missions",
+                    description=f"High mission failure rate: {rate:.0%} of last {len(recent)} missions failed",
+                    suggested_fix="Investigate mission failure reasons, check web access and API keys",
+                    auto_fixable=False,
+                    fix_action=None,
+                    evidence={"failure_rate": round(rate, 2), "failed": failed, "total": len(recent)},
+                ))
 
         return issues
 
@@ -475,7 +436,6 @@ class DiagnosticEngine:
             from jarvis_engine.proactive.kg_metrics import load_kg_history
             from jarvis_engine._constants import KG_METRICS_LOG
             from jarvis_engine._shared import runtime_dir
-
             history_path = runtime_dir(self._root) / KG_METRICS_LOG
             history = load_kg_history(history_path, limit=5)
         except (ImportError, OSError, ValueError) as exc:
@@ -497,46 +457,35 @@ class DiagnosticEngine:
             # But from metrics we only have node_count and edge_count.
             # Use branch_counts to check for disconnected nodes if available.
             # Simple heuristic: if edge_count < node_count * 0.9 (10% orphan threshold)
-            if node_count > 10 and edge_count < node_count * (
-                1 - _ORPHAN_NODE_RATIO_THRESHOLD
-            ):
-                ratio = (
-                    max(0.0, 1.0 - (edge_count / node_count)) if node_count > 0 else 0.0
-                )
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="low",
-                        component="knowledge_graph",
-                        description=f"Estimated {ratio:.0%} orphan ratio in knowledge graph ({node_count} nodes, {edge_count} edges)",
-                        suggested_fix="Run knowledge enrichment to connect orphan nodes",
-                        auto_fixable=False,
-                        fix_action=None,
-                        evidence={
-                            "node_count": node_count,
-                            "edge_count": edge_count,
-                            "orphan_ratio_estimate": round(ratio, 3),
-                        },
-                    )
-                )
-
-        # Check average confidence
-        if avg_confidence < _KG_AVG_CONFIDENCE_THRESHOLD and node_count > 0:
-            issues.append(
-                DiagnosticIssue(
+            if node_count > 10 and edge_count < node_count * (1 - _ORPHAN_NODE_RATIO_THRESHOLD):
+                ratio = max(0.0, 1.0 - (edge_count / node_count)) if node_count > 0 else 0.0
+                issues.append(DiagnosticIssue(
                     id=_issue_id(),
-                    severity="medium",
+                    severity="low",
                     component="knowledge_graph",
-                    description=f"Average knowledge graph confidence is {avg_confidence:.2f} (threshold: {_KG_AVG_CONFIDENCE_THRESHOLD})",
-                    suggested_fix="Review low-confidence facts and verify or remove them",
+                    description=f"Estimated {ratio:.0%} orphan ratio in knowledge graph ({node_count} nodes, {edge_count} edges)",
+                    suggested_fix="Run knowledge enrichment to connect orphan nodes",
                     auto_fixable=False,
                     fix_action=None,
                     evidence={
-                        "avg_confidence": round(avg_confidence, 3),
                         "node_count": node_count,
+                        "edge_count": edge_count,
+                        "orphan_ratio_estimate": round(ratio, 3),
                     },
-                )
-            )
+                ))
+
+        # Check average confidence
+        if avg_confidence < _KG_AVG_CONFIDENCE_THRESHOLD and node_count > 0:
+            issues.append(DiagnosticIssue(
+                id=_issue_id(),
+                severity="medium",
+                component="knowledge_graph",
+                description=f"Average knowledge graph confidence is {avg_confidence:.2f} (threshold: {_KG_AVG_CONFIDENCE_THRESHOLD})",
+                suggested_fix="Review low-confidence facts and verify or remove them",
+                auto_fixable=False,
+                fix_action=None,
+                evidence={"avg_confidence": round(avg_confidence, 3), "node_count": node_count},
+            ))
 
         return issues
 
@@ -548,35 +497,31 @@ class DiagnosticEngine:
         try:
             vocab_path = Path(__file__).parent / "data" / "personal_vocab.txt"
             if not vocab_path.exists():
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="low",
-                        component="voice",
-                        description="Personal vocabulary file (data/personal_vocab.txt) not found",
-                        suggested_fix="Create personal_vocab.txt with frequently used names and terms",
-                        auto_fixable=False,
-                        fix_action=None,
-                        evidence={"path": str(vocab_path)},
-                    )
-                )
+                issues.append(DiagnosticIssue(
+                    id=_issue_id(),
+                    severity="low",
+                    component="voice",
+                    description="Personal vocabulary file (data/personal_vocab.txt) not found",
+                    suggested_fix="Create personal_vocab.txt with frequently used names and terms",
+                    auto_fixable=False,
+                    fix_action=None,
+                    evidence={"path": str(vocab_path)},
+                ))
             else:
                 try:
                     content = vocab_path.read_text(encoding="utf-8").strip()
                     lines = [l for l in content.splitlines() if l.strip()]
                     if not lines:
-                        issues.append(
-                            DiagnosticIssue(
-                                id=_issue_id(),
-                                severity="low",
-                                component="voice",
-                                description="Personal vocabulary file is empty",
-                                suggested_fix="Add frequently used names and terms to personal_vocab.txt",
-                                auto_fixable=False,
-                                fix_action=None,
-                                evidence={"path": str(vocab_path), "line_count": 0},
-                            )
-                        )
+                        issues.append(DiagnosticIssue(
+                            id=_issue_id(),
+                            severity="low",
+                            component="voice",
+                            description="Personal vocabulary file is empty",
+                            suggested_fix="Add frequently used names and terms to personal_vocab.txt",
+                            auto_fixable=False,
+                            fix_action=None,
+                            evidence={"path": str(vocab_path), "line_count": 0},
+                        ))
                 except OSError as exc:
                     logger.debug("Personal vocab read failed: %s", exc)
         except (ImportError, OSError, ValueError):
@@ -584,22 +529,18 @@ class DiagnosticEngine:
 
         # Check if VAD model is importable
         try:
-            import importlib
-
-            spec = importlib.util.find_spec("silero_vad")
+            spec = find_spec("silero_vad")
             if spec is None:
-                issues.append(
-                    DiagnosticIssue(
-                        id=_issue_id(),
-                        severity="info",
-                        component="voice",
-                        description="Silero VAD package not installed",
-                        suggested_fix="Install silero_vad for voice activity detection",
-                        auto_fixable=False,
-                        fix_action=None,
-                        evidence={"package": "silero_vad"},
-                    )
-                )
+                issues.append(DiagnosticIssue(
+                    id=_issue_id(),
+                    severity="info",
+                    component="voice",
+                    description="Silero VAD package not installed",
+                    suggested_fix="Install silero_vad for voice activity detection",
+                    auto_fixable=False,
+                    fix_action=None,
+                    evidence={"package": "silero_vad"},
+                ))
         except (ImportError, OSError, ValueError):
             logger.debug("VAD model check failed during self-diagnosis")
 
@@ -619,17 +560,13 @@ class DiagnosticEngine:
         try:
             import sqlite3
             from jarvis_engine._db_pragmas import connect_db
-
             conn = connect_db(db_path, timeout=30)
             try:
                 conn.execute("VACUUM")
                 conn.execute("ANALYZE")
             finally:
                 conn.close()
-            return {
-                "applied": True,
-                "result": "VACUUM and ANALYZE completed successfully",
-            }
+            return {"applied": True, "result": "VACUUM and ANALYZE completed successfully"}
         except (OSError, ValueError, sqlite3.Error) as exc:
             return {"applied": False, "result": f"VACUUM failed: {exc}"}
 
@@ -643,7 +580,6 @@ class DiagnosticEngine:
         try:
             import sqlite3
             from jarvis_engine._db_pragmas import connect_db
-
             conn = connect_db(db_path, timeout=30)
             try:
                 conn.execute("INSERT INTO fts_records(fts_records) VALUES('rebuild')")
@@ -664,7 +600,6 @@ class DiagnosticEngine:
         try:
             import sqlite3
             from jarvis_engine._db_pragmas import connect_db
-
             conn = connect_db(db_path, timeout=30)
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -691,9 +626,7 @@ class DiagnosticEngine:
                 status = str(mission.get("status", "")).lower()
                 if status != "running":
                     continue
-                started_at = str(
-                    mission.get("started_at", "") or mission.get("updated_utc", "")
-                )
+                started_at = str(mission.get("started_at", "") or mission.get("updated_utc", ""))
                 if not started_at:
                     continue
                 started = parse_iso_timestamp(started_at)
@@ -709,10 +642,7 @@ class DiagnosticEngine:
                         logger.debug("Failed to cancel mission %s: %s", mid, cancel_exc)
 
             if cancelled_ids:
-                return {
-                    "applied": True,
-                    "result": f"Cancelled {len(cancelled_ids)} stuck mission(s): {cancelled_ids}",
-                }
+                return {"applied": True, "result": f"Cancelled {len(cancelled_ids)} stuck mission(s): {cancelled_ids}"}
             return {"applied": True, "result": "No missions needed cancellation"}
         except (OSError, ValueError) as exc:
             return {"applied": False, "result": f"Mission cleanup failed: {exc}"}

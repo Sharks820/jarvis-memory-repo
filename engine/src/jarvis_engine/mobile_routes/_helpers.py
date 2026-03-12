@@ -11,12 +11,82 @@ import logging
 import sqlite3
 import subprocess
 import threading
-from typing import TYPE_CHECKING, Any, TypedDict
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, cast
 
 if TYPE_CHECKING:
     from jarvis_engine.activity_feed import ActivityEvent
 
 logger = logging.getLogger(__name__)
+
+
+class HeaderProtocol(Protocol):
+    """Minimal request-header interface shared by mobile route mixins."""
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        ...
+
+
+class MobilePipelineProtocol(Protocol):
+    """Subset of the ingestion pipeline used by route mixins."""
+
+    def ingest(
+        self,
+        *,
+        source: str,
+        kind: str,
+        task_id: str,
+        content: str,
+    ) -> Any:
+        ...
+
+
+class MobileRouteServerProtocol(Protocol):
+    """Structural protocol for the MobileIngestServer surface used by mixins."""
+
+    owner_session: Any
+    auth_token: str
+    signing_key: str
+    server_address: tuple[str, int]
+    tls_active: bool
+    security: Any
+    pipeline: MobilePipelineProtocol
+
+    def check_bootstrap_rate(self, client_ip: str) -> bool:
+        ...
+
+    def record_bootstrap_attempt(self, client_ip: str) -> None:
+        ...
+
+
+class MobileRouteHandlerProtocol(Protocol):
+    """Common request-handler interface consumed by mobile route mixins."""
+
+    server: MobileRouteServerProtocol
+    headers: HeaderProtocol
+    client_address: tuple[str, int]
+    path: str
+    _root: Path
+
+    def _read_json_body(
+        self,
+        *,
+        max_content_length: int,
+        auth: bool = True,
+    ) -> tuple[dict[str, Any] | None, bytes | None]:
+        ...
+
+    def _write_json(self, status: int, payload: dict[str, Any]) -> None:
+        ...
+
+    def _validate_auth(self, body: bytes) -> bool:
+        ...
+
+    def _validate_auth_flexible(self, body: bytes) -> bool:
+        ...
+
+    def _unauthorized(self, message: str) -> None:
+        ...
 
 
 class CommandReliability(TypedDict):
@@ -28,7 +98,6 @@ class CommandReliability(TypedDict):
     timeout_count: int
     memory_pressure_incidents: int
     last_pressure_level: str
-
 
 ALLOWED_SOURCES = {"user", "claude", "opus", "gemini", "task_outcome"}
 ALLOWED_KINDS = {"episodic", "semantic", "procedural"}
@@ -80,8 +149,7 @@ def _get_cert_fingerprint(cert_path: str) -> str | None:
         pem_data = Path(cert_path).read_text(encoding="utf-8")
         # Strip PEM header/footer and decode base64
         lines = [
-            line
-            for line in pem_data.splitlines()
+            line for line in pem_data.splitlines()
             if line and not line.startswith("-----")
         ]
         der_bytes = base64.b64decode("".join(lines))
@@ -130,7 +198,7 @@ def _serialize_activity_event(event: ActivityEvent) -> dict[str, Any]:
 
 def _compute_command_reliability() -> CommandReliability:
     """Aggregate command reliability metrics from the activity feed."""
-    result: dict[str, Any] = {
+    result: CommandReliability = {
         "sampled_commands": 0,
         "command_success_rate_pct": 0.0,
         "retry_count": 0,
@@ -150,14 +218,11 @@ def _compute_command_reliability() -> CommandReliability:
                 for e in events
                 if isinstance(getattr(e, "details", None), dict) and e.details.get("ok")
             )
-            result["command_success_rate_pct"] = (
-                round(100.0 * ok_count / len(events), 1) if events else 0.0
-            )
+            result["command_success_rate_pct"] = round(100.0 * ok_count / len(events), 1) if events else 0.0
             result["retry_count"] = sum(
                 1
                 for e in events
-                if isinstance(getattr(e, "details", None), dict)
-                and e.details.get("retryable")
+                if isinstance(getattr(e, "details", None), dict) and e.details.get("retryable")
             )
             result["timeout_count"] = sum(
                 1
@@ -166,9 +231,7 @@ def _compute_command_reliability() -> CommandReliability:
                 and str(e.details.get("error_code", "")).startswith("timeout")
             )
         # Pressure events
-        pressure_events = feed.query(
-            limit=50, category=ActivityCategory.RESOURCE_PRESSURE
-        )
+        pressure_events = feed.query(limit=50, category=ActivityCategory.RESOURCE_PRESSURE)
         result["memory_pressure_incidents"] = len(pressure_events)
         if pressure_events:
             latest_details = getattr(pressure_events[0], "details", {})
@@ -176,4 +239,4 @@ def _compute_command_reliability() -> CommandReliability:
                 result["last_pressure_level"] = str(latest_details.get("level", "none"))
     except (ImportError, RuntimeError, ValueError, TypeError) as exc:
         logger.debug("Command reliability metrics unavailable: %s", exc)
-    return result
+    return cast(CommandReliability, result)

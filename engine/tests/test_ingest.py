@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -360,6 +361,16 @@ class TestStoreEventType:
         data = json.loads(call_args[1]["message"])
         assert data["content"].endswith("...(truncated)")
         assert len(data["content"]) < len(long_content)
+
+    def test_event_message_has_provenance_metadata(
+        self, pipeline: IngestionPipeline, mock_store: MagicMock
+    ) -> None:
+        pipeline.ingest("user", "semantic", "task-42", "remember this preference")
+        data = json.loads(mock_store.append.call_args[1]["message"])
+        provenance = data["provenance"]
+        assert provenance["trust_level"] == "T3_trusted"
+        assert provenance["promotion_state"] == "trusted"
+        assert provenance["mission_id"] == "task-42"
 
 
 # ---------------------------------------------------------------------------

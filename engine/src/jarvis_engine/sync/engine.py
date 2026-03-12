@@ -13,6 +13,7 @@ from typing import Any, TypedDict
 
 from jarvis_engine.sync.changelog import (
     _TRACKED_TABLES,
+    _sql_ident,
     _safe_json_loads,
     compute_diff,
     get_sync_cursor,
@@ -73,9 +74,7 @@ class SyncEngine:
         self._device_id = device_id
         self._conflict_strategy = conflict_strategy
 
-    def compute_outgoing(
-        self, target_device_id: str, limit: int = 500
-    ) -> OutgoingSyncPayload:
+    def compute_outgoing(self, target_device_id: str, limit: int = 500) -> OutgoingSyncPayload:
         """Compute changes to send to *target_device_id*.
 
         Returns ``{"changes": {table: [entries]}, "cursors": {table: max_version}}``.
@@ -119,13 +118,9 @@ class SyncEngine:
                 errors.append(f"Invalid row_id in {table_name} entry")
                 continue
 
-            local_conflict = self._find_local_conflict(
-                table_name, row_id, source_cursor
-            )
+            local_conflict = self._find_local_conflict(table_name, row_id, source_cursor)
             if local_conflict:
-                resolved = self._resolve_conflict(
-                    local_conflict, entry, desktop_is_local
-                )
+                resolved = self._resolve_conflict(local_conflict, entry, desktop_is_local)
                 ok = self._apply_single_change(table_name, pk, resolved)
                 if ok:
                     conflicts_resolved += 1
@@ -141,9 +136,7 @@ class SyncEngine:
                         success_max_version[table_name] = entry_version
             else:
                 op = entry.get("operation", "<missing>")
-                errors.append(
-                    f"Skipped unknown operation {op!r} for {table_name} row {row_id}"
-                )
+                errors.append(f"Skipped unknown operation {op!r} for {table_name} row {row_id}")
 
         return applied, conflicts_resolved
 
@@ -172,9 +165,7 @@ class SyncEngine:
                 (source_device_id, table_name, effective_version),
             )
 
-    def apply_incoming(
-        self, changes: dict[str, Any], source_device_id: str
-    ) -> IncomingSyncResult:
+    def apply_incoming(self, changes: dict[str, Any], source_device_id: str) -> IncomingSyncResult:
         """Apply remote changes within a single transaction.
 
         Only successfully applied operations are counted.  Cursors are only
@@ -196,21 +187,15 @@ class SyncEngine:
                         errors.append(f"Unknown table: {table_name}")
                         continue
                     tbl_applied, tbl_conflicts = self._apply_table_entries(
-                        table_name,
-                        entries,
-                        source_device_id,
-                        desktop_is_local,
-                        errors,
-                        success_max_version,
+                        table_name, entries, source_device_id,
+                        desktop_is_local, errors, success_max_version,
                     )
                     applied += tbl_applied
                     conflicts_resolved += tbl_conflicts
 
                 self._advance_sync_cursors(
-                    incoming_cursors,
-                    incoming_changes,
-                    success_max_version,
-                    source_device_id,
+                    incoming_cursors, incoming_changes,
+                    success_max_version, source_device_id,
                 )
                 self._db.commit()
             except sqlite3.Error as exc:
@@ -227,10 +212,7 @@ class SyncEngine:
         }
 
     def _find_local_conflict(
-        self,
-        table_name: str,
-        row_id: str,
-        since_version: int,
+        self, table_name: str, row_id: str, since_version: int,
     ) -> dict[str, Any] | None:
         """Check if *row_id* has been modified locally since *since_version*."""
         cur = self._db.execute(
@@ -334,9 +316,7 @@ class SyncEngine:
 
     @staticmethod
     def _validate_and_parse_pk(
-        table_name: str,
-        pk: str | list[str],
-        row_id: str,
+        table_name: str, pk: str | list[str], row_id: str,
     ) -> tuple[list[str], list[str], str, set[str]] | None:
         """Validate table/pk and return (pk_cols, pk_values, where_clause, allowed_fields).
 
@@ -344,10 +324,11 @@ class SyncEngine:
         """
         if table_name not in _TRACKED_TABLES:
             raise ValueError(f"Unknown table: {table_name}")
-        if not table_name.isidentifier():
-            raise ValueError(f"Invalid table name: {table_name}")
+        _sql_ident(table_name)
 
         pk_cols: list[str] = pk if isinstance(pk, list) else [pk]
+        for column in pk_cols:
+            _sql_ident(column)
         is_composite = len(pk_cols) > 1
 
         if is_composite:
@@ -355,26 +336,20 @@ class SyncEngine:
             if len(pk_values) != len(pk_cols):
                 logger.warning(
                     "Composite row_id %r has %d parts but pk has %d columns — skipping",
-                    row_id,
-                    len(pk_values),
-                    len(pk_cols),
+                    row_id, len(pk_values), len(pk_cols),
                 )
                 return None
         else:
             pk_values = [row_id]
 
-        where_clause = " AND ".join(col + " = ?" for col in pk_cols)
+        where_clause = " AND ".join(f"{_sql_ident(col)} = ?" for col in pk_cols)
         allowed_fields = set(_TRACKED_TABLES[table_name]["fields"])
         allowed_fields.update(pk_cols)
         return pk_cols, pk_values, where_clause, allowed_fields
 
     def _apply_insert(
-        self,
-        table_name: str,
-        pk_cols: list[str],
-        pk_values: list[str],
-        new_values: dict[str, Any],
-        allowed_fields: set[str],
+        self, table_name: str, pk_cols: list[str], pk_values: list[str],
+        new_values: dict[str, Any], allowed_fields: set[str],
     ) -> None:
         """Execute an INSERT OR IGNORE for a sync change."""
         if not new_values:
@@ -384,28 +359,21 @@ class SyncEngine:
             return
         pk_set = set(pk_cols)
         extra_cols = [k for k in safe_values if k not in pk_set]
+        for column in extra_cols:
+            _sql_ident(column)
         cols = pk_cols + extra_cols
         placeholders = ", ".join(["?"] * len(cols))
-        col_names = ", ".join(cols)
+        col_names = ", ".join(_sql_ident(col) for col in cols)
         values = pk_values + [safe_values[k] for k in extra_cols]
         self._db.execute(
-            "INSERT OR IGNORE INTO "
-            + table_name
-            + " ("
-            + col_names
-            + ") VALUES ("
-            + placeholders
-            + ")",
+            "INSERT OR IGNORE INTO " + _sql_ident(table_name)
+            + " (" + col_names + ") VALUES (" + placeholders + ")",  # nosec B608
             values,
         )
 
     def _apply_update(
-        self,
-        table_name: str,
-        pk_values: list[str],
-        where_clause: str,
-        fields_changed: list[str],
-        new_values: dict[str, Any],
+        self, table_name: str, pk_values: list[str], where_clause: str,
+        fields_changed: list[str], new_values: dict[str, Any],
         allowed_fields: set[str],
     ) -> None:
         """Execute an UPDATE for a sync change."""
@@ -417,26 +385,16 @@ class SyncEngine:
             if field not in allowed_fields:
                 continue
             if field in new_values:
-                set_parts.append(field + " = ?")
+                set_parts.append(_sql_ident(field) + " = ?")
                 values.append(new_values[field])
         if not set_parts:
             return
         values.extend(pk_values)
-        self._db.execute(
-            "UPDATE "
-            + table_name
-            + " SET "
-            + ", ".join(set_parts)
-            + " WHERE "
-            + where_clause,
-            values,
-        )
+        sql = "UPDATE " + _sql_ident(table_name) + " SET " + ", ".join(set_parts) + " WHERE " + where_clause  # nosec B608
+        self._db.execute(sql, values)
 
     def _apply_single_change(
-        self,
-        table_name: str,
-        pk: str | list[str],
-        entry: dict[str, Any],
+        self, table_name: str, pk: str | list[str], entry: dict[str, Any],
     ) -> bool:
         """Execute INSERT/UPDATE/DELETE based on *entry* operation.
 
@@ -458,29 +416,21 @@ class SyncEngine:
         pk_cols, pk_values, where_clause, allowed_fields = parsed
 
         if operation == "INSERT":
-            self._apply_insert(
-                table_name, pk_cols, pk_values, new_values, allowed_fields
-            )
+            self._apply_insert(table_name, pk_cols, pk_values, new_values, allowed_fields)
         elif operation == "UPDATE":
             self._apply_update(
-                table_name,
-                pk_values,
-                where_clause,
-                fields_changed,
-                new_values,
-                allowed_fields,
+                table_name, pk_values, where_clause,
+                fields_changed, new_values, allowed_fields,
             )
         elif operation == "DELETE":
             self._db.execute(
-                "DELETE FROM " + table_name + " WHERE " + where_clause,
+                "DELETE FROM " + _sql_ident(table_name) + " WHERE " + where_clause,  # nosec B608
                 pk_values,
             )
         else:
             logger.warning(
                 "Unknown sync operation %r for table %s row %s — skipping",
-                operation,
-                table_name,
-                row_id,
+                operation, table_name, row_id,
             )
             return False
 
@@ -492,16 +442,14 @@ class SyncEngine:
             "SELECT device_id, table_name, last_version, last_sync_ts "
             "FROM _sync_cursor ORDER BY device_id, table_name",
         )
-        cursors: list[dict[str, Any]] = []
+        cursors: list[SyncCursorEntry] = []
         for row in cur.fetchall():
-            cursors.append(
-                {
-                    "device_id": row[0],
-                    "table_name": row[1],
-                    "last_version": row[2],
-                    "last_sync_ts": row[3],
-                }
-            )
+            cursors.append({
+                "device_id": row[0],
+                "table_name": row[1],
+                "last_version": row[2],
+                "last_sync_ts": row[3],
+            })
 
         count_cur = self._db.execute("SELECT COUNT(*) FROM _sync_changelog")
         total = count_cur.fetchone()[0]

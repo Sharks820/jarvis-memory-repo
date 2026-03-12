@@ -198,11 +198,8 @@ def create_learning_mission(
     if not cleaned_topic:
         raise ValueError("topic is required")
     import secrets
-
-    mission_id = (
-        f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{secrets.token_hex(3)}"
-    )
-    mission = {
+    mission_id = f"m-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{secrets.token_hex(3)}"
+    mission: MissionRecord = {
         "mission_id": mission_id,
         "topic": cleaned_topic[:200],
         "objective": objective.strip()[:400],
@@ -219,7 +216,7 @@ def create_learning_mission(
     }
     with _MISSIONS_LOCK:
         missions = load_missions(root)
-        missions.append(mission)
+        missions.append(dict(mission))
         _save_missions(root, missions)
     _log_mission_activity(
         mission_id=mission_id,
@@ -303,7 +300,7 @@ def _keywords(text: str) -> set[str]:
     return {w for w in words if w not in STOPWORDS}
 
 
-def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]:
+def _verify_candidates(candidates: list[dict[str, str]]) -> list[VerifiedFinding]:
     """Cross-reference candidates across sources to verify factual claims.
 
     Verification tiers:
@@ -313,7 +310,7 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
     # Precompute keywords for all candidates to avoid redundant O(n) _keywords() calls
     candidate_keys = [_keywords(c.get("statement", "")) for c in candidates]
 
-    verified: list[dict[str, Any]] = []
+    verified: list[VerifiedFinding] = []
     seen_statements: set[str] = set()
     for idx, item in enumerate(candidates):
         statement = item.get("statement", "").strip()
@@ -344,9 +341,7 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
                     "statement": statement,
                     "source_urls": sorted(u for u in support_urls if u),
                     "source_domains": sorted(d for d in support_domains if d),
-                    "confidence": round(
-                        min(1.0, 0.55 + 0.15 * len(support_domains)), 2
-                    ),
+                    "confidence": round(min(1.0, 0.55 + 0.15 * len(support_domains)), 2),
                 }
             )
             seen_statements.add(norm_key)
@@ -367,8 +362,7 @@ def _verify_candidates(candidates: list[dict[str, str]]) -> list[dict[str, Any]]
 
 
 def _start_mission(
-    root: Path,
-    mission_id: str,
+    root: Path, mission_id: str,
 ) -> tuple[str, str, list[str]]:
     """Mark mission as running and return its (topic, objective, sources) under lock.
 
@@ -439,9 +433,7 @@ def _fetch_mission_content(
                 continue
             candidates = _extract_candidates(text, topic=topic, max_candidates=8)
             for statement in candidates:
-                candidate_rows.append(
-                    {"statement": statement, "url": url, "domain": domain}
-                )
+                candidate_rows.append({"statement": statement, "url": url, "domain": domain})
 
     return scanned_urls, selected, candidate_rows
 
@@ -449,8 +441,8 @@ def _fetch_mission_content(
 def _finalize_mission(
     root: Path,
     mission_id: str,
-    verified: list[dict],
-    report: dict,
+    verified: list[VerifiedFinding],
+    report: MissionReport,
     report_path: Path,
 ) -> None:
     """Update mission status under lock and log the final activity event."""
@@ -462,16 +454,11 @@ def _finalize_mission(
                 target = item
                 break
         if target is None:
-            logger.warning(
-                "Mission %s disappeared during run — skipping status update", mission_id
-            )
+            logger.warning("Mission %s disappeared during run — skipping status update", mission_id)
             return
         # Respect user-initiated cancellation — do not overwrite.
         if target.get("status") == "cancelled":
-            logger.info(
-                "Mission %s was cancelled during run — preserving cancelled status",
-                mission_id,
-            )
+            logger.info("Mission %s was cancelled during run — preserving cancelled status", mission_id)
             return
         if verified:
             target["status"] = "completed"
@@ -481,17 +468,13 @@ def _finalize_mission(
             # Fire proactive alert so the phone gets notified
             try:
                 from jarvis_engine.proactive.alert_queue import enqueue_alert
-
-                enqueue_alert(
-                    root,
-                    {
-                        "type": "mission_completed",
-                        "title": f"Mission Complete: {target.get('topic', '')}",
-                        "body": f"Found {len(verified)} verified findings for '{target.get('topic', '')}'",
-                        "group_key": "jarvis_missions",
-                        "priority": "important",
-                    },
-                )
+                enqueue_alert(root, {
+                    "type": "mission_completed",
+                    "title": f"Mission Complete: {target.get('topic', '')}",
+                    "body": f"Found {len(verified)} verified findings for '{target.get('topic', '')}'",
+                    "group_key": "jarvis_missions",
+                    "priority": "important",
+                })
             except (OSError, ImportError) as exc:
                 logger.debug("Mission completion notification failed: %s", exc)
         else:
@@ -538,87 +521,54 @@ def run_learning_mission(
     _update_step(root, mission_id, "init", status="running")
     topic, objective, sources = _start_mission(root, mission_id)
     queries = _mission_queries(topic, [str(s) for s in sources])
-    _update_step(
-        root,
-        mission_id,
-        "init",
-        status="completed",
-        elapsed_ms=int(time.time() * 1000) - _t0,
-    )
+    _update_step(root, mission_id, "init", status="completed", elapsed_ms=int(time.time() * 1000) - _t0)
 
     # Step: search web
     _t1 = int(time.time() * 1000)
     _update_step(root, mission_id, "search_web", status="running")
     _update_mission_progress(
-        root,
-        mission_id,
-        status="running",
-        progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
+        root, mission_id, status="running", progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
         status_detail="Searching the web for sources",
     )
 
     # Step: fetch pages
-    _update_step(
-        root,
-        mission_id,
-        "search_web",
-        status="completed",
-        elapsed_ms=int(time.time() * 1000) - _t1,
-    )
+    _update_step(root, mission_id, "search_web", status="completed", elapsed_ms=int(time.time() * 1000) - _t1)
     _t2 = int(time.time() * 1000)
     _update_step(root, mission_id, "fetch_pages", status="running")
     scanned_urls, _, candidate_rows = _fetch_mission_content(
-        topic,
-        queries,
+        topic, queries,
         max_search_results=max_search_results,
         max_pages=max_pages,
     )
-    _update_step(
-        root,
-        mission_id,
-        "fetch_pages",
-        status="completed",
-        elapsed_ms=int(time.time() * 1000) - _t2,
-        artifacts_produced=len(scanned_urls),
-    )
+    _update_step(root, mission_id, "fetch_pages", status="completed",
+                 elapsed_ms=int(time.time() * 1000) - _t2,
+                 artifacts_produced=len(scanned_urls))
 
     # Step: extract candidates
     _t3 = int(time.time() * 1000)
-    _update_step(
-        root,
-        mission_id,
-        "extract_candidates",
-        status="completed",
-        elapsed_ms=int(time.time() * 1000) - _t3,
-        artifacts_produced=len(candidate_rows),
-    )
+    _update_step(root, mission_id, "extract_candidates", status="completed",
+                 elapsed_ms=int(time.time() * 1000) - _t3,
+                 artifacts_produced=len(candidate_rows))
 
     # Step: verify findings
     _t4 = int(time.time() * 1000)
     _update_step(root, mission_id, "verify_findings", status="running")
     _update_mission_progress(
-        root,
-        mission_id,
-        status="running",
+        root, mission_id, status="running",
         progress_pct=_compute_step_progress(get_mission_steps(root, mission_id)),
         status_detail=f"Verifying {len(candidate_rows)} candidate findings",
     )
     verified = _verify_candidates(candidate_rows)
-    _update_step(
-        root,
-        mission_id,
-        "verify_findings",
-        status="completed",
-        elapsed_ms=int(time.time() * 1000) - _t4,
-        artifacts_produced=len(verified),
-    )
+    _update_step(root, mission_id, "verify_findings", status="completed",
+                 elapsed_ms=int(time.time() * 1000) - _t4,
+                 artifacts_produced=len(verified))
 
     # Step: finalize
     _t5 = int(time.time() * 1000)
     _update_step(root, mission_id, "finalize", status="running")
 
     # Build and persist report
-    report = {
+    report: MissionReport = {
         "mission_id": mission_id,
         "topic": topic,
         "objective": objective,
@@ -632,22 +582,11 @@ def run_learning_mission(
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", mission_id)[:80]
     report_path = _reports_dir(root) / f"{safe_id}.report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8"
-    )
+    report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
 
-    _update_step(
-        root,
-        mission_id,
-        "finalize",
-        status="completed",
-        elapsed_ms=int(time.time() * 1000) - _t5,
-    )
+    _update_step(root, mission_id, "finalize", status="completed", elapsed_ms=int(time.time() * 1000) - _t5)
     _update_mission_progress(
-        root,
-        mission_id,
-        status="running",
-        progress_pct=100,
+        root, mission_id, status="running", progress_pct=100,
         status_detail="Finalizing mission report",
     )
     _finalize_mission(root, mission_id, verified, report, report_path)
@@ -677,9 +616,7 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         current_status = str(target.get("status", ""))
         _NON_CANCELLABLE = ("completed", "cancelled", "exhausted")
         if current_status in _NON_CANCELLABLE:
-            raise ValueError(
-                f"cannot cancel mission in '{current_status}' state: {mission_id}"
-            )
+            raise ValueError(f"cannot cancel mission in '{current_status}' state: {mission_id}")
 
         target["status"] = "cancelled"
         target["updated_utc"] = _now_iso()
@@ -702,7 +639,6 @@ def cancel_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Retry failed missions
 # ---------------------------------------------------------------------------
-
 
 def retry_failed_missions(root: Path) -> int:
     """Re-queue failed missions (up to 2 retries) by setting status back to pending.
@@ -786,13 +722,11 @@ class _TopicCollector:
 
 
 def _gather_topics_from_conversations(
-    conn: sqlite3.Connection,
-    collector: _TopicCollector,
+    conn: sqlite3.Connection, collector: _TopicCollector,
 ) -> None:
     """Source 1: Extract topics from recent user conversations (last 14 days)."""
     try:
         from datetime import timedelta
-
         cutoff = (datetime.now(UTC) - timedelta(days=14)).isoformat()
         rows = conn.execute(
             """SELECT summary FROM records
@@ -806,7 +740,7 @@ def _gather_topics_from_conversations(
             words = re.findall(r"[a-zA-Z0-9]{3,}", summary)
             filtered = [w for w in words if w.lower() not in STOPWORDS]
             for i in range(len(filtered) - 1):
-                phrase = " ".join(filtered[i : i + min(3, len(filtered) - i)])
+                phrase = " ".join(filtered[i:i + min(3, len(filtered) - i)])
                 if collector.add(phrase):
                     break
             if collector.full:
@@ -816,8 +750,7 @@ def _gather_topics_from_conversations(
 
 
 def _gather_topics_from_kg_gaps(
-    conn: sqlite3.Connection,
-    collector: _TopicCollector,
+    conn: sqlite3.Connection, collector: _TopicCollector,
 ) -> None:
     """Source 2: KG nodes with low edge count (knowledge gaps)."""
     try:
@@ -843,8 +776,7 @@ def _gather_topics_from_kg_gaps(
 
 
 def _gather_topics_from_kg_strengths(
-    conn: sqlite3.Connection,
-    collector: _TopicCollector,
+    conn: sqlite3.Connection, collector: _TopicCollector,
 ) -> None:
     """Source 3: Strong KG areas that could be deepened."""
     try:
@@ -858,11 +790,7 @@ def _gather_topics_from_kg_strengths(
                ORDER BY edge_cnt DESC
                LIMIT 10""",
         ).fetchall()
-        suffixes = [
-            "advanced techniques",
-            "real world applications",
-            "recent developments",
-        ]
+        suffixes = ["advanced techniques", "real world applications", "recent developments"]
         for i, row in enumerate(strong):
             label = row["label"] or ""
             words = re.findall(r"[a-zA-Z0-9]{3,}", label)
@@ -877,9 +805,7 @@ def _gather_topics_from_kg_strengths(
 
 
 def _create_missions_from_topics(
-    root: Path,
-    candidates: list[str],
-    max_new: int,
+    root: Path, candidates: list[str], max_new: int,
 ) -> list[dict[str, Any]]:
     """Create mission records from a list of candidate topic strings."""
     created: list[dict[str, Any]] = []
@@ -892,12 +818,10 @@ def _create_missions_from_topics(
                 objective=objective,
                 origin="daemon",
             )
-            created.append(mission)
+            created.append(dict(mission))
             logger.info("Auto-created mission %s: %s", mission["mission_id"], topic)
         except (OSError, ValueError, sqlite3.Error) as exc:
-            logger.warning(
-                "Failed to auto-create mission for topic '%s': %s", topic, exc
-            )
+            logger.warning("Failed to auto-create mission for topic '%s': %s", topic, exc)
     return created
 
 
@@ -917,12 +841,11 @@ def auto_generate_missions(
     """
     missions = load_missions(root)
     pending_count = sum(
-        1 for m in missions if str(m.get("status", "")).lower() == "pending"
+        1 for m in missions
+        if str(m.get("status", "")).lower() == "pending"
     )
     if pending_count > 0:
-        logger.debug(
-            "auto_generate_missions: %d pending missions exist, skipping", pending_count
-        )
+        logger.debug("auto_generate_missions: %d pending missions exist, skipping", pending_count)
         return []
 
     existing_topics = {
@@ -935,14 +858,12 @@ def auto_generate_missions(
 
     if db_path is None:
         from jarvis_engine._shared import memory_db_path as _memory_db_path
-
         db_path = _memory_db_path(root)
 
     conn = None
     try:
         if db_path.exists():
             from jarvis_engine._db_pragmas import connect_db
-
             conn = connect_db(db_path)
 
         if conn is not None:
@@ -965,54 +886,12 @@ def auto_generate_missions(
 # ---------------------------------------------------------------------------
 
 _MISSION_STEPS: list[MissionStep] = [
-    {
-        "name": "init",
-        "description": "Initializing mission",
-        "weight": 0.5,
-        "status": "pending",
-        "elapsed_ms": 0,
-        "artifacts_produced": 0,
-    },
-    {
-        "name": "search_web",
-        "description": "Searching the web for sources",
-        "weight": 2.0,
-        "status": "pending",
-        "elapsed_ms": 0,
-        "artifacts_produced": 0,
-    },
-    {
-        "name": "fetch_pages",
-        "description": "Fetching and reading pages",
-        "weight": 3.0,
-        "status": "pending",
-        "elapsed_ms": 0,
-        "artifacts_produced": 0,
-    },
-    {
-        "name": "extract_candidates",
-        "description": "Extracting candidate findings",
-        "weight": 1.5,
-        "status": "pending",
-        "elapsed_ms": 0,
-        "artifacts_produced": 0,
-    },
-    {
-        "name": "verify_findings",
-        "description": "Cross-referencing and verifying claims",
-        "weight": 2.0,
-        "status": "pending",
-        "elapsed_ms": 0,
-        "artifacts_produced": 0,
-    },
-    {
-        "name": "finalize",
-        "description": "Building mission report",
-        "weight": 1.0,
-        "status": "pending",
-        "elapsed_ms": 0,
-        "artifacts_produced": 0,
-    },
+    {"name": "init", "description": "Initializing mission", "weight": 0.5, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
+    {"name": "search_web", "description": "Searching the web for sources", "weight": 2.0, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
+    {"name": "fetch_pages", "description": "Fetching and reading pages", "weight": 3.0, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
+    {"name": "extract_candidates", "description": "Extracting candidate findings", "weight": 1.5, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
+    {"name": "verify_findings", "description": "Cross-referencing and verifying claims", "weight": 2.0, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
+    {"name": "finalize", "description": "Building mission report", "weight": 1.0, "status": "pending", "elapsed_ms": 0, "artifacts_produced": 0},
 ]
 
 
@@ -1067,13 +946,9 @@ def _update_step(
             mission["progress_pct"] = progress
             mission["progress_bar"] = _progress_bar(progress)
             # Find current running step for status_detail
-            running_step = next(
-                (s for s in steps if s.get("status") == "running"), None
-            )
+            running_step = next((s for s in steps if s.get("status") == "running"), None)
             if running_step:
-                mission["status_detail"] = str(running_step.get("description", ""))[
-                    :180
-                ]
+                mission["status_detail"] = str(running_step.get("description", ""))[:180]
             mission["updated_utc"] = _now_iso()
             _save_missions(root, missions)
             break
@@ -1093,8 +968,7 @@ def get_active_missions(root: Path) -> list[dict[str, Any]]:
     """Return all running and paused missions."""
     missions = load_missions(root)
     return [
-        m
-        for m in missions
+        m for m in missions
         if str(m.get("status", "")).lower() in ("running", "paused", "pending")
     ]
 
@@ -1117,9 +991,7 @@ def get_now_working_on(root: Path) -> dict[str, Any] | None:
                     created_dt = datetime.fromisoformat(created)
                     elapsed_s = int((datetime.now(UTC) - created_dt).total_seconds())
                 except (ValueError, TypeError):
-                    logger.debug(
-                        "Failed to parse mission created_utc timestamp: %s", created
-                    )
+                    logger.debug("Failed to parse mission created_utc timestamp: %s", created)
             artifacts = 0
             if isinstance(steps, list):
                 artifacts = sum(int(s.get("artifacts_produced", 0) or 0) for s in steps)
@@ -1151,9 +1023,7 @@ def pause_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
         if str(target.get("status", "")).lower() != "running":
-            raise ValueError(
-                f"can only pause a running mission, current status: {target.get('status')}"
-            )
+            raise ValueError(f"can only pause a running mission, current status: {target.get('status')}")
         target["status"] = "paused"
         target["updated_utc"] = _now_iso()
         target["status_detail"] = "Paused"
@@ -1182,9 +1052,7 @@ def resume_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
         if target is None:
             raise ValueError(f"mission not found: {mission_id}")
         if str(target.get("status", "")).lower() != "paused":
-            raise ValueError(
-                f"can only resume a paused mission, current status: {target.get('status')}"
-            )
+            raise ValueError(f"can only resume a paused mission, current status: {target.get('status')}")
         target["status"] = "pending"  # Will be picked up by daemon loop
         target["updated_utc"] = _now_iso()
         target["status_detail"] = "Resumed — queued for execution"
@@ -1214,9 +1082,7 @@ def restart_mission(root: Path, *, mission_id: str) -> dict[str, Any]:
             raise ValueError(f"mission not found: {mission_id}")
         current = str(target.get("status", "")).lower()
         if current not in ("failed", "cancelled", "exhausted"):
-            raise ValueError(
-                f"can only restart a failed/cancelled/exhausted mission, current status: {current}"
-            )
+            raise ValueError(f"can only restart a failed/cancelled/exhausted mission, current status: {current}")
         target["status"] = "pending"
         target["progress_pct"] = 0
         target["progress_bar"] = _progress_bar(0)
@@ -1245,7 +1111,6 @@ def mission_dashboard_metrics(root: Path) -> dict[str, Any]:
     missions = load_missions(root)
     now = datetime.now(UTC)
     from datetime import timedelta
-
     cutoff = (now - timedelta(days=7)).isoformat()
 
     completed_7d = 0
@@ -1264,14 +1129,8 @@ def mission_dashboard_metrics(root: Path) -> dict[str, Any]:
         elif status in ("failed", "exhausted"):
             failed_7d += 1
 
-    total_completed = sum(
-        1 for m in missions if str(m.get("status", "")).lower() == "completed"
-    )
-    total_run = sum(
-        1
-        for m in missions
-        if str(m.get("status", "")).lower() in ("completed", "failed", "exhausted")
-    )
+    total_completed = sum(1 for m in missions if str(m.get("status", "")).lower() == "completed")
+    total_run = sum(1 for m in missions if str(m.get("status", "")).lower() in ("completed", "failed", "exhausted"))
     success_rate = round(total_completed / total_run * 100, 1) if total_run > 0 else 0.0
 
     top_topics = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -1282,9 +1141,6 @@ def mission_dashboard_metrics(root: Path) -> dict[str, Any]:
         "mission_success_rate": success_rate,
         "top_topics_learned": [{"topic": t, "count": c} for t, c in top_topics],
         "total_missions": len(missions),
-        "active_count": sum(
-            1
-            for m in missions
-            if str(m.get("status", "")).lower() in ("running", "paused", "pending")
-        ),
+        "active_count": sum(1 for m in missions if str(m.get("status", "")).lower() in ("running", "paused", "pending")),
     }
+

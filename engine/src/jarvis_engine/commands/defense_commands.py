@@ -7,6 +7,11 @@ containment overrides, IP blocking, quarantine review, and briefings.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from jarvis_engine.security.ip_tracker import ThreatReport
+    from jarvis_engine.security.orchestrator import AllThreatsReport, SecurityStatus
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +28,7 @@ class SecurityStatusCommand:
 class SecurityStatusResult:
     """Result containing the defense dashboard and summary."""
 
-    dashboard: dict = field(default_factory=dict)
+    dashboard: "SecurityStatus | dict[str, Any]" = field(default_factory=dict)
     message: str = ""
 
 
@@ -43,7 +48,7 @@ class ThreatReportCommand:
 class ThreatReportResult:
     """Result containing the threat report."""
 
-    report: dict = field(default_factory=dict)
+    report: "ThreatReport | AllThreatsReport | dict[str, Any] | None" = field(default_factory=dict)
     message: str = ""
 
 

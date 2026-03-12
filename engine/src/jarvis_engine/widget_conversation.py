@@ -13,13 +13,63 @@ used standalone.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import tkinter as tk
-from typing import Any, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar, Protocol, cast
 
 from jarvis_engine.widget_helpers import _http_json
 
 logger = logging.getLogger(__name__)
+
+
+class _ConversationHost(Protocol):
+    BG: str
+    PANEL: str
+    EDGE: str
+    TEXT: str
+    MUTED: str
+    ACCENT: str
+    output: tk.Text
+    command_text: tk.Text
+    _chat_frame: tk.Frame
+    _thinking_after_id: str | None
+    _popout_win: tk.Toplevel | None
+    _popout_text: tk.Text | None
+    _popout_thinking_frame: tk.Frame | None
+    _popout_thinking_label: tk.Label | None
+    _thinking_start_time: float
+    _thinking_dots: int
+    _welcome_shown: bool
+    _widget_state: str
+    _thinking_frame: tk.Frame
+    _thinking_label_widget: tk.Label
+    stop_event: threading.Event
+
+    def after(self, ms: int, func: Callable[..., Any] | None = None, *args: Any) -> str: ...
+    def after_cancel(self, id_: str) -> None: ...
+    def _cancel_processing_timeout(self) -> None: ...
+    def _set_state(self, state: str) -> None: ...
+    def _current_cfg(self) -> Any: ...
+    def _thread(self, fn: Callable[..., Any]) -> None: ...
+    def _log(self, message: str, role: str = "system") -> None: ...
+    def _set_command_text(self, text: str) -> None: ...
+    def _send_command_async(self) -> None: ...
+    def _clear_history(self) -> None: ...
+    def _end_conversation(self) -> None: ...
+    def _pop_out_conversation(self) -> None: ...
+    def _build_chat_header(self, body: tk.Frame) -> None: ...
+    def _build_thinking_indicator(self, body: tk.Frame) -> None: ...
+    def _build_chat_area(self, body: tk.Frame) -> None: ...
+    def _configure_chat_tags(self) -> None: ...
+    def _setup_conversation_window(self) -> tk.Toplevel: ...
+    def _build_popout_display(self, win: tk.Toplevel) -> tk.Text: ...
+    def _build_popout_input(self, win: tk.Toplevel) -> tuple[tk.Text, tk.Button]: ...
+    def _bind_conversation_events(self, win: tk.Toplevel) -> None: ...
+    def _hide_thinking(self) -> None: ...
+    def _animate_thinking(self) -> None: ...
+    _CHAT_TAG_SPECS: ClassVar[list[tuple[str, dict]]]
 
 
 class ConversationMixin:
@@ -34,117 +84,29 @@ class ConversationMixin:
       - ``self.after()`` (tkinter scheduling)
     """
 
+    _thinking_after_id: str | None
+
     # Chat tag style definitions: (name, {config kwargs})
     _CHAT_TAG_SPECS: ClassVar[list[tuple[str, dict]]] = [
-        (
-            "user",
-            {
-                "background": "#0c2d5e",
-                "foreground": "#b8d4ff",
-                "font": ("Consolas", 11, "bold"),
-                "lmargin1": 40,
-                "lmargin2": 40,
-                "rmargin": 8,
-                "spacing1": 4,
-                "spacing3": 4,
-            },
-        ),
-        (
-            "jarvis",
-            {
-                "background": "#0d1e1e",
-                "foreground": "#a8e6cf",
-                "font": ("Consolas", 11),
-                "lmargin1": 8,
-                "lmargin2": 8,
-                "rmargin": 40,
-                "spacing1": 4,
-                "spacing3": 4,
-            },
-        ),
-        (
-            "system",
-            {
-                "foreground": "#7a9abe",
-                "font": ("Consolas", 10),
-                "lmargin1": 8,
-                "lmargin2": 8,
-                "spacing1": 2,
-                "spacing3": 2,
-            },
-        ),
-        (
-            "error",
-            {
-                "background": "#2a0a0a",
-                "foreground": "#ff6b6b",
-                "font": ("Consolas", 11, "bold"),
-                "lmargin1": 8,
-                "lmargin2": 8,
-                "spacing1": 4,
-                "spacing3": 4,
-            },
-        ),
-        (
-            "separator",
-            {
-                "foreground": "#1e3250",
-                "font": ("Consolas", 6),
-                "justify": "center",
-                "spacing1": 2,
-                "spacing3": 2,
-            },
-        ),
-        (
-            "timestamp",
-            {
-                "foreground": "#3a5a7e",
-                "font": ("Consolas", 8),
-                "justify": "center",
-                "spacing1": 6,
-                "spacing3": 2,
-            },
-        ),
-        (
-            "thinking",
-            {
-                "foreground": "#ff9f43",
-                "font": ("Consolas", 11, "italic"),
-                "lmargin1": 8,
-                "lmargin2": 8,
-                "rmargin": 40,
-                "spacing1": 4,
-                "spacing3": 4,
-            },
-        ),
-        (
-            "learned",
-            {
-                "foreground": "#34d399",
-                "font": ("Consolas", 9, "italic"),
-                "lmargin1": 8,
-                "lmargin2": 8,
-                "spacing1": 1,
-                "spacing3": 1,
-            },
-        ),
+        ("user", {"background": "#0c2d5e", "foreground": "#b8d4ff", "font": ("Consolas", 11, "bold"), "lmargin1": 40, "lmargin2": 40, "rmargin": 8, "spacing1": 4, "spacing3": 4}),
+        ("jarvis", {"background": "#0d1e1e", "foreground": "#a8e6cf", "font": ("Consolas", 11), "lmargin1": 8, "lmargin2": 8, "rmargin": 40, "spacing1": 4, "spacing3": 4}),
+        ("system", {"foreground": "#7a9abe", "font": ("Consolas", 10), "lmargin1": 8, "lmargin2": 8, "spacing1": 2, "spacing3": 2}),
+        ("error", {"background": "#2a0a0a", "foreground": "#ff6b6b", "font": ("Consolas", 11, "bold"), "lmargin1": 8, "lmargin2": 8, "spacing1": 4, "spacing3": 4}),
+        ("separator", {"foreground": "#1e3250", "font": ("Consolas", 6), "justify": "center", "spacing1": 2, "spacing3": 2}),
+        ("timestamp", {"foreground": "#3a5a7e", "font": ("Consolas", 8), "justify": "center", "spacing1": 6, "spacing3": 2}),
+        ("thinking", {"foreground": "#ff9f43", "font": ("Consolas", 11, "italic"), "lmargin1": 8, "lmargin2": 8, "rmargin": 40, "spacing1": 4, "spacing3": 4}),
+        ("learned", {"foreground": "#34d399", "font": ("Consolas", 9, "italic"), "lmargin1": 8, "lmargin2": 8, "spacing1": 1, "spacing3": 1}),
     ]
 
     # ------------------------------------------------------------------
     # Chat area build
     # ------------------------------------------------------------------
 
-    def _build_chat_header(self, body: tk.Frame) -> None:
+    def _build_chat_header(self: Any, body: tk.Frame) -> None:
         """Build the conversation header with Clear, End Conversation, and Pop Out buttons."""
         output_header = tk.Frame(body, bg=self.PANEL)
         output_header.pack(fill=tk.X, padx=10, pady=(10, 0))
-        tk.Label(
-            output_header,
-            text="\U0001f4ac  Conversation",
-            bg=self.PANEL,
-            fg=self.TEXT,
-            font=("Segoe UI", 13, "bold"),
-        ).pack(side=tk.LEFT)
+        tk.Label(output_header, text="\U0001F4AC  Conversation", bg=self.PANEL, fg=self.TEXT, font=("Segoe UI", 13, "bold")).pack(side=tk.LEFT)
         tk.Button(
             output_header,
             text="Clear",
@@ -161,7 +123,7 @@ class ConversationMixin:
         ).pack(side=tk.RIGHT, padx=(4, 0))
         tk.Button(
             output_header,
-            text="\u23f9 End Conversation",
+            text="\u23F9 End Conversation",
             bg="#7a2f2f",
             fg="#fca5a5",
             activebackground="#a03030",
@@ -188,7 +150,22 @@ class ConversationMixin:
             pady=2,
         ).pack(side=tk.RIGHT)
 
-    def _build_thinking_indicator(self, body: tk.Frame) -> None:
+        status_row = tk.Frame(body, bg=self.PANEL)
+        status_row.pack(fill=tk.X, padx=10, pady=(4, 0))
+        self._conversation_status_var = tk.StringVar(value="Ready for commands on desktop.")
+        self._conversation_status_label = tk.Label(
+            status_row,
+            textvariable=self._conversation_status_var,
+            bg="#101b31",
+            fg="#d7e6ff",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+            padx=8,
+            pady=5,
+        )
+        self._conversation_status_label.pack(fill=tk.X)
+
+    def _build_thinking_indicator(self: Any, body: tk.Frame) -> None:
         """Build the thinking indicator label (hidden by default, shown during processing)."""
         self._thinking_frame = tk.Frame(body, bg="#1a1500")
         self._thinking_label_widget = tk.Label(
@@ -203,7 +180,7 @@ class ConversationMixin:
         )
         self._thinking_label_widget.pack(fill=tk.X)
 
-    def _build_chat_area(self, body: tk.Frame) -> None:
+    def _build_chat_area(self: Any, body: tk.Frame) -> None:
         """Build the conversation output area with header, thinking indicator, and chat text."""
         self._build_chat_header(body)
         self._build_thinking_indicator(body)
@@ -225,16 +202,19 @@ class ConversationMixin:
         output_scroll = tk.Scrollbar(
             self._chat_frame,
             command=self.output.yview,
-            bg="#0a1a3a",
-            troughcolor="#0d1628",
-            activebackground="#1e3250",
+            bg="#123059",
+            troughcolor="#081127",
+            activebackground="#4da9ff",
+            width=14,
+            borderwidth=0,
+            relief=tk.FLAT,
         )
         self.output.config(yscrollcommand=output_scroll.set)
         output_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.output.pack(fill=tk.BOTH, expand=True)
         self._configure_chat_tags()
 
-    def _configure_chat_tags(self) -> None:
+    def _configure_chat_tags(self: Any) -> None:
         """Set up tag-based visual styles for the chat-style conversation display."""
         for name, kwargs in self._CHAT_TAG_SPECS:
             self.output.tag_configure(name, **kwargs)
@@ -243,13 +223,13 @@ class ConversationMixin:
     # Chat history management
     # ------------------------------------------------------------------
 
-    def _clear_history(self) -> None:
+    def _clear_history(self: Any) -> None:
         """Clear all text from the conversation display."""
         self.output.config(state=tk.NORMAL)
         self.output.delete("1.0", tk.END)
         self.output.config(state=tk.DISABLED)
 
-    def _end_conversation(self) -> None:
+    def _end_conversation(self: Any) -> None:
         """End the conversation session, clear server-side history, and reset."""
         # Reset local UI state
         self._cancel_processing_timeout()
@@ -272,7 +252,7 @@ class ConversationMixin:
     # Pop-out conversation window
     # ------------------------------------------------------------------
 
-    def _pop_out_conversation(self) -> None:
+    def _pop_out_conversation(self: Any) -> None:
         """Open conversation in a separate resizable window with command input."""
         if hasattr(self, "_popout_win") and self._popout_win is not None:
             try:
@@ -286,9 +266,9 @@ class ConversationMixin:
         win = self._setup_conversation_window()
         self._bind_conversation_events(win)
 
-    def _setup_conversation_window(self) -> tk.Toplevel:
+    def _setup_conversation_window(self: Any) -> tk.Toplevel:
         """Create the pop-out conversation window with display and input areas."""
-        win = tk.Toplevel(self)
+        win = tk.Toplevel(cast(tk.Misc, self))
         win.title("Jarvis \u2014 Conversation")
         win.geometry("750x600")
         win.minsize(500, 400)
@@ -297,18 +277,14 @@ class ConversationMixin:
         self._popout_win = win
 
         # --- Thinking indicator for popout ---
-        self._popout_thinking_frame = tk.Frame(win, bg="#1a1500")
-        self._popout_thinking_label = tk.Label(
-            self._popout_thinking_frame,
-            text="",
-            bg="#1a1500",
-            fg="#ff9f43",
-            font=("Consolas", 12, "italic"),
-            anchor="w",
-            padx=8,
-            pady=4,
+        popout_thinking_frame = tk.Frame(win, bg="#1a1500")
+        self._popout_thinking_frame = popout_thinking_frame
+        popout_thinking_label = tk.Label(
+            popout_thinking_frame, text="", bg="#1a1500", fg="#ff9f43",
+            font=("Consolas", 12, "italic"), anchor="w", padx=8, pady=4,
         )
-        self._popout_thinking_label.pack(fill=tk.X)
+        self._popout_thinking_label = popout_thinking_label
+        popout_thinking_label.pack(fill=tk.X)
         # Not packed yet — shown via _show_thinking() when processing
 
         popout_text = self._build_popout_display(win)
@@ -320,7 +296,7 @@ class ConversationMixin:
         win._send_btn = send_btn  # type: ignore[attr-defined]
         return win
 
-    def _build_popout_display(self, win: tk.Toplevel) -> tk.Text:
+    def _build_popout_display(self: Any, win: tk.Toplevel) -> tk.Text:
         """Build the conversation display area for the pop-out window and copy existing content."""
         chat_frame = tk.Frame(win, bg=self.BG)
         chat_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(8, 0))
@@ -340,25 +316,19 @@ class ConversationMixin:
         scrollbar = tk.Scrollbar(
             chat_frame,
             command=popout_text.yview,
-            bg="#0a1a3a",
-            troughcolor="#0d1628",
-            activebackground="#1e3250",
+            bg="#123059",
+            troughcolor="#081127",
+            activebackground="#4da9ff",
+            width=14,
+            borderwidth=0,
+            relief=tk.FLAT,
         )
         popout_text.config(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         popout_text.pack(fill=tk.BOTH, expand=True)
 
         # Configure the same chat tags on the pop-out widget
-        for tag in (
-            "user",
-            "jarvis",
-            "system",
-            "error",
-            "separator",
-            "timestamp",
-            "thinking",
-            "learned",
-        ):
+        for tag in ("user", "jarvis", "system", "error", "separator", "timestamp", "thinking", "learned"):
             tag_opts = self.output.tag_configure(tag)
             if tag_opts:
                 resolved = {k: v[-1] for k, v in tag_opts.items() if v and v[-1]}
@@ -370,16 +340,8 @@ class ConversationMixin:
         full_text = self.output.get("1.0", tk.END)
         if full_text.strip():
             popout_text.insert(tk.END, full_text)
-            for tag in (
-                "user",
-                "jarvis",
-                "system",
-                "error",
-                "separator",
-                "timestamp",
-                "thinking",
-                "learned",
-            ):
+            for tag in ("user", "jarvis", "system", "error", "separator",
+                        "timestamp", "thinking", "learned"):
                 try:
                     ranges = self.output.tag_ranges(tag)
                     for i in range(0, len(ranges), 2):
@@ -389,11 +351,9 @@ class ConversationMixin:
         popout_text.config(state=tk.DISABLED)
         return popout_text
 
-    def _build_popout_input(self, win: tk.Toplevel) -> tuple[tk.Text, tk.Button]:
+    def _build_popout_input(self: Any, win: tk.Toplevel) -> tuple[tk.Text, tk.Button]:
         """Build the command input area for the pop-out window. Returns (cmd_text, send_btn)."""
-        input_frame = tk.Frame(
-            win, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1
-        )
+        input_frame = tk.Frame(win, bg=self.PANEL, highlightbackground=self.EDGE, highlightthickness=1)
         input_frame.pack(fill=tk.X, padx=8, pady=8)
 
         # Accent bar at top of input area
@@ -421,7 +381,7 @@ class ConversationMixin:
 
         send_btn = tk.Button(
             btn_frame,
-            text="\u25b6 Send",
+            text="\u25B6 Send",
             bg=self.ACCENT,
             fg="#000000",
             activebackground="#0ea5a0",
@@ -435,7 +395,7 @@ class ConversationMixin:
         send_btn.pack(fill=tk.BOTH, expand=True)
         return popout_cmd, send_btn
 
-    def _bind_conversation_events(self, win: tk.Toplevel) -> None:
+    def _bind_conversation_events(self: Any, win: tk.Toplevel) -> None:
         """Wire up keyboard and button events for the pop-out conversation window."""
         popout_cmd = win._popout_cmd  # type: ignore[attr-defined]
         send_btn = win._send_btn  # type: ignore[attr-defined]
@@ -451,9 +411,8 @@ class ConversationMixin:
             return "break"
 
         def _popout_key(event: tk.Event[Any]) -> str | None:
-            if (
-                event.keysym == "Return" and not event.state & 0x1
-            ):  # Enter without Shift
+            state_bits = event.state if isinstance(event.state, int) else 0
+            if event.keysym == "Return" and not state_bits & 0x1:  # Enter without Shift
                 _popout_send()
                 return "break"
             return None
@@ -473,7 +432,7 @@ class ConversationMixin:
     # Chat logging
     # ------------------------------------------------------------------
 
-    def _log(self, message: str, role: str = "system") -> None:
+    def _log(self: Any, message: str, role: str = "system") -> None:
         stamp = time.strftime("%H:%M:%S")
         self.output.config(state=tk.NORMAL)
 
@@ -525,7 +484,7 @@ class ConversationMixin:
                 logger.debug("Popout text widget was destroyed; clearing reference")
                 self._popout_text = None
 
-    def _log_async(self, message: str, role: str = "system") -> None:
+    def _log_async(self: Any, message: str, role: str = "system") -> None:
         if self.stop_event.is_set():
             return
         try:
@@ -537,20 +496,18 @@ class ConversationMixin:
     # Thinking indicator
     # ------------------------------------------------------------------
 
-    def _show_thinking(self) -> None:
+    def _show_thinking(self: Any) -> None:
         """Show animated 'Jarvis is thinking...' indicator as a Label widget.
 
         Uses a dedicated Label (not text-mark manipulation) to avoid loading
         bar spam from mark-based insert/delete race conditions.
         """
         import time as _time
-
         self._thinking_start_time = _time.time()
         self._thinking_dots = 3
         self._thinking_label_widget.config(text="\u23f3 Jarvis is thinking...  (0s)")
-        self._thinking_frame.pack(
-            fill=tk.X, padx=10, pady=(2, 0), before=self._chat_frame
-        )
+        self._thinking_frame.pack(fill=tk.X, padx=10, pady=(2, 0),
+                                  before=self._chat_frame)
         # Also show in popout if open
         popout_lbl = getattr(self, "_popout_thinking_label", None)
         if popout_lbl is not None:
@@ -563,7 +520,7 @@ class ConversationMixin:
                 logger.debug("Failed to show thinking indicator in popout window")
         self._animate_thinking()
 
-    def _hide_thinking(self) -> None:
+    def _hide_thinking(self: Any) -> None:
         """Hide the thinking indicator Label."""
         if self._thinking_after_id is not None:
             try:
@@ -583,10 +540,9 @@ class ConversationMixin:
             except tk.TclError:
                 logger.debug("Failed to hide popout thinking frame")
 
-    def _animate_thinking(self) -> None:
+    def _animate_thinking(self: Any) -> None:
         """Update thinking indicator Label with elapsed time and progress bar."""
         import time as _time
-
         if self._widget_state != "processing":
             return
         self._thinking_dots = (self._thinking_dots % 3) + 1
@@ -615,7 +571,7 @@ class ConversationMixin:
     # Visual indicators
     # ------------------------------------------------------------------
 
-    def _show_learned_indicator(self) -> None:
+    def _show_learned_indicator(self: Any) -> None:
         """Show a brief 'Learned' indicator that fades after 2s."""
         self.output.config(state=tk.NORMAL)
         marker = self.output.index(tk.END)
@@ -629,13 +585,11 @@ class ConversationMixin:
                 self.output.delete(marker, f"{marker}+1l")
                 self.output.config(state=tk.DISABLED)
             except tk.TclError:
-                logger.debug(
-                    "Failed to remove learned indicator (widget may be destroyed)"
-                )
+                logger.debug("Failed to remove learned indicator (widget may be destroyed)")
 
         self.after(2000, _remove)
 
-    def _show_welcome(self) -> None:
+    def _show_welcome(self: Any) -> None:
         """Show one-time welcome message in chat."""
         if self._welcome_shown:
             return
@@ -650,9 +604,9 @@ class ConversationMixin:
     # Help overlay
     # ------------------------------------------------------------------
 
-    def _show_help(self) -> None:
+    def _show_help(self: Any) -> None:
         """Show help overlay with commands and tips."""
-        help_win = tk.Toplevel(self)
+        help_win = tk.Toplevel(cast(tk.Misc, self))
         help_win.title("Jarvis Help")
         help_win.geometry("420x480")
         help_win.configure(bg="#0a1628")
@@ -660,80 +614,53 @@ class ConversationMixin:
         help_win.resizable(False, False)
 
         tk.Label(
-            help_win,
-            text="Jarvis Help",
-            bg="#0a1628",
-            fg="#e2e8f0",
+            help_win, text="Jarvis Help", bg="#0a1628", fg="#e2e8f0",
             font=("Segoe UI", 16, "bold"),
         ).pack(pady=(16, 8))
 
         sections = [
-            (
-                "Talking to Jarvis",
-                [
-                    "Type any question or command, press Enter or Send",
-                    "Voice Dictate or say 'Jarvis' (wake word) for voice input",
-                    "Say 'done' or click End Conversation when finished",
-                    "Jarvis keeps context across commands in a conversation",
-                ],
-            ),
-            (
-                "Teaching Jarvis",
-                [
-                    '"Remember that [fact]" -- saves to memory',
-                    '"What do you know about [topic]?" -- queries memory',
-                    '"Forget about [topic]" -- removes from knowledge base',
-                    "Jarvis auto-learns from every conversation",
-                ],
-            ),
-            (
-                "Quick Commands",
-                [
-                    '"Knowledge status" -- brain health report',
-                    '"System status" -- service health check',
-                    '"Mission status" -- active learning missions',
-                    '"Search the web for [topic]" -- web-augmented answers',
-                ],
-            ),
-            (
-                "Control Buttons",
-                [
-                    "Pause -- stops daemon (background tasks, alerts, learning)",
-                    "Resume -- restarts daemon after pause",
-                    "Safe Mode -- forces local Ollama (no cloud) for privacy",
-                    "Refresh -- shows intelligence score and memory stats",
-                    "Diagnose -- runs self-healing, repairs DB, creates snapshot",
-                    "Activity -- shows last 20 events (commands, learning, alerts)",
-                    "End Conversation -- clears context and starts fresh",
-                ],
-            ),
-            (
-                "Keyboard Shortcuts",
-                [
-                    "Enter -- Send command",
-                    "Ctrl+Enter -- Send command (alternative)",
-                    "Shift+Enter -- New line (don't send)",
-                    "Escape -- Close this help window",
-                ],
-            ),
+            ("Talking to Jarvis", [
+                "Type any question or command, press Enter or Send",
+                "Voice Dictate or say 'Jarvis' (wake word) for voice input",
+                "Say 'done' or click End Conversation when finished",
+                "Jarvis keeps context across commands in a conversation",
+            ]),
+            ("Teaching Jarvis", [
+                '"Remember that [fact]" -- saves to memory',
+                '"What do you know about [topic]?" -- queries memory',
+                '"Forget about [topic]" -- removes from knowledge base',
+                "Jarvis auto-learns from every conversation",
+            ]),
+            ("Quick Commands", [
+                '"Knowledge status" -- brain health report',
+                '"System status" -- service health check',
+                '"Mission status" -- active learning missions',
+                '"Search the web for [topic]" -- web-augmented answers',
+            ]),
+            ("Control Buttons", [
+                "Pause -- stops daemon (background tasks, alerts, learning)",
+                "Resume -- restarts daemon after pause",
+                "Safe Mode -- forces local Ollama (no cloud) for privacy",
+                "Refresh -- shows intelligence score and memory stats",
+                "Diagnose -- runs self-healing, repairs DB, creates snapshot",
+                "Activity -- shows last 20 events (commands, learning, alerts)",
+                "End Conversation -- clears context and starts fresh",
+            ]),
+            ("Keyboard Shortcuts", [
+                "Enter -- Send command",
+                "Ctrl+Enter -- Send command (alternative)",
+                "Shift+Enter -- New line (don't send)",
+                "Escape -- Close this help window",
+            ]),
         ]
 
         text = tk.Text(
-            help_win,
-            wrap=tk.WORD,
-            bg="#0a1628",
-            fg="#cbd5e1",
-            font=("Segoe UI", 10),
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            state=tk.DISABLED,
-            highlightthickness=0,
+            help_win, wrap=tk.WORD, bg="#0a1628", fg="#cbd5e1",
+            font=("Segoe UI", 10), relief=tk.FLAT, padx=16, pady=8,
+            state=tk.DISABLED, highlightthickness=0,
         )
         text.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
-        text.tag_configure(
-            "heading", foreground="#6ee7b7", font=("Segoe UI", 11, "bold")
-        )
+        text.tag_configure("heading", foreground="#6ee7b7", font=("Segoe UI", 11, "bold"))
         text.tag_configure("item", foreground="#cbd5e1", font=("Segoe UI", 10))
         text.config(state=tk.NORMAL)
         for heading, items in sections:

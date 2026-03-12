@@ -474,3 +474,4 @@ class TestParakeetProperNounThreshold:
             mock_auto.assert_called_once()
             call_kwargs = mock_auto.call_args[1]
             assert call_kwargs["entity_list"] == ["Conner", "Jarvis"]
+

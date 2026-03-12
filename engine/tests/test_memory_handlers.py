@@ -128,8 +128,18 @@ class TestBrainContextHandler:
         embed.embed_query.return_value = [0.1, 0.2, 0.3]
 
         fake_results = [
-            {"record_id": "r1", "summary": "calendar meeting", "branch": "ops", "source": "user", "kind": "episodic", "ts": "2026-02-25T00:00:00"},
-            {"record_id": "r2", "summary": "code review", "branch": "coding", "source": "user", "kind": "episodic", "ts": "2026-02-25T01:00:00"},
+            {
+                "record_id": "r1", "summary": "calendar meeting", "branch": "ops", "source": "user",
+                "kind": "episodic", "ts": "2026-02-25T00:00:00", "trust_level": "T3_trusted",
+                "learning_lane": "trusted", "promotion_state": "trusted", "_trust_shadow_score": 1.25,
+                "_trust_would_downrank": False,
+            },
+            {
+                "record_id": "r2", "summary": "code review", "branch": "coding", "source": "user",
+                "kind": "episodic", "ts": "2026-02-25T01:00:00", "trust_level": "T1_observed",
+                "learning_lane": "observed", "promotion_state": "observed", "_trust_shadow_score": 0.82,
+                "_trust_would_downrank": True,
+            },
         ]
         with patch("jarvis_engine.memory.search.hybrid_search", return_value=fake_results):
             handler = BrainContextHandler(root=tmp_path, engine=engine, embed_service=embed)
@@ -140,6 +150,8 @@ class TestBrainContextHandler:
         assert result.packet["selected_count"] == 2
         assert result.packet["engine"] == "sqlite"
         assert result.packet["total_records_scanned"] == 100
+        assert result.packet["selected"][0]["trust_level"] == "T3_trusted"
+        assert result.packet["selected"][1]["would_downrank"] is True
 
     def test_engine_path_respects_max_chars(self, tmp_path: Path) -> None:
         """Results should stop accumulating when max_chars is exceeded."""

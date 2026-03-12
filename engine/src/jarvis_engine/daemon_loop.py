@@ -53,7 +53,6 @@ logger = logging.getLogger(__name__)
 # Parameter bundle dataclasses
 # ---------------------------------------------------------------------------
 
-
 @dataclass
 class DaemonConfig:
     """Configuration bundle for cmd_daemon_run_impl."""
@@ -90,6 +89,12 @@ _CYCLE_TIMEOUT_S = 600
 
 # Tracks the start time of the current cycle (set before each cycle).
 _cycle_start: float = 0.0
+
+
+def _emit_cycle_failure(event: str, exc: Exception, *, message: str) -> None:
+    """Log and surface a subsystem failure using the daemon's standard contract."""
+    logger.warning("%s: %s", message, exc)
+    print(f"{event}_error={exc}")
 
 
 def _watchdog_check() -> dict:
@@ -140,17 +145,10 @@ _daemon_kg_prev_metrics_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 
 
-def cmd_mission_run(
-    mission_id: str, max_results: int, max_pages: int, auto_ingest: bool
-) -> int:
-    result = _get_daemon_bus().dispatch(
-        MissionRunCommand(
-            mission_id=mission_id,
-            max_results=max_results,
-            max_pages=max_pages,
-            auto_ingest=auto_ingest,
-        )
-    )
+def cmd_mission_run(mission_id: str, max_results: int, max_pages: int, auto_ingest: bool) -> int:
+    result = _get_daemon_bus().dispatch(MissionRunCommand(
+        mission_id=mission_id, max_results=max_results, max_pages=max_pages, auto_ingest=auto_ingest,
+    ))
     if result.return_code != 0:
         print("error: mission run failed")
         return result.return_code
@@ -163,14 +161,8 @@ def cmd_mission_run(
     verified = report.get("verified_findings", [])
     if isinstance(verified, list):
         for idx, finding in enumerate(verified[:10], start=1):
-            statement = (
-                str(finding.get("statement", "")) if isinstance(finding, dict) else ""
-            )
-            sources = (
-                ",".join(finding.get("source_domains", []))
-                if isinstance(finding, dict)
-                else ""
-            )
+            statement = str(finding.get("statement", "")) if isinstance(finding, dict) else ""
+            sources = ",".join(finding.get("source_domains", [])) if isinstance(finding, dict) else ""
             print(f"verified_{idx}={statement}")
             print(f"verified_{idx}_sources={sources}")
 
@@ -215,23 +207,14 @@ def _restart_mobile_api(service_name: str) -> None:
     root = repo_root()
     config_path = root / ".planning" / "security" / "mobile_api.json"
     if not config_path.exists():
-        logger.warning(
-            "Watchdog: cannot restart mobile_api — config file missing: %s", config_path
-        )
+        logger.warning("Watchdog: cannot restart mobile_api — config file missing: %s", config_path)
         return
     python = _sys.executable
     engine_src = str(root / "engine" / "src")
     cmd = [
-        python,
-        "-m",
-        "jarvis_engine.main",
-        "serve-mobile",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        str(_DEFAULT_API_PORT),
-        "--config-file",
-        str(config_path),
+        python, "-m", "jarvis_engine.main", "serve-mobile",
+        "--host", "127.0.0.1", "--port", str(_DEFAULT_API_PORT),
+        "--config-file", str(config_path),
     ]
     env = os.environ.copy()
     # Ensure engine source is on PYTHONPATH
@@ -244,8 +227,7 @@ def _restart_mobile_api(service_name: str) -> None:
                 cmd,
                 env=env,
                 cwd=str(root / "engine"),
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                | subprocess.DETACHED_PROCESS,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -355,9 +337,7 @@ def _log_resource_pressure(
     skip_heavy_tasks: bool,
 ) -> None:
     """Log resource pressure changes to activity feed (never raises)."""
-    if pressure_level != "none" and (
-        pressure_level != last_pressure_level or cycles % 5 == 0
-    ):
+    if pressure_level != "none" and (pressure_level != last_pressure_level or cycles % 5 == 0):
         try:
             from jarvis_engine.activity_feed import ActivityCategory, log_activity
 
@@ -399,24 +379,13 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
     global _mission_backoff_until_cycle
     # Skip if in failure backoff cooldown
     if cycles < _mission_backoff_until_cycle:
-        print(
-            f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}"
-        )
+        print(f"mission_cycle_skipped=backoff_until_cycle_{_mission_backoff_until_cycle}")
         return
     try:
         mission_rc = _run_next_pending_mission()
-    except (
-        ImportError,
-        OSError,
-        sqlite3.Error,
-        AttributeError,
-        KeyError,
-        ValueError,
-        RuntimeError,
-    ) as exc:
+    except (ImportError, OSError, sqlite3.Error, AttributeError, KeyError, ValueError, RuntimeError) as exc:
         mission_rc = 2
-        logger.warning("Daemon mission cycle failed: %s", exc)
-        print(f"mission_cycle_error={exc}")
+        _emit_cycle_failure("mission_cycle", exc, message="Daemon mission cycle failed")
         _mission_backoff_until_cycle = cycles + _MISSION_BACKOFF_CYCLES
         print(f"mission_backoff_set=until_cycle_{_mission_backoff_until_cycle}")
     else:
@@ -442,8 +411,7 @@ def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None
                     topics = ", ".join(m.get("topic", "") for m in generated)
                     print(f"mission_auto_generated={len(generated)} topics=[{topics}]")
             except (ImportError, OSError, sqlite3.Error, KeyError, ValueError) as exc:
-                logger.warning("Daemon mission auto-generation failed: %s", exc)
-                print(f"mission_autogen_error={exc}")
+                _emit_cycle_failure("mission_autogen", exc, message="Daemon mission auto-generation failed")
 
 
 def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
@@ -452,8 +420,7 @@ def _run_sync_cycle(cmd_mobile_desktop_sync) -> None:
         sync_rc = cmd_mobile_desktop_sync(auto_ingest=True, as_json=False)
     except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         sync_rc = 2
-        logger.warning("Daemon sync cycle failed: %s", exc)
-        print(f"sync_cycle_error={exc}")
+        _emit_cycle_failure("sync_cycle", exc, message="Daemon sync cycle failed")
     else:
         print(f"sync_cycle_rc={sync_rc}")
 
@@ -467,8 +434,7 @@ def _run_watchdog_cycle(root: Path) -> None:
         if dead:
             print(f"watchdog_dead_services={','.join(dead)}")
     except (ImportError, OSError, subprocess.SubprocessError, RuntimeError) as exc:
-        logger.warning("Daemon watchdog check failed: %s", exc)
-        print(f"watchdog_error={exc}")
+        _emit_cycle_failure("watchdog", exc, message="Daemon watchdog check failed")
 
 
 def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
@@ -482,8 +448,7 @@ def _run_self_heal_cycle(root: Path, cmd_self_heal) -> None:
         )
     except (OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
         heal_rc = 2
-        logger.warning("Daemon self-heal cycle failed: %s", exc)
-        print(f"self_heal_cycle_error={exc}")
+        _emit_cycle_failure("self_heal_cycle", exc, message="Daemon self-heal cycle failed")
     else:
         print(f"self_heal_cycle_rc={heal_rc}")
     # Collect KG growth metrics alongside self-heal
@@ -499,10 +464,7 @@ def _collect_kg_metrics(root: Path) -> None:
     unavailable.
     """
     try:
-        from jarvis_engine.proactive.kg_metrics import (
-            collect_kg_metrics,
-            append_kg_metrics,
-        )
+        from jarvis_engine.proactive.kg_metrics import collect_kg_metrics, append_kg_metrics
 
         kg = None
         try:
@@ -521,7 +483,6 @@ def _collect_kg_metrics(root: Path) -> None:
 
                 _kg_conn = _connect_db(db_path)
                 try:
-
                     class _KGShim:
                         def __init__(self, conn: sqlite3.Connection) -> None:
                             self.db = conn
@@ -533,12 +494,9 @@ def _collect_kg_metrics(root: Path) -> None:
                 metrics = {"node_count": 0, "edge_count": 0}
         history_path = _runtime_dir(root) / _KG_METRICS_LOG
         append_kg_metrics(metrics, history_path)
-        print(
-            f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}"
-        )
+        print(f"kg_metrics_nodes={metrics.get('node_count', 0)} edges={metrics.get('edge_count', 0)}")
     except (ImportError, OSError, sqlite3.Error, ValueError) as exc:
-        logger.warning("Daemon KG metrics collection failed: %s", exc)
-        print(f"kg_metrics_error={exc}")
+        _emit_cycle_failure("kg_metrics", exc, message="Daemon KG metrics collection failed")
 
 
 def _run_self_test_cycle(root: Path) -> None:
@@ -558,21 +516,11 @@ def _run_self_test_cycle(root: Path) -> None:
             print(f"self_test_score={quiz_result.get('average_score', 0.0):.4f}")
             print(f"self_test_tasks={quiz_result.get('tasks_run', 0)}")
             if regression.get("regression_detected"):
-                print(
-                    f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}"
-                )
+                print(f"self_test_regression=true drop_pct={regression.get('drop_pct', 0.0)}")
         else:
             print("self_test_skipped=engine_not_initialized")
-    except (
-        ImportError,
-        OSError,
-        sqlite3.Error,
-        AttributeError,
-        RuntimeError,
-        ValueError,
-    ) as exc:
-        logger.warning("Daemon self-test failed: %s", exc)
-        print(f"self_test_error={exc}")
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+        _emit_cycle_failure("self_test", exc, message="Daemon self-test failed")
 
 
 def _run_db_optimize_cycle(cycles: int) -> None:
@@ -581,7 +529,7 @@ def _run_db_optimize_cycle(cycles: int) -> None:
         bus = _get_daemon_bus()
         engine = bus.ctx.engine
         if engine is not None:
-            do_vacuum = cycles % 500 == 0
+            do_vacuum = (cycles % 500 == 0)
             opt_result = engine.optimize(vacuum=do_vacuum)
             print(f"db_optimize_analyzed={opt_result.get('analyzed', False)}")
             if do_vacuum:
@@ -591,8 +539,7 @@ def _run_db_optimize_cycle(cycles: int) -> None:
         else:
             print("db_optimize_skipped=engine_not_initialized")
     except (OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
-        logger.warning("Daemon DB optimize failed: %s", exc)
-        print(f"db_optimize_error={exc}")
+        _emit_cycle_failure("db_optimize", exc, message="Daemon DB optimize failed")
 
 
 def _run_kg_regression_cycle(root: Path) -> None:
@@ -626,14 +573,10 @@ def _run_kg_regression_cycle(root: Path) -> None:
                 if comparison["status"] == "fail":
                     backup_dir = _runtime_dir(root) / "kg_backups"
                     if backup_dir.exists():
-                        backups = sorted(
-                            backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime
-                        )
+                        backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime)
                         if backups:
                             restored = rc_checker.restore_graph(backups[-1])
-                            print(
-                                f"kg_regression_auto_restore={'ok' if restored else 'failed'}"
-                            )
+                            print(f"kg_regression_auto_restore={'ok' if restored else 'failed'}")
                             log_activity(
                                 ActivityCategory.REGRESSION_CHECK,
                                 f"KG auto-restore {'succeeded' if restored else 'failed'}",
@@ -641,17 +584,8 @@ def _run_kg_regression_cycle(root: Path) -> None:
                             )
         else:
             print("kg_regression_skipped=kg_not_initialized")
-    except (
-        ImportError,
-        OSError,
-        sqlite3.Error,
-        AttributeError,
-        RuntimeError,
-        ValueError,
-        KeyError,
-    ) as exc:
-        logger.warning("Daemon KG regression check failed: %s", exc)
-        print(f"kg_regression_error={exc}")
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError, KeyError) as exc:
+        _emit_cycle_failure("kg_regression", exc, message="Daemon KG regression check failed")
 
 
 def _run_usage_prediction_cycle() -> None:
@@ -667,13 +601,10 @@ def _run_usage_prediction_cycle() -> None:
             if prediction["interaction_count"] > 0:
                 print(f"usage_predicted_route={prediction['likely_route']}")
                 if prediction["common_topics"]:
-                    print(
-                        f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}"
-                    )
+                    print(f"usage_predicted_topics={','.join(prediction['common_topics'][:3])}")
                 print(f"usage_interaction_count={prediction['interaction_count']}")
     except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as exc:
-        logger.warning("Daemon usage prediction failed: %s", exc)
-        print(f"usage_prediction_error={exc}")
+        _emit_cycle_failure("usage_prediction", exc, message="Daemon usage prediction failed")
 
 
 def _run_memory_consolidation_cycle() -> None:
@@ -687,16 +618,8 @@ def _run_memory_consolidation_cycle() -> None:
         print(f"consolidation_new_facts={result.new_facts_created}")
         if result.errors:
             print(f"consolidation_errors={len(result.errors)}")
-    except (
-        ImportError,
-        OSError,
-        sqlite3.Error,
-        AttributeError,
-        RuntimeError,
-        ValueError,
-    ) as exc:
-        logger.warning("Daemon memory consolidation failed: %s", exc)
-        print(f"consolidation_error={exc}")
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+        _emit_cycle_failure("consolidation", exc, message="Daemon memory consolidation failed")
 
 
 def _run_entity_resolution_cycle() -> None:
@@ -716,8 +639,11 @@ def _run_entity_resolution_cycle() -> None:
                 rc_checker.backup_graph(tag="pre-entity-resolve")
                 print("entity_resolve_kg_backup=ok")
             except (OSError, sqlite3.Error, RuntimeError) as exc:
-                logger.warning("Daemon entity resolve KG backup failed: %s", exc)
-                print(f"entity_resolve_kg_backup_error={exc}")
+                _emit_cycle_failure(
+                    "entity_resolve_kg_backup",
+                    exc,
+                    message="Daemon entity resolve KG backup failed",
+                )
             resolver = EntityResolver(kg, embed_service=embed_svc)
             resolve_result = resolver.auto_resolve()
             print(f"entity_resolve_candidates={resolve_result.candidates_found}")
@@ -735,25 +661,14 @@ def _run_entity_resolution_cycle() -> None:
             )
         else:
             print("entity_resolve_skipped=kg_not_initialized")
-    except (
-        ImportError,
-        OSError,
-        sqlite3.Error,
-        AttributeError,
-        RuntimeError,
-        ValueError,
-    ) as exc:
-        logger.warning("Daemon entity resolution failed: %s", exc)
-        print(f"entity_resolve_error={exc}")
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError) as exc:
+        _emit_cycle_failure("entity_resolve", exc, message="Daemon entity resolution failed")
 
 
 def _run_auto_harvest_cycle(root: Path) -> None:
     """Run autonomous knowledge harvesting (never raises)."""
     try:
-        from jarvis_engine.harvesting.harvester import (
-            KnowledgeHarvester,
-            HarvestCommand,
-        )
+        from jarvis_engine.harvesting.harvester import KnowledgeHarvester, HarvestCommand
         from jarvis_engine.harvesting.providers import (
             GeminiProvider,
             KimiNvidiaProvider,
@@ -771,12 +686,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
             if harvest_db_path.exists():
                 h_budget = BudgetManager(harvest_db_path)
             try:
-                h_providers = [
-                    MiniMaxProvider(),
-                    KimiProvider(),
-                    KimiNvidiaProvider(),
-                    GeminiProvider(),
-                ]
+                h_providers = [MiniMaxProvider(), KimiProvider(), KimiNvidiaProvider(), GeminiProvider()]
                 h_available = [p for p in h_providers if p.is_available]
                 # Get pipeline components from daemon bus
                 h_bus = _get_daemon_bus()
@@ -791,10 +701,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
 
                         h_classifier = BranchClassifier(h_embed)
                         h_pipeline = EnrichedIngestPipeline(
-                            h_engine,
-                            h_embed,
-                            h_classifier,
-                            knowledge_graph=h_kg,
+                            h_engine, h_embed, h_classifier, knowledge_graph=h_kg,
                         )
                     except (ImportError, OSError, sqlite3.Error) as exc_pipe:
                         logger.debug("Auto-harvest pipeline init failed: %s", exc_pipe)
@@ -808,9 +715,7 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                     total_records = 0
                     for topic in harvest_topics:
                         topic_records = 0
-                        h_result = harvester.harvest(
-                            HarvestCommand(topic=topic, max_tokens=1024)
-                        )
+                        h_result = harvester.harvest(HarvestCommand(topic=topic, max_tokens=1024))
                         for entry in h_result.get("results", []):
                             topic_records += entry.get("records_created", 0)
                         total_records += topic_records
@@ -829,17 +734,8 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                     h_budget.close()
         else:
             print("auto_harvest_skipped=no_topics_discovered")
-    except (
-        ImportError,
-        OSError,
-        sqlite3.Error,
-        AttributeError,
-        RuntimeError,
-        ValueError,
-        KeyError,
-    ) as exc:
-        logger.warning("Daemon auto-harvest failed: %s", exc)
-        print(f"auto_harvest_error={exc}")
+    except (ImportError, OSError, sqlite3.Error, AttributeError, RuntimeError, ValueError, KeyError) as exc:
+        _emit_cycle_failure("auto_harvest", exc, message="Daemon auto-harvest failed")
 
 
 # ---------------------------------------------------------------------------
@@ -888,8 +784,7 @@ def _gather_cycle_state(
         "control_state": control_state,
         "auto_detect": auto_detect,
         "detected_process": detected_process,
-        "gaming_mode_enabled": bool(gaming_state.get("enabled", False))
-        or auto_detect_hit,
+        "gaming_mode_enabled": bool(gaming_state.get("enabled", False)) or auto_detect_hit,
         "daemon_paused": bool(control_state.get("daemon_paused", False)),
         "safe_mode": bool(control_state.get("safe_mode", False)),
     }
@@ -917,9 +812,7 @@ def _run_periodic_subsystems(
         _run_sync_cycle(cmd_mobile_desktop_sync)
     if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
         _run_watchdog_cycle(root)
-    if self_heal_every_cycles > 0 and (
-        cycles == 2 or cycles % self_heal_every_cycles == 0
-    ):
+    if self_heal_every_cycles > 0 and (cycles == 2 or cycles % self_heal_every_cycles == 0):
         if skip_heavy_tasks:
             print("self_heal_cycle_skipped=resource_pressure")
         else:
@@ -1008,8 +901,7 @@ def _run_core_autopilot(
             auto_open_connectors=auto_open_connectors,
         )
     except (OSError, sqlite3.Error, RuntimeError, ValueError, KeyError) as exc:
-        logger.warning("Daemon autopilot cycle failed: %s", exc)
-        print(f"cycle_error={exc}")
+        _emit_cycle_failure("cycle", exc, message="Daemon autopilot cycle failed")
         return 2
 
 
@@ -1046,11 +938,8 @@ def _emit_cycle_status(
     _log_cycle_start(cycles, cycle_start_ts)
     _print_cycle_status(cycles, cycle_start_ts, state)
     _log_resource_pressure(
-        cycles,
-        state["pressure_level"],
-        last_pressure_level,
-        state["resource_snapshot"],
-        state["sleep_seconds"],
+        cycles, state["pressure_level"], last_pressure_level,
+        state["resource_snapshot"], state["sleep_seconds"],
         state["skip_heavy_tasks"],
     )
 
@@ -1116,9 +1005,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
         while True:
             cycles += 1
             _cycle_start = time.monotonic()
-            state = _gather_cycle_state(
-                root, active_interval, idle_interval, idle_after
-            )
+            state = _gather_cycle_state(root, active_interval, idle_interval, idle_after)
             _emit_cycle_status(cycles, state, last_pressure_level)
             last_pressure_level = state["pressure_level"]
 
@@ -1131,26 +1018,16 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
                 continue
 
             _run_periodic_subsystems(
-                root,
-                cycles,
-                state["skip_heavy_tasks"],
-                cfg.run_missions,
-                cmd_mobile_desktop_sync,
-                cmd_self_heal,
-                cfg.sync_every_cycles,
-                cfg.self_heal_every_cycles,
-                cfg.self_test_every_cycles,
-                cfg.watchdog_every_cycles,
+                root, cycles, state["skip_heavy_tasks"], cfg.run_missions,
+                cmd_mobile_desktop_sync, cmd_self_heal,
+                cfg.sync_every_cycles, cfg.self_heal_every_cycles,
+                cfg.self_test_every_cycles, cfg.watchdog_every_cycles,
             )
 
             rc = _run_core_autopilot(
-                cfg.snapshot_path,
-                cfg.actions_path,
-                cfg.execute,
-                cfg.approve_privileged,
-                cfg.auto_open_connectors,
-                state["safe_mode"],
-                cmd_ops_autopilot,
+                cfg.snapshot_path, cfg.actions_path, cfg.execute,
+                cfg.approve_privileged, cfg.auto_open_connectors,
+                state["safe_mode"], cmd_ops_autopilot,
             )
             print(f"cycle_rc={rc}")
             _log_cycle_end(cycles, rc)
@@ -1161,9 +1038,7 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             if cycle_elapsed > _CYCLE_TIMEOUT_S:
                 logger.warning(
                     "Daemon cycle %d exceeded timeout: %.1fs > %ds",
-                    cycles,
-                    cycle_elapsed,
-                    _CYCLE_TIMEOUT_S,
+                    cycles, cycle_elapsed, _CYCLE_TIMEOUT_S,
                 )
                 print(f"cycle_timeout_warning={cycle_elapsed:.1f}s")
 
@@ -1185,3 +1060,4 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
             logger.debug("Conversation state save on shutdown failed: %s", exc)
         remove_pid_file("daemon", root)
     return 0
+

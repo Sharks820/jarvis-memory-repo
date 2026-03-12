@@ -4,11 +4,34 @@ from __future__ import annotations
 
 import logging
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Protocol
 
+from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
 from jarvis_engine._shared import runtime_dir as _runtime_dir
 
 logger = logging.getLogger(__name__)
+
+
+class _ScamRoutesHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
+    def _parse_scam_report_body(self, body: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def _save_intel_and_detect_campaigns(
+        self,
+        root: Any,
+        fields: dict[str, Any],
+    ) -> tuple[Any, list[Any], list[Any], str, float]:
+        ...
+
+    def _compute_scam_score_and_action(
+        self,
+        fields: dict[str, Any],
+        all_reports: list[Any],
+        campaigns: list[Any],
+        line_type: str,
+        carrier_risk: float,
+    ) -> dict[str, Any]:
+        ...
 
 
 class ScamRoutesMixin:
@@ -33,8 +56,7 @@ class ScamRoutesMixin:
 
     @staticmethod
     def _save_intel_and_detect_campaigns(
-        root: Any,
-        fields: dict[str, Any],
+        root: Any, fields: dict[str, Any],
     ) -> tuple[Any, list[Any], list[Any], str, float]:
         """Create intel report, save it, run campaign detection.
 
@@ -146,7 +168,7 @@ class ScamRoutesMixin:
             "campaign_signals": campaign_signals,
         }
 
-    def _handle_post_scam_report_call(self) -> None:
+    def _handle_post_scam_report_call(self: _ScamRoutesHandlerProtocol) -> None:
         """Report a screened call with STIR/SHAKEN status for campaign analysis.
 
         Accepts: {number, stir_status, presentation, duration_sec, answered, contact_name}
@@ -161,46 +183,24 @@ class ScamRoutesMixin:
                 self._save_intel_and_detect_campaigns(self._root, fields)
             )
             result = self._compute_scam_score_and_action(
-                fields,
-                all_reports,
-                campaigns,
-                line_type,
-                carrier_risk,
+                fields, all_reports, campaigns, line_type, carrier_risk,
             )
 
-            self._write_json(
-                HTTPStatus.OK,
-                {
-                    "ok": True,
-                    "enhanced_score": round(result["enhanced_score"], 4),
-                    "recommended_action": result["action"],
-                    "campaign_id": result["campaign_id"],
-                    "campaign_confidence": round(result["campaign_confidence"], 4),
-                    "line_type": line_type,
-                    "stir_status": fields["stir_status"],
-                    "signals": result["campaign_signals"],
-                },
-            )
-        except (
-            ValueError,
-            KeyError,
-            TypeError,
-            OSError,
-            ImportError,
-            AttributeError,
-        ) as exc:  # narrowed from except Exception
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "enhanced_score": round(result["enhanced_score"], 4),
+                "recommended_action": result["action"],
+                "campaign_id": result["campaign_id"],
+                "campaign_confidence": round(result["campaign_confidence"], 4),
+                "line_type": line_type,
+                "stir_status": fields["stir_status"],
+                "signals": result["campaign_signals"],
+            })
+        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
             logger.warning("Scam report-call failed: %s", exc)
-            self._write_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {
-                    "ok": False,
-                    "enhanced_score": 0.0,
-                    "recommended_action": "voicemail",
-                    "error": "Scam report processing failed.",
-                },
-            )
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "enhanced_score": 0.0, "recommended_action": "voicemail", "error": "Scam report processing failed."})
 
-    def _handle_post_scam_lookup(self) -> None:
+    def _handle_post_scam_lookup(self: _ScamRoutesHandlerProtocol) -> None:
         """Lookup carrier and VoIP status for a phone number.
 
         Accepts: {number}
@@ -248,66 +248,37 @@ class ScamRoutesMixin:
                 "campaign_signals": campaign_signals,
             }
             self._write_json(HTTPStatus.OK, result)
-        except (
-            ValueError,
-            KeyError,
-            TypeError,
-            OSError,
-            ImportError,
-            AttributeError,
-        ) as exc:  # narrowed from except Exception
+        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
             logger.warning("Scam lookup failed: %s", exc)
-            self._write_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {
-                    "ok": False,
-                    "number": str(body.get("number", "")),
-                    "carrier": "",
-                    "line_type": "",
-                    "is_voip": False,
-                    "error": "Scam lookup processing failed.",
-                },
-            )
+            self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "ok": False, "number": str(body.get("number", "")),
+                "carrier": "", "line_type": "", "is_voip": False, "error": "Scam lookup processing failed.",
+            })
 
-    def _handle_get_scam_campaigns(self) -> None:
+    def _handle_get_scam_campaigns(self: _ScamRoutesHandlerProtocol) -> None:
         """Return detected scam campaigns."""
         if not self._validate_auth(b""):
             return
         try:
-            from jarvis_engine.scam_hunter import (
-                load_campaigns,
-                build_prefix_block_actions,
-            )
+            from jarvis_engine.scam_hunter import load_campaigns, build_prefix_block_actions
             from dataclasses import asdict
 
             campaign_path = _runtime_dir(self._root) / "scam_campaigns.json"
             campaigns = load_campaigns(campaign_path)
             block_actions = build_prefix_block_actions(campaigns)
 
-            self._write_json(
-                HTTPStatus.OK,
-                {
-                    "ok": True,
-                    "campaigns": [asdict(c) for c in campaigns],
-                    "block_actions": block_actions,
-                    "total_campaigns": len(campaigns),
-                    "total_scam_numbers": sum(len(c.numbers) for c in campaigns),
-                },
-            )
-        except (
-            ValueError,
-            KeyError,
-            TypeError,
-            OSError,
-            ImportError,
-            AttributeError,
-        ) as exc:  # narrowed from except Exception
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "campaigns": [asdict(c) for c in campaigns],
+                "block_actions": block_actions,
+                "total_campaigns": len(campaigns),
+                "total_scam_numbers": sum(len(c.numbers) for c in campaigns),
+            })
+        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
             logger.warning("Scam campaigns fetch failed: %s", exc)
-            self._write_json(
-                HTTPStatus.OK, {"ok": True, "campaigns": [], "block_actions": []}
-            )
+            self._write_json(HTTPStatus.OK, {"ok": True, "campaigns": [], "block_actions": []})
 
-    def _handle_get_scam_stats(self) -> None:
+    def _handle_get_scam_stats(self: _ScamRoutesHandlerProtocol) -> None:
         """Return scam detection statistics."""
         if not self._validate_auth(b""):
             return
@@ -323,9 +294,7 @@ class ScamRoutesMixin:
             total_screened = len(all_intel)
             stir_failed = sum(1 for r in all_intel if r.get("stir_status") == "failed")
             stir_passed = sum(1 for r in all_intel if r.get("stir_status") == "passed")
-            voip_calls = sum(
-                1 for r in all_intel if r.get("line_type", "").endswith("voip")
-            )
+            voip_calls = sum(1 for r in all_intel if r.get("line_type", "").endswith("voip"))
             blocked_numbers = set()
             for c in campaigns:
                 if c.confidence >= 0.60:
@@ -334,52 +303,28 @@ class ScamRoutesMixin:
             # Top prefixes by campaign activity
             prefix_counts: dict[str, int] = {}
             for c in campaigns:
-                prefix_counts[c.prefix] = prefix_counts.get(c.prefix, 0) + len(
-                    c.numbers
-                )
-            top_prefixes = sorted(
-                prefix_counts.items(), key=lambda x: x[1], reverse=True
-            )[:5]
+                prefix_counts[c.prefix] = prefix_counts.get(c.prefix, 0) + len(c.numbers)
+            top_prefixes = sorted(prefix_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
             # Top carriers
             carrier_counts: dict[str, int] = {}
             for c in campaigns:
                 if c.carrier:
-                    carrier_counts[c.carrier] = carrier_counts.get(c.carrier, 0) + len(
-                        c.numbers
-                    )
-            top_carriers = sorted(
-                carrier_counts.items(), key=lambda x: x[1], reverse=True
-            )[:5]
+                    carrier_counts[c.carrier] = carrier_counts.get(c.carrier, 0) + len(c.numbers)
+            top_carriers = sorted(carrier_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
-            self._write_json(
-                HTTPStatus.OK,
-                {
-                    "ok": True,
-                    "total_screened": total_screened,
-                    "stir_failed": stir_failed,
-                    "stir_passed": stir_passed,
-                    "voip_calls": voip_calls,
-                    "active_campaigns": len(campaigns),
-                    "total_scam_numbers": sum(len(c.numbers) for c in campaigns),
-                    "numbers_blocked": len(blocked_numbers),
-                    "top_scam_prefixes": [
-                        {"prefix": p, "numbers": n} for p, n in top_prefixes
-                    ],
-                    "top_scam_carriers": [
-                        {"carrier": c, "numbers": n} for c, n in top_carriers
-                    ],
-                },
-            )
-        except (
-            ValueError,
-            KeyError,
-            TypeError,
-            OSError,
-            ImportError,
-            AttributeError,
-        ) as exc:  # narrowed from except Exception
+            self._write_json(HTTPStatus.OK, {
+                "ok": True,
+                "total_screened": total_screened,
+                "stir_failed": stir_failed,
+                "stir_passed": stir_passed,
+                "voip_calls": voip_calls,
+                "active_campaigns": len(campaigns),
+                "total_scam_numbers": sum(len(c.numbers) for c in campaigns),
+                "numbers_blocked": len(blocked_numbers),
+                "top_scam_prefixes": [{"prefix": p, "numbers": n} for p, n in top_prefixes],
+                "top_scam_carriers": [{"carrier": c, "numbers": n} for c, n in top_carriers],
+            })
+        except (ValueError, KeyError, TypeError, OSError, ImportError, AttributeError) as exc:  # narrowed from except Exception
             logger.warning("Scam stats fetch failed: %s", exc)
-            self._write_json(
-                HTTPStatus.OK, {"ok": True, "total_screened": 0, "active_campaigns": 0}
-            )
+            self._write_json(HTTPStatus.OK, {"ok": True, "total_screened": 0, "active_campaigns": 0})

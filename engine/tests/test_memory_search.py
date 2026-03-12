@@ -34,6 +34,7 @@ def _make_mock_engine(
     fts_results: list[tuple[str, float]] | None = None,
     vec_results: list[tuple[str, float]] | None = None,
     records: list[dict] | None = None,
+    provenance: dict[str, dict] | None = None,
     closed: bool = False,
 ) -> MagicMock:
     """Build a mock MemoryEngine with search and batch methods."""
@@ -42,6 +43,7 @@ def _make_mock_engine(
     engine.search_fts.return_value = fts_results or []
     engine.search_vec.return_value = vec_results or []
     engine.get_records_batch.return_value = records or []
+    engine.get_learning_provenance_batch.return_value = provenance or {}
     engine.update_access_batch.return_value = None
     return engine
 
@@ -256,3 +258,25 @@ class TestHybridSearch:
         engine = _make_mock_engine()
         hybrid_search(engine, "query", [0.1, 0.2, 0.3], k=5)
         engine.search_vec.assert_called_once_with([0.1, 0.2, 0.3], limit=15)
+
+    def test_trust_shadow_fields_are_added_without_reranking(self):
+        now = datetime.now(UTC).isoformat()
+        records = [
+            {"record_id": "trusted", "ts": now},
+            {"record_id": "observed", "ts": now},
+        ]
+        engine = _make_mock_engine(
+            fts_results=[("trusted", 1.0), ("observed", 0.9)],
+            vec_results=[("trusted", 0.8), ("observed", 0.7)],
+            records=records,
+            provenance={
+                "trusted": {"trust_level": "T3_trusted", "learning_lane": "trusted", "promotion_state": "trusted"},
+                "observed": {"trust_level": "T1_observed", "learning_lane": "observed", "promotion_state": "observed"},
+            },
+        )
+        result = hybrid_search(engine, "test", [0.1], k=10, recency_weight=0.0)
+        assert [row["record_id"] for row in result] == ["trusted", "observed"]
+        assert result[0]["trust_level"] == "T3_trusted"
+        assert result[0]["_trust_would_downrank"] is False
+        assert result[1]["trust_level"] == "T1_observed"
+        assert result[1]["_trust_would_downrank"] is True

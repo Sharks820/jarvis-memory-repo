@@ -1,20 +1,61 @@
 from __future__ import annotations
 
+import binascii
 import logging
 import time
 from http import HTTPStatus
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from jarvis_engine.sync.auto_sync import AutoSyncConfig
+    from jarvis_engine.sync.engine import SyncEngine
+    from jarvis_engine.sync.transport import SyncTransport
 
 logger = logging.getLogger(__name__)
+
+
+class _HeaderProtocol(Protocol):
+    def get(self, key: str, default: str | None = None) -> str | None:
+        ...
+
+
+class _SyncServerProtocol(Protocol):
+    _auto_sync_config: AutoSyncConfig | None
+    _sync_init_lock: Any
+    _sync_transport: SyncTransport | None
+
+    def ensure_sync_engine(self) -> SyncEngine | None:
+        ...
+
+
+class _SyncHandlerProtocol(Protocol):
+    server: _SyncServerProtocol
+    headers: _HeaderProtocol
+    _root: Path
+
+    def _validate_auth(self, body: bytes) -> bool:
+        ...
+
+    def _write_json(self, status: int, payload: dict[str, Any]) -> None:
+        ...
+
+    def _read_json_body(
+        self,
+        *,
+        max_content_length: int,
+        auth: bool = True,
+    ) -> tuple[dict[str, Any] | None, bytes | None]:
+        ...
+
+    def _ensure_auto_sync(self) -> AutoSyncConfig:
+        ...
 
 
 class SyncRoutesMixin:
     """Endpoint handlers for sync operations."""
 
-    def _ensure_auto_sync(self) -> AutoSyncConfig:
+    def _ensure_auto_sync(self: _SyncHandlerProtocol) -> AutoSyncConfig:
         """Thread-safe lazy init of AutoSyncConfig."""
         auto_sync = self.server._auto_sync_config
         if auto_sync is not None:
@@ -29,7 +70,7 @@ class SyncRoutesMixin:
             self.server._auto_sync_config = auto_sync
             return auto_sync
 
-    def _handle_get_sync_status(self) -> None:
+    def _handle_get_sync_status(self: _SyncHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
         sync_engine = self.server.ensure_sync_engine()
@@ -49,13 +90,13 @@ class SyncRoutesMixin:
                 {"ok": False, "error": "Sync status query failed."},
             )
 
-    def _handle_get_sync_config(self) -> None:
+    def _handle_get_sync_config(self: _SyncHandlerProtocol) -> None:
         """Return auto-sync configuration for the requesting device."""
         if not self._validate_auth(b""):
             return
         try:
             auto_sync = self._ensure_auto_sync()
-            device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
+            device_id = str(self.headers.get("X-Jarvis-Device-Id", "unknown") or "unknown")
             config = auto_sync.get_sync_config_for_device(device_id)
             self._write_json(HTTPStatus.OK, {"ok": True, "config": config})
         except Exception as exc:  # boundary: catch-all justified
@@ -65,12 +106,12 @@ class SyncRoutesMixin:
                 {"ok": False, "error": "Failed to get sync config."},
             )
 
-    def _handle_get_sync_heartbeat(self) -> None:
+    def _handle_get_sync_heartbeat(self: _SyncHandlerProtocol) -> None:
         """Lightweight heartbeat — phone calls this to confirm connectivity."""
         if not self._validate_auth(b""):
             return
         try:
-            device_id = self.headers.get("X-Jarvis-Device-Id", "unknown")
+            device_id = str(self.headers.get("X-Jarvis-Device-Id", "unknown") or "unknown")
             auto_sync = self._ensure_auto_sync()
             auto_sync.record_heartbeat(device_id)
             self._write_json(
@@ -88,7 +129,7 @@ class SyncRoutesMixin:
                 {"ok": False, "error": "Heartbeat failed."},
             )
 
-    def _handle_post_sync_deprecated(self) -> None:
+    def _handle_post_sync_deprecated(self: _SyncHandlerProtocol) -> None:
         self._write_json(
             HTTPStatus.GONE,
             {
@@ -98,7 +139,7 @@ class SyncRoutesMixin:
             },
         )
 
-    def _handle_post_sync_pull(self) -> None:
+    def _handle_post_sync_pull(self: _SyncHandlerProtocol) -> None:
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
             return
@@ -139,7 +180,7 @@ class SyncRoutesMixin:
                 {"ok": False, "error": "Sync pull failed."},
             )
 
-    def _handle_post_sync_push(self) -> None:
+    def _handle_post_sync_push(self: _SyncHandlerProtocol) -> None:
         payload, _ = self._read_json_body(max_content_length=2_000_000)
         if payload is None:
             return
@@ -169,7 +210,7 @@ class SyncRoutesMixin:
 
             try:
                 raw_token = _b64.b64decode(encrypted_payload)
-            except (ValueError, _b64.binascii.Error) as exc:
+            except (ValueError, binascii.Error) as exc:
                 logger.debug("Invalid base64 payload in sync/push: %s", exc)
                 self._write_json(
                     HTTPStatus.BAD_REQUEST,
@@ -194,7 +235,7 @@ class SyncRoutesMixin:
                 {"ok": False, "error": "Sync push failed."},
             )
 
-    def _handle_post_sync_config(self) -> None:
+    def _handle_post_sync_config(self: _SyncHandlerProtocol) -> None:
         """Update auto-sync configuration (relay URL, intervals, etc)."""
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
@@ -202,6 +243,9 @@ class SyncRoutesMixin:
         try:
             auto_sync = self._ensure_auto_sync()
             updates = payload.get("config", payload)
+            if not isinstance(updates, dict):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid config payload."})
+                return
             from jarvis_engine.sync.auto_sync import DEFAULT_SYNC_CONFIG
 
             safe_updates = {

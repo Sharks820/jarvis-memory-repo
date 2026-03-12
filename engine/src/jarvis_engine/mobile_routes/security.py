@@ -6,6 +6,7 @@ import logging
 from http import HTTPStatus
 from jarvis_engine._constants import GATEWAY_AUDIT_LOG as _GATEWAY_AUDIT_LOG
 from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class SecurityRoutesMixin:
     """Security status, dashboard, and gateway audit log endpoints."""
 
-    def _handle_get_security_status(self) -> None:
+    def _handle_get_security_status(self: MobileRouteHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
         _sec_orch = getattr(self.server, "security", None)
@@ -34,7 +35,7 @@ class SecurityRoutesMixin:
             },
         )
 
-    def _handle_get_security_dashboard(self) -> None:
+    def _handle_get_security_dashboard(self: MobileRouteHandlerProtocol) -> None:
         if not self._validate_auth_flexible(b""):
             return
         server_obj = self.server
@@ -65,7 +66,7 @@ class SecurityRoutesMixin:
         }
         self._write_json(HTTPStatus.OK, {"ok": True, "dashboard": dashboard})
 
-    def _handle_get_audit(self) -> None:
+    def _handle_get_audit(self: MobileRouteHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
         from jarvis_engine._shared import load_jsonl_tail

@@ -241,7 +241,6 @@ def win_hidden_subprocess_kwargs() -> dict[str, Any]:
 def sha256_hex(text: str) -> str:
     """Return the SHA-256 hex digest of *text* (UTF-8 encoded)."""
     import hashlib
-
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -256,15 +255,13 @@ def sha256_short(data: bytes, length: int = 32) -> str:
         The first *length* characters of the full SHA-256 hex digest.
     """
     import hashlib
-
     return hashlib.sha256(data).hexdigest()[:length]
 
 
 def set_process_title(name: str) -> None:
     """Set the OS process title (requires ``setproctitle``; no-op if absent)."""
     try:
-        import setproctitle
-
+        import setproctitle  # type: ignore[import-not-found]
         setproctitle.setproctitle(name)
     except ImportError:
         logger.debug("setproctitle not available; process title unchanged")
@@ -414,7 +411,7 @@ def load_jsonl_tail(path: Path, limit: int = 100) -> list[dict]:
     if file_size > chunk_size:
         newline_pos = text.find("\n")
         if newline_pos >= 0:
-            text = text[newline_pos + 1 :]
+            text = text[newline_pos + 1:]
 
     entries = _parse_lines(text)
 
@@ -442,7 +439,6 @@ def sanitize_fts_query(query: str) -> str:
     tokens = [t for t in tokens if t.upper() not in FTS5_KEYWORDS]
     return " ".join(tokens).strip()
 
-
 # ---------------------------------------------------------------------------
 # Utilities moved from _constants.py (these are functions, not constants)
 # ---------------------------------------------------------------------------
@@ -454,13 +450,10 @@ def _get_privacy_re() -> re.Pattern[str]:
     """Lazily compile the privacy regex (avoids circular import at load time)."""
     if "privacy_re" not in _lazy_cache:
         from jarvis_engine._constants import PRIVACY_KEYWORDS
-
         _lazy_cache["privacy_re"] = re.compile(
-            r"\b(?:"
-            + "|".join(
+            r"\b(?:" + "|".join(
                 re.escape(kw) for kw in sorted(PRIVACY_KEYWORDS, key=len, reverse=True)
-            )
-            + r")\b",
+            ) + r")\b",
             re.IGNORECASE,
         )
     return _lazy_cache["privacy_re"]  # type: ignore[return-value]
@@ -474,14 +467,12 @@ def is_privacy_sensitive(text: str) -> bool:
 def get_local_model() -> str:
     """Return the configured local Ollama model name."""
     from jarvis_engine._constants import DEFAULT_LOCAL_MODEL
-
     return os.environ.get("JARVIS_LOCAL_MODEL", DEFAULT_LOCAL_MODEL)
 
 
 def get_fast_local_model() -> str:
     """Return the configured fast local Ollama model name."""
     from jarvis_engine._constants import FAST_LOCAL_MODEL
-
     return os.environ.get("JARVIS_FAST_LOCAL_MODEL", FAST_LOCAL_MODEL)
 
 
@@ -509,7 +500,6 @@ def extract_keywords(
 
     if stop_words is None:
         from jarvis_engine._constants import STOP_WORDS
-
         stop_words = STOP_WORDS
 
     words = re.findall(pattern, text.lower())
@@ -532,8 +522,7 @@ def make_task_id(prefix: str) -> str:
     import secrets
 
     from jarvis_engine._compat import UTC
-
-    stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    stamp = datetime.now(UTC).strftime('%Y%m%d%H%M%S')
     suffix = secrets.token_hex(2)
     return f"{prefix}-{stamp}-{suffix}"
 
@@ -559,3 +548,4 @@ def recency_weight(
         return default
     delta_hours = max(0.0, (datetime.now(UTC) - parsed).total_seconds() / 3600.0)
     return math.exp(-delta_hours / decay_hours)
+

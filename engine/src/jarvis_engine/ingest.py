@@ -4,9 +4,10 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, asdict
-from jarvis_engine._shared import now_iso as _now_iso, sha256_short
 from typing import Literal
 
+from jarvis_engine._shared import now_iso as _now_iso, sha256_short
+from jarvis_engine.learning.trust import classify_learning_subject
 from jarvis_engine.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,13 @@ class IngestionPipeline:
         )
         log_record = asdict(rec)
         log_record["content"] = self._redacted_content(content)
+        log_record["provenance"] = classify_learning_subject(
+            subject_type="memory_record",
+            subject_id=record_id,
+            source_channel=source,
+            content=content,
+            mission_id=task_id,
+        )
         self.store.append(
             event_type=f"ingest:{source}:{kind}",
             message=json.dumps(log_record, ensure_ascii=True),

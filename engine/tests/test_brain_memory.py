@@ -4,6 +4,7 @@ import json
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -640,6 +641,27 @@ class TestBuildContextPacketEdgeCases:
         packet = build_context_packet(tmp_path, query="python test code review", max_items=10, max_chars=2000)
         # Both should appear; task_outcome one should score higher
         assert packet["selected_count"] >= 1
+
+    def test_hybrid_results_preserve_trust_fields(self, tmp_path: Path) -> None:
+        with patch("jarvis_engine.brain_memory._try_hybrid_search", return_value=[
+            {
+                "record_id": "r1",
+                "branch": "ops",
+                "summary": "calendar meeting",
+                "source": "user",
+                "kind": "episodic",
+                "ts": "2026-03-11T00:00:00+00:00",
+                "trust_level": "T1_observed",
+                "learning_lane": "observed",
+                "promotion_state": "observed",
+                "_trust_shadow_score": 0.7,
+                "_trust_would_downrank": True,
+            }
+        ]):
+            packet = build_context_packet(tmp_path, query="calendar", max_items=5, max_chars=500)
+        assert packet["selected_count"] == 1
+        assert packet["selected"][0]["trust_level"] == "T1_observed"
+        assert packet["selected"][0]["would_downrank"] is True
 
 
 # ---------------------------------------------------------------------------
