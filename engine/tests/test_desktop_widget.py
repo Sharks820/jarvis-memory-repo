@@ -1580,6 +1580,64 @@ class TestWidgetStateMachine:
         assert bg == "#0f2b5b"
         assert fg == "#bfdbfe"
 
+    def test_snapshot_conversation_status_processing_uses_route_and_activity(self):
+        """Conversation status should surface active route and processing detail."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.set_state(DesktopWidgetState.PROCESSING)
+        controller.apply_session_snapshot(
+            route_label="Qwen 3.5 9B",
+            route_accent="#38bdf8",
+            route_family="local",
+            control_armed=False,
+            auto_approve=False,
+            wakeword_enabled=False,
+            speech_enabled=True,
+        )
+        controller.apply_health_snapshot(
+            online=True,
+            recent_events=[{
+                "id": "evt-1",
+                "timestamp": "12:00:00",
+                "category": "mission",
+                "summary": "Indexing desktop redesign prompts",
+            }],
+        )
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_conversation_status(widget, controller.snapshot())
+
+        assert "Processing with Qwen 3.5 9B" in text
+        assert "Indexing desktop redesign prompts" in text
+        assert bg == "#2d1d08"
+        assert fg == "#ffe2b6"
+
+    def test_snapshot_conversation_status_ready_mentions_shortcuts(self):
+        """Idle online state should keep the transcript header informative."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        widget = MagicMock(spec=JarvisDesktopWidget)
+        controller = DesktopInteractionController()
+        controller.apply_health_snapshot(online=True)
+
+        text, bg, fg = JarvisDesktopWidget._snapshot_conversation_status(widget, controller.snapshot())
+
+        assert text == "Ready with Auto Router. Enter sends, Shift+Enter adds a newline."
+        assert bg == "#101b31"
+        assert fg == "#d7e6ff"
+
+    def test_snapshot_continuity_items_summarizes_overflow(self):
+        """Continuity rows should stay compact instead of exploding the panel height."""
+        from jarvis_engine.desktop_widget import JarvisDesktopWidget
+
+        text = JarvisDesktopWidget._snapshot_continuity_items(
+            ["Qwen 3.5 9B", "Desktop redesign", "March 12, 2026", "Follow-up pass"],
+            "No anchors yet",
+        )
+
+        assert text == "Qwen 3.5 9B · Desktop redesign · March 12, 2026 +1 more"
+
     def test_snapshot_intelligence_text_uses_below_target_copy(self):
         """Regression flag should read as a below-target score, not a percent regression drop."""
         from jarvis_engine.desktop_widget import JarvisDesktopWidget
@@ -1604,6 +1662,7 @@ class TestWidgetStateMachine:
             mission=snapshot.mission,
             activity=snapshot.activity,
             session=snapshot.session,
+            continuity=snapshot.continuity,
         )
 
         text, color = JarvisDesktopWidget._snapshot_intelligence_text(widget, snapshot)
@@ -1632,6 +1691,7 @@ class TestWidgetStateMachine:
             mission=snapshot.mission,
             activity=snapshot.activity,
             session=snapshot.session,
+            continuity=snapshot.continuity,
         )
 
         palette = JarvisDesktopWidget._mission_progress_palette(widget, snapshot)

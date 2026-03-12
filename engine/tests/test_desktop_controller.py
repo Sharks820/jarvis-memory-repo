@@ -157,3 +157,29 @@ def test_apply_session_snapshot_tracks_route_and_security_posture() -> None:
     assert snapshot.session.approval_mode == "Approval required"
     assert snapshot.session.voice_mode == "Wake word live"
     assert snapshot.session.speech_mode == "Silent replies"
+
+
+def test_apply_continuity_snapshot_tracks_entities_goals_and_decisions() -> None:
+    controller = DesktopInteractionController()
+
+    controller.apply_continuity_snapshot(
+        rolling_summary="Jarvis is comparing local model options for the desktop refresh.",
+        anchor_entities=["Qwen 3.5 9B", "Desktop redesign", "March 12, 2026"],
+        unresolved_goals=["Need to tighten the transcript surface", "Still need to improve motion quality"],
+        prior_decisions=["Use compact layout on short displays"],
+        timeline_count=18,
+    )
+
+    snapshot = controller.snapshot()
+    assert snapshot.continuity.rolling_summary.startswith("Jarvis is comparing")
+    assert snapshot.continuity.anchor_entities == (
+        "Qwen 3.5 9B",
+        "Desktop redesign",
+        "March 12, 2026",
+    )
+    assert snapshot.continuity.unresolved_goals == (
+        "Need to tighten the transcript surface",
+        "Still need to improve motion quality",
+    )
+    assert snapshot.continuity.prior_decisions == ("Use compact layout on short displays",)
+    assert snapshot.continuity.timeline_count == 18

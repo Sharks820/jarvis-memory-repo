@@ -454,6 +454,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
 
         self._build_command_area(body)
         self._build_status_bar(body)
+        self._build_continuity_rail(body)
         self._build_chat_area(body)
 
         # Tooltips on key controls
@@ -1007,6 +1008,78 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             self._growth_labels[key] = val
         self._apply_status_section_state()
 
+    def _build_continuity_rail(self, body: tk.Frame) -> None:
+        """Build the continuity rail backed by conversation-state truth."""
+        rail = tk.LabelFrame(body, text="Continuity Rail", bg=self.PANEL, fg=self.MUTED, bd=1, relief=tk.GROOVE)
+        rail.pack(fill=tk.X, padx=10, pady=(8, 0))
+        self._continuity_section = rail
+
+        header = tk.Frame(rail, bg=self.PANEL)
+        header.pack(fill=tk.X, padx=6, pady=(4, 0))
+        self._continuity_counts_var = tk.StringVar(value="0 anchors · 0 goals · 0 decisions · 0 turns")
+        self._continuity_counts_label = tk.Label(
+            header,
+            textvariable=self._continuity_counts_var,
+            bg=self.PANEL,
+            fg=self.MUTED,
+            font=("Segoe UI", 8, "bold"),
+            anchor="w",
+        )
+        self._continuity_counts_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._continuity_collapsed = tk.BooleanVar(value=self._compact_layout)
+        self._continuity_toggle_btn = tk.Button(
+            header,
+            text="Show Continuity" if self._continuity_collapsed.get() else "Hide Continuity",
+            bg=self.PANEL,
+            fg=self.MUTED,
+            activebackground=self.PANEL,
+            activeforeground=self.TEXT,
+            relief=tk.FLAT,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            command=self._toggle_continuity_section,
+        )
+        self._continuity_toggle_btn.pack(side=tk.RIGHT)
+
+        self._continuity_body = tk.Frame(rail, bg=self.PANEL)
+        self._continuity_summary_var = tk.StringVar(
+            value="Jarvis will surface key entities, unresolved goals, and prior decisions here."
+        )
+        self._continuity_summary_label = tk.Label(
+            self._continuity_body,
+            textvariable=self._continuity_summary_var,
+            bg=self.PANEL,
+            fg="#d7e6ff",
+            font=("Segoe UI", 9),
+            justify=tk.LEFT,
+            wraplength=385,
+            anchor="w",
+        )
+        self._continuity_summary_label.pack(fill=tk.X, padx=6, pady=(4, 6))
+
+        self._continuity_anchor_var = tk.StringVar(value="No anchors yet")
+        self._continuity_goal_var = tk.StringVar(value="No unresolved goals yet")
+        self._continuity_decision_var = tk.StringVar(value="No prior decisions yet")
+        for label_text, var_name in (
+            ("Anchors", "_continuity_anchor_var"),
+            ("Goals", "_continuity_goal_var"),
+            ("Decisions", "_continuity_decision_var"),
+        ):
+            row = tk.Frame(self._continuity_body, bg=self.PANEL)
+            row.pack(fill=tk.X, padx=6, pady=(0, 4))
+            tk.Label(row, text=label_text, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 8, "bold"), width=9, anchor="w").pack(side=tk.LEFT)
+            tk.Label(
+                row,
+                textvariable=getattr(self, var_name),
+                bg=self.PANEL,
+                fg=self.TEXT,
+                font=("Segoe UI", 8),
+                justify=tk.LEFT,
+                wraplength=320,
+                anchor="w",
+            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._apply_continuity_section_state()
+
     def _toggle_advanced(self) -> None:
         """Show/hide advanced session fields (token, signing key, device ID)."""
         if self._adv_visible.get():
@@ -1062,6 +1135,21 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         """Toggle the system snapshot block."""
         self._status_collapsed.set(not bool(self._status_collapsed.get()))
         self._apply_status_section_state()
+
+    def _apply_continuity_section_state(self) -> None:
+        """Expand or collapse the continuity rail body."""
+        collapsed = bool(self._continuity_collapsed.get())
+        if collapsed:
+            self._continuity_body.pack_forget()
+            self._continuity_toggle_btn.config(text="Show Continuity")
+        else:
+            self._continuity_body.pack(fill=tk.X, padx=0, pady=(0, 0))
+            self._continuity_toggle_btn.config(text="Hide Continuity")
+
+    def _toggle_continuity_section(self) -> None:
+        """Toggle the continuity rail body."""
+        self._continuity_collapsed.set(not bool(self._continuity_collapsed.get()))
+        self._apply_continuity_section_state()
 
     def _entry(self, parent: tk.Widget, label: str, var: tk.StringVar, show: str | None = None) -> None:
         tk.Label(parent, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=6, pady=(4, 0))
@@ -1379,6 +1467,14 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if context_label is not None:
             context_label.config(fg=context_fg)
 
+        conversation_status_var = getattr(self, "_conversation_status_var", None)
+        conversation_status_label = getattr(self, "_conversation_status_label", None)
+        conversation_status_text, conversation_status_bg, conversation_status_fg = self._snapshot_conversation_status(snapshot)
+        if conversation_status_var is not None:
+            conversation_status_var.set(conversation_status_text)
+        if conversation_status_label is not None:
+            conversation_status_label.config(bg=conversation_status_bg, fg=conversation_status_fg)
+
         activity_var = getattr(self, "_activity_chip_var", None)
         activity_label = getattr(self, "_activity_chip_label", None)
         activity_text, activity_bg, activity_fg = self._snapshot_activity_chip(snapshot)
@@ -1398,6 +1494,7 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         self._render_session_snapshot(snapshot)
         self._render_mission_progress(snapshot)
         self._render_growth_snapshot(snapshot)
+        self._render_continuity_snapshot(snapshot)
 
     def _apply_controller_state(self, state: DesktopWidgetState) -> None:
         """Render a controller-owned state transition into widget UI state."""
@@ -1483,6 +1580,67 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
         if activity.category in {"voice", "voice_pipeline"}:
             return text, "#1c1b3a", "#d7ccff"
         return text, "#132238", "#d7e6ff"
+
+    def _snapshot_conversation_status(self, snapshot: Any) -> tuple[str, str, str]:
+        """Return the inline execution-status strip shown above the transcript."""
+        route_label = snapshot.session.route_label or "Auto Router"
+        mission = snapshot.mission
+        activity = snapshot.activity
+        if snapshot.state is DesktopWidgetState.LISTENING:
+            return f"Listening now via {route_label}. Speak your request.", "#10284a", "#cae1ff"
+        if snapshot.state is DesktopWidgetState.PROCESSING:
+            if mission.current_step:
+                detail = mission.current_step[:72]
+            elif activity.summary:
+                detail = activity.summary[:72]
+            else:
+                detail = "Keeping continuity, learning context, and execution posture aligned."
+            return f"Processing with {route_label}. {detail}", "#2d1d08", "#ffe2b6"
+        if snapshot.state is DesktopWidgetState.ERROR:
+            return "Recovery mode. Jarvis is ready for a clean retry.", "#33181b", "#fecaca"
+        if snapshot.online and mission.current_topic:
+            return f"Ready with {route_label}. Active mission: {mission.current_topic}", "#123624", "#bff8f0"
+        if snapshot.online:
+            return f"Ready with {route_label}. Enter sends, Shift+Enter adds a newline.", "#101b31", "#d7e6ff"
+        return "Desktop services are offline. The launcher stays available while Jarvis reconnects.", "#1f2937", "#d1d5db"
+
+    def _render_continuity_snapshot(self, snapshot: Any) -> None:
+        """Render the conversation continuity rail from controller-owned truth."""
+        continuity = snapshot.continuity
+        counts_var = getattr(self, "_continuity_counts_var", None)
+        summary_var = getattr(self, "_continuity_summary_var", None)
+        anchor_var = getattr(self, "_continuity_anchor_var", None)
+        goal_var = getattr(self, "_continuity_goal_var", None)
+        decision_var = getattr(self, "_continuity_decision_var", None)
+        if counts_var is not None:
+            counts_var.set(
+                f"{len(continuity.anchor_entities)} anchors · "
+                f"{len(continuity.unresolved_goals)} goals · "
+                f"{len(continuity.prior_decisions)} decisions · "
+                f"{continuity.timeline_count} turns"
+            )
+        if summary_var is not None:
+            summary_var.set(
+                continuity.rolling_summary
+                or "Jarvis will surface key entities, unresolved goals, and prior decisions here."
+            )
+        if anchor_var is not None:
+            anchor_var.set(self._snapshot_continuity_items(continuity.anchor_entities, "No anchors yet"))
+        if goal_var is not None:
+            goal_var.set(self._snapshot_continuity_items(continuity.unresolved_goals, "No unresolved goals yet"))
+        if decision_var is not None:
+            decision_var.set(self._snapshot_continuity_items(continuity.prior_decisions, "No prior decisions yet"))
+
+    @staticmethod
+    def _snapshot_continuity_items(items: tuple[str, ...] | list[str], empty_text: str) -> str:
+        """Return a compact continuity list string with overflow summarization."""
+        materialized = [str(item).strip() for item in items if str(item).strip()]
+        if not materialized:
+            return empty_text
+        visible = materialized[:3]
+        remainder = len(materialized) - len(visible)
+        suffix = f" +{remainder} more" if remainder > 0 else ""
+        return " · ".join(visible) + suffix
 
     def _snapshot_intel_chip(self, snapshot: Any) -> tuple[str, str, str]:
         """Return the compact intelligence pill in the live capsule."""
@@ -2681,7 +2839,28 @@ class JarvisDesktopWidget(OrbAnimationMixin, ConversationMixin, TrayMixin, tk.Tk
             logger.debug("Failed to schedule error-briefly state (widget may be destroyed)")
 
     def _refresh_status_view(self) -> None:
+        self._refresh_continuity_snapshot()
         self._render_live_snapshot()
+
+    def _refresh_continuity_snapshot(self) -> None:
+        """Pull continuity state into the controller for desktop rendering."""
+        try:
+            from jarvis_engine.conversation_state import get_conversation_state
+
+            csm = get_conversation_state()
+            injection = csm.get_prompt_injection()
+            state_snapshot = csm.get_state_snapshot(full=False)
+        except Exception as exc:  # boundary: continuity rail is best-effort
+            logger.debug("Failed to refresh continuity snapshot: %s", exc)
+            return
+
+        self._ensure_controller().apply_continuity_snapshot(
+            rolling_summary=str(injection.get("rolling_summary", "")).strip(),
+            anchor_entities=list(injection.get("anchor_entities", [])),
+            unresolved_goals=list(injection.get("unresolved_goals", [])),
+            prior_decisions=list(injection.get("prior_decisions", [])),
+            timeline_count=int(state_snapshot.get("timeline_count", 0) or 0),
+        )
 
 
 def run_desktop_widget() -> None:

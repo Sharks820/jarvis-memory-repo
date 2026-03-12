@@ -65,6 +65,17 @@ class DesktopSessionSnapshot:
 
 
 @dataclass(frozen=True)
+class DesktopContinuitySnapshot:
+    """Conversation continuity state surfaced to the desktop UI."""
+
+    rolling_summary: str = ""
+    anchor_entities: tuple[str, ...] = ()
+    unresolved_goals: tuple[str, ...] = ()
+    prior_decisions: tuple[str, ...] = ()
+    timeline_count: int = 0
+
+
+@dataclass(frozen=True)
 class DesktopLiveSnapshot:
     """Single desktop truth model for status, missions, and live activity."""
 
@@ -82,6 +93,7 @@ class DesktopLiveSnapshot:
     mission: DesktopMissionSnapshot = field(default_factory=DesktopMissionSnapshot)
     activity: DesktopActivitySnapshot = field(default_factory=DesktopActivitySnapshot)
     session: DesktopSessionSnapshot = field(default_factory=DesktopSessionSnapshot)
+    continuity: DesktopContinuitySnapshot = field(default_factory=DesktopContinuitySnapshot)
 
 
 class DesktopInteractionController:
@@ -116,6 +128,7 @@ class DesktopInteractionController:
         self._mission = DesktopMissionSnapshot()
         self._activity = DesktopActivitySnapshot()
         self._session = DesktopSessionSnapshot()
+        self._continuity = DesktopContinuitySnapshot()
         self._seen_activity_event_ids: dict[str, None] = {}
 
     @property
@@ -157,6 +170,7 @@ class DesktopInteractionController:
                 mission=self._mission,
                 activity=self._activity,
                 session=self._session,
+                continuity=self._continuity,
             )
 
     def can_begin_command(self) -> bool:
@@ -265,6 +279,25 @@ class DesktopInteractionController:
                 wakeword_enabled=bool(wakeword_enabled),
                 speech_mode="Voice replies on" if speech_enabled else "Silent replies",
                 speech_enabled=bool(speech_enabled),
+            )
+
+    def apply_continuity_snapshot(
+        self,
+        *,
+        rolling_summary: str,
+        anchor_entities: list[str] | tuple[str, ...],
+        unresolved_goals: list[str] | tuple[str, ...],
+        prior_decisions: list[str] | tuple[str, ...],
+        timeline_count: int = 0,
+    ) -> None:
+        """Update controller-owned continuity state from conversation_state."""
+        with self._lock:
+            self._continuity = DesktopContinuitySnapshot(
+                rolling_summary=str(rolling_summary).strip(),
+                anchor_entities=tuple(str(item).strip() for item in anchor_entities if str(item).strip()),
+                unresolved_goals=tuple(str(item).strip() for item in unresolved_goals if str(item).strip()),
+                prior_decisions=tuple(str(item).strip() for item in prior_decisions if str(item).strip()),
+                timeline_count=max(int(timeline_count), 0),
             )
 
     def _apply_intelligence_locked(self, intel_data: dict[str, Any] | None) -> None:

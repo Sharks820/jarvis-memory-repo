@@ -150,6 +150,21 @@ class ConversationMixin:
             pady=2,
         ).pack(side=tk.RIGHT)
 
+        status_row = tk.Frame(body, bg=self.PANEL)
+        status_row.pack(fill=tk.X, padx=10, pady=(4, 0))
+        self._conversation_status_var = tk.StringVar(value="Ready for commands on desktop.")
+        self._conversation_status_label = tk.Label(
+            status_row,
+            textvariable=self._conversation_status_var,
+            bg="#101b31",
+            fg="#d7e6ff",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+            padx=8,
+            pady=5,
+        )
+        self._conversation_status_label.pack(fill=tk.X)
+
     def _build_thinking_indicator(self: Any, body: tk.Frame) -> None:
         """Build the thinking indicator label (hidden by default, shown during processing)."""
         self._thinking_frame = tk.Frame(body, bg="#1a1500")
