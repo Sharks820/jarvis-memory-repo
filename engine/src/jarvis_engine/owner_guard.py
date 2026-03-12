@@ -21,7 +21,7 @@ class OwnerGuardState(TypedDict):
     updated_utc: str
 
 
-DEFAULT_OWNER_GUARD = {
+DEFAULT_OWNER_GUARD: OwnerGuardState = {
     "enabled": False,
     "owner_user_id": "",
     "trusted_mobile_devices": [],
@@ -47,7 +47,15 @@ def read_owner_guard(root: Path) -> OwnerGuardState:
     path = owner_guard_path(root)
     raw = load_json_file(path, None, expected_type=dict)
     if raw is None:
-        return dict(DEFAULT_OWNER_GUARD)
+        return {
+            "enabled": False,
+            "owner_user_id": "",
+            "trusted_mobile_devices": [],
+            "master_password_hash": "",
+            "master_password_salt_b64": "",
+            "master_password_iterations": 200000,
+            "updated_utc": "",
+        }
     devices = raw.get("trusted_mobile_devices", [])
     if not isinstance(devices, list):
         devices = []
@@ -79,7 +87,7 @@ def write_owner_guard(
             str(d).strip()[:128] for d in trusted_mobile_devices if str(d).strip()
         ]
     state["updated_utc"] = _now_iso()
-    _atomic_write_json(owner_guard_path(root), state)
+    _atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
 
@@ -102,7 +110,7 @@ def set_master_password(root: Path, password: str, *, iterations: int = 200000) 
         iterations=int(state["master_password_iterations"]),
     )
     state["updated_utc"] = _now_iso()
-    _atomic_write_json(owner_guard_path(root), state)
+    _atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
 
@@ -111,7 +119,7 @@ def clear_master_password(root: Path) -> OwnerGuardState:
     state["master_password_hash"] = ""  # nosec B105
     state["master_password_salt_b64"] = ""  # nosec B105
     state["master_password_iterations"] = 200000
-    _atomic_write_json(owner_guard_path(root), state)
+    _atomic_write_json(owner_guard_path(root), dict(state))
     return state
 
 

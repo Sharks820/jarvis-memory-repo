@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-12 (mobile route typing + scan-hardening tranche shipped; repo runtime still green at 5581 passed, repo mypy down to 209/62, ruff clean)
+Last activity: 2026-03-12 (security/runtime contract tranche shipped; repo runtime still green at 5581 passed, repo mypy down to 194/58, ruff clean)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -34,7 +34,7 @@ Progress (v5.0): [██████░░░░] 55%
 **v5.0 Reliability & Continuity**: IN PROGRESS
 - Latest full test run (2026-03-12): 5581 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
-- Typed debt baseline: mypy 209 errors across 62 files
+- Typed debt baseline: mypy 194 errors across 58 files
 - Security scan baseline: bandit 66 findings (0 high, 9 medium, 57 low)
 - Plan active: `.planning/phases/14-world-class-assistant-reliability/14-02-PLAN.md`
 
@@ -117,6 +117,7 @@ Progress (v5.0): [██████░░░░] 55%
 - 2026-03-12: executed the first Gemini-reviewed desktop UI tranche and accepted Gemini’s recommendation to expose backend continuity state directly in the widget. `desktop_controller.py` now carries a typed `DesktopContinuitySnapshot`, `desktop_widget.py` now renders a compact-friendly `Continuity Rail` backed by `conversation_state` entities/goals/decisions/timeline truth, and compact mode keeps it collapsed by default so transcript space still wins on shorter displays. Focused `ruff`, focused desktop `mypy`, and focused desktop pytest gates stayed green, and the full repo suite passed via `python run_tests.py` at `5580 passed, 14 skipped, 15 warnings` in 5m49s.
 - 2026-03-12: executed the next Gemini-reviewed desktop UI tranche on top of the continuity baseline and chose the system-health surface as the safest high-trust follow-on. `desktop_controller.py` now carries a typed `DesktopDiagnosticsSnapshot`, `desktop_widget.py` now renders a live `Health` pulse chip in the hero surface plus a compact diagnostics drawer with quick-scan summary and direct `Diagnose & Repair` entry point, and the widget now polls `/diagnostics/status` on a bounded cadence instead of inventing a new diagnostics path. Focused `ruff`, focused desktop `mypy`, and focused desktop pytest gates stayed green, and the full repo suite passed via `python run_tests.py` at `5581 passed, 15 skipped, 15 warnings` in 5m42s.
 - 2026-03-12: closed the next scan-hardening tranche after the desktop/UI passes. `mobile_routes/command.py`, `health.py`, and `intelligence.py` now use explicit handler/server protocols aligned with the existing mobile route pattern, `command.py` now fixes the real `OpsBriefCommand(snapshot_path=...)` call-site bug and clears conversation history through the typed `voice_pipeline._state` surface, and follow-on repo hygiene fixes landed in `_db_pragmas.py`, `_shared.py`, `knowledge/graph.py`, `knowledge/regression.py`, `ops_sync.py`, `proactive/notifications.py`, `security/resource_monitor.py`, `sync/auto_sync.py`, `widget_tray.py`, `engine/tests/conftest.py`, and `engine/tests/test_voice_medium_fixes.py`. Verification snapshot: focused `ruff`/`mypy` clean for the mobile route tranche, focused `pytest engine/tests/test_mobile_api.py -q` green, full repo `ruff check engine/src engine/tests` clean, repo-wide `mypy engine/src` improved from `311 errors / 66 files` to `209 errors / 62 files`, full suite via `python run_tests.py` stayed green at `5581 passed, 15 skipped, 15 warnings` in 5m46s, `bandit` remained `57 low / 9 medium / 0 high`, and `desloppify status` remained `76.9 / 76.8`.
+- 2026-03-12: closed the follow-on security/runtime contract slice. `security/owner_session.py` now handles optional Argon2/PBKDF2 state through explicit guards instead of leaking optional values into hashing/compare paths, and `runtime_control.py`, `owner_guard.py`, and `gaming_mode.py` now write TypedDict payloads through explicit `dict(...)` conversion so persistence helpers and callers agree on the contract. Verification snapshot: focused `ruff` clean, focused `mypy --follow-imports=silent` clean on the four touched files, representative `test_mobile_api.py` subset green after isolating a flaky timeout-heavy focused run, full repo `ruff check engine/src engine/tests` clean, repo-wide `mypy engine/src` improved from `209 errors / 62 files` to `194 errors / 58 files`, and the full suite via `python run_tests.py` stayed green at `5581 passed, 15 skipped, 15 warnings` in 5m42s.
 - v5.0 sequencing decision:
   1. Reliability/resource control first
   2. Cross-provider context continuity second
@@ -126,7 +127,7 @@ Progress (v5.0): [██████░░░░] 55%
 ### Blockers/Concerns
 - Known flaky: test_cmd_brain_status_and_context (nomic-bert tensor size mismatch — infrastructure issue, not code)
 - Security/typed quality debt still large despite functional pass baseline:
-  - mypy: 209 errors / 62 files
+  - mypy: 194 errors / 58 files
   - bandit: 66 findings (0 high, 9 medium, 57 low)
 - Desloppify strict-score loop currently constrained by subjective batch tooling and scope management; continue debt gate with targeted next/scan cycles.
 - User-reported runtime issues persist in real-world usage:

@@ -26,7 +26,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from jarvis_engine._shared import now_iso as _now_iso
 from jarvis_engine._shared import runtime_dir as _runtime_dir
@@ -112,7 +112,10 @@ def read_gaming_mode_state(state_path: Path | None = None) -> GamingModeState:
     }
 
 
-def write_gaming_mode_state(state: dict[str, object], state_path: Path | None = None) -> GamingModeState:
+def write_gaming_mode_state(
+    state: GamingModeState | dict[str, Any],
+    state_path: Path | None = None,
+) -> GamingModeState:
     """Atomically write *state* to *state_path* and return the normalised payload.
 
     When *state_path* is ``None``, resolves the default path via
@@ -128,7 +131,7 @@ def write_gaming_mode_state(state: dict[str, object], state_path: Path | None = 
         "updated_utc": str(state.get("updated_utc", "")) or _now_iso(),
         "reason": str(state.get("reason", "")).strip()[:200],
     }
-    _atomic_write_json(state_path, payload)
+    _atomic_write_json(state_path, dict(payload))
     return payload
 
 
