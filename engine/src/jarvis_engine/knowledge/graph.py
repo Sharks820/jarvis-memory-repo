@@ -29,7 +29,7 @@ from jarvis_engine.knowledge._base import upsert_fts_kg
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import networkx as nx
+    import networkx as nx  # type: ignore[import-untyped]
 
     from jarvis_engine.memory.embeddings import EmbeddingService
     from jarvis_engine.memory.engine import MemoryEngine
@@ -294,7 +294,7 @@ class KnowledgeGraph:
             gen = self._mutation_counter
 
         # Build graph outside lock (no DB access needed)
-        import networkx as nx
+        import networkx as nx  # type: ignore[import-untyped]
 
         G = nx.DiGraph()
 
@@ -814,7 +814,7 @@ class KnowledgeGraph:
                     "UPDATE kg_nodes SET confidence = 0.0, updated_at = ? "
                     "WHERE (" + where_clause + ") AND confidence > 0 AND locked = 0"  # nosec B608
                 )
-                all_params: list[object] = [now] + like_params
+                all_params = [now, *like_params]
                 cur = self._db.execute(update_sql, all_params)
                 retracted = cur.rowcount
 

@@ -71,8 +71,11 @@ class AutoSyncConfig:
 
     def _load(self) -> None:
         """Load config from disk, merging with defaults for new keys."""
+        config_path = self._config_path
+        if config_path is None:
+            return
         try:
-            with open(self._config_path, "r") as f:
+            with open(config_path, "r") as f:
                 saved = json.load(f)
             # Merge: saved values override defaults, new defaults are added
             merged = dict(DEFAULT_SYNC_CONFIG)

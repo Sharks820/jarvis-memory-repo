@@ -20,7 +20,7 @@ class Notifier:
     def send(self, title: str, message: str, priority: str = "normal") -> bool:
         """Send a single toast notification. Returns True on success."""
         try:
-            from winotify import Notification
+            from winotify import Notification  # type: ignore[import-not-found]
 
             toast = Notification(
                 app_id=self._app_name,

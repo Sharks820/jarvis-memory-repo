@@ -261,7 +261,7 @@ def sha256_short(data: bytes, length: int = 32) -> str:
 def set_process_title(name: str) -> None:
     """Set the OS process title (requires ``setproctitle``; no-op if absent)."""
     try:
-        import setproctitle
+        import setproctitle  # type: ignore[import-not-found]
         setproctitle.setproctitle(name)
     except ImportError:
         logger.debug("setproctitle not available; process title unchanged")

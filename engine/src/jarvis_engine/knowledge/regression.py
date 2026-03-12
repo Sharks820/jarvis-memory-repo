@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
@@ -111,7 +112,7 @@ class RegressionChecker:
             graph_hash = _EMPTY_GRAPH_HASH
         else:
             try:
-                import networkx as nx
+                import networkx as nx  # type: ignore[import-untyped]
             except ImportError as exc:
                 logger.warning("WL hash computation failed (networkx unavailable): %s", exc)
                 graph_hash = _EMPTY_GRAPH_HASH
@@ -169,8 +170,6 @@ class RegressionChecker:
 
         # Use sqlite3 backup API instead of shutil.copy2 so that
         # in-flight WAL data is included in the backup atomically.
-        import sqlite3
-
         from jarvis_engine._db_pragmas import connect_db
         dst_db = connect_db(backup_path)
         try:
@@ -211,7 +210,6 @@ class RegressionChecker:
 
     def _close_old_and_clean_wal(self, dst_path: Path) -> None:
         """Close the live DB connection and remove stale WAL/SHM files."""
-        import sqlite3
         old_db = self._kg._engine._db
         try:
             old_db.close()
@@ -225,7 +223,6 @@ class RegressionChecker:
 
     def _swap_temp_to_live(self, tmp_dst: Path, dst_path: Path) -> None:
         """Move the temp copy into the live path; recover on failure."""
-        import sqlite3
         try:
             shutil.move(str(tmp_dst), str(dst_path))
         except OSError as exc:
@@ -247,7 +244,7 @@ class RegressionChecker:
         from jarvis_engine._db_pragmas import connect_db
         new_db = connect_db(dst_path, full=True, check_same_thread=False)
         try:
-            import sqlite_vec
+            import sqlite_vec  # type: ignore[import-untyped]
             new_db.enable_load_extension(True)
             try:
                 sqlite_vec.load(new_db)
@@ -293,7 +290,7 @@ class RegressionChecker:
     # Node-level diff
     # ------------------------------------------------------------------
 
-    def node_diff(self, snapshot_before: dict, snapshot_after: dict) -> NodeDiff:
+    def node_diff(self, snapshot_before: KGSnapshot, snapshot_after: KGSnapshot) -> NodeDiff:
         """Compute node-level changes between two metric snapshots.
 
         Compares the ``node_labels`` dicts present in each snapshot.
@@ -323,7 +320,7 @@ class RegressionChecker:
 
         return {"added": added, "removed": removed, "modified": modified}
 
-    def compare(self, previous: dict | None, current: dict) -> ComparisonResult:
+    def compare(self, previous: KGSnapshot | None, current: KGSnapshot) -> ComparisonResult:
         """Compare two metric snapshots and report discrepancies.
 
         Args:

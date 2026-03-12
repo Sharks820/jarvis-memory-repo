@@ -143,7 +143,7 @@ class ResourceMonitor:
         Returns a dict with keys ``metrics``, ``anomalies``, ``cap_exceeded``.
         """
         with self._lock:
-            metrics: dict[str, dict] = {}
+            metrics: dict[str, MetricSnapshot] = {}
             anomalies: list[str] = []
 
             # Collect all known metric names.

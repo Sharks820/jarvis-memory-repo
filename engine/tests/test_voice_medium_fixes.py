@@ -186,7 +186,7 @@ class TestFuzzyMatching:
 
         Verifies that 'pause jarvis' hits the exact path, not the fuzzy path.
         """
-        from jarvis_engine.voice_intents import _DISPATCH_RULES, _CRITICAL_FUZZY_TARGETS
+        from jarvis_engine.voice_intents import _DISPATCH_RULES
 
         lowered = "pause jarvis"
         exact_matched = False
@@ -474,3 +474,4 @@ class TestParakeetProperNounThreshold:
             mock_auto.assert_called_once()
             call_kwargs = mock_auto.call_args[1]
             assert call_kwargs["entity_list"] == ["Conner", "Jarvis"]
+

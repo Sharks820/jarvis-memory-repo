@@ -5,15 +5,32 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Protocol
 
 from jarvis_engine._compat import UTC
 from jarvis_engine._constants import KG_METRICS_LOG as _KG_METRICS_LOG
 from jarvis_engine._constants import SELF_TEST_HISTORY as _SELF_TEST_HISTORY
 from jarvis_engine._shared import memory_db_path as _memory_db_path
 from jarvis_engine._shared import runtime_dir as _runtime_dir
+from jarvis_engine.mobile_routes._helpers import MobileRouteHandlerProtocol, MobileRouteServerProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class _IntelligenceRouteServerProtocol(MobileRouteServerProtocol, Protocol):
+    def ensure_memory_engine(self) -> Any | None:
+        ...
+
+
+class _IntelligenceRoutesHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
+    server: _IntelligenceRouteServerProtocol
+
+    def _gather_intelligence_growth(
+        self,
+        *,
+        reliability_cache: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
 
 
 def _gather_kg_metrics(root: Any, metrics: dict[str, Any]) -> None:
@@ -148,7 +165,11 @@ def _gather_active_missions(root: Any, metrics: dict[str, Any]) -> None:
 class IntelligenceRoutesMixin:
     """Endpoint handlers for intelligence growth, learning, and knowledge export."""
 
-    def _gather_intelligence_growth(self, *, reliability_cache: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _gather_intelligence_growth(
+        self: _IntelligenceRoutesHandlerProtocol,
+        *,
+        reliability_cache: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Collect real intelligence growth metrics from all subsystems."""
         from jarvis_engine.mobile_routes._helpers import _compute_command_reliability
 
@@ -195,12 +216,12 @@ class IntelligenceRoutesMixin:
 
         return {"ok": True, "metrics": metrics}
 
-    def _handle_get_intelligence_growth(self) -> None:
+    def _handle_get_intelligence_growth(self: _IntelligenceRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
         self._write_json(HTTPStatus.OK, self._gather_intelligence_growth())
 
-    def _handle_get_conversation_state(self) -> None:
+    def _handle_get_conversation_state(self: _IntelligenceRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
         try:
@@ -237,7 +258,7 @@ class IntelligenceRoutesMixin:
             logger.debug("conversation state endpoint failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"error": str(exc), "available": False})
 
-    def _handle_get_learning_summary(self) -> None:
+    def _handle_get_learning_summary(self: _IntelligenceRoutesHandlerProtocol) -> None:
         if not self._validate_auth(b""):
             return
         db_path = _memory_db_path(self._root)
@@ -287,7 +308,7 @@ class IntelligenceRoutesMixin:
                 lrn_db.close()
         self._write_json(HTTPStatus.OK, summary)
 
-    def _handle_post_intelligence_merge(self) -> None:
+    def _handle_post_intelligence_merge(self: _IntelligenceRoutesHandlerProtocol) -> None:
         """Accept intelligence from the phone and merge into desktop knowledge."""
         payload, _ = self._read_json_body(max_content_length=500_000)
         if payload is None:
@@ -331,7 +352,7 @@ class IntelligenceRoutesMixin:
                 "ok": False, "error": "Intelligence merge failed.",
             })
 
-    def _handle_post_intelligence_export(self) -> None:
+    def _handle_post_intelligence_export(self: _IntelligenceRoutesHandlerProtocol) -> None:
         """Export desktop knowledge for the phone's local intelligence."""
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
@@ -410,7 +431,7 @@ class IntelligenceRoutesMixin:
                 "ok": False, "error": "Intelligence export failed.",
             })
 
-    def _handle_get_voice_latency(self) -> None:
+    def _handle_get_voice_latency(self: _IntelligenceRoutesHandlerProtocol) -> None:
         """Return voice pipeline latency stats for the mobile dashboard."""
         if not self._validate_auth(b""):
             return
@@ -418,7 +439,7 @@ class IntelligenceRoutesMixin:
             from jarvis_engine.voice_telemetry import get_voice_telemetry
 
             telemetry = get_voice_telemetry()
-            self._write_json(HTTPStatus.OK, telemetry.get_endpoint_response())
+            self._write_json(HTTPStatus.OK, dict(telemetry.get_endpoint_response()))
         except (ImportError, OSError, ValueError) as exc:
             logger.debug("voice/latency endpoint failed: %s", exc)
             self._write_json(HTTPStatus.OK, {

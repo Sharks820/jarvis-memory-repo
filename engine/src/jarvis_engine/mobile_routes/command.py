@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 import uuid
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Protocol
 
 from jarvis_engine._constants import OPS_SNAPSHOT_FILENAME as _OPS_SNAPSHOT_FILENAME
 from jarvis_engine._shared import make_task_id as _make_task_id
 from jarvis_engine.mobile_routes._helpers import (
+    MobileRouteHandlerProtocol,
+    MobileRouteServerProtocol,
     _get_int_param,
     _parse_bool,
     _parse_query_params,
@@ -17,10 +19,55 @@ from jarvis_engine.mobile_routes._helpers import (
 logger = logging.getLogger(__name__)
 
 
+class _CommandRouteServerProtocol(MobileRouteServerProtocol, Protocol):
+    def ensure_memory_engine(self) -> Any | None:
+        ...
+
+
+class _CommandRoutesHandlerProtocol(MobileRouteHandlerProtocol, Protocol):
+    server: _CommandRouteServerProtocol
+
+    def _best_effort_learn_command_result(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+        ...
+
+    def _log_command_lifecycle_event(
+        self,
+        *,
+        lifecycle_state: str,
+        correlation_id: str,
+        payload: dict[str, Any],
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        ...
+
+    def _run_voice_command(
+        self,
+        payload: dict[str, Any],
+        *,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+    def _normalize_command_output(
+        self,
+        *,
+        response_text: str,
+        stdout_lines: list[str],
+    ) -> dict[str, Any]:
+        ...
+
+    def _run_main_cli(self, args: list[str], *, timeout_s: int = 240) -> dict[str, Any]:
+        ...
+
+
 class CommandRoutesMixin:
     """Command, conversation, smart-reply, self-heal, mission, digest, and meeting-prep endpoints."""
 
-    def _best_effort_learn_command_result(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+    def _best_effort_learn_command_result(
+        self: _CommandRoutesHandlerProtocol,
+        payload: dict[str, Any],
+        result: dict[str, Any],
+    ) -> None:
         """Record failed/empty command outcomes so learning does not stall on guard paths."""
         user_text = str(payload.get("text", "")).strip()
         if not user_text:
@@ -53,7 +100,7 @@ class CommandRoutesMixin:
         except (ImportError, RuntimeError, ValueError, TypeError, OSError) as exc:
             logger.debug("Best-effort command learning fallback failed: %s", exc)
 
-    def _handle_post_command(self) -> None:
+    def _handle_post_command(self: _CommandRoutesHandlerProtocol) -> None:
         payload, _ = self._read_json_body(max_content_length=25_000)
         if payload is None:
             return
@@ -116,7 +163,7 @@ class CommandRoutesMixin:
         )
         self._write_json(HTTPStatus.OK, result)
 
-    def _handle_post_conversation_clear(self) -> None:
+    def _handle_post_conversation_clear(self: _CommandRoutesHandlerProtocol) -> None:
         payload, _ = self._read_json_body(max_content_length=1_000)
         if payload is None:
             return
@@ -125,7 +172,7 @@ class CommandRoutesMixin:
             from jarvis_engine.conversation_state import get_conversation_state
 
             _vp_mod._state.clear_history()
-            _vp_mod._conversation_history_loaded = True
+            _vp_mod._state._conversation_history_loaded = True
             try:
                 _vp_mod.save_conversation_history()
             except (OSError, ValueError, TypeError) as save_exc:
@@ -140,7 +187,7 @@ class CommandRoutesMixin:
             logger.error("Conversation history clear failed: %s", exc)
             self._write_json(HTTPStatus.OK, {"ok": True, "message": "Best-effort clear completed."})
 
-    def _handle_post_smart_reply(self) -> None:
+    def _handle_post_smart_reply(self: _CommandRoutesHandlerProtocol) -> None:
         """Generate a contextual auto-reply SMS for a missed call."""
         payload, _ = self._read_json_body(max_content_length=5_000)
         if payload is None:
@@ -191,7 +238,7 @@ class CommandRoutesMixin:
             "contact_context": contact_context,
         })
 
-    def _handle_post_self_heal(self) -> None:
+    def _handle_post_self_heal(self: _CommandRoutesHandlerProtocol) -> None:
         payload, _ = self._read_json_body(max_content_length=10_000)
         if payload is None:
             return
@@ -210,7 +257,7 @@ class CommandRoutesMixin:
         result = self._run_main_cli(args, timeout_s=240)
         self._write_json(HTTPStatus.OK, result)
 
-    def _handle_post_missions_create(self) -> None:
+    def _handle_post_missions_create(self: _CommandRoutesHandlerProtocol) -> None:
         """Create a learning mission from the phone."""
         payload, _ = self._read_json_body(max_content_length=5_000)
         if payload is None:
@@ -253,7 +300,7 @@ class CommandRoutesMixin:
             logger.error("Mission create failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission creation failed."})
 
-    def _handle_get_missions_status(self) -> None:
+    def _handle_get_missions_status(self: _CommandRoutesHandlerProtocol) -> None:
         """Get learning mission status."""
         if not self._validate_auth(b""):
             return
@@ -290,7 +337,7 @@ class CommandRoutesMixin:
             logger.error("Mission status failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission status unavailable."})
 
-    def _handle_get_missions_active(self) -> None:
+    def _handle_get_missions_active(self: _CommandRoutesHandlerProtocol) -> None:
         """Return all running/paused/pending missions."""
         if not self._validate_auth(b""):
             return
@@ -319,7 +366,7 @@ class CommandRoutesMixin:
             logger.error("Mission active list failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Active missions unavailable."})
 
-    def _handle_get_missions_steps(self) -> None:
+    def _handle_get_missions_steps(self: _CommandRoutesHandlerProtocol) -> None:
         """Return the step breakdown for a specific mission."""
         if not self._validate_auth(b""):
             return
@@ -341,7 +388,7 @@ class CommandRoutesMixin:
             logger.error("Mission steps failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission steps unavailable."})
 
-    def _handle_post_missions_pause(self) -> None:
+    def _handle_post_missions_pause(self: _CommandRoutesHandlerProtocol) -> None:
         """Pause a running mission."""
         payload, _ = self._read_json_body(max_content_length=1_000)
         if payload is None:
@@ -365,7 +412,7 @@ class CommandRoutesMixin:
             logger.error("Mission pause failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission pause failed."})
 
-    def _handle_post_missions_resume(self) -> None:
+    def _handle_post_missions_resume(self: _CommandRoutesHandlerProtocol) -> None:
         """Resume a paused mission."""
         payload, _ = self._read_json_body(max_content_length=1_000)
         if payload is None:
@@ -389,7 +436,7 @@ class CommandRoutesMixin:
             logger.error("Mission resume failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission resume failed."})
 
-    def _handle_post_missions_restart(self) -> None:
+    def _handle_post_missions_restart(self: _CommandRoutesHandlerProtocol) -> None:
         """Restart a failed/cancelled mission."""
         payload, _ = self._read_json_body(max_content_length=1_000)
         if payload is None:
@@ -413,7 +460,7 @@ class CommandRoutesMixin:
             logger.error("Mission restart failed: %s", exc)
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": "Mission restart failed."})
 
-    def _handle_get_digest(self) -> None:
+    def _handle_get_digest(self: _CommandRoutesHandlerProtocol) -> None:
         """Return a context-aware digest of what happened while user was busy."""
         if not self._validate_auth(b""):
             return
@@ -473,14 +520,15 @@ class CommandRoutesMixin:
                 from jarvis_engine.commands.ops_commands import OpsBriefCommand
 
                 bus = get_bus()
-                result = bus.dispatch(OpsBriefCommand())
+                snapshot_path = self._root / ".planning" / _OPS_SNAPSHOT_FILENAME
+                result = bus.dispatch(OpsBriefCommand(snapshot_path=snapshot_path))
                 if hasattr(result, "brief") and result.brief:
                     digest["notifications_summary"] = result.brief[:1000]
             except (ImportError, RuntimeError, OSError, ValueError, TypeError) as exc:
                 logger.debug("Ops brief for digest failed: %s", exc)
         self._write_json(HTTPStatus.OK, {"ok": True, "digest": digest})
 
-    def _handle_get_meeting_prep(self) -> None:
+    def _handle_get_meeting_prep(self: _CommandRoutesHandlerProtocol) -> None:
         """Return KG-powered intelligence briefing for an upcoming meeting."""
         if not self._validate_auth(b""):
             return

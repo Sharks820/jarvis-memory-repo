@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 
 def configure_sqlite(
-    conn: Union[sqlite3.Connection, "Any"],  # noqa: F821
+    conn: Union[sqlite3.Connection, Any],
     *,
     full: bool = False,
 ) -> None:
