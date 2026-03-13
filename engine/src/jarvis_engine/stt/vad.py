@@ -151,7 +151,7 @@ class SileroVADDetector:
         conf = self.get_confidence(audio_chunk)
         if self._in_speech:
             # Already in speech -- require stronger silence to exit
-            if conf < (1.0 - self._offset_threshold):
+            if conf < self._offset_threshold:
                 self._in_speech = False
             return self._in_speech
         else:
@@ -204,11 +204,11 @@ class SileroVADDetector:
 
         # Apply hysteresis at the chunk level
         active_threshold = (
-            (1.0 - self._offset_threshold) if self._in_speech else self._onset_threshold
+            self._offset_threshold if self._in_speech else self._onset_threshold
         )
         if max_conf > active_threshold:
             self._in_speech = True
-        elif self._in_speech and max_conf < (1.0 - self._offset_threshold):
+        elif self._in_speech and max_conf < self._offset_threshold:
             self._in_speech = False
 
         return max_conf > active_threshold

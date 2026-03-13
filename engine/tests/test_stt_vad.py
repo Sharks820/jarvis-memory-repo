@@ -445,12 +445,12 @@ def test_hysteresis_onset_then_offset() -> None:
         mock_model.return_value.item.return_value = 0.7
         assert d.is_speech(chunk) is True
 
-        # Dip to 0.45 -- still above (1 - 0.6) = 0.4, so stays in speech
-        mock_model.return_value.item.return_value = 0.45
+        # Conf 0.65 -- still above offset_threshold 0.6, stays in speech
+        mock_model.return_value.item.return_value = 0.65
         assert d.is_speech(chunk) is True
 
-        # Drop to 0.3 -- below (1 - 0.6) = 0.4, exits speech
-        mock_model.return_value.item.return_value = 0.3
+        # Dip to 0.45 -- below offset_threshold 0.6, exits speech
+        mock_model.return_value.item.return_value = 0.45
         assert d.is_speech(chunk) is False
 
 

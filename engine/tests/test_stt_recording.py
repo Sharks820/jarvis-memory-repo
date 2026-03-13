@@ -412,10 +412,10 @@ def test_record_from_microphone_graceful_stt_vad_import_fail() -> None:
 # ---------------------------------------------------------------------------
 
 def test_record_microphone_default_silence_duration_is_command_mode() -> None:
-    """Default silence_duration is 0.8s (command mode), not 2.0s."""
+    """Default silence_duration is 1.2s (command mode), not 2.0s."""
     from jarvis_engine.stt.backends import _SILENCE_DURATION_COMMAND
 
-    assert _SILENCE_DURATION_COMMAND == 0.8
+    assert _SILENCE_DURATION_COMMAND == 1.2
 
 
 def test_record_microphone_dictation_mode_silence_duration() -> None:
@@ -431,7 +431,7 @@ def test_record_microphone_command_mode_stops_faster() -> None:
 
     call_count = [0]
     # 3 speech chunks then silence (RMS fallback, 100ms chunks)
-    # silence_duration=0.8 -> 8 silence chunks needed
+    # silence_duration=1.2 -> ~11-12 silence chunks needed
     def mock_read(n):
         call_count[0] += 1
         if call_count[0] <= 3:
@@ -453,11 +453,11 @@ def test_record_microphone_command_mode_stops_faster() -> None:
             max_duration_seconds=30.0,
             silence_threshold=0.01,
             drain_seconds=0.0,
-            # Uses default silence_duration=0.8 and mode="command"
+            # Uses default silence_duration=1.2 and mode="command"
         )
 
-    # 3 speech + 8 silence = 11 (much less than 23 with old 2.0s default)
-    assert call_count[0] == 11
+    # 3 speech + 11 silence = 14 (much less than 23 with old 2.0s default)
+    assert call_count[0] == 14
 
 
 def test_record_microphone_conversation_mode_allows_longer_pause() -> None:

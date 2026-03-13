@@ -30,7 +30,7 @@ _RealHttpxClient = httpx.Client
         ),
         pytest.param(
             {"text": "hello", "language": "en"},
-            0.90,
+            0.50,
             id="no_segments_key_fallback",
         ),
         pytest.param(
@@ -44,13 +44,13 @@ _RealHttpxClient = httpx.Client
         ),
         pytest.param(
             {"text": "hello", "language": "en", "segments": []},
-            0.90,
+            0.50,
             id="empty_segments_list_fallback",
         ),
         pytest.param(
             {"text": "hello", "language": "en",
              "segments": [{"text": "hello"}]},  # no avg_logprob
-            0.90,
+            0.50,
             id="segments_without_logprobs_fallback",
         ),
         pytest.param(
@@ -62,7 +62,7 @@ _RealHttpxClient = httpx.Client
         pytest.param(
             {"text": "test", "language": "en",
              "segments": [{"text": "test", "avg_logprob": float("nan"), "no_speech_prob": 0.0}]},
-            0.90,  # NaN skipped -> no valid logprobs -> fallback
+            0.50,  # NaN skipped -> no valid logprobs -> fallback
             id="nan_logprob_skipped_fallback",
         ),
         pytest.param(
@@ -258,11 +258,11 @@ def test_groq_transcription_custom_prompt() -> None:
         mock_client.post.return_value = mock_response
         mock_client_cls.return_value = mock_client
 
-        long_prompt = "a" * 300
+        long_prompt = "a" * 1000
         transcribe_groq(fake_audio, prompt=long_prompt)
 
         data_arg = mock_client.post.call_args[1]["data"]
-        assert len(data_arg["prompt"]) == 224
+        assert len(data_arg["prompt"]) == 896
 
 
 # ---------------------------------------------------------------------------

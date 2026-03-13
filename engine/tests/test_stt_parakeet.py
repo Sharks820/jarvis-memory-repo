@@ -21,9 +21,9 @@ def _reset_parakeet_global():
 @pytest.mark.parametrize(
     "mock_text, expected_text, expected_confidence",
     [
-        pytest.param("Hello world", "Hello world", 0.94, id="success_baseline_confidence"),
+        pytest.param("Hello world", "Hello world", 0.70, id="success_baseline_confidence"),
         pytest.param("", "", 0.0, id="empty_text_zero_confidence"),
-        pytest.param("some transcription", "some transcription", 0.94, id="non_empty_baseline_confidence"),
+        pytest.param("some transcription", "some transcription", 0.70, id="non_empty_baseline_confidence"),
     ],
 )
 def test_try_parakeet_result(mock_text, expected_text, expected_confidence):

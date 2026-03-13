@@ -44,15 +44,15 @@ _GROQ_STT_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 # Audio thresholds
 _MIN_AUDIO_SAMPLES_16KHZ = 1600  # 0.1s at 16 kHz
-_GROQ_PROMPT_MAX_TOKENS = 224  # Groq API prompt token limit
+_GROQ_PROMPT_MAX_CHARS = 896  # ~224 tokens * 4 chars/token
 _GROQ_MAX_API_RETRIES = 2
 _GROQ_RATE_LIMIT_BACKOFF_S = 2
 _GROQ_ERROR_BACKOFF_S = 1
 
 # Confidence scoring
-_FALLBACK_CONFIDENCE = 0.90  # when segments lack logprobs
+_FALLBACK_CONFIDENCE = 0.50  # when segments lack logprobs
 _NO_SPEECH_PENALTY_THRESHOLD = 0.5  # penalize confidence above this
-_PARAKEET_BASELINE_CONFIDENCE = 0.94  # Parakeet's known 6.05% WER baseline
+_PARAKEET_BASELINE_CONFIDENCE = 0.70  # conservative default when logprob extraction fails
 
 # STT prompt limits
 _STT_PROMPT_MAX_CHARS = 1200
@@ -84,7 +84,7 @@ class TranscriptionResult:
 _stt_metrics_lock = threading.Lock()
 
 CONFIDENCE_RETRY_THRESHOLD = float(
-    os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.6")
+    os.environ.get("JARVIS_STT_CONFIDENCE_THRESHOLD", "0.72")
 )
 GROQ_STT_MODEL = os.environ.get("JARVIS_GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
@@ -254,7 +254,7 @@ def _groq_api_call(
                         "language": language,
                         "response_format": "verbose_json",
                         "temperature": "0.0",
-                        "prompt": prompt[:_GROQ_PROMPT_MAX_TOKENS],
+                        "prompt": prompt[:_GROQ_PROMPT_MAX_CHARS],
                     },
                     files={"file": (filename, audio_bytes, "audio/wav")},
                 )

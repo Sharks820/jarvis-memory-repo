@@ -492,7 +492,7 @@ def _capture_audio_loop(
 
 
 # RC-1: silence timeout defaults by mode
-_SILENCE_DURATION_COMMAND = 0.8  # fast cutoff for voice commands
+_SILENCE_DURATION_COMMAND = 1.2  # relaxed cutoff to avoid clipping utterance tails
 _SILENCE_DURATION_DICTATION = 2.0  # longer pause tolerance for dictation
 
 
