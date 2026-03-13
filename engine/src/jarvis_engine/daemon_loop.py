@@ -250,32 +250,43 @@ def _register_daemon_pid(root: Path) -> bool:
     return True
 
 
-def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
-    """Log daemon cycle start to activity feed (never raises)."""
+def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
+    """Log to activity feed, suppressing all errors (lazy import)."""
     try:
         from jarvis_engine.activity_feed import log_activity, ActivityCategory
 
-        log_activity(
-            ActivityCategory.DAEMON_CYCLE,
-            f"Daemon cycle {cycles} started",
-            {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
-        )
+        cat = getattr(ActivityCategory, category, ActivityCategory.DAEMON_CYCLE)
+        log_activity(cat, message, metadata)
     except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
-        logger.debug("Activity feed cycle-start log failed: %s", exc)
+        logger.debug("Activity feed log failed: %s", exc)
+
+
+def _safe_log_activity(category: str, message: str, metadata: dict) -> None:
+    """Log to activity feed, suppressing all errors (lazy import)."""
+    try:
+        from jarvis_engine.activity_feed import log_activity, ActivityCategory
+        cat = getattr(ActivityCategory, category, ActivityCategory.DAEMON_CYCLE)
+        log_activity(cat, message, metadata)
+    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
+        logger.debug("Activity feed log failed: %s", exc)
+
+
+def _log_cycle_start(cycles: int, cycle_start_ts: str) -> None:
+    """Log daemon cycle start to activity feed (never raises)."""
+    _safe_log_activity(
+        "DAEMON_CYCLE",
+        f"Daemon cycle {cycles} started",
+        {"cycle": cycles, "ts": cycle_start_ts, "phase": "start"},
+    )
 
 
 def _log_cycle_end(cycles: int, rc: int) -> None:
     """Log daemon cycle end to activity feed (never raises)."""
-    try:
-        from jarvis_engine.activity_feed import log_activity, ActivityCategory
-
-        log_activity(
-            ActivityCategory.DAEMON_CYCLE,
-            f"Daemon cycle {cycles} ended (rc={rc})",
-            {"cycle": cycles, "rc": rc, "phase": "end"},
-        )
-    except (ImportError, OSError, sqlite3.Error, RuntimeError, ValueError) as exc:
-        logger.debug("Activity feed cycle-end log failed: %s", exc)
+    _safe_log_activity(
+        "DAEMON_CYCLE",
+        f"Daemon cycle {cycles} ended (rc={rc})",
+        {"cycle": cycles, "rc": rc, "phase": "end"},
+    )
 
 
 def _print_cycle_status(
@@ -325,40 +336,30 @@ def _log_resource_pressure(
 ) -> None:
     """Log resource pressure changes to activity feed (never raises)."""
     if pressure_level != "none" and (pressure_level != last_pressure_level or cycles % 5 == 0):
-        try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
-            log_activity(
-                ActivityCategory.RESOURCE_PRESSURE,
-                f"Resource pressure {pressure_level}",
-                {
-                    "pressure_level": pressure_level,
-                    "cycle": cycles,
-                    "correlation_id": f"daemon-cycle-{cycles}",
-                    "metrics": resource_snapshot.get("metrics", {}),
-                    "sleep_s": sleep_seconds,
-                    "skip_heavy_tasks": skip_heavy_tasks,
-                },
-            )
-        except (ImportError, OSError, sqlite3.Error) as exc:
-            logger.debug("Resource pressure activity log failed: %s", exc)
+        _safe_log_activity(
+            "RESOURCE_PRESSURE",
+            f"Resource pressure {pressure_level}",
+            {
+                "pressure_level": pressure_level,
+                "cycle": cycles,
+                "correlation_id": f"daemon-cycle-{cycles}",
+                "metrics": resource_snapshot.get("metrics", {}),
+                "sleep_s": sleep_seconds,
+                "skip_heavy_tasks": skip_heavy_tasks,
+            },
+        )
     elif pressure_level == "none" and last_pressure_level != "none":
-        try:
-            from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
-            log_activity(
-                ActivityCategory.RESOURCE_PRESSURE,
-                "Resource pressure recovered",
-                {
-                    "pressure_level": "none",
-                    "cycle": cycles,
-                    "correlation_id": f"daemon-cycle-{cycles}",
-                    "sleep_s": sleep_seconds,
-                    "skip_heavy_tasks": skip_heavy_tasks,
-                },
-            )
-        except (ImportError, OSError, sqlite3.Error) as exc:
-            logger.debug("Resource pressure recovery log failed: %s", exc)
+        _safe_log_activity(
+            "RESOURCE_PRESSURE",
+            "Resource pressure recovered",
+            {
+                "pressure_level": "none",
+                "cycle": cycles,
+                "correlation_id": f"daemon-cycle-{cycles}",
+                "sleep_s": sleep_seconds,
+                "skip_heavy_tasks": skip_heavy_tasks,
+            },
+        )
 
 
 def _run_missions_cycle(root: Path, cycles: int, skip_heavy_tasks: bool) -> None:
@@ -534,14 +535,12 @@ def _run_kg_regression_cycle(root: Path) -> None:
     """Run KG regression check with auto-restore on failure (never raises)."""
     try:
         from jarvis_engine.knowledge.regression import RegressionChecker
-        from jarvis_engine.activity_feed import log_activity, ActivityCategory
 
         bus = _get_daemon_bus()
         kg = bus.ctx.kg
         if kg is not None:
             rc_checker = RegressionChecker(kg)
             current_metrics = rc_checker.capture_metrics()
-            # Compare against previous snapshot stored in module state
             global _daemon_kg_prev_metrics
             with _daemon_kg_prev_metrics_lock:
                 prev_metrics = _daemon_kg_prev_metrics
@@ -552,8 +551,8 @@ def _run_kg_regression_cycle(root: Path) -> None:
             if comparison.get("status") in ("fail", "warn"):
                 discrepancies = comparison.get("discrepancies", [])
                 print(f"kg_regression_discrepancies={len(discrepancies)}")
-                log_activity(
-                    ActivityCategory.REGRESSION_CHECK,
+                _safe_log_activity(
+                    "REGRESSION_CHECK",
                     f"KG regression detected: {comparison['status']}",
                     {"status": comparison["status"], "discrepancies": discrepancies},
                 )
@@ -615,13 +614,11 @@ def _run_entity_resolution_cycle() -> None:
     try:
         from jarvis_engine.knowledge.entity_resolver import EntityResolver
         from jarvis_engine.knowledge.regression import RegressionChecker
-        from jarvis_engine.activity_feed import log_activity, ActivityCategory
 
         bus = _get_daemon_bus()
         kg = bus.ctx.kg
         embed_svc = bus.ctx.embed_service
         if kg is not None:
-            # Backup KG state before entity resolution
             try:
                 rc_checker = RegressionChecker(kg)
                 rc_checker.backup_graph(tag="pre-entity-resolve")
@@ -638,8 +635,8 @@ def _run_entity_resolution_cycle() -> None:
             print(f"entity_resolve_merges={resolve_result.merges_applied}")
             if resolve_result.errors:
                 print(f"entity_resolve_errors={len(resolve_result.errors)}")
-            log_activity(
-                ActivityCategory.CONSOLIDATION,
+            _safe_log_activity(
+                "CONSOLIDATION",
                 f"Entity resolution: {resolve_result.merges_applied} merges from {resolve_result.candidates_found} candidates",
                 {
                     "candidates_found": resolve_result.candidates_found,
@@ -664,7 +661,6 @@ def _run_auto_harvest_cycle(root: Path) -> None:
             MiniMaxProvider,
         )
         from jarvis_engine.harvesting.budget import BudgetManager
-        from jarvis_engine.activity_feed import log_activity, ActivityCategory
 
         harvest_topics = _discover_harvest_topics(root)
         if harvest_topics:
@@ -708,8 +704,8 @@ def _run_auto_harvest_cycle(root: Path) -> None:
                             topic_records += entry.get("records_created", 0)
                         total_records += topic_records
                         print(f"auto_harvest_topic={topic} records={topic_records}")
-                    log_activity(
-                        ActivityCategory.HARVEST,
+                    _safe_log_activity(
+                        "HARVEST",
                         f"Auto-harvest: {len(harvest_topics)} topics, {total_records} records",
                         {"topics": harvest_topics, "total_records": total_records},
                     )
@@ -780,30 +776,26 @@ def _run_periodic_subsystems(
     root: Path,
     cycles: int,
     skip_heavy_tasks: bool,
-    run_missions: bool,
+    cfg: DaemonConfig,
     cmd_mobile_desktop_sync,
     cmd_self_heal,
-    sync_every_cycles: int,
-    self_heal_every_cycles: int,
-    self_test_every_cycles: int,
-    watchdog_every_cycles: int,
 ) -> None:
     """Run all non-core periodic subsystems for the current cycle.
 
     Failures here are logged but never affect the circuit breaker.
     """
-    if run_missions:
+    if cfg.run_missions:
         _run_missions_cycle(root, cycles, skip_heavy_tasks)
-    if sync_every_cycles > 0 and (cycles == 1 or cycles % sync_every_cycles == 0):
+    if cfg.sync_every_cycles > 0 and (cycles == 1 or cycles % cfg.sync_every_cycles == 0):
         _run_sync_cycle(cmd_mobile_desktop_sync)
-    if watchdog_every_cycles > 0 and cycles % watchdog_every_cycles == 0:
+    if cfg.watchdog_every_cycles > 0 and cycles % cfg.watchdog_every_cycles == 0:
         _run_watchdog_cycle(root)
-    if self_heal_every_cycles > 0 and (cycles == 2 or cycles % self_heal_every_cycles == 0):
+    if cfg.self_heal_every_cycles > 0 and (cycles == 2 or cycles % cfg.self_heal_every_cycles == 0):
         if skip_heavy_tasks:
             print("self_heal_cycle_skipped=resource_pressure")
         else:
             _run_self_heal_cycle(root, cmd_self_heal)
-    if self_test_every_cycles > 0 and cycles % self_test_every_cycles == 0:
+    if cfg.self_test_every_cycles > 0 and cycles % cfg.self_test_every_cycles == 0:
         if skip_heavy_tasks:
             print("self_test_skipped=resource_pressure")
         else:
@@ -1004,10 +996,8 @@ def cmd_daemon_run_impl(cfg: DaemonConfig) -> int:
                 continue
 
             _run_periodic_subsystems(
-                root, cycles, state["skip_heavy_tasks"], cfg.run_missions,
+                root, cycles, state["skip_heavy_tasks"], cfg,
                 cmd_mobile_desktop_sync, cmd_self_heal,
-                cfg.sync_every_cycles, cfg.self_heal_every_cycles,
-                cfg.self_test_every_cycles, cfg.watchdog_every_cycles,
             )
 
             rc = _run_core_autopilot(
