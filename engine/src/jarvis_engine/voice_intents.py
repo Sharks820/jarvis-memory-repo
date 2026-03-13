@@ -8,6 +8,7 @@ from __future__ import annotations
 import difflib
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -619,6 +620,81 @@ def _match_all_any(required: str, *any_of: str) -> Callable[[str], bool]:
     return lambda low: required in low and any(p in low for p in any_of)
 
 
+def _expand_natural_command_aliases(lowered: str) -> str:
+    """Add canonical command aliases for natural sentence-shaped requests."""
+    normalized = re.sub(r"\s+", " ", lowered.strip())
+    if not normalized:
+        return ""
+
+    stripped = normalized
+    wakeword_prefixes = (
+        "hey jarvis ",
+        "okay jarvis ",
+        "ok jarvis ",
+        "jarvis ",
+    )
+    changed = True
+    while changed:
+        changed = False
+        for prefix in wakeword_prefixes:
+            if stripped.startswith(prefix):
+                stripped = stripped[len(prefix):].strip()
+                changed = True
+
+    stripped = re.sub(
+        r"\b(?:please|can you|could you|would you|will you|i need you to|i want you to)\b",
+        " ",
+        stripped,
+    )
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+
+    aliases: list[str] = [normalized]
+    if stripped and stripped != normalized:
+        aliases.append(stripped)
+
+    def _add(alias: str) -> None:
+        if alias not in aliases:
+            aliases.append(alias)
+
+    if (
+        any(term in stripped for term in ("brain", "memory", "knowledge graph", "knowledge"))
+        and any(
+            term in stripped
+            for term in ("status", "health", "holding up", "doing", "doing today")
+        )
+    ):
+        _add("brain status")
+
+    if (
+        any(term in stripped for term in ("system", "jarvis", "you"))
+        and any(
+            term in stripped
+            for term in ("status", "health", "running", "working", "holding up", "doing")
+        )
+    ):
+        _add("system status")
+
+    if (
+        any(term in stripped for term in ("pause", "stop", "hold", "quiet"))
+        and any(term in stripped for term in ("jarvis", "daemon", "yourself", "autopilot"))
+    ):
+        _add("pause jarvis")
+
+    if (
+        any(term in stripped for term in ("resume", "continue", "wake up", "start working again"))
+        and any(term in stripped for term in ("jarvis", "daemon", "yourself", "autopilot"))
+    ):
+        _add("resume jarvis")
+
+    if "safe mode" in stripped:
+        if any(term in stripped for term in ("on", "enable", "turn on", "go into")):
+            _add("safe mode on")
+        if any(term in stripped for term in ("off", "disable", "turn off", "leave")):
+            _add("safe mode off")
+
+    return " ".join(aliases)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table — ordered list of (matcher, handler) rules.
 #
@@ -992,6 +1068,7 @@ def _dispatch_voice_intent(
     Falls back to web-augmented LLM conversation when no rule matches.
     Returns ``(intent, rc)``.
     """
+    expanded_lowered = _expand_natural_command_aliases(lowered)
     _phone_place_call_has_number = (
         (lowered.startswith("call ") or "place a call" in lowered
          or "make a call" in lowered or "phone call" in lowered)
@@ -1001,16 +1078,16 @@ def _dispatch_voice_intent(
     for matcher, handler in _DISPATCH_RULES:
         if handler is _handle_phone_place_call and not _phone_place_call_has_number:
             continue
-        if matcher(lowered):
+        if matcher(expanded_lowered):
             return handler(ctx)
 
     # Fuzzy fallback: try critical commands with similarity matching.
     # Only reached when exact substring matching failed.
     for target_phrase, handler in _CRITICAL_FUZZY_TARGETS:
-        if _fuzzy_match(lowered, target_phrase):
+        if _fuzzy_match(expanded_lowered, target_phrase):
             logger.info(
                 "Fuzzy match: '%s' matched critical command '%s'",
-                lowered[:60], target_phrase,
+                expanded_lowered[:60], target_phrase,
             )
             return handler(ctx)
 

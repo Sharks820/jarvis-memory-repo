@@ -115,8 +115,9 @@ def test_detect_hallucination_exact_vs_substring() -> None:
     # But NOT when embedded in longer speech
     assert detect_hallucination("That's the end of my question") is False
     assert detect_hallucination("Bye bye see you later") is False
-    # Substring phrases still trigger inside longer text
-    assert detect_hallucination("He said thanks for watching the game") is True
+    # Outro-style phrases should dominate the utterance before they are discarded.
+    assert detect_hallucination("Thanks for watching everyone") is True
+    assert detect_hallucination("He said thanks for watching the game") is False
 
 
 def test_detect_hallucination_repeated_sequences() -> None:

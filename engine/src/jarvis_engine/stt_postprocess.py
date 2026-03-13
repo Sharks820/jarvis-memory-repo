@@ -260,13 +260,18 @@ def detect_hallucination(text: str) -> bool:
     if lower in _EXACT_HALLUCINATION_PHRASES:
         return True
 
-    # Substring match: phrase appears anywhere in text
+    words = lower.split()
+
+    # Substring hallucinations should dominate the utterance, not merely appear inside a valid sentence.
+    total_words = len(words)
     for phrase in _SUBSTRING_HALLUCINATION_PHRASES:
-        if phrase in lower:
+        if phrase not in lower:
+            continue
+        phrase_words = len(phrase.split())
+        if total_words <= phrase_words + 1:
             return True
 
     # Check for repeated word sequences (1+ words repeated)
-    words = lower.split()
 
     # Single-word repetition: same word appears 4+ times in sequence
     if len(words) >= 4:
