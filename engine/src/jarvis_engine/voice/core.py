@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from jarvis_engine._shared import (
+    win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,11 +26,6 @@ class VoiceSpeakResult:
     voice_name: str
     output_wav: str
     message: str
-
-
-from jarvis_engine._shared import (
-    win_hidden_subprocess_kwargs as _win_hidden_subprocess_kwargs,
-)
 
 
 def _run_ps(script: str, timeout_s: int = 30) -> subprocess.CompletedProcess[str]:

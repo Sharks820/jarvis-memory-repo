@@ -598,7 +598,7 @@ class TestGatherCycleState:
              patch("jarvis_engine.daemon_loop.recommend_daemon_sleep",
                     return_value={"sleep_s": 120, "pressure_level": "none",
                                   "skip_heavy_tasks": False}), \
-             patch("jarvis_engine.daemon_loop.read_gaming_mode_state",
+             patch("jarvis_engine.daemon_loop._read_gaming_mode_state",
                     return_value={"enabled": False, "auto_detect": False,
                                   "updated_utc": "", "reason": ""}), \
              patch("jarvis_engine.daemon_loop.read_control_state",
@@ -624,7 +624,7 @@ class TestGatherCycleState:
              patch("jarvis_engine.daemon_loop.recommend_daemon_sleep",
                     return_value={"sleep_s": 120, "pressure_level": "none",
                                   "skip_heavy_tasks": False}), \
-             patch("jarvis_engine.daemon_loop.read_gaming_mode_state",
+             patch("jarvis_engine.daemon_loop._read_gaming_mode_state",
                     return_value={"enabled": False, "auto_detect": False,
                                   "updated_utc": "", "reason": ""}), \
              patch("jarvis_engine.daemon_loop.read_control_state",
@@ -645,7 +645,7 @@ class TestGatherCycleState:
              patch("jarvis_engine.daemon_loop.recommend_daemon_sleep",
                     return_value={"sleep_s": 300, "pressure_level": "none",
                                   "skip_heavy_tasks": False}), \
-             patch("jarvis_engine.daemon_loop.read_gaming_mode_state",
+             patch("jarvis_engine.daemon_loop._read_gaming_mode_state",
                     return_value={"enabled": False, "auto_detect": False,
                                   "updated_utc": "", "reason": ""}), \
              patch("jarvis_engine.daemon_loop.read_control_state",

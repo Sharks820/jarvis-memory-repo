@@ -49,7 +49,12 @@ from jarvis_engine.mobile_routes import (
     SecurityRoutesMixin,
     SyncRoutesMixin,
 )
-
+# Thread-local storage — shared single instance lives in mobile_routes._helpers
+# so route mixin modules (e.g. command.py) and this file see the same object.
+from jarvis_engine.mobile_routes._helpers import (
+    _thread_local,
+    _parse_bool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,12 @@ MAX_COMMAND_RESPONSE_CHUNK_CHARS = 800
 MAX_COMMAND_RESPONSE_CHUNKS = 24
 THREAD_CAPTURE_MAX_CHARS = 200_000
 
+# Narrowed exception tuple for subsystem initialisation / lazy-load guards.
+# Covers import failures, filesystem errors, bad config values, type mismatches,
+# and unexpected runtime states — the only error families that subsystem init can
+# raise during normal (non-catastrophic) operation.
+_SUBSYSTEM_ERRORS = (ImportError, OSError, ValueError, TypeError, RuntimeError)
+
 
 class CLIResult(TypedDict, total=False):
     """Typed return value for ``_run_main_cli``."""
@@ -73,14 +84,6 @@ class CLIResult(TypedDict, total=False):
     command_exit_code: int
     stdout_tail: list[str]
     stderr_tail: list[str]
-
-
-# Thread-local storage — shared single instance lives in mobile_routes._helpers
-# so route mixin modules (e.g. command.py) and this file see the same object.
-from jarvis_engine.mobile_routes._helpers import (
-    _thread_local,
-    _parse_bool,
-)
 
 
 class _ThreadCapturingStdout:
@@ -417,7 +420,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 on_credential_rotate=_rotate_signing_key,
             )
             logger.info("SecurityOrchestrator initialized for mobile API")
-        except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS as exc:
             logger.error("SecurityOrchestrator init FAILED — server will reject non-essential requests: %s", exc)
             self.security = None
             self._security_degraded = True
@@ -435,7 +438,7 @@ class MobileIngestServer(ThreadingHTTPServer):
             # Share with SecurityOrchestrator to avoid duplicate instances
             if self.security is not None:
                 self.security.owner_session = self.owner_session
-        except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS as exc:
             logger.error("OwnerSessionManager init FAILED — session auth will be unavailable: %s", exc)
             self.owner_session = None
             self._session_degraded = True
@@ -679,7 +682,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                     logger.debug("Sync engine/transport init failed, closing DB: %s", exc)
                     sync_db.close()
                     raise
-            except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+            except _SUBSYSTEM_ERRORS as exc:
                 logger.warning("Failed to lazy-initialize sync: %s", exc)
                 # Do NOT set _sync_init_attempted so future calls can retry.
             return self._sync_engine
@@ -702,7 +705,7 @@ class MobileIngestServer(ThreadingHTTPServer):
                 from jarvis_engine.memory.engine import MemoryEngine
                 self._memory_engine = MemoryEngine(db_path)
                 logger.info("MemoryEngine lazy-initialized for mobile API metrics")
-            except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+            except _SUBSYSTEM_ERRORS as exc:
                 logger.warning("Failed to lazy-initialize MemoryEngine: %s", exc)
             return self._memory_engine
 
@@ -930,7 +933,7 @@ class MobileIngestHandler(
                 f"Command {lifecycle_state}",
                 details,
             )
-        except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS as exc:
             # Activity feed must never break command execution.
             logger.debug("Activity feed logging failed: %s", exc)
 
@@ -1870,7 +1873,7 @@ def _init_auto_sync_config(
         except OSError as exc:
             logger.debug("LAN IP detection for auto-sync failed: %s", exc)
         logger.info("Auto-sync config initialized")
-    except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+    except _SUBSYSTEM_ERRORS as exc:
         logger.warning("Failed to initialize auto-sync config: %s", exc)
 
 
@@ -1917,7 +1920,7 @@ def _init_sync_engine(
             logger.info("Sync engine and transport initialized for mobile API")
         else:
             logger.warning("No signing key; sync transport not initialized")
-    except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+    except _SUBSYSTEM_ERRORS as exc:
         logger.warning("Failed to initialize sync for mobile API: %s", exc)
 
 
@@ -1994,7 +1997,7 @@ def _start_bus_prewarm(repo_root: Path) -> None:
             # Install thread-capturing stdout for concurrent request handling
             _ThreadCapturingStdout.install()
             logger.info("CommandBus pre-warmed successfully")
-        except (ImportError, OSError, ValueError, TypeError, RuntimeError) as exc:
+        except _SUBSYSTEM_ERRORS as exc:
             logger.warning("CommandBus pre-warm failed (will warm on first request): %s", exc)
 
     import threading as _threading

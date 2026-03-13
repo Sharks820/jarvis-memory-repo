@@ -38,9 +38,9 @@ from jarvis_engine.ops.runtime_control import (
 
 from jarvis_engine.gaming_mode import (
     _windows_idle_seconds,
-    detect_active_game_process,
-    read_gaming_mode_state,
-    write_gaming_mode_state,
+    detect_active_game_process as _detect_active_game_process,
+    read_gaming_mode_state as _read_gaming_mode_state,
+    write_gaming_mode_state as _write_gaming_mode_state,
 )
 from jarvis_engine.harvest_discovery import (
     discover_harvest_topics as _discover_harvest_topics,
@@ -737,13 +737,13 @@ def _gather_cycle_state(
     pressure_level = str(throttle.get("pressure_level", "none"))
     skip_heavy_tasks = bool(throttle.get("skip_heavy_tasks", False))
 
-    gaming_state = read_gaming_mode_state()
+    gaming_state = _read_gaming_mode_state()
     control_state = read_control_state(repo_root())
     auto_detect = bool(gaming_state.get("auto_detect", False))
     auto_detect_hit = False
     detected_process = ""
     if auto_detect:
-        auto_detect_hit, detected_process = detect_active_game_process()
+        auto_detect_hit, detected_process = _detect_active_game_process()
 
     return {
         "idle_seconds": idle_seconds,

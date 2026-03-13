@@ -27,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+import tkinter as tk
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -780,9 +781,6 @@ def _create_tray_icon_image():
     y = (size - text_h) // 2 - bbox[1]
     draw.text((x, y), "J", fill=(255, 255, 255, 255), font=font)
     return image
-
-
-import tkinter as tk
 
 
 def _snap_to_edge(

@@ -7,6 +7,11 @@ from jarvis_engine._shared import now_iso as _now_iso, parse_iso_timestamp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import safe_float as _safe_float
+from jarvis_engine.brain_memory import brain_regression_report
+from jarvis_engine.growth_tracker import read_history, summarize_history
+
 if TYPE_CHECKING:
     from jarvis_engine.knowledge.graph import KnowledgeGraph
     from jarvis_engine.learning.feedback import ResponseFeedbackTracker
@@ -69,12 +74,6 @@ class IntelligenceDashboard(TypedDict):
     memory_hygiene: dict[str, Any]
     diagnostics: dict[str, Any]
     achievements: AchievementsInfo
-
-
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import safe_float as _safe_float
-from jarvis_engine.brain_memory import brain_regression_report
-from jarvis_engine.growth_tracker import read_history, summarize_history
 
 
 DEFAULT_TARGETS: list[dict[str, Any]] = [

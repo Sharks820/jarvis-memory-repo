@@ -8,6 +8,10 @@ import secrets
 from pathlib import Path
 from typing import TypedDict
 
+from jarvis_engine._shared import atomic_write_json as _atomic_write_json
+from jarvis_engine._shared import now_iso as _now_iso
+from jarvis_engine._shared import safe_int as _safe_int
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,11 +34,6 @@ DEFAULT_OWNER_GUARD: OwnerGuardState = {
     "master_password_iterations": 200000,  # nosec B105
     "updated_utc": "",
 }
-
-
-from jarvis_engine._shared import atomic_write_json as _atomic_write_json
-from jarvis_engine._shared import now_iso as _now_iso
-from jarvis_engine._shared import safe_int as _safe_int
 
 
 def owner_guard_path(root: Path) -> Path:

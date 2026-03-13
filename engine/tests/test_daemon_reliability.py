@@ -38,7 +38,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
         monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
 
         call_count = 0
@@ -80,7 +80,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
         monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
 
         def always_failing_autopilot(*args, **kwargs) -> int:
@@ -120,7 +120,7 @@ class TestDaemonReliability:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
         monkeypatch.setattr(daemon_loop_mod, "_mission_backoff_until_cycle", 0)
 
         autopilot_calls = 0
@@ -433,7 +433,7 @@ def _base_daemon_monkeypatch(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-    monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
+    monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
     monkeypatch.setattr(cli_ops_mod, "cmd_ops_autopilot", lambda *a, **kw: 0)
     monkeypatch.setattr(daemon_loop_mod.time, "sleep", lambda s: None)
     # Bypass expensive per-cycle I/O (filesystem snapshots, resource checks)

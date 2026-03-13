@@ -53,6 +53,20 @@ except ImportError:
 else:
     _log_activity = _activity_log
 
+from jarvis_engine.gateway.audit import GatewayAudit
+from jarvis_engine.gateway.cli_providers import (
+    call_cli_provider,
+    detect_cli_providers,
+    CLIProviderInfo,
+)
+from jarvis_engine.gateway.pricing import calculate_cost
+
+if TYPE_CHECKING:
+    from jarvis_engine.gateway.budget import BudgetEnforcer
+    from jarvis_engine.gateway.circuit_breaker import ProviderHealthTracker
+    from jarvis_engine.gateway.costs import CostTracker
+    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
+
 logger = logging.getLogger(__name__)
 
 # Defer ollama import to avoid blocking when Ollama server isn't running.
@@ -111,21 +125,6 @@ def _ensure_ollama() -> bool:
 
     logger.debug("Ollama import failed: %s", result.get("exc", "unknown"))
     return False
-
-
-from jarvis_engine.gateway.audit import GatewayAudit
-from jarvis_engine.gateway.cli_providers import (
-    call_cli_provider,
-    detect_cli_providers,
-    CLIProviderInfo,
-)
-from jarvis_engine.gateway.pricing import calculate_cost
-
-if TYPE_CHECKING:
-    from jarvis_engine.gateway.budget import BudgetEnforcer
-    from jarvis_engine.gateway.circuit_breaker import ProviderHealthTracker
-    from jarvis_engine.gateway.costs import CostTracker
-    from jarvis_engine.learning.feedback import ResponseFeedbackTracker
 
 
 # OpenAI-compatible cloud provider configurations

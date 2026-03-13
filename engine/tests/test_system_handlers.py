@@ -298,8 +298,8 @@ def test_desktop_widget_import_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand())
@@ -307,9 +307,9 @@ def test_gaming_mode_read_only(mock_read: MagicMock, mock_detect: MagicMock) -> 
     assert result.detected is False
 
 
-@patch("jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": True})
-@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.gaming_mode.write_gaming_mode_state", return_value={"enabled": True})
+@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(enable=True))
@@ -318,9 +318,9 @@ def test_gaming_mode_enable(mock_read: MagicMock, mock_detect: MagicMock, mock_w
     assert result.effective_enabled is True
 
 
-@patch("jarvis_engine.daemon_loop.write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
-@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(True, "steam.exe"))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.gaming_mode.write_gaming_mode_state", return_value={"enabled": False, "auto_detect": True})
+@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(True, "steam.exe"))
+@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock, mock_write: MagicMock) -> None:
     handler = GamingModeHandler(ROOT)
     result = handler.handle(GamingModeCommand(auto_detect="on"))
@@ -329,8 +329,8 @@ def test_gaming_mode_auto_detect_on(mock_read: MagicMock, mock_detect: MagicMock
     assert result.effective_enabled is True  # detected overrides enabled=False
 
 
-@patch("jarvis_engine.daemon_loop.detect_active_game_process", return_value=(False, ""))
-@patch("jarvis_engine.daemon_loop.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
+@patch("jarvis_engine.gaming_mode.detect_active_game_process", return_value=(False, ""))
+@patch("jarvis_engine.gaming_mode.read_gaming_mode_state", return_value={"enabled": False, "auto_detect": False})
 def test_gaming_mode_no_change_no_write(mock_read: MagicMock, mock_detect: MagicMock) -> None:
     """When no flags change state, _write is NOT called."""
     handler = GamingModeHandler(ROOT)

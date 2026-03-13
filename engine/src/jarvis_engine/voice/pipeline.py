@@ -8,6 +8,7 @@ Sub-modules (split for separation of concerns):
 
 from __future__ import annotations
 
+import atexit as _atexit
 import logging
 import os
 import re
@@ -250,7 +251,6 @@ class ConversationState:
 _state = ConversationState()
 
 # Flush dirty conversation history on interpreter shutdown
-import atexit as _atexit
 
 
 def _flush_history_atexit() -> None:

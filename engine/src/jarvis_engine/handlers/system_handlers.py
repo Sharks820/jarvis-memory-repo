@@ -189,9 +189,13 @@ class GamingModeHandler:
         self._root = root
 
     def handle(self, cmd: GamingModeCommand) -> GamingModeResult:
-        from jarvis_engine import daemon_loop as _daemon_loop_mod
+        from jarvis_engine.gaming_mode import (
+            detect_active_game_process,
+            read_gaming_mode_state,
+            write_gaming_mode_state,
+        )
 
-        state = _daemon_loop_mod.read_gaming_mode_state()
+        state = read_gaming_mode_state()
         changed = False
         if cmd.enable is not None:
             state["enabled"] = cmd.enable
@@ -205,12 +209,12 @@ class GamingModeHandler:
             from jarvis_engine._shared import now_iso as _now_iso
 
             state["updated_utc"] = _now_iso()
-            state = _daemon_loop_mod.write_gaming_mode_state(state)
+            state = write_gaming_mode_state(state)
 
         detected = False
         detected_process = ""
         if bool(state.get("auto_detect", False)):
-            detected, detected_process = _daemon_loop_mod.detect_active_game_process()
+            detected, detected_process = detect_active_game_process()
         effective_enabled = bool(state.get("enabled", False)) or detected
 
         return GamingModeResult(

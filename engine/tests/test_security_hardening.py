@@ -279,7 +279,7 @@ class TestDaemonSecurity:
         )
         
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
         
         observed_execute = True
         observed_approve = True
@@ -318,7 +318,7 @@ class TestDaemonSecurity:
         monkeypatch.setattr(voice_pipeline_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(bus_mod, "repo_root", lambda: tmp_path)
         monkeypatch.setattr(daemon_loop_mod, "_windows_idle_seconds", lambda: 10.0)
-        monkeypatch.setattr(daemon_loop_mod, "detect_active_game_process", lambda: (False, ""))
+        monkeypatch.setattr(daemon_loop_mod, "_detect_active_game_process", lambda: (False, ""))
         
         cycle_count = 0
         

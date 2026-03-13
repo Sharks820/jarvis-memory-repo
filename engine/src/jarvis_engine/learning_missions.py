@@ -18,6 +18,7 @@ from jarvis_engine.web_fetch import (
     fetch_page_text as _fetch_page_text,
     search_web as _search_web,
 )
+from jarvis_engine.web_research import STOPWORDS
 
 # File-level lock for missions.json to prevent TOCTOU race conditions
 # between concurrent daemon auto-generation, mobile API creates, and mission runs.
@@ -31,7 +32,6 @@ _PAGE_CACHE_LOCK = threading.Lock()
 _PAGE_CACHE_TTL_SECONDS = 900.0
 _PAGE_CACHE_MAX_BYTES = 50_000_000  # 50 MB soft cap
 _page_cache_bytes = 0
-from jarvis_engine.web_research import STOPWORDS
 
 
 class MissionStep(TypedDict, total=False):
