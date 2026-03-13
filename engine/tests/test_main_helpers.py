@@ -69,10 +69,17 @@ class TestHelperFunctions:
     @pytest.mark.parametrize("text,execute,approve,expected", [
         pytest.param("runtime status", False, False, True, id="read_only_status"),
         pytest.param("pause daemon", False, False, False, id="mutation_pause"),
-        pytest.param("runtime status", True, False, False, id="execute_flag_forces_non_readonly"),
+        pytest.param("runtime status", True, False, True, id="execute_flag_keeps_read_only_status"),
         pytest.param("jarvis", False, False, True, id="bare_wake_word"),
         pytest.param("hey jarvis", False, False, True, id="hey_wake_word"),
         pytest.param("what is the meaning of life", False, False, False, id="conversational_fallthrough"),
+        pytest.param(
+            "hey jarvis can you check how your memory is holding up today",
+            True,
+            False,
+            True,
+            id="sentence_brain_status_execute_stays_read_only",
+        ),
     ])
     def test_is_read_only_voice_request(self, text, execute, approve, expected):
         assert voice_extractors_mod._is_read_only_voice_request(

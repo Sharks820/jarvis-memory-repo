@@ -13,7 +13,7 @@ See: .planning/ROADMAP.md (v5.0 Reliability, Continuity, and Autonomous Learning
 Phase: v5.0 / Phase 1 (Reliability Core + Resource Control) -- IN PROGRESS
 Current Plan: 14-02 (Continuity, Voice UX, Learning Mission Control, and Autonomous Fix Loop)
 Status: v4.0 complete, v5.0 execution active
-Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair + natural-alias + wakeword/typing tranches shipped; repo runtime green at 5603 passed, repo-wide mypy improved to 105/29, ruff clean)
+Last activity: 2026-03-12 (merged reliability/desktop branch pushed to GitHub; STT comprehension + utterance-mode + structured-segment + semantic-repair + natural-alias + wakeword/typing tranches shipped; repo runtime green at 5602 passed, repo-wide mypy improved to 105/29, ruff clean)
 
 Progress (v5.0): [██████░░░░] 55%
 
@@ -32,7 +32,7 @@ Progress (v5.0): [██████░░░░] 55%
 - Phase 5 (Mobile App Readiness): COMPLETE — 1 plan, 5 MOB requirements verified, 2-round bug scan clean
 
 **v5.0 Reliability & Continuity**: IN PROGRESS
-- Latest full test run (2026-03-12): 5603 passing, 14 skipped, 0 failures
+- Latest full test run (2026-03-12): 5602 passing, 15 skipped, 0 failures
 - Lint baseline: ruff clean
 - Typed debt baseline: mypy 105 errors across 29 files
 - Security scan baseline: bandit 66 findings (0 high, 9 medium, 57 low)
@@ -156,4 +156,5 @@ Progress (v5.0): [██████░░░░] 55%
 Last session: 2026-03-07
 Stopped at: Phase 1 completion design approved. 22 bugs fixed + 5 rescan bugs fixed + flaky test replaced. 5077 tests clean. Design doc committed: docs/plans/2026-03-07-phase1-completion-design.md. Beginning GSD execution of 6 remaining tasks: Context Continuity, Voice UX, Mission Transparency, Self-Diagnosis, Memory Hygiene, Desloppify. Implementation order: A→C→D→E→F→H with test+scan gates between each.
 Resume file: docs/plans/2026-03-07-phase1-completion-design.md
+
 

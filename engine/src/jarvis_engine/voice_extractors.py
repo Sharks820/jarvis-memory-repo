@@ -262,15 +262,67 @@ _GREETING_WAKE_WORDS = frozenset(
 )
 
 
+def _expand_read_only_aliases(lowered: str) -> str:
+    """Expand sentence-shaped status requests into canonical read-only markers."""
+    normalized = re.sub(r"\s+", " ", lowered.strip())
+    if not normalized:
+        return ""
+
+    stripped = normalized
+    wakeword_prefixes = ("hey jarvis ", "okay jarvis ", "ok jarvis ", "jarvis ")
+    changed = True
+    while changed:
+        changed = False
+        for prefix in wakeword_prefixes:
+            if stripped.startswith(prefix):
+                stripped = stripped[len(prefix) :].strip()
+                changed = True
+
+    stripped = re.sub(
+        r"\b(?:please|can you|could you|would you|will you|i need you to|i want you to)\b",
+        " ",
+        stripped,
+    )
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+
+    aliases: list[str] = [normalized]
+    if stripped and stripped != normalized:
+        aliases.append(stripped)
+
+    def _add(alias: str) -> None:
+        if alias not in aliases:
+            aliases.append(alias)
+
+    if (
+        any(term in stripped for term in ("brain", "memory", "knowledge graph", "knowledge"))
+        and any(term in stripped for term in ("status", "health", "holding up", "doing"))
+    ):
+        _add("brain status")
+
+    if (
+        any(term in stripped for term in ("system", "jarvis", "you"))
+        and any(
+            term in stripped
+            for term in ("status", "health", "running", "working", "holding up", "doing")
+        )
+    ):
+        _add("system status")
+
+    return " ".join(aliases)
+
+
 def _is_read_only_voice_request(
     lowered: str, *, execute: bool, approve_privileged: bool
 ) -> bool:
-    if execute or approve_privileged:
+    if approve_privileged:
         return False
-    if any(marker in lowered for marker in _MUTATION_MARKERS):
+    expanded = _expand_read_only_aliases(lowered)
+    if any(marker in expanded for marker in _MUTATION_MARKERS):
         return False
-    if any(marker in lowered for marker in _READ_ONLY_MARKERS):
+    if any(marker in expanded for marker in _READ_ONLY_MARKERS):
         return True
     if lowered.strip() in _GREETING_WAKE_WORDS:
         return True
+    if execute:
+        return False
     return False
