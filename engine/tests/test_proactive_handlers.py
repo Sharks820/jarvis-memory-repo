@@ -222,6 +222,55 @@ class TestWakeWordStartHandler:
 
         mock_detector_cls.assert_called_once_with(threshold=0.75)
 
+    def test_detected_callback_records_follow_up_in_conversation_mode(self, tmp_path: Path) -> None:
+        """Wakeword follow-up capture should allow sentence-length pauses."""
+        captured_callback: dict[str, object] = {}
+
+        class MockDetector:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def start(self, on_detected, stop_event=None, mic_lock=None):
+                captured_callback["fn"] = on_detected
+                if stop_event:
+                    stop_event.set()
+
+            def pause(self):
+                return None
+
+            def resume(self, sd_module=None):
+                return None
+
+        fake_audio = MagicMock()
+        mock_result = SimpleNamespace(
+            text="Jarvis check brain status",
+            backend="deepgram-nova3",
+            duration_seconds=1.8,
+        )
+
+        with patch("jarvis_engine.wakeword.WakeWordDetector", MockDetector):
+            handler = WakeWordStartHandler(root=tmp_path)
+            handler.handle(WakeWordStartCommand(threshold=0.5))
+
+        with patch("jarvis_engine.stt.record_from_microphone", return_value=fake_audio) as mock_record, \
+             patch("jarvis_engine.stt.transcribe_smart", return_value=mock_result), \
+             patch("jarvis_engine.stt_postprocess._load_personal_vocab", return_value=["Jarvis"]), \
+             patch("jarvis_engine.handlers.proactive_handlers._time_mod") as mock_time, \
+             patch("jarvis_engine.voice_intents.cmd_voice_run_impl") as mock_run, \
+             patch("jarvis_engine.config.repo_root", return_value=tmp_path):
+            mock_time.sleep = MagicMock()
+            mock_time.time.return_value = 0.0
+            callback = captured_callback["fn"]
+            assert callable(callback)
+            callback()
+
+        mock_record.assert_called_once_with(
+            max_duration_seconds=8.0,
+            drain_seconds=0.3,
+            mode="conversation",
+        )
+        mock_run.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # CostReductionHandler

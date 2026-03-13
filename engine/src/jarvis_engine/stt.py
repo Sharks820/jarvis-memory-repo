@@ -23,6 +23,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from typing import Any, Protocol, cast
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +38,13 @@ from jarvis_engine.stt_backends import (  # noqa: F401 -- re-exports
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _HTTPJsonResponse(Protocol):
+    status_code: int
+    text: str
+
+    def json(self) -> dict[str, Any]: ...
 
 
 @dataclass
@@ -210,7 +218,7 @@ def _groq_api_call(
     language: str,
     prompt: str,
     t0: float,
-) -> "object":
+) -> _HTTPJsonResponse | TranscriptionResult:
     """Send the audio to Groq Whisper API with retry on transient errors.
 
     Returns the httpx Response on success.
@@ -265,7 +273,7 @@ def _groq_api_call(
         text = resp.text[:200] if resp is not None else "no response"
         raise RuntimeError(f"Groq STT API error {status}: {text}")
 
-    return resp
+    return cast(_HTTPJsonResponse, resp)
 
 
 def _groq_parse_response(
@@ -414,14 +422,14 @@ class SpeechToText:
         self.model_size: str = env_model if env_model else model_size
         self.device: str = device
         self.compute_type: str = compute_type
-        self._model = None
+        self._model: Any | None = None
 
     def _ensure_model(self) -> None:
         """Lazy-load the WhisperModel on first use."""
         if self._model is not None:
             return
         try:
-            from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+            from faster_whisper import WhisperModel  # type: ignore[import-not-found,import-untyped]
         except ImportError as exc:
             raise RuntimeError(
                 "faster-whisper is not installed. "
@@ -466,7 +474,10 @@ class SpeechToText:
         self._ensure_model()
         t0 = time.monotonic()
         initial_prompt = prompt or JARVIS_DEFAULT_PROMPT
-        segments_gen, info = self._model.transcribe(
+        model = self._model
+        if model is None:
+            raise RuntimeError("Whisper model failed to load")
+        segments_gen, info = model.transcribe(
             audio,
             language=language,
             vad_filter=vad_filter,
@@ -541,7 +552,7 @@ def _try_groq(
 _local_stt_instance: SpeechToText | None = None
 _local_stt_lock = threading.Lock()
 
-_parakeet_model = None
+_parakeet_model: Any | None = None
 _parakeet_lock = threading.Lock()
 
 _local_emergency_instance: SpeechToText | None = None
@@ -577,7 +588,7 @@ def _try_parakeet(
 
     try:
         try:
-            import onnx_asr  # type: ignore[import-untyped]
+            import onnx_asr  # type: ignore[import-not-found,import-untyped]
         except ImportError:
             logger.warning(
                 "onnx-asr is not installed; Parakeet backend unavailable. "
@@ -736,20 +747,21 @@ def _transcribe_forced(
     root_dir: Path | None,
 ) -> TranscriptionResult:
     """Run a single forced backend and return its result."""
-    _forced_backends: dict[str, object] = {
-        "groq": _try_groq,
-        "local": _try_local_emergency,
-        "parakeet": _try_parakeet,
-        "deepgram": _try_deepgram,
-    }
-
-    try_fn = _forced_backends[backend]
-    if backend == "deepgram":
-        result = try_fn(
-            audio, language=language, prompt=prompt, keyterms=_load_keyterms()
+    if backend == "groq":
+        result = _try_groq(audio, language=language, prompt=prompt)
+    elif backend == "local":
+        result = _try_local_emergency(audio, language=language, prompt=prompt)
+    elif backend == "parakeet":
+        result = _try_parakeet(audio, language=language, prompt=prompt)
+    elif backend == "deepgram":
+        result = _try_deepgram(
+            audio,
+            language=language,
+            prompt=prompt,
+            keyterms=_load_keyterms(),
         )
     else:
-        result = try_fn(audio, language=language, prompt=prompt)
+        result = None
 
     if result is None:
         logger.warning("%s transcription returned None in forced mode", backend)

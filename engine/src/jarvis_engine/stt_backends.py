@@ -19,7 +19,7 @@ import os
 import struct
 import time
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
@@ -29,6 +29,18 @@ if TYPE_CHECKING:
     from jarvis_engine.stt import TranscriptionResult
 
 logger = logging.getLogger(__name__)
+
+
+class _AudioReadStream(Protocol):
+    def read(self, frames: int) -> tuple[np.ndarray, Any]: ...
+
+
+class _VadDetector(Protocol):
+    available: bool
+
+    def process_chunk(self, chunk: np.ndarray) -> bool: ...
+
+    def reset(self) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +55,7 @@ _NOISE_FLOOR_RECALIBRATE_INTERVAL = 60.0  # seconds
 
 
 def _calibrate_noise_floor(
-    stream: object,
+    stream: _AudioReadStream,
     sample_rate: int,
 ) -> float:
     """Capture 500ms of ambient audio and compute an adaptive silence threshold.
@@ -138,12 +150,12 @@ def _prepare_deepgram_audio(audio: np.ndarray | str) -> tuple[bytes, str]:
 def _build_deepgram_params(
     language: str,
     keyterms: list[str] | None,
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str | int | float | bool | None]]:
     """Build Deepgram REST API query params with keyword prompting."""
     if keyterms is None:
         keyterms = _load_keyterms()
 
-    params: list[tuple[str, str]] = [
+    params: list[tuple[str, str | int | float | bool | None]] = [
         ("model", "nova-3"),
         ("language", language),
         ("punctuate", "true"),
@@ -349,7 +361,7 @@ def _try_deepgram(
 # ---------------------------------------------------------------------------
 
 
-def _init_vad(sample_rate: int) -> tuple[object | None, bool]:
+def _init_vad(sample_rate: int) -> tuple[_VadDetector | None, bool]:
     """Initialize Silero VAD detector with graceful fallback.
 
     Returns ``(detector, use_silero)`` where *use_silero* is ``False``
@@ -360,7 +372,7 @@ def _init_vad(sample_rate: int) -> tuple[object | None, bool]:
     try:
         from jarvis_engine.stt_vad import get_vad_detector
 
-        vad_detector = get_vad_detector(sampling_rate=sample_rate)
+        vad_detector = cast(_VadDetector, get_vad_detector(sampling_rate=sample_rate))
         use_silero = vad_detector.available
     except (ImportError, OSError, RuntimeError) as exc:
         logger.debug("VAD detector initialization failed: %s", exc)
@@ -374,7 +386,7 @@ def _init_vad(sample_rate: int) -> tuple[object | None, bool]:
 
 def _detect_speech(
     chunk: np.ndarray,
-    vad_detector: object | None,
+    vad_detector: _VadDetector | None,
     use_silero: bool,
     silence_threshold: float,
 ) -> bool:
@@ -388,14 +400,14 @@ def _detect_speech(
 
 
 def _capture_audio_loop(
-    stream: object,
+    stream: _AudioReadStream,
     *,
     sample_rate: int,
     max_duration_seconds: float,
     silence_threshold: float,
     silence_duration: float,
     drain_seconds: float,
-    vad_detector: object | None,
+    vad_detector: _VadDetector | None,
     use_silero: bool,
     pre_speech_pad_seconds: float = 0.2,
     post_speech_pad_seconds: float = 0.3,
@@ -519,7 +531,7 @@ def record_from_microphone(
     is available.
     """
     try:
-        import sounddevice as sd  # type: ignore[import-untyped]
+        import sounddevice as sd  # type: ignore[import-not-found,import-untyped]
     except ImportError as exc:
         raise RuntimeError(
             "sounddevice is not installed. Install with: pip install sounddevice"
