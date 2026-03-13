@@ -722,7 +722,7 @@ class TestDashboardIntegration:
         root = _make_root(tmp_path)
         from jarvis_engine.intelligence_dashboard import _safe_diagnostics
         # Patch the module-level import inside the function
-        with patch("jarvis_engine.self_diagnosis.DiagnosticEngine", side_effect=RuntimeError("boom")):
+        with patch("jarvis_engine.ops.self_diagnosis.DiagnosticEngine", side_effect=RuntimeError("boom")):
             result = _safe_diagnostics(root)
         assert result == {}
 
