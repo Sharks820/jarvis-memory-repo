@@ -47,7 +47,6 @@ def _group_calls_by_number(
     call_log: list[dict[str, Any]],
     lookback: datetime,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Group call log entries by normalized phone number within lookback window."""
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in call_log:
         raw_number = str(item.get("number", "")).strip()
@@ -69,7 +68,6 @@ def _group_calls_by_number(
 def _build_area_stats(
     grouped: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, set[str]], dict[str, int]]:
-    """Build per-area-code distinct number counts and suspicious event counts."""
     area_distinct: dict[str, set[str]] = defaultdict(set)
     area_suspicious: dict[str, int] = defaultdict(int)
     for number, records in grouped.items():
@@ -98,7 +96,6 @@ def _score_number(
     area_distinct: dict[str, set[str]],
     area_suspicious: dict[str, int],
 ) -> SpamCandidate | None:
-    """Score a single phone number for spam likelihood. Returns None if benign."""
     calls = len(records)
     missed = inbound = no_contact = 0
     total_duration = 0.0

@@ -8,11 +8,13 @@ voice-run.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from jarvis_engine._bus import get_bus as _get_bus
 from jarvis_engine._cli_helpers import cli_dispatch
 from jarvis_engine._constants import ACTIONS_FILENAME, OPS_SNAPSHOT_FILENAME
+from jarvis_engine.activity_feed import ActivityCategory, log_activity
 from jarvis_engine.config import repo_root
 from jarvis_engine.voice.extractors import shorten_urls_for_speech
 from jarvis_engine.stt.contracts import VoiceUtterance
@@ -96,8 +98,6 @@ def _emit_voice_listen_state(state: str, *, details: dict[str, object] | None = 
     """Emit voice listening state to stdout + activity feed (best effort)."""
     print(f"listening_state={state}")
     try:
-        from jarvis_engine.activity_feed import ActivityCategory, log_activity
-
         payload: dict[str, object] = {"state": state}
         if details:
             payload.update(details)
@@ -106,7 +106,7 @@ def _emit_voice_listen_state(state: str, *, details: dict[str, object] | None = 
             f"Voice listen state: {state}",
             payload,
         )
-    except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
         logger.debug("Voice listen state activity logging failed: %s", exc)
 
 
@@ -191,8 +191,6 @@ def cmd_voice_run(
 
 
 def cmd_wake_word(threshold: float) -> int:
-    import time
-
     result, _ = cli_dispatch(WakeWordStartCommand(threshold=threshold))
     print(f"started={result.started}")
     print(f"message={result.message}")
