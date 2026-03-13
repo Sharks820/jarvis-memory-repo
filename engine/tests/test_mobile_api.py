@@ -468,6 +468,27 @@ def test_command_endpoint_executes_voice_route(mobile_server) -> None:
     assert int(parsed["command_exit_code"]) == 0
 
 
+def test_conversation_clear_resets_cross_llm_state(mobile_server, monkeypatch) -> None:
+    headers = signed_headers(b"{}", mobile_server.auth_token, mobile_server.signing_key)
+    reset_calls: list[str] = []
+
+    class _StubConversationState:
+        def reset(self) -> None:
+            reset_calls.append("reset")
+
+    monkeypatch.setattr(
+        "jarvis_engine.conversation_state.get_conversation_state",
+        lambda: _StubConversationState(),
+    )
+
+    code, body = http_request("POST", f"{mobile_server.base_url}/conversation/clear", b"{}", headers)
+
+    assert code == 200
+    parsed = json.loads(body.decode("utf-8"))
+    assert parsed["ok"] is True
+    assert reset_calls == ["reset"]
+
+
 def test_command_endpoint_returns_200_with_structured_failure(mobile_server) -> None:
     from unittest.mock import patch
     from urllib.request import Request, urlopen
@@ -1083,6 +1104,8 @@ def _make_handler_stub(server):
 
 def test_read_gaming_state_file_missing(mobile_server) -> None:
     """_read_gaming_state returns defaults when file does not exist."""
+
+
     runtime_dir = mobile_server.root / ".planning" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state_path = runtime_dir / "gaming_mode.json"

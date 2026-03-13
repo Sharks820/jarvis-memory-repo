@@ -161,11 +161,7 @@ def _score_number(
         reasons.append("spam_or_scam_label")
 
     area = _area_key(number)
-    if (
-        area
-        and len(area_distinct.get(area, set())) >= 6
-        and area_suspicious.get(area, 0) >= 8
-    ):
+    if area and len(area_distinct.get(area, set())) >= 6 and area_suspicious.get(area, 0) >= 8:
         score += 0.18
         reasons.append("rotating_number_area_pattern")
 

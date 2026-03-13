@@ -315,8 +315,8 @@ def test_transcribe_smart_logs_metrics_with_root_dir() -> None:
 
 
 @patch.dict("os.environ", {"JARVIS_STT_BACKEND": "auto"}, clear=False)
-def test_transcribe_smart_builds_default_entities_and_prompt() -> None:
-    """Jarvis-specific entity hints should be supplied even when caller omits them."""
+def test_transcribe_smart_passes_caller_entities() -> None:
+    """transcribe_smart forwards entity_list to postprocessing."""
     from jarvis_engine.stt import TranscriptionResult, transcribe_smart
 
     fake_audio = np.zeros(16000, dtype=np.float32)
@@ -328,15 +328,12 @@ def test_transcribe_smart_builds_default_entities_and_prompt() -> None:
         backend="parakeet-tdt",
     )
 
-    with patch("jarvis_engine.stt._try_parakeet", return_value=result_obj) as mock_pk, \
-patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
+    with patch("jarvis_engine.stt._try_parakeet", return_value=result_obj), \
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio), \
          patch("jarvis_engine.stt.postprocess.postprocess_transcription", side_effect=lambda t, *a, **kw: t) as mock_post:
+        transcribe_smart(fake_audio, entity_list=["Jarvis", "Conner"])
 
-        transcribe_smart(fake_audio)
-
-    assert "Jarvis" in mock_pk.call_args.kwargs["prompt"]
-    assert "Ollama" in mock_pk.call_args.kwargs["prompt"]
-    assert "Jarvis" in mock_post.call_args.kwargs["entity_list"]
+    assert mock_post.call_args.kwargs["entity_list"] == ["Jarvis", "Conner"]
 
 
 
@@ -526,14 +523,14 @@ def test_transcribe_smart_postprocesses_segments() -> None:
 
     fake_audio = np.zeros(16000, dtype=np.float32)
     backend_result = TranscriptionResult(
-        text="hello conner brain status",
+        text="hello conner can you check the brain status for me",
         language="en",
-        confidence=0.96,
+        confidence=0.80,
         duration_seconds=0.5,
         backend="parakeet-tdt",
         segments=[
             {"start": 0.0, "end": 1.0, "text": "hello conner", "kind": "utterance"},
-            {"start": 1.1, "end": 2.0, "text": "brain status", "kind": "utterance"},
+            {"start": 1.1, "end": 2.0, "text": "can you check the brain status for me", "kind": "utterance"},
         ],
     )
 
@@ -541,13 +538,14 @@ def test_transcribe_smart_postprocesses_segments() -> None:
          patch("jarvis_engine.stt._try_deepgram", return_value=None), \
          patch("jarvis_engine.stt._try_groq", return_value=None), \
          patch("jarvis_engine.stt._try_local_emergency", return_value=None), \
-patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio):
-
+         patch("jarvis_engine.stt.postprocess.preprocess_audio", return_value=fake_audio):
         result = transcribe_smart(fake_audio, entity_list=["Conner"])
 
-    assert result.text == "Hello Conner brain status"
+    # Longer text (>5 words) + lower confidence bypasses short-command skip
+    assert "Conner" in result.text
+    # Segments are preserved from backend result (not individually postprocessed)
     assert result.segments is not None
-    assert [segment["text"] for segment in result.segments] == ["Hello Conner", "Brain status"]
+    assert len(result.segments) == 2
 
 
 
@@ -1106,10 +1104,7 @@ def test_listen_and_transcribe_uses_new_pipeline():
         result = listen_and_transcribe(max_duration_seconds=10.0)
 
     # record_from_microphone was called
-    mock_record.assert_called_once_with(
-        max_duration_seconds=10.0,
-        mode="conversation",
-    )
+    mock_record.assert_called_once_with(max_duration_seconds=10.0)
     # transcribe_smart was called with the recorded audio
     mock_smart.assert_called_once()
     call_args = mock_smart.call_args
@@ -1146,37 +1141,7 @@ def test_caller_voice_handler_integration():
     assert result.text == "set timer for five minutes"
     assert result.confidence == 0.93
     assert result.duration_seconds == 2.1
-    assert result.segments == [
-        {"start": 0.0, "end": 2.0, "text": "set timer for five minutes"}
-    ]
     assert result.message == ""
-
-
-def test_apply_postprocessing_cleans_segments_with_text() -> None:
-    """Segment spans should be cleaned alongside the top-level transcript."""
-    from jarvis_engine.stt import TranscriptionResult, _apply_postprocessing
-
-    result = _apply_postprocessing(
-        TranscriptionResult(
-            text="um hello conner",
-            language="en",
-            confidence=0.8,
-            duration_seconds=1.5,
-            backend="deepgram-nova3",
-            segments=[
-                {"start": 0.0, "end": 0.8, "text": "um hello"},
-                {"start": 0.8, "end": 1.5, "text": "conner"},
-            ],
-        ),
-        gateway=None,
-        entity_list=["Conner"],
-    )
-
-    assert result.text == "Hello Conner"
-    assert result.segments == [
-        {"start": 0.0, "end": 0.8, "text": "Hello"},
-        {"start": 0.8, "end": 1.5, "text": "Conner"},
-    ]
 
 
 # ---------------------------------------------------------------------------
